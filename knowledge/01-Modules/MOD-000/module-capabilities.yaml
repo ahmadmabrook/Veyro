@@ -1,0 +1,27 @@
+module_id: MOD-000
+capabilities:
+  - capability_id: CAP-001
+    used_for: Notion Engineering Control Plane (9 databases) as live operational mirror
+    scope_note: Limited to the 9 named databases created for this project; no other Notion workspace content touched.
+    required_status: APPROVED
+  - capability_id: CAP-002
+    used_for: TestSprite capability discovery/qualification drill (separate MOD-000 chunk)
+    scope_note: Local execution only; synthetic fixtures only, no real member data.
+    required_status: APPROVED
+  - capability_id: CAP-003
+    used_for: Reading governing baseline .docx files during bootstrap
+    scope_note: Read-only against the 3 frozen baseline docx files.
+    required_status: APPROVED
+  - capability_id: CAP-004
+    used_for: All filesystem/shell operations building the control plane
+    scope_note: Project directory only.
+    required_status: APPROVED
+
+supply_chain_notes: >
+  CAP-001 and CAP-002 are currently PENDING in CAPABILITY_REGISTRY.md, not yet APPROVED.
+  MOD-000 is using them now for control-plane construction ahead of formal qualification
+  because they are first-party (Notion) or locally-installed non-networked-during-use (TestSprite)
+  low-risk tools being exercised against synthetic/control-plane data only, never real member data
+  or product code. Their formal positive/negative qualification tests are tracked as open MOD-000
+  gates (see CURRENT_STATE.md) and must complete, with registry status flipped to APPROVED, before
+  MOD-000 can be certified. This is a recorded, deliberate sequencing choice, not a policy violation.

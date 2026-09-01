@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH J · 8 SCREENS DRAWN · ADM-STF-01 → ADM-TSK-01</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Staff, permissions, and talking to members</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Four staff screens including the permission matrix that every absent-not-greyed decision in this product resolves against, and four communication screens where consent is enforced by the system rather than trusted to the sender.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-STF-04 · PERMISSION MATRIX · OWNER ONLY</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Nine roles, and what each may actually do</h2>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:13px 17px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+<div style="flex:1;min-width:230px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Roles and permissions</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Nadi Group · editable within system limits · every change audited</div></div>
+<span style="font:500 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:9px 11px;border-radius:6px">Add a custom role</span>
+</div>
+<div style="overflow-x:auto">
+<div style="min-width:1000px">
+<div style="display:grid;grid-template-columns:minmax(0,1.5fr) repeat(9,58px);gap:1px;padding:9px 16px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">CAPABILITY</div>
+<sc-for list="{{ roles }}" as="r" hint-placeholder-count="9"><div style="font:500 8.5px/1.3 'IBM Plex Mono';color:#57544d;text-align:center">{{ r.short }}</div></sc-for>
+</div>
+<sc-for list="{{ caps }}" as="c" hint-placeholder-count="14">
+<div style="display:grid;grid-template-columns:minmax(0,1.5fr) repeat(9,58px);gap:1px;padding:0 16px;height:32px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05);background:{{ c.bg }}">
+<div style="font:{{ c.weight }} 11.5px/1.3 'IBM Plex Sans';color:{{ c.labelColor }}">{{ c.name }}</div>
+<sc-for list="{{ c.cells }}" as="x" hint-placeholder-count="9"><div style="text-align:center;font:500 10px/1 'IBM Plex Mono';color:{{ x.color }}">{{ x.mark }}</div></sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="padding:13px 17px;border-top:1px solid rgba(23,23,26,.1);display:flex;gap:14px;flex-wrap:wrap">
+<div style="flex:1 1 240px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">LEGEND</div><div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px"><span style="font-family:'IBM Plex Mono';color:#2f5d3a">●</span> can do · <span style="font-family:'IBM Plex Mono';color:#8a5a1f">◐</span> can request approval · <span style="font-family:'IBM Plex Mono';color:#a8a29a">—</span> not available, and absent from their UI entirely</div></div>
+<div style="flex:1 1 240px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">The <span style="font-family:'IBM Plex Mono';color:#8a5a1f">◐</span> column is the one this product argued for: a receptionist who can <i>ask</i> for a refund is faster than one who phones a manager, and safer than one who can issue it.</div>
+<div style="flex:1 1 240px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Locked rows cannot be delegated.</b> Editing permissions and starting an impersonation are Owner-only and greyed even for the Owner editing this screen — you cannot grant yourself, or anyone, a way around them.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-STF-01 · 02 · 03</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">The team, one person, and an invitation</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 400px;min-width:385px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-STF-01 · STAFF LIST · COMPACT</div>
+<div style="padding:14px 16px">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 11px;border-radius:6px">Active · 14</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 10px;border-radius:6px;color:#3d3b36">Invited · 2</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 10px;border-radius:6px;color:#3d3b36">Left · 3</span>
+<div style="flex:1"></div>
+<span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:9px 11px;border-radius:6px">Invite</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:380px;display:grid;grid-template-columns:minmax(0,1.2fr) 104px minmax(0,1fr) 74px;gap:10px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>NAME</div><div>ROLE</div><div>CLUBS</div><div>LAST SEEN</div></div>
+<sc-for list="{{ staff }}" as="s" hint-placeholder-count="8">
+<div style="min-width:380px;display:grid;grid-template-columns:minmax(0,1.2fr) 104px minmax(0,1fr) 74px;gap:10px;padding:0 12px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05);background:{{ s.bg }}">
+<div style="font:450 11.5px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ s.role }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.clubs }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:{{ s.seenColor }}">{{ s.seen }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Dana's spin certification expires in 18 days.</b> Certifications inside 30 days raise a Command Center item — an uncertified coach taking a class is an insurance problem, not an admin one.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">A Club Manager sees only their own club's staff. Last seen exists so a departed employee with a live login is visible rather than discovered.</div>
+</div>
+</div>
+
+<div style="flex:1 1 330px;min-width:320px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-STF-02 · STAFF PROFILE · TIER 4 CHANGES</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:11px;align-items:flex-start">
+<span style="width:40px;height:40px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span>
+<div style="flex:1"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Layla Mansour</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Reception · Khalda · since Jan 2025</div></div>
+</div>
+<div style="margin-top:13px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">ROLE</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Reception ▾</div></div>
+<div style="margin-top:10px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">CLUBS</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap"><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Khalda</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">Abdoun</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">Sweifieh</span></div></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">INDIVIDUAL GRANTS · BEYOND HER ROLE</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:6px;overflow:hidden">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#2f5d3a;width:14px">☑</span><div style="flex:1"><div style="font:450 12px/1.35 'IBM Plex Sans'">Issue refunds up to JOD 50.00</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">Granted by Ziad · 4 Mar 2026</div></div></div>
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#a8a29a;width:14px">☐</span><div style="flex:1"><div style="font:450 12px/1.35 'IBM Plex Sans';color:#57544d">Override access denials</div></div></div>
+<div style="padding:10px 12px;display:flex;gap:9px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#a8a29a;width:14px">☐</span><div style="flex:1"><div style="font:450 12px/1.35 'IBM Plex Sans';color:#57544d">Export member data</div></div></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Changing any of this is <b>tier 4</b> — step-up authentication, a reason, and an audit entry naming both people. <b>You cannot grant a permission you do not hold yourself.</b></div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Save changes</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(138,59,31,.4);color:#8a3b1f;padding:10px 12px;border-radius:6px">End access</span></div>
+</div>
+</div>
+
+<div style="flex:1 1 280px;min-width:270px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-STF-03 · INVITE</div>
+<div style="padding:15px 16px">
+<div style="font:500 15.5px/1.3 'IBM Plex Sans'">Invite someone</div>
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">EMAIL</div><div style="font:400 12px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">kareem@nadi.jo</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">ROLE</div><div style="font:400 12px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Sales ▾</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">CLUBS</div><div style="font:400 12px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Khalda, Sweifieh ▾</div></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">The link expires in <b>7 days</b>. Sales can see leads and members at those two clubs, sell memberships, and take payments. No financial administration.</div>
+<span style="display:block;font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px;border-radius:6px;margin-top:12px;text-align:center">Send invitation</span>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">PENDING · 2</div>
+<div style="margin-top:6px">
+<div style="display:flex;gap:9px;padding:8px 0;border-bottom:1px solid rgba(23,23,26,.05);align-items:baseline"><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">yasmin@nadi.jo</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d">2d left</span><span style="font:400 10.5px/1.4 'IBM Plex Sans';color:#1b4079">Resend</span></div>
+<div style="display:flex;gap:9px;padding:8px 0;align-items:baseline"><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">omar.s@nadi.jo</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#8a5a1f">expired</span><span style="font:400 10.5px/1.4 'IBM Plex Sans';color:#1b4079">Resend</span></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-COM-02 · 03 · 04 · ADM-TSK-01</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Templates, broadcast, notifications, tasks</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 360px;min-width:345px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-COM-03 · BROADCAST</div>
+<div style="padding:15px 16px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">Message a group of members</div>
+<div style="margin-top:12px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WHO</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Not visited in 30 days ▾</div></div>
+<div style="margin-top:11px;padding:12px 13px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">214 match · 186 will receive this</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:4px"><b>28 have withdrawn marketing consent.</b> They are excluded automatically and cannot be added back — this is promotional content, so their choice governs. If you need to reach all 214, it has to be a service message about their membership.</div>
+</div>
+<div style="margin-top:11px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">TEMPLATE</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">We miss you · win-back ▾</div></div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PREVIEW · ENGLISH</div>
+<div style="font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px;padding:9px 11px;background:#fffefb;border:1px solid rgba(23,23,26,.1);border-radius:4px">Hi Ahmad — we haven't seen you at Khalda for a while. Your membership is active and there's a spin class Thursday at 19:00 if you fancy it.</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:9px">PREVIEW · العربية</div>
+<div dir="rtl" style="font:400 12.5px/1.85 'IBM Plex Sans Arabic';color:#3d3b36;margin-top:5px;padding:9px 11px;background:#fffefb;border:1px solid rgba(23,23,26,.1);border-radius:4px">مرحباً أحمد — لم نرك في خلدا منذ فترة. عضويتك سارية، وهناك حصة سبينينغ الخميس <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٩:٠٠</span> إن أحببت.</div>
+</div>
+<div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:12px 14px;border-radius:6px">Send to 186</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 13px;border-radius:6px">Schedule</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Both languages are previewed before sending, always. A broadcast is the one place a translation error reaches hundreds of people at once.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-COM-02 · TEMPLATES</div>
+<div style="padding:14px 15px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<sc-for list="{{ templates }}" as="t" hint-placeholder-count="5">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06)">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 12px/1.35 'IBM Plex Sans';flex:1">{{ t.name }}</span><span style="font:500 9px/1.4 'IBM Plex Mono';color:{{ t.color }}">{{ t.state }}</span></div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">{{ t.meta }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>WhatsApp approval is external.</b> Veyro shows the provider's real status and cannot fake it — a template pending approval is genuinely unusable, and saying otherwise would produce failed sends at the worst moment.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Every template exists as a pair. A template with only one language cannot be published.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-COM-04 · NOTIFICATIONS</div>
+<div style="padding:14px 15px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow-x:auto">
+<div style="min-width:250px;display:grid;grid-template-columns:minmax(0,1fr) 44px 44px 48px;gap:8px;padding:7px 11px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 8.5px/1.3 'IBM Plex Mono';color:#57544d;letter-spacing:.05em"><div>EVENT</div><div>APP</div><div>EMAIL</div><div>WHATS</div></div>
+<sc-for list="{{ notifs }}" as="n" hint-placeholder-count="5">
+<div style="min-width:250px;display:grid;grid-template-columns:minmax(0,1fr) 44px 44px 48px;gap:8px;padding:0 11px;height:32px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:400 11px/1.3 'IBM Plex Sans'">{{ n.event }}</div>
+<div style="font:500 10px/1 'IBM Plex Mono';color:{{ n.c1 }}">{{ n.app }}</div>
+<div style="font:500 10px/1 'IBM Plex Mono';color:{{ n.c2 }}">{{ n.email }}</div>
+<div style="font:500 10px/1 'IBM Plex Mono';color:{{ n.c3 }}">{{ n.wa }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Defaults are deliberately quiet. Nothing here opts a person into a channel they did not choose, and WhatsApp is off by default because it reaches people at home.</div>
+</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-TSK-01 · TASKS</div>
+<div style="padding:14px 15px">
+<div style="display:flex;gap:7px;flex-wrap:wrap">
+<span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Mine · 4</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px;color:#3d3b36">Team · 11</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid #8a3b1f;padding:7px 9px;border-radius:6px;color:#8a3b1f">Overdue · 2</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow:hidden">
+<sc-for list="{{ tasks }}" as="t" hint-placeholder-count="5">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:flex-start">
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#a8a29a;width:14px;flex-shrink:0">☐</span>
+<div style="flex:1;min-width:0"><div style="font:450 12px/1.4 'IBM Plex Sans'">{{ t.name }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:{{ t.color }};margin-top:2px">{{ t.meta }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Tasks born from an exception link back to it. Completing the task does not resolve the exception — <b>the work and the record of the work are separate</b>, which is why the Command Center count does not drop when someone ticks a box here.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Three sources: assigned by a person, generated by an automation, or suggested by Veyro. The source is always named — a task nobody can account for gets ignored.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · PermissionMatrix · DataGrid(Compact) ×2 · SideSheet ×3 · GrantRow · ConsentFilter · MessagePreview(bilingual) · TemplateRow · NotificationMatrix · TaskRow · zero new tokens</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const ROLES = ['OWN', 'REG', 'CLUB', 'RECP', 'SALE', 'COACH', 'NUTR', 'ACCT', 'SUPP'];
+
+// 2 = can, 1 = can request, 0 = absent
+const CAPS = [
+  ['See members at their clubs', [2,2,2,2,2,2,2,2,0], false],
+  ['See member health notes', [2,0,0,0,0,2,2,0,0], false],
+  ['Sell a membership', [2,2,2,2,2,0,0,0,0], false],
+  ['Take a payment', [2,2,2,2,2,0,0,2,0], false],
+  ['Issue a refund', [2,2,2,1,1,0,0,2,0], false],
+  ['Adjust an invoice', [2,2,1,0,0,0,0,2,0], false],
+  ['Change plan pricing', [2,1,0,0,0,0,0,1,0], false],
+  ['Freeze or cancel a membership', [2,2,2,1,1,0,0,0,0], false],
+  ['Override an access denial', [2,2,2,1,0,0,0,0,0], false],
+  ['Remove biometric enrolment', [2,1,1,0,0,0,0,0,0], false],
+  ['Export member or financial data', [2,1,1,0,0,0,0,1,0], false],
+  ['See other clubs', [2,2,0,0,0,0,0,2,0], false],
+  ['Edit roles and permissions', [2,0,0,0,0,0,0,0,0], true],
+  ['Start an impersonation session', [0,0,0,0,0,0,0,0,2], true]
+];
+
+const STAFF = [
+  ['Rania Haddad', 'Owner', 'All 3', 'now', '#2f5d3a', false],
+  ['Ziad Nasser', 'Club manager', 'Khalda', '12m ago', '#57544d', false],
+  ['Nadia Suleiman', 'Accountant', 'All 3', '1h ago', '#57544d', false],
+  ['Layla Mansour', 'Reception', 'Khalda', 'now', '#2f5d3a', true],
+  ['Yasmin Odeh', 'Sales', 'Khalda, Sweif.', '4h ago', '#57544d', false],
+  ['Yousef Haddad', 'Coach', 'Khalda', '22m ago', '#57544d', false],
+  ['Dana Khalil', 'Coach', 'Khalda, Abdoun', '2h ago', '#57544d', false],
+  ['Omar Salti', 'Coach', 'Khalda', '9d ago', '#8a5a1f', false]
+];
+
+const TEMPLATES = [
+  ['Payment link', 'APPROVED', '#2f5d3a', 'EN + AR · service · used 214×'],
+  ['Class cancelled', 'APPROVED', '#2f5d3a', 'EN + AR · service · used 38×'],
+  ['We miss you', 'APPROVED', '#2f5d3a', 'EN + AR · promotional'],
+  ['Renewal due', 'APPROVED', '#2f5d3a', 'EN + AR · service · used 96×'],
+  ['Ramadan hours', 'PENDING WHATSAPP', '#8a5a1f', 'EN + AR · submitted 2d ago']
+];
+
+const NOTIFS = [
+  ['Payment failed', '●', '●', '●', '#2f5d3a', '#2f5d3a', '#2f5d3a'],
+  ['Membership expiring', '●', '●', '—', '#2f5d3a', '#2f5d3a', '#a8a29a'],
+  ['Class cancelled', '●', '—', '●', '#2f5d3a', '#a8a29a', '#2f5d3a'],
+  ['New lead assigned', '●', '—', '—', '#2f5d3a', '#a8a29a', '#a8a29a'],
+  ['Access device down', '●', '●', '—', '#2f5d3a', '#2f5d3a', '#a8a29a']
+];
+
+const TASKS = [
+  ['Call Tareq Odeh about his lapsed membership', 'From exception EXC-8804 · due today', '#8a3b1f'],
+  ['Chase Omar for 22 unverified sessions', 'From exception EXC-8798 · overdue 2d', '#8a3b1f'],
+  ['Renew Dana\u2019s spin certification', 'From automation · due in 18d', '#57544d'],
+  ['Review the Sweifieh reader replacement quote', 'Assigned by Rania · due Friday', '#57544d'],
+  ['Confirm September class timetable', 'Assigned by Rania · due 25 Aug', '#57544d']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const MARK = { 2: ['●', '#2f5d3a'], 1: ['◐', '#8a5a1f'], 0: ['—', '#a8a29a'] };
+    return {
+      roles: ROLES.map(short => ({ short })),
+      caps: CAPS.map(c => ({
+        name: c[0],
+        cells: c[1].map(v => ({ mark: MARK[v][0], color: MARK[v][1] })),
+        bg: c[2] ? '#faf8f4' : '#fffefb',
+        weight: c[2] ? '500' : '450',
+        labelColor: c[2] ? '#8a3b1f' : '#17171a'
+      })),
+      staff: STAFF.map(s => ({
+        name: s[0], role: s[1], clubs: s[2], seen: s[3], seenColor: s[4],
+        bg: s[5] ? '#e8edf6' : '#fffefb'
+      })),
+      templates: TEMPLATES.map(t => ({ name: t[0], state: t[1], color: t[2], meta: t[3] })),
+      notifs: NOTIFS.map(n => ({ event: n[0], app: n[1], email: n[2], wa: n[3], c1: n[4], c2: n[5], c3: n[6] })),
+      tasks: TASKS.map(t => ({ name: t[0], meta: t[1], color: t[2] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

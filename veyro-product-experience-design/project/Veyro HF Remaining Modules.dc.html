@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1440px;padding:0 0 110px">
+
+<header style="padding:60px 44px 32px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">PHASE 9 · REMAINING APPROVED INVENTORY</div>
+<h1 style="font:500 36px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:24ch">Scheduling, payments, booking, automations, onboarding</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:15px 0 0;text-wrap:pretty">Five modules that complete the approved inventory. Each is a composition of patterns already drawn — which is the point of the exercise. If any of these had needed a new pattern, the foundation would have been wrong.</p>
+</header>
+
+<section style="padding:36px 44px 40px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANVAS 1 · SCHEDULING · KHALDA · WEEK OF 18 AUGUST</div>
+<h2 style="font:500 21px/1.2 'IBM Plex Sans';margin:8px 0 18px;letter-spacing:-.015em">The week, with one problem in it</h2>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden;box-shadow:0 1px 2px rgba(23,23,26,.07)">
+<div style="padding:16px 20px;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="flex:1;min-width:260px"><div style="font:500 21px/1.2 'IBM Plex Sans';letter-spacing:-.016em">54 classes · 1 without a coach</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">Khalda · 18–24 August · 78% average fill</div></div>
+<div style="display:flex;gap:7px"><span style="font:500 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:9px 12px;border-radius:6px">Week</span><span style="font:400 11.5px/1 'IBM Plex Sans';color:#3d3b36;padding:9px 11px">Day</span><span style="font:400 11.5px/1 'IBM Plex Sans';color:#3d3b36;padding:9px 11px">Coaches</span></div>
+<span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Add a class</span>
+</div>
+<div style="overflow-x:auto">
+<div style="min-width:900px">
+<div style="display:grid;grid-template-columns:60px repeat(7,minmax(0,1fr));border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="padding:9px 8px"></div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">MON 18</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">TUE 19</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#17171a;border-inline-start:1px solid rgba(23,23,26,.07);background:#faf8f4">WED 20</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">THU 21</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">FRI 22</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">SAT 23</div>
+<div style="padding:9px 8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#57544d;border-inline-start:1px solid rgba(23,23,26,.07)">SUN 24</div>
+</div>
+<sc-for list="{{ schedule }}" as="row" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:60px repeat(7,minmax(0,1fr));border-bottom:1px solid rgba(23,23,26,.06);min-height:62px">
+<div style="padding:8px;font:500 10.5px/1.4 'IBM Plex Mono';color:#85807a">{{ row.time }}</div>
+<sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="7">
+<div style="padding:5px;border-inline-start:1px solid rgba(23,23,26,.07)">
+<sc-if value="{{ c.name }}" hint-placeholder-val="{{ true }}">
+<div style="border:1px solid {{ c.border }};border-inline-start:2px solid {{ c.mark }};border-radius:3px;background:{{ c.bg }};padding:6px 8px;height:100%">
+<div style="font:500 11.5px/1.3 'IBM Plex Sans'">{{ c.name }}</div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">{{ c.coach }}</div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:{{ c.fillColor }};margin-top:2px">{{ c.fill }}</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="padding:13px 20px;border-top:1px solid rgba(23,23,26,.1);display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#faf8f4">
+<span style="width:3px;height:34px;background:#8a5a1f;flex-shrink:0"></span>
+<div style="flex:1;min-width:240px"><div style="font:500 13px/1.35 'IBM Plex Sans'">Thursday 19:00 Spin still has no coach — 18 members booked</div><div style="font:400 12px/1.55 'IBM Plex Sans';color:#3d3b36;margin-top:2px">Omar declined. Dana and Yousef are both qualified and free. If nobody accepts by Wednesday 18:00, Veyro will offer the 18 members a transfer to Friday.</div></div>
+<span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Offer to Dana</span>
+<span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">See both</span>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:10px">COMPONENTS · AdminShell · WeekGrid(7×4, horizontal scroll below bp.lg) · ClassCell ×13 (1 unstaffed, 1 full, 1 low-fill) · AttentionRow(condensed, footer-anchored) · Compact density · severity on the cell edge-mark only, never the cell fill</div>
+</section>
+
+<section style="padding:34px 44px 40px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANVAS 2 &amp; 3 · PAYMENTS LEDGER · AND THE REFUND THAT NEEDS TWO PEOPLE</div>
+<h2 style="font:500 21px/1.2 'IBM Plex Sans';margin:8px 0 16px;letter-spacing:-.015em">Money, and the one place friction is correct</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+<div style="flex:1 1 600px;min-width:560px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:15px 18px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+<div style="flex:1;min-width:230px"><div style="font:500 20px/1.2 'IBM Plex Sans';letter-spacing:-.015em">JOD 41,280.00 collected</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">1–19 August · all locations · 6 failed, 3 refunded, 2 disputed</div></div>
+<div style="display:flex;gap:7px;flex-wrap:wrap"><span style="font:500 11px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:9px 11px;border-radius:6px">Needs action · 8</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">All</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Export</span></div>
+</div>
+<div style="overflow-x:auto">
+<div style="min-width:760px;display:grid;grid-template-columns:70px minmax(0,1.2fr) 96px 104px 110px minmax(0,1fr);gap:12px;padding:9px 16px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.1);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DATE</div><div>MEMBER</div><div>METHOD</div><div>AMOUNT</div><div>STATE</div><div>NEXT</div></div>
+<sc-for list="{{ payments }}" as="p" hint-placeholder-count="7">
+<div style="min-width:760px;display:grid;grid-template-columns:70px minmax(0,1.2fr) 96px 104px 110px minmax(0,1fr);gap:12px;padding:0 16px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.06)">
+<div style="font:400 11px/1.3 'IBM Plex Mono';color:#57544d">{{ p.date }}</div>
+<div style="font:450 12px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.member }}</div>
+<div style="font:400 11px/1.3 'IBM Plex Mono';color:#57544d">{{ p.method }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono';color:{{ p.amountColor }}">{{ p.amount }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ p.stateColor }}">{{ p.state }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Sans';color:#3d3b36;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.next }}</div>
+</div>
+</sc-for>
+</div>
+<div style="padding:11px 16px;font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;border-top:1px solid rgba(23,23,26,.08)">Refunds carry a negative sign and the parenthetical original. A refund is never shown as a payment of a different colour — it is a different sign on the same axis.</div>
+</div>
+<div style="flex:1 1 330px;min-width:320px;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:10px 15px;background:#8a3b1f;font:500 10px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">REFUND · TIER 4 · TWO PEOPLE</div>
+<div style="padding:15px 16px">
+<div style="font:500 15px/1.35 'IBM Plex Sans'">Refund JOD 72.00 to Yara Mansour</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Club+ August, charged 3 August. She froze on the 28th of July and the charge should not have run — Veyro agrees this looks like an error.</div>
+<div style="margin-top:13px;padding-top:12px;border-top:1px solid rgba(23,23,26,.1)">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">TYPE THE AMOUNT TO CONFIRM</div>
+<div style="display:flex;gap:9px;align-items:center;margin-top:8px">
+<span style="flex:1;font:500 17px/1.2 'IBM Plex Mono';border:1px solid rgba(23,23,26,.28);border-radius:6px;padding:12px 13px;color:#a8a29a">72.00<span style="color:#1b4079">|</span></span>
+<span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#57544d;width:100px">must match exactly</span>
+</div>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36"><b>Ziad must approve.</b> He is notified as soon as you submit; the money moves only after he agrees. You will both appear on the audit record.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+<span style="font:500 12.5px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:12px 15px;border-radius:6px">Request the refund</span>
+<span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 14px;border-radius:6px">Credit her wallet instead</span>
+</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Typing the amount is the only place in Veyro that asks for a keystroke to confirm. Money leaving the business is the one action where a mis-click cannot be undone by an undo toast.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;padding:15px 16px">
+<div style="font:500 12.5px/1.3 'IBM Plex Sans'">The four confirmation tiers, as used here</div>
+<div style="font:400 12px/1.72 'IBM Plex Sans';color:#3d3b36;margin-top:8px"><b>1 · Nothing.</b> Sending a payment link, adding a note, checking someone in.<br><b>2 · Undo toast, 30s.</b> Resolving an exception, logging a set, marking a meal eaten.<br><b>3 · Typed confirmation.</b> Refunds, cash adjustments, deleting a member record.<br><b>4 · Second person.</b> Refunds over a threshold, permission changes, biometric removal, sensitive export.<br>Tier 3 and 4 compose — this refund is both.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · DataGrid(Compact, 34px) ×7 rows · MoneyValue(collected, failed, refunded negative, disputed) · SavedView chips · ConfirmationTier3+4 composite · Button(destructive, alternative)</div>
+</section>
+
+<section style="padding:34px 44px 44px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANVAS 4, 5 &amp; 6 · MEMBER BOOKING · AUTOMATION BUILDER · TENANT ONBOARDING</div>
+<h2 style="font:500 21px/1.2 'IBM Plex Sans';margin:8px 0 16px;letter-spacing:-.015em">Three more, each a composition of drawn patterns</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CANVAS 4 · MEMBER · BOOKING</div>
+<div style="padding:16px 18px 18px">
+<div style="font:500 22px/1.18 'IBM Plex Sans';letter-spacing:-.016em">Tonight at Khalda</div>
+<div style="font:400 13px/1.6 'IBM Plex Sans';color:#57544d;margin-top:4px">Wednesday 20 August</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:15px;overflow:hidden">
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.07)">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:500 12px/1.3 'IBM Plex Mono';width:44px">18:00</span><div style="flex:1"><div style="font:450 15px/1.35 'IBM Plex Sans'">Yoga</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">Rania · 4 places left</div></div><span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 14px;border-radius:6px">Book</span></div>
+</div>
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:500 12px/1.3 'IBM Plex Mono';width:44px">19:00</span><div style="flex:1"><div style="font:450 15px/1.35 'IBM Plex Sans'">Spin</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#8a5a1f;margin-top:2px">full · 3 waiting</div></div><span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:12px 13px;border-radius:6px">Join list</span></div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:8px">You'd be 4th. Most waitlists at this club clear — 8 of the last 10 got in.</div>
+</div>
+<div style="padding:13px 14px">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:500 12px/1.3 'IBM Plex Mono';width:44px">20:00</span><div style="flex:1"><div style="font:450 15px/1.35 'IBM Plex Sans'">Strength circuit</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">Yousef · 11 places left</div></div><span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 14px;border-radius:6px">Book</span></div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px"><b>Booking is one tap</b> and cancellable for free up to two hours before. The waitlist tells you your realistic odds rather than just your position — a number without context is a number nobody acts on.</div>
+</div>
+</div>
+
+<div style="flex:1 1 400px;min-width:380px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CANVAS 5 · ADMIN · AUTOMATION BUILDER</div>
+<div style="padding:16px 18px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.014em">When a payment fails</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:4px">Active · ran 34 times this month · recovered JOD 1,870.00</div>
+<div style="display:flex;flex-direction:column;gap:0;margin-top:16px">
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;padding:11px 13px;background:#faf8f4">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WHEN</div>
+<div style="font:450 13.5px/1.5 'IBM Plex Sans';margin-top:4px">a card payment fails for any reason</div>
+</div>
+<div style="width:1px;height:14px;background:rgba(23,23,26,.2);margin-inline-start:22px"></div>
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;padding:11px 13px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WAIT, THEN RETRY</div>
+<div style="font:450 13.5px/1.5 'IBM Plex Sans';margin-top:4px">24 hours, then again after 48 · maximum 2 retries</div>
+</div>
+<div style="width:1px;height:14px;background:rgba(23,23,26,.2);margin-inline-start:22px"></div>
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;padding:11px 13px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">IF STILL UNPAID</div>
+<div style="font:450 13.5px/1.5 'IBM Plex Sans';margin-top:4px">draft a WhatsApp with a payment link — <b>do not send it</b></div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:4px">Drafts appear in the Command Center for approval. Sending automatically is available but off by default.</div>
+</div>
+<div style="width:1px;height:14px;background:rgba(23,23,26,.2);margin-inline-start:22px"></div>
+<div style="border:1px solid #8a5a1f;border-radius:4px;padding:11px 13px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.06em">NEVER</div>
+<div style="font:450 13.5px/1.5 'IBM Plex Sans';margin-top:4px">block access, cancel a membership, or charge a different card</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:4px">System-enforced. An automation cannot take an action a person would have to approve.</div>
+</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:15px;flex-wrap:wrap">
+<span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Save</span>
+<span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Test on last month</span>
+<span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Pause</span>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px"><b>Sentences, not a node graph.</b> A club manager configures dunning here; nobody draws a flowchart. The NEVER block is not a rule the user wrote — it is the boundary the system imposes, shown so they can trust the rest.</div>
+</div>
+</div>
+
+<div style="flex:1 1 330px;min-width:320px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CANVAS 6 · CONSOLE · TENANT ONBOARDING</div>
+<div style="padding:16px 18px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.014em">Pulse Amman · day 4 of 7</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:4px">Starter · 1 club · migrating from spreadsheets</div>
+<div style="display:flex;flex-direction:column;gap:2px;margin-top:15px">
+<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:52px">DONE</span><span style="font:450 12.5px/1.4 'IBM Plex Sans';flex:1">Club, hours and plans configured</span></div>
+<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:52px">DONE</span><span style="font:450 12.5px/1.4 'IBM Plex Sans';flex:1">4 staff invited, 3 signed in</span></div>
+<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;width:52px">NOW</span><div style="flex:1"><span style="font:450 12.5px/1.4 'IBM Plex Sans'">Member import · 412 rows</span><div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#3d3b36;margin-top:3px"><b>27 rows need a decision.</b> 18 have no join date, 6 have a phone number that already exists, 3 have a membership type not in their plan list.</div><span style="display:inline-block;font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:10px 12px;border-radius:6px;margin-top:9px">Review the 27</span></div></div>
+<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#85807a;width:52px">NEXT</span><span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Payment provider and JoFotara</span></div>
+<div style="display:flex;gap:10px;align-items:center;padding:10px 0"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#85807a;width:52px">NEXT</span><span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Access hardware and go-live</span></div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:13px">The import never guesses. A row with no join date is not silently dated today — it waits, because a wrong join date becomes a wrong renewal date and then a wrong invoice. <b>385 rows imported cleanly and are already usable</b>; the 27 are quarantined, not blocking.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · MemberShell + ClassRow ×3 (open, full-with-waitlist, open) · AutomationRule(sentence form) ×4 + system-boundary block · ChecklistStep ×5 · AttentionRow(inline) · zero new patterns across all three</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const C = (name, coach, fill, kind) => {
+  const map = {
+    ok: { border: 'rgba(23,23,26,.14)', mark: '#cbc6bc', bg: '#fffefb', fillColor: '#57544d' },
+    full: { border: 'rgba(23,23,26,.14)', mark: '#2f5d3a', bg: '#fffefb', fillColor: '#2f5d3a' },
+    low: { border: 'rgba(23,23,26,.14)', mark: '#8a5a1f', bg: '#fffefb', fillColor: '#8a5a1f' },
+    unstaffed: { border: '#8a5a1f', mark: '#8a5a1f', bg: '#faf8f4', fillColor: '#8a5a1f' }
+  };
+  return Object.assign({ name, coach, fill }, map[kind]);
+};
+const E = () => ({ name: '' });
+
+const SCHEDULE = [
+  ['07:00', [C('Yoga', 'Rania', '12 / 20', 'ok'), C('Spin', 'Dana', '20 / 20', 'full'), C('Yoga', 'Rania', '14 / 20', 'ok'), C('Spin', 'Dana', '18 / 20', 'ok'), E(), C('Circuit', 'Yousef', '9 / 24', 'low'), E()]],
+  ['12:00', [E(), C('Pilates', 'Rania', '11 / 16', 'ok'), E(), C('Pilates', 'Rania', '16 / 16', 'full'), E(), E(), C('Yoga', 'Rania', '8 / 20', 'low')]],
+  ['18:00', [C('Circuit', 'Yousef', '22 / 24', 'ok'), C('Yoga', 'Rania', '17 / 20', 'ok'), C('Yoga', 'Rania', '16 / 20', 'ok'), C('Circuit', 'Yousef', '20 / 24', 'ok'), C('Spin', 'Dana', '19 / 20', 'ok'), E(), E()]],
+  ['19:00', [C('Spin', 'Dana', '20 / 20', 'full'), C('Strength', 'Yousef', '15 / 18', 'ok'), C('Spin', 'Dana', '18 / 20', 'ok'), C('Spin', 'no coach', '18 booked', 'unstaffed'), C('Strength', 'Yousef', '13 / 18', 'ok'), E(), E()]]
+];
+
+const PAYMENTS = [
+  ['19 Aug', 'Ahmad Nabulsi', 'Visa ···4417', 'JOD 55.00', '#8a3b1f', 'FAILED ×3', '#8a3b1f', 'Link drafted, awaiting approval'],
+  ['19 Aug', 'Dana Qasem', 'Visa ···9182', 'JOD 45.00', '#8a3b1f', 'FAILED ×2', '#8a3b1f', 'Retry tonight'],
+  ['19 Aug', 'Lina Haddad', 'CliQ', 'JOD 78.00', '#17171a', 'PAID', '#2f5d3a', '—'],
+  ['18 Aug', 'Yara Mansour', 'Visa ···3390', '−JOD 72.00', '#8a3b1f', 'REFUND PENDING', '#8a5a1f', 'Needs Ziad\u2019s approval'],
+  ['18 Aug', 'Faris Alami', 'Cash', 'JOD 40.00', '#17171a', 'PAID', '#2f5d3a', '—'],
+  ['17 Aug', 'Tareq Odeh', 'Visa ···7745', 'JOD 40.00', '#17171a', 'DISPUTED', '#8a5a1f', 'Evidence due 24 Aug'],
+  ['17 Aug', 'Hala Barakat', 'Visa ···2201', 'JOD 55.00', '#17171a', 'PAID', '#2f5d3a', 'e-invoice submitted']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      schedule: SCHEDULE.map(r => ({ time: r[0], cells: r[1] })),
+      payments: PAYMENTS.map(p => ({
+        date: p[0], member: p[1], method: p[2], amount: p[3], amountColor: p[4],
+        state: p[5], stateColor: p[6], next: p[7]
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

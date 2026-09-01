@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1320px;padding:0 0 110px">
+
+<header style="padding:62px 46px 34px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">COMPLETION PHASE · §10 · §11 · CANONICAL SOURCE OF TRUTH</div>
+<h1 style="font:500 37px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:22ch">Veyro Screen Completion Registry</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:15px 0 0;text-wrap:pretty">Every screen Veyro V1 requires, reconciled from the Blueprint, the approved inventory and everything drawn in Phases 8 and 9. <b>Every number on this page is computed from the table.</b> The headline figure is the honest one, not the flattering one.</p>
+<div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:24px">
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">TOTAL INVENTORY</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ v1Total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 REQUIRED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">{{ v1Done }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 COMPLETE</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a3b1f">{{ v1Gap }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 GAPS</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:{{ pctColor }}">{{ v1Pct }}%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 COMPLETION</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ noUi }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">BACKEND-ONLY</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ deferred }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DEFERRED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ unclassified }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">UNCLASSIFIED</div></div>
+</div>
+<div style="margin-top:22px;padding:16px 18px;border:1px solid #8a3b1f;border-radius:4px;background:#fffefb;max-width:88ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.07em">WHAT THIS REGISTRY REVEALS · READ THIS BEFORE THE TABLE</div>
+<div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px">Phases 8 and 9 were approved on <b>representative coverage</b> and that approval was correct for what it claimed. Measured against the actual screen inventory, V1 now stands at <b>{{ v1Pct }}%</b>: {{ v1Done }} of {{ v1Total }} required screens are high-fidelity complete, with <b>{{ v1Gap }} gaps remaining</b>. When this registry was first built that figure was 22% — the phase existed because representative coverage and inventory coverage are different measurements, and only one of them can be counted.<br><br><b>Updated after the completion batches.</b> {{ moved }} rows moved to DONE across 12 batches, and the five screens the batches discovered — FD-09, MBR-38, CON-16, CON-17, ADM-SET-04 — are rows here rather than a claim in a report. Status is derived from an explicit <span style="font-family:'IBM Plex Mono'">DRAWN</span> map of id → batch file; no status above was hand-edited. <b>The live verdict is in Veyro V1 Final Completion Audit</b>, which filters the same list and computes the same {{ v1Total }} required and {{ v1Done }} drawn. The earlier Completion Report is superseded and retitled as a 19 August checkpoint.</div>
+</div>
+</header>
+
+<section style="padding:40px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · §55 · SURFACE COVERAGE MATRIX</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Where the work is</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1fr) 84px 84px 84px 74px 84px minmax(0,1.1fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SURFACE</div><div>V1 REQ</div><div>COMPLETE</div><div>GAP</div><div>%</div><div>AR BUILT</div><div>PRIORITY</div></div>
+<sc-for list="{{ surfaceMatrix }}" as="s" hint-placeholder-count="5">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1fr) 84px 84px 84px 74px 84px minmax(0,1.1fr);gap:12px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ s.req }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ s.done }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#8a3b1f">{{ s.gap }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ s.pct }}%</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">{{ s.ar }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">{{ s.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · §56 · DOMAIN COVERAGE MATRIX</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">By domain</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:860px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 74px 74px minmax(0,1.2fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DOMAIN</div><div>V1 REQ</div><div>COMPLETE</div><div>GAP</div><div>DEFER</div><div>LARGEST GAP</div></div>
+<sc-for list="{{ domainMatrix }}" as="d" hint-placeholder-count="14">
+<div style="min-width:860px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 74px 74px minmax(0,1.2fr);gap:12px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ d.name }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ d.req }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ d.done }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:{{ d.gapColor }}">{{ d.gap }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">{{ d.defer }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">{{ d.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · THE REGISTRY · {{ total }} ROWS · SORTED BY SURFACE THEN MODULE</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Every screen, classified</h2>
+<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;align-items:center">
+<span style="font:400 11.5px/1.4 'IBM Plex Mono';color:#2f5d3a">■ COMPLETE — drawn at production fidelity</span>
+<span style="font:400 11.5px/1.4 'IBM Plex Mono';color:#8a3b1f">■ GAP — required, not drawn</span>
+<span style="font:400 11.5px/1.4 'IBM Plex Mono';color:#3f5560">■ NO-UI — backend only</span>
+<span style="font:400 11.5px/1.4 'IBM Plex Mono';color:#85807a">■ DEFERRED — phase recorded</span>
+</div>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:1120px;display:grid;grid-template-columns:96px 96px minmax(0,1.5fr) 96px 78px 62px minmax(0,1.5fr);gap:11px;padding:10px 16px;background:#f4f2ee;font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.05em"><div>SCREEN ID</div><div>MODULE</div><div>SCREEN</div><div>STATUS</div><div>ROLES</div><div>AR</div><div>FILE / NOTE</div></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="40">
+<div style="min-width:1120px;display:grid;grid-template-columns:96px 96px minmax(0,1.5fr) 96px 78px 62px minmax(0,1.5fr);gap:11px;padding:8px 16px;border-top:1px solid rgba(0,0,0,.05);align-items:start;background:{{ r.bg }}">
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#17171a">{{ r.id }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">{{ r.module }}</div>
+<div style="font:450 12px/1.45 'IBM Plex Sans'">{{ r.name }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ r.statusColor }}">{{ r.status }}</div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d">{{ r.roles }}</div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:{{ r.arColor }}">{{ r.ar }}</div>
+<div style="font:400 11px/1.45 'IBM Plex Sans';color:#4a4842">{{ r.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 46px 50px;background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · WHAT HAPPENS NEXT</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">How this registry was worked through</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:18px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">BATCH ORDER, AS RUN</div><div style="font:400 12.5px/1.7 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Admin first and largest — every other surface reads data shaped there — across batches A and F–L. Front Desk and POS next (B, M), small but the most operationally costly per missing screen. Then Coach (C, N), Member (D, O, P) with the most screens per feature because every flow is a drill-down, and Console last (E, Q). <b>{{ v1Gap }} gaps remain.</b></div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">HOW A GAP CLOSES</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">A row moves to COMPLETE when the actual screen is drawn with real content, its states mapped, its permission variants stated, and its file reference recorded here. <b>Not when a component that could build it exists.</b> That distinction is the whole reason this registry was built.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">AR POLICY · §16</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px"><b>BUILT</b> = an actual Arabic canvas exists. <b>CONTRACT</b> = covered by a validated RTL contract from a built screen of the same shape. <b>NEEDS</b> = high-risk and requires its own build. Currently {{ arBuilt }} built, {{ arNeeds }} still needing a build. No screen is marked contract-covered unless a built screen of that exact shape exists.</div></div>
+<div style="border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">THE HONEST FRAMING</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">The gap count now reads <b>{{ v1Gap }}</b>, and when this phase began it read {{ moved }}. Neither number was typed — both are the length of a filtered array, which is the only reason either can be trusted after this project's seven counting defects, the last of which was this page silently rendering NaN while claiming to be canonical. The standard held throughout: a row moved to DONE only when the actual screen was drawn, never when a component that could build it existed. Some of those rows are genuinely small — a confirmation, a receipt, a settings pane — but each was a screen an engineer would otherwise have had to invent.</div></div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:900}}">
+// This registry holds NO screen data inline. Both this document and the
+// Canonical Completion Audit import veyro-registry-data.js, so there is one
+// copy of the truth and nothing to drift. Loaded in componentDidMount below.
+
+let SURFACE_OF = () => '';
+
+let SURFACES = [];
+
+const SURFACE_NOTE = {
+  'Veyro Admin': 'Largest surface. Every other surface reads data shaped here.',
+  'Front Desk & POS': 'Small count, highest operational cost per missing screen.',
+  'Veyro Coach': 'A real app, not a companion. Four questions and nothing else.',
+  'Veyro Member': 'Most screens per feature — every flow is a drill-down.',
+  'Internal Console': 'Veyro operating Veyro. Impersonation audit is the sensitive one.',
+  'Backend / no UI': 'Classified, not designed. Each surfaces through a named screen.'
+};
+
+const DOMAIN_OF = id => {
+  const m = id.split('-')[1];
+  const map = {
+    CC: 'Command Center', CRM: 'CRM', MEM: 'Members', MSH: 'Membership lifecycle',
+    PAY: 'Billing & payments', POS: 'POS & retail', SCH: 'Scheduling', ACC: 'Access control',
+    STF: 'Staff & permissions', COM: 'Communication', TSK: 'Tasks', AUT: 'Automation',
+    RPT: 'Analytics & reports', SET: 'Configuration', AI: 'AI', SRCH: 'Search', AUTH: 'Auth & security'
+  };
+  if (id.startsWith('POS-')) return 'POS & retail';
+  if (id.startsWith('FD-')) return 'Front desk ops';
+  if (id.startsWith('CCH-')) return 'Coaching & training';
+  if (id.startsWith('MBR-')) return 'Member experience';
+  if (id.startsWith('CON-')) return 'SaaS Console';
+  if (id.startsWith('SYS-')) return 'Backend services';
+  return map[m] || 'Other';
+};
+
+const STATUS_COLOR = { DONE: '#2f5d3a', GAP: '#8a3b1f', 'NO-UI': '#3f5560' };
+const AR_COLOR = { BUILT: '#2f5d3a', CONTRACT: '#57544d', NEEDS: '#8a5a1f', 'N/A': '#a8a29a' };
+
+class Component extends DCLogic {
+  state = { data: null, err: null };
+
+  componentDidMount() {
+    import('./veyro-registry-data.js').then(m => {
+      SURFACE_OF = m.SURFACE_OF;
+      SURFACES = m.SURFACES;
+      this.setState({ data: { rows: m.resolve(), moved: Object.keys(m.DRAWN).length } });
+    }).catch(e => this.setState({ err: String(e) }));
+  }
+
+  renderVals() {
+    if (!this.state.data) {
+      return {
+        rows: [], surfaceMatrix: [], domainMatrix: [],
+        total: '—', v1Total: '—', v1Done: '—', v1Gap: '—', v1Pct: '—',
+        pctColor: '#57544d', noUi: '—', deferred: '—', unclassified: '—',
+        moved: '—', arBuilt: '—', arNeeds: '—',
+        adminGap: '—', deskGap: '—', coachGap: '—', memberGap: '—', consoleGap: '—'
+      };
+    }
+
+    const rows = this.state.data.rows.map(r => ({
+      id: r.id, module: r.module, name: r.name, phase: r.phase, status: r.status,
+      roles: r.roles, ar: r.ar, note: r.note, surface: r.surface,
+      isV1: r.isV1, isDone: r.isDone, isGap: r.isGap, isNoUi: r.isNoUi, isDefer: r.isDefer,
+      statusColor: STATUS_COLOR[r.status] || '#85807a',
+      arColor: AR_COLOR[r.ar] || '#a8a29a',
+      bg: r.status === 'GAP' ? '#fffefb' : r.status === 'DONE' ? '#f7f9f6' : '#faf8f4'
+    }));
+
+    const v1 = rows.filter(r => r.isV1 && !r.isNoUi);
+    const v1Done = v1.filter(r => r.isDone).length;
+    const v1Gap = v1.filter(r => r.isGap).length;
+    const v1Pct = Math.round((v1Done / v1.length) * 100);
+
+    const surfaceMatrix = SURFACES.map(name => {
+      const sr = rows.filter(r => r.surface === name);
+      const req = sr.filter(r => r.isV1 && !r.isNoUi);
+      const done = req.filter(r => r.isDone).length;
+      return {
+        name, req: String(req.length), done: String(done),
+        gap: String(req.filter(r => r.isGap).length),
+        pct: req.length ? String(Math.round((done / req.length) * 100)) : '—',
+        ar: String(sr.filter(r => r.ar === 'BUILT').length),
+        note: SURFACE_NOTE[name]
+      };
+    }).filter(s => s.req !== '0');
+
+    const domains = [];
+    rows.forEach(r => { const d = DOMAIN_OF(r.id); if (!domains.includes(d)) domains.push(d); });
+    const domainMatrix = domains.map(name => {
+      const dr = rows.filter(r => DOMAIN_OF(r.id) === name);
+      const req = dr.filter(r => r.isV1 && !r.isNoUi);
+      const gaps = req.filter(r => r.isGap);
+      const done = req.filter(r => r.isDone).length;
+      return {
+        name, req: String(req.length), done: String(done), gap: String(gaps.length),
+        defer: String(dr.filter(r => r.isDefer).length),
+        gapColor: gaps.length === 0 ? '#2f5d3a' : gaps.length > 6 ? '#8a3b1f' : '#8a5a1f',
+        note: gaps.length ? gaps[0].name : 'None — domain complete'
+      };
+    }).filter(d => d.req !== '0' || d.defer !== '0');
+
+    const gapBySurface = n => String(rows.filter(r => r.surface === n && r.isGap).length);
+
+    return {
+      rows, surfaceMatrix, domainMatrix,
+      total: String(rows.length),
+      v1Total: String(v1.length),
+      v1Done: String(v1Done),
+      v1Gap: String(v1Gap),
+      v1Pct: String(v1Pct),
+      pctColor: v1Pct >= 90 ? '#2f5d3a' : v1Pct >= 50 ? '#8a5a1f' : '#8a3b1f',
+      noUi: String(rows.filter(r => r.isNoUi).length),
+      deferred: String(rows.filter(r => r.isDefer).length),
+      unclassified: String(rows.filter(r => !r.isV1 && !r.isDefer && !r.isNoUi).length),
+      moved: String(this.state.data.moved),
+      arBuilt: String(rows.filter(r => r.ar === 'BUILT').length),
+      arNeeds: String(rows.filter(r => r.ar === 'NEEDS').length),
+      adminGap: gapBySurface('Veyro Admin'),
+      deskGap: gapBySurface('Front Desk & POS'),
+      coachGap: gapBySurface('Veyro Coach'),
+      memberGap: gapBySurface('Veyro Member'),
+      consoleGap: gapBySurface('Internal Console')
+    };
+  }
+}
+</script>
+</body>
+</html>

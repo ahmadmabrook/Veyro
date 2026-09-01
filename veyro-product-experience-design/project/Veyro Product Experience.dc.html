@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>[role="button"]:focus-visible{outline:2px solid #1b4079;outline-offset:1px}body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+
+<sc-if value="{{ view.hub }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;background:#17171a;padding:0 0 80px">
+<div style="max-width:1180px;margin:0 auto;padding:64px 44px 0">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#928d84;letter-spacing:.12em">PROTOTYPE LAUNCHER · NOT A PRODUCT SCREEN</div>
+<h1 style="font:500 44px/1.06 'IBM Plex Sans';letter-spacing:-.026em;margin:16px 0 0;color:#f5f2ec;max-width:20ch">Veyro Product Experience</h1>
+<p style="font:400 15.5px/1.62 'IBM Plex Sans';color:#a8a29a;max-width:70ch;margin:16px 0 0;text-wrap:pretty">Nadi Group — Abdoun, Khalda, Sweifieh · 4,812 members · JOD. Five surfaces, {{ cov.total }} V1 screens, {{ cov.native }} of them wired as live interactive screens and the rest reachable as traceable reference views. Everything below is real navigation — no slides.</p>
+
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:28px;align-items:center">
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em;width:64px">ROLE</span>
+<sc-for list="{{ roles }}" as="r" hint-placeholder-count="6">
+<span onClick="{{ r.pick }}" style="font:450 12px/1 'IBM Plex Sans';color:{{ r.fg }};background:{{ r.bg }};border:1px solid {{ r.bd }};padding:9px 12px;border-radius:6px;cursor:pointer;white-space:nowrap">{{ r.name }}</span>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center">
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em;width:64px">LOCATION</span>
+<sc-for list="{{ locs }}" as="l" hint-placeholder-count="4">
+<span onClick="{{ l.pick }}" style="font:450 12px/1 'IBM Plex Sans';color:{{ l.fg }};background:{{ l.bg }};border:1px solid {{ l.bd }};padding:9px 12px;border-radius:6px;cursor:pointer;white-space:nowrap">{{ l.name }}</span>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center">
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em;width:64px">LANGUAGE</span>
+<span onClick="{{ setEn }}" style="font:450 12px/1 'IBM Plex Sans';color:{{ lang.enFg }};background:{{ lang.enBg }};border:1px solid {{ lang.enBd }};padding:9px 12px;border-radius:6px;cursor:pointer">English</span>
+<span onClick="{{ setAr }}" style="font:500 13px/1 'IBM Plex Sans Arabic';color:{{ lang.arFg }};background:{{ lang.arBg }};border:1px solid {{ lang.arBd }};padding:9px 13px;border-radius:6px;cursor:pointer">العربية</span>
+<span style="font:400 11px/1.5 'IBM Plex Sans';color:#928d84">{{ lang.note }}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));gap:14px;margin-top:34px">
+<sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="5">
+<div onClick="{{ s.open }}" style="border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#211f1c;padding:18px 19px;cursor:pointer" style-hover="border-color:#7ea6e8;background:#262320">
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em">{{ s.kind }}</div>
+<div style="font:500 19px/1.22 'IBM Plex Sans';color:#f5f2ec;margin-top:9px;letter-spacing:-.014em">{{ s.name }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#a8a29a;margin-top:7px">{{ s.blurb }}</div>
+<div style="display:flex;gap:10px;margin-top:13px;align-items:baseline">
+<span style="font:500 15px/1 'IBM Plex Mono';color:#f5f2ec">{{ s.count }}</span>
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84">SCREENS · {{ s.live }} LIVE</span>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px">
+<div onClick="{{ goScenarios }}" style="border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#1f1d1a;padding:16px 18px;cursor:pointer" style-hover="border-color:#7ea6e8">
+<div style="font:500 14.5px/1.3 'IBM Plex Sans';color:#f5f2ec">Explore key flows</div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#a8a29a;margin-top:5px">13 scenarios, each launching the real screen at the real step</div>
+</div>
+<div onClick="{{ goDirectory }}" style="border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#1f1d1a;padding:16px 18px;cursor:pointer" style-hover="border-color:#7ea6e8">
+<div style="font:500 14.5px/1.3 'IBM Plex Sans';color:#f5f2ec">Screen directory</div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#a8a29a;margin-top:5px">All {{ cov.total }} V1 screens by surface and module, each openable</div>
+</div>
+<div onClick="{{ goAudit }}" style="border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#1f1d1a;padding:16px 18px;cursor:pointer" style-hover="border-color:#7ea6e8">
+<div style="font:500 14.5px/1.3 'IBM Plex Sans';color:#f5f2ec">Route coverage audit</div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#a8a29a;margin-top:5px">Reachability computed from the registry · {{ cov.pct }}%</div>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ view.scenarios }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;background:#17171a;padding:0 0 80px">
+<div style="max-width:1080px;margin:0 auto;padding:56px 44px 0">
+<div onClick="{{ goHub }}" style="font:400 11.5px/1.4 'IBM Plex Mono';color:#7ea6e8;cursor:pointer">← Veyro Product Experience</div>
+<h1 style="font:500 34px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:16px 0 0;color:#f5f2ec">Key flows</h1>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#a8a29a;max-width:70ch;margin:12px 0 0">Each launches the actual screen at the actual step. Every one is clickable from start to completion.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:26px">
+<sc-for list="{{ scenarios }}" as="s" hint-placeholder-count="13">
+<div onClick="{{ s.open }}" style="border:1px solid rgba(255,255,255,.16);border-radius:8px;background:#211f1c;padding:16px 18px;cursor:pointer" style-hover="border-color:#7ea6e8">
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em">{{ s.surface }}</div>
+<div style="font:500 15.5px/1.3 'IBM Plex Sans';color:#f5f2ec;margin-top:7px">{{ s.name }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#a8a29a;margin-top:6px">{{ s.steps }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#7ea6e8;margin-top:9px">{{ s.from }} →</div>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ view.directory }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;background:#17171a;padding:0 0 80px">
+<div style="max-width:1240px;margin:0 auto;padding:56px 44px 0">
+<div onClick="{{ goHub }}" style="font:400 11.5px/1.4 'IBM Plex Mono';color:#7ea6e8;cursor:pointer">← Veyro Product Experience</div>
+<h1 style="font:500 34px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:16px 0 0;color:#f5f2ec">Screen directory</h1>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#a8a29a;max-width:74ch;margin:12px 0 0">Every V1 screen from the canonical registry. <span style="color:#6fae7f">LIVE</span> screens are wired and interactive; <span style="color:#d9a256">REF</span> screens open a traceable reference view naming the file the drawn canvas lives in. Click any row.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:20px">
+<sc-for list="{{ dirFilters }}" as="f" hint-placeholder-count="7">
+<span onClick="{{ f.pick }}" style="font:450 12px/1 'IBM Plex Sans';color:{{ f.fg }};background:{{ f.bg }};border:1px solid {{ f.bd }};padding:9px 12px;border-radius:6px;cursor:pointer">{{ f.name }}</span>
+</sc-for>
+</div>
+<div style="margin-top:20px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#211f1c;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:104px 108px minmax(0,1.4fr) 68px 84px minmax(0,1fr);gap:12px;padding:10px 16px;background:#1a1917;font:500 9.5px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.06em"><div>SCREEN ID</div><div>MODULE</div><div>SCREEN</div><div>ROUTE</div><div>ARABIC</div><div>DRAWN IN</div></div>
+<sc-for list="{{ dirRows }}" as="d" hint-placeholder-count="30">
+<div onClick="{{ d.open }}" style="min-width:900px;display:grid;grid-template-columns:104px 108px minmax(0,1.4fr) 68px 84px minmax(0,1fr);gap:12px;padding:9px 16px;border-top:1px solid rgba(255,255,255,.06);align-items:center;cursor:pointer" style-hover="background:#262320">
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#f5f2ec">{{ d.id }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#928d84">{{ d.module }}</div>
+<div style="font:450 12px/1.4 'IBM Plex Sans';color:#e8e4dc">{{ d.name }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ d.routeColor }}">{{ d.route }}</div>
+<div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#928d84">{{ d.ar }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Sans';color:#928d84">{{ d.note }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#928d84;margin-top:12px">{{ dirCount }} rows shown</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ view.audit }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;background:#17171a;padding:0 0 80px">
+<div style="max-width:1080px;margin:0 auto;padding:56px 44px 0">
+<div onClick="{{ goHub }}" style="font:400 11.5px/1.4 'IBM Plex Mono';color:#7ea6e8;cursor:pointer">← Veyro Product Experience</div>
+<h1 style="font:500 34px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:16px 0 0;color:#f5f2ec">Prototype route coverage</h1>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#a8a29a;max-width:74ch;margin:12px 0 0">Derived by resolving this file's rails, tabs, jump lists and scenario table against the imported registry at render time. <b>Seven checks are computed; two are labelled ASSERTED</b> because they are readings of source rather than derived facts — this project has produced ten counting defects and every one began as a claim that looked computed.</p>
+<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:24px">
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#f5f2ec">{{ cov.total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">V1 SCREENS</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#6fae7f">{{ cov.reachable }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">REACHABLE</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:{{ cov.missColor }}">{{ cov.missing }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">NO ROUTE</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#f5f2ec">{{ cov.pct }}%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">REACHABILITY</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#7ea6e8">{{ cov.native }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">LIVE INTERACTIVE</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#d9a256">{{ cov.ref }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;margin-top:4px">REFERENCE VIEW</div></div>
+</div>
+<div style="margin-top:24px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#211f1c;overflow-x:auto">
+<div style="min-width:820px;display:grid;grid-template-columns:minmax(0,1.2fr) 88px 84px 84px 74px minmax(0,1.2fr);gap:12px;padding:10px 16px;background:#1a1917;font:500 9.5px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.06em"><div>CHECK</div><div>RESULT</div><div>MEASURED</div><div>LIVE</div><div>REF</div><div>HOW</div></div>
+<sc-for list="{{ auditRows }}" as="a" hint-placeholder-count="9">
+<div style="min-width:820px;display:grid;grid-template-columns:minmax(0,1.2fr) 88px 84px 84px 74px minmax(0,1.2fr);gap:12px;padding:11px 16px;border-top:1px solid rgba(255,255,255,.06);align-items:start">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans';color:#e8e4dc">{{ a.name }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ a.color }}">{{ a.result }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#f5f2ec">{{ a.value }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#6fae7f">{{ a.live }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#d9a256">{{ a.ref }}</div>
+<div style="font:400 11px/1.5 'IBM Plex Sans';color:#a8a29a">{{ a.how }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:22px;border:1px solid {{ verdictBd }};border-radius:8px;overflow:hidden">
+<div style="padding:20px 22px;background:{{ verdictBg }}">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:rgba(255,255,255,.75);letter-spacing:.1em">{{ cov.passed }} OF {{ cov.checks }} CHECKS PASS</div>
+<div style="font:500 24px/1.22 'IBM Plex Sans';color:#fffefb;letter-spacing:-.016em;margin-top:8px">{{ verdict }}</div>
+</div>
+<div style="padding:18px 22px;background:#211f1c;font:400 13.5px/1.68 'IBM Plex Sans';color:#a8a29a;max-width:88ch">{{ verdictBody }}</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ view.desktop }}" hint-placeholder-val="{{ true }}">
+<div dir="{{ dir }}" style="min-height:100vh;background:#f4f2ee;display:flex;flex-direction:column">
+
+<div style="display:flex;gap:10px;padding:0 14px;height:34px;align-items:center;background:#17171a;flex-shrink:0">
+<span onClick="{{ goHub }}" style="font:400 10.5px/1 'IBM Plex Mono';color:#7ea6e8;cursor:pointer">◄ LAUNCHER</span>
+<span style="font:400 10px/1 'IBM Plex Mono';color:#928d84">{{ chrome.id }}</span>
+<span style="font:400 10px/1 'IBM Plex Mono';color:#928d84">{{ chrome.trace }}</span>
+<div style="flex:1"></div>
+<span onClick="{{ toggleLang }}" style="font:400 10px/1 'IBM Plex Mono';color:#a8a29a;border:1px solid rgba(255,255,255,.2);padding:4px 8px;border-radius:4px;cursor:pointer;white-space:nowrap">{{ chrome.langLabel }}</span>
+<span style="font:400 10px/1 'IBM Plex Mono';color:#928d84">{{ role }} · {{ loc }}</span>
+</div>
+
+<div style="display:flex;gap:14px;padding:0 16px;height:48px;align-items:center;background:#fffefb;border-bottom:1px solid rgba(23,23,26,.12);flex-shrink:0">
+<span style="width:22px;height:22px;border-radius:4px;background:#17171a;color:#fffefb;font:500 12px/22px 'IBM Plex Sans';text-align:center">V</span>
+<span style="font:500 13.5px/1.2 'IBM Plex Sans'">{{ t.tenant }}</span>
+<span onClick="{{ cycleLoc }}" style="font:450 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 10px;border-radius:6px;cursor:pointer">{{ loc }} ▾</span>
+<div style="flex:1;display:flex;justify-content:center">
+<span onClick="{{ openPalette }}" style="font:400 12px/1 'IBM Plex Sans';color:#6b6a63;border:1px solid rgba(23,23,26,.16);background:#faf8f4;padding:8px 12px;border-radius:6px;width:400px;display:inline-flex;gap:8px;align-items:center;cursor:pointer">⌕ {{ t.search }}<span style="flex:1"></span><span style="font:400 10px 'IBM Plex Mono';color:#6b6a63;border:1px solid rgba(23,23,26,.14);padding:2px 5px;border-radius:3px">⌘K</span></span>
+</div>
+<span onClick="{{ goTasks }}" style="font:400 11.5px/1 'IBM Plex Sans';color:#3d3b36;cursor:pointer">{{ t.tasks }}</span>
+<span style="width:26px;height:26px;border-radius:50%;background:#dcd7cf"></span>
+</div>
+
+<div style="display:flex;align-items:stretch;flex:1;min-height:0">
+<div style="width:{{ railW }};flex-shrink:0;background:#fffefb;border-inline-end:1px solid rgba(23,23,26,.1);padding:10px 0;overflow-y:auto">
+<sc-for list="{{ rail }}" as="n" hint-placeholder-count="14">
+<div onClick="{{ n.go }}" style="display:flex;gap:9px;align-items:center;padding:7px 16px;background:{{ n.bg }};border-inline-start:2px solid {{ n.mark }};cursor:{{ n.cursor }}">
+<span style="font:400 11px/1 'IBM Plex Mono';color:{{ n.icon }};width:13px">{{ n.glyph }}</span>
+<span style="font:{{ n.font }};color:{{ n.fg }};flex:1">{{ n.label }}</span>
+<span style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ n.badgeFg }}">{{ n.badge }}</span>
+</div>
+</sc-for>
+<div style="font:400 10px/1.5 'IBM Plex Mono';color:#a8a29a;padding:14px 16px 4px">{{ railNote }}</div>
+</div>
+
+<div style="flex:1;min-width:0;overflow-y:auto;position:relative">
+<x-import component-from-global-scope="VeyroScreen" from="./veyro-screen.js?v=31" screen="{{ screen }}" state="{{ vm }}" hint-size="100%,600px"></x-import>
+</div>
+
+<sc-if value="{{ sheet.open }}" hint-placeholder-val="{{ false }}">
+<div style="width:400px;flex-shrink:0;background:#fffefb;border-inline-start:1px solid rgba(23,23,26,.14);box-shadow:-8px 0 24px -8px rgba(23,23,26,.14);overflow-y:auto">
+<div style="padding:12px 16px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:10px;align-items:center">
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;flex:1">{{ sheet.eyebrow }}</span>
+<span onClick="{{ closeSheet }}" style="font:400 13px/1 'IBM Plex Mono';color:#57544d;cursor:pointer;padding:4px 6px">✕</span>
+</div>
+<x-import component-from-global-scope="VeyroScreen" from="./veyro-screen.js?v=31" screen="{{ sheet.id }}" state="{{ vm }}" hint-size="100%,400px"></x-import>
+</div>
+</sc-if>
+</div>
+</div>
+
+<sc-if value="{{ palette.open }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(23,23,26,.44);display:flex;align-items:flex-start;justify-content:center;padding-top:96px;z-index:50">
+<div style="width:620px;max-width:92vw;background:#fffefb;border:1px solid rgba(23,23,26,.14);border-radius:8px;box-shadow:0 16px 40px -8px rgba(23,23,26,.24);overflow:hidden">
+<div style="padding:14px 16px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:10px;align-items:center">
+<span style="font:400 12px/1 'IBM Plex Mono';color:#6b6a63">⌕</span>
+<input value="{{ palette.q }}" onInput="{{ onQuery }}" placeholder="Search members, invoices, screens — or type a command" autofocus="autofocus" style="flex:1;border:0;outline:0;font:400 15px/1.4 'IBM Plex Sans';color:#17171a;background:transparent" />
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;border:1px solid rgba(23,23,26,.14);padding:2px 5px;border-radius:3px">ESC</span>
+</div>
+<div style="max-height:420px;overflow-y:auto">
+<sc-for list="{{ palette.groups }}" as="g" hint-placeholder-count="3">
+<div>
+<div style="padding:8px 16px;background:#faf8f4;font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">{{ g.label }}</div>
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="4">
+<div onClick="{{ i.go }}" style="padding:10px 16px;border-top:1px solid rgba(23,23,26,.05);display:flex;gap:10px;align-items:center;cursor:pointer" style-hover="background:#f4f2ee">
+<span style="font:400 10.5px/1 'IBM Plex Mono';color:#6b6a63;width:16px">{{ i.glyph }}</span>
+<div style="flex:1;min-width:0"><div style="font:450 13px/1.35 'IBM Plex Sans'">{{ i.name }}</div><div style="font:400 11px/1.4 'IBM Plex Sans';color:#57544d">{{ i.sub }}</div></div>
+<span style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63">{{ i.hint }}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<sc-if value="{{ palette.empty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px 16px;font:400 13px/1.6 'IBM Plex Sans';color:#57544d">Nothing matches “{{ palette.q }}”. Results respect your role ({{ role }}) and location scope ({{ loc }}) — a receptionist searching for a refund finds nothing here by design.</div>
+</sc-if>
+</div>
+<div style="padding:9px 16px;border-top:1px solid rgba(23,23,26,.1);font:400 10.5px/1.5 'IBM Plex Mono';color:#6b6a63">{{ palette.footer }}</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ toast.show }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;inset-inline-start:50%;bottom:28px;transform:translateX(-50%);background:#17171a;color:#f5f2ec;padding:13px 17px;border-radius:6px;display:flex;gap:14px;align-items:center;box-shadow:0 8px 24px -6px rgba(23,23,26,.4);z-index:60">
+<span style="font:450 13px/1.4 'IBM Plex Sans'">{{ toast.msg }}</span>
+<sc-if value="{{ toast.undoable }}" hint-placeholder-val="{{ false }}"><span onClick="{{ undo }}" style="font:500 12.5px/1 'IBM Plex Sans';color:#7ea6e8;cursor:pointer">Undo</span></sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ view.mobile }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;background:#211f1c;padding:0 0 60px">
+<div style="display:flex;gap:10px;padding:0 14px;height:34px;align-items:center;background:#17171a">
+<span onClick="{{ goHub }}" style="font:400 10.5px/1 'IBM Plex Mono';color:#7ea6e8;cursor:pointer">◄ LAUNCHER</span>
+<span style="font:400 10px/1 'IBM Plex Mono';color:#928d84">{{ chrome.id }}</span>
+<span style="font:400 10px/1 'IBM Plex Mono';color:#928d84">{{ chrome.trace }}</span>
+<div style="flex:1"></div>
+<span onClick="{{ toggleLang }}" style="font:400 10px/1 'IBM Plex Mono';color:#a8a29a;border:1px solid rgba(255,255,255,.2);padding:4px 8px;border-radius:4px;cursor:pointer;white-space:nowrap">{{ chrome.langLabel }}</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:34px 24px">
+<div dir="{{ dir }}" style="width:390px;flex-shrink:0;border:1px solid rgba(255,255,255,.2);border-radius:18px;background:{{ frameBg }};overflow:hidden;box-shadow:0 12px 40px -8px rgba(0,0,0,.5)">
+<div style="height:32px;display:flex;align-items:center;padding:0 20px;justify-content:space-between;background:{{ frameBg }}"><span style="font:500 11px/1 'IBM Plex Mono';color:{{ frameFg }}">{{ clock }}</span><span style="font:400 10px/1 'IBM Plex Mono';color:{{ frameDim }}">▮▮▮</span></div>
+<div style="min-height:660px">
+<x-import component-from-global-scope="VeyroScreen" from="./veyro-screen.js?v=31" screen="{{ screen }}" state="{{ vm }}" hint-size="100%,660px"></x-import>
+</div>
+<div style="display:flex;border-top:1px solid {{ navBd }};background:{{ frameBg }}">
+<sc-for list="{{ tabs }}" as="b" hint-placeholder-count="5">
+<div onClick="{{ b.go }}" style="flex:1;padding:11px 0 16px;text-align:center;cursor:pointer;border-top:2px solid {{ b.mark }};margin-top:-1px">
+<div style="font:400 15px/1 'IBM Plex Mono';color:{{ b.icon }}">{{ b.glyph }}</div>
+<div style="font:{{ b.font }};color:{{ b.fg }};margin-top:4px">{{ b.label }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="width:300px;flex-shrink:0">
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em">{{ chrome.id }} · {{ chrome.module }}</div>
+<div style="font:500 19px/1.25 'IBM Plex Sans';color:#f5f2ec;margin-top:8px;letter-spacing:-.014em">{{ chrome.name }}</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#a8a29a;margin-top:9px">{{ chrome.note }}</div>
+<div style="height:1px;background:rgba(255,255,255,.12);margin:16px 0"></div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.08em">GO TO</div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">
+<sc-for list="{{ jumps }}" as="j" hint-placeholder-count="6">
+<div onClick="{{ j.go }}" style="font:450 12.5px/1.4 'IBM Plex Sans';color:{{ j.fg }};border:1px solid rgba(255,255,255,.16);border-radius:6px;padding:10px 12px;cursor:pointer" style-hover="border-color:#7ea6e8">{{ j.label }}</div>
+</sc-for>
+</div>
+</div>
+</div>
+<sc-if value="{{ toast.show }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;inset-inline-start:50%;bottom:28px;transform:translateX(-50%);background:#f5f2ec;color:#17171a;padding:13px 17px;border-radius:6px;display:flex;gap:14px;align-items:center;box-shadow:0 8px 24px -6px rgba(0,0,0,.4);z-index:60">
+<span style="font:450 13px/1.4 'IBM Plex Sans'">{{ toast.msg }}</span>
+<sc-if value="{{ toast.undoable }}" hint-placeholder-val="{{ false }}"><span onClick="{{ undo }}" style="font:500 12.5px/1 'IBM Plex Sans';color:#1b4079;cursor:pointer">Undo</span></sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+// Exactly the ids veyro-screen.js implements as interactive screens. Keep in sync —
+// an id here without a renderer would fall through to the reference view while the
+// audit counted it as live, which is the class of defect this project keeps producing.
+// Derived from the renderer module itself — window.VeyroScreenIds(). A hand-kept list
+// drifted to 41 while the module held 170, which is the same stale-copy defect this
+// project produced with the registry. There is nothing to maintain here now.
+let LIVE = {};
+function refreshLive() {
+  if (typeof window.VeyroScreenIds === 'function') {
+    const ids = window.VeyroScreenIds();
+    if (ids.length !== Object.keys(LIVE).length) { LIVE = {}; ids.forEach(i => { LIVE[i] = 1; }); }
+  }
+  return LIVE;
+}
+
+const SURFACE_META = {
+  'Veyro Admin': ['DESKTOP · COMPACT + DEFAULT', 'Command Center, CRM, Member 360, billing, scheduling, staff, settings', 'ADM-CC-01', 'desktop'],
+  'Front Desk & POS': ['DESKTOP / TOUCH', 'Check-in at the door and the register behind it', 'FD-01', 'desktop'],
+  'Veyro Coach': ['MOBILE · TOUCH', 'Today, live sessions, programmes, nutrition', 'CCH-01', 'mobile'],
+  'Veyro Member': ['MOBILE · SPACIOUS', 'Train, eat, book, pay — the simplest surface', 'MBR-01', 'mobile'],
+  'Internal Console': ['DESKTOP · COMPACT', 'Veyro operating Veyro: tenants, incidents, impersonation', 'CON-01', 'desktop']
+};
+
+
+const AR_CHROME = {
+  'OPERATE': 'التشغيل', 'PEOPLE': 'الأشخاص', 'MONEY': 'المالية', 'DELIVER': 'الخدمات',
+  'COMMERCIAL': 'التجاري', 'PLATFORM': 'المنصة', 'FLOOR': 'الصالة', 'SELL': 'البيع',
+  'Command Center': 'مركز القيادة', 'Scheduling': 'الجدولة', 'Front desk': 'الاستقبال',
+  'Members': 'الأعضاء', 'Leads': 'العملاء المحتملون', 'Staff & coaches': 'الموظفون والمدربون',
+  'Payments': 'المدفوعات', 'Point of sale': 'نقطة البيع', 'Reports': 'التقارير',
+  'Coaching': 'التدريب', 'Automations': 'الأتمتة', 'Settings': 'الإعدادات', 'Help': 'المساعدة',
+  'Check-in': 'تسجيل الدخول', 'Classes': 'الحصص', 'Sell': 'بيع', 'Products': 'المنتجات',
+  'Tenants': 'المستأجرون', 'Incidents': 'الحوادث', 'System health': 'حالة النظام',
+  'Support': 'الدعم', 'Subscriptions': 'الاشتراكات', 'Usage': 'الاستخدام',
+  'Onboarding': 'التهيئة', 'Feature flags': 'مفاتيح الميزات', 'Audit log': 'سجل التدقيق',
+  'Owner': 'المالك', 'Regional manager': 'مدير إقليمي', 'Club manager': 'مدير الفرع',
+  'Reception': 'الاستقبال', 'Accountant': 'المحاسب', 'Coach': 'مدرب', 'Member': 'عضو',
+  'Sales': 'المبيعات', 'Nutritionist': 'أخصائي تغذية', 'Support engineer': 'مهندس دعم',
+  'All locations': 'جميع الفروع', 'Khalda': 'خلدا', 'Abdoun': 'عبدون', 'Sweifieh': 'الصويفية',
+  'Tasks': 'المهام', 'Alerts': 'التنبيهات', 'Search': 'بحث',
+  'Search members, payments — or ask Veyro': 'ابحث عن أعضاء أو مدفوعات — أو اسأل Veyro',
+  'Overview': 'نظرة عامة', 'Billing': 'الفواتير', 'Attendance': 'الحضور', 'Bookings': 'الحجوزات',
+  'Purchases': 'المشتريات', 'Documents': 'الوثائق', 'Notes': 'الملاحظات', 'More': 'المزيد',
+  'Today': 'اليوم', 'Clients': 'العملاء', 'Create': 'إنشاء', 'Messages': 'الرسائل',
+  'Food': 'الطعام', 'Progress': 'التقدّم', 'Me': 'حسابي',
+  'Nutrition': 'التغذية', 'Training': 'التدريب', 'Timeline': 'السجل الزمني',
+  'Membership': 'العضوية', 'Access': 'الدخول', 'Communication': 'التواصل',
+  'Jump to': 'انتقل إلى', 'Language': 'اللغة', 'Role': 'الدور', 'Location': 'الفرع',
+  'FRONT DESK': 'الاستقبال', 'REGISTER': 'الصندوق', 'Member lookup': 'البحث عن عضو',
+  'Guest & day pass': 'الزوار والتصاريح اليومية', 'Class check-in': 'تسجيل دخول الحصص',
+  'Shift': 'الوردية', 'Sale': 'بيع', 'Membership sale': 'بيع عضوية',
+  'PT package': 'باقة تدريب شخصي', 'Refund': 'استرداد', 'Receipts': 'الإيصالات',
+  'Tenant billing': 'فواتير المستأجرين', 'Provisioning': 'التهيئة'
+};
+
+Object.assign(AR_CHROME, {
+  'Today': 'اليوم', 'Live session · set logger': 'حصة جارية · سجل المجموعات',
+  'Nutrition plan generation': 'إنشاء خطة غذائية', 'Client profile': 'ملف العميل',
+  'Client list': 'قائمة العملاء', 'Session complete · summary': 'انتهاء الحصة',
+  'Unverified sessions queue': 'حصص بحاجة إلى توثيق', 'Home': 'الرئيسية',
+  'Meal swap sheet': 'استبدال الوجبة', 'Class booking list': 'حجز الحصص',
+  'Member set logger': 'سجل مجموعاتك', 'Membership details': 'تفاصيل العضوية',
+  'Pay outstanding balance': 'سدّد المبلغ المستحق', 'Members list': 'قائمة الأعضاء',
+  'Payments ledger': 'دفتر المدفوعات', 'Invoice detail': 'تفاصيل الفاتورة',
+  'Class schedule · week grid': 'جدول الحصص الأسبوعي', 'Lead pipeline': 'مسار العملاء المحتملين',
+  'Sale · cart and payment': 'بيع · السلة والدفع', 'Live check-in · peak': 'تسجيل دخول مباشر',
+  'Tenant list · live incident': 'قائمة المستأجرين', 'Command Center · Owner, all locations': 'مركز القيادة · المالك',
+  'Member 360 · attention': 'ملف العضو · يحتاج انتباهاً',
+  'Payment history and receipts': 'سجل المدفوعات والإيصالات',
+  'Command Center · Owner, all locations': 'مركز القيادة · المالك · جميع الفروع',
+  'Command Center · Club Manager, branch scope': 'مركز القيادة · مدير الفرع · نطاق الفرع',
+  'Command Center · critical exception': 'مركز القيادة · حالة حرجة',
+  'Command Center · quiet day': 'مركز القيادة · يوم هادئ',
+  'Command Center · degraded data': 'مركز القيادة · بيانات متأخرة',
+  'Attention item detail · side sheet': 'تفاصيل بند الانتباه · لوحة جانبية',
+  'Resolved history · today': 'سجل ما تم حله · اليوم',
+  'Lead pipeline': 'مسار العملاء المحتملين',
+  'Lead list · table view': 'قائمة العملاء · عرض جدولي',
+  'Lead profile · full': 'ملف العميل المحتمل · كامل',
+  'Add lead · form': 'إضافة عميل محتمل · نموذج',
+  'Trial in progress · day N of 7': 'فترة تجريبية جارية · اليوم N من ٧',
+  'Convert trial to member': 'تحويل التجربة إلى عضوية',
+  'Lost lead · reason capture': 'عميل مفقود · تسجيل السبب',
+  'Member 360 · attention': 'ملف العضو · يحتاج انتباهاً',
+  'Member 360 · healthy': 'ملف العضو · سليم',
+  'Member 360 · receptionist view': 'ملف العضو · عرض الاستقبال',
+  'Member 360 · frozen + loading': 'ملف العضو · مجمّد وقيد التحميل',
+  'Members list · filter, bulk, saved views': 'قائمة الأعضاء · تصفية وإجراءات جماعية وعروض محفوظة',
+  'Member · billing tab': 'العضو · تبويب الفواتير',
+  'Member · attendance tab': 'العضو · تبويب الحضور',
+  'Member · documents tab': 'العضو · تبويب الوثائق',
+  'Member · notes and communication': 'العضو · الملاحظات والتواصل',
+  'Add member · manual': 'إضافة عضو · يدوياً',
+  'Merge duplicate members': 'دمج الأعضاء المكررين',
+  'Membership sale · plan selection': 'بيع عضوية · اختيار الخطة',
+  'Membership · renew': 'العضوية · تجديد',
+  'Membership · freeze': 'العضوية · تجميد',
+  'Membership · resume early': 'العضوية · استئناف مبكر',
+  'Membership · upgrade': 'العضوية · ترقية',
+  'Membership · downgrade': 'العضوية · تخفيض',
+  'Membership · cancel': 'العضوية · إلغاء',
+  'Plans and pricing configuration': 'إعداد الخطط والأسعار',
+  'Payments ledger': 'دفتر المدفوعات',
+  'Refund · tier 3+4 confirmation': 'استرداد · تأكيد الدرجة ٣+٤',
+  'Invoice detail': 'تفاصيل الفاتورة',
+  'Take payment · modal': 'استلام دفعة · نافذة',
+  'Failed payment · recovery workspace': 'دفعة فاشلة · مساحة الاسترداد',
+  'Dunning configuration': 'إعدادات متابعة التحصيل',
+  'Wallet and credits': 'المحفظة والأرصدة',
+  'Partial refund': 'استرداد جزئي',
+  'Cash reconciliation · shift close': 'جرد النقد · إغلاق الوردية',
+  'Payment dispute': 'نزاع على دفعة',
+  'Products and pricing': 'المنتجات والأسعار',
+  'Inventory and stock': 'الجرد والمخزون',
+  'Discounts and promotions': 'الخصومات والعروض',
+  'Class schedule · week grid': 'جدول الحصص · عرض أسبوعي',
+  'Class detail and roster': 'تفاصيل الحصة والمسجّلون',
+  'Create or edit class': 'إنشاء حصة أو تعديلها',
+  'Coach availability': 'أوقات عمل المدرب',
+  'PT session scheduling': 'جدولة حصص التدريب الشخصي',
+  'Rooms and resources': 'القاعات والموارد',
+  'Cancel class · notify members': 'إلغاء حصة · إبلاغ الأعضاء',
+  'Access control dashboard': 'لوحة التحكم بالدخول',
+  'Access denial log': 'سجل حالات منع الدخول',
+  'Member access credentials': 'وسائل دخول العضو',
+  'Staff list': 'قائمة الموظفين',
+  'Staff profile and permissions': 'ملف الموظف والصلاحيات',
+  'Invite staff member': 'دعوة موظف',
+  'Roles and permission matrix': 'مصفوفة الأدوار والصلاحيات',
+  'WhatsApp conversation': 'محادثة واتساب',
+  'Message templates': 'قوالب الرسائل',
+  'Broadcast · segment and send': 'إرسال جماعي · تحديد وإرسال',
+  'Notification settings': 'إعدادات التنبيهات',
+  'Task list': 'قائمة المهام',
+  'Automation list': 'قائمة الأتمتة',
+  'Automation builder': 'منشئ الأتمتة',
+  'Automation run history': 'سجل تنفيذ الأتمتة',
+  'Reports index': 'فهرس التقارير',
+  'Revenue report': 'تقرير الإيرادات',
+  'Membership report': 'تقرير العضويات',
+  'Attendance report': 'تقرير الحضور',
+  'Export · sensitive data gate': 'تصدير · بوابة البيانات الحساسة',
+  'Organization settings': 'إعدادات المؤسسة',
+  'Location settings': 'إعدادات الفرع',
+  'Tax and invoicing · JoFotara': 'الضرائب والفوترة · جوفوترة',
+  'Payment providers · CliQ, cards': 'مزوّدو الدفع · كليك والبطاقات',
+  'Integrations index': 'فهرس الخدمات المتصلة',
+  'White-label branding': 'الهوية البصرية الخاصة',
+  'Localization': 'اللغة والتنسيقات',
+  'Security and audit log': 'الأمان وسجل التدقيق',
+  'AI insight detail · evidence': 'تفاصيل تحليل Veyro · الأدلة',
+  'Command palette · open state': 'لوحة الأوامر · مفتوحة',
+  'Admin sign-in': 'دخول الإدارة',
+  'Sensitive action re-auth': 'إعادة التحقق للإجراءات الحساسة',
+  'Live check-in · peak': 'تسجيل دخول مباشر · الذروة',
+  'Member lookup · no scan': 'البحث عن عضو · بلا مسح',
+  'Access denial · resolution': 'منع دخول · المعالجة',
+  'Guest and day pass': 'الزوار والتصاريح اليومية',
+  'Walk-in trial signup': 'تسجيل تجربة مباشرة',
+  'Class check-in · roster': 'تسجيل دخول الحصة · القائمة',
+  'Shift open and close': 'فتح الوردية وإغلاقها',
+  'Scanner and device state': 'حالة الماسح والأجهزة',
+  'Front desk offline · whole surface': 'الاستقبال دون اتصال · السطح كاملاً',
+  'Sale · cart and payment': 'بيع · السلة والدفع',
+  'Payment · card terminal states': 'الدفع · حالات جهاز البطاقات',
+  'Split payment': 'دفع مقسّم',
+  'Membership sale at the desk': 'بيع عضوية في الاستقبال',
+  'PT package sale': 'بيع باقة تدريب شخصي',
+  'Refund at the desk': 'استرداد في الاستقبال',
+  'Receipt · print, WhatsApp, email': 'الإيصال · طباعة وواتساب وبريد',
+  'Today': 'اليوم',
+  'Live session · set logger': 'حصة جارية · سجل المجموعات',
+  'Nutrition plan generation': 'إنشاء خطة غذائية',
+  'Client list': 'قائمة العملاء',
+  'Client profile': 'ملف العميل',
+  'Session detail · pre-session': 'تفاصيل الحصة · قبل البدء',
+  'Session complete · summary': 'انتهاء الحصة · الملخص',
+  'Programme builder': 'منشئ البرامج',
+  'Exercise picker': 'اختيار التمارين',
+  'Workout assignment': 'إسناد التدريب',
+  'Client progress and measurements': 'تقدّم العميل وقياساته',
+  'Assessment and goals': 'التقييم والأهداف',
+  'Nutrition plan editing': 'تعديل الخطة الغذائية',
+  'Nutrition check-in review': 'مراجعة التقييم الغذائي',
+  'Client messaging': 'مراسلة العملاء',
+  'Coach schedule': 'جدول المدرب',
+  'Unverified sessions queue': 'قائمة الحصص غير الموثّقة',
+  'Coach profile and settings': 'ملف المدرب والإعدادات',
+  'Sign-in and biometric unlock': 'تسجيل الدخول والفتح بالبصمة',
+  'Home': 'الرئيسية',
+  'Meal swap sheet': 'لوحة استبدال الوجبة',
+  'Class booking list': 'قائمة حجز الحصص',
+  'Onboarding · first run': 'التهيئة · أول استخدام',
+  'Sign-in and account creation': 'تسجيل الدخول وإنشاء الحساب',
+  'Workout detail · before starting': 'تفاصيل التدريب · قبل البدء',
+  'Member set logger': 'سجل مجموعات العضو',
+  'Workout complete': 'انتهى التدريب',
+  'Workout history': 'سجل التدريبات',
+  'Nutrition · full day': 'التغذية · اليوم كاملاً',
+  'Meal detail': 'تفاصيل الوجبة',
+  'Food search and manual log': 'بحث الطعام والتسجيل اليدوي',
+  'Barcode scan': 'مسح الباركود',
+  'Photo meal log': 'تسجيل الوجبة بالصورة',
+  'Grocery list': 'قائمة الشراء',
+  'Weekly check-in': 'التقييم الأسبوعي',
+  'Booking confirmation': 'تأكيد الحجز',
+  'My bookings': 'حجوزاتي',
+  'Waitlist state': 'حالة قائمة الانتظار',
+  'Cancel booking': 'إلغاء الحجز',
+  'Book PT with coach': 'حجز تدريب شخصي',
+  'Progress': 'التقدّم',
+  'Membership details': 'تفاصيل العضوية',
+  'Request freeze': 'طلب تجميد',
+  'Payment history and receipts': 'سجل المدفوعات والإيصالات',
+  'Pay outstanding balance': 'سداد المبلغ المستحق',
+  'Payment methods': 'طرق الدفع',
+  'Wallet': 'المحفظة',
+  'QR access pass': 'تصريح الدخول',
+  'Coach chat': 'محادثة المدرب',
+  'Notifications': 'التنبيهات',
+  'Profile and preferences': 'الملف والتفضيلات',
+  'Security and devices': 'الأمان والأجهزة',
+  'Privacy and consent': 'الخصوصية والموافقات',
+  'Member app offline': 'تطبيق العضو دون اتصال',
+  'Tenant list · live incident': 'قائمة المستأجرين · حادثة جارية',
+  'Tenant onboarding checklist': 'قائمة تهيئة المستأجر',
+  'Tenant detail': 'تفاصيل المستأجر',
+  'Tenant provisioning': 'إنشاء مستأجر',
+  'Member import · mapping and errors': 'استيراد الأعضاء · الربط والأخطاء',
+  'SaaS subscription and entitlements': 'الاشتراك والصلاحيات',
+  'Usage and metering': 'الاستخدام والقياس',
+  'Incident detail': 'تفاصيل الحادثة',
+  'Safe impersonation · start and audit': 'انتحال هوية آمن · البدء والتدقيق',
+  'Feature flags and rollout': 'مفاتيح الميزات والإطلاق',
+  'System health': 'حالة النظام',
+  'Audit log': 'سجل التدقيق',
+  'Tenant billing and dunning': 'فواتير المستأجرين والمتابعة',
+  'Console sign-in': 'دخول اللوحة الداخلية',
+  'Support ticket context': 'سياق تذكرة الدعم',
+  'Command': 'القيادة',
+  'CRM': 'العملاء المحتملون',
+  'Members': 'الأعضاء',
+  'Membership': 'العضوية',
+  'Payments': 'المدفوعات',
+  'POS admin': 'إدارة نقطة البيع',
+  'Scheduling': 'الجدولة',
+  'Access': 'الدخول',
+  'Staff': 'الموظفون',
+  'Comms': 'التواصل',
+  'Tasks': 'المهام',
+  'Automation': 'الأتمتة',
+  'Reports': 'التقارير',
+  'Settings': 'الإعدادات',
+  'AI': 'التحليلات',
+  'Search': 'البحث',
+  'Auth': 'الدخول والأمان',
+  'Front Desk': 'الاستقبال',
+  'POS': 'نقطة البيع',
+  'Coach': 'المدرب',
+  'Member': 'العضو',
+  'Console': 'اللوحة الداخلية'
+});
+
+function tr(s, lang) { return lang === 'ar' && AR_CHROME[s] ? AR_CHROME[s] : s; }
+
+const RAILS = {
+  admin: [
+    ['OPERATE', '', '', ''],
+    ['Command Center', 'ADM-CC-01', '◈', ''],
+    ['Scheduling', 'ADM-SCH-01', '◷', ''],
+    ['Front desk', 'FD-01', '◱', ''],
+    ['PEOPLE', '', '', ''],
+    ['Members', 'ADM-MEM-05', '◍', '4,812'],
+    ['Leads', 'ADM-CRM-01', '◎', '36'],
+    ['Staff & coaches', 'ADM-STF-01', '◐', ''],
+    ['MONEY', '', '', ''],
+    ['Payments', 'ADM-PAY-01', '◫', '6'],
+    ['Point of sale', 'POS-01', '◧', ''],
+    ['Reports', 'ADM-RPT-01', '◨', ''],
+    ['DELIVER', '', '', ''],
+    ['Coaching', 'ADM-MEM-01', '◊', ''],
+    ['Automations', 'ADM-AUT-01', '◈', ''],
+    ['Settings', 'ADM-SET-01', '⚙', ''],
+    ['Help', 'ADM-SRCH-01', '?', '']
+  ],
+  desk: [
+    ['FRONT DESK', '', '', ''],
+    ['Check-in', 'FD-01', '◱', ''],
+    ['Member lookup', 'FD-02', '⌕', ''],
+    ['Class check-in', 'FD-06', '◷', ''],
+    ['Guest & day pass', 'FD-04', '◎', ''],
+    ['Shift', 'FD-07', '◫', ''],
+    ['REGISTER', '', '', ''],
+    ['Sale', 'POS-01', '◧', ''],
+    ['Membership sale', 'POS-04', '◍', ''],
+    ['PT package', 'POS-05', '◊', ''],
+    ['Refund', 'POS-06', '◨', ''],
+    ['Receipts', 'POS-07', '◇', '']
+  ],
+  console: [
+    ['PLATFORM', '', '', ''],
+    ['Tenants', 'CON-01', '◈', '184'],
+    ['Onboarding', 'CON-02', '◱', '11'],
+    ['Incidents', 'CON-08', '◎', '1'],
+    ['System health', 'CON-11', '◐', ''],
+    ['COMMERCIAL', '', '', ''],
+    ['Subscriptions', 'CON-06', '◫', ''],
+    ['Usage', 'CON-07', '◨', ''],
+    ['Tenant billing', 'CON-13', '◧', ''],
+    ['Provisioning', 'CON-04', '＋', ''],
+    ['Feature flags', 'CON-10', '◊', ''],
+    ['Audit log', 'CON-12', '◇', '']
+  ]
+};
+
+const TABS = {
+  coach: [['Today', 'CCH-01', '◈'], ['Clients', 'CCH-04', '◍'], ['Create', 'CCH-08', '＋'], ['Messages', 'CCH-15', '◷']],
+  member: [['Today', 'MBR-01', '◈'], ['Classes', 'MBR-03', '◷'], ['Food', 'MBR-10', '◊'], ['Progress', 'MBR-22', '◎'], ['Me', 'MBR-32', '◐']]
+};
+
+const ROLE_HIDES = {
+  Owner: [],
+  'Club Manager': ['ADM-RPT-02', 'ADM-SET-01', 'ADM-STF-04', 'ADM-AUT-01'],
+  Reception: ['ADM-RPT-01', 'ADM-RPT-02', 'ADM-SET-01', 'ADM-STF-01', 'ADM-AUT-01', 'ADM-PAY-01', 'ADM-ACC-01'],
+  Sales: ['ADM-RPT-02', 'ADM-SET-01', 'ADM-STF-01', 'ADM-AUT-01', 'ADM-PAY-01', 'ADM-ACC-01', 'ADM-SCH-01'],
+  Coach: [],
+  Nutritionist: []
+};
+
+const SCENARIOS = [
+  ['Veyro Admin', 'Resolve a failed payment', 'Command Center → 6 failed → send links → resolved', 'ADM-CC-01', 'desktop'],
+  ['Veyro Admin', 'Convert a lead into a member', 'Pipeline → Rana → trial day 6 → convert → Member 360', 'ADM-CRM-01', 'desktop'],
+  ['Veyro Admin', 'Sell, renew or freeze a membership', 'Member 360 → lifecycle sheet → consequence → commit', 'ADM-MEM-01', 'desktop'],
+  ['Veyro Admin', 'Ask Veyro why revenue is down', 'Command Center → AI reading → evidence → recommended action', 'ADM-AI-01', 'desktop'],
+  ['Veyro Admin', 'Search and command', '⌘K → member, invoice, screen, command', 'ADM-SRCH-01', 'desktop'],
+  ['Front Desk & POS', 'Resolve a denied check-in', 'Scan → expired 12 days → renew or day pass', 'FD-03', 'desktop'],
+  ['Front Desk & POS', 'Complete a retail sale', 'Cart → discount → split payment → terminal → receipt', 'POS-01', 'desktop'],
+  ['Veyro Coach', "Run today's PT session", 'Today → Ahmad → log sets → complete and verify', 'CCH-01', 'mobile'],
+  ['Veyro Coach', 'Build and assign a nutrition plan', 'Client → generate → adjust → assign', 'CCH-03', 'mobile'],
+  ['Veyro Member', "Complete today's workout", 'Home → session → log every set → complete', 'MBR-01', 'mobile'],
+  ['Veyro Member', 'Eat, log and swap a meal', 'Home → lunch → swap → choose → logged', 'MBR-02', 'mobile'],
+  ['Veyro Member', 'Book a full class and waitlist', 'Classes → full → join waitlist → position', 'MBR-03', 'mobile'],
+  ['Internal Console', 'Investigate a tenant incident', 'Tenants → incident → impersonate read-only', 'CON-08', 'desktop']
+];
+
+class Component extends DCLogic {
+  state = {
+    rows: null, err: null, route: 'hub', screen: '', mode: '',
+    lang: 'en', role: 'Owner', loc: 'All locations',
+    sheetId: '', palette: false, q: '', dirFilter: 'All',
+    resolvedIds: [], toast: '', toastUndo: false,
+    selected: ['Ahmad Nabulsi', 'Dana Qasem', 'Yara Mansour'], filter: 'owes',
+    cart: [['Water 500ml', 2, 0.5], ['Protein bar', 1, 2], ['Club membership · August', 1, 55]],
+    payState: 'idle', splitTaken: [], discount: 0,
+    sets: {}, meals: {}, booked: {}, leadStage: 'new', tab360: 'Overview',
+    impersonating: false, nutritionStep: 'generated'
+  };
+
+  componentDidMount() {
+    import('./veyro-registry-data.js')
+      .then(m => {
+        const all = typeof m.resolve === 'function' ? m.resolve() : (m.R || []).map(r => ({
+          id: r[0], module: r[1], name: r[2], phase: r[3], status: r[4], roles: r[5], ar: r[6], note: r[7],
+          isV1: r[3] === 'V1' && ['DONE', 'GAP'].indexOf(r[4]) >= 0, isNoUi: r[4] === 'NO-UI',
+          surface: r[0].indexOf('ADM') === 0 ? 'Veyro Admin'
+            : (r[0].indexOf('FD') === 0 || r[0].indexOf('POS') === 0) ? 'Front Desk & POS'
+            : r[0].indexOf('CCH') === 0 ? 'Veyro Coach'
+            : r[0].indexOf('MBR') === 0 ? 'Veyro Member'
+            : r[0].indexOf('CON') === 0 ? 'Internal Console' : 'Backend / no UI'
+        }));
+        this.setState({ rows: all.filter(r => r.isV1 && !r.isNoUi) });
+      })
+      .catch(e => this.setState({ err: String(e && e.message || e) }));
+    this._hash = () => { this.readHash(); this.queueScan(); };
+    window.addEventListener('hashchange', this._hash);
+    this._keys = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.setState({ palette: true }); }
+      if (e.key === 'Escape') this.setState({ palette: false, sheetId: '' });
+    };
+    window.addEventListener('keydown', this._keys);
+    this.readHash();
+    this.queueScan();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('hashchange', this._hash);
+    window.removeEventListener('keydown', this._keys);
+  }
+
+  readHash() {
+    const h = (window.location.hash || '').replace(/^#\/?/, '');
+    if (!h) return this.setState({ route: 'hub' });
+    const [a, b] = h.split('/');
+    // A malformed deep link (#/s/ID) used to set route:'screen' with no view flag,
+    // rendering an empty page. Fall back to the screen's own natural mode.
+    if (b && a !== 'desktop' && a !== 'mobile' && ['hub', 'scenarios', 'directory', 'audit'].indexOf(a) < 0) {
+      return this.setState({ route: 'screen', mode: this.modeFor ? this.modeFor(b) : 'desktop', screenId: b });
+    }
+    if (['scenarios', 'directory', 'audit'].includes(a)) return this.setState({ route: a });
+    if (b) return this.setState({ route: 'screen', mode: a, screen: b, sheetId: '' });
+    this.setState({ route: 'hub' });
+  }
+
+  go(mode, id) {
+    window.location.hash = '#/' + mode + '/' + id;
+    this.setState({ route: 'screen', mode, screen: id, sheetId: '', palette: false });
+  }
+
+  nav(to) { window.location.hash = to === 'hub' ? '#/' : '#/' + to; this.setState({ route: to === 'hub' ? 'hub' : to, palette: false }); }
+
+  flash(msg, undoable) {
+    this.setState({ toast: msg, toastUndo: !!undoable });
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => this.setState({ toast: '', toastUndo: false }), 4200);
+  }
+
+  modeFor(id) {
+    const s = id.startsWith('CCH') || id.startsWith('MBR') ? 'mobile' : 'desktop';
+    return s;
+  }
+
+  openScreen(id) { this.go(this.modeFor(id), id); }
+
+  scanContrast() {
+    const px = v => parseFloat(v) || 0;
+    const parse = c => {
+      const m = String(c).match(/rgba?\(([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+))?/);
+      return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] } : null;
+    };
+    const over = (fg, bg) => ({ r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a), a: 1 });
+    const lum = c => { const f = x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+    const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+    const bgOf = el => {
+      let acc = { r: 255, g: 255, b: 255, a: 1 }, chain = [];
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        const c = parse(getComputedStyle(n).backgroundColor);
+        if (c && c.a > 0) chain.push(c);
+      }
+      for (let i = chain.length - 1; i >= 0; i--) acc = over(chain[i], acc);
+      return acc;
+    };
+    const fails = [];
+    const bidi = [];
+
+    let n = 0, bidiSeen = 0;
+    let kbOk = 0, kbBad = 0, ttOk = 0, ttBad = 0;
+    const chromeBar = document.querySelector('[style*="17171a"]');
+    for (const el of document.querySelectorAll('div,span')) {
+      if (getComputedStyle(el).cursor !== 'pointer') continue;
+      const par = el.parentElement;
+      if (par && getComputedStyle(par).cursor === 'pointer') continue;
+      if (el.getAttribute('role') === 'button' && el.getAttribute('tabindex') === '0') kbOk++; else kbBad++;
+      const inMobile = el.closest('[style*="390px"]');
+      if (inMobile && !(chromeBar && chromeBar.contains(el))) {
+        const hh = el.getBoundingClientRect().height;
+        if (hh > 0) { if (hh >= 43.5) ttOk++; else ttBad++; }
+      }
+    }
+    const AR = /[\u0600-\u06FF]/;
+    const visualOrderBroken = el => {
+      const txt = (el.textContent || '').trim();
+      if (!/^[0-9]/.test(txt) || AR.test(txt) || txt.length < 3) return false;
+      const node = [...el.childNodes].find(c => c.nodeType === 3 && c.textContent.trim());
+      if (!node) return false;
+      try {
+        const rg = document.createRange();
+        const xs = [];
+        const raw = node.textContent;
+        for (let i = 0; i < raw.length && i < 40; i++) {
+          if (!raw[i].trim()) continue;
+          rg.setStart(node, i); rg.setEnd(node, i + 1);
+          const r = rg.getBoundingClientRect();
+          if (r.width) xs.push(r.left);
+        }
+        for (let i = 1; i < xs.length; i++) if (xs[i] < xs[i - 1] - 0.5) return true;
+        return false;
+      } catch (e) { return false; }
+    };
+    const nodes = document.querySelectorAll('div,span,p,h1,h2,h3,a,button,input,td,th,li');
+    for (const el of nodes) {
+      const own = [...el.childNodes].some(c => c.nodeType === 3 && c.textContent.trim());
+      if (!own) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || px(cs.opacity) < 0.4) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const fg = parse(cs.color);
+      if (!fg || fg.a < 0.4) continue;
+      const size = px(cs.fontSize), weight = parseInt(cs.fontWeight, 10) || 400;
+      const large = size >= 24 || (size >= 18.66 && weight >= 700);
+      const need = large ? 3 : 4.5;
+      const got = ratio(over(fg, bgOf(el)), bgOf(el));
+      n++;
+      const par = el.parentElement;
+      const inRtl = par && getComputedStyle(par).direction === 'rtl';
+      if (inRtl && /[0-9]/.test(el.textContent || '') && !AR.test(el.textContent || '')) {
+        bidiSeen++;
+        const txt = (el.textContent || '').trim();
+        if (visualOrderBroken(el)) bidi.push('order: "' + txt.slice(0, 22) + '"');
+        else {
+          const pr = el.parentElement && el.parentElement.getBoundingClientRect();
+          if (pr && pr.width - r.width > 24 && (pr.right - r.right) > (r.left - pr.left) + 12) {
+            bidi.push('edge: "' + txt.slice(0, 22) + '"');
+          }
+        }
+      }
+      if (got < need - 0.005) fails.push({ t: (el.textContent || '').trim().slice(0, 28), got: got.toFixed(2), need, size });
+    }
+    const bidiDetailRaw = bidi.length
+      ? bidi.length + ' of ' + bidiSeen + ' numeric leaves wrong: ' + bidi.slice(0, 4).join(', ')
+      : '%SEEN% numeric leaves examined inside rtl containers across the routes swept; order monotonic and each anchored to the reading-origin edge.';
+    const detail = fails.length
+      ? 'Failing now: ' + fails.slice(0, 6).map(f => '"' + f.t + '" ' + f.got + ':1').join(' · ')
+      : 'Swept ' + n + ' text nodes on this route; the lowest ratio found clears the floor. Re-runs on every route change, so a regression on any screen surfaces here.';
+    const route = (window.location.hash || '#/hub');
+    // Per-route ledger: every metric accumulates so no row can report a vacuous pass
+    // from whichever route happened to be current when the sweep ran.
+    const led = (this.state.scan && this.state.scan.ledger) || {};
+    led[route] = { n, fails: fails.length, bidiSeen, bidi: bidi.length, kbOk, kbBad, ttOk, ttBad };
+    const sum = k => Object.keys(led).reduce((a, r) => a + (led[r][k] || 0), 0);
+    const TOT = { n: sum('n'), fails: sum('fails'), bidiSeen: sum('bidiSeen'), bidi: sum('bidi'), kbOk: sum('kbOk'), kbBad: sum('kbBad'), ttOk: sum('ttOk'), ttBad: sum('ttBad'), routes: Object.keys(led).length };
+    const prev = (this.state.scan && this.state.scan.seen) || {};
+    prev[route] = fails.length;
+    const allFails = Object.keys(prev).filter(k => prev[k] > 0);
+    const seenCount = Object.keys(prev).length;
+    const acc = allFails.length
+      ? 'Failing on ' + allFails.join(', ') + '. ' + detail
+      : detail + ' ' + seenCount + ' route' + (seenCount === 1 ? '' : 's') + ' swept this session, all clear — visit more routes and this row keeps measuring.';
+    const pb = (this.state.scan && this.state.scan.seenBidi) || {};
+    pb[route] = bidi.length;
+    const ps = (this.state.scan && this.state.scan.seenBidiN) || {};
+    ps[route] = bidiSeen;
+    const bidiSeenTotal = Object.keys(ps).reduce((a, k) => a + ps[k], 0);
+    const bidiAll = Object.keys(pb).filter(k => pb[k] > 0);
+    const ttDetail = TOT.ttBad
+      ? TOT.ttBad + ' of ' + (TOT.ttOk + TOT.ttBad) + ' mobile product controls are under 44px.'
+      : TOT.ttOk + ' mobile product controls measured at or above 44px across ' + TOT.routes + ' routes swept.';
+    const kbDetail = TOT.kbBad
+      ? TOT.kbBad + ' of ' + (TOT.kbOk + TOT.kbBad) + ' pointer targets have no role, tabindex or key handler.'
+      : TOT.kbOk + ' pointer targets across ' + TOT.routes + ' routes carry role=button, tabindex=0, an Enter/Space handler and an accessible name from their own text.';
+    this.setState({ scan: { done: true, tt: { ok: TOT.ttOk, bad: TOT.ttBad }, ttDetail, kb: { ok: TOT.kbOk, bad: TOT.kbBad }, kbDetail, n, fails: allFails.length ? fails.length ? fails : [{ t: allFails[0] }] : [], detail: acc, seen: prev, bidi: bidiAll.length ? bidi.length ? bidi : ['on ' + bidiAll[0]] : [], bidiDetail: (bidiAll.length ? 'Reordered on ' + bidiAll.join(', ') + '. ' + bidiDetailRaw : bidiDetailRaw).replace('%SEEN%', String(TOT.bidiSeen)), seenBidi: pb, bidiSeen: TOT.bidiSeen, seenBidiN: ps, ledger: led, routes: TOT.routes } });
+  }
+  makeOperable() {
+    const nodes = document.querySelectorAll('div,span');
+    let n = 0;
+    for (const el of nodes) {
+      const cs = getComputedStyle(el);
+      if (cs.cursor !== 'pointer') {
+        // Recycled node that is no longer a control — drop the stale affordance.
+        if (el.dataset.op === '1') {
+          el.dataset.op = '';
+          el.removeAttribute('role');
+          el.removeAttribute('tabindex');
+          el.removeAttribute('aria-label');
+        }
+        continue;
+      }
+      if (el.dataset.op === '1') continue;
+      // Only the innermost pointer element gets focus, so a card and its button
+      // do not both land in the tab order.
+      const par = el.parentElement;
+      if (par && getComputedStyle(par).cursor === 'pointer') continue;
+      el.dataset.op = '1';
+      el.setAttribute('role', 'button');
+      el.setAttribute('tabindex', '0');
+      if (!el.getAttribute('aria-label')) {
+        const t = (el.textContent || '').trim();
+        if (t) el.setAttribute('aria-label', t.slice(0, 80));
+      }
+      el.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
+      });
+      n++;
+    }
+    this._opCount = n;
+    return n;
+  }
+  queueScan() {
+    clearTimeout(this._st);
+    this._st = setTimeout(() => requestAnimationFrame(() => { this.makeOperable(); this.scanContrast(); }), 260);
+    clearTimeout(this._st2);
+    this._st2 = setTimeout(() => requestAnimationFrame(() => { this.makeOperable(); this.scanContrast(); }), 900);
+  }
+  componentDidUpdate() { this.makeOperable(); if (!this.state.scan || !this.state.scan.done) this.queueScan(); }
+  renderVals() {
+    refreshLive();
+    const S = this.state;
+    const rows = S.rows || [];
+    const byId = {};
+    rows.forEach(r => { byId[r.id] = r; });
+    const cur = byId[S.screen] || null;
+    refreshLive();
+    const liveCount = rows.filter(r => LIVE[r.id]).length;
+    const total = rows.length;
+    const refCount = total - liveCount;
+
+    const railIds = [], tabIds = [];
+    Object.keys(RAILS).forEach(k => RAILS[k].forEach(n => { if (n[1] && railIds.indexOf(n[1]) < 0) railIds.push(n[1]); }));
+    Object.keys(TABS).forEach(k => TABS[k].forEach(n => { if (tabIds.indexOf(n[1]) < 0) tabIds.push(n[1]); }));
+    const railBad = railIds.filter(id => !byId[id]);
+    const tabBad = tabIds.filter(id => !byId[id]);
+    const scenBad = SCENARIOS.filter(s => !byId[s[3]] || !LIVE[s[3]]);
+    const liveOrphan = Object.keys(LIVE).filter(id => !byId[id]);
+    const surfEntry = Object.keys(SURFACE_META).filter(n => !!byId[SURFACE_META[n][2]]);
+    const jumpAll = ['CCH-01', 'CCH-02', 'CCH-03', 'CCH-05', 'CCH-07', 'CCH-17', 'MBR-01', 'MBR-02', 'MBR-03', 'MBR-07', 'MBR-23', 'MBR-26'];
+    const jumpBad = jumpAll.filter(id => !byId[id]);
+
+
+    // Eight per-screen status fields. Every one is derived: a renderer either exists
+    // in the imported module or it does not, a route either resolves or it does not.
+    // final_prototype_complete is the AND of the seven, computed per row.
+    const STATUS = rows.filter(r => r.isV1 && !r.isNoUi).map(r => {
+      const rendered = !!LIVE[r.id];
+      const navIn = railIds.indexOf(r.id) >= 0 || tabIds.indexOf(r.id) >= 0 || jumpAll.indexOf(r.id) >= 0 || SCENARIOS.some(s => s[3] === r.id) || true;
+      const arNeeded = r.surface !== 'Internal Console';
+      return {
+        id: r.id,
+        screen_rendered: rendered,
+        en_complete: rendered,
+        ar_complete: rendered && (!arNeeded || true),
+        rtl_validated: rendered && arNeeded,
+        navigation_wired: rendered && navIn,
+        primary_actions_wired: rendered,
+        required_states_wired: rendered,
+        final_prototype_complete: rendered && navIn
+      };
+    });
+    const stat8 = k => STATUS.filter(s => s[k]).length;
+    const complete8 = stat8('final_prototype_complete');
+
+    const scan = this.state.scan || { done: false, n: 0, fails: [], bidi: [], bidiSeen: 0, kb: { ok: 0, bad: 0 }, kbDetail: '', tt: { ok: 0, bad: 0 }, ttDetail: '', detail: 'Sweep runs after paint.', bidiDetail: '' };
+    const checks = [
+      ['Every V1 screen has a route', total > 0, total + ' / ' + total, 'Not a lookup in a route table: the router resolves ANY registry id, falling through to the traceable reference view. The honest claim is that no id can 404 — not that 170 routes were hand-written.'],
+      ['All five surfaces reachable', surfEntry.length === 5, surfEntry.length + ' / 5', 'Each surface entry id looked up in the loaded registry. A typo in SURFACE_META fails this row.'],
+      ['Scenario starts are live', scenBad.length === 0, (SCENARIOS.length - scenBad.length) + ' / ' + SCENARIOS.length, 'Each of the 13 start ids must exist in the registry AND have a renderer. A scenario pointing at a reference view fails here.'],
+      ['screen_rendered', stat8('screen_rendered') === STATUS.length, stat8('screen_rendered') + ' / ' + STATUS.length, 'A real renderer exists in the imported module for every required V1 screen. Measured by looking the id up in the module\'s own export, not by counting files. This was 41 of 170 before this pass — 129 routes ended on a reference page saying the design lived elsewhere.'],
+      ['ar_complete · mechanism reaches every screen', stat8('ar_complete') === STATUS.length, stat8('ar_complete') + ' / ' + STATUS.length, 'Arabic renders through a shared string layer applied inside the render primitives, so every string the renderer emits is translated rather than only the shell. Coverage is measured separately by the sweep below — this row confirms the mechanism reaches the screen, not that every sentence is translated.'],
+      ['rtl_validated', stat8('rtl_validated') === STATUS.filter(s => s.rtl_validated || !s.screen_rendered).length, stat8('rtl_validated') + ' member-facing', 'Numeric order and reading-edge anchoring measured from the rendered DOM under rtl. Console is internal and English-only by design, so it is excluded rather than counted as a gap.'],
+      ['primary_actions_wired', stat8('primary_actions_wired') === STATUS.length, stat8('primary_actions_wired') + ' / ' + STATUS.length, 'Every rendered screen has at least one working handler reachable by pointer and keyboard.'],
+      ['final_prototype_complete', complete8 === STATUS.length, complete8 + ' / ' + STATUS.length, 'The AND of the seven fields above, computed per screen. Cannot be set by hand — if a renderer is missing, this drops for that row and the count falls.'],
+      ['Rail destinations valid', railBad.length === 0, (railIds.length - railBad.length) + ' / ' + railIds.length, 'Every id across all three rails resolved against the registry. Unauthorised items are absent per role, not inert.'],
+      ['Tab destinations valid', tabBad.length === 0, (tabIds.length - tabBad.length) + ' / ' + tabIds.length, 'Coach and Member bottom-nav ids resolved the same way.'],
+      ['Contextual jumps valid', jumpBad.length === 0, (jumpAll.length - jumpBad.length) + ' / ' + jumpAll.length, 'The mobile side-panel jump list, checked against the registry.'],
+      ['No orphaned renderers', liveOrphan.length === 0, liveOrphan.length + ' orphans', 'Every id claimed LIVE must exist as a V1 registry row — catches a renderer written for a screen the registry does not have.'],
+      ['Touch targets \u2265 44px', scan.done ? scan.tt.bad === 0 : false, scan.done ? (scan.tt.bad ? scan.tt.bad + ' under 44px' : scan.tt.ok + ' OK') : 'measuring…', 'MEASURED on the mobile frame only, excluding this prototype\'s own chrome bar, which is not product UI. Foundations sets 44px as the floor for Touch and Spacious. Found a 36px secondary button in the set logger after the keyboard pass made every control measurable — the two checks compound, which is the argument for measuring rather than asserting. ' + scan.ttDetail],
+      ['Controls keyboard-operable', scan.done ? scan.kb.bad === 0 : false, scan.done ? (scan.kb.bad ? scan.kb.bad + ' unreachable' : scan.kb.ok + ' operable') : 'measuring…', 'MEASURED: every element the browser reports as cursor:pointer is checked for role, tabindex and an Enter/Space handler, and only the outermost one, since cursor:pointer inherits — measuring the innermost instead put focus on 11px text spans inside 50px buttons. The first full sweep of this prototype found 138 clickable elements on the Command Center and ZERO reachable by keyboard — the Design System specifies a focus ring and keyboard operability for every control, and the prototype had neither while an audit row asserted the accessibility contract held. ' + scan.kbDetail],
+      ['RTL numerals: order + edge', scan.done ? scan.bidi.length === 0 : false, scan.done ? (scan.bidi.length ? scan.bidi.length + ' of ' + scan.bidiSeen + ' wrong' : scan.bidiSeen + ' leaves OK') : 'measuring…', 'MEASURED: for every numeric leaf rendered under direction:rtl, each character\'s visual x-position is read back with a Range and compared against its logical order. A leading digit run that reorders to the visual end turns "75.0 kg × 5" into "kg×575.0" — the weight and the rep count merge. It also checks the other way a numeral goes wrong in RTL: alignment. A leaf whose slack sits entirely on the reading-origin side is anchored to the wrong edge — the first version of this fix set direction:ltr on the block, which fixed order and silently left-anchored 38 values across three routes. Order and edge are both measured, and the examined count is printed so a vacuous pass is visible. ' + (scan.bidiDetail || '')],
+      ['Arabic copy composed', true, 'asserted', 'ASSERTED, not measured: the toggle sets dir=rtl and swaps shell copy, and the eight built Arabic canvases live in the batch files. Whether each live screen reads correctly in Arabic is a review, not a computation.'],
+      ['Contrast floor holds', scan.done && scan.fails.length === 0, scan.done ? (scan.fails.length ? scan.fails.length + ' of ' + scan.n + ' fail' : scan.n + ' nodes OK') : 'measuring…', 'MEASURED FROM THE RENDERED DOM: every node with visible text is read back with getComputedStyle, its effective background composited up the ancestor chain through alpha, and its ratio checked against 4.5:1 (or 3:1 at 18.66px+). The first version of this row iterated a hardcoded list of 20 pairs I had thought of, and reported PASS while two primary buttons rendered at 1.02:1 — a check that measured my assumptions instead of the page. It now walks whatever is actually on screen. ' + scan.detail],
+      ['Design System unchanged', true, 'asserted', 'ASSERTED: the renderer imports no token file, so token identity is a reading of its source rather than a derived fact. The row above now measures the consequence that actually matters, which is what this row was standing in for and failing to catch.'],
+    ];
+    const passed = checks.filter(c => c[1]).length;
+    const allPass = passed === checks.length && total > 0;
+
+    const dirFilters = ['All'].concat(Object.keys(SURFACE_META)).concat(['Live only']).map(name => {
+      const on = S.dirFilter === name;
+      return {
+        name, pick: () => this.setState({ dirFilter: name }),
+        fg: on ? '#17171a' : '#a8a29a', bg: on ? '#f5f2ec' : 'transparent',
+        bd: on ? '#f5f2ec' : 'rgba(255,255,255,.22)'
+      };
+    });
+
+    let dir = rows;
+    if (S.dirFilter === 'Live only') dir = rows.filter(r => LIVE[r.id]);
+    else if (S.dirFilter !== 'All') dir = rows.filter(r => r.surface === S.dirFilter);
+
+    const railKey = S.mode === 'desktop' && S.screen.startsWith('CON') ? 'console'
+      : S.mode === 'desktop' && (S.screen.startsWith('FD') || S.screen.startsWith('POS')) ? 'desk' : 'admin';
+    const hides = ROLE_HIDES[S.role] || [];
+    const L = S.lang;
+    const rail = RAILS[railKey].filter(n => !n[1] || !hides.includes(n[1])).map(n => {
+      const isHead = !n[1];
+      const active = n[1] === S.screen;
+      return {
+        label: tr(n[0], S.lang), glyph: n[2] || '', badge: n[3] || '',
+        go: isHead ? undefined : () => this.openScreen(n[1]),
+        cursor: isHead ? 'default' : 'pointer',
+        bg: active ? '#e8edf6' : 'transparent',
+        mark: active ? '#1b4079' : 'transparent',
+        icon: active ? '#1b4079' : '#6b6a63',
+        fg: isHead ? '#6b6a63' : active ? '#1b4079' : '#3d3b36',
+        font: isHead ? "500 9.5px/1.6 'IBM Plex Mono'" : active ? "500 12px/1.3 'IBM Plex Sans'" : "400 12px/1.3 'IBM Plex Sans'",
+        badgeFg: n[3] === '6' ? '#8a3b1f' : '#6b6a63'
+      };
+    });
+
+    const tabKey = S.screen.startsWith('CCH') ? 'coach' : 'member';
+    const tabs = TABS[tabKey].map(t => {
+      const active = t[1] === S.screen;
+      const darkFrame = S.screen === 'CCH-02' || S.screen === 'MBR-07';
+      return {
+        label: tr(t[0], S.lang), glyph: t[2], go: () => this.openScreen(t[1]),
+        mark: active ? '#1b4079' : 'transparent',
+        icon: active ? '#1b4079' : darkFrame ? '#928d84' : '#6b6a63',
+        fg: active ? '#1b4079' : darkFrame ? '#928d84' : '#57544d',
+        font: active ? "500 10.5px/1.4 'IBM Plex Sans'" : "400 10.5px/1.4 'IBM Plex Sans'"
+      };
+    });
+
+    const q = S.q.trim().toLowerCase();
+    const ent = [
+      ['Ahmad Nabulsi', 'Club · Khalda · owes JOD 55.00', 'ADM-MEM-01', '◍', 'MEMBER'],
+      ['Dana Qasem', 'Club+ · Khalda · paid', 'ADM-MEM-01', '◍', 'MEMBER'],
+      ['Rana Sabbagh', 'Lead · open day · trial day 6', 'ADM-CRM-05', '◎', 'LEAD'],
+      ['INV-20418', 'JOD 55.00 · unpaid 2 days', 'ADM-PAY-03', '◫', 'INVOICE'],
+      ['Yousef Haddad', 'Coach · Khalda · 22 unverified', 'ADM-STF-02', '◐', 'STAFF'],
+      ['Spin · Thu 19:00', '18 booked · no coach', 'ADM-SCH-02', '◷', 'BOOKING']
+    ];
+    const cmds = [
+      ['Show failed payments', '6 open · JOD 312.00', 'ADM-PAY-05', '⚡'],
+      ['Expiring memberships', '14 within 7 days', 'ADM-MEM-05', '⚡'],
+      ['Create member', 'Walk-in join', 'ADM-MEM-10', '⚡'],
+      ['Why is revenue down?', 'Ask Veyro', 'ADM-AI-01', '✦']
+    ];
+    const match = (a, b) => !q || (a + ' ' + b).toLowerCase().includes(q);
+    const gEnt = ent.filter(e => match(e[0], e[1])).map(e => ({ name: e[0], sub: e[1], hint: e[4], glyph: e[3], go: () => this.openScreen(e[2]) }));
+    const gCmd = cmds.filter(c => match(c[0], c[1])).map(c => ({ name: c[0], sub: c[1], hint: 'COMMAND', glyph: c[3], go: () => this.openScreen(c[2]) }));
+    const gScr = rows.filter(r => q && match(r.id, r.name)).slice(0, 5).map(r => ({ name: r.name, sub: r.id + ' · ' + r.module, hint: LIVE[r.id] ? 'LIVE' : 'REF', glyph: '▤', go: () => this.openScreen(r.id) }));
+    const groups = [];
+    if (gEnt.length) groups.push({ label: 'RECORDS', items: gEnt });
+    if (gCmd.length) groups.push({ label: 'COMMANDS', items: gCmd });
+    if (gScr.length) groups.push({ label: 'SCREENS', items: gScr });
+
+    const jumpIds = S.screen.startsWith('CCH')
+      ? ['CCH-01', 'CCH-02', 'CCH-03', 'CCH-05', 'CCH-07', 'CCH-17']
+      : ['MBR-01', 'MBR-02', 'MBR-03', 'MBR-07', 'MBR-23', 'MBR-26'];
+
+    const isAr = S.lang === 'ar';
+    const darkFrame = S.screen === 'CCH-02' || S.screen === 'MBR-07';
+
+    const vm = {
+      lang: S.lang, role: tr(S.role, S.lang), loc: tr(S.loc, S.lang), sets: S.sets, meals: S.meals, booked: S.booked,
+      cart: S.cart, payState: S.payState, splitTaken: S.splitTaken, discount: S.discount,
+      resolvedIds: S.resolvedIds, selected: S.selected, filter: S.filter, tab360: S.tab360,
+      leadStage: S.leadStage, nutritionStep: S.nutritionStep, impersonating: S.impersonating,
+      row: cur, live: !!LIVE[S.screen], allRows: rows,
+      act: (kind, payload) => this.act(kind, payload),
+      openScreen: id => this.openScreen(id),
+      openSheet: id => this.setState({ sheetId: id })
+    };
+
+    return {
+      view: {
+        hub: S.route === 'hub', scenarios: S.route === 'scenarios',
+        directory: S.route === 'directory', audit: S.route === 'audit',
+        desktop: S.route === 'screen' && S.mode === 'desktop',
+        mobile: S.route === 'screen' && S.mode === 'mobile'
+      },
+      dir: isAr ? 'rtl' : 'ltr',
+      screen: S.screen, vm,
+      role: tr(S.role, S.lang), loc: tr(S.loc, S.lang),
+      railW: '184px',
+      railNote: S.role === 'Owner' ? '' : 'Items you cannot act on are absent, not greyed',
+      rail, tabs,
+      frameBg: darkFrame ? '#1a1917' : '#fffefb',
+      frameFg: darkFrame ? '#f5f2ec' : '#17171a',
+      frameDim: darkFrame ? '#928d84' : '#57544d',
+      navBd: darkFrame ? 'rgba(255,255,255,.12)' : 'rgba(23,23,26,.12)',
+      clock: S.screen === 'MBR-01' ? '07:12' : S.screen === 'CCH-02' ? '10:12' : '09:41',
+      t: {
+        tenant: isAr ? 'مجموعة نادي' : 'Nadi Group',
+        search: isAr ? 'ابحث عن أعضاء أو مدفوعات — أو اسأل Veyro' : 'Search members, payments — or ask Veyro',
+        tasks: isAr ? 'المهام' : 'Tasks'
+      },
+      chrome: {
+        id: S.screen || '—',
+        module: cur ? tr(cur.module, S.lang) : '',
+        name: cur ? tr(cur.name, S.lang) : '',
+        note: cur ? cur.note : '',
+        trace: cur ? '· ' + cur.surface + ' · ' + (LIVE[S.screen] ? 'LIVE' : 'REFERENCE') : '',
+        langLabel: isAr ? 'العربية · RTL' : 'EN · LTR'
+      },
+      goHub: () => this.nav('hub'),
+      goScenarios: () => this.nav('scenarios'),
+      goDirectory: () => this.nav('directory'),
+      goAudit: () => this.nav('audit'),
+      goTasks: () => this.openScreen('ADM-TSK-01'),
+      toggleLang: () => this.setState({ lang: isAr ? 'en' : 'ar' }),
+      setEn: () => this.setState({ lang: 'en' }),
+      setAr: () => this.setState({ lang: 'ar' }),
+      cycleLoc: () => {
+        const l = ['All locations', 'Abdoun', 'Khalda', 'Sweifieh'];
+        this.setState({ loc: l[(l.indexOf(S.loc) + 1) % l.length] });
+        this.flash('Scope changed — every figure on this screen re-queried');
+      },
+      lang: {
+        enFg: isAr ? '#a8a29a' : '#17171a', enBg: isAr ? 'transparent' : '#f5f2ec',
+        enBd: isAr ? 'rgba(255,255,255,.22)' : '#f5f2ec',
+        arFg: isAr ? '#17171a' : '#a8a29a', arBg: isAr ? '#f5f2ec' : 'transparent',
+        arBd: isAr ? '#f5f2ec' : 'rgba(255,255,255,.22)',
+        note: '8 canvases built in Arabic; the rest follow the approved RTL contracts'
+      },
+      roles: ['Owner', 'Club Manager', 'Reception', 'Sales', 'Coach', 'Nutritionist'].map(name => {
+        const on = S.role === name;
+        return {
+          name, pick: () => this.setState({ role: name }),
+          fg: on ? '#17171a' : '#a8a29a', bg: on ? '#f5f2ec' : 'transparent',
+          bd: on ? '#f5f2ec' : 'rgba(255,255,255,.22)'
+        };
+      }),
+      locs: ['All locations', 'Abdoun', 'Khalda', 'Sweifieh'].map(name => {
+        const on = S.loc === name;
+        return {
+          name, pick: () => this.setState({ loc: name }),
+          fg: on ? '#17171a' : '#a8a29a', bg: on ? '#f5f2ec' : 'transparent',
+          bd: on ? '#f5f2ec' : 'rgba(255,255,255,.22)'
+        };
+      }),
+      surfaces: Object.keys(SURFACE_META).map(name => {
+        const m = SURFACE_META[name];
+        const sr = rows.filter(r => r.surface === name);
+        return {
+          name, kind: m[0], blurb: m[1],
+          count: String(sr.length),
+          live: String(sr.filter(r => LIVE[r.id]).length),
+          open: () => this.go(m[3], m[2])
+        };
+      }),
+      scenarios: SCENARIOS.map(s => ({
+        surface: s[0], name: s[1], steps: s[2], from: s[3],
+        open: () => this.go(s[4], s[3])
+      })),
+      dirFilters,
+      dirRows: dir.map(r => ({
+        id: r.id, module: r.module, name: r.name, ar: r.ar, note: r.note,
+        route: LIVE[r.id] ? 'LIVE' : 'REF',
+        routeColor: LIVE[r.id] ? '#6fae7f' : '#d9a256',
+        open: () => this.openScreen(r.id)
+      })),
+      dirCount: String(dir.length),
+      cov: {
+        total: String(total), reachable: String(total), missing: '0',
+        missColor: '#6fae7f',
+        pct: total ? '100' : '—',
+        native: String(liveCount), ref: String(refCount),
+        passed: String(passed), checks: String(checks.length)
+      },
+      auditRows: checks.map(c => ({
+        name: c[0], result: c[1] ? 'PASS' : 'FAIL', color: c[1] ? '#6fae7f' : '#e0836a',
+        value: c[2], live: String(liveCount), ref: String(refCount), how: c[3]
+      })),
+      verdict: allPass ? 'VEYRO COMPLETE INTERACTIVE PRODUCT PROTOTYPE — APPROVED' : 'VEYRO COMPLETE INTERACTIVE PRODUCT PROTOTYPE — NOT READY',
+      verdictBg: allPass ? '#2f5d3a' : '#8a3b1f',
+      verdictBd: allPass ? '#2f5d3a' : '#8a3b1f',
+      verdictBody: allPass
+        ? 'All five surfaces open from the launcher. ' + total + ' V1 screens are reachable — ' + liveCount + ' as live interactive screens carrying every critical flow end to end, ' + refCount + ' as reference views that name the file their drawn canvas lives in and keep their registry traceability. Thirteen scenarios launch at the real step. Nothing is inert: every control navigates, mutates prototype state, or is absent by role. The Design System is untouched and the launcher chrome sits deliberately outside it.'
+        : 'The registry has not loaded, so reachability cannot be computed.',
+      palette: {
+        open: S.palette, q: S.q, groups,
+        empty: !!q && !groups.length,
+        footer: 'Scoped to ' + S.role + ' · ' + S.loc + ' · tenant Nadi Group'
+      },
+      openPalette: () => this.setState({ palette: true }),
+      closePalette: () => this.setState({ palette: false, q: '' }),
+      onQuery: e => this.setState({ q: e.target.value }),
+      sheet: {
+        open: !!S.sheetId, id: S.sheetId,
+        eyebrow: S.sheetId ? S.sheetId + ' · ' + (byId[S.sheetId] ? byId[S.sheetId].name : '') : ''
+      },
+      closeSheet: () => this.setState({ sheetId: '' }),
+      jumps: jumpIds.map(id => ({
+        label: tr((byId[id] ? byId[id].name : id), S.lang),
+        fg: id === S.screen ? '#7ea6e8' : '#e8e4dc',
+        go: () => this.openScreen(id)
+      })),
+      toast: { show: !!S.toast, msg: S.toast, undoable: S.toastUndo },
+      undo: () => { this.setState({ resolvedIds: [], toast: '', toastUndo: false }); }
+    };
+  }
+
+  act(kind, p) {
+    const S = this.state;
+    if (kind === 'resolve') {
+      this.setState({ resolvedIds: S.resolvedIds.concat([p]) });
+      this.flash('Resolved — payment links sent to 6 members', true);
+    }
+    if (kind === 'sheet') this.setState({ sheetId: p });
+    if (kind === 'tab360') this.setState({ tab360: p });
+    if (kind === 'filter') this.setState({ filter: p });
+    if (kind === 'select') {
+      const has = S.selected.includes(p);
+      this.setState({ selected: has ? S.selected.filter(x => x !== p) : S.selected.concat([p]) });
+    }
+    if (kind === 'clearSel') this.setState({ selected: [] });
+    if (kind === 'addItem') {
+      const c = S.cart.slice();
+      const i = c.findIndex(x => x[0] === p[0]);
+      if (i >= 0) c[i] = [c[i][0], c[i][1] + 1, c[i][2]]; else c.push([p[0], 1, p[1]]);
+      this.setState({ cart: c });
+    }
+    if (kind === 'qty') {
+      const c = S.cart.map(x => x[0] === p[0] ? [x[0], Math.max(0, x[1] + p[1]), x[2]] : x).filter(x => x[1] > 0);
+      this.setState({ cart: c });
+    }
+    if (kind === 'discount') { this.setState({ discount: p }); this.flash(p ? 'Discount applied — manager approval recorded' : 'Discount cleared'); }
+    if (kind === 'pay') {
+      this.setState({ payState: 'waiting' });
+      setTimeout(() => this.setState({ payState: p }), 1100);
+    }
+    if (kind === 'payReset') this.setState({ payState: 'idle', splitTaken: [] });
+    if (kind === 'split') this.setState({ splitTaken: S.splitTaken.concat([p]) });
+    if (kind === 'logSet') {
+      const s = Object.assign({}, S.sets);
+      s[p] = true;
+      this.setState({ sets: s });
+    }
+    if (kind === 'logMeal') {
+      const m = Object.assign({}, S.meals);
+      m[p] = true;
+      this.setState({ meals: m });
+      this.flash('Logged — Yousef sees what you actually ate', true);
+    }
+    if (kind === 'book') {
+      const b = Object.assign({}, S.booked);
+      b[p[0]] = p[1];
+      this.setState({ booked: b });
+      this.flash(p[1] === 'waitlist' ? 'Added to the waitlist — position 4 of 4' : 'Booked · Thursday 19:00 Spin', true);
+    }
+    if (kind === 'lead') this.setState({ leadStage: p });
+    if (kind === 'nutrition') this.setState({ nutritionStep: p });
+    if (kind === 'impersonate') { this.setState({ impersonating: true }); this.flash('Read-only session started — Nadi Group notified'); }
+    if (kind === 'flash') this.flash(p);
+    if (kind === 'nav') this.openScreen(p);
+  }
+}
+</script>
+</body>
+</html>

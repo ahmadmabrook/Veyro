@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH F · 8 SCREENS DRAWN · ADM-CC-06 → ADM-CRM-07</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Exception resolution and the lead chain</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">The side sheet every Command Center row opens into, the resolution audit behind it, and the six CRM screens that carry a stranger from an open day to a paying member without ever re-typing their name.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-CC-06 · ATTENTION ITEM DETAIL · SIDE SHEET OVER THE COMMAND CENTER</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Where an exception gets resolved</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+<div style="flex:1 1 520px;min-width:500px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:13px 18px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:11px;align-items:center;flex-wrap:wrap">
+<span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">MONEY · CRITICAL</span>
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;flex:1">EXC-8841 · raised 06:12 · 2h ago</span>
+<span style="font:400 12px/1 'IBM Plex Sans';color:#57544d">✕</span>
+</div>
+<div style="padding:16px 18px">
+<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap"><span style="font:500 21px/1.25 'IBM Plex Sans';letter-spacing:-.015em;flex:1;min-width:230px">6 payments failed overnight</span><span style="font:500 19px/1.15 'IBM Plex Mono';color:#8a3b1f">JOD 312.00</span></div>
+<div style="font:400 13px/1.68 'IBM Plex Sans';color:#3d3b36;margin-top:8px">Four expired cards, two insufficient funds, across Khalda and Abdoun. Veyro retried each twice on the 18th and 19th. <b>No access is blocked</b> — Nadi Group's policy allows 14 days' grace, so all six can train today.</div>
+
+<div style="display:flex;gap:16px;margin-top:15px;padding:12px 0;border-top:1px solid rgba(23,23,26,.08);border-bottom:1px solid rgba(23,23,26,.08);flex-wrap:wrap">
+<div><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">OWNER</div><div style="font:450 12.5px/1.4 'IBM Plex Sans';margin-top:4px">Unassigned</div></div>
+<div><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">AGE</div><div style="font:450 12.5px/1.4 'IBM Plex Sans';margin-top:4px">2h 14m</div></div>
+<div><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">AFFECTED</div><div style="font:450 12.5px/1.4 'IBM Plex Sans';margin-top:4px">6 members</div></div>
+<div><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">SOURCE</div><div style="font:450 12.5px/1.4 'IBM Plex Sans';margin-top:4px">Billing run · automatic</div></div>
+</div>
+
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:15px">THE SIX RECORDS · EACH LINKS TO ITS MEMBER</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:8px;overflow:hidden">
+<sc-for list="{{ affected }}" as="a" hint-placeholder-count="6">
+<div style="padding:9px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<span style="width:24px;height:24px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span>
+<span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1;min-width:130px">{{ a.name }}</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:132px">{{ a.reason }}</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono';color:#8a3b1f;width:64px;text-align:end">{{ a.amount }}</span>
+<span style="font:400 11px/1.4 'IBM Plex Sans';color:#1b4079;width:52px;text-align:end">Open ↗</span>
+</div>
+</sc-for>
+</div>
+
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:15px">WHAT VEYRO HAS ALREADY DONE</div>
+<div style="margin-top:8px;display:flex;flex-direction:column;gap:0">
+<div style="display:flex;gap:11px;padding:7px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:82px;flex-shrink:0">19 Aug 06:12</span><span style="font:400 12px/1.45 'IBM Plex Sans';flex:1">Billing run · 6 of 214 charges declined</span></div>
+<div style="display:flex;gap:11px;padding:7px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:82px;flex-shrink:0">19 Aug 06:13</span><span style="font:400 12px/1.45 'IBM Plex Sans';flex:1">6 reminder messages drafted, held for approval</span></div>
+<div style="display:flex;gap:11px;padding:7px 0"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:82px;flex-shrink:0">19 Aug 06:13</span><span style="font:400 12px/1.45 'IBM Plex Sans';flex:1">Exception raised to the Command Center</span></div>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 15px;border-radius:6px">Send 6 payment links</span>
+<span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:12px 14px;border-radius:6px">Open recovery workspace</span>
+<span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:12px 14px;border-radius:6px">Assign to…</span>
+<span style="font:450 12.5px/1 'IBM Plex Sans';color:#57544d;padding:13px 6px">Snooze</span>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px">Resolving from here collapses the row in the Command Center with a 30-second undo. Snoozing requires a reason and a return date — an exception cannot be dismissed, only deferred with an account of why.</div>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">STATES · ADM-CC-06</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px"><b>Unassigned</b> as drawn. <b>Assigned to me</b> shows the owner and adds Release. <b>Assigned to someone else</b> keeps every action visible but read-only, with "Nadia is handling this" and a Take over that records the handover. <b>Resolved</b> shows the outcome, resolver and elapsed time, and offers Reopen. <b>Snoozed</b> shows the reason and return date.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">PERMISSIONS</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">A Club Manager sees only the two members at their club and a JOD total scoped to them. Reception can open the sheet but has no batch action — only Take payment per member. An exception a role cannot act on never enters their queue in the first place.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">KEYBOARD</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">Opens with focus on the heading, not the primary action — a destructive default under a returning Enter key is how batch messages get sent by accident. <span style="font-family:'IBM Plex Mono'">Esc</span> closes and returns focus to the originating row.</div></div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-CC-07 · RESOLVED TODAY · ADM-CRM-02 · LEAD TABLE</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Two grids at Compact</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 440px;min-width:420px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CC-07 · RESOLVED TODAY</div>
+<div style="padding:14px 16px">
+<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:180px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.014em">7 resolved today</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Median 41 minutes · all locations</div></div></div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:400px;display:grid;grid-template-columns:minmax(0,1.4fr) 92px 74px 84px;gap:11px;padding:8px 13px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>ITEM</div><div>RESOLVER</div><div>TOOK</div><div>OUTCOME</div></div>
+<sc-for list="{{ resolved }}" as="r" hint-placeholder-count="7">
+<div style="min-width:400px;display:grid;grid-template-columns:minmax(0,1.4fr) 92px 74px 84px;gap:11px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:450 11.5px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.item }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ r.who }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ r.took }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ r.color }}">{{ r.outcome }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px">Read-only for every role, including Owner. There is no un-resolve — reopening happens on the item itself and appears here as a new row, so this list is a record rather than a state.</div>
+</div>
+</div>
+
+<div style="flex:1 1 440px;min-width:420px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CRM-02 · LEAD LIST · TABLE VIEW</div>
+<div style="padding:14px 16px">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 11px;border-radius:6px">No contact 48h · 7</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 10px;border-radius:6px;color:#3d3b36">Trial ending · 4</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 10px;border-radius:6px;color:#3d3b36">Mine · 12</span>
+<div style="flex:1"></div>
+<span style="font:400 11px/1 'IBM Plex Sans';color:#1b4079">Board view</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:420px;display:grid;grid-template-columns:minmax(0,1.2fr) 88px 68px 64px minmax(0,1fr);gap:11px;padding:8px 13px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>LEAD</div><div>SOURCE</div><div>OWNER</div><div>AGE</div><div>NEXT ACTION</div></div>
+<sc-for list="{{ leads }}" as="l" hint-placeholder-count="7">
+<div style="min-width:420px;display:grid;grid-template-columns:minmax(0,1.2fr) 88px 68px 64px minmax(0,1fr);gap:11px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:450 11.5px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.name }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ l.source }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ l.owner }}</div>
+<div style="font:500 10.5px/1.3 'IBM Plex Mono';color:{{ l.ageColor }}">{{ l.age }}</div>
+<div style="font:400 11px/1.3 'IBM Plex Sans';color:#3d3b36;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.next }}</div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px">Same grid component as the members list at the same 34px. Sales sees their own leads by default with a Mine toggle; a Club Manager sees the team. <b>Age is the sortable column that matters</b> — a lead's value decays by the hour, so it carries colour where the others do not.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-CRM-03 · 04 · 05 · 06 · 07 · THE CHAIN, ONE RECORD THROUGHOUT</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Rana, from open day to member</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CRM-04 · ADD LEAD</div>
+<div style="padding:15px 16px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">New lead</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:4px">Name and phone are enough. Everything else can wait.</div>
+<div style="display:flex;flex-direction:column;gap:11px;margin-top:14px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">NAME</div><div style="font:400 13px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px;margin-top:5px">Rana Sabbagh</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PHONE</div><div style="font:400 13px/1.4 'IBM Plex Mono';border:2px solid #1b4079;border-radius:6px;padding:10px 12px;margin-top:5px;unicode-bidi:isolate">+962 79 411 0288</div></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">No existing record</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:3px">Checked as you typed against members and leads. If this number already existed, that record would open instead of a second one being created.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px;margin-top:12px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">SOURCE · OPTIONAL</div><div style="font:400 13px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px;margin-top:5px">Sweifieh open day ▾</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">INTEREST · OPTIONAL</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap"><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Classes</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">PT</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">Gym only</span></div></div>
+</div>
+<span style="display:block;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px;border-radius:6px;margin-top:15px;text-align:center">Save lead</span>
+</div>
+</div>
+
+<div style="flex:1 1 360px;min-width:340px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CRM-03 · LEAD PROFILE · ADM-CRM-05 · TRIAL RUNNING</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:11px;align-items:flex-start">
+<span style="width:40px;height:40px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span>
+<div style="flex:1"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Rana Sabbagh</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Sweifieh open day · Yasmin · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">+962 79 411 0288</span></div></div>
+<span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 6px;border-radius:3px">DAY 6 OF 7</span>
+</div>
+<div style="margin-top:13px;padding:12px 13px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 13.5px/1.35 'IBM Plex Sans'">Her trial ends tomorrow</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Four visits, four classes, all spin. She has used the trial more than most — this is a conversion, not a chase.</div>
+<span style="display:inline-block;font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:12px 14px;border-radius:6px;margin-top:10px">Convert to member</span>
+</div>
+<div style="display:flex;gap:16px;margin-top:13px;padding:11px 0;border-top:1px solid rgba(23,23,26,.08);border-bottom:1px solid rgba(23,23,26,.08);flex-wrap:wrap">
+<div><div style="font:500 15px/1.15 'IBM Plex Mono'">4</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">VISITS</div></div>
+<div><div style="font:500 15px/1.15 'IBM Plex Mono'">4</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">CLASSES</div></div>
+<div><div style="font:500 15px/1.15 'IBM Plex Mono'">2</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">DAYS LEFT</div></div>
+<div><div style="font:500 15px/1.15 'IBM Plex Sans'">High</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">ENGAGEMENT</div></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">TOUCHPOINTS</div>
+<div style="margin-top:8px">
+<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;width:52px;flex-shrink:0">Today</span><span style="width:2px;background:#cbc6bc;flex-shrink:0"></span><span style="font:400 11.5px/1.45 'IBM Plex Sans';flex:1">Attended 19:00 spin · 4th class</span></div>
+<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;width:52px;flex-shrink:0">15 Aug</span><span style="width:2px;background:#3f5560;flex-shrink:0"></span><span style="font:400 11.5px/1.45 'IBM Plex Sans';flex:1">Trial started · credential issued</span></div>
+<div style="display:flex;gap:10px;padding:8px 0"><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;width:52px;flex-shrink:0">13 Aug</span><span style="width:2px;background:#a8a29a;flex-shrink:0"></span><span style="font:400 11.5px/1.45 'IBM Plex Sans';flex:1">Met Yasmin at the open day · asked twice about spin</span></div>
+</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CRM-06 · CONVERT</div>
+<div style="padding:15px 16px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">Rana becomes a member</div>
+<div style="margin-top:12px;padding:12px 13px;background:#faf8f4;border-radius:4px">
+<div style="font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36">Club · monthly · JOD 55.00<br>Pro-rata to 31 Aug · <b>JOD 21.29</b><br>Then 55.00 from 1 Sep</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:7px;padding-top:7px;border-top:1px solid rgba(23,23,26,.08)">Her four class attendances, her credential and Yasmin's notes all carry over. <b>Nothing is re-entered.</b></div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:12px 14px;border-radius:6px">Take 21.29</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 13px;border-radius:6px">Send link</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Same record, new state. The lead ID becomes the member ID — this is the duplicate-entry fix from the UX review, enforced structurally rather than by discipline.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-CRM-07 · MARK LOST</div>
+<div style="padding:15px 16px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Why did Omar Zaid not join?</div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:11px">
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px">Too expensive</span>
+<span style="font:500 12.5px/1.4 'IBM Plex Sans';border:2px solid #1b4079;border-radius:6px;padding:10px 12px;background:#f7f9fc">Joined somewhere else</span>
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px">Location or hours</span>
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px">No longer responding</span>
+</div>
+<div style="font:400 12px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:8px">Which gym, if he said…</div>
+<span style="display:block;font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:12px;border-radius:6px;margin-top:11px;text-align:center">Mark lost</span>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Not deleted. Reopenable, and re-contact after 90 days is a supported flow rather than a fresh record. The reason feeds source effectiveness in ADM-RPT-03.</div>
+</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · SideSheet · AttentionRow(detail) · PersonRow ×6 · TimelineItem · DataGrid(Compact) ×2 · Member360Header(lead) · MetricCell ×8 · Form fields · ReasonPicker · MoneyValue · Button · zero new tokens</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const AFFECTED = [
+  ['Ahmad Nabulsi', 'Card expired', '55.00'],
+  ['Dana Qasem', 'Insufficient funds', '45.00'],
+  ['Yara Mansour', 'Card expired', '72.00'],
+  ['Tareq Odeh', 'Card expired', '40.00'],
+  ['Hala Barakat', 'Card expired', '55.00'],
+  ['Faris Alami', 'Insufficient funds', '45.00']
+];
+
+const RESOLVED = [
+  ['Low stock · protein bars, Khalda', 'Nadia', '12m', 'ORDERED', '#2f5d3a'],
+  ['Lead not contacted · 3 from Friday', 'Yasmin', '38m', 'ASSIGNED', '#2f5d3a'],
+  ['Document expiring · 2 waivers', 'Layla', '6m', 'RENEWED', '#2f5d3a'],
+  ['Coach note overdue · Omar', 'Ziad', '1h 20m', 'CHASED', '#2f5d3a'],
+  ['Class under capacity · Tue 07:00', 'Ziad', '41m', 'NO ACTION', '#57544d'],
+  ['Access denial · Sweifieh card reader', 'Layla', '9m', 'MANUAL ENTRY', '#2f5d3a'],
+  ['Duplicate member · two Hala Barakats', 'Nadia', '2h 04m', 'MERGED', '#2f5d3a']
+];
+
+const LEADS = [
+  ['Rana Sabbagh', 'Open day', 'Yasmin', '6d', '#57544d', 'Convert — trial ends tomorrow'],
+  ['Omar Zaid', 'Instagram', 'Yasmin', '4h', '#57544d', 'First call'],
+  ['Lina Haddad', 'Referral', 'Kareem', '1d', '#57544d', 'Book a tour'],
+  ['Faris Alami', 'Walk-in', 'Kareem', '3d', '#8a5a1f', 'No contact — 48h'],
+  ['Nour Khoury', 'Open day', '—', '2d', '#8a5a1f', 'Unassigned'],
+  ['Sami Tabaa', 'Website', 'Yasmin', '5h', '#57544d', 'Send plan comparison'],
+  ['Maya Rifai', 'Open day', '—', '2d', '#8a5a1f', 'Unassigned']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      affected: AFFECTED.map(a => ({ name: a[0], reason: a[1], amount: a[2] })),
+      resolved: RESOLVED.map(r => ({ item: r[0], who: r[1], took: r[2], outcome: r[3], color: r[4] })),
+      leads: LEADS.map(l => ({ name: l[0], source: l[1], owner: l[2], age: l[3], ageColor: l[4], next: l[5] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

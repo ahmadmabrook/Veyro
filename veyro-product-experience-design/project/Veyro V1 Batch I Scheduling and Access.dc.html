@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH I · 8 SCREENS DRAWN · ADM-SCH-03 → ADM-ACC-03</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Scheduling and physical access</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Five scheduling screens where conflict detection has to run as fields change rather than on save, and three access screens where the product meets hardware it does not control.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-SCH-03 · ADM-SCH-07 · CREATE, AND CANCEL</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">The two ends of a class</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 380px;min-width:365px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-SCH-03 · CREATE A CLASS</div>
+<div style="padding:15px 17px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">New recurring class</div>
+<div style="display:flex;gap:9px;margin-top:13px;flex-wrap:wrap">
+<div style="flex:1 1 130px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">TYPE</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Spin ▾</div></div>
+<div style="flex:1 1 130px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">COACH</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid #8a5a1f;border-radius:6px;padding:10px 12px;margin-top:4px">Omar Salti ▾</div></div>
+</div>
+<div style="margin-top:9px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">Omar already has PT at 19:00 Thursdays</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:4px">With Ahmad Nabulsi, booked until 12 October. <b>Dana and Yousef are both qualified and free</b> at that hour.</div>
+<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:10px 12px;border-radius:6px">Use Dana</span><span style="font:450 11.5px/1 'IBM Plex Sans';color:#57544d;padding:10px 4px">Keep Omar anyway</span></div>
+</div>
+<div style="display:flex;gap:9px;margin-top:11px;flex-wrap:wrap">
+<div style="flex:1 1 100px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">ROOM</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Studio 2 ▾</div></div>
+<div style="flex:1 1 80px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">CAPACITY</div><div style="font:400 12.5px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">20</div></div>
+<div style="flex:1 1 100px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">TIME</div><div style="font:400 12.5px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">19:00</div></div>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:6px">Studio 2 holds 20 bikes. Capacity cannot exceed the room.</div>
+<div style="margin-top:11px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">REPEATS</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap"><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">S</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">M</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">T</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">W</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Th</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">F</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">S</span></div></div>
+<div style="margin-top:11px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WAITLIST</div><div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Up to 5 · auto-promote when a place frees · notify immediately</div></div>
+<span style="display:block;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px;border-radius:6px;margin-top:14px;text-align:center">Create · 2 classes a week</span>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Conflicts surface as the coach field changes, not on save — a save-time error means re-deciding everything else too. <b>It warns, it does not block:</b> a manager may know Omar's PT is moving.</div>
+</div>
+</div>
+
+<div style="flex:1 1 340px;min-width:325px;border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#8a3b1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">ADM-SCH-07 · CANCEL A CLASS · 18 PEOPLE AFFECTED</div>
+<div style="padding:15px 16px">
+<div style="font:500 15.5px/1.3 'IBM Plex Sans'">Cancel Spin, Thursday 19:00</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:4px">18 booked, 3 on the waitlist. This is tomorrow.</div>
+<div style="margin-top:12px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WHY · GOES INTO THE MESSAGE</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">No coach available ▾</div></div>
+<div style="margin-top:12px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.06em">WHAT THE 18 GET · REQUIRED</div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+<div style="border:2px solid #1b4079;border-radius:6px;padding:10px 12px;background:#f7f9fc"><div style="font:500 12.5px/1.4 'IBM Plex Sans'">Move them to Friday 19:00</div><div style="font:400 11px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Dana is on · 6 places free · 12 would need to choose another</div></div>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px"><div style="font:450 12.5px/1.4 'IBM Plex Sans'">Give each a class credit</div><div style="font:400 11px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Usable on any class within 30 days</div></div>
+</div>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:500 11px/1.4 'IBM Plex Sans'">They will receive</div>
+<div style="font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px;padding:9px 11px;background:#fffefb;border:1px solid rgba(23,23,26,.1);border-radius:4px">Thursday's 19:00 spin is cancelled — we could not cover the class. We have held you a place on <b>Friday at 19:00</b> with Dana. Reply if that doesn't work and we'll credit you instead.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:7px">Sent in each member's language. The 3 on the waitlist get a shorter version.</div>
+</div>
+<div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:12px 14px;border-radius:6px">Cancel &amp; notify 21</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 13px;border-radius:6px">Find a coach instead</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Cannot commit without choosing what the members get. A cancellation that notifies nobody is the most damaging thing this screen could permit, so the notification is the action rather than a follow-up.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-SCH-05 · SCHEDULE PT</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Book Yousef with Hala</div>
+<div style="display:flex;gap:9px;margin-top:11px;flex-wrap:wrap">
+<div style="flex:1 1 110px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">WHEN</div><div style="font:400 12px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:9px 11px;margin-top:4px">Thu 17:30</div></div>
+<div style="flex:1 1 110px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">LENGTH</div><div style="font:400 12px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:9px 11px;margin-top:4px">55 min</div></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36">Uses <b>1 of her 3 remaining credits</b>. Two left after this, expiring 30 November.</div>
+<div style="display:flex;gap:7px;margin-top:11px"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Book · use 1 credit</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">At zero credits the button becomes <b>Sell a package first</b> and opens POS-05 with Hala and Yousef pre-filled. Never a blocked state with no way out.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-SCH-06 · ROOMS &amp; RESOURCES</div>
+<div style="padding:14px 15px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<sc-for list="{{ rooms }}" as="r" hint-placeholder-count="4">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">{{ r.name }}</span><span style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ r.cap }}</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:96px;text-align:end">{{ r.equip }}</span></div>
+</sc-for>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Capacity here is the ceiling every class inherits. Double-booking is impossible because ADM-SCH-03 reads this list — the constraint lives in one place, not in each scheduler's memory.</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-SCH-04 · COACH AVAILABILITY · WEEK GRID</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">When Yousef can work, and what is already booked</h2>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden;max-width:1000px">
+<div style="padding:13px 17px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<div style="flex:1;min-width:200px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Yousef Haddad · availability</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Week of 17 August · Khalda · 26 of 34 available hours booked</div></div>
+<span style="font:500 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:9px 11px;border-radius:6px">Add an exception</span>
+</div>
+<div style="overflow-x:auto">
+<div style="min-width:760px;padding:14px 17px">
+<div style="display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr));gap:3px">
+<div></div>
+<sc-for list="{{ days }}" as="d" hint-placeholder-count="7"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;text-align:center;padding-bottom:5px">{{ d.label }}</div></sc-for>
+<sc-for list="{{ slots }}" as="s" hint-placeholder-count="10">
+<div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;padding-top:3px">{{ s.time }}</div>
+<sc-for list="{{ s.cells }}" as="c" hint-placeholder-count="7">
+<div style="height:26px;background:{{ c.bg }};border-radius:2px;display:flex;align-items:center;justify-content:center;font:500 8.5px/1 'IBM Plex Mono';color:{{ c.fg }};overflow:hidden">{{ c.label }}</div>
+</sc-for>
+</sc-for>
+</div>
+<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;display:inline-flex;gap:6px;align-items:center"><span style="width:11px;height:11px;background:#ece9e3;border-radius:2px"></span>AVAILABLE, UNBOOKED</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;display:inline-flex;gap:6px;align-items:center"><span style="width:11px;height:11px;background:#57544d;border-radius:2px"></span>PT BOOKED</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;display:inline-flex;gap:6px;align-items:center"><span style="width:11px;height:11px;background:#3f5560;border-radius:2px"></span>CLASS</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;display:inline-flex;gap:6px;align-items:center"><span style="width:11px;height:11px;background:#f4f2ee;border:1px solid rgba(23,23,26,.14);border-radius:2px"></span>NOT WORKING</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#8a5a1f;display:inline-flex;gap:6px;align-items:center"><span style="width:11px;height:11px;background:#f4ece5;border:1px solid #8a5a1f;border-radius:2px"></span>EXCEPTION</span>
+</div>
+</div>
+</div>
+<div style="padding:13px 17px;border-top:1px solid rgba(23,23,26,.1);display:flex;gap:14px;flex-wrap:wrap">
+<div style="flex:1 1 280px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Thursday afternoon is an exception</b> — he asked for it off three weeks ago. His 17:30 with Hala sits inside it, so the grid shows both and the booking is flagged rather than silently honoured or silently dropped.</div>
+<div style="flex:1 1 280px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Working hours are the background; bookings are drawn on top. <b>Reducing availability never deletes a booking</b> — it surfaces the conflict for a person to resolve, because the member on the other end has already been told a time.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-ACC-01 · 02 · 03 · PHYSICAL ACCESS</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Where the product meets hardware it does not own</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 380px;min-width:365px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-ACC-01 · ACCESS DASHBOARD</div>
+<div style="padding:15px 17px">
+<div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">One reader is down</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">9 devices across 3 clubs · 218 entries today</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:13px;overflow-x:auto">
+<div style="min-width:340px;display:grid;grid-template-columns:minmax(0,1.2fr) 84px 74px 84px;gap:10px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DEVICE</div><div>CLUB</div><div>TODAY</div><div>STATE</div></div>
+<sc-for list="{{ devices }}" as="d" hint-placeholder-count="6">
+<div style="min-width:340px;display:grid;grid-template-columns:minmax(0,1.2fr) 84px 74px 84px;gap:10px;padding:0 12px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:450 11.5px/1.3 'IBM Plex Sans'">{{ d.name }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ d.club }}</div>
+<div style="font:400 11px/1.3 'IBM Plex Mono';color:#57544d">{{ d.today }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ d.color }}">{{ d.state }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Sweifieh main door stopped responding at 09:04.</b> Reception is admitting people manually and every entry is still recorded. This is the origin of the Command Center banner — the banner is a view of this row, not a separate alert.</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Retry the device</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Open manual check-in</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Read-only for Reception — they see the state and the manual fallback, not the retry. Retrying hardware is a manager action because a badly-timed reset locks a lobby full of people out.</div>
+</div>
+</div>
+
+<div style="flex:1 1 330px;min-width:320px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-ACC-02 · DENIAL LOG</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:7px;flex-wrap:wrap">
+<span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">All · 31</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px;color:#3d3b36">Policy · 27</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid #8a3b1f;padding:7px 9px;border-radius:6px;color:#8a3b1f">Fault · 4</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:300px;display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>TIME</div><div>MEMBER</div><div>WHY</div></div>
+<sc-for list="{{ denials }}" as="d" hint-placeholder-count="6">
+<div style="min-width:300px;display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:0 12px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:400 10px/1.3 'IBM Plex Mono';color:#57544d">{{ d.time }}</div>
+<div style="font:450 11.5px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.who }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:{{ d.color }}">{{ d.why }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Policy and fault are separate filters</b> for a reason. Twenty-seven expired memberships is the system working. Four reader failures is a maintenance job. Mixing them in one count hides the second inside the first.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-ACC-03 · CREDENTIALS · AHMAD</div>
+<div style="padding:15px 16px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<div style="padding:11px 13px;border-bottom:1px solid rgba(23,23,26,.06)"><div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Card ···8841</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a">ACTIVE</span></div><div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:3px">Issued 4 Mar 2024 · 214 uses</div></div>
+<div style="padding:11px 13px;border-bottom:1px solid rgba(23,23,26,.06)"><div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">App pass</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a">ACTIVE</span></div><div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:3px">Rotating QR · last used 31 Jul</div></div>
+<div style="padding:11px 13px"><div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Fingerprint</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a">ENROLLED</span></div><div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:3px">Enrolled 8 Mar 2024 · Khalda</div></div>
+</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Issue a new card</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Report lost</span></div>
+<div style="margin-top:12px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.05em">BIOMETRIC</div>
+<div style="font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Enrolment status only. The template is <b>never displayed, never exported, and not fetched by this screen</b>. Removal is tier 4 and needs owner approval — it also ends his ability to enter without a card.</div>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Reception sees the card and app rows and can issue a replacement. The fingerprint row is absent for them entirely — not greyed, absent.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · SideSheet ×4 · ConflictWarning · RecurrencePicker · WeekGrid(availability) · DataGrid(Compact) ×3 · DeviceRow · CredentialRow · MessagePreview · zero new tokens</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const ROOMS = [
+  ['Studio 1 · main floor', '40', 'mats, weights'],
+  ['Studio 2 · cycling', '20', '20 bikes'],
+  ['PT floor', '6', 'racks, platforms'],
+  ['Pool · Abdoun only', '24', '4 lanes']
+];
+
+const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+// 0 not working · 1 available · 2 PT · 3 class · 4 exception
+const GRID = [
+  ['07:00', [1,2,1,2,1,0,0]],
+  ['08:00', [2,2,2,1,2,0,0]],
+  ['09:00', [2,1,2,2,2,0,0]],
+  ['10:00', [1,2,1,2,1,0,0]],
+  ['11:00', [2,2,2,2,4,0,0]],
+  ['12:00', [0,0,0,0,4,0,0]],
+  ['16:00', [2,3,2,3,4,0,0]],
+  ['17:00', [3,2,3,2,2,0,0]],
+  ['18:00', [2,2,2,2,1,0,0]],
+  ['19:00', [1,3,1,3,3,0,0]]
+];
+
+const CELL = {
+  0: ['#f4f2ee', '#a8a29a', ''],
+  1: ['#ece9e3', '#57544d', ''],
+  2: ['#57544d', '#f5f2ec', 'PT'],
+  3: ['#3f5560', '#f5f2ec', 'CLS'],
+  4: ['#f4ece5', '#8a5a1f', 'OFF']
+};
+
+const DEVICES = [
+  ['Main door reader', 'Abdoun', '96', 'ONLINE', '#2f5d3a'],
+  ['Turnstile A', 'Abdoun', '84', 'ONLINE', '#2f5d3a'],
+  ['Main door reader', 'Khalda', '61', 'ONLINE', '#2f5d3a'],
+  ['Studio door', 'Khalda', '38', 'ONLINE', '#2f5d3a'],
+  ['Main door reader', 'Sweifieh', '23', 'NOT RESPONDING', '#8a3b1f'],
+  ['Turnstile B', 'Sweifieh', '0', 'OFFLINE · SPARE', '#57544d']
+];
+
+const DENIALS = [
+  ['09:11', 'Tareq Odeh', 'MEMBERSHIP ENDED', '#57544d'],
+  ['09:08', 'Unknown card', 'READER FAULT', '#8a3b1f'],
+  ['09:06', 'Yara Mansour', 'FROZEN', '#57544d'],
+  ['09:05', 'Unknown card', 'READER FAULT', '#8a3b1f'],
+  ['08:42', 'Sami Tabaa', 'NO CREDENTIAL', '#57544d'],
+  ['07:58', 'Nour Khoury', 'MEMBERSHIP ENDED', '#57544d']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rooms: ROOMS.map(r => ({ name: r[0], cap: r[1], equip: r[2] })),
+      days: DAYS.map(label => ({ label })),
+      slots: GRID.map(g => ({
+        time: g[0],
+        cells: g[1].map(v => ({ bg: CELL[v][0], fg: CELL[v][1], label: CELL[v][2] }))
+      })),
+      devices: DEVICES.map(d => ({ name: d[0], club: d[1], today: d[2], state: d[3], color: d[4] })),
+      denials: DENIALS.map(d => ({ time: d[0], who: d[1], why: d[2], color: d[3] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

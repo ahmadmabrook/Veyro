@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1180px;padding:0 0 110px">
+
+<header style="padding:68px 54px 40px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">PHASE 7 — DESIGN SYSTEM COMPLETION AUDIT · AGAINST THE 84-SECTION MASTER PROMPT</div>
+<h1 style="font:500 39px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:22ch">Veyro Design System v1 — completion audit</h1>
+<p style="font:400 15.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:16px 0 0;text-wrap:pretty">Every requirement in the master prompt checked against what actually exists in this project. I have not scored intent or inferred coverage from adjacent work: a requirement counts as met only if the artefact exists and is specified to the level an engineer could build from.</p>
+
+<div style="margin-top:30px;padding:24px 26px;border:2px solid #8a3b1f;border-radius:6px;background:#fffefb;max-width:76ch">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">VERDICT</div>
+<div style="font:600 27px/1.2 'IBM Plex Sans';margin-top:8px;color:#8a3b1f">VEYRO DESIGN SYSTEM v1 — NOT READY</div>
+<div style="font:400 14.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:12px">This is a sequencing fact, not a quality judgement. <b>One of the twelve deliverables in §79 exists.</b> Step 1 — visual direction exploration — is complete and its recommendation holds. Steps 2 and 3 (foundations, token architecture, core components, domain components, patterns, RTL and accessibility contracts, responsive rules, white-label architecture, documentation, validation screens) have not been built yet, so there is nothing to audit them against.</div>
+<div style="font:400 14.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:12px">You asked me to resolve all P0/P1 issues before giving a verdict. I have not, because in this case "resolving the P0s" <i>is</i> building the design system — roughly 45 unstarted requirements. Producing a thin pass over all of them to reach the word APPROVED would give you a document that reads complete and a system engineering cannot build from. The gap register below is the honest version, sequenced so it can be worked.</div>
+<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:20px">
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">{{ nDone }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">MET</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a5a1f">{{ nPartial }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">PARTIAL</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a3b1f">{{ nMissing }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">NOT STARTED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ nTotal }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">REQUIREMENTS CHECKED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">1 / 12</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">§79 DELIVERABLES</div></div>
+</div>
+</div>
+</header>
+
+<section style="padding:46px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">§79 deliverables — the twelve</h2>
+<div style="margin-top:20px;border:1px solid rgba(0,0,0,.12);border-radius:6px;overflow-x:auto;background:#fffefb">
+<div style="min-width:880px;display:grid;grid-template-columns:34px minmax(0,1fr) 118px minmax(0,1.5fr);gap:14px;padding:11px 16px;background:#f4f2ee;font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div></div><div>DELIVERABLE</div><div>STATUS</div><div>WHAT EXISTS TODAY</div></div>
+<sc-for list="{{ deliverables }}" as="d" hint-placeholder-count="12">
+<div style="min-width:880px;display:grid;grid-template-columns:34px minmax(0,1fr) 118px minmax(0,1.5fr);gap:14px;padding:12px 16px;border-top:1px solid rgba(0,0,0,.08);align-items:start">
+<div style="font:500 12px/1.5 'IBM Plex Mono';color:#6b6a63">{{ d.k }}</div>
+<div style="font:500 13px/1.45 'IBM Plex Sans'">{{ d.name }}</div>
+<div><span style="{{ d.style }}">{{ d.status }}</span></div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ d.have }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:46px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Requirement-by-requirement register</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Grouped as the master prompt groups them. “Partial” means a decision or a specimen exists but not a specification an engineer could implement.</p>
+<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:20px">
+<sc-for list="{{ chips }}" as="c" hint-placeholder-count="6">
+<button type="button" style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="8">
+<div style="margin-top:26px">
+<div style="display:flex;align-items:baseline;gap:10px"><div style="font:500 12.5px/1.4 'IBM Plex Sans'">{{ g.name }}</div><div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#6b6a63">{{ g.tally }}</div></div>
+<div style="margin-top:9px;border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow-x:auto;background:#fffefb">
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="6">
+<div style="min-width:900px;display:grid;grid-template-columns:52px minmax(0,1fr) 112px minmax(0,1.6fr);gap:14px;padding:10px 16px;border-bottom:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:400 10.5px/1.6 'IBM Plex Mono';color:#57544d">{{ r.ref }}</div>
+<div style="font:450 12.5px/1.5 'IBM Plex Sans'">{{ r.name }}</div>
+<div><span style="{{ r.style }}">{{ r.status }}</span></div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d">{{ r.note }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</section>
+
+<section style="padding:46px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">P0 blockers</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Eight items. Seven are build work; the first is a decision only you can make, and it gates the rest.</p>
+<div style="margin-top:20px;display:grid;gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden">
+<sc-for list="{{ p0 }}" as="p" hint-placeholder-count="8">
+<div style="background:#fffefb;padding:15px 18px;display:grid;grid-template-columns:64px minmax(0,1fr);gap:16px;align-items:start">
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font:500 9.5px/1.4 'IBM Plex Mono';background:#8a3b1f;color:#fff;padding:3px 6px;border-radius:3px">P0</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63">{{ p.id }}</span></div>
+<div>
+<div style="font:500 14.5px/1.4 'IBM Plex Sans'">{{ p.title }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:5px">{{ p.ref }}</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px;max-width:88ch">{{ p.why }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:46px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What Step 1 did establish</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Not nothing — and each of these is load-bearing for Step 2, which is why the direction question matters more than its size suggests.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden;margin-top:20px">
+<sc-for list="{{ assets }}" as="a" hint-placeholder-count="6">
+<div style="background:#fffefb;padding:16px 18px">
+<div style="font:500 14px/1.4 'IBM Plex Sans'">{{ a.t }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:6px">{{ a.d }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:46px 54px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Sequenced build plan</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Dependency order, not preference order. Each step's output is the next step's input, which is why doing them concurrently produces rework rather than speed.</p>
+<div style="margin-top:20px;border:1px solid rgba(0,0,0,.12);border-radius:6px;overflow-x:auto;background:#fffefb">
+<sc-for list="{{ plan }}" as="p" hint-placeholder-count="7">
+<div style="min-width:800px;display:grid;grid-template-columns:78px minmax(0,1fr) minmax(0,1.4fr);gap:16px;padding:13px 16px;border-bottom:1px solid rgba(0,0,0,.08);align-items:start">
+<div style="font:500 10.5px/1.5 'IBM Plex Mono';color:#57544d">{{ p.step }}</div>
+<div><div style="font:500 13px/1.45 'IBM Plex Sans'">{{ p.name }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">{{ p.ref }}</div></div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ p.out }}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="margin-top:30px;padding:22px 24px;border:2px solid #17171a;border-radius:6px;background:#fffefb;max-width:82ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.09em">THE ONE THING I NEED FROM YOU</div>
+<div style="font:400 15px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:10px">Confirm the visual direction — my recommendation is <b>1a Ledger</b> as the base, taking radius-as-interactivity-signal and single-accent discipline from 1b, and the editorial type scale (not the serif) from 1c for Member first-run and milestone moments. Reject 1c as a base.</div>
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:11px">Say “go with the recommendation” and I will work Steps 2 through 6 in order without stopping for further approvals, re-run this audit against the finished system, and give you a verdict that means something. If you would rather adjust the direction first — a different accent, a warmer or cooler neutral base, Signal's type instead of Plex — say that now: it is one message here and a full token rebuild later.</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900}}">
+const S = {
+  MET: 'background:#2f5d3a;color:#fff',
+  PARTIAL: 'background:#8a5a1f;color:#fff',
+  'NOT STARTED': 'background:transparent;color:#8a3b1f;box-shadow:inset 0 0 0 1px #8a3b1f',
+  'DECISION OPEN': 'background:#1b4079;color:#fff',
+  ABSORBED: 'background:rgba(0,0,0,.12);color:#2c2a26'
+};
+const st = s => 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.04em;padding:3px 7px;border-radius:3px;display:inline-block;white-space:nowrap;' + (S[s] || S.ABSORBED);
+
+const DELIVERABLES = [
+  ['A', 'Visual direction — 2–3 approaches + recommendation', 'MET', 'Three structurally distinct directions with spec panels and three shared specimens each, scored per surface, with a recommendation and a documented hybrid.'],
+  ['B', 'Foundations — colour, type, grid, spacing, radius, borders, elevation, icons, motion, breakpoints, density', 'PARTIAL', 'Per-direction palettes, families, radius values, boundary model and four named density modes. No scale tables, no grid, no icon system, no motion, no breakpoints.'],
+  ['C', 'Design tokens — complete semantic structure', 'NOT STARTED', 'Nothing. Token naming, semantic layering and the platform mapping to SwiftUI / Android / CSS do not exist.'],
+  ['D', 'Core components', 'NOT STARTED', 'The specimens are illustrations of a visual language, not components with variants, sizes, states or APIs.'],
+  ['E', 'Domain components', 'NOT STARTED', 'Ten canonical patterns were named in the UX review, and the wireframes show their content — but no component is specified.'],
+  ['F', 'Patterns — nav, search, filters, forms, tables, feedback, loading, empty, error, permission, offline, destructive', 'PARTIAL', 'All twelve exist as validated screen behaviour in the wireframes. None exists as a reusable system pattern with anatomy and rules.'],
+  ['G', 'RTL system', 'PARTIAL', 'Screen-level Arabic decisions are approved (bidi isolation, numerals, week start, timeline axis, chart axis, bilingual gym vocabulary). No component-level mirroring contract or directional-icon register.'],
+  ['H', 'Accessibility system — component-level requirements', 'PARTIAL', 'Screen-level spec approved in Phase 6 (focus order, keyboard maps, narration, reduced motion, 200%). Not yet expressed as per-component contracts, which is where it has to live.'],
+  ['I', 'Responsive rules — web / tablet / mobile', 'NOT STARTED', 'Breakpoints, table-to-list strategy and per-component responsive behaviour are undefined.'],
+  ['J', 'White-label architecture', 'NOT STARTED', 'The system/brand token split and its guardrails do not exist. This is a customer-facing contract and the most expensive item to retrofit.'],
+  ['K', 'Validation screens — Command Center, Coach Today, Member Home, + Arabic', 'NOT STARTED', 'Six screens. Cannot begin before D and E, by design — §72 requires fixing the system rather than the screen.'],
+  ['L', 'Documentation', 'NOT STARTED', 'The §70 template (purpose, when to use, when not to, anatomy, variants, states, behaviour, content, a11y, RTL, responsive, mistakes) is not applied to anything.']
+];
+
+const GROUPS = [
+  ['Brand &amp; foundations · §8–§20', [
+    ['§8', 'Brand character defined', 'PARTIAL', 'Implied by each direction\u2019s philosophy; not written as an attribute spec with do/don\u2019t examples.'],
+    ['§9', 'Semantic colour architecture', 'PARTIAL', 'Brand + semantic hues proposed per direction. Missing: surface, text, border and state token families, and full ramps.'],
+    ['§10', 'Light / dark / system recommendation', 'NOT STARTED', 'No recommendation made. Needs a per-surface answer \u2014 Admin readability, Member preference, Coach gym-floor glare.'],
+    ['§11', 'Type scale + Arabic pairing rules', 'PARTIAL', 'Families chosen and specimen-tested in both scripts. No Display\u2192Caption scale, weights, line heights or numeric style rules.'],
+    ['§12', 'Spacing scale', 'NOT STARTED', 'No scale, no usage documentation.'],
+    ['§13', 'Grid &amp; layout per surface', 'NOT STARTED', 'Five surfaces, each needing its own layout model. Nothing defined.'],
+    ['§14', 'Radius system', 'PARTIAL', 'Per-element values proposed per direction; the hybrid rule (radius signals interactivity) is decided but unspecified.'],
+    ['§15', 'Borders &amp; elevation levels', 'PARTIAL', 'Boundary model chosen (hairline rules, shadow only at overlay). Elevation levels not enumerated.'],
+    ['§16', 'Iconography system', 'NOT STARTED', 'No family, stroke, sizing tokens, or RTL directional register.'],
+    ['§17', 'Motion system', 'NOT STARTED', 'Reduced-motion behaviour exists from Phase 6, but no duration/easing tokens or pattern set.'],
+    ['§18', 'Token architecture', 'NOT STARTED', 'The spine of the whole system. Nothing exists.'],
+    ['§19', 'White-label token split + guardrails', 'NOT STARTED', 'Named as a requirement in the Foundation; never designed.'],
+    ['§20', 'Density strategy', 'PARTIAL', 'Four modes named (Compact / Default / Touch / Spacious) and their scope decided. Values undefined.']
+  ]],
+  ['Core components · §21–§37', [
+    ['§21', 'Navigation components, all surfaces', 'NOT STARTED', 'Wireframes validate the structure; no component spec.'],
+    ['§22', 'Button system \u2014 7 variants \u00d7 sizes \u00d7 6 states', 'NOT STARTED', 'Specimens show two treatments in one context.'],
+    ['§23', 'Input system \u2014 18 field types', 'NOT STARTED', 'Nothing specified.'],
+    ['§24', 'Form patterns', 'NOT STARTED', 'Behaviour validated in wireframes; no pattern spec.'],
+    ['§25', 'Table &amp; data grid', 'NOT STARTED', 'The single most important Admin component. Row heights, header, sticky, responsive and RTL all undefined.'],
+    ['§26', 'Filter system', 'NOT STARTED', '\u2014'],
+    ['§27', 'Search system', 'NOT STARTED', '\u2014'],
+    ['§28', 'Command palette', 'NOT STARTED', 'Structure and keyboard behaviour decided in Phase 6; visual system absent.'],
+    ['§29', 'Cards \u2014 minimal set', 'NOT STARTED', '\u2014'],
+    ['§30', 'Status system \u2014 membership / payment / booking / access', 'NOT STARTED', 'Vocabulary fixed in the Foundation; component undefined. Carries the severity-duplication flag from Step 1.'],
+    ['§31', 'Alerts &amp; banners', 'NOT STARTED', '\u2014'],
+    ['§32', 'Toasts', 'NOT STARTED', 'Undo strip decided in Phase 6; not specified as a component.'],
+    ['§33', 'Modal system', 'NOT STARTED', '\u2014'],
+    ['§34', 'Drawers / side sheets', 'NOT STARTED', 'Inspector pattern validated in Member 360; not generalised.'],
+    ['§35', 'Mobile bottom sheets', 'NOT STARTED', 'Two-level cap decided; component undefined.'],
+    ['§36', 'Tabs &amp; segmented controls', 'NOT STARTED', '\u2014'],
+    ['§37', 'Date &amp; time system', 'NOT STARTED', 'Arabic calendar and range drawn as wireframes; no component, and this is the hardest RTL surface in the product.']
+  ]],
+  ['Domain components · §38–§52', [
+    ['§38', 'Scheduling components', 'NOT STARTED', '\u2014'],
+    ['§39', 'Member components \u2014 identity row, 360 header, timeline item', 'NOT STARTED', 'Content validated across three wireframe treatments; no component.'],
+    ['§40', 'CRM components', 'NOT STARTED', '\u2014'],
+    ['§41', 'Financial components', 'NOT STARTED', 'Money vocabulary and unambiguous-state rule fixed; the money component itself is undefined \u2014 and it appears on every surface.'],
+    ['§42', 'POS components', 'NOT STARTED', '\u2014'],
+    ['§43', 'Coach components', 'NOT STARTED', '\u2014'],
+    ['§44', 'Workout components', 'NOT STARTED', 'Set logger is the most interaction-critical mobile component in the product.'],
+    ['§45', 'Nutrition components incl. clinical-review states', 'NOT STARTED', 'The four policy states are architected in 3g; components undefined.'],
+    ['§46', 'Booking components', 'NOT STARTED', '\u2014'],
+    ['§47', 'Access components', 'NOT STARTED', '\u2014'],
+    ['§48', 'AI design language', 'NOT STARTED', 'Treatment rule decided in the UX review (dashed boundary, provenance, confidence, accept/edit). Not built.'],
+    ['§49', 'Exception / attention system', 'NOT STARTED', 'Central to Veyro. Specimen exists in all three directions; component does not.'],
+    ['§50', 'Notification components', 'NOT STARTED', 'Also open as P2-6 from Phase 6.'],
+    ['§51', 'Task components', 'NOT STARTED', '\u2014'],
+    ['§52', 'Analytics components', 'NOT STARTED', 'Chart admission rule exists; components do not.']
+  ]],
+  ['Patterns &amp; states · §53–§58, §69', [
+    ['§53', 'Empty states \u2014 4 kinds', 'PARTIAL', 'Drawn as screens with correct copy discipline; not generalised into a pattern.'],
+    ['§54', 'Loading states', 'PARTIAL', 'Skeleton and streaming behaviour drawn; no pattern spec.'],
+    ['§55', 'Error states', 'PARTIAL', 'The four-question rule is proven across ~40 drawn states. Needs codifying as components.'],
+    ['§56', 'Offline states \u2014 live / cached / queued / syncing / failed', 'PARTIAL', 'Decided and drawn; one connectivity component named but not specified.'],
+    ['§57', 'Permission states', 'PARTIAL', 'Hidden-beats-disabled held throughout the wireframes; not a pattern.'],
+    ['§58', 'Destructive action hierarchy', 'PARTIAL', 'The undo/confirm/step-up taxonomy is decided and is strong. Not yet component contracts.'],
+    ['§69', 'Documented state matrix per component', 'NOT STARTED', 'Cannot exist before components do.']
+  ]],
+  ['Cross-cutting · §59–§65', [
+    ['§59', 'Accessibility at component level', 'PARTIAL', 'Screen-level spec approved; component contracts absent. VALIDATE-1 still open from Phase 6.'],
+    ['§60', 'RTL system \u2014 mirroring, icons, mixed content', 'PARTIAL', 'Strong screen-level decisions. Missing the per-component mirror/no-mirror register and directional-icon list.'],
+    ['§61', 'Content design / microcopy tone', 'PARTIAL', 'Demonstrated consistently across every wireframe; never written down as a tone spec engineers and writers can apply.'],
+    ['§62', 'Responsive behaviour per component', 'NOT STARTED', '\u2014'],
+    ['§63', 'Platform-specific behaviour', 'NOT STARTED', '\u2014'],
+    ['§64', 'iOS quality \u2014 safe areas, Dynamic Type, haptics, Face ID', 'NOT STARTED', '\u2014'],
+    ['§65', 'Android quality', 'NOT STARTED', '\u2014']
+  ]],
+  ['System discipline · §66–§68, §70', [
+    ['§66', 'Implementation readiness \u2014 component APIs', 'NOT STARTED', '\u2014'],
+    ['§67', 'Component naming \u2014 primitive / composite / domain', 'PARTIAL', 'Ten canonical patterns named in the UX review; no taxonomy.'],
+    ['§68', 'Library organisation', 'NOT STARTED', '\u2014'],
+    ['§70', 'Per-component documentation template', 'NOT STARTED', '\u2014']
+  ]],
+  ['Validation &amp; context · §71–§78', [
+    ['§71', 'Three validation screens in high fidelity', 'NOT STARTED', 'Correctly blocked behind components.'],
+    ['§72', 'Validation criteria applied', 'NOT STARTED', 'Nothing to apply them to.'],
+    ['§73', 'Arabic RTL versions of all three', 'NOT STARTED', '\u2014'],
+    ['§74', 'Pilot context used throughout', 'MET', 'Nadi Group, three clubs, JOD, Flex/Club/Club+, real member names and amounts \u2014 used in every artefact including the Step 1 specimens.'],
+    ['§75', 'Jordan market readiness surfaces', 'PARTIAL', 'JOD, Arabic, tax and WhatsApp handled. JoFotara and CliQ integration states are named in the Blueprint but appear in no artefact \u2014 add to the integration-state component.'],
+    ['§76', 'Enterprise scale, 1 \u2192 50+ locations', 'MET', 'Scope picker and queue aggregation model designed in 3i; the recommended direction improves rather than degrades with density.'],
+    ['§77', 'Over-design guardrails observed', 'MET', 'No gradients, glassmorphism, neon, decorative charts or oversized radii in any direction. Restraint is the basis of the recommendation.'],
+    ['§78', 'Decision priority order respected', 'MET', 'Step 1 chose density and legibility over novelty, and the contrast correction was taken as a defect rather than defended.']
+  ]]
+];
+
+const P0 = [
+  ['DS-P0-1', 'Visual direction is unconfirmed', '§7 · blocks §9\u2013§20 and everything after', 'The recommendation stands and has not been accepted or rejected. Every token, every component and every validation screen is derived from it. Building tokens against an unconfirmed direction is the one genuinely wasteful thing available to me right now, which is why this is the first blocker and the only one I cannot clear myself.'],
+  ['DS-P0-2', 'No token architecture', '§18 · §79-C', 'Nothing downstream can be built consistently without it, and it is what makes the system implementable across SwiftUI, Android and CSS. It must be authored as semantic layers \u2014 primitive \u2192 semantic \u2192 component \u2014 not as a colour list, or the white-label split in DS-P0-6 becomes impossible.'],
+  ['DS-P0-3', 'No core component library', '§21\u2013§37 · §69 · §79-D', 'Seventeen component families, each needing variants, sizes and a documented state matrix. The data grid (§25) and the date/time system (§37) are the two hardest and should be built first, not last \u2014 they carry the most density, RTL and accessibility risk.'],
+  ['DS-P0-4', 'No domain components', '§38\u2013§52 · §79-E', 'Fifteen families including the attention row, money value, member identity, set logger and the AI treatment. These are what make the system Veyro rather than a generic kit, and the wireframes have already proven what they must contain.'],
+  ['DS-P0-5', 'No component-level accessibility or RTL contracts', '§59\u2013§60 · §79-G, H', 'Both currently live as screen-level specs. If they stay there, every new screen re-implements them and VALIDATE-1 stays open forever. They belong in the component: accessible name in both languages, focus behaviour, mirror/no-mirror, live-region politeness, minimum target, contrast-verified token pairs.'],
+  ['DS-P0-6', 'No white-label architecture', '§19 · §79-J', 'A published contract with customers and the hardest thing on this list to change after launch. Needs the system/brand token boundary plus enforced guardrails \u2014 a tenant brand colour must never be able to collide with semantic status, fail contrast, or restyle a financial or safety state.'],
+  ['DS-P0-7', 'Light / dark not decided', '§10', 'Per-surface, with reasons: Admin sits in front of someone for eight hours, Coach reads in variable gym lighting, Member expects dark. Deciding late doubles the token work rather than adding to it.'],
+  ['DS-P0-8', 'No validation screens', '§71\u2013§73 · §79-K', 'Six screens \u2014 Command Center, Coach Today, Member Home, each in English and Arabic. §72 is explicit that failures are fixed in the system, not on the screen, so these are the audit instrument for everything above.']
+];
+
+const ASSETS = [
+  ['A direction chosen on the right axis', 'Density behaviour, not taste. Ledger was recommended because its structure improves as rows multiply, which is the actual condition of Admin, Front Desk and Console \u2014 80% of daily Veyro use.'],
+  ['A type strategy that survives Arabic', 'One superfamily covering Latin, Arabic and mono as a designed system. This single decision de-risks §11, §60 and half of §73, and it is where competitors in this category are weakest.'],
+  ['Four density modes with a scope rule', 'Compact, Default, Touch, Spacious \u2014 changing row height, spacing step and type step only. This is what stops Front Desk and Member becoming separate builds.'],
+  ['An accent discipline', 'One accent, spent only on action and selection; semantic colour confined to status components; adjacency prohibited by rule. Prevents the colourful-status failure §9 warns about.'],
+  ['A contrast rule learned the hard way', 'The first specimen pass failed AA on secondary text in all three directions. The correction produced a standing rule: the light end of the ramp is for large text and decoration only, and the token set ships with a contrast matrix rather than an assurance.'],
+  ['A severity flag worth resolving in the system', 'Edge-mark and badge currently express one idea twice. Named in Step 1, to be resolved in the status component \u2014 not on any screen.']
+];
+
+const PLAN = [
+  ['STEP 2', 'Foundations + token architecture', '§9\u2013§20, §18, §19 \u00b7 clears DS-P0-2, 6, 7', 'Semantic colour in light and dark, type scale with Arabic pairing rules, spacing, radius, elevation, icons, motion, breakpoints, the four density modes, and the system/brand token split with enforced guardrails. Ships with the contrast matrix.'],
+  ['STEP 3', 'Core components + state matrices', '§21\u2013§37, §69 \u00b7 clears DS-P0-3', 'Seventeen families with variants, sizes, states and conceptual APIs. Data grid and date/time first \u2014 highest density, RTL and accessibility risk.'],
+  ['STEP 4', 'Domain components', '§38\u2013§52 \u00b7 clears DS-P0-4', 'Fifteen families, content already proven by the approved wireframes. Attention row, money value, member identity, timeline item, set logger, meal card, AI treatment.'],
+  ['STEP 5', 'Patterns, a11y + RTL contracts, responsive, platform', '§53\u2013§65 \u00b7 clears DS-P0-5', 'Twelve patterns codified, accessibility and RTL moved into component contracts, responsive behaviour per component, and the iOS/Android platform divergences.'],
+  ['STEP 6', 'Validation screens \u00d7 6', '§71\u2013§73 \u00b7 clears DS-P0-8', 'Command Center, Coach Today, Member Home in English and Arabic. Any failure is fixed in the system per §72, then the screens are redrawn.'],
+  ['STEP 7', 'Documentation + quality audit + scorecard', '§70, §80\u2013§82', 'Per-component documentation, the fourteen-lens quality audit, the fifteen-dimension scorecard, and a re-run of this register.'],
+  ['THEN', 'Systematic high-fidelity production', '§83', 'Not before the design system reads APPROVED. Explicitly out of scope until then.']
+];
+
+class Component extends DCLogic {
+  state = { filter: 'All' };
+  renderVals() {
+    const f = this.state.filter, set = v => this.setState({ filter: v });
+    const chipStyle = on => 'font:450 11.5px/1.4 "IBM Plex Sans";padding:6px 11px;border-radius:3px;cursor:pointer;border:1px solid ' + (on ? '#17171a' : 'rgba(0,0,0,.18)') + ';background:' + (on ? '#17171a' : '#fffefb') + ';color:' + (on ? '#fffefb' : '#4a4842');
+    let met = 0, part = 0, miss = 0, total = 0;
+    GROUPS.forEach(g => g[1].forEach(r => {
+      total++;
+      if (r[2] === 'MET') met++; else if (r[2] === 'PARTIAL') part++; else miss++;
+    }));
+    return {
+      nDone: String(met), nPartial: String(part), nMissing: String(miss), nTotal: String(total),
+      deliverables: DELIVERABLES.map(d => ({ k: d[0], name: d[1], status: d[2], style: st(d[2]), have: d[3] })),
+      chips: ['All', 'MET', 'PARTIAL', 'NOT STARTED'].map(c => ({
+        label: c === 'All' ? 'All ' + total : c, style: chipStyle(f === c), onClick: () => set(c)
+      })),
+      groups: GROUPS.map(g => {
+        const rows = g[1].filter(r => f === 'All' || r[2] === f);
+        const m = g[1].filter(r => r[2] === 'MET').length, p = g[1].filter(r => r[2] === 'PARTIAL').length;
+        return {
+          name: g[0], tally: m + ' met · ' + p + ' partial · ' + (g[1].length - m - p) + ' not started',
+          rows: rows.map(r => ({ ref: r[0], name: r[1], status: r[2], style: st(r[2]), note: r[3] }))
+        };
+      }).filter(g => g.rows.length),
+      p0: P0.map(p => ({ id: p[0], title: p[1], ref: p[2], why: p[3] })),
+      assets: ASSETS.map(a => ({ t: a[0], d: a[1] })),
+      plan: PLAN.map(p => ({ step: p[0], name: p[1], ref: p[2], out: p[3] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

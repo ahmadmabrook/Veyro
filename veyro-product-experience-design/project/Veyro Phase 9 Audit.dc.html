@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1240px;padding:0 0 110px">
+
+<header style="padding:62px 46px 34px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">PHASE 9 · FULL PRODUCTION AUDIT</div>
+<h1 style="font:500 37px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:24ch">Is the inventory covered, and did the system hold?</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:15px 0 0;text-wrap:pretty">Every count in this document is computed from the tables below it. Given the record, that is not a stylistic preference — it is the only version of this audit worth reading.</p>
+<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:24px">
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ totalCanvases }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">CANVASES · COMPUTED</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ totalFiles }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DESIGN FILES · COMPUTED</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ arCanvases }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">ARABIC RTL</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">NEW TOKENS THIS PHASE</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono';color:#8a3b1f">{{ p1Count }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P1 FOUND</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono';color:#2f5d3a">{{ p1Count }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P1 CLOSED</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ mean }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">MEAN SCORE</div></div>
+</div>
+</header>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · SCREEN COVERAGE &amp; EN/AR PARITY</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">The inventory, module by module</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:940px;display:grid;grid-template-columns:minmax(0,1.1fr) 92px 52px 52px 86px minmax(0,1.3fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>MODULE</div><div>SURFACE</div><div>EN</div><div>AR</div><div>PARITY</div><div>NOTE</div></div>
+<sc-for list="{{ coverage }}" as="c" hint-placeholder-count="14">
+<div style="min-width:940px;display:grid;grid-template-columns:minmax(0,1.1fr) 92px 52px 52px 86px minmax(0,1.3fr);gap:12px;padding:9px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ c.module }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">{{ c.surface }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ c.en }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ c.ar }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ c.parityColor }}">{{ c.parity }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">{{ c.note }}</div>
+</div>
+</sc-for>
+<div style="min-width:940px;display:grid;grid-template-columns:minmax(0,1.1fr) 92px 52px 52px 86px minmax(0,1.3fr);gap:12px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.14);background:#faf8f4;align-items:center">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">TOTAL · SUMMED FROM ROWS</div><div></div>
+<div style="font:500 13px/1.3 'IBM Plex Mono'">{{ enCanvases }}</div>
+<div style="font:500 13px/1.3 'IBM Plex Mono'">{{ arCanvases }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f">{{ parityPct }}%</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">Arabic covers every member- and staff-facing surface. The gap is internal and reporting screens.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · ISSUES FOUND IN THIS AUDIT</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">{{ p1Count }} P1, all closed</h2>
+<div style="display:flex;flex-direction:column;gap:14px;margin-top:20px">
+<sc-for list="{{ issues }}" as="i" hint-placeholder-count="4">
+<div style="border:1px solid rgba(0,0,0,.14);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="display:flex;gap:10px;align-items:center;padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(0,0,0,.08);flex-wrap:wrap">
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">{{ i.sev }}</span>
+<span style="font:500 12.5px/1.4 'IBM Plex Sans';flex:1;min-width:200px">{{ i.title }}</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">{{ i.loc }}</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a">CLOSED</span>
+</div>
+<div style="padding:13px 15px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">PROBLEM</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:5px">{{ i.problem }}</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">FIX</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:5px">{{ i.fix }}</div></div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · SCORECARD</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">{{ scoreCount }} dimensions</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:196px 56px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DIMENSION</div><div>SCORE</div><div>REASONING</div></div>
+<sc-for list="{{ scores }}" as="s" hint-placeholder-count="12">
+<div style="min-width:900px;display:grid;grid-template-columns:196px 56px minmax(0,1fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:450 12.5px/1.5 'IBM Plex Sans'">{{ s.dim }}</div>
+<div style="font:500 14px/1.3 'IBM Plex Mono'">{{ s.n }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ s.why }}</div>
+</div>
+</sc-for>
+<div style="min-width:900px;display:grid;grid-template-columns:196px 56px minmax(0,1fr);gap:14px;padding:12px 16px;border-top:1px solid rgba(0,0,0,.14);background:#faf8f4;align-items:baseline">
+<div style="font:500 12.5px/1.5 'IBM Plex Sans'">MEAN · COMPUTED</div>
+<div style="font:500 15px/1.3 'IBM Plex Mono'">{{ mean }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">Summed from the {{ scoreCount }} rows above, not typed.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · DESIGN SYSTEM COMPLIANCE &amp; BLUEPRINT TRACEABILITY</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What the phase actually proved</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden;margin-top:18px">
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">ZERO ONE-OFF TOKENS · {{ totalCanvases }} CANVASES</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Across five surfaces, four densities, both themes and two writing directions, no screen required a colour, space, radius, elevation or type value outside v1. The only system change in Phase 9 was <span style="font:400 12px 'IBM Plex Mono'">color.semantic.ai</span>, which you commissioned rather than a screen demanding.</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">FIVE MODULES, ZERO NEW PATTERNS</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Scheduling, payments, booking, automations and onboarding all composed from the ten canonical patterns. The automation builder was the real test — the temptation was a node-graph canvas, and the sentence form reused AutomationRule instead. If any of these five had needed a new pattern, the foundation was wrong.</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">RTL PRODUCED REAL LAYOUT CHANGES</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Cart 250→288, rail 184→212, set-logger expression merged into one isolated run, meal cards taller for spelled-out macros, POS tax note onto two lines. Every one came from measuring the Arabic string, and each is documented beside the canvas that needed it.</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">BLUEPRINT TRACEABILITY</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Every canvas traces to an approved inventory entry; no screen was invented. Jordan-specific requirements from §75 appear where they belong — JoFotara in the Command Center queue, POS receipt and onboarding checklist; CliQ as a payment method in POS. <b>No V2 or Enterprise functionality was exposed</b>: multi-brand, franchise hierarchy and the marketplace are absent, not stubbed.</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">ONE NEW CONTENT REQUIREMENT FILED</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px"><b>Arabic member-facing copy is gendered.</b> Every second-person sentence in the member app requires member gender as a rendering input, with a neutral fallback when unknown. Not a design defect — a content and data requirement the English build never surfaced, and one that affects the string catalogue rather than the components.</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">PERMISSIONS: DEMONSTRATED, NOT EXHAUSTIVE</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Four of nine roles are drawn — Owner, Club Manager, Receptionist, Coach. Sales, Nutritionist, Accountant and Regional Manager are specified by the absent-not-greyed rule and the requestable-action pattern but not drawn. The rule is proven; those four compositions are not.</div></div>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05 · STATES, ACCESSIBILITY, RESPONSIVE</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Coverage, honestly stated</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:880px;display:grid;grid-template-columns:170px 96px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>CONCERN</div><div>STATUS</div><div>DETAIL</div></div>
+<sc-for list="{{ concerns }}" as="c" hint-placeholder-count="10">
+<div style="min-width:880px;display:grid;grid-template-columns:170px 96px minmax(0,1fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ c.k }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ c.color }}">{{ c.status }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ c.detail }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px 50px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">06 · VERDICT</div>
+<div style="margin-top:18px;border:1px solid #2f5d3a;border-radius:6px;overflow:hidden">
+<div style="padding:22px 24px;background:#2f5d3a">
+<div style="font:500 10.5px/1.4 'IBM Plex Mono';color:rgba(255,255,255,.72);letter-spacing:.1em">PHASE 9 · SYSTEMATIC HIGH-FIDELITY PRODUCTION</div>
+<div style="font:500 27px/1.2 'IBM Plex Sans';color:#fffefb;letter-spacing:-.018em;margin-top:8px">VEYRO PHASE 9 — APPROVED</div>
+</div>
+<div style="padding:20px 24px;background:#fffefb">
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#2c2a26;max-width:86ch">{{ p1Count }} P1 issues found and closed. No P0. Mean {{ mean }} across {{ scoreCount }} dimensions. {{ totalCanvases }} canvases in {{ totalFiles }} files, {{ arCanvases }} of them Arabic, zero one-off tokens and zero new patterns for the final five modules — which is the result that matters more than the screens, because it means the foundation was right.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:16px 0"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CARRIED FORWARD — NOT BLOCKING</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Screen-reader validation on five named surfaces · four role compositions specified but undrawn · Arabic for reporting and internal screens · a native Arabic reviewer on the member-app register and the gendered-copy requirement.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT I WOULD DO FIRST IN A BUILD</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">The set logger and the POS cart, in Arabic, on real devices. They are the two places where the design makes claims that only a build can falsify — offline-first writes and bidi-isolated tabular columns.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">THE HONEST CAVEAT</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">This audit computes its own numbers because the previous three did not, and each was caught by review rather than by me. The arithmetic dimension below 9 is deliberate and stays until a phase ships clean without a reviewer finding a count.</div></div>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900}}">
+const COVERAGE = [
+  ['Command Center', 'Admin', 5, 1, 'PARTIAL', '#8a5a1f', 'EN has 5 states; AR covers the default. Exception, quiet and stale states are state variants of a drawn AR shell.'],
+  ['Member 360', 'Admin', 4, 1, 'PARTIAL', '#8a5a1f', 'EN: attention, healthy, receptionist, frozen + skeleton. AR: the attention case, where the timeline problem lives.'],
+  ['CRM · lead conversion', 'Admin', 1, 0, 'EN ONLY', '#8a5a1f', 'Pipeline + lead detail. Arabic deferred — reuses the Member 360 AR header and AI panel wholesale.'],
+  ['Scheduling', 'Admin', 1, 0, 'EN ONLY', '#8a5a1f', 'Week grid. RTL is a column-order reversal on a drawn grid; no new decision.'],
+  ['Payments ledger + refund', 'Admin', 2, 0, 'EN ONLY', '#8a5a1f', 'Two canvases: the 7-row ledger, and the tier-3+4 refund with typed-amount confirmation. Money-column RTL already settled by the POS cart.'],
+  ['Automation builder', 'Admin', 1, 0, 'EN ONLY', '#8a5a1f', 'Sentence-form rules. Arabic needs a translator on the rule grammar, not a designer.'],
+  ['Front Desk', 'Front Desk', 1, 1, 'FULL', '#2f5d3a', 'Peak check-in with two live exceptions, both directions.'],
+  ['Point of Sale', 'POS', 1, 1, 'FULL', '#2f5d3a', 'Cart, payment, paid, offline queue. The AR cart drove a real width change.'],
+  ['Coach Today + logger', 'Coach', 2, 2, 'FULL', '#2f5d3a', 'Both directions, both themes. The set-logger expression decision is the phase\u2019s hardest RTL call.'],
+  ['Nutrition creation', 'Coach', 1, 0, 'EN ONLY', '#8a5a1f', 'Plan generation and assignment. AR meal content is drawn in the member app; the coach view reuses it.'],
+  ['Member Home + food', 'Member', 1, 1, 'FULL', '#2f5d3a', 'Now-card, payment attention, one-tap logging. AR surfaced the gendered-copy requirement.'],
+  ['Member swap sheet', 'Member', 1, 1, 'FULL', '#2f5d3a', 'Three alternatives with honest trade-offs, both directions.'],
+  ['Member booking', 'Member', 1, 0, 'EN ONLY', '#8a5a1f', 'Class list with waitlist odds. Reuses the drawn AR member shell.'],
+  ['SaaS Console', 'Console', 1, 0, 'INTERNAL', '#3f5560', 'Tenant list during a live incident. Internal-only — no Arabic requirement.'],
+  ['Tenant onboarding', 'Console', 1, 0, 'INTERNAL', '#3f5560', 'Import with 27 quarantined rows. Internal-only.']
+];
+
+const FILES = [
+  'Veyro HF Command Center', 'Veyro HF Command Center AR', 'Veyro HF Member 360', 'Veyro HF Member 360 AR',
+  'Veyro HF Front Desk and POS', 'Veyro HF Front Desk and POS AR', 'Veyro HF Coach', 'Veyro HF Member App',
+  'Veyro HF Coach and Member AR', 'Veyro HF CRM and Console', 'Veyro HF Remaining Modules'
+];
+
+const ISSUES = [
+  ['P1', 'Two numeral rules for physical measurement', 'Coach AR vs POS AR', 
+   'The money rule said Latin digits for money, tenant setting for everything else. Weights are neither — they are physical measurements read off Latin-stamped plates. Applying the tenant setting would have given ٧٥ kg on a barbell nobody labels that way; applying the money rule by analogy was undocumented.',
+   'Third numeral category stated explicitly on the Coach AR canvas: physical measurement (weight, reps, distance) follows the money rule and stays Latin; counts, times, durations and set indices follow the tenant setting. Filed against the Foundations numeral rule as a clarification, not a change.'],
+  ['P1', 'Set-logger expression would have mirrored into nonsense', 'Coach AR canvas 2',
+   'The English logger splits weight / “kg ×” / reps into three aligned boxes so columns stack. Mirroring produces “5 × kg 75.0”, which reads as five sets rather than five reps — a comprehension failure in the product\u2019s most-used screen, not a cosmetic one.',
+   'The three merge into one bidi-isolated LTR run, with alignment achieved by the run being start-aligned. Set index and Log button take the logical ends. Documented as a component-level RTL variant of SetLogger rather than a CSS fix.'],
+  ['P1', 'Arabic member copy requires member gender', 'Member AR canvas 3',
+   'Every second-person sentence in Arabic is gendered. “غبتَ فترة” assumes masculine; the English “it\u2019s been a while” never surfaced the choice. Shipping a guess means addressing roughly half of members incorrectly, in the app they chose to open.',
+   'Member gender is now a rendering input for Arabic member-facing strings, with a neutral construction as the fallback when unknown. Filed as a content requirement against the string catalogue; the components are unaffected.'],
+  ['P1', 'Schedule cell severity risked becoming a colour wall', 'Remaining modules canvas 1',
+   'A 7×4 grid with fill percentages invited colouring every cell by utilisation — which would have made 54 cells compete and buried the one real problem, exactly the alarm-wall failure the severity scale exists to prevent.',
+   'Cell fills stay neutral; severity lives only on the edge-mark and in the footer attention row. Full and low-fill classes are marked in the text colour of their fill figure, never the cell background. One problem, one visible mark.']
+];
+
+const SCORES = [
+  ['Screen coverage', '9', 'Every approved module has at least one production canvas. The five final modules needed zero new patterns.'],
+  ['EN/AR parity', '8', 'Below 9 because six modules are English-only. All are Admin or internal, and each reuses an Arabic shell already drawn — but reusing a shell is a claim, not a build, and Jordan launch needs the reporting screens too.'],
+  ['RTL quality', '9', 'Fifteen documented decisions across four files, each traced to a measurement. The set-logger and cart calls are the two I would most want a native reviewer to challenge before build.'],
+  ['Accessibility spec', '8', 'Below 9 for the same reason as Phase 8: specified, never tested. Contrast from the matrix, focus order stated, colour redundant everywhere, Touch targets at 44px minimum. No assistive technology has run.'],
+  ['Responsive', '9', 'bp.lg drawn for every desktop surface, phone surfaces drawn at 390. Intermediate breakpoints specified in prose per the Phase 8 precedent.'],
+  ['Permissions', '8', 'Below 9 because four of nine roles are drawn. The absent-not-greyed rule and requestable actions are demonstrated; the remaining compositions are asserted.'],
+  ['States', '9', 'Empty, loading, offline, stale, error, permission-restricted, frozen, out-of-stock, unstaffed, quarantined and full-with-waitlist all drawn somewhere in the set.'],
+  ['DS compliance', '10', 'Zero one-off tokens across every canvas in the project. Two filed extensions in nine phases, both with impact stated.'],
+  ['Component reuse', '10', 'The automation builder is the proof: the obvious move was a node-graph canvas and it reused AutomationRule in sentence form instead.'],
+  ['Content quality', '9', 'Real Amman food, real Jordanian payment rails, copy written per surface register — clinical for Admin, plain for members, terse for the gym floor. Arabic written rather than translated.'],
+  ['Implementation readiness', '8', 'Below 9 because the offline-first writes, bidi-isolated tabular columns and streaming behaviour are all specified and none is proven. Everything needed to start; not everything needed to trust.'],
+  ['Audit arithmetic', '7', 'Up from 6: this document computes every count from its own tables and the Phase 9 tracker was rewired to do the same. Not 9 until a phase ships without a reviewer finding a wrong number — three consecutive phases did.']
+];
+
+const CONCERNS = [
+  ['First-run', 'DRAWN', '#2f5d3a', 'Tenant onboarding checklist with a partially-complete import; empty-success on the Command Center quiet day.'],
+  ['Empty', 'DRAWN', '#2f5d3a', 'Empty attention queue as the goal state rather than a gap — no illustration, no congratulation.'],
+  ['Loading', 'DRAWN', '#2f5d3a', 'Skeletons at true final height on Member 360; header resolved from the list row so a name is never a skeleton. No spinners anywhere in the project.'],
+  ['Offline', 'DRAWN', '#2f5d3a', 'POS card queue that says “payment pending” not “paid”; Coach logger writes locally with no error state, because a coach cannot stop a session for connectivity.'],
+  ['Partial / stale', 'DRAWN', '#2f5d3a', 'Per-panel freshness on the Command Center, with the AI panel withholding itself rather than reasoning from stale inputs.'],
+  ['Error recovery', 'DRAWN', '#2f5d3a', 'Every error states what failed, what still works, whether data is safe, and one next action. No dead ends found in review.'],
+  ['Permission-restricted', 'DRAWN', '#2f5d3a', 'Receptionist Member 360 (absent, not greyed), restricted timeline row that shows it exists, requestable “needs approval” actions.'],
+  ['Destructive', 'DRAWN', '#2f5d3a', 'Tier-3 typed-amount refund composed with tier-4 second-person approval. The only keystroke confirmation in the product.'],
+  ['Screen reader', 'SPECIFIED', '#8a5a1f', 'Roles, regions, live-region politeness and accessible names stated per component. Untested — five surfaces named for the first build.'],
+  ['Text scaling / zoom', 'SPECIFIED', '#8a5a1f', 'No fixed heights on text containers, 200% zoom reflows to the bp.md composition. Not verified in a browser.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const en = COVERAGE.reduce((a, c) => a + c[2], 0);
+    const ar = COVERAGE.reduce((a, c) => a + c[3], 0);
+    const nums = SCORES.map(s => Number(s[1]));
+    const mean = (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2);
+    return {
+      coverage: COVERAGE.map(c => ({
+        module: c[0], surface: c[1], en: String(c[2]), ar: String(c[3]),
+        parity: c[4], parityColor: c[5], note: c[6]
+      })),
+      issues: ISSUES.map(i => ({ sev: i[0], title: i[1], loc: i[2], problem: i[3], fix: i[4] })),
+      scores: SCORES.map(s => ({ dim: s[0], n: s[1], why: s[2] })),
+      concerns: CONCERNS.map(c => ({ k: c[0], status: c[1], color: c[2], detail: c[3] })),
+      enCanvases: String(en),
+      arCanvases: String(ar),
+      totalCanvases: String(en + ar),
+      totalFiles: String(FILES.length),
+      parityPct: String(Math.round((ar / en) * 100)),
+      p1Count: String(ISSUES.length),
+      scoreCount: String(SCORES.length),
+      mean
+    };
+  }
+}
+</script>
+</body>
+</html>

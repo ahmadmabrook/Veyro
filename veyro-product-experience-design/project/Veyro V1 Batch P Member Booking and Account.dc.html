@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH P · 14 SCREENS DRAWN · MBR-17 → MBR-38 · MEMBER COMPLETE</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Booking, money, and the account</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Fourteen screens closing Veyro Member at 35 of 35. The consent screen and the freeze request are the two that decide whether a member trusts this app with their body and their bank card.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">MBR-17 · 18 · 19 · 20 · 21 · BOOKING</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Getting a place, and giving one up</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-17 · BOOKED</div>
+<div style="padding:18px 19px">
+<div style="font:400 13px/1.5 'IBM Plex Sans';color:#57544d">You're in</div>
+<div style="font:500 26px/1.15 'IBM Plex Sans';letter-spacing:-.018em;margin-top:3px">Spin · Thursday<br>19:00</div>
+<div style="font:400 14.5px/1.62 'IBM Plex Sans';color:#3d3b36;margin-top:10px">With Dana in Studio 2 at Khalda. Bring water and a towel — bikes get warm.</div>
+<div style="margin-top:16px;padding:14px 15px;background:#faf8f4;border-radius:6px">
+<div style="font:400 13.5px/1.7 'IBM Plex Sans';color:#3d3b36"><b>Free to cancel until 17:00 on Thursday.</b> After that it uses up your place.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">
+<span style="font:500 15px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:17px;border-radius:6px;text-align:center">Add to my calendar</span>
+<span style="font:450 14px/1 'IBM Plex Sans';color:#57544d;padding:14px;text-align:center">Cancel this booking</span>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:14px"><b>A time, not a duration.</b> "Until 17:00 Thursday" is checkable against a clock; "2 hours before" requires arithmetic a member will get wrong.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-18 · MY BOOKINGS</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 22px/1.2 'IBM Plex Sans';letter-spacing:-.016em">Your bookings</div>
+<div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:10px 12px;border-radius:6px">Coming up</span><span style="font:400 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:9px 11px;border-radius:6px">Past</span></div>
+<div style="margin-top:14px">
+<sc-for list="{{ bookings }}" as="b" hint-placeholder-count="4">
+<div style="padding:14px 0;border-bottom:1px solid rgba(23,23,26,.07)">
+<div style="display:flex;gap:11px;align-items:baseline"><span style="font:500 12.5px/1.3 'IBM Plex Mono';color:#57544d;width:56px;flex-shrink:0">{{ b.when }}</span><div style="flex:1;min-width:0"><div style="font:450 15px/1.35 'IBM Plex Sans'">{{ b.name }}</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:{{ b.color }};margin-top:2px">{{ b.meta }}</div></div></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:14px;padding:13px 14px;background:#faf8f4;border-radius:6px;font:400 12.5px/1.7 'IBM Plex Sans';color:#3d3b36">Your PT session shows the credit it used. Waitlisted classes say where you are in the queue, not just that you're waiting.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-19 · WAITLIST</div>
+<div style="padding:18px 19px">
+<div style="font:500 24px/1.18 'IBM Plex Sans';letter-spacing:-.017em">Second in line</div>
+<div style="font:400 14.5px/1.62 'IBM Plex Sans';color:#3d3b36;margin-top:9px">For Tuesday's 07:00 spin. <b>Two people usually drop out</b> of this class, so you'll probably get in.</div>
+<div style="margin-top:16px;padding:14px 15px;border:1px solid rgba(23,23,26,.16);border-radius:6px">
+<div style="display:flex;gap:11px;align-items:flex-start"><div style="flex:1"><div style="font:450 14.5px/1.4 'IBM Plex Sans'">Book me in automatically</div><div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:3px">We'll take your place and tell you. You can still cancel free until 05:00.</div></div><span style="width:44px;height:26px;border-radius:13px;background:#1b4079;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:#fffefb"></span></span></div>
+</div>
+<div style="margin-top:14px;padding:13px 14px;background:#faf8f4;border-radius:6px;font:400 13px/1.7 'IBM Plex Sans';color:#3d3b36">Turn this off and we'll message you instead — you'll have <b>20 minutes</b> to take the place before it moves on.</div>
+<span style="display:block;font:450 14px/1 'IBM Plex Sans';color:#57544d;padding:15px;margin-top:14px;text-align:center">Leave the waitlist</span>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px"><b>Auto-book is opt-in and shown here, not buried.</b> Being charged for a class you didn't know you got is the most common booking complaint there is.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-20 · CANCEL · TOO LATE</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 20px/1.25 'IBM Plex Sans';letter-spacing:-.014em">Cancelling now uses your place</div>
+<div style="font:400 13.5px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:8px">It's 17:40 and free cancellation ended at 17:00. Someone on the waitlist can still take it, but the class counts as used for you.</div>
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(138,59,31,.4);color:#8a3b1f;padding:16px;border-radius:6px;text-align:center">Cancel anyway</span><span style="font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:16px 17px;border-radius:6px">Keep it</span></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px">Keep it is the primary — most people opening this screen have changed their mind rather than decided.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-21 · BOOK YOUSEF</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 20px/1.25 'IBM Plex Sans';letter-spacing:-.014em">Book a session</div>
+<div style="font:400 13px/1.55 'IBM Plex Sans';color:#57544d;margin-top:5px">You have <b>3 sessions left</b>, good until 30 November</div>
+<div style="display:flex;gap:6px;margin-top:13px;flex-wrap:wrap">
+<span style="font:400 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:12px 13px;border-radius:6px">Wed 16:00</span>
+<span style="font:500 12.5px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:13px 14px;border-radius:6px">Thu 17:30</span>
+<span style="font:400 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:12px 13px;border-radius:6px">Sun 07:00</span>
+</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:17px;border-radius:6px;margin-top:14px;text-align:center">Book · 2 will be left</span>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px">At zero the button becomes <b>Buy more sessions</b> rather than a disabled state with no route.</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">MBR-24 · 25 · 27 · 28 · 29 · MEMBERSHIP AND MONEY</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Freezing, receipts, cards, credit, and the door</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-24 · ASK TO FREEZE</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 24px/1.18 'IBM Plex Sans';letter-spacing:-.017em">Pause your membership</div>
+<div style="font:400 14px/1.62 'IBM Plex Sans';color:#3d3b36;margin-top:9px">Travelling, injured, or just need a break. You have <b>2 of your 3 months</b> left this year.</div>
+<div style="display:flex;gap:9px;margin-top:15px">
+<div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">FROM</div><div style="font:400 14px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:13px 14px;margin-top:5px">1 Sep</div></div>
+<div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">UNTIL</div><div style="font:400 14px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:13px 14px;margin-top:5px">1 Oct</div></div>
+</div>
+<div style="margin-top:14px;padding:14px 15px;background:#faf8f4;border-radius:6px">
+<div style="font:500 12px/1.4 'IBM Plex Sans'">While you're paused</div>
+<div style="font:400 13.5px/1.85 'IBM Plex Sans';color:#3d3b36;margin-top:6px">You won't be charged<br>Your card won't work at the door<br>Your renewal moves to 21 October<br><b>You keep your JOD 55 price</b></div>
+</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:18px;border-radius:6px;margin-top:15px;text-align:center">Ask Khalda to pause it</span>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px"><b>Ask, not do.</b> Most clubs approve freezes but want to know why — the button says what actually happens rather than promising something the club may not honour.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-25 · PAYMENTS</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 22px/1.2 'IBM Plex Sans';letter-spacing:-.016em">Your payments</div>
+<div style="margin-top:14px">
+<sc-for list="{{ payments }}" as="p" hint-placeholder-count="5">
+<div style="padding:13px 0;border-bottom:1px solid rgba(23,23,26,.07);display:flex;gap:11px;align-items:baseline">
+<div style="flex:1;min-width:0"><div style="font:450 14.5px/1.35 'IBM Plex Sans'">{{ p.what }}</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:{{ p.color }};margin-top:2px">{{ p.when }}</div></div>
+<span style="font:500 14px/1.2 'IBM Plex Mono';color:{{ p.amtColor }}">{{ p.amount }}</span>
+</div>
+</sc-for>
+</div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:14px">Download a receipt</div>
+<div style="margin-top:14px;padding:13px 14px;background:#faf8f4;border-radius:6px;font:400 12.5px/1.7 'IBM Plex Sans';color:#3d3b36"><b>"Not paid yet"</b>, never "in arrears" or "dunning". Receipts carry the tax fields your employer or insurer will ask for.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-27 · YOUR CARDS</div>
+<div style="padding:16px 19px 18px">
+<div style="border:1px solid #8a5a1f;border-radius:6px;padding:14px 15px">
+<div style="display:flex;gap:10px;align-items:baseline"><span style="font:450 14.5px/1.35 'IBM Plex Sans';flex:1">Visa ···4417</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f">EXPIRED</span></div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Expired in July. This is why your August payment didn't go through.</div>
+<span style="display:inline-block;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 15px;border-radius:6px;margin-top:11px">Update it</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:14px 15px;margin-top:10px;display:flex;gap:10px;align-items:baseline"><span style="font:450 14.5px/1.35 'IBM Plex Sans';flex:1">Mastercard ···9902</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">to 2029</span></div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:13px">Add a card</div>
+<div style="margin-top:13px;padding:12px 13px;background:#faf8f4;border-radius:6px;font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36"><b>We warn you 30 days before a card expires.</b> The whole failed-payment problem starts here and this is where it is cheapest to prevent.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-28 · CREDIT</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 26px/1.15 'IBM Plex Mono'">JOD 12.50</div>
+<div style="font:400 13px/1.55 'IBM Plex Sans';color:#57544d;margin-top:5px">Use it at the desk or on your next bill</div>
+<div style="margin-top:13px">
+<div style="padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><div style="flex:1"><div style="font:450 13px/1.35 'IBM Plex Sans'">Tuesday spin was cancelled</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">19 Aug</div></div><span style="font:500 12.5px/1.2 'IBM Plex Mono';color:#2f5d3a">+8.00</span></div>
+<div style="padding:10px 0;display:flex;gap:10px;align-items:baseline"><div style="flex:1"><div style="font:450 13px/1.35 'IBM Plex Sans'">You paid a bit extra in July</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">4 Aug</div></div><span style="font:500 12.5px/1.2 'IBM Plex Mono';color:#2f5d3a">+5.00</span></div>
+</div>
+<div style="margin-top:12px;padding:12px 13px;background:#faf8f4;border-radius:6px;font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36">Every entry says where it came from. Credit that appears without explanation looks like a mistake, and members ask about it at the desk.</div>
+</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#17171a;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#211f1c;border-bottom:1px solid rgba(255,255,255,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#928d84;letter-spacing:.07em">MBR-29 · YOUR PASS</div>
+<div style="padding:26px 19px 20px;text-align:center">
+<div style="font:500 18px/1.25 'IBM Plex Sans';color:#f5f2ec">Ahmad Nabulsi</div>
+<div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#928d84;margin-top:4px">Club · Khalda</div>
+<div style="width:190px;height:190px;background:#fffefb;border-radius:8px;margin:20px auto 0;display:flex;align-items:center;justify-content:center;font:400 10px/1.4 'IBM Plex Mono';color:#85807a">QR</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#b8b3aa;margin-top:16px">Hold this up to the reader.<br>Changes every 30 seconds.</div>
+<div style="margin-top:18px;padding:13px 14px;background:#211f1c;border-radius:6px;font:400 12px/1.7 'IBM Plex Sans';color:#b8b3aa;text-align:start"><b style="color:#f5f2ec">Works without signal.</b> Your phone holds a code that lasts 24 hours, so a gym basement won't lock you out.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#928d84;margin-top:13px;text-align:start">Screen goes to full brightness automatically and stays awake. One tap from Home and from the lock screen widget.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">MBR-30 · 31 · 32 · 33 · 34 · 38 · THE ACCOUNT</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Talking to your coach, and controlling your data</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-30 · YOUSEF</div>
+<div style="padding:16px 19px 18px">
+<div style="display:flex;gap:11px;align-items:center"><span style="width:40px;height:40px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Yousef Haddad</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Usually replies within a day</div></div></div>
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">
+<div style="align-self:flex-end;max-width:82%;background:#e8edf6;border-radius:8px 8px 2px 8px;padding:11px 13px"><div style="font:400 13.5px/1.6 'IBM Plex Sans'">Sorry about the last few weeks — work has been heavy. Still on for 09:45?</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:4px">07:12</div></div>
+<div style="align-self:flex-start;max-width:82%;background:#f4f2ee;border-radius:8px 8px 8px 2px;padding:11px 13px"><div style="font:400 13.5px/1.6 'IBM Plex Sans'">No problem at all. We'll start lighter today and build back up.</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:4px">Yousef · 07:20</div></div>
+</div>
+<div style="display:flex;gap:9px;align-items:center;margin-top:15px"><span style="flex:1;font:400 13.5px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:13px 14px">Message Yousef…</span><span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 16px;border-radius:6px">Send</span></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:13px">The reply expectation is his, shown here so nobody waits by their phone. <b>Members without a coach don't see this tab at all</b> — it is absent, not empty.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-34 · PRIVACY</div>
+<div style="padding:16px 19px 18px">
+<div style="font:500 22px/1.2 'IBM Plex Sans';letter-spacing:-.016em">What we share</div>
+<div style="margin-top:14px">
+<sc-for list="{{ consent }}" as="c" hint-placeholder-count="4">
+<div style="padding:14px 0;border-bottom:1px solid rgba(23,23,26,.07);display:flex;gap:11px;align-items:flex-start">
+<div style="flex:1"><div style="font:450 14.5px/1.4 'IBM Plex Sans'">{{ c.name }}</div><div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:3px">{{ c.detail }}</div></div>
+<span style="width:44px;height:26px;border-radius:13px;background:{{ c.track }};position:relative;flex-shrink:0"><span style="position:absolute;top:3px;{{ c.side }}:3px;width:20px;height:20px;border-radius:50%;background:#fffefb;box-shadow:0 1px 2px rgba(0,0,0,.2)"></span></span>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:15px;display:flex;flex-direction:column;gap:9px">
+<span style="font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:16px;border-radius:6px;text-align:center">Send me all my data</span>
+<span style="font:450 13.5px/1 'IBM Plex Sans';color:#8a3b1f;padding:14px;text-align:center">Delete my account</span>
+</div>
+<div style="margin-top:14px;padding:13px 14px;background:#faf8f4;border-radius:6px;font:400 12.5px/1.7 'IBM Plex Sans';color:#3d3b36">Turning something off <b>takes effect immediately</b> and staff see it straight away. Deleting removes your account; the club keeps payment records it is legally required to keep, and we say so plainly.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-31 · NOTIFICATIONS</div>
+<div style="padding:16px 19px 18px">
+<sc-for list="{{ notifications }}" as="n" hint-placeholder-count="4">
+<div style="padding:12px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:flex-start">
+<span style="width:7px;height:7px;border-radius:50%;background:{{ n.dot }};margin-top:6px;flex-shrink:0"></span>
+<div style="flex:1"><div style="font:{{ n.weight }} 13.5px/1.45 'IBM Plex Sans'">{{ n.text }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">{{ n.when }}</div></div>
+</div>
+</sc-for>
+<div style="font:400 13px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:12px">Mark all as read</div>
+<div style="margin-top:12px;padding:12px 13px;background:#faf8f4;border-radius:6px;font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36">Tapping one opens <b>exactly the thing it mentions</b> — the payment screen, that booking, that message. Never Home.</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">MBR-32 · 33 · YOU</div>
+<div style="padding:16px 19px 18px">
+<div style="display:flex;gap:11px;align-items:center"><span style="width:44px;height:44px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Ahmad Nabulsi</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Member since March 2024</div></div></div>
+<div style="margin-top:14px">
+<div style="padding:12px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Food you avoid</span><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d">Fish, dairy</span></div>
+<div style="padding:12px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Language</span><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d">English</span></div>
+<div style="padding:12px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Unlock with Face ID</span><span style="width:38px;height:22px;border-radius:11px;background:#1b4079;position:relative;flex-shrink:0"><span style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#fffefb"></span></span></div>
+<div style="padding:12px 0;display:flex;gap:10px;align-items:baseline"><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Where you're signed in</span><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d">2 phones</span></div>
+</div>
+<div style="margin-top:12px;padding:12px 13px;background:#faf8f4;border-radius:6px;font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36"><b>What you avoid drives your plan.</b> Change it here and your next generated week reflects it — you own that, not your coach.</div>
+</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid #8a5a1f;border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#8a5a1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">MBR-38 · NO SIGNAL · FOUND IN COMPLETION</div>
+<div style="padding:18px 19px">
+<div style="font:500 22px/1.2 'IBM Plex Sans';letter-spacing:-.016em">You're offline</div>
+<div style="font:400 14px/1.62 'IBM Plex Sans';color:#3d3b36;margin-top:8px">Common in gym basements. Most of the app still works.</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:15px;overflow:hidden">
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:center"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:56px">WORKS</span><span style="font:400 13.5px/1.4 'IBM Plex Sans';flex:1">Today's workout</span></div>
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:center"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:56px">WORKS</span><span style="font:400 13.5px/1.4 'IBM Plex Sans';flex:1">Your pass at the door</span></div>
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:center"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:56px">WORKS</span><span style="font:400 13.5px/1.4 'IBM Plex Sans';flex:1">Your food plan</span></div>
+<div style="padding:13px 14px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:center"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;width:56px">SAVED</span><span style="font:400 13.5px/1.4 'IBM Plex Sans';flex:1">Sets and meals you log</span></div>
+<div style="padding:13px 14px;display:flex;gap:11px;align-items:center"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;width:56px">WAITS</span><span style="font:400 13.5px/1.4 'IBM Plex Sans';flex:1">Booking, paying, messages</span></div>
+</div>
+<div style="margin-top:14px;padding:13px 14px;background:#faf8f4;border-radius:6px;font:400 13px/1.7 'IBM Plex Sans';color:#3d3b36"><b>3 sets and 1 meal are waiting to send.</b> Nothing is lost — they'll go as soon as you're back on signal.</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:13px">This screen was missing from the registry. A gym basement is the normal case for a training app, not an edge case.</div>
+</div>
+</div>
+</div>
+<div style="margin-top:16px;padding:16px 18px;border:1px solid #2f5d3a;border-radius:6px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">VEYRO MEMBER · V1 COMPLETE</div>
+<div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px">All <b>35 V1 Member screens</b> drawn. No operational vocabulary anywhere in the surface — no grace period, no dunning, no arrears, no churn score, no invoice numbers on anything a member reads. Zero new tokens. Remaining: Console (12).</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const BOOKINGS = [
+  ['Thu 19:00', 'Spin with Dana', 'Studio 2 · free to cancel until 17:00', '#57544d'],
+  ['Thu 17:30', 'PT with Yousef', 'Used 1 of your 4 sessions', '#57544d'],
+  ['Tue 07:00', 'Spin with Dana', 'Waitlist · 2nd in line', '#8a5a1f'],
+  ['Sun 09:00', 'Yoga with Rana', 'Studio 1', '#57544d']
+];
+
+const PAYMENTS = [
+  ['Club membership · August', 'Not paid yet · we tried on the 17th', 'JOD 55.00', '#8a3b1f', '#8a3b1f'],
+  ['Club membership · July', 'Paid 1 July · Visa ···4417', 'JOD 55.00', '#57544d', '#17171a'],
+  ['10 PT sessions', 'Paid 3 July · Visa ···4417', 'JOD 280.00', '#57544d', '#17171a'],
+  ['Club membership · June', 'Paid 1 June · Visa ···4417', 'JOD 55.00', '#57544d', '#17171a'],
+  ['Club membership · May', 'Paid 1 May · Visa ···4417', 'JOD 55.00', '#57544d', '#17171a']
+];
+
+const CONSENT = [
+  ['Offers and news', 'Messages about deals, classes and events', false],
+  ['Your coach sees your food log', 'Yousef can see what you eat and log', true],
+  ['Your coach sees your photos', 'Progress photos stay private unless this is on', false],
+  ['Your coach sees your weight', 'Weight and measurements from check-ins', true]
+];
+
+const NOTIFICATIONS = [
+  ['Your August payment didn\u2019t go through', 'Today 06:14', true],
+  ['Yousef replied to your message', 'Today 07:20', true],
+  ['Thursday\u2019s spin is confirmed', 'Yesterday', false],
+  ['Your weekly check-in is ready', 'Monday', false]
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      bookings: BOOKINGS.map(b => ({ when: b[0], name: b[1], meta: b[2], color: b[3] })),
+      payments: PAYMENTS.map(p => ({ what: p[0], when: p[1], amount: p[2], color: p[3], amtColor: p[4] })),
+      consent: CONSENT.map(c => ({
+        name: c[0], detail: c[1],
+        track: c[2] ? '#1b4079' : '#ece9e3',
+        side: c[2] ? 'right' : 'left'
+      })),
+      notifications: NOTIFICATIONS.map(n => ({
+        text: n[0], when: n[1],
+        dot: n[2] ? '#1b4079' : 'transparent',
+        weight: n[2] ? '500' : '400'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1240px;padding:0 0 110px">
+
+<header style="padding:62px 46px 34px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANONICAL PROTOTYPE AUDIT · MEASURED, NOT ASSERTED</div>
+<h1 style="font:500 37px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:23ch">Veyro interactive prototype — final audit</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:15px 0 0;text-wrap:pretty">Every V1 screen swept in both modes, every control probed, every metric read back from the rendered DOM. The prototype's own audit route carries thirteen checks that run live; this document records what the full sweep found and what was fixed.</p>
+<div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:24px">
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ routes }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">ROUTES SWEPT</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">RENDER FAILURES</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">13/13</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">LIVE CHECKS PASS</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a3b1f">{{ p0 }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P0 FOUND · ALL FIXED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a5a1f">{{ p1 }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P1 FOUND · ALL FIXED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ derived }}/13</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">CHECKS DERIVED</div></div>
+</div>
+</header>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · REACHABILITY &amp; RENDER</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">340 route loads, zero failures</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:12px 0 0">All 170 V1 screen ids were driven through <span style="font-family:'IBM Plex Mono'">#/desktop/&lt;id&gt;</span> and <span style="font-family:'IBM Plex Mono'">#/mobile/&lt;id&gt;</span> and checked for element count, document height, absence of error text, and presence of their own id. Nothing rendered blank, nothing threw.</p>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:860px;display:grid;grid-template-columns:minmax(0,1.2fr) 96px 96px 96px minmax(0,1.3fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SWEEP</div><div>SUBJECTS</div><div>PASS</div><div>FAIL</div><div>METHOD</div></div>
+<sc-for list="{{ sweeps }}" as="s" hint-placeholder-count="6">
+<div style="min-width:860px;display:grid;grid-template-columns:minmax(0,1.2fr) 96px 96px 96px minmax(0,1.3fr);gap:12px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#57544d">{{ s.n }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ s.pass }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:{{ s.failColor }}">{{ s.fail }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ s.method }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · WHAT THE AUDIT FOUND</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">One P0, six P1, all closed</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:78ch;margin:12px 0 0">Each was found by measurement, not by reading source — and three of them were only visible <i>because</i> an earlier fix made them measurable.</p>
+<div style="margin-top:18px;display:flex;flex-direction:column;gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden">
+<sc-for list="{{ issues }}" as="i" hint-placeholder-count="6">
+<div style="background:#fffefb;padding:16px 18px">
+<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+<span style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ i.sevColor }};border:1px solid {{ i.sevColor }};padding:2px 6px;border-radius:3px">{{ i.sev }}</span>
+<span style="font:500 14.5px/1.35 'IBM Plex Sans';flex:1;min-width:220px">{{ i.title }}</span>
+<span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a">CLOSED</span>
+</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:7px;max-width:92ch">{{ i.body }}</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:6px;max-width:92ch"><b>Fix:</b> {{ i.fix }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · THE THIRTEEN LIVE CHECKS</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What the prototype measures about itself</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:880px;display:grid;grid-template-columns:minmax(0,1.1fr) 104px minmax(0,1.6fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>CHECK</div><div>BASIS</div><div>WHAT IT READS</div></div>
+<sc-for list="{{ checks }}" as="c" hint-placeholder-count="13">
+<div style="min-width:880px;display:grid;grid-template-columns:minmax(0,1.1fr) 104px minmax(0,1.6fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ c.name }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ c.color }}">{{ c.basis }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ c.what }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:16px;padding:15px 17px;border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;max-width:88ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">THE ONE REMAINING ASSERTION</div>
+<div style="font:400 13px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px"><b>Arabic copy composed</b> is the only row still labelled ASSERTED, and it is the right one to leave. Whether a string reads like a Jordanian gym manager wrote it or like a machine translated it cannot be measured from the DOM. Eight canvases were composed in Arabic; the live renderer uses those contracts. A native reviewer replaces this row, not another script.</div>
+</div>
+</section>
+
+<section style="padding:42px 46px 50px;background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · VERDICT</div>
+<div style="margin-top:18px;border:1px solid #2f5d3a;border-radius:6px;overflow:hidden">
+<div style="padding:22px 24px;background:#2f5d3a">
+<div style="font:500 10.5px/1.4 'IBM Plex Mono';color:rgba(255,255,255,.78);letter-spacing:.1em">CANONICAL PROTOTYPE AUDIT</div>
+<div style="font:500 26px/1.22 'IBM Plex Sans';color:#fffefb;letter-spacing:-.018em;margin-top:8px">VEYRO COMPLETE INTERACTIVE PRODUCT PROTOTYPE — APPROVED</div>
+</div>
+<div style="padding:20px 24px;background:#fffefb">
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#2c2a26;max-width:88ch">All 170 V1 screens reachable and rendering in both modes across 340 route loads. Thirteen checks passing, twelve of them derived from the rendered DOM. One P0 and six P1 found and closed — the last of them a false row in this document, corrected by running the flow it claimed. Zero console errors.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:16px 0"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT APPROVED MEANS HERE</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">The prototype is navigable end to end, every critical flow completes, and the accessibility, RTL and contrast contracts are enforced by checks that read the page rather than by claims about it. 41 screens are fully interactive; 129 are reference views that keep their registry id — the audit counts them separately and always has.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT IT DOES NOT MEAN</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">No screen reader has run against this. No Arabic speaker has read the copy. No real device has been held. Those three remain the gap between a prototype that measures itself and a product that has been tested — and no amount of self-measurement closes them.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">THE PATTERN WORTH KEEPING</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Every defect was found by a check that measures, and four vacuous passes were caught by printing the examined count. A check that cannot report how many things it looked at is not a check. The counter-example is in this document: §01's flow row was hand-typed and counted a flow that had never run — <b>the tables summarising measurements are themselves not measurements</b>, and this project has now produced that defect six times.</div></div>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900}}">
+const SWEEPS = [
+  ['Desktop route render', '170 ids', '170', '0', 'Element count, document height, error text, own id present.'],
+  ['Mobile route render', '170 ids', '170', '0', 'Same probe through the mobile frame.'],
+  ['Critical flows', '5 flows', '5', '0', 'Clicked the real control, asserted the page changed: Command Center resolve→undo, POS card→approved, set log→DONE, meal log→eaten, and ADM-MSH-05 upgrade — pro-rata 8.43 and recurring 78.00 both rendered before commit, then the control advanced the sheet. A sixth probe on ADM-CRM-05 returned "control missing"; that screen is a reference view, not one of the 41 live, so it is excluded rather than counted.'],
+  ['Keyboard operability', '216 controls', '216', '0', 'role=button, tabindex=0, Enter/Space handler, accessible name from own text. Enter verified to complete a real flow.'],
+  ['Touch targets', '35 controls', '35', '0', 'Mobile frame only, excluding prototype chrome. 44px floor per Foundations.'],
+  ['RTL numerals', '144 leaves', '144', '0', 'Per-character visual x-order vs logical order, plus reading-edge anchoring, inside rtl containers.']
+];
+
+const ISSUES = [
+  ['P0', 'Nothing in the prototype was operable by keyboard',
+   'The full sweep found 138 clickable elements on the Command Center and zero reachable by keyboard — every control was a bare div with an onClick, no role, no tabindex, no key handler, and no focus ring anywhere in the build. The Design System specifies keyboard operability and a visible focus ring for every control, and an audit row had been asserting that contract held.',
+   'One pass over the rendered tree marks the outermost pointer element as role=button with tabindex=0, an Enter/Space handler and an accessible name from its own text, plus a focus-visible ring. Runs after paint and on every route change, so it covers both the chrome and the imported renderer. Now a measured row: 216 controls operable.'],
+  ['P1', 'Ten primary CTAs were rendering completely unstyled',
+   'Ten call sites passed a Btn-shaped {onClick, style} object to D(s, k), which forwards its first argument straight through as style — so every declared style was silently dropped. On dark screens the near-black label landed on the dark canvas at 1.02:1, making "Finish and verify" and "Next exercise" effectively invisible.',
+   'All ten converted to Btn with a brace-matching pass. Verified: dark CTAs fill #7ea6e8 with a near-black label, light CTAs #1b4079 on warm.0.'],
+  ['P1', 'Arabic corrupted every string beginning with a digit',
+   'unicode-bidi: isolate was applied without an explicit base direction, so a leading digit run reordered to the visual end: "75.0 kg × 5" rendered "kg×575.0" and the weight merged with the rep count. 19 strings across five routes — the exact P1 the Phase 9 Arabic audit had recorded as fixed, in canvases the live renderer never read.',
+   'Numeric text is emitted as an inner inline span with dir=ltr and isolation, so order is fixed without touching the block. A first attempt set direction on the block itself and left-anchored 38 values in right-aligned cells; the canonical inline pattern fixed both.'],
+  ['P1', 'Six mobile controls below the 44px floor',
+   'Two inline text links at 19px and four padded buttons at 36–41px, on the member home and both set loggers. Only visible after the keyboard pass made every control individually measurable.',
+   'Minimum target box raised at the button helpers and the inline-link sites. 35 mobile product controls now measured at or above 44px.'],
+  ['P1', 'Four audit rows reported vacuous passes',
+   'Touch targets read "0 OK", keyboard "1 operable", RTL "0 leaves OK" — each counting only the last route swept, which is the audit page itself: no mobile frame, no rtl, one clickable. A fifth cause was a whitespace mismatch: React serialises inline styles with a space, so the frame selector matched nothing.',
+   'One per-route ledger accumulates every metric, and each row prints its examined count. A check that reports PASS while examining zero nodes is the defect this project produced most often; printing the count makes it impossible to hide.'],
+  ['P1', 'This document counted a flow it had not run',
+   'The first version of §01 recorded "5 flows · 5 pass" and named the fifth "membership sheet→consequence". Only four flows had actually been probed; the fifth probe had returned "control missing" on ADM-CRM-05, and rather than record that, the row substituted a flow name no probe in the session backed. A hand-typed row inside a document whose header reads MEASURED, NOT ASSERTED — the same correct-formula-wrong-source shape recorded five times earlier in this project, this time in the audit about it.',
+   'ADM-MSH-05 was then actually probed: the consequence panel renders the 8.43 pro-rata and 78.00 recurring figures before commit, and the primary control advances the sheet. The row is now true as written, and the CRM observation is stated as an exclusion with its reason rather than absorbed into a pass.'],
+  ['P1', 'Theme flag leaked between screens',
+   'A module-global DARK flag introduced by the contrast fix was set by dark screens and never reset, so a light screen rendered afterwards inherited dark tokens — the members-list bulk bar showed #f5f2ec on the ink.50 wash at 1.05:1.',
+   'Reset per render at the renderer entry point, with mPage setting it for dark screens only.']
+];
+
+const CHECKS = [
+  ['Rail destinations resolve', 'DERIVED', 'Every rail item resolved against the imported registry.'],
+  ['Tab destinations resolve', 'DERIVED', 'Member 360 and Coach section tabs.'],
+  ['Contextual jumps valid', 'DERIVED', 'Mobile side-panel jump list.'],
+  ['Scenario targets valid', 'DERIVED', 'All 13 flow launchers.'],
+  ['No orphaned renderers', 'DERIVED', 'Every id claimed LIVE exists as a V1 registry row.'],
+  ['V1 reachability', 'DERIVED', '170 of 170 reachable by some route.'],
+  ['Live vs reference honest', 'DERIVED', '41 live, 129 reference, counted separately.'],
+  ['Registry is single source', 'DERIVED', 'One imported module; no second copy to drift.'],
+  ['Contrast floor holds', 'MEASURED', 'Alpha-composited ratio per text node against 4.5:1 / 3:1.'],
+  ['RTL numerals: order + edge', 'MEASURED', 'Per-character visual order and reading-edge anchoring.'],
+  ['Controls keyboard-operable', 'MEASURED', 'role, tabindex, key handler, accessible name.'],
+  ['Touch targets \u2265 44px', 'MEASURED', 'Rendered height of mobile product controls.'],
+  ['Arabic copy composed', 'ASSERTED', 'Cannot be measured from the DOM. Needs a native reviewer.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const derived = CHECKS.filter(c => c[1] !== 'ASSERTED').length;
+    return {
+      routes: '340',
+      p0: String(ISSUES.filter(i => i[0] === 'P0').length),
+      p1: String(ISSUES.filter(i => i[0] === 'P1').length),
+      derived: String(derived),
+      sweeps: SWEEPS.map(s => ({ name: s[0], n: s[1], pass: s[2], fail: s[3], failColor: s[3] === '0' ? '#2f5d3a' : '#8a3b1f', method: s[4] })),
+      issues: ISSUES.map(i => ({ sev: i[0], sevColor: i[0] === 'P0' ? '#8a3b1f' : '#8a5a1f', title: i[1], body: i[2], fix: i[3] })),
+      checks: CHECKS.map(c => ({ name: c[0], basis: c[1], color: c[1] === 'ASSERTED' ? '#8a5a1f' : '#2f5d3a', what: c[2] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1280px;padding:0 0 110px">
+
+<header style="padding:62px 46px 34px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANONICAL COMPLETION AUDIT · COMPUTED FROM THE REGISTRY AT RENDER TIME</div>
+<h1 style="font:500 37px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:26ch">Veyro V1 high-fidelity audit</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:15px 0 0;text-wrap:pretty">This document holds <b>no screen data of its own.</b> It imports <span style="font-family:'IBM Plex Mono'">veyro-registry-data.js</span> — the same file the Screen Completion Registry renders from — and computes every figure, matrix and the verdict itself from that array. There is no second copy to drift. <b>The only typed numbers here are the two attested facts in §01</b>, which come from the Phase 6 and Phase 8 audits, cannot be derived from a screen registry, and are labelled ATTESTED rather than PASS for exactly that reason.</p>
+<div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:24px">
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">REGISTRY ROWS</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ v1Total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 REQUIRED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">{{ done }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">COMPLETE</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:{{ gapColor }}">{{ gap }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">GAPS</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:{{ pctColor }}">{{ pct }}%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 COMPLETION</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ moved }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">MOVED THIS PHASE</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ deferred }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DEFERRED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ noUi }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">BACKEND-ONLY</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:{{ unclassColor }}">{{ unclassified }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">UNCLASSIFIED</div></div>
+</div>
+<div style="margin-top:20px;padding:14px 16px;border:1px solid rgba(0,0,0,.14);border-radius:4px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">PROVENANCE</div>
+<div style="font:400 13px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:6px">{{ provenance }}</div>
+</div>
+</header>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · MECHANICAL CHECKS</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Every gate the verdict depends on</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:12px 0 0">Every row here is evaluated against the imported array — none is a literal. <b>The verdict in §06 is the AND of these checks</b>, so it cannot say APPROVED while one fails. The two facts that <i>cannot</i> be derived from the registry are held separately below, so this table does not lend them a rigour they do not have.</p>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1.1fr) 92px 118px minmax(0,1.4fr);gap:13px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>CHECK</div><div>RESULT</div><div>MEASURED</div><div>HOW IT IS MEASURED</div></div>
+<sc-for list="{{ checks }}" as="c" hint-placeholder-count="12">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1.1fr) 92px 118px minmax(0,1.4fr);gap:13px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start;background:{{ c.bg }}">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ c.name }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ c.color }}">{{ c.result }}</div>
+<div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#17171a">{{ c.value }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ c.how }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:20px;border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="padding:10px 16px;background:#8a5a1f"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">ATTESTED, NOT DERIVED · {{ attestedCount }} FACTS THE REGISTRY CANNOT PROVE</div></div>
+<sc-for list="{{ attested }}" as="a" hint-placeholder-count="2">
+<div style="display:grid;grid-template-columns:minmax(0,1.1fr) 92px 118px minmax(0,1.4fr);gap:13px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start;min-width:900px">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ a.name }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f">ATTESTED</div>
+<div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#17171a">{{ a.value }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ a.how }}</div>
+</div>
+</sc-for>
+<div style="padding:12px 16px;border-top:1px solid rgba(0,0,0,.08);font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">These were literal <span style="font-family:'IBM Plex Mono'">true</span> values inside the mechanical table until review caught them, alongside a surface check whose basis text described a computation that did not exist. A hardcoded PASS in a table headed “how it is measured” is the same defect this project has now logged nine times, wearing a better disguise: the number was right, the provenance was a claim.</div>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · SURFACE MATRIX</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Coverage by surface</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:940px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 66px 66px 74px 74px 78px 74px;gap:11px;padding:10px 16px;background:#f4f2ee;font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.05em"><div>SURFACE</div><div>V1 REQ</div><div>COMPLETE</div><div>GAP</div><div>%</div><div>DEFERRED</div><div>AR BUILT</div><div>AR CONTRACT</div><div>AR NEEDS</div></div>
+<sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="6">
+<div style="min-width:940px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 66px 66px 74px 74px 78px 74px;gap:11px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ s.req }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ s.done }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:{{ s.gapColor }}">{{ s.gap }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:{{ s.pctColor }}">{{ s.pct }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">{{ s.defer }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ s.arBuilt }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">{{ s.arContract }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#8a5a1f">{{ s.arNeeds }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · DOMAIN MATRIX · BLUEPRINT TRACEABILITY</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Every Blueprint V1 domain, mapped</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:12px 0 0">Domains are derived from screen-id prefixes, so a Blueprint capability with no screen would appear here as a domain with zero rows rather than being silently absent. <b>{{ domainCount }} domains, {{ domainsComplete }} complete.</b></p>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:880px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 66px 74px minmax(0,1.3fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DOMAIN</div><div>V1 REQ</div><div>COMPLETE</div><div>GAP</div><div>DEFERRED</div><div>DEFERRED / NOTE</div></div>
+<sc-for list="{{ domains }}" as="d" hint-placeholder-count="20">
+<div style="min-width:880px;display:grid;grid-template-columns:minmax(0,1fr) 74px 84px 66px 74px minmax(0,1.3fr);gap:12px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ d.name }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ d.req }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ d.done }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:{{ d.gapColor }}">{{ d.gap }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">{{ d.defer }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">{{ d.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · DEFERRED AND BACKEND-ONLY · EVERY EXCLUSION NAMED</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What is not in V1, and why</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:12px 0 0">The completion figure is only honest if every exclusion is visible. These {{ excluded }} rows are the entire difference between {{ total }} registry rows and {{ v1Total }} V1 screens.</p>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:104px 74px minmax(0,1fr) minmax(0,1.5fr);gap:13px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SCREEN ID</div><div>PHASE</div><div>SCREEN</div><div>REASON RECORDED</div></div>
+<sc-for list="{{ excludedRows }}" as="e" hint-placeholder-count="16">
+<div style="min-width:900px;display:grid;grid-template-columns:104px 74px minmax(0,1fr) minmax(0,1.5fr);gap:13px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#17171a">{{ e.id }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ e.color }}">{{ e.phase }}</div>
+<div style="font:450 12px/1.45 'IBM Plex Sans'">{{ e.name }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ e.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05 · REQUIREMENT CLASSES · WHAT IS SATISFIED AND WHAT IS QUALIFIED</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Nine requirement classes</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:170px 104px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>CLASS</div><div>STATUS</div><div>BASIS</div></div>
+<sc-for list="{{ classes }}" as="c" hint-placeholder-count="9">
+<div style="min-width:900px;display:grid;grid-template-columns:170px 104px minmax(0,1fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ c.name }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ c.color }}">{{ c.status }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ c.basis }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:16px;padding:15px 17px;border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;max-width:88ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">TWO CLASSES ARE QUALIFIED, AND THE VERDICT DOES NOT DEPEND ON THEM</div>
+<div style="font:400 13px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px"><b>Arabic:</b> {{ arBuilt }} screens have a real Arabic canvas, {{ arContract }} are covered by a validated RTL contract from a built screen of the same shape, and <b>{{ arNeeds }} still need their own build</b> before a Jordan launch. <b>Accessibility:</b> specified for every drawn screen and tested on none, because nothing is built. The brief asked for accessibility <i>specification</i>, which is satisfied; it did not ask for verification, which cannot be claimed. Both are pre-launch work, neither is a screen-inventory gap, and both are listed as open in the handoff.</div>
+</div>
+</section>
+
+<section style="padding:42px 46px 50px;background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">06 · VERDICT · COMPUTED, NOT WRITTEN</div>
+<div style="margin-top:18px;border:1px solid {{ verdictBorder }};border-radius:6px;overflow:hidden">
+<div style="padding:22px 24px;background:{{ verdictBg }}">
+<div style="font:500 10.5px/1.4 'IBM Plex Mono';color:rgba(255,255,255,.75);letter-spacing:.1em">{{ checksPassed }} OF {{ checksTotal }} DERIVED CHECKS PASS · {{ attestedCount }} ATTESTED SEPARATELY</div>
+<div style="font:500 26px/1.22 'IBM Plex Sans';color:#fffefb;letter-spacing:-.018em;margin-top:8px">{{ verdict }}</div>
+</div>
+<div style="padding:20px 24px;background:#fffefb">
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#2c2a26;max-width:88ch">{{ verdictBody }}</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:16px 0"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">THE RESULT WORTH REPORTING</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Across {{ done }} screens, five surfaces, four densities and two themes: <b>zero new tokens, zero new components, zero new patterns.</b> Design System v1 absorbed the entire product without one exception — a result that could only be earned at volume, not argued.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHY THIS DOCUMENT EXISTS IN THIS FORM</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Eight counting defects in this project, every one caught by review rather than by me. Six were a document holding its own copy of the truth. <b>This file holds none</b> — it imports the registry, and the verdict string above is selected by a boolean over the checks in §01.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">HANDOFF · OPEN BEFORE BUILD</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">{{ arNeeds }} Arabic builds · one screen-reader session on the attention queue, POS and the set logger · the nutrition clinical policy from whoever holds accountability per market. None blocks this verdict; all three precede a Jordan launch.</div></div>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+const DOMAIN_OF = id => {
+  if (id.startsWith('POS-')) return 'POS & retail';
+  if (id.startsWith('FD-')) return 'Front desk operations';
+  if (id.startsWith('CCH-')) return 'Coaching & training';
+  if (id.startsWith('MBR-')) return 'Member experience';
+  if (id.startsWith('CON-')) return 'SaaS Console';
+  if (id.startsWith('SYS-')) return 'Backend services';
+  const m = id.split('-')[1];
+  return ({
+    CC: 'Command Center', CRM: 'CRM & leads', MEM: 'Member records', MSH: 'Membership lifecycle',
+    PAY: 'Billing & payments', POS: 'POS & retail', SCH: 'Scheduling', ACC: 'Access control',
+    STF: 'Staff & permissions', COM: 'Communication', TSK: 'Tasks', AUT: 'Automation',
+    RPT: 'Analytics & reports', SET: 'Configuration', AI: 'AI', SRCH: 'Search', AUTH: 'Auth & security'
+  })[m] || 'Other';
+};
+
+const CLASSES = [
+  ['EN screen coverage', 'SATISFIED', '#2f5d3a', 'Every V1 row resolves to DONE with a file reference naming the document it was drawn in. Computed in §01.'],
+  ['Arabic / RTL', 'QUALIFIED', '#8a5a1f', 'Built canvases on the highest-risk surfaces; contracts elsewhere; a named remainder still needing its own build. Counted per surface in §02.'],
+  ['Permissions', 'SATISFIED', '#2f5d3a', 'Every row carries its roles. Nine roles across the matrix, absent-not-greyed applied throughout, and a requestable third state wherever a role legitimately needs to ask.'],
+  ['States', 'SATISFIED', '#2f5d3a', 'Empty, loading, error, offline, degraded, permission-restricted and edge states drawn per screen. Offline is a first-class state on all three field surfaces.'],
+  ['Responsive', 'SATISFIED', '#2f5d3a', 'Five breakpoints with per-surface layout models; four densities exercised with identical component anatomy.'],
+  ['Accessibility specification', 'SATISFIED', '#2f5d3a', 'Contrast matrix, focus order, labels, keyboard behaviour and target sizes written for every drawn screen. Specification only — see the qualification below.'],
+  ['Navigation integrity', 'SATISFIED', '#2f5d3a', 'Every destination resolves to a drawn screen; every completing action names its next state; every blocked state names a route out.'],
+  ['Blueprint traceability', 'SATISFIED', '#2f5d3a', 'Every V1 Blueprint capability maps to a drawn screen or a backend-only row. Domain matrix in §03; exclusions enumerated in §04.'],
+  ['Implementation handoff', 'SATISFIED', '#2f5d3a', 'Each screen carries real content, mapped states, permission variants, confirmation tier and a file reference. No product decision is left open inside any row.']
+];
+
+class Component extends DCLogic {
+  state = { rows: null, moved: 0, err: null };
+
+  componentDidMount() {
+    import('./veyro-registry-data.js')
+      .then(m => this.setState({ rows: m.resolve(), moved: Object.keys(m.DRAWN).length, surfaces: m.SURFACES }))
+      .catch(e => this.setState({ err: String(e) }));
+  }
+
+  renderVals() {
+    const rows = this.state.rows;
+    if (!rows) {
+      return {
+        provenance: this.state.err
+          ? 'Registry import failed: ' + this.state.err
+          : 'Importing veyro-registry-data.js…',
+        verdict: 'AWAITING REGISTRY', verdictBg: '#57544d', verdictBorder: '#57544d',
+        verdictBody: 'The registry has not loaded, so no verdict can be computed.',
+        checksPassed: '—', checksTotal: '—', attestedCount: '—',
+        total: '—', v1Total: '—', done: '—', gap: '—', pct: '—', moved: '—',
+        deferred: '—', noUi: '—', unclassified: '—', domainCount: '—',
+        domainsComplete: '—', excluded: '—', arBuilt: '—', arContract: '—', arNeeds: '—',
+        gapColor: '#57544d', pctColor: '#57544d', unclassColor: '#57544d',
+        checks: [], attested: [], surfaces: [], domains: [], excludedRows: []
+      };
+    }
+
+    const ui = rows.filter(r => !r.isNoUi);
+    const v1 = ui.filter(r => r.isV1);
+    const done = v1.filter(r => r.isDone).length;
+    const gap = v1.filter(r => r.isGap).length;
+    const pct = Math.round((done / v1.length) * 100);
+    const noUi = rows.filter(r => r.isNoUi).length;
+    const deferred = rows.filter(r => r.isDefer).length;
+    const unclassified = rows.filter(r => !r.isV1 && !r.isDefer && !r.isNoUi).length;
+    const ar = k => v1.filter(r => r.ar === k).length;
+
+    const surfaceRows = (this.state.surfaces || []).map(name => {
+      const sr = rows.filter(r => r.surface === name);
+      const req = sr.filter(r => r.isV1 && !r.isNoUi);
+      const d = req.filter(r => r.isDone).length;
+      const g = req.filter(r => r.isGap).length;
+      return {
+        name,
+        req: req.length ? String(req.length) : '—',
+        done: String(d),
+        gap: String(g),
+        gapColor: g ? '#8a3b1f' : '#2f5d3a',
+        pct: req.length ? Math.round((d / req.length) * 100) + '%' : '—',
+        pctColor: req.length && d === req.length ? '#2f5d3a' : '#8a5a1f',
+        defer: String(sr.filter(r => r.isDefer).length),
+        arBuilt: String(req.filter(r => r.ar === 'BUILT').length),
+        arContract: String(req.filter(r => r.ar === 'CONTRACT').length),
+        arNeeds: String(req.filter(r => r.ar === 'NEEDS').length)
+      };
+    }).filter(s => s.req !== '—' || s.defer !== '0');
+
+    const withReq = surfaceRows.filter(s => s.req !== '—');
+    const surfacesComplete = withReq.filter(s => s.gap === '0' && s.pct === '100%').length;
+
+    const CHECKS = [
+      ['Every V1 screen complete', done === v1.length, done + ' / ' + v1.length, 'rows.filter(isV1 && isDone).length === rows.filter(isV1).length'],
+      ['Zero V1 gaps', gap === 0, String(gap), 'No V1 row resolves to status GAP.'],
+      ['Zero unclassified rows', unclassified === 0, String(unclassified), 'Every row is V1, deferred with a phase, or backend-only. No row lacks a classification.'],
+      ['Every completed row cites a file', v1.filter(r => r.isDone && r.note).length === done, v1.filter(r => r.isDone && r.note).length + ' / ' + done, 'A row is only COMPLETE with a note naming where it was drawn.'],
+      ['Every deferred row states a reason', rows.filter(r => r.isDefer && /Deferred|deferred/.test(r.note)).length === deferred, rows.filter(r => r.isDefer && /Deferred|deferred/.test(r.note)).length + ' / ' + deferred, 'Deferral without a recorded reason is a silent scope change.'],
+      ['Every backend row names its surfacing screen', rows.filter(r => r.isNoUi && r.note.length > 10).length === noUi, rows.filter(r => r.isNoUi && r.note.length > 10).length + ' / ' + noUi, 'A backend capability with no named UI is an untraceable requirement.'],
+      ['Every row carries roles', ui.filter(r => r.roles && r.roles !== '—').length === ui.length, ui.filter(r => r.roles && r.roles !== '—').length + ' / ' + ui.length, 'Permission behaviour cannot be reviewed on a screen with no stated audience.'],
+      ['Every row carries an AR classification', v1.filter(r => ['BUILT', 'CONTRACT', 'NEEDS', 'N/A'].includes(r.ar)).length === v1.length, v1.filter(r => ['BUILT', 'CONTRACT', 'NEEDS', 'N/A'].includes(r.ar)).length + ' / ' + v1.length, 'BUILT, CONTRACT, NEEDS or N/A — never blank.'],
+      ['No duplicate screen ids', new Set(rows.map(r => r.id)).size === rows.length, new Set(rows.map(r => r.id)).size + ' / ' + rows.length, 'A duplicated id would double-count in every matrix on this page.'],
+      ['Every surface at 100%', surfacesComplete === withReq.length, surfacesComplete + ' / ' + withReq.length, 'Derived from the same surfaceRows §02 renders: each surface requires gap === 0 and pct === 100%.']
+    ];
+
+    // Facts from the Phase 6 and Phase 8 audits. NOT derivable from the registry, so
+    // held apart from the mechanical table rather than borrowing its credibility.
+    const ATTESTED = [
+      ['P0 open', '0', 'All thirteen P0 items from the Phase 6 and Phase 8 audits closed with recorded evidence. Attested from those documents, not computed here.'],
+      ['P1 open', '0', 'All P1 items closed. Ten P2/P3 remain and run alongside build. Attested, not computed.']
+    ];
+
+    const names = [];
+    rows.forEach(r => { const d = DOMAIN_OF(r.id); if (!names.includes(d)) names.push(d); });
+    const domains = names.map(name => {
+      const dr = rows.filter(r => DOMAIN_OF(r.id) === name);
+      const req = dr.filter(r => r.isV1 && !r.isNoUi);
+      const g = req.filter(r => r.isGap).length;
+      const def = dr.filter(r => r.isDefer);
+      return {
+        name,
+        req: String(req.length),
+        done: String(req.filter(r => r.isDone).length),
+        gap: String(g),
+        gapColor: g ? '#8a3b1f' : '#2f5d3a',
+        defer: String(def.length),
+        note: g ? req.filter(r => r.isGap)[0].name : def.length ? def.map(r => r.id).join(', ') + ' deferred' : 'Complete'
+      };
+    }).filter(d => d.req !== '0' || d.defer !== '0');
+
+    const excludedRows = rows.filter(r => r.isDefer || r.isNoUi).map(r => ({
+      id: r.id,
+      phase: r.isNoUi ? 'NO UI' : r.phase,
+      color: r.isNoUi ? '#3f5560' : '#85807a',
+      name: r.name,
+      note: r.note
+    }));
+
+    const passed = CHECKS.filter(c => c[1]).length;
+    const allPass = passed === CHECKS.length;
+
+    return {
+      provenance: 'Imported ' + rows.length + ' rows at render time. ' + v1.length + ' classified V1 required, ' + deferred + ' deferred, ' + noUi + ' backend-only, ' + unclassified + ' unclassified. The Screen Completion Registry renders from this same import — if the two ever disagree, one of them failed to load rather than one of them being stale.',
+      total: String(rows.length),
+      v1Total: String(v1.length),
+      done: String(done),
+      gap: String(gap),
+      gapColor: gap ? '#8a3b1f' : '#2f5d3a',
+      pct: String(pct),
+      pctColor: pct === 100 ? '#2f5d3a' : '#8a5a1f',
+      moved: String(this.state.moved),
+      deferred: String(deferred),
+      noUi: String(noUi),
+      unclassified: String(unclassified),
+      unclassColor: unclassified ? '#8a3b1f' : '#2f5d3a',
+      excluded: String(deferred + noUi),
+      checks: CHECKS.map(c => ({
+        name: c[0],
+        result: c[1] ? 'PASS' : 'FAIL',
+        color: c[1] ? '#2f5d3a' : '#8a3b1f',
+        value: c[2],
+        how: c[3],
+        bg: c[1] ? '#fffefb' : '#f4ece5'
+      })),
+      checksPassed: String(passed),
+      checksTotal: String(CHECKS.length),
+      attested: ATTESTED.map(a => ({ name: a[0], value: a[1], how: a[2] })),
+      attestedCount: String(ATTESTED.length),
+      surfaces: surfaceRows,
+      domains,
+      domainCount: String(domains.length),
+      domainsComplete: String(domains.filter(d => d.gap === '0').length),
+      excludedRows,
+      classes: CLASSES.map(c => ({ name: c[0], status: c[1], color: c[2], basis: c[3] })),
+      arBuilt: String(ar('BUILT')),
+      arContract: String(ar('CONTRACT')),
+      arNeeds: String(ar('NEEDS')),
+      verdict: allPass
+        ? 'VEYRO V1 HIGH-FIDELITY SCREEN INVENTORY — 100% COMPLETE & APPROVED'
+        : 'VEYRO V1 HIGH-FIDELITY SCREEN INVENTORY — NOT COMPLETE',
+      verdictBg: allPass ? '#2f5d3a' : '#8a3b1f',
+      verdictBorder: allPass ? '#2f5d3a' : '#8a3b1f',
+      verdictBody: allPass
+        ? done + ' of ' + v1.length + ' V1 screens complete — ' + pct + '%. Zero gaps, zero unclassified, zero P0, zero P1. ' + deferred + ' screens deferred with a recorded reason and ' + noUi + ' classified backend-only, each naming the screen it surfaces through. Every figure on this page was computed from the imported registry, including this sentence and the verdict above it.'
+        : CHECKS.filter(c => !c[1]).length + ' mechanical check(s) fail. The failing rows are marked in §01 and must be closed before a completion verdict can be issued.'
+    };
+  }
+}
+</script>
+</body>
+</html>

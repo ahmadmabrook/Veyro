@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="page"><link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f6f5f2;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#2b4fa8;text-decoration:none}a:hover{color:#17171a}[dir=rtl]{font-family:"IBM Plex Sans Arabic","IBM Plex Sans",sans-serif}::selection{background:#e5e1d6}</style></helmet>
+<div style="display:grid;grid-template-columns:246px minmax(0,1fr);align-items:start;min-height:100vh">
+<nav style="position:sticky;top:0;height:100vh;overflow:auto;padding:26px 18px 40px;border-right:1px solid rgba(0,0,0,.09);background:#f1efea">
+<div style="font:600 13px/1.2 'IBM Plex Sans';letter-spacing:.16em">VEYRO</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#79776f;margin-top:5px">PRODUCT DESIGN FOUNDATION<br>v0.1 · Phase 1–3</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:18px 0"></div>
+<div style="display:flex;flex-direction:column;gap:1px">
+<a href="#s1" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">01</span>Product understanding</a>
+<a href="#s2" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">02</span>Product surfaces</a>
+<a href="#s3" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">03</span>Role → surface map</a>
+<a href="#s4" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">04</span>Domain inventory</a>
+<a href="#s5" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px;background:rgba(0,0,0,.04)" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">05</span>Information architecture</a>
+<a href="#s6" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">06</span>Navigation architecture</a>
+<a href="#s7" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">07</span>Screen inventory</a>
+<a href="#s8" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">08</span>Critical flows</a>
+<a href="#s9" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">09</span>Traceability matrix</a>
+<a href="#s10" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">10</span>UX &amp; complexity risks</a>
+<a href="#s11" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">11</span>Terminology</a>
+<a href="#s12" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">12</span>Design principles</a>
+<a href="#s13" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">13</span>Design-system direction</a>
+<a href="#s14" style="font:450 12.5px/1.35 'IBM Plex Sans';color:#3d3b36;padding:5px 8px;border-radius:5px;display:flex;gap:9px" style-hover="background:rgba(0,0,0,.055);color:#17171a"><span style="font:400 10px/1.5 'IBM Plex Mono';color:#a3a099;width:14px">14</span>Execution plan</a>
+</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:18px 0"></div>
+<div style="font:400 10.5px/1.6 'IBM Plex Mono';color:#8b8880">SOURCE<br>Gym OS Master Product<br>Blueprint v1.0 · Aug 2026<br>57 domains · 12 chapters</div>
+</nav>
+
+<main style="padding:0 0 120px;max-width:1180px">
+
+<header style="padding:76px 56px 44px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">PHASE 1 — BLUEPRINT ANALYSIS · PHASE 2 — EXPERIENCE ARCHITECTURE · PHASE 3 — SCREEN INVENTORY</div>
+<h1 style="font:500 43px/1.08 'IBM Plex Sans';letter-spacing:-.022em;margin:16px 0 0;max-width:19ch">Veyro Product Design Foundation</h1>
+<p style="font:400 16.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:66ch;margin:18px 0 0;text-wrap:pretty">The architecture layer that comes before any screen: what Veyro is, who operates it, every governed domain in the Blueprint, the information architecture of each product surface, a complete screen inventory, the critical flows, and the traceability structure that keeps requirements from disappearing.</p>
+<div style="display:flex;flex-wrap:wrap;gap:34px;margin-top:34px">
+<div><div style="font:500 27px/1 'IBM Plex Mono'">57</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">GOVERNED DOMAINS</div></div>
+<div><div style="font:500 27px/1 'IBM Plex Mono'">7</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">PRODUCT SURFACES</div></div>
+<div><div style="font:500 27px/1 'IBM Plex Mono'">{{ screenCount }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">SCREENS INVENTORIED</div></div>
+<div><div style="font:500 27px/1 'IBM Plex Mono'">{{ flowCount }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">CRITICAL FLOWS</div></div>
+<div><div style="font:500 27px/1 'IBM Plex Mono'">12</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">ROLES MODELLED</div></div>
+</div>
+<div style="margin-top:30px;padding:15px 17px;border:1px solid rgba(0,0,0,.13);border-radius:7px;background:#fdfdfc;max-width:70ch">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880;letter-spacing:.08em">PILOT TENANT USED THROUGHOUT</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#3d3b36;margin-top:7px">Nadi Group — premium multi-branch operator, Amman. Three clubs: Abdoun, Khalda, Sweifieh. 4,800 active members. JOD. Arabic + English. Plans: Flex, Club, Club+. Services: access, group classes, PT, nutrition coaching, retail POS. Architecture stays region-portable for GCC and global rollout.</div>
+</div>
+</header>
+
+<section id="s1" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09);scroll-margin-top:0">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">01</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Complete understanding of the product</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0;text-wrap:pretty">Veyro is an AI-native, multi-tenant operating system for fitness businesses. It is not a gym-management suite with a dashboard attached: it is one governed data spine — one person record, one commercial catalog, one financial ledger, one scheduling engine, one event timeline — exposed through role-native surfaces that each answer a single question for their user.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto;margin-top:26px">
+<div style="background:#fdfdfc;padding:18px 19px"><div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880">WHAT IT IS</div><div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26;margin-top:8px">A multi-tenant SaaS platform serving single clubs, multi-location operators, franchises and corporate programs from one codebase — enterprise difference is configuration, never a fork.</div></div>
+<div style="background:#fdfdfc;padding:18px 19px"><div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880">WHAT IT IS NOT</div><div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Not a workout app, not a booking widget, not a clone of a broad legacy suite. It does not diagnose or treat medical conditions; coaching guidance and medical guidance stay visibly separate.</div></div>
+<div style="background:#fdfdfc;padding:18px 19px"><div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880">WHY IT WINS</div><div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Comparable functional breadth to incumbents, but role-native UX, a unified data model, AI that explains and acts, transparent commercials, and MENA/GCC-native operations — Arabic, WhatsApp, local payments and tax as first-class.</div></div>
+<div style="background:#fdfdfc;padding:18px 19px"><div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880">THE FIVE QUESTIONS EVERY SURFACE ANSWERS</div><div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26;margin-top:8px">What is happening? Why? What needs me? What should I do? Can Veyro do it for me?</div></div>
+</div>
+<div style="margin-top:24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+<div style="border-inline-start:2px solid #17171a;padding:2px 0 2px 14px"><div style="font:500 14px/1.4 'IBM Plex Sans'">One member. One profile. One timeline.</div><div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#6b6a63;margin-top:4px">Lead, trial, member, coaching client, POS customer and household dependent are one person record with one chronological history.</div></div>
+<div style="border-inline-start:2px solid #17171a;padding:2px 0 2px 14px"><div style="font:500 14px/1.4 'IBM Plex Sans'">System detects → prioritizes → recommends → user acts.</div><div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#6b6a63;margin-top:4px">Work arrives as a queue with reason and remedy attached, not as modules to patrol.</div></div>
+<div style="border-inline-start:2px solid #17171a;padding:2px 0 2px 14px"><div style="font:500 14px/1.4 'IBM Plex Sans'">Management by exception, not by noise.</div><div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#6b6a63;margin-top:4px">Coaches see deviations, managers see exceptions, owners see business-critical signal only.</div></div>
+<div style="border-inline-start:2px solid #17171a;padding:2px 0 2px 14px"><div style="font:500 14px/1.4 'IBM Plex Sans'">Never make the user understand the system.
+</div><div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#6b6a63;margin-top:4px">Make the system understand the user. Tenancy, ledgers, entitlements and policy engines never surface as vocabulary.</div></div>
+</div>
+</section>
+
+<section id="s2" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">02</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Product surfaces</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Seven surfaces, each defined by the single question its user opens it to answer. No surface is a smaller version of another one.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto;margin-top:24px">
+<sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="7">
+<div style="background:#fdfdfc;padding:19px 20px;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+<div style="font:500 16px/1.25 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8b8880">{{ s.code }}</div>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Mono';color:#79776f">{{ s.platform }}</div>
+<div style="font:450 13.5px/1.55 'IBM Plex Sans';color:#2c2a26;border-inline-start:2px solid #17171a;padding-inline-start:11px">{{ s.question }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:2px">{{ s.users }}</div>
+</div>
+</sc-for>
+</div>
+<p style="font:400 13px/1.6 'IBM Plex Sans';color:#6b6a63;max-width:74ch;margin:18px 0 0">Kiosk is treated as a constrained deployment of Front Desk rather than an eighth surface: same domain, different chrome, one interaction at a time, glanceable from a distance, and no staff-only data on screen.</p>
+</section>
+
+<section id="s3" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">03</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Role → surface → scope map</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Navigation and visibility are composed from role, scope and enabled features. Irrelevant complexity is absent, not disabled — disabling is reserved for temporarily unavailable, never for permanently unauthorized.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="display:grid;min-width:1000px;grid-template-columns:150px 130px 130px minmax(0,1.3fr) minmax(0,1.2fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>ROLE</div><div>PRIMARY SURFACE</div><div>DATA SCOPE</div><div>PRIMARY JOB</div><div>ELEVATED / WITHHELD</div></div>
+<sc-for list="{{ roles }}" as="r" hint-placeholder-count="12">
+<div style="display:grid;min-width:1000px;grid-template-columns:150px 130px 130px minmax(0,1.3fr) minmax(0,1.2fr);gap:14px;padding:12px 17px;border-top:1px solid rgba(0,0,0,.08);background:#fdfdfc;align-items:start">
+<div style="font:500 13px/1.45 'IBM Plex Sans'">{{ r.name }}</div>
+<div style="font:400 12px/1.45 'IBM Plex Sans';color:#4a4842">{{ r.surface }}</div>
+<div style="font:400 11.5px/1.45 'IBM Plex Mono';color:#79776f">{{ r.scope }}</div>
+<div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#2c2a26">{{ r.job }}</div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#6b6a63">{{ r.elevated }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s4" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">04</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Domain inventory — 57 governed domains</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">The complete capability register from Chapter 4 of the Blueprint, with its delivery phase and the surfaces where it becomes an experience. Nothing here is dropped; a domain may be backend-only, but it is never silently absent.</p>
+<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:22px">
+<sc-for list="{{ clusterChips }}" as="c" hint-placeholder-count="11">
+<button type="button" style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.label }}</button>
+</sc-for>
+</div>
+<sc-for list="{{ visibleClusters }}" as="cl" hint-placeholder-count="3">
+<div style="margin-top:26px">
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:11px"><div style="font:500 12.5px/1.4 'IBM Plex Sans';letter-spacing:.02em">{{ cl.name }}</div><div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#a3a099">{{ cl.count }}</div></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(276px,1fr));gap:1px;background:rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.1);border-radius:7px;overflow:hidden">
+<sc-for list="{{ cl.domains }}" as="d" hint-placeholder-count="6">
+<div style="background:#fdfdfc;padding:12px 14px;display:flex;flex-direction:column;gap:5px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font:500 11px/1.4 'IBM Plex Mono';color:#4a4842">{{ d.id }}</span><span style="{{ d.phaseStyle }}">{{ d.phase }}</span></div>
+<div style="font:450 13px/1.45 'IBM Plex Sans';color:#17171a">{{ d.name }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#8b8880">{{ d.surfaces }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</section>
+
+<section id="s5" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">05 · NAVIGABLE</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Information architecture</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Click through every surface, area and screen. Each screen carries its ID, phase, roles, purpose and the states that must exist before it can be called done. Switch to Arabic to check the structure in RTL.</p>
+<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:22px">
+<sc-for list="{{ surfaceTabs }}" as="t" hint-placeholder-count="7">
+<button type="button" style="{{ t.style }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+</sc-for>
+<div style="width:1px;height:20px;background:rgba(0,0,0,.14);margin:0 4px"></div>
+<button type="button" style="{{ dirBtnStyle }}" onClick="{{ toggleDir }}">{{ dirLabel }}</button>
+</div>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:9px;overflow:hidden;background:#fdfdfc">
+<div style="padding:17px 20px;background:#f1efea;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:12px"><div style="font:500 17px/1.2 'IBM Plex Sans'">{{ surf.title }}</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#79776f">{{ surf.platform }}</div></div>
+<div style="font:450 13px/1.55 'IBM Plex Sans';color:#3d3b36;margin-top:7px;max-width:80ch">{{ surf.homeBehavior }}</div>
+</div>
+<div dir="{{ dir }}" style="display:flex;flex-wrap:wrap;align-items:stretch;min-height:470px">
+<div style="flex:1 1 232px;min-width:210px;border-inline-end:1px solid rgba(0,0,0,.1);border-bottom:1px solid rgba(0,0,0,.1);padding:9px 0;overflow:auto;max-height:560px">
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em;padding:5px 16px 8px">AREAS · {{ surf.areaCount }}</div>
+<sc-for list="{{ surf.areas }}" as="a" hint-placeholder-count="12">
+<button type="button" style="{{ a.style }}" onClick="{{ a.onClick }}"><span style="font:450 12.5px/1.4 'IBM Plex Sans'">{{ a.label }}</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#a3a099">{{ a.count }}</span></button>
+</sc-for>
+</div>
+<div style="flex:1 1 240px;min-width:220px;border-inline-end:1px solid rgba(0,0,0,.1);border-bottom:1px solid rgba(0,0,0,.1);padding:9px 0;overflow:auto;max-height:560px">
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em;padding:5px 16px 8px">SCREENS</div>
+<sc-for list="{{ areaScreens }}" as="s" hint-placeholder-count="4">
+<button type="button" style="{{ s.style }}" onClick="{{ s.onClick }}"><span style="font:450 12.5px/1.35 'IBM Plex Sans'">{{ s.n }}</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#a3a099">{{ s.id }}</span></button>
+</sc-for>
+</div>
+<div style="flex:2 1 380px;min-width:300px;padding:20px 22px">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px"><span style="font:500 11px/1.4 'IBM Plex Mono';color:#4a4842">{{ screen.id }}</span><span style="{{ screen.phaseStyle }}">{{ screen.phase }}</span></div>
+<div style="font:500 20px/1.25 'IBM Plex Sans';margin-top:9px">{{ screen.n }}</div>
+<div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#79776f;margin-top:5px">{{ screen.surfaceName }} → {{ screen.area }}</div>
+<div style="font:400 14px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:15px;max-width:64ch;text-wrap:pretty">{{ screen.notes }}</div>
+<div style="display:grid;gap:14px;margin-top:22px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">ROLES</div><div style="font:400 13px/1.55 'IBM Plex Sans';color:#3d3b36;margin-top:4px">{{ screen.roles }}</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">ENTRY POINTS</div><div style="font:400 13px/1.55 'IBM Plex Sans';color:#3d3b36;margin-top:4px">{{ screen.entry }}</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">REQUIRED STATES</div><div style="font:400 12.5px/1.7 'IBM Plex Mono';color:#3d3b36;margin-top:4px">{{ screen.states }}</div></div>
+</div>
+</div>
+</div>
+</div>
+<p style="font:400 13px/1.6 'IBM Plex Sans';color:#6b6a63;max-width:74ch;margin:16px 0 0">The admin rail never shows all twenty areas at once. Eight are composed from the user’s role and scope; the rest live in an area directory one affordance away and promote themselves with use — see §06.</p>
+</section>
+
+<section id="s6" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">06</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Navigation architecture</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Twenty admin areas cannot be a rail. Eight layers of navigation make a very large platform feel smaller than it is.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ navLayers }}" as="l" hint-placeholder-count="8">
+<div style="display:grid;grid-template-columns:192px minmax(0,1fr);gap:20px;padding:15px 18px;border-bottom:1px solid rgba(0,0,0,.08);background:#fdfdfc;align-items:start">
+<div><div style="font:500 10px/1.5 'IBM Plex Mono';color:#79776f;letter-spacing:.06em">{{ l.k }}</div><div style="font:500 13.5px/1.4 'IBM Plex Sans';margin-top:5px">{{ l.t }}</div></div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#3d3b36;max-width:76ch">{{ l.d }}</div>
+</div>
+</sc-for>
+</div>
+<h3 style="font:500 16px/1.3 'IBM Plex Sans';margin:34px 0 0">Global command system — ⌘K</h3>
+<p style="font:400 14px/1.6 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:9px 0 0">One entry point for records, queries, creation, authorized actions, navigation and AI. Every result is post-filtered against the caller’s permissions and tenant boundary — search can never be a way around authorization. Actions show target, effect and required approval before they run.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:1px;background:rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.1);border-radius:7px;overflow:hidden;margin-top:16px">
+<sc-for list="{{ commandExamples }}" as="c" hint-placeholder-count="6">
+<div style="background:#fdfdfc;padding:14px 16px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">{{ c.k }}</div><div style="font:400 13px/1.6 'IBM Plex Mono';color:#2c2a26;margin-top:6px">{{ c.q }}</div></div>
+</sc-for>
+</div>
+</section>
+
+<section id="s7" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">07 · SEARCHABLE</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Master screen inventory</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Every screen with a stable ID (surface–area–screen), phase and roles. IDs are referenced by the flows in §08 and the traceability matrix in §09, and stay stable through wireframing and hi-fi.</p>
+<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:22px">
+<input type="text" value="{{ query }}" onInput="{{ onQuery }}" placeholder="Search screens, IDs, areas, roles…" style="font:400 13px/1.4 'IBM Plex Sans';padding:8px 13px;border:1px solid rgba(0,0,0,.18);border-radius:20px;background:#fdfdfc;width:270px;outline:none" style-focus="border-color:#17171a">
+<sc-for list="{{ invSurfaceChips }}" as="c" hint-placeholder-count="8">
+<button type="button" style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:9px">
+<sc-for list="{{ invPhaseChips }}" as="c" hint-placeholder-count="6">
+<button type="button" style="{{ c.style }}" onClick="{{ c.onClick }}">{{ c.label }}</button>
+</sc-for>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8b8880;letter-spacing:.06em;margin-inline-start:8px">{{ invCountLabel }}</div>
+</div>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="display:grid;min-width:960px;grid-template-columns:104px minmax(0,1fr) 150px 74px minmax(0,1.1fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>SCREEN ID</div><div>SCREEN</div><div>AREA</div><div>PHASE</div><div>ROLES</div></div>
+<sc-for list="{{ inventory }}" as="r" hint-placeholder-count="14">
+<div style="display:grid;min-width:960px;grid-template-columns:104px minmax(0,1fr) 150px 74px minmax(0,1.1fr);gap:14px;padding:10px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:center">
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#4a4842">{{ r.id }}</div>
+<div style="font:450 12.5px/1.4 'IBM Plex Sans'">{{ r.n }}</div>
+<div style="font:400 11.5px/1.4 'IBM Plex Sans';color:#79776f">{{ r.area }}</div>
+<div><span style="{{ r.phaseStyle }}">{{ r.phase }}</span></div>
+<div style="font:400 11.5px/1.45 'IBM Plex Sans';color:#6b6a63">{{ r.roles }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s8" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">08 · EXPANDABLE</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Critical end-to-end flows</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Designed before any UI. Each flow names its screens by ID, the states each step must survive, the success metric it is judged on, and what changes in Arabic. The six you prioritized are marked and go to wireframe first.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.12);border-radius:8px;overflow:hidden">
+<sc-for list="{{ flows }}" as="f" hint-placeholder-count="11">
+<div style="border-bottom:1px solid rgba(0,0,0,.09)">
+<button type="button" style="{{ f.headStyle }}" onClick="{{ f.onClick }}">
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#8b8880;width:34px;text-align:start">{{ f.id }}</span>
+<span style="font:500 15px/1.35 'IBM Plex Sans';flex:1;text-align:start">{{ f.name }}</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#79776f">{{ f.surfaceLabel }}</span>
+<span style="{{ f.phaseStyle }}">{{ f.phase }}</span>
+<span style="font:400 15px/1 'IBM Plex Mono';color:#79776f;width:14px">{{ f.chevron }}</span>
+</button>
+<sc-if value="{{ f.open }}" hint-placeholder-val="{{ true }}">
+<div style="padding:4px 20px 22px 20px;background:#f5f4f0">
+<div style="font:400 14.5px/1.62 'IBM Plex Sans';color:#2c2a26;max-width:80ch;padding:8px 0 16px">{{ f.goal }}</div>
+<div style="display:grid;gap:1px;background:rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.1);border-radius:7px;overflow-x:auto">
+<sc-for list="{{ f.steps }}" as="s" hint-placeholder-count="5">
+<div style="background:#fdfdfc;padding:13px 16px;display:grid;min-width:860px;grid-template-columns:30px 168px minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start">
+<div style="font:500 11px/1.5 'IBM Plex Mono';color:#a3a099">{{ s.i }}</div>
+<div><div style="font:500 12.5px/1.4 'IBM Plex Sans'">{{ s.screen }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:3px">{{ s.sid }}</div></div>
+<div style="font:400 13px/1.6 'IBM Plex Sans';color:#3d3b36">{{ s.action }}</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#79776f">{{ s.states }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:16px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">SUCCESS METRIC</div><div style="font:400 13px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">{{ f.metric }}</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">ARABIC / RTL</div><div style="font:400 13px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">{{ f.rtl }}</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">DOMAINS TOUCHED</div><div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#3d3b36;margin-top:5px">{{ f.domains }}</div></div>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s9" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">09</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Blueprint → UX traceability matrix</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">The structure that guarantees no requirement disappears. Every capability in the Blueprint’s register resolves to a screen, a flow, a backend-only decision, a later phase, or an open question — never to silence. Rows below are the representative extract; the full register carries one row per capability and is maintained as the single audit artifact through Phase 13.</p>
+<div style="display:flex;flex-wrap:wrap;gap:30px;margin-top:22px">
+<sc-for list="{{ traceStats }}" as="s" hint-placeholder-count="5">
+<div><div style="font:500 24px/1 'IBM Plex Mono'">{{ s.v }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px;letter-spacing:.05em">{{ s.k }}</div></div>
+</sc-for>
+</div>
+<div style="margin-top:20px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="display:grid;min-width:1040px;grid-template-columns:74px minmax(0,1.5fr) 128px minmax(0,1.1fr) 74px 132px;gap:13px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>DOMAIN</div><div>CAPABILITY</div><div>SURFACE</div><div>SCREEN / FLOW</div><div>PHASE</div><div>STATUS</div></div>
+<sc-for list="{{ traceRows }}" as="r" hint-placeholder-count="14">
+<div style="display:grid;min-width:1040px;grid-template-columns:74px minmax(0,1.5fr) 128px minmax(0,1.1fr) 74px 132px;gap:13px;padding:11px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#4a4842">{{ r.d }}</div>
+<div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#2c2a26">{{ r.c }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#79776f">{{ r.s }}</div>
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#4a4842">{{ r.sc }}</div>
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#79776f">{{ r.p }}</div>
+<div><span style="{{ r.statusStyle }}">{{ r.st }}</span></div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s10" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">10</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">UX and complexity risks</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">The ways a platform this broad usually fails, and the design decision that prevents each one. These become the review checklist at every phase gate.</p>
+<div style="margin-top:24px;display:grid;gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ risks }}" as="r" hint-placeholder-count="13">
+<div style="background:#fdfdfc;padding:16px 18px;display:grid;grid-template-columns:52px minmax(0,1fr);gap:16px;align-items:start">
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font:500 10.5px/1.4 'IBM Plex Mono';color:#4a4842">{{ r.id }}</span><span style="{{ r.sevStyle }}">{{ r.sev }}</span></div>
+<div>
+<div style="font:500 14.5px/1.4 'IBM Plex Sans'">{{ r.name }}</div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#6b6a63;margin-top:6px;max-width:86ch">{{ r.detail }}</div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#17171a;margin-top:9px;max-width:86ch;border-inline-start:2px solid #17171a;padding-inline-start:12px">{{ r.fix }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+<h3 style="font:500 16px/1.3 'IBM Plex Sans';margin:34px 0 0">Open questions — not silently resolved</h3>
+<p style="font:400 14px/1.6 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:9px 0 0">Seven points where the Blueprint is ambiguous or jurisdiction-dependent and a design decision would be a product decision in disguise. Each blocks a specific screen, so each needs an owner before Phase 8.</p>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ questions }}" as="q" hint-placeholder-count="7">
+<div style="display:grid;grid-template-columns:118px minmax(0,1fr);gap:18px;padding:13px 17px;border-bottom:1px solid rgba(0,0,0,.08);background:#fdfdfc;align-items:start">
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#4a4842">{{ q.ref }}</div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26;max-width:88ch">{{ q.q }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s11" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">11</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Terminology system</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">One word per concept across every surface, with the Arabic term fixed at the same time as the English one — not translated later. Where a surface deliberately differs, the reason is recorded.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="display:grid;min-width:1000px;grid-template-columns:112px 150px 92px minmax(0,1.3fr) minmax(0,1.1fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>USE</div><div>NEVER USE</div><div>ARABIC</div><div>MEANS</div><div>DELIBERATE EXCEPTION</div></div>
+<sc-for list="{{ terms }}" as="t" hint-placeholder-count="17">
+<div style="display:grid;min-width:1000px;grid-template-columns:112px 150px 92px minmax(0,1.3fr) minmax(0,1.1fr);gap:14px;padding:11px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div style="font:500 13px/1.45 'IBM Plex Sans'">{{ t.use }}</div>
+<div style="font:400 12px/1.45 'IBM Plex Sans';color:#a3a099;text-decoration:line-through">{{ t.not }}</div>
+<div dir="rtl" style="font:400 13px/1.5 'IBM Plex Sans Arabic';color:#3d3b36">{{ t.ar }}</div>
+<div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#2c2a26">{{ t.means }}</div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#6b6a63">{{ t.exc }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s12" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">12</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Design principles — with their tests</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">A principle without a test is decoration. Each one carries the question asked of every screen in review.</p>
+<div style="margin-top:24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ principles }}" as="p" hint-placeholder-count="10">
+<div style="background:#fdfdfc;padding:17px 19px">
+<div style="display:flex;gap:10px;align-items:baseline"><span style="font:500 11px/1.4 'IBM Plex Mono';color:#a3a099">{{ p.i }}</span><span style="font:500 15px/1.35 'IBM Plex Sans'">{{ p.t }}</span></div>
+<div style="font:400 13px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:8px">{{ p.d }}</div>
+<div style="font:400 12px/1.55 'IBM Plex Mono';color:#79776f;margin-top:10px;padding-top:9px;border-top:1px dashed rgba(0,0,0,.14)">TEST · {{ p.test }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s13" style="padding:52px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">13</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Design-system direction</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Direction only — the system is built in Phase 7, from components that wireframing proves are needed. Veyro should read as premium technology infrastructure for fitness businesses, never as a colourful workout app with an admin panel attached.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ dsDirection }}" as="d" hint-placeholder-count="8">
+<div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:20px;padding:14px 18px;border-bottom:1px solid rgba(0,0,0,.08);background:#fdfdfc;align-items:start">
+<div style="font:500 10px/1.5 'IBM Plex Mono';color:#79776f;letter-spacing:.07em">{{ d.k }}</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#2c2a26;max-width:84ch">{{ d.v }}</div>
+</div>
+</sc-for>
+</div>
+<h3 style="font:500 16px/1.3 'IBM Plex Sans';margin:32px 0 0">Components will be extracted, not invented</h3>
+<p style="font:400 14px/1.6 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:9px 0 0">The candidate inventory below is derived from the flows in §08. Anything not demanded by a real screen does not enter the system.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1px;background:rgba(0,0,0,.1);border:1px solid rgba(0,0,0,.1);border-radius:7px;overflow:hidden;margin-top:16px">
+<sc-for list="{{ componentGroups }}" as="g" hint-placeholder-count="5">
+<div style="background:#fdfdfc;padding:15px 17px">
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#a3a099;letter-spacing:.08em">{{ g.k }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="9">
+<span style="font:400 11.5px/1.4 'IBM Plex Sans';padding:4px 9px;border-radius:5px;background:#f1efea;color:#3d3b36">{{ i }}</span>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="s14" style="padding:52px 56px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">14</div>
+<h2 style="font:500 25px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin:10px 0 0">Phased design execution plan</h2>
+<p style="font:400 15px/1.65 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:14px 0 0">Thirteen phases, each gated by the previous one. Phases 1–4 are delivered in this document. Phase 5 is next: two to three distinct structural approaches for each key screen across the six flows you prioritized.</p>
+<div style="margin-top:24px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="display:grid;min-width:900px;grid-template-columns:82px minmax(0,1fr) minmax(0,1.6fr) 150px;gap:16px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>PHASE</div><div>NAME</div><div>OUTPUT</div><div>STATUS</div></div>
+<sc-for list="{{ phases }}" as="p" hint-placeholder-count="13">
+<div style="{{ p.rowStyle }}">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#79776f">{{ p.i }}</div>
+<div style="font:500 13px/1.45 'IBM Plex Sans'">{{ p.t }}</div>
+<div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ p.out }}</div>
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#4a4842">{{ p.status }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:34px;padding:20px 22px;border:1px solid rgba(0,0,0,.14);border-radius:8px;background:#fdfdfc;max-width:78ch">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880;letter-spacing:.08em">NEXT — PHASE 5</div>
+<div style="font:400 14.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:9px">Low-fidelity wireframes, 2–3 distinct structural approaches each, for: Admin Command Center · Lead profile &amp; conversion · Member 360 · POS register · Coach Today &amp; session runner · Nutrition plan builder · Member home, workout and Eat &amp; Log. Arabic RTL variants of the Command Center, Member 360 and Member home in the same pass, and every screen drawn in its first-run, empty, error and restricted-permission state before it is called done.</div>
+</div>
+</section>
+
+</main>
+</div></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+const PH = {
+  Foundation: 'background:rgba(0,0,0,.07);color:#4a4842',
+  V1: 'background:#17171a;color:#fdfdfc',
+  'V1.5': 'background:rgba(0,0,0,.14);color:#2c2a26',
+  V2: 'background:transparent;color:#6b6a63;box-shadow:inset 0 0 0 1px rgba(0,0,0,.22)',
+  Enterprise: 'background:#2b4fa8;color:#fff',
+  Future: 'background:transparent;color:#9b9890;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)'
+};
+const phaseStyle = p => 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.05em;padding:3px 6px;border-radius:4px;white-space:nowrap;display:inline-block;' + (PH[p] || PH.Foundation);
+const chip = on => 'font:450 11.5px/1.4 "IBM Plex Sans";padding:6px 11px;border-radius:20px;cursor:pointer;border:1px solid ' + (on ? '#17171a' : 'rgba(0,0,0,.16)') + ';background:' + (on ? '#17171a' : '#fdfdfc') + ';color:' + (on ? '#fdfdfc' : '#4a4842');
+const rowBtn = on => 'display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;text-align:start;padding:9px 16px;border:0;cursor:pointer;background:' + (on ? '#f1efea' : 'transparent') + ';border-inline-start:2px solid ' + (on ? '#17171a' : 'transparent') + ';color:#17171a';
+const scrBtn = on => 'display:flex;width:100%;flex-direction:column;gap:2px;text-align:start;padding:9px 16px;border:0;cursor:pointer;background:' + (on ? '#f1efea' : 'transparent') + ';border-inline-start:2px solid ' + (on ? '#17171a' : 'transparent') + ';color:#17171a';
+
+// area = [label, arLabel, entry, screens[[name, phase, roles, notes, states]]]
+const IA = [
+  { key: 'admin', name: 'Veyro Admin', code: 'ADM', platform: 'Web · desktop-first, responsive',
+    home: 'Answers what happened, what needs attention, why, and what to do — before any chart.',
+    areas: [
+      ['Home / Command Center', 'مركز القيادة', 'Default landing · ⌘K “home” · logo', [
+        ['Command Center', 'V1', 'Owner, Regional, Club Manager', 'Today’s KPIs plus a ranked attention queue: failed payments, expiring memberships, uncontacted hot leads, high-risk members, schedule conflicts, stockouts, device faults. Each item carries reason and inline remedy.', 'first-run · loading skeleton · empty (all clear) · partial data · scope-restricted · AI unavailable'],
+        ['Attention queue (full)', 'V1', 'Owner, Regional, Club Manager, Sales', 'The queue expanded with filters by type, branch, owner and age; bulk assign and bulk resolve.', 'empty · filtered-empty · bulk in progress · permission denied on subset'],
+        ['AI daily brief', 'V1.5', 'Owner, Regional', 'Narrative summary with evidence links, confidence, and executable recommended actions.', 'generating · degraded (stale data) · unavailable · low confidence'],
+        ['Scorecard by branch', 'V1.5', 'Owner, Regional', 'Comparable branch performance with exception flags rather than raw dashboards.', 'single-branch tenant · incomplete comparison window']
+      ]],
+      ['CRM & Sales', 'المبيعات والعملاء المحتملين', 'Rail · ⌘K “leads” · lead notification · campaign', [
+        ['Lead inbox', 'V1', 'Sales, Club Manager', 'Prioritized queue of leads needing first contact, sorted by score and SLA, not by created date.', 'empty · SLA breached · unassigned · duplicate detected'],
+        ['Pipeline board', 'V1', 'Sales, Club Manager, Regional', 'New → Contacted → Trial booked → Trial completed → Offer sent → Won/Lost, with WIP and stalled-stage warnings.', 'empty stage · stalled lead · lost-reason missing'],
+        ['Lead profile', 'V1', 'Sales, Club Manager', 'One lead with source attribution, conversation timeline, next action, owner and trial history. Converts to member without losing any of it.', 'no contact info · consent withheld · already a member · merged'],
+        ['Trial calendar', 'V1', 'Sales, Reception', 'Trial and tour slots against coach and facility availability.', 'no availability · overbooked · no-show'],
+        ['Offers & quotes', 'V1.5', 'Sales, Club Manager', 'Priced offers with expiry, approval for non-standard discount, and one-click acceptance to sale.', 'expired · pending approval · declined'],
+        ['Sales performance', 'V1.5', 'Club Manager, Regional, Owner', 'Conversion by source, owner, branch and campaign with attribution intact.', 'insufficient volume · attribution gap']
+      ]],
+      ['Members', 'الأعضاء', 'Rail · ⌘K name/phone · check-in · POS · coach handoff', [
+        ['Member directory', 'V1', 'All staff (scoped)', 'Saved views, column control, bulk actions, and status clarity for 4,800 members across three clubs.', 'empty · filtered-empty · large-result truncation · restricted fields hidden'],
+        ['Member 360', 'V1', 'All staff (scoped)', 'The central UX concept: one member, one profile, one timeline. Overview plus membership, billing, attendance, bookings, coaching, training, nutrition, progress, purchases, communication, access, documents, notes.', 'incomplete profile · minor/guardian · corporate-sponsored · frozen · in arrears · deleted/anonymized'],
+        ['Member timeline', 'V1', 'All staff (scoped)', 'Unified chronological event stream from every domain, filterable by kind, readable as a story.', 'sparse history · redacted events · long range paging'],
+        ['Households & dependents', 'V1.5', 'Reception, Club Manager', 'Family relationships, guardians, minors and shared payment responsibility.', 'guardian consent missing · dependent aged out'],
+        ['Privacy & consent', 'V1', 'Club Manager, Owner', 'Marketing consent, health-data consent, biometric consent, export and deletion requests.', 'consent revoked · deletion pending · legal hold']
+      ]],
+      ['Memberships', 'العضويات', 'Rail · Member 360 · POS · renewal task', [
+        ['Plans & contracts', 'V1', 'Owner, Club Manager', 'Flex, Club, Club+ with term, price, entitlements and versioning that never rewrites signed history.', 'draft · scheduled price change · retired plan with active members'],
+        ['Entitlement designer', 'V1.5', 'Owner, Club Manager', 'What a plan grants: locations, hours, zones, classes, PT, pool, sauna, guest passes — expressed as outcomes, not rules.', 'conflicting rules · unreachable combination · inherited from brand'],
+        ['Lifecycle requests', 'V1', 'Reception, Club Manager', 'Freeze, pause, upgrade, downgrade, renew, transfer, cancel — each showing consequence and money impact before confirm.', 'pending approval · policy blocked · prorated · retroactive · disputed'],
+        ['Exceptions & overrides', 'V1.5', 'Club Manager, Owner', 'Approved deviations with reason, expiry and audit trail.', 'awaiting approval · expired override']
+      ]],
+      ['Schedule & Bookings', 'الجدول والحجوزات', 'Rail · ⌘K “book” · Member 360 · front desk', [
+        ['Calendar', 'V1', 'Club Manager, Reception, Coach', 'One scheduling engine for classes, PT, consultations, assessments and facilities; keyboard-navigable and drag-safe.', 'conflict · resource unavailable · instructor absent · cancelled · past'],
+        ['Class detail & roster', 'V1', 'Reception, Coach, Club Manager', 'Capacity, waitlist, attendance marking, substitution and no-show handling.', 'full · waitlisted · under-minimum · cancelled'],
+        ['Booking policies', 'V1.5', 'Club Manager, Owner', 'Booking windows, cancellation cutoffs, no-show penalties and fair-use rules by plan.', 'policy conflict · grandfathered members'],
+        ['Resources & facilities', 'V1.5', 'Club Manager, Operations', 'Rooms, courts, equipment and their availability as bookable resources.', 'maintenance block · double-booked']
+      ]],
+      ['Front Desk', 'الاستقبال', 'Rail · dedicated Front Desk mode · kiosk pairing', [
+        ['Live arrivals', 'V1', 'Reception', 'Arrival stream with entitlement decision, alerts and occupancy — resolution in one screen.', 'offline/queued · denied · expired · unpaid balance · unknown credential'],
+        ['Access resolution', 'V1', 'Reception, Club Manager', 'Why a member was denied, and the authorized ways to resolve it now.', 'needs manager · payment required · waiver missing · biometric failure'],
+        ['Guests & day passes', 'V1', 'Reception, Sales', 'Visitor registration, sponsor verification, waiver, payment and CRM conversion.', 'sponsor invalid · waiver unsigned · capacity reached']
+      ]],
+      ['Commerce / POS', 'نقاط البيع', 'Rail · Front Desk · ⌘K “sell”', [
+        ['Register', 'V1', 'Reception, Sales', 'Identify member → tap product → pay → done. The cart knows membership pricing, wallet, credits, stock and tax without being asked.', 'guest checkout · offline · provider failure · partial payment · price override'],
+        ['Orders & receipts', 'V1', 'Reception, Accountant', 'Order history, reprints, returns and exchanges with financial traceability.', 'refund pending · disputed · voided'],
+        ['Cash shifts', 'V1', 'Reception, Club Manager', 'Open, paid in/out, expected vs actual, discrepancy and manager close.', 'discrepancy · unclosed shift · manager absent'],
+        ['Catalog & pricing', 'V1', 'Owner, Club Manager', 'One commercial catalog for memberships, services, credits, retail and bundles.', 'draft · scheduled promotion · brand-inherited price'],
+        ['Ecommerce storefront config', 'V2', 'Owner', 'Member-app store: what is sellable online, to whom, at what price.', 'unpublished · out of stock']
+      ]],
+      ['Billing & Finance', 'الفواتير والمالية', 'Rail · Member 360 · dunning task · ⌘K “failed payments”', [
+        ['Invoices', 'V1', 'Accountant, Club Manager', 'Issued, due, overdue, paid and credited — with unambiguous money states.', 'draft · overdue · partially paid · credited · written off'],
+        ['Payments & failures', 'V1', 'Accountant, Club Manager, Reception', 'Failed payment queue with reason, retry schedule, member impact and recovery action.', 'retrying · hard decline · expired card · recovered · unrecoverable'],
+        ['Dunning & recovery', 'V1', 'Accountant, Club Manager', 'The escalation ladder: reminder, retry, WhatsApp, access consequence, staff task.', 'paused · escalated · promise to pay'],
+        ['Refunds & adjustments', 'V1', 'Club Manager, Accountant', 'Reason, amount, destination, approval and audit for every reversal.', 'pending approval · partial · provider failed'],
+        ['Ledger & wallet', 'V1.5', 'Accountant', 'Immutable financial truth: charges, payments, credits, wallet movements, liabilities.', 'unreconciled · settlement pending'],
+        ['Reconciliation & tax', 'V1.5', 'Accountant', 'Provider settlement matching and jurisdictional tax reporting for JOD and GCC.', 'variance · missing statement · tax rule change']
+      ]],
+      ['Inventory & Procurement', 'المخزون والمشتريات', 'Rail · POS stock alert · Command Center exception', [
+        ['Stock by location', 'V1.5', 'Inventory Manager, Club Manager', 'On-hand, committed, expiring and below-reorder across three clubs.', 'stockout · negative stock · expiring soon'],
+        ['Purchase orders & receiving', 'V1.5', 'Inventory Manager', 'Supplier, order, partial receipt, cost and margin.', 'partially received · price variance · overdue delivery'],
+        ['Counts & transfers', 'V2', 'Inventory Manager', 'Cycle counts, adjustments with reason, and inter-branch transfers.', 'variance · in transit · disputed']
+      ]],
+      ['Team & Staff', 'الفريق والموظفين', 'Rail · staff onboarding · payroll cycle', [
+        ['People & roles', 'V1', 'Owner, Club Manager', 'Staff records, role assignment and scope — distinct from members but sharing identity infrastructure.', 'invited · suspended · offboarded'],
+        ['Shifts & attendance', 'V1.5', 'Club Manager', 'Rosters, clock-in, absence and substitution.', 'unfilled shift · late · unapproved overtime'],
+        ['Commissions', 'V1.5', 'Club Manager, Accountant', 'Rules, accruals, adjustments and disputes on sales and PT delivery.', 'pending period · adjusted · disputed'],
+        ['Payroll export', 'V2', 'Accountant', 'Period close and export to payroll providers with protected HR data.', 'period open · missing data · locked']
+      ]],
+      ['Coaching', 'التدريب', 'Rail · Member 360 · PT sale · coach quality alert', [
+        ['Coach assignments', 'V1', 'Club Manager', 'Who coaches whom, capacity and load balancing.', 'unassigned client · over capacity · coach leaving'],
+        ['Sessions & credits', 'V1', 'Club Manager, Accountant', 'PT package consumption, expiry, disputes and revenue recognition.', 'unverified session · expired credits · disputed'],
+        ['Exercise library', 'V1', 'Club Manager, Coach', 'Governed exercise catalog with media, cues and contraindications.', 'unpublished · duplicate · brand-restricted'],
+        ['Delivery quality', 'V1.5', 'Club Manager, Regional', 'Adherence, session verification and outcome quality without micromanaging coaches.', 'insufficient data · privacy-limited']
+      ]],
+      ['Nutrition', 'التغذية', 'Rail · Member 360 · coach escalation', [
+        ['Plan templates', 'V1.5', 'Nutritionist, Club Manager', 'Reusable plan skeletons by goal, calorie band and dietary pattern.', 'draft · unapproved · retired'],
+        ['Food & recipe library', 'V1.5', 'Nutritionist', 'Local and regional foods with macro data, provenance and confidence.', 'unverified macros · missing local food'],
+        ['Adherence exceptions', 'V1.5', 'Nutritionist, Club Manager', 'Only the deviations that need a human: low adherence, repeated misses, stalls, safety signals.', 'no data · consent-limited · escalated'],
+        ['Qualified review queue', 'Enterprise', 'Nutritionist', 'Clinical-adjacent cases routed to a qualified reviewer before assignment.', 'awaiting review · rejected · out of scope']
+      ]],
+      ['Engagement', 'التفاعل والتواصل', 'Rail · Member 360 · campaign · inbox notification', [
+        ['Unified inbox', 'V1', 'Reception, Sales, Club Manager', 'WhatsApp, SMS, email, push and in-app in one thread per person, with business context attached.', 'unassigned · outside quiet hours · consent withheld · channel down · 24h window closed'],
+        ['Campaigns', 'V1.5', 'Club Manager, Owner', 'Segment, channel, schedule, cost estimate and outcome — optimized for business result, not send volume.', 'draft · pending approval · throttled · failed delivery'],
+        ['Templates & consent', 'V1', 'Club Manager', 'Approved message templates per channel and language, with consent gating.', 'template rejected · translation missing'],
+        ['Community, challenges & rewards', 'V2', 'Club Manager', 'Purposeful mechanics tied to measurable behavior, not an open social network.', 'no participants · moderation flag · reward exhausted'],
+        ['Referrals', 'V1.5', 'Sales, Club Manager', 'Referral tracking, attribution and reward issuance.', 'unqualified · fraud suspected']
+      ]],
+      ['Operations', 'العمليات', 'Rail · incident report · device alert', [
+        ['Facilities & assets', 'V2', 'Operations, Club Manager', 'Asset register, condition, cost and utilization across clubs.', 'out of service · warranty expiring'],
+        ['Maintenance & issues', 'V1.5', 'Operations, Reception', 'Report, triage, assign, resolve — reportable from any surface.', 'overdue · blocked · recurring fault'],
+        ['Incidents & safety', 'V1.5', 'Club Manager, Operations', 'Injury, emergency and safeguarding workflows with accountable follow-through.', 'open · escalated · regulator-reportable'],
+        ['Device fleet', 'V1.5', 'Operations, Owner', 'Turnstiles, scanners, kiosks and terminals — health, version and remote command.', 'offline · degraded · firmware pending']
+      ]],
+      ['Automations & Work', 'الأتمتة والمهام', 'Rail · exception “automate this” · task notification', [
+        ['Automation library', 'V1.5', 'Club Manager, Owner', 'Templates first: win-back, dunning, no-show recovery, birthday, renewal, onboarding.', 'inactive · never triggered · superseded'],
+        ['Workflow builder', 'V1.5', 'Club Manager, Owner', 'WHEN event · IF conditions · THEN actions · WAIT · THEN — readable as a sentence and testable before publishing.', 'draft · invalid · unsafe (loop/volume) · preview mode'],
+        ['Run history & failures', 'V1.5', 'Club Manager', 'Every run, what it did to whom, why it stopped, and how to recover.', 'failed · retrying · skipped by consent · partially applied'],
+        ['Tasks, cases & approvals', 'V1', 'All staff', 'Accountable human work with assignee, due date, SLA, member context and escalation.', 'overdue · reassigned · escalated · blocked']
+      ]],
+      ['Analytics & AI', 'التحليلات والذكاء الاصطناعي', 'Rail · ⌘K question · Command Center drill-down', [
+        ['Scorecards', 'V1.5', 'Owner, Regional, Club Manager', 'What happened, why, what to do — organized by business question, not by table.', 'insufficient history · definition changed'],
+        ['Report builder', 'V2', 'Owner, Accountant, Regional', 'Saved reports, segmentation, comparison and export without BI complexity for ordinary managers.', 'too broad · export queued · scope-limited'],
+        ['Anomalies & forecasts', 'V2', 'Owner, Regional', 'Detected deviations with explanation and uncertainty shown honestly.', 'low confidence · model degraded'],
+        ['AI copilot', 'V1.5', 'Owner, Regional, Club Manager', 'Ask in language, receive explanation, evidence, confidence and authorized executable actions.', 'streaming · no permission for source data · refused (unsafe) · unavailable'],
+        ['AI audit & evaluation', 'Enterprise', 'Owner', 'What AI did, on whose behalf, with what data and what outcome.', 'pending review · flagged']
+      ]],
+      ['Corporate & Franchise', 'الشركات والامتياز', 'Rail (Enterprise) · corporate contract · franchise governance', [
+        ['Corporate accounts', 'Enterprise', 'Owner, Sales', 'Contract, eligible population, subsidy, copay and consolidated invoice.', 'roster stale · leaver grace · privacy-limited reporting'],
+        ['Eligibility & enrollment', 'Enterprise', 'Sales, Reception', 'Roster, domain, code or SSO-based eligibility with joiner/mover/leaver sync.', 'ineligible · pending verification · expired'],
+        ['Franchise governance', 'Enterprise', 'Owner, Regional', 'Central standards with explicit, bounded, reviewable local overrides.', 'override pending · non-compliant location'],
+        ['Chain comparison', 'Enterprise', 'Owner, Regional', 'Comparable scorecards and exception queues — not raw branch detail by default.', 'incomparable definitions · scope denied']
+      ]],
+      ['Developer & Integrations', 'المطورين والتكاملات', 'Settings · rail (advanced) · integration failure alert', [
+        ['Connections', 'V1.5', 'Owner', 'Payments, WhatsApp, accounting, wearables and access hardware with live status.', 'disconnected · credentials expiring · degraded'],
+        ['API apps & keys', 'V2', 'Owner', 'Apps, scopes, keys, rotation and usage against rate limits.', 'revoked · rate-limited · leaked key'],
+        ['Webhooks & logs', 'V2', 'Owner', 'Deliveries, failures, replay and retry with readable payload history.', 'failing endpoint · replay queued'],
+        ['Marketplace', 'Future', 'Owner', 'Governed partner apps with certification state.', 'not installed · deprecated']
+      ]],
+      ['Settings & Governance', 'الإعدادات والحوكمة', 'Avatar menu · ⌘K “settings” · onboarding checklist', [
+        ['Organization, brands & locations', 'V1', 'Owner', 'The tenancy hierarchy with inherited and overridden settings made visible.', 'inherited · overridden · location closed'],
+        ['Roles & permissions', 'V1', 'Owner', 'Role design, scope, capability matrix and approval requirements.', 'custom role · conflicting scope · last-admin guard'],
+        ['Regional policy', 'V1', 'Owner', 'Currency, tax, timezone, week start, language, phone and date formats.', 'unsupported jurisdiction · pending review'],
+        ['App builder & white-label', 'V2', 'Owner', 'Brand identity, home layout, navigation, features and content per brand app.', 'unpublished · store review · rollback available'],
+        ['Audit log', 'V1.5', 'Owner', 'Human-readable history of sensitive change: who, what, when, why, on whose authority.', 'export requested · retention limit'],
+        ['Onboarding & readiness', 'V1', 'Owner', 'Signup to go-live as a product: progress, blockers, validation and readiness score.', 'blocked · import errors · dry-run · ready']
+      ]]
+    ]},
+  { key: 'coach', name: 'Veyro Coach', code: 'COH', platform: 'Mobile-first · tablet where useful',
+    home: 'What do I need to do today, and which clients need me? Never gym revenue, never a miniature admin menu.',
+    areas: [
+      ['Today', 'اليوم', 'App launch · session reminder · push', [
+        ['Today', 'V1', 'Coach, PT, Instructor', 'Sessions with preparation cards, schedule changes, tasks and a short “needs attention” list of real deviations.', 'no sessions · day off · schedule changed · offline · all clear'],
+        ['Session prep card', 'V1', 'Coach, PT', 'Last session, current program block, restrictions, goals and what to change today.', 'first session · missing assessment · limitation flagged'],
+        ['Needs attention', 'V1', 'Coach, PT', 'Missed workouts, pain reports, expiring programs, check-in problems, member requests — actionable only.', 'empty (good) · escalated · privacy-limited']
+      ]],
+      ['Clients', 'المتدربين', 'Tab · Today · search · assignment notification', [
+        ['Client roster', 'V1', 'Coach, PT, Nutritionist', 'Assigned clients with status, adherence signal and quick filters.', 'no clients · unassigned · inactive client'],
+        ['Client 360 (coach view)', 'V1', 'Coach, PT', 'Goals, coaching status, recent activity, restrictions, program, nutrition, progress — coach-relevant slice of Member 360, not the whole thing.', 'incomplete profile · restriction present · consent-limited · membership lapsed'],
+        ['Restrictions & safety', 'V1', 'Coach, PT', 'Injuries and limitations surfaced before programming, with coaching-vs-medical boundary explicit.', 'unscreened · new limitation · escalate to qualified']
+      ]],
+      ['Sessions', 'الجلسات', 'Today · client · calendar', [
+        ['Session runner', 'V1', 'Coach, PT', 'Start, verify attendance, log against plan, note, complete, consume credit, set follow-up.', 'client absent · late · offline logging · credit exhausted · unverified'],
+        ['Schedule & availability', 'V1', 'Coach, PT', 'Own calendar, availability windows and substitution requests.', 'conflict · leave requested · overbooked']
+      ]],
+      ['Training', 'البرامج والتمارين', 'Client 360 · Create · templates', [
+        ['Program builder', 'V1', 'Coach, PT', 'Blocks, weeks, progression and templates — fast enough to build during a session.', 'draft · unassigned · conflicting dates'],
+        ['Workout assignment', 'V1', 'Coach, PT', 'Assign or adapt today’s workout with substitutions for equipment or limitation.', 'equipment unavailable · limitation conflict · member already trained'],
+        ['Program review & adaptation', 'V1.5', 'Coach, PT', 'Adherence and load review with AI-suggested next mesocycle the coach approves.', 'insufficient logs · stalled progress · AI unavailable']
+      ]],
+      ['Nutrition', 'التغذية', 'Client 360 · Create · adherence exception', [
+        ['Create plan', 'V1.5', 'Coach, Nutritionist', 'Generate with AI, use template, or start from scratch — with known context preloaded, never re-asked.', 'missing dietary data · allergy conflict · out of scope'],
+        ['Meal builder', 'V1.5', 'Coach, Nutritionist', 'Day cards, recipes, portions, local food search, remaining targets and Fix with AI.', 'macro mismatch · unavailable food · unsaved'],
+        ['Preview & assign', 'V1.5', 'Coach, Nutritionist', 'See it exactly as the member will, set dates, swap tolerance, check-in and exception thresholds.', 'unassigned · conflicting active plan · pending qualified review'],
+        ['Adherence check-ins', 'V1.5', 'Coach, Nutritionist', 'Weekly check-in review and correction — exceptions only, never a notification stream.', 'no logs · consent-limited · safety signal']
+      ]],
+      ['Assessments & Progress', 'القياسات والتقدم', 'Client 360 · Create · review reminder', [
+        ['Assessment', 'V1.5', 'Coach, PT', 'Structured assessment capture with source quality recorded.', 'partial · device-sourced · disputed value'],
+        ['Measurements & photos', 'V1.5', 'Coach, PT', 'Trends with consent-gated progress photos.', 'consent withheld · no baseline · outlier'],
+        ['Progress review', 'V1.5', 'Coach, PT', 'Objective trend plus coach interpretation the member can read.', 'insufficient data · goal changed']
+      ]],
+      ['Inbox', 'الرسائل', 'Tab · client · handoff', [
+        ['Conversations', 'V1', 'Coach, PT, Nutritionist', 'Contextual client threads with requests, quiet hours and handoff to staff.', 'quiet hours · consent withheld · handoff pending · unanswered SLA']
+      ]],
+      ['Create', 'إنشاء', 'Floating action on every tab', [
+        ['Quick create', 'V1', 'Coach, PT', 'Program, workout, meal plan, assessment, note, task or message in three interactions.', 'offline queued · missing required context']
+      ]],
+      ['Sell / Request Payment', 'البيع وطلب الدفع', 'Client 360 · Today opportunity', [
+        ['Sell package', 'V1.5', 'Coach, PT', 'Approved PT, assessment or nutrition packages with commission visibility.', 'not authorized · price override needed · declined'],
+        ['Request payment', 'V1.5', 'Coach, PT', 'Secure payment request to the member; the coach never handles card data.', 'pending · expired · failed · paid']
+      ]],
+      ['Profile & Availability', 'الملف والتوفر', 'Avatar', [
+        ['Coach profile', 'V1', 'Coach, PT, Nutritionist', 'Qualifications, scope of practice, device security, preferences and support.', 'qualification expiring · scope restricted']
+      ]]
+    ]},
+  { key: 'member', name: 'Veyro Member', code: 'MBR', platform: 'Mobile-first consumer app · white-labelled per brand',
+    home: 'What should I do now? Personalized and action-first; the module structure stays invisible.',
+    areas: [
+      ['Personalized Home', 'الرئيسية', 'App launch · push · widget', [
+        ['Home', 'V1', 'Member', 'Today’s workout, next meal, next booking, membership or access issue, progress nudge and coach message — in that priority.', 'first-run · no plan yet · access issue · payment issue · offline · all done today'],
+        ['Notifications', 'V1', 'Member', 'Personal and actionable only, with preferences and quiet hours honored.', 'empty · permission not granted']
+      ]],
+      ['Access / Digital Card', 'بطاقة الدخول', 'Home · widget · wallet · lock screen', [
+        ['Digital card', 'V1', 'Member', 'QR, NFC or wallet pass with live access status, permitted locations and fallback.', 'offline (cached) · suspended · unpaid · expired · biometric unavailable'],
+        ['Identity Center', 'V1.5', 'Member', 'Devices, sessions, app biometrics, access methods, consent, recent access and revoke.', 'no biometrics · consent revoked · unknown device']
+      ]],
+      ['Train', 'التمرين', 'Home · tab · coach message', [
+        ['Today’s workout', 'V1', 'Member', 'One-tap set logging, previous results, timers and substitutions — three interactions or fewer to log.', 'no plan · rest day · equipment busy · partially logged · offline'],
+        ['Program', 'V1', 'Member', 'The current plan, where they are in it, and what is next.', 'no program · program ended · paused'],
+        ['History & PRs', 'V1.5', 'Member', 'What they have done and what improved.', 'no history · gap in training']
+      ]],
+      ['Nutrition', 'التغذية', 'Home · tab · meal reminder', [
+        ['Today’s plan', 'V1.5', 'Member', 'Simple target plus next meal — answers “what should I eat now?” before showing any database.', 'no plan · flexible-targets mode · target missed · offline'],
+        ['Eat & log', 'V1.5', 'Member', 'One tap logs the coach-authored meal. No ingredient reconstruction.', 'already logged · partial portion · offline queued'],
+        ['Swap meal', 'V1.5', 'Member', 'Approved alternatives inside calorie/protein tolerance and hard allergen constraints.', 'no alternative · allergen blocked · outside tolerance'],
+        ['Log something else', 'V1.5', 'Member', 'Photo, barcode, search, favorites or recent — estimates labelled honestly and correctable.', 'not recognized · estimate low confidence · offline'],
+        ['Grocery & check-in', 'V2', 'Member', 'Automatic list and weekly check-in back to the coach.', 'empty week · check-in overdue']
+      ]],
+      ['Book', 'الحجز', 'Home · tab · class reminder', [
+        ['Browse & book', 'V1', 'Member', 'Classes, PT, consultations and facilities with eligibility resolved before the tap.', 'full · waitlist · not eligible · booking window closed · payment required'],
+        ['My bookings', 'V1', 'Member', 'Upcoming and past with cancellation policy stated in plain language.', 'none · cancellation fee applies · no-show recorded'],
+        ['Waitlist', 'V1.5', 'Member', 'Position, auto-promotion and the deadline to confirm.', 'promoted · expired · removed']
+      ]],
+      ['Progress', 'التقدم', 'Home · tab · coach review', [
+        ['Progress', 'V1.5', 'Member', 'Goals, measurements, strength, consistency, attendance, milestones and coach commentary.', 'no baseline · sparse data · consent-gated photos']
+      ]],
+      ['Shop', 'المتجر', 'Home · tab · upsell · coach request', [
+        ['Store', 'V2', 'Member', 'Upgrades, PT, class packs, nutrition, retail and gift cards with member pricing applied.', 'out of stock · not eligible · price changed'],
+        ['Checkout', 'V2', 'Member', 'Saved method, wallet, split and clear tax and total.', 'payment failed · 3DS required · offline']
+      ]],
+      ['Community & Rewards', 'المجتمع والمكافآت', 'Tab (if enabled) · challenge invite', [
+        ['Challenges & achievements', 'V2', 'Member', 'Purposeful mechanics with privacy controls, not a social feed.', 'not enrolled · ended · privacy-limited'],
+        ['Rewards & referrals', 'V2', 'Member', 'Points, redemption and referral status.', 'insufficient points · reward exhausted · referral pending']
+      ]],
+      ['Membership & Payments', 'العضوية والمدفوعات', 'Home issue · profile · renewal reminder', [
+        ['My membership', 'V1', 'Member', 'Plan, what it includes in plain language, renewal date and available self-service actions.', 'expiring · frozen · in arrears · corporate-sponsored · cancellation pending'],
+        ['Self-service requests', 'V1.5', 'Member', 'Freeze, upgrade, change payment date or cancel — with consequence shown before confirm and approval where required.', 'policy blocked · pending approval · fee applies'],
+        ['Invoices & wallet', 'V1', 'Member', 'Invoices, receipts, payment methods and wallet balance with no ambiguous money states.', 'overdue · payment failed · refund pending']
+      ]],
+      ['Inbox & Support', 'الرسائل والدعم', 'Home · tab · coach push', [
+        ['Conversations', 'V1', 'Member', 'Coach, club and support in one place with context attached.', 'no messages · outside hours · awaiting reply'],
+        ['Get help', 'V1.5', 'Member', 'Contextual help, report an issue and status.', 'no connection · ticket open']
+      ]],
+      ['Household', 'العائلة', 'Profile · family plan purchase', [
+        ['Household', 'V1.5', 'Member (guardian)', 'Dependents, guardians, shared payment and bookings for family plans.', 'consent required · dependent aged out · not a family plan']
+      ]],
+      ['Profile, Security & Privacy', 'الملف والخصوصية', 'Avatar', [
+        ['Profile & security', 'V1', 'Member', 'Identity, passkeys, Face ID, devices and step-up for sensitive actions.', 'passkey unsupported · device lost'],
+        ['Privacy & data', 'V1.5', 'Member', 'Consents, marketing preferences, health data, photos, export and deletion — no dark patterns.', 'deletion pending · legal hold · consent withdrawn']
+      ]]
+    ]},
+  { key: 'desk', name: 'Veyro Front Desk', code: 'FDK', platform: 'Desktop / tablet operational mode · scanner + keyboard',
+    home: 'Resolve the person in front of me in seconds. Minimal modal depth, keyboard and scanner first.',
+    areas: [
+      ['Live Check-in', 'تسجيل الدخول', 'Default mode · scanner · turnstile event', [
+        ['Arrival stream', 'V1', 'Reception', 'Live arrivals with entitlement decision, alert, occupancy and one-key resolution.', 'offline queued · denied · unknown credential · duplicate scan'],
+        ['Occupancy', 'V1.5', 'Reception, Club Manager', 'Live capacity by zone with safety limits.', 'at capacity · sensor offline']
+      ]],
+      ['Member Lookup', 'البحث عن عضو', 'Type-anywhere · scanner · phone', [
+        ['Lookup', 'V1', 'Reception', 'Name, phone, ID, QR or card with recent visits and contextual actions inline.', 'no match · multiple matches · restricted record'],
+        ['Quick actions', 'V1', 'Reception', 'Renew, pay balance, freeze, book, issue credential, sign waiver, update contact — without leaving the desk view.', 'needs manager · payment failed · policy blocked']
+      ]],
+      ['POS', 'نقاط البيع', 'Mode tab · scanner · member action', [
+        ['Desk register', 'V1', 'Reception', 'Member-aware cart, scan, tender, receipt, return and payment request.', 'offline · provider down · split payment · refund needs approval']
+      ]],
+      ['Bookings', 'الحجوزات', 'Mode tab · member lookup', [
+        ['Today schedule', 'V1', 'Reception', 'Check-in, walk-in, reschedule, waitlist and no-show in one view.', 'full · cancelled · instructor absent']
+      ]],
+      ['Guests & Trials', 'الزوار والتجارب', 'Mode tab · walk-in', [
+        ['Register guest', 'V1', 'Reception, Sales', 'Visitor or trial registration with sponsor verification, waiver, payment, access and CRM handoff.', 'sponsor invalid · waiver unsigned · capacity reached · duplicate visitor']
+      ]],
+      ['Cash Shift', 'الوردية النقدية', 'Mode tab · shift start/end', [
+        ['Shift', 'V1', 'Reception, Club Manager', 'Open, paid in/out, expected vs actual, discrepancy and manager close.', 'discrepancy · manager absent · unclosed from prior day']
+      ]],
+      ['Incidents & Handoffs', 'الحوادث والتحويل', 'Mode tab · any resolution screen', [
+        ['Report & escalate', 'V1.5', 'Reception', 'Report, triage and hand off to manager, finance, sales or coach with context intact.', 'unassigned · escalated · resolved']
+      ]]
+    ]},
+  { key: 'console', name: 'Veyro Internal SaaS Console', code: 'SAS', platform: 'Web · Veyro internal staff only',
+    home: 'Which tenants are at risk, and what is the platform doing right now?',
+    areas: [
+      ['Tenant 360', 'إدارة المستأجرين', 'Home · search · support ticket', [
+        ['Tenant directory', 'V1', 'Veyro Support, CS', 'All tenants with lifecycle, plan, health and open issues.', 'trialing · past due · suspended · churned'],
+        ['Tenant 360', 'V1', 'Veyro Support, CS', 'Lifecycle, plan, contacts, usage, cost, health, incidents, integrations and history in one record.', 'onboarding · at risk · migrating · offboarding'],
+        ['Safe support session', 'V1', 'Veyro Support', 'Scoped, consented, time-boxed and fully audited impersonation.', 'consent required · expired · denied']
+      ]],
+      ['Subscriptions & Finance', 'الاشتراكات', 'Rail · billing alert', [
+        ['SaaS plans & entitlements', 'V1', 'Veyro Ops', 'Plan definitions, limits, metering and safe upgrade paths.', 'limit reached · grandfathered · deprecated plan'],
+        ['Tenant invoicing & dunning', 'V1', 'Veyro Finance', 'Invoices, payments, dunning, credits and partner share.', 'past due · disputed · written off']
+      ]],
+      ['Support & Diagnostics', 'الدعم والتشخيص', 'Rail · ticket · alert', [
+        ['Diagnostics', 'V1', 'Veyro Support', 'Jobs, webhooks, configuration, device and provider state for one tenant.', 'degraded · failing job · provider outage']
+      ]],
+      ['Customer Success', 'نجاح العملاء', 'Rail · health alert · renewal', [
+        ['Health & adoption', 'V1.5', 'Veyro CS', 'Adoption, risk, success plan, renewal and expansion signals.', 'insufficient usage data · at risk · renewal due']
+      ]],
+      ['Release & Feature Control', 'الإصدارات والميزات', 'Rail · release calendar', [
+        ['Flags & experiments', 'V1.5', 'Veyro Ops', 'Feature flags and experiments by tenant, plan, brand, location, role and cohort.', 'partial rollout · conflicting flag · kill-switched'],
+        ['Mobile fleet & app builds', 'V2', 'Veyro Ops', 'White-label app versions, store state and rollback.', 'store review · rollout paused · forced upgrade']
+      ]],
+      ['Incident Command', 'إدارة الحوادث', 'Rail · alert · page', [
+        ['Incident', 'V1.5', 'Veyro Ops', 'Severity, impacted tenants, timeline, status page and postmortem.', 'active · mitigated · comms pending']
+      ]],
+      ['Security & Compliance', 'الأمن والامتثال', 'Rail · DSAR · audit', [
+        ['Compliance workspace', 'V1.5', 'Veyro Security', 'Access reviews, consent, vulnerabilities, evidence, DSARs and legal holds.', 'overdue review · open finding · hold active']
+      ]],
+      ['Integrations & Device Fleet', 'التكاملات والأجهزة', 'Rail · connector alert', [
+        ['Connector & fleet health', 'V1.5', 'Veyro Ops', 'Connector status, credentials, sync, devices, versions and remote commands.', 'offline · credentials expired · version drift']
+      ]],
+      ['Data & AI Operations', 'البيانات والذكاء الاصطناعي', 'Rail · AI budget alert', [
+        ['AI operations', 'V2', 'Veyro Ops', 'Models, prompts, evaluations, safety, budgets and AI incidents.', 'eval regression · budget exceeded · safety flag']
+      ]],
+      ['Cost & Capacity', 'التكلفة والسعة', 'Rail · anomaly', [
+        ['Unit economics', 'V2', 'Veyro Finance, Ops', 'Cloud, AI, messaging, storage and support cost per tenant with anomalies.', 'anomaly · forecast breach']
+      ]]
+    ]},
+  { key: 'corp', name: 'Corporate Portal', code: 'CRP', platform: 'Web · employer HR administrator',
+    home: 'Is our program being used, and is our roster correct?',
+    areas: [
+      ['Program Overview', 'نظرة عامة', 'Login · invite', [
+        ['Utilization', 'Enterprise', 'Corporate admin', 'Privacy-preserving aggregate utilization, engagement and program outcome. Individual health and coaching data never appears.', 'insufficient population · privacy threshold not met']
+      ]],
+      ['Eligibility', 'الأهلية', 'Rail · HRIS sync', [
+        ['Roster', 'Enterprise', 'Corporate admin', 'Upload, HRIS sync, domain or code eligibility with joiner/mover/leaver handling.', 'sync failed · duplicate · leaver grace']
+      ]],
+      ['Billing', 'الفواتير', 'Rail · invoice email', [
+        ['Consolidated invoices', 'Enterprise', 'Corporate admin, Finance', 'One invoice, employee copay, adjustments and credits.', 'disputed · adjustment pending']
+      ]]
+    ]},
+  { key: 'fran', name: 'Franchise Portal', code: 'FRN', platform: 'Web · franchisee owner',
+    home: 'How is my club performing against the network standard?',
+    areas: [
+      ['Network Scorecard', 'لوحة الشبكة', 'Login · exception alert', [
+        ['Comparison', 'Enterprise', 'Franchisee, Regional', 'Normalized, comparable metrics with exception queues — not raw sibling-club detail.', 'incomparable definitions · scope denied']
+      ]],
+      ['Governance', 'الحوكمة', 'Rail · standard published', [
+        ['Standards & overrides', 'Enterprise', 'Franchisee', 'Central standards, permitted local overrides and compliance state.', 'override pending · non-compliant']
+      ]],
+      ['Royalty & Settlement', 'الرسوم والتسوية', 'Rail · statement issued', [
+        ['Royalty statements', 'Enterprise', 'Franchisee, Finance', 'Royalty, marketing fund, shared services and intercompany allocation.', 'disputed · unsettled']
+      ]]
+    ]}
+];
+
+const DOMAINS = [
+  ['Core SaaS Platform & Identity', [
+    ['PLT-01', 'Tenant, Organization, Brand & Location', 'Foundation', 'Admin · Console'],
+    ['PLT-02', 'Configuration, Feature Flags & Experimentation', 'Foundation', 'Console · Admin'],
+    ['PLT-03', 'SaaS Plans, Subscription Billing, Metering & Entitlements', 'Foundation', 'Console'],
+    ['PLT-04', 'Internal Administration, Support & Customer Success', 'V1', 'Console'],
+    ['IAM-01', 'Identity, Authentication, Passkeys & Device Sessions', 'Foundation', 'All surfaces'],
+    ['IAM-02', 'Biometric Identity & Physical Access Methods', 'V1.5', 'Member · Desk · Kiosk'],
+    ['IAM-03', 'Authorization, Roles, Permissions, Approvals & Audit', 'Foundation', 'All surfaces']
+  ]],
+  ['People, CRM & Growth', [
+    ['PPL-01', 'People, Profiles & Member 360', 'V1', 'Admin · Coach · Member'],
+    ['PPL-02', 'Households, Dependents, Guests & Eligibility', 'V1.5', 'Admin · Desk · Member'],
+    ['GRO-01', 'CRM, Leads, Sales Pipeline & Trials', 'V1', 'Admin · Desk'],
+    ['GRO-02', 'Marketing, Referrals, Offers & Growth Journeys', 'V1.5', 'Admin · Member']
+  ]],
+  ['Membership, Finance & Commerce', [
+    ['COM-01', 'Memberships, Contracts, Entitlements & Lifecycle', 'V1', 'Admin · Member · Desk'],
+    ['COM-02', 'Catalog, Pricing, Promotions & Packages', 'V1', 'Admin · Desk · Member'],
+    ['COM-03', 'Member Billing, Payments, Tax & Revenue Recovery', 'V1', 'Admin · Member'],
+    ['COM-04', 'Financial Ledger, Wallet, Credits & Reconciliation', 'V1.5', 'Admin'],
+    ['COM-05', 'Point of Sale, Ecommerce & Order Fulfillment', 'V1', 'Desk · Admin · Member'],
+    ['COM-06', 'Inventory, Purchasing, Suppliers & Stock Control', 'V1.5', 'Admin']
+  ]],
+  ['Gym Operations', [
+    ['OPS-01', 'Scheduling, Resources & Capacity', 'V1', 'Admin · Coach'],
+    ['OPS-02', 'Booking, Waitlist & No-show Intelligence', 'V1', 'Member · Admin · Desk'],
+    ['OPS-03', 'Check-in, Access Control & Entitlement Decisions', 'V1', 'Desk · Kiosk · Member'],
+    ['OPS-04', 'Front Desk, Kiosk, Guest & Visitor Operations', 'V1', 'Desk · Kiosk'],
+    ['OPS-05', 'Staff, Shifts, Attendance, Payroll & Commissions', 'V1.5', 'Admin'],
+    ['OPS-06', 'Facilities, Equipment, Assets & Maintenance', 'V2', 'Admin']
+  ]],
+  ['Coaching, Nutrition, Progress & Safety', [
+    ['COA-01', 'Coach Workspace & Client Management', 'V1', 'Coach · Admin'],
+    ['COA-02', 'Training Programs, Workouts & Exercise Logging', 'V1', 'Coach · Member'],
+    ['COA-03', 'Nutrition Planning, Meals, Logging & Adherence', 'V1.5', 'Coach · Member'],
+    ['COA-04', 'Assessments, Measurements, Progress & Outcomes', 'V1.5', 'Coach · Member'],
+    ['COA-05', 'Health, Safety, Consent & Incident Management', 'V1.5', 'Admin · Coach · Member']
+  ]],
+  ['Engagement, Communication & Automation', [
+    ['ENG-01', 'Unified Inbox, Messaging & Contextual Communication', 'V1', 'Admin · Coach · Member'],
+    ['ENG-02', 'Notification Platform, Templates & Preferences', 'V1', 'All surfaces'],
+    ['ENG-03', 'Community, Challenges, Achievements & Rewards', 'V2', 'Member · Admin'],
+    ['ENG-04', 'Member Self-Service, Digital Card & Service Requests', 'V1', 'Member'],
+    ['AUT-01', 'Automation & Workflow Orchestration', 'V1.5', 'Admin'],
+    ['AUT-02', 'Tasks, Cases, Approvals, SLAs & Escalations', 'V1', 'Admin · Coach · Desk']
+  ]],
+  ['Analytics, AI, Corporate & Franchise', [
+    ['INT-01', 'Operational Analytics, BI, Forecasting & Benchmarking', 'V1.5', 'Admin · Franchise'],
+    ['INT-02', 'AI Platform, Copilots, Agents & Governance', 'V1.5', 'All surfaces'],
+    ['INT-03', 'Global Search, Command Bar & Knowledge Navigation', 'V1.5', 'Admin · Coach · Console'],
+    ['B2B-01', 'Corporate Memberships & Employer Portal', 'Enterprise', 'Corporate · Admin · Member'],
+    ['B2B-02', 'Franchise, Multi-brand & Chain Command Center', 'Enterprise', 'Admin · Franchise · Console']
+  ]],
+  ['Developer Ecosystem, Hardware & White-label', [
+    ['ECO-01', 'Developer Platform, APIs, Webhooks & Sandbox', 'V2', 'Admin · Console'],
+    ['ECO-02', 'Integration Framework, Marketplace & Partner Ecosystem', 'V1.5', 'Admin · Console'],
+    ['ECO-03', 'Hardware Abstraction, Edge Runtime & Device Fleet', 'V1.5', 'Admin · Console · Kiosk'],
+    ['WHT-01', 'White-label, App Builder, CMS & Mobile Release Ops', 'V2', 'Admin · Console'],
+    ['WHT-02', 'Localization, RTL, Accessibility & Regional Policy', 'Foundation', 'All surfaces']
+  ]],
+  ['Data, Security & Reliability', [
+    ['DAT-01', 'Domain Events, Event Bus & Operational Timeline', 'Foundation', 'Backend · timelines'],
+    ['DAT-02', 'Data Platform, Warehouse, Governance & Data Products', 'V1.5', 'Backend · Admin'],
+    ['SEC-01', 'Security, Privacy, Compliance & Consent', 'Foundation', 'All surfaces'],
+    ['SEC-02', 'Fraud, Abuse, Trust & Content Moderation', 'V1.5', 'Admin · Console'],
+    ['REL-01', 'Reliability, Offline Operation, Continuity & Incidents', 'Foundation', 'Desk · Kiosk · Console'],
+    ['REL-02', 'Observability, Performance, Capacity & FinOps', 'Foundation', 'Console']
+  ]],
+  ['Lifecycle, Quality & Governance', [
+    ['LIF-01', 'Onboarding, Implementation & Go-live Readiness', 'V1', 'Admin · Console'],
+    ['LIF-02', 'Migration, Import, Validation & Cutover', 'V1', 'Admin · Console'],
+    ['LIF-03', 'Offboarding, Data Portability, Archival & Deletion', 'V1.5', 'Admin · Console · Member'],
+    ['GOV-01', 'Quality Engineering, CI/CD, Release & Schema Mgmt', 'Foundation', 'Console'],
+    ['GOV-02', 'Product, Architecture, Data & AI Governance', 'Foundation', 'Internal'],
+    ['GOV-03', 'Legal, Procurement, Vendor & Compliance Operations', 'V1.5', 'Console · Internal'],
+    ['GOV-04', 'GTM Ops, Knowledge, Training, Feedback & Education', 'V1.5', 'Console · Admin']
+  ]]
+];
+
+const FLOWS = [
+  ['F-01', 'Admin Command Center → exception resolution', 'Admin', 'V1', true,
+    'A club manager opens Veyro and, without navigating, resolves the day’s revenue and access exceptions — each one carrying its own reason and remedy.',
+    'Time to identify and resolve the day’s top three exceptions, from open to done, without leaving the queue.',
+    'Queue is a vertical list, so RTL mirrors cleanly; currency stays JOD 45.00 with Latin numerals by tenant preference, amount column aligns to the inline-end edge.',
+    'PPL-01, COM-03, OPS-03, AUT-02, INT-01, INT-02',
+    [
+      ['Command Center', 'ADM-01-01', 'Scan the attention queue: 6 failed payments (JOD 312), 14 memberships expiring in 7 days, 3 hot leads uncontacted past SLA, 1 turnstile offline at Khalda.', 'loading skeleton → partial data → all clear'],
+      ['Attention queue (full)', 'ADM-01-02', 'Open failed payments grouped by cause. Four are expired cards, two are insufficient funds — Veyro has already retried and drafted the member message.', 'empty · permission denied on subset'],
+      ['Member 360 · Billing', 'ADM-08-02', 'Inline on the queue row: see the member, the invoice, the retry history and the access consequence. No context switch.', 'in arrears · frozen · disputed'],
+      ['Resolve', 'ADM-08-02', 'Send payment link by WhatsApp (consent checked, quiet hours honored), or take payment now. Queue row closes with an audit entry.', 'consent withheld · channel down · 24h window closed'],
+      ['Automate', 'ADM-15-01', '“This happened 14 times this month” → offer the dunning automation template pre-filled from this exception.', 'draft · unsafe volume · already active']
+    ]],
+  ['F-02', 'Lead → trial → member conversion', 'Admin · Desk · Member', 'V1', false,
+    'An Instagram lead becomes a paying Club+ member at Abdoun without losing attribution, conversation history or trial context — and without anyone retyping her name.',
+    'Time to first contact; lead-to-member conversion rate by source; zero re-entry of known data at conversion.',
+    'Arabic names sort and search by both Arabic and Latin transliteration; phone numbers stay LTR inside RTL text; WhatsApp templates exist per language and are chosen by member preference.',
+    'GRO-01, PPL-01, OPS-01, COM-01, COM-02, COM-05, IAM-01, ENG-01',
+    [
+      ['Lead inbox', 'ADM-02-01', 'Lead arrives from Instagram with source intact and lands top of queue: high intent, SLA 30 min.', 'unassigned · duplicate of existing member · no consent'],
+      ['Lead profile', 'ADM-02-03', 'WhatsApp from inside the profile; reply lands on the same timeline. Next action set automatically.', 'no contact info · outside quiet hours'],
+      ['Trial calendar', 'ADM-02-04', 'Book a trial into a real class slot with capacity and coach availability resolved. Confirmation sent in her language.', 'no availability · overbooked · no-show'],
+      ['Front Desk · lookup', 'FDK-02-01', 'She arrives; reception finds her as a trial, signs the waiver on screen, issues a temporary credential.', 'waiver unsigned · trial expired · walk-in without booking'],
+      ['POS · register', 'ADM-07-01', 'Convert: Club+ monthly, JOD 65, first month prorated. One record — no new person created.', 'price override needs approval · payment failed · provider down'],
+      ['Activation', 'MBR-09-01', 'Membership, entitlements, access credential, app invite, coach assignment, commission and attribution all update from the one sale.', 'app invite not accepted · access sync pending']
+    ]],
+  ['F-03', 'Membership sale at POS', 'Desk · Admin', 'V1', false,
+    'Identify member → add product → pay → done, in three or four meaningful interactions, with the cart understanding entitlements and money on its own.',
+    'Median checkout duration; transaction failure rate; correction/void rate.',
+    'Cart, totals and tender column mirror; receipt prints bilingual with tax terminology per jurisdiction; numerals follow tenant setting consistently across screen and receipt.',
+    'COM-02, COM-05, COM-01, COM-03, COM-04, OPS-05',
+    [
+      ['Desk register', 'FDK-03-01', 'Scan the member QR. Cart shows plan, wallet JOD 12.50, 2 unused PT credits, no outstanding balance.', 'guest checkout · unknown credential · outstanding balance'],
+      ['Add items', 'FDK-03-01', 'Tap Club+ upgrade and a protein bar. Member pricing and tax applied automatically; no discount hunting.', 'out of stock · price changed · not eligible'],
+      ['Tender', 'FDK-03-01', 'Wallet covers part; card covers the rest. Remaining balance is always visible.', 'partial payment · provider failure · offline queued'],
+      ['Fulfil', 'ADM-04-03', 'Upgrade activates the agreement, entitlements, access rights, coach assignment, commission and receipt in one commit.', 'entitlement conflict · prorate disputed · sync pending'],
+      ['Recovery', 'FDK-03-01', 'If the provider times out, the order is explicitly pending — retry never double-charges and never duplicates the order.', 'duplicate suspected · reversal required']
+    ]],
+  ['F-04', 'Coach Today → session → workout assignment', 'Coach · Member', 'V1', false,
+    'A PT at Khalda runs a 7am session and leaves the client’s next workout assigned before the client has left the floor.',
+    'Client review time; program creation time; percentage of sessions verified same-day.',
+    'Coach app in Arabic keeps exercise names bilingual (Arabic label, Latin lift name) because gym-floor vocabulary is mixed; set/rep numerals stay consistent with locale setting.',
+    'COA-01, COA-02, OPS-01, PPL-01, AUT-02, COA-05',
+    [
+      ['Today', 'COH-01-01', '6 sessions, one schedule change, two clients needing attention: a missed workout and a reported shoulder pain.', 'day off · offline · schedule changed'],
+      ['Session prep card', 'COH-01-02', 'Last session loads, plus the shoulder limitation flagged before programming — not after.', 'first session · missing assessment'],
+      ['Session runner', 'COH-03-01', 'Start, verify attendance, log against plan, note. Credit consumed on completion.', 'client absent · offline logging · credit exhausted'],
+      ['Workout assignment', 'COH-04-02', 'Adapt the next session around the limitation; substitutions offered inside the same movement pattern.', 'limitation conflict · equipment unavailable'],
+      ['Member: Today’s workout', 'MBR-03-01', 'The client sees it on their home screen with the change explained in plain language.', 'no plan · offline · already trained today']
+    ]],
+  ['F-05', 'Nutrition plan creation (coach)', 'Coach · Member', 'V1.5', false,
+    'A halal 2,200 kcal / 160 g protein hybrid plan built, previewed and assigned in minutes, reusing everything Veyro already knows about the client.',
+    'Plan creation time; member adherence at week 4; logging time per meal.',
+    'Local food library covers Jordanian and Levantine dishes with Arabic-first naming; macro tables use tabular figures and stay LTR inside Arabic layout; grocery list prints RTL.',
+    'COA-03, COA-04, PPL-01, ENG-02, COA-05',
+    [
+      ['Create plan', 'COH-05-01', 'Client → Nutrition → Create. Goals, weight, activity, training days and approved health context are already loaded.', 'missing dietary data · out of scope → qualified review'],
+      ['Choose start', 'COH-05-01', 'Generate with AI, use a template, or start from scratch. AI drafts; it never publishes.', 'AI unavailable · low confidence'],
+      ['Collect what is missing', 'COH-05-01', 'Only the unknowns: allergies, dislikes, cuisine, budget, cooking time, meal count. Nothing already on file.', 'allergen conflict · contradictory constraints'],
+      ['Meal builder', 'COH-05-02', 'Hybrid mode: structured meals with flexible targets. Remaining macros live; Fix with AI rebalances.', 'macro mismatch · unavailable food'],
+      ['Scale the week', 'COH-05-02', 'Duplicate day, apply to selected days, generate variations inside macro tolerance.', 'unsaved · conflicting active plan'],
+      ['Preview & assign', 'COH-05-03', 'See it exactly as the member will. Set dates, swap tolerance, check-in day and exception thresholds. Assign.', 'pending qualified review · conflicting plan'],
+      ['Manage by exception', 'COH-05-04', 'Only low adherence, repeated misses, stalls, hunger/energy issues, swap requests or safety signals reach the coach.', 'no logs · consent-limited · safety escalation']
+    ]],
+  ['F-06', 'Member: today’s workout + eat & log', 'Member', 'V1', false,
+    'The member opens the app twice a day and both jobs finish in three taps or fewer, with no confirmation screens in the way.',
+    'Workout logging completion rate; meal logging time; taps per logged meal.',
+    'One-tap targets stay ≥44px in both directions; Arabic home reads right-to-left with the same priority order; timers and rep counters keep numerals consistent with locale.',
+    'COA-02, COA-03, ENG-04, OPS-02, PPL-01',
+    [
+      ['Home', 'MBR-01-01', 'Push Day A at 6pm, next meal in 2 hours, class booked tomorrow 7am, membership fine. Nothing else competes.', 'no plan · access issue · payment issue · offline'],
+      ['Today’s workout', 'MBR-03-01', 'One-tap set logging against last session’s numbers. Cable machine busy → substitution offered.', 'partially logged · equipment busy · offline queued'],
+      ['Today’s plan', 'MBR-04-01', 'Next meal card with the simple target — not a food database.', 'flexible-targets mode · target missed'],
+      ['Eat & log', 'MBR-04-02', 'One tap logs the coach-authored meal. No ingredient reconstruction, no confirmation screen.', 'already logged · partial portion'],
+      ['Swap', 'MBR-04-03', 'Not suitable → approved alternatives inside calorie/protein tolerance and hard allergen limits → log.', 'no alternative · allergen blocked']
+    ]],
+  ['F-07', 'Failed payment → dunning → recovery', 'Admin · Member', 'V1', false,
+    'Money recovered without a member being embarrassed at the turnstile, and without an ambiguous financial state anywhere.',
+    'Recovery rate by attempt; days to recover; involuntary churn avoided.',
+    'Amounts and dates localized; dunning messages exist per language and channel; access-consequence wording reviewed for tone in Arabic.',
+    'COM-03, COM-04, ENG-01, AUT-01, OPS-03, ENG-02',
+    [
+      ['Payments & failures', 'ADM-08-02', 'Failure arrives with cause, retry schedule and member impact — not a raw provider code.', 'hard decline · expired card · retrying'],
+      ['Dunning ladder', 'ADM-08-03', 'Reminder → retry → WhatsApp → access consequence → staff task, each step reversible and explainable.', 'paused · promise to pay · escalated'],
+      ['Member: invoices', 'MBR-09-03', 'The member sees exactly what failed, what it affects, and one way to fix it.', 'payment failed again · 3DS required'],
+      ['Front Desk resolution', 'FDK-02-02', 'If they arrive first, reception resolves it discreetly at the desk in one action.', 'needs manager · policy blocked']
+    ]],
+  ['F-08', 'Check-in with access exception', 'Desk · Kiosk · Member', 'V1', false,
+    'The turnstile says no; the member is through in under thirty seconds with the reason and the fix both visible.',
+    'Time to resolve a denied entry; percentage resolved without a manager.',
+    'Denial language must be neutral and non-accusatory in both languages; kiosk supports Arabic-first display per member preference.',
+    'OPS-03, OPS-04, IAM-02, COM-01, COM-03',
+    [
+      ['Arrival stream', 'FDK-01-01', 'Denied entry appears with the entitlement decision explained: off-peak plan, peak hour.', 'offline queued · unknown credential · duplicate scan'],
+      ['Access resolution', 'FDK-02-02', 'Authorized options only: upgrade now, buy a peak pass, or manager override with reason.', 'needs manager · payment required'],
+      ['Resolve & log', 'FDK-02-02', 'Action taken, entitlement updated, audit entry written, member’s app reflects it immediately.', 'sync pending · override expired']
+    ]],
+  ['F-09', 'Automation creation from an exception', 'Admin', 'V1.5', false,
+    'The manager never opens a blank builder — automations are proposed from exceptions that already happened.',
+    'Automations published from templates vs from scratch; failure rate of published automations.',
+    'WHEN/IF/THEN reads as a sentence in Arabic too — clause order is translated, not mirrored word-for-word.',
+    'AUT-01, AUT-02, ENG-01, ENG-02, INT-02',
+    [
+      ['Automation library', 'ADM-15-01', 'Templates first: win-back after 10 days absent, dunning, no-show recovery, renewal.', 'inactive · superseded'],
+      ['Workflow builder', 'ADM-15-02', 'WHEN no check-in for 10 days · IF membership active · THEN push · WAIT 3 days · IF still absent · THEN WhatsApp · THEN coach task.', 'invalid · unsafe volume · draft'],
+      ['Test & preview', 'ADM-15-02', 'Dry-run against real members, see who would be affected and what they would receive, before publish.', 'preview only · consent-excluded population'],
+      ['Run history', 'ADM-15-03', 'Every run, who it touched, what stopped it, and how to recover.', 'failed · retrying · partially applied']
+    ]],
+  ['F-10', 'Tenant onboarding & migration', 'Admin · Console', 'V1', false,
+    'A three-club operator goes from signed contract to operational confidence with switching anxiety removed.',
+    'Days to go-live; readiness score at launch; import error rate at cutover.',
+    'Setup asks language, currency, timezone, week start and tax jurisdiction before any content is created, so nothing needs retrofitting.',
+    'LIF-01, LIF-02, PLT-01, COM-02, IAM-03, ECO-02',
+    [
+      ['Onboarding & readiness', 'ADM-19-06', 'Create organization → locations → brand → plans → payments → staff → import → schedule → access → app → channels → validate → go live, with blockers explicit.', 'blocked · partially complete'],
+      ['Migration import', 'ADM-19-06', 'Dry run with preview, field mapping, duplicate detection and an error report you can act on.', 'import errors · mapping incomplete · rollback'],
+      ['Validation', 'ADM-19-06', 'Readiness score gates go-live: payments connected, plans priced, access mapped, staff trained.', 'not ready · warnings accepted'],
+      ['Console: Tenant 360', 'SAS-01-02', 'Veyro CS watches the same readiness signal from the other side and intervenes before launch slips.', 'at risk · migrating']
+    ]],
+  ['F-11', 'AI ask → evidence → authorized action', 'Admin', 'V1.5', false,
+    'AI is an operating layer, not a chat window: every answer carries evidence and an action the user is actually allowed to take.',
+    'Percentage of AI answers accepted; actions executed from AI vs abandoned; refusal appropriateness.',
+    'Questions and answers work in Arabic; numbers, dates and currency in answers are formatted by tenant locale, not by model default.',
+    'INT-02, INT-01, IAM-03, DAT-02, AUT-01',
+    [
+      ['AI copilot', 'ADM-16-04', '“Why is revenue down this month at Khalda?” Answer streams with the decomposition.', 'streaming · no permission for source · unavailable'],
+      ['Evidence', 'ADM-16-04', 'PT revenue down 18%, two coaches on leave, 31 sessions unverified. Every claim links to the record behind it.', 'partial data · definition ambiguity'],
+      ['Recommended action', 'ADM-16-04', 'Reassign affected clients, chase unverified sessions, or draft a win-back — each shown with target, effect and required approval.', 'requires approval · not authorized · refused (unsafe)'],
+      ['Execute & audit', 'ADM-16-05', 'Action runs under the user’s permissions and is recorded in the AI audit log with the data it used.', 'partially applied · reverted']
+    ]]
+];
+
+const T = [
+  ['Member', 'Client / Customer', 'عضو', 'A person with a membership agreement.', 'Coach surfaces say “client” — the coaching relationship, not the contract.'],
+  ['Plan', 'Package / Tier', 'خطة', 'The purchasable product definition (Flex, Club, Club+).', '—'],
+  ['Membership', 'Subscription', 'عضوية', 'One member’s instance of a plan, with dates and state.', 'Console says “subscription” for Veyro’s own SaaS billing.'],
+  ['Entitlement', 'Access right / Perk', 'استحقاق', 'What a membership grants. Never shown to members as “entitlement”.', 'Member app says “what’s included”.'],
+  ['Booking', 'Appointment / Reservation', 'حجز', 'A reserved place in a scheduled occurrence.', 'Coach surfaces say “session” for PT specifically.'],
+  ['Session', 'Appointment', 'جلسة', 'A delivered coaching occurrence that consumes a credit.', '—'],
+  ['Location', 'Branch / Gym / Club', 'فرع', 'A physical operating site. “Club” is brand copy, not a data term.', 'Franchise portal says “club” to match operator language.'],
+  ['Coach', 'Trainer / Instructor', 'مدرب', 'Any qualified delivery staff member.', 'Group-class delivery is “instructor” in schedule copy only.'],
+  ['Order', 'Transaction / Sale', 'طلب', 'A commercial commitment: what was bought.', '—'],
+  ['Payment', 'Transaction', 'دفعة', 'Money movement against an invoice.', '—'],
+  ['Invoice', 'Bill / Receipt', 'فاتورة', 'The demand for money. A receipt evidences a payment.', '—'],
+  ['Credit', 'Wallet / Points', 'رصيد خدمة', 'A right to a service (PT credit, class credit).', '—'],
+  ['Wallet', 'Credit / Balance', 'محفظة', 'Stored monetary value usable at POS.', '—'],
+  ['Lead', 'Prospect / Enquiry', 'عميل محتمل', 'A person in the sales pipeline, pre-membership.', '—'],
+  ['Freeze', 'Pause / Hold / Suspend', 'تجميد', 'Member-requested, policy-bounded membership suspension.', 'Suspension is staff-initiated and punitive — never conflated.'],
+  ['Task', 'To-do / Ticket', 'مهمة', 'Accountable staff work with assignee and due date.', 'Console says “ticket” for tenant support cases.'],
+  ['Exception', 'Alert / Issue', 'استثناء', 'A deviation that needs a decision, with reason attached.', '—']
+];
+
+const RISKS = [
+  ['UX-R1', 'Navigation collapse under 20 admin areas', 'A permanently visible 20-item rail plus sub-navigation makes the product feel unlearnable and pushes daily work three clicks deep.', 'Role-composed rail of eight daily areas, an area directory behind one affordance, and ⌘K as a first-class path. Nav is generated from role and features, never a static tree with disabled rows.', 'Critical'],
+  ['UX-R2', 'Member 360 becoming a 15-tab filing cabinet', 'Fifteen tabs of equal weight makes the most important screen in the product a place to hunt rather than understand.', 'Overview answers the member’s state in one glance; the timeline is the spine; the other sections are progressive detail reached from what the overview surfaces.', 'Critical'],
+  ['UX-R3', 'Entitlement complexity leaking to members', 'Plans with location, time, zone, class, guest and service rules are expressible as rules and incomprehensible as UI.', 'Members see outcomes in plain language (“Peak access, all clubs, 2 guest passes a month”); staff see the rule builder; conflicts are validated at authoring time, not discovered at the turnstile.', 'High'],
+  ['UX-R4', 'Dashboard syndrome', 'Command Center degrades into decorative charts, and exception work moves back into modules.', 'Attention queue is the primary object; charts must earn their place by explaining a queue item. Design review rejects any card without an action or a reason.', 'High'],
+  ['UX-R5', 'AI as a bolted-on chat window', 'A chat panel that cannot act, cannot cite, or ignores permissions destroys trust after two uses.', 'AI answers carry evidence, confidence and authorized actions that run under the user’s own permissions. Refusals are explained. Every AI action is auditable.', 'Critical'],
+  ['UX-R6', 'Notification fatigue destroying coach and member trust', 'Every domain can emit events; unmanaged, coaches get a stream and stop looking.', 'Exception thresholds per role, quiet hours, digesting, and a rule that no automated message exists without an owner and a measured outcome.', 'High'],
+  ['UX-R7', 'Arabic as a mirrored afterthought', 'Blind mirroring breaks timelines, progress, charts, mixed-language names, phone numbers and numerals.', 'Arabic is designed in parallel for every key screen; direction-aware layout primitives; bidi rules for numerals, currency and phone; Arabic reviewed by a native speaker at every phase gate.', 'Critical'],
+  ['UX-R8', 'Front Desk built from Admin components', 'Reception speed dies at the first modal; admin density is wrong for a queue of people waiting.', 'Front Desk is its own surface with its own density, its own keyboard map, scanner-first input and a hard limit of one modal depth.', 'High'],
+  ['UX-R9', 'Ambiguous money states', 'Charge, payment, invoice, refund, credit, wallet and settlement blur into “paid?” and finance trust collapses.', 'One vocabulary (§11), explicit statuses everywhere money appears, and no screen that shows a total without saying what kind of total it is.', 'Critical'],
+  ['UX-R10', 'Offline actions mistaken for confirmed', 'POS and check-in queue locally; a staff member assumes the cloud agreed.', 'Persistent live/cached/queued/failed indicator, explicit pending state on every queued action, and idempotent retry that cannot double-charge.', 'Critical'],
+  ['CX-R1', 'Design-system sprawl across five surfaces', 'Admin density, mobile touch, POS speed and kiosk scale pull one system in four directions.', 'One token set, four density modes, and surface-specific component variants rather than parallel systems. Components are extracted from wireframes, not invented up front.', 'High'],
+  ['CX-R2', 'Permission-state explosion in design review', 'Every screen × 12 roles × scope × feature flags is unreviewable.', 'Design three canonical permission profiles per surface (full, scoped, restricted) and specify the rule for the rest, rather than drawing every combination.', 'Medium'],
+  ['CX-R3', 'V1 visually overloaded by the full vision', 'Designing the whole blueprint into V1 screens makes the first release feel unusable.', 'Every screen tagged by phase; V1 wireframes contain only V1 elements; later phases shown as architecture, not as UI.', 'High']
+];
+
+const QUESTIONS = [
+  ['COA-03 / COA-05', 'Where exactly is the boundary between coach-authored nutrition and qualified/clinical review, and which jurisdictions force the Enterprise review queue into V1?'],
+  ['IAM-02', 'Which launch jurisdictions permit facility facial recognition, and is biometric enrollment ever contractually mandatory for a corporate or franchise tenant?'],
+  ['COM-01 / B2B-01', 'When a corporate-sponsored member leaves the employer, who owns the membership during the grace period — and what does the member see on day one of that grace?'],
+  ['COM-03', 'Does an unpaid balance ever block physical access in V1, and if so at which step of the dunning ladder — this changes both the Front Desk and Member app design materially.'],
+  ['B2B-02', 'For a member with cross-location access, which club owns the revenue, the coaching relationship and the member data when brands differ within the network?'],
+  ['ENG-01', 'Confirm the WhatsApp template and 24-hour window constraints per market — the unified inbox design depends on whether staff can initiate freely.'],
+  ['OPS-05', 'Which payroll and commission data is visible to a Club Manager versus Accountant only? The Blueprint protects HR data but the boundary is not enumerated.']
+];
+
+const PRINCIPLES = [
+  ['01', 'Work arrives; users do not patrol', 'Every surface opens on a prioritized set of things that need this person, with reason and remedy attached. Modules are where work is finished, not where it is found.', 'Can the user finish the day’s job without opening the navigation?'],
+  ['02', 'One record, one timeline', 'A person is never duplicated by the surface that touched them. Lead, member, client, customer and dependent are one record with one history.', 'Does any flow create a second person or a second history?'],
+  ['03', 'Absorb complexity in the system', 'Ledgers, entitlements, tenancy and policy engines never surface as vocabulary. Users see outcomes and consequences.', 'Could a new receptionist do this without training on the data model?'],
+  ['04', 'Three interactions for frequent jobs', 'Log a set, log a meal, book a class, check in, take a payment — three meaningful interactions or fewer when policy allows.', 'Count the taps for the ten most frequent actions.'],
+  ['05', 'Never ask what Veyro knows', 'Pre-fill from the record. Missing data is collected once, at the moment it is first needed.', 'Is any field on this form already stored somewhere?'],
+  ['06', 'Explain, then act', 'Every denial, error, exception and AI answer states what happened, what it affected, whether data is safe, and what to do next.', 'Read the message aloud — does it answer all four?'],
+  ['07', 'Hide, do not disable', 'Irrelevant complexity is absent for that role, not greyed out. Disabling is reserved for temporarily unavailable, not permanently unauthorized.', 'Is there a disabled control here that this role can never enable?'],
+  ['08', 'Two directions, one intent', 'Arabic RTL is designed, not derived. Layout, icons, timelines, charts, numerals and mixed-language text are each decided deliberately.', 'Has a native Arabic reader used this screen in this state?'],
+  ['09', 'Money is never ambiguous', 'Every amount states its kind and status. No screen shows a number that could be two different things.', 'Can finance reconcile this screen without asking a question?'],
+  ['10', 'Confirmation proportional to risk', 'Step-up authentication and approval where consequence is real; nothing in the way of routine work.', 'Would a power user meet this confirmation more than twice a day?']
+];
+
+const DS = [
+  ['DENSITY', 'Four density modes from one token scale: Admin (compact, tabular), Coach (touch, single-column), Member (touch, generous), Front Desk / Kiosk (large hit areas, high contrast, glanceable at 1.5m).'],
+  ['TYPE', 'One family with a genuine Arabic companion of equal quality — Arabic is set, not fallback. Tabular figures mandatory anywhere money, sets, reps, macros or counts appear. Numerals (Arabic-Indic vs Latin) are a tenant setting applied consistently across screen, receipt and export.'],
+  ['COLOR', 'Near-neutral warm greyscale carries the interface; one brand accent for action and selection; a four-token semantic set for success, warning, error and risk. Status is never color-only — it always carries a label or shape. Modules are not colour-coded.'],
+  ['THEME', 'Light and dark for Admin, Coach and Member; white-label overrides brand accent, logo, radius and imagery — never semantic status colours, never contrast ratios. Theme tokens are validated for WCAG 2.2 AA before a brand can publish.'],
+  ['MOTION', 'Motion clarifies state change only: what arrived, what left, what is loading, what streamed. Reduced-motion is a first-class path, not a degradation.'],
+  ['LAYOUT', 'Direction-aware primitives only — inline-start/end, never left/right. Admin on a 12-column desktop grid with a fixed rail; mobile surfaces on a single-column stack with sheet-based depth capped at two levels.'],
+  ['STATES', 'Every component ships default, hover, active, selected, focus, disabled, loading, error, success and warning. Every data surface ships first-run, empty, filtered-empty, partial, offline and permission-denied. A component without its states is not done.'],
+  ['ACCESSIBILITY', 'WCAG 2.2 AA as a build gate: visible focus everywhere, 44px minimum touch targets, semantic labels, screen-reader flows for the six critical journeys, Dynamic Type support on mobile, and no meaning conveyed by colour alone.']
+];
+
+const COMPONENT_GROUPS = [
+  ['FROM ADMIN DENSITY', ['data grid', 'saved views', 'filter bar', 'bulk action bar', 'inline edit cell', 'money cell', 'status badge', 'attention queue row', 'scope switcher', 'command palette', 'audit entry', 'approval banner']],
+  ['FROM MEMBER 360', ['identity header', 'timeline', 'section rail', 'entitlement summary', 'relationship chip', 'note thread', 'document row', 'consent toggle']],
+  ['FROM COACH & MEMBER MOBILE', ['session card', 'set logger', 'exercise card', 'meal card', 'swap sheet', 'progress chart', 'adherence ring', 'client row', 'quick-create sheet', 'check-in form']],
+  ['FROM POS & FRONT DESK', ['register cart', 'product tile', 'tender panel', 'member context strip', 'arrival row', 'scanner input', 'denial resolver', 'cash-shift form', 'offline indicator']],
+  ['FROM AI & AUTOMATION', ['AI answer block', 'evidence citation', 'confidence indicator', 'suggested action', 'streaming state', 'workflow step', 'condition row', 'dry-run preview', 'run-history entry']]
+];
+
+const PHASES = [
+  ['1', 'Blueprint analysis', 'Domain, role, capability and dependency inventory; contradictions flagged rather than resolved.', 'Complete — §01, §04, §10'],
+  ['2', 'Product experience architecture', 'IA, navigation, search, commands, notifications, task surfaces, org and role context for all surfaces.', 'Complete — §05, §06'],
+  ['3', 'Complete screen inventory', 'Every screen with ID, surface, area, role, phase, entry points and required states.', 'Complete — §07'],
+  ['4', 'Critical user flows', 'End-to-end flows with screen IDs, states, metrics and RTL notes before any UI.', 'Complete — §08'],
+  ['5', 'Low-fidelity wireframes', '2–3 distinct structural approaches per key screen across the six prioritized flows.', 'Next'],
+  ['6', 'UX review', 'Step removal, duplicate-data audit, inference opportunities, failure paths, Arabic, keyboard, restricted permissions.', 'Gated by 5'],
+  ['7', 'Design system', 'Foundations and components extracted from validated wireframes, never a generic kit.', 'Gated by 6'],
+  ['8', 'High-fidelity UI', 'Premium visual execution with realistic Nadi Group data.', 'Gated by 7'],
+  ['9', 'Interaction design', 'Transitions, microinteractions, AI streaming, drag, swipe, keyboard, background work.', 'Gated by 8'],
+  ['10', 'Complete state coverage', 'Every non-happy path drawn. Mandatory before a module is called done.', 'Gated by 8'],
+  ['11', 'Responsive + RTL', 'Breakpoints, tablet behavior, Arabic versions of key screens, mixed-language cases.', 'Gated by 8'],
+  ['12', 'Prototyping', 'Clickable prototypes of the prioritized flows for validation.', 'Gated by 10'],
+  ['13', 'Design QA', 'Consistency, reuse, accessibility, RTL, edge cases, permissions, tokens, terminology, traceability.', 'Release gate']
+];
+
+const TRACE = [
+  ['PPL-01', 'Canonical person record with unified relationship history', 'Admin', 'ADM-03-02 Member 360', 'V1', 'Designed'],
+  ['PPL-01', 'Unified chronological event timeline', 'Admin · Coach', 'ADM-03-03 · COH-02-02', 'V1', 'Designed'],
+  ['GRO-01', 'Lead scoring and prioritized first-contact queue', 'Admin', 'ADM-02-01 · F-02', 'V1', 'Designed'],
+  ['COM-01', 'Freeze, upgrade, transfer, cancel with consequence preview', 'Admin · Member', 'ADM-04-03 · MBR-09-02', 'V1', 'Designed'],
+  ['COM-01', 'Contract versioning without rewriting signed history', 'Admin', 'ADM-04-01', 'V1', 'Designed'],
+  ['COM-03', 'Dunning ladder with access consequence', 'Admin · Member', 'ADM-08-03 · F-07', 'V1', 'Designed'],
+  ['COM-04', 'Immutable ledger and provider settlement matching', 'Admin', 'ADM-08-05 · ADM-08-06', 'V1.5', 'Planned'],
+  ['COM-05', 'Member-aware cart with entitlements, wallet and credits', 'Front Desk', 'FDK-03-01 · F-03', 'V1', 'Designed'],
+  ['OPS-03', 'Entitlement decision at the turnstile with offline fallback', 'Front Desk · Kiosk', 'FDK-01-01 · F-08', 'V1', 'Designed'],
+  ['OPS-03', 'Edge decision caching and queued sync', 'Kiosk', '—', 'V1', 'Backend-only'],
+  ['COA-03', 'Hybrid plan mode with swap tolerance', 'Coach · Member', 'COH-05-02 · MBR-04-03', 'V1.5', 'Designed'],
+  ['COA-05', 'Qualified clinical review routing', 'Coach · Admin', 'ADM-12-04', 'Enterprise', 'Requires clarification'],
+  ['IAM-02', 'Facility facial entry with consent, liveness and revocation', 'Member · Kiosk', 'MBR-02-02', 'V1.5', 'Requires clarification'],
+  ['IAM-03', 'Permission-aware search post-filtering', 'All', 'ADM-06 command system', 'V1.5', 'Designed'],
+  ['AUT-01', 'Dry-run preview against real population before publish', 'Admin', 'ADM-15-02 · F-09', 'V1.5', 'Designed'],
+  ['INT-02', 'AI action execution under caller permissions with audit', 'Admin', 'ADM-16-04 · ADM-16-05 · F-11', 'V1.5', 'Designed'],
+  ['INT-03', 'Natural-language command → previewable structured action', 'Admin', 'ADM-06 command system', 'V1.5', 'Designed'],
+  ['B2B-01', 'Privacy-preserving employer utilization reporting', 'Corporate', 'CRP-01-01', 'Enterprise', 'Planned'],
+  ['B2B-02', 'Bounded, reviewable local overrides', 'Admin · Franchise', 'ADM-17-03 · FRN-02-01', 'Enterprise', 'Planned'],
+  ['WHT-01', 'Per-brand app layout, navigation and feature composition', 'Admin', 'ADM-19-04', 'V2', 'Planned'],
+  ['WHT-02', 'RTL, numerals, calendar and jurisdictional policy', 'All', 'ADM-19-03 · every screen', 'Foundation', 'Designed'],
+  ['DAT-01', 'Durable domain events behind every timeline', 'All', '—', 'Foundation', 'Backend-only'],
+  ['REL-01', 'Offline POS and check-in with idempotent retry', 'Front Desk', 'FDK-03-01 · FDK-01-01', 'V1', 'Designed'],
+  ['LIF-02', 'Import dry run, mapping, duplicates and rollback', 'Admin', 'ADM-19-06 · F-10', 'V1', 'Designed'],
+  ['ECO-01', 'API apps, scopes, keys, webhook logs and replay', 'Admin', 'ADM-18-02 · ADM-18-03', 'V2', 'Planned'],
+  ['ECO-03', 'Device fleet health and remote command', 'Admin · Console', 'ADM-14-04 · SAS-08-01', 'V1.5', 'Planned'],
+  ['GOV-02', 'Architecture and AI decision records', 'Internal', '—', 'Foundation', 'Backend-only']
+];
+
+class Component extends DCLogic {
+  state = { cluster: 'All', surf: 'admin', area: 0, screen: 0, dir: 'ltr', query: '', invSurf: 'All', invPhase: 'All', openFlow: 'F-01' };
+
+  ia() {
+    return IA.map(s => ({
+      ...s,
+      areas: s.areas.map((a, ai) => ({
+        label: a[0], ar: a[1], entry: a[2],
+        screens: a[3].map((sc, si) => ({
+          id: s.code + '-' + String(ai + 1).padStart(2, '0') + '-' + String(si + 1).padStart(2, '0'),
+          n: sc[0], phase: sc[1], roles: sc[2], notes: sc[3], states: sc[4],
+          area: a[0], surfaceName: s.name, surfaceKey: s.key, entry: a[2]
+        }))
+      }))
+    }));
+  }
+  allScreens() { const o = []; this.ia().forEach(s => s.areas.forEach(a => a.screens.forEach(x => o.push(x)))); return o; }
+
+  renderVals() {
+    const st = this.state, set = p => this.setState(p);
+    const ia = this.ia();
+    const all = this.allScreens();
+
+    // domains
+    const clusters = DOMAINS.map(([name, ds]) => ({
+      name, count: ds.length,
+      domains: ds.map(d => ({ id: d[0], name: d[1], phase: d[2], surfaces: d[3], phaseStyle: phaseStyle(d[2]) }))
+    }));
+    const clusterChips = [{ label: 'All 57', v: 'All' }].concat(DOMAINS.map(c => ({ label: c[0], v: c[0] })))
+      .map(c => ({ label: c.label, style: chip(st.cluster === c.v), onClick: () => set({ cluster: c.v }) }));
+
+    // IA explorer
+    const surf = ia.find(s => s.key === st.surf) || ia[0];
+    const area = surf.areas[Math.min(st.area, surf.areas.length - 1)];
+    const scr = area.screens[Math.min(st.screen, area.screens.length - 1)];
+    const rtl = st.dir === 'rtl';
+
+    // inventory
+    const q = st.query.trim().toLowerCase();
+    const inv = all.filter(r =>
+      (st.invSurf === 'All' || r.surfaceKey === st.invSurf) &&
+      (st.invPhase === 'All' || r.phase === st.invPhase) &&
+      (!q || (r.n + ' ' + r.id + ' ' + r.area + ' ' + r.roles).toLowerCase().includes(q))
+    ).map(r => ({ ...r, phaseStyle: phaseStyle(r.phase) }));
+
+    const traceCount = k => TRACE.filter(r => r[5] === k).length;
+
+    return {
+      screenCount: all.length,
+      flowCount: FLOWS.length,
+
+      surfaces: ia.map(s => ({
+        name: s.name, code: s.code, platform: s.platform, question: s.home,
+        users: s.areas.length + ' areas · ' + s.areas.reduce((n, a) => n + a.screens.length, 0) + ' screens',
+        tags: s.areas.slice(0, 4).map(a => a.label)
+      })),
+
+      roles: [
+        { name: 'Owner', surface: 'Admin', scope: 'Organization', job: 'Know the business is healthy and act on what is not.', elevated: 'Refunds, plan pricing, roles, deletion, data export — all audited' },
+        { name: 'Regional Manager', surface: 'Admin', scope: 'Brand / region', job: 'Compare clubs, intervene on exceptions, hold managers accountable.', elevated: 'Cross-location overrides, discount approval' },
+        { name: 'Club Manager', surface: 'Admin', scope: 'Location', job: 'Run today: revenue, staffing, exceptions, member issues.', elevated: 'Refund within limit, discount, access override, cash close' },
+        { name: 'Reception', surface: 'Front Desk', scope: 'Location', job: 'Resolve the person in front of me in seconds.', elevated: 'Manager PIN for refund, override, price change' },
+        { name: 'Sales', surface: 'Admin (CRM)', scope: 'Location', job: 'Contact leads fast and convert trials.', elevated: 'Non-standard discount needs approval' },
+        { name: 'Coach / PT', surface: 'Coach', scope: 'Assigned clients', job: 'Deliver today’s sessions and catch clients drifting.', elevated: 'Step-up for payment requests; no member financial detail' },
+        { name: 'Nutritionist', surface: 'Coach', scope: 'Assigned clients', job: 'Create and correct nutrition plans within scope of practice.', elevated: 'Clinical-adjacent cases route to qualified review' },
+        { name: 'Accountant', surface: 'Admin (Finance)', scope: 'Organization', job: 'Keep money unambiguous and reconciled.', elevated: 'Full financial access; no coaching or health data' },
+        { name: 'Inventory Manager', surface: 'Admin', scope: 'Location(s)', job: 'Keep stock available and costed.', elevated: 'Stock adjustment with reason' },
+        { name: 'Member', surface: 'Member app', scope: 'Self + household', job: 'Know what to do now and do it in three taps.', elevated: 'Face ID / passkey for payment and identity change' },
+        { name: 'Corporate admin', surface: 'Corporate Portal', scope: 'Employer program', job: 'Keep the roster right and prove utilization.', elevated: 'Aggregate data only — never individual health or coaching' },
+        { name: 'Veyro Support', surface: 'Internal Console', scope: 'Assigned tenants', job: 'Diagnose and unblock tenants safely.', elevated: 'Consented, scoped, time-boxed, fully audited support session' }
+      ],
+
+      clusterChips,
+      visibleClusters: st.cluster === 'All' ? clusters : clusters.filter(c => c.name === st.cluster),
+
+      surfaceTabs: ia.map(s => ({ label: s.name.replace('Veyro ', ''), style: chip(st.surf === s.key), onClick: () => set({ surf: s.key, area: 0, screen: 0 }) })),
+      dir: st.dir,
+      dirLabel: rtl ? 'العربية RTL ✓' : 'View in Arabic RTL',
+      dirBtnStyle: chip(rtl),
+      toggleDir: () => set({ dir: rtl ? 'ltr' : 'rtl' }),
+      surf: {
+        title: surf.name, platform: surf.platform, homeBehavior: surf.home, areaCount: surf.areas.length,
+        areas: surf.areas.map((a, i) => ({
+          label: rtl ? a.ar : a.label, count: a.screens.length,
+          style: rowBtn(i === st.area), onClick: () => set({ area: i, screen: 0 })
+        }))
+      },
+      areaScreens: area.screens.map((s, i) => ({ id: s.id, n: s.n, style: scrBtn(i === st.screen), onClick: () => set({ screen: i }) })),
+      screen: { ...scr, phaseStyle: phaseStyle(scr.phase) },
+
+      navLayers: [
+        { k: 'LAYER 1 · GLOBAL CHROME', t: 'Scope, search, notifications, tasks, account', d: 'Persistent across every admin screen. Holds the Organization → Brand → Location switcher, ⌘K, the task and notification surfaces, and the account menu.' },
+        { k: 'LAYER 2 · PRIMARY RAIL', t: 'Eight role-composed daily areas', d: 'Assembled from role, scope and enabled features. A receptionist and an accountant see different rails, not the same rail with disabled rows.' },
+        { k: 'LAYER 3 · AREA DIRECTORY', t: 'Everything else, one affordance away', d: 'The remaining twelve admin areas grouped by domain, reachable from the rail footer or ⌘K. Frequently used areas promote themselves into the rail.' },
+        { k: 'LAYER 4 · SECONDARY NAV', t: 'Sections within an area', d: 'Tabs or a sub-rail, capped at seven items. Member 360 uses a section rail with the timeline as spine, not fifteen equal tabs.' },
+        { k: 'LAYER 5 · CONTEXTUAL', t: 'Actions on the object in view', d: 'Row actions, inline edit, and the primary action always in the same place. Destructive actions are never adjacent to routine ones.' },
+        { k: 'LAYER 6 · CROSS-MODULE', t: 'Follow the relationship, keep the context', d: 'A payment opens the member; the member opens the coach; the coach opens the session. Back always returns to where the user was, with filters intact.' },
+        { k: 'LAYER 7 · WORK SURFACES', t: 'Tasks, exceptions, approvals, notifications', d: 'Not a module — they appear inside the screen where the work happens, and aggregate in the Command Center.' },
+        { k: 'LAYER 8 · MODES', t: 'Front Desk, Kiosk, POS', d: 'Full-surface modes with their own chrome and density, entered deliberately and exited deliberately.' }
+      ],
+      commandExamples: [
+        { k: 'RECORD', q: 'Ahmed Saleh · +962 79 · membership #4821' },
+        { k: 'QUERY', q: 'Show failed payments this week at Khalda' },
+        { k: 'CREATE', q: 'Create member · Add lead · New class' },
+        { k: 'ACTION', q: 'Book Omar tomorrow 7pm · Refund last transaction' },
+        { k: 'NAV', q: 'Expiring memberships · Cash shifts · Roles' },
+        { k: 'AI', q: 'Why is revenue down this month? · Members at high churn risk' }
+      ],
+
+      query: st.query,
+      onQuery: e => set({ query: e.target.value }),
+      invSurfaceChips: [{ label: 'All surfaces', v: 'All' }].concat(ia.map(s => ({ label: s.code, v: s.key })))
+        .map(c => ({ label: c.label, style: chip(st.invSurf === c.v), onClick: () => set({ invSurf: c.v }) })),
+      invPhaseChips: ['All', 'Foundation', 'V1', 'V1.5', 'V2', 'Enterprise'].map(p => ({
+        label: p, style: chip(st.invPhase === p), onClick: () => set({ invPhase: p })
+      })),
+      inventory: inv,
+      invCountLabel: inv.length + ' OF ' + all.length + ' SCREENS SHOWN',
+
+      flows: FLOWS.map(f => {
+        const open = st.openFlow === f[0];
+        return {
+          id: f[0], name: f[1], surfaceLabel: f[2], phase: f[3], phaseStyle: phaseStyle(f[3]),
+          goal: f[5], metric: f[6], rtl: f[7], domains: f[8],
+          open, chevron: open ? '−' : '+',
+          headStyle: 'display:flex;width:100%;align-items:center;gap:14px;padding:15px 18px;border:0;cursor:pointer;background:' + (open ? '#f5f4f0' : '#fdfdfc') + ';color:#17171a',
+          onClick: () => this.setState({ openFlow: open ? null : f[0] }),
+          steps: f[9].map((s, i) => ({ i: String(i + 1).padStart(2, '0'), screen: s[0], sid: s[1], action: s[2], states: s[3] }))
+        };
+      }),
+
+      traceStats: [
+        { v: '57', k: 'DOMAINS IN REGISTER' },
+        { v: String(traceCount('Designed')), k: 'DESIGNED (SAMPLE)' },
+        { v: String(traceCount('Planned')), k: 'PLANNED' },
+        { v: String(traceCount('Backend-only')), k: 'BACKEND-ONLY' },
+        { v: String(traceCount('Requires clarification')), k: 'NEEDS CLARIFICATION' }
+      ],
+      traceRows: TRACE.map(r => ({
+        d: r[0], c: r[1], s: r[2], sc: r[3], p: r[4], st: r[5],
+        statusStyle: 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.05em;padding:3px 6px;border-radius:4px;white-space:nowrap;' + (
+          r[5] === 'Designed' ? 'background:#17171a;color:#fdfdfc' :
+          r[5] === 'Planned' ? 'background:rgba(0,0,0,.12);color:#2c2a26' :
+          r[5] === 'Backend-only' ? 'background:transparent;color:#6b6a63;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)' :
+          'background:#8a3b1f;color:#fff')
+      })),
+
+      risks: RISKS.map(r => ({
+        id: r[0], name: r[1], detail: r[2], fix: r[3], sev: r[4],
+        sevStyle: 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.05em;padding:3px 6px;border-radius:4px;' + (
+          r[4] === 'Critical' ? 'background:#8a3b1f;color:#fff' :
+          r[4] === 'High' ? 'background:rgba(0,0,0,.14);color:#2c2a26' :
+          'background:transparent;color:#6b6a63;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)')
+      })),
+      questions: QUESTIONS.map(q => ({ ref: q[0], q: q[1] })),
+      terms: T.map(t => ({ use: t[0], not: t[1], ar: t[2], means: t[3], exc: t[4] })),
+      principles: PRINCIPLES.map(p => ({ i: p[0], t: p[1], d: p[2], test: p[3] })),
+      dsDirection: DS.map(d => ({ k: d[0], v: d[1] })),
+      componentGroups: COMPONENT_GROUPS.map(g => ({ k: g[0], items: g[1] })),
+      phases: PHASES.map(p => ({
+        i: 'PHASE ' + p[0], t: p[1], out: p[2], status: p[3],
+        rowStyle: 'background:' + (p[3].indexOf('Complete') === 0 ? '#f5f4f0' : '#fdfdfc') + ';padding:14px 17px;display:grid;min-width:900px;grid-template-columns:82px minmax(0,1fr) minmax(0,1.6fr) 150px;gap:16px;align-items:start'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

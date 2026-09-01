@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH Q · 12 SCREENS DRAWN · CON-03 → CON-17 · CONSOLE COMPLETE</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Veyro operating Veyro</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Twelve Compact-density screens for internal staff. Every one is designed around a single constraint: <b>Veyro employees can see that something is wrong without seeing whose data it is</b>.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CON-03 · CON-08 · CON-17 · THE SUPPORT PATH</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Ticket, tenant, incident — before anyone reaches for impersonation</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 380px;min-width:365px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-17 · TICKET CONTEXT · FOUND IN COMPLETION</div>
+<div style="padding:15px 17px">
+<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span style="font:500 16px/1.3 'IBM Plex Sans';flex:1;min-width:180px">#4182 · roster shows the wrong coach</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 6px;border-radius:3px">OPEN 2H</span></div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">Rania Haddad · Nadi Group · Growth plan · 3 clubs</div>
+<div style="margin-top:12px;padding:12px 13px;background:#faf8f4;border-radius:4px;font:400 12.5px/1.7 'IBM Plex Sans';color:#2c2a26">"The Thursday spin class shows Omar as the coach but we changed it to Dana yesterday. Members are seeing the old name in the app."</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">WHAT WE CAN SEE WITHOUT ASKING</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:7px;overflow:hidden">
+<sc-for list="{{ ticketContext }}" as="t" hint-placeholder-count="4">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:baseline"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:74px;flex-shrink:0">{{ t.when }}</span><span style="font:400 11.5px/1.5 'IBM Plex Sans';flex:1;color:{{ t.color }}">{{ t.what }}</span></div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:12px 13px;border:1px solid #4a3d7a;border-radius:4px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.06em">✦ LIKELY CAUSE</div>
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:5px">The class was edited but the member-app cache for that club has not refreshed since 14:20 yesterday. <b>Three other tenants show the same lag</b> — this is probably a platform issue, not a Nadi one.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Open an incident</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Reply to Rania</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(138,59,31,.4);color:#8a3b1f;padding:10px 12px;border-radius:6px">Need to see their data</span></div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px"><b>Impersonation is the third button, not the first.</b> This screen existed to make it the last resort — most tickets resolve from platform signals without touching a member record.</div>
+</div>
+</div>
+
+<div style="flex:1 1 340px;min-width:325px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-03 · TENANT · NADI GROUP</div>
+<div style="padding:15px 17px">
+<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em;flex:1">Nadi Group</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a">HEALTHY</span></div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Jordan · JOD · Growth · since June 2025</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:rgba(23,23,26,.12);border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden;margin-top:13px">
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">MRR</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px">2,400</div></div>
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">MEMBERS</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px">4,812</div></div>
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">STAFF</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px">14</div></div>
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">DAILY USE</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px">92%</div></div>
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">TICKETS · 90D</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px">6</div></div>
+<div style="background:#fffefb;padding:10px 11px"><div style="font:500 8.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">ERRORS · 24H</div><div style="font:500 15px/1.15 'IBM Plex Mono';margin-top:4px;color:#8a5a1f">18</div></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">CONTACTS</div>
+<div style="margin-top:7px">
+<div style="padding:8px 0;border-bottom:1px solid rgba(23,23,26,.05);display:flex;gap:9px;align-items:baseline"><span style="font:450 12px/1.35 'IBM Plex Sans';flex:1">Rania Haddad</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d">owner · billing</span></div>
+<div style="padding:8px 0;display:flex;gap:9px;align-items:baseline"><span style="font:450 12px/1.35 'IBM Plex Sans';flex:1">Nadia Suleiman</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d">accounts</span></div>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Counts, not names.</b> 4,812 members is a number here — no member is listed, searchable or reachable from this screen at any Console permission level.</div>
+</div>
+</div>
+
+<div style="flex:1 1 340px;min-width:325px;border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#8a3b1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">CON-08 · INCIDENT · INC-0412</div>
+<div style="padding:15px 17px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">Member-app cache not refreshing</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">Opened 09:14 · 4 tenants · investigating</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">TIMELINE</div>
+<div style="margin-top:7px">
+<sc-for list="{{ incident }}" as="i" hint-placeholder-count="5">
+<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:46px;flex-shrink:0">{{ i.when }}</span><span style="width:2px;background:{{ i.spine }};flex-shrink:0;border-radius:1px"></span><span style="font:400 11.5px/1.5 'IBM Plex Sans';flex:1">{{ i.what }}</span></div>
+</sc-for>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">AFFECTED</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:7px;overflow:hidden">
+<sc-for list="{{ affected }}" as="a" hint-placeholder-count="4">
+<div style="padding:9px 12px;border-bottom:1px solid rgba(23,23,26,.05);display:flex;gap:10px;align-items:baseline"><span style="font:450 11.5px/1.35 'IBM Plex Sans';flex:1">{{ a.name }}</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">{{ a.impact }}</span><span style="font:500 9px/1.4 'IBM Plex Mono';color:{{ a.color }}">{{ a.told }}</span></div>
+</sc-for>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Tell the other 2</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Mark resolved</span></div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px">Who has been told is tracked per tenant. <b>An incident is not resolved until every affected customer has heard from us</b>, and the screen will not let you close it silently.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CON-04 · CON-05 · ONBOARDING A CUSTOMER</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Provisioning, and the 27 rows that will not import</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 340px;min-width:325px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-04 · NEW TENANT</div>
+<div style="padding:15px 17px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">Set up Pulse Amman</div>
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:13px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">ORGANISATION</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Pulse Fitness Amman Ltd</div></div>
+<div style="display:flex;gap:9px">
+<div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">REGION</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:2px solid #8a5a1f;border-radius:6px;padding:9px 11px;margin-top:4px">Jordan ▾</div></div>
+<div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PLAN</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 11px;margin-top:4px">Starter ▾</div></div>
+</div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">FIRST ADMINISTRATOR</div><div style="font:400 12.5px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">hana@pulseamman.jo</div></div>
+</div>
+<div style="margin-top:12px;padding:12px 13px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.05em">REGION CANNOT BE CHANGED LATER</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Jordan sets data residency, JOD as the currency, the JoFotara tax adapter, Arabic as an available language, and a Sunday week start. <b>Moving a tenant between regions means a migration, not a setting.</b></div>
+</div>
+<span style="display:block;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px;border-radius:6px;margin-top:13px;text-align:center">Create and invite Hana</span>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px">One irreversible choice, stated once, in front of the button rather than in documentation nobody reads.</div>
+</div>
+</div>
+
+<div style="flex:1 1 460px;min-width:440px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-05 · MEMBER IMPORT · 1,247 ROWS</div>
+<div style="padding:15px 17px">
+<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+<div style="flex:1;min-width:180px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">1,220 ready · 27 need a decision</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">From their old system · dry run complete</div></div>
+<span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Import the 1,220</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:13px;overflow-x:auto">
+<div style="min-width:420px;display:grid;grid-template-columns:52px minmax(0,1.3fr) minmax(0,1.5fr);gap:11px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>ROWS</div><div>PROBLEM</div><div>WHAT YOU CAN DO</div></div>
+<sc-for list="{{ importIssues }}" as="i" hint-placeholder-count="4">
+<div style="min-width:420px;display:grid;grid-template-columns:52px minmax(0,1.3fr) minmax(0,1.5fr);gap:11px;padding:11px 12px;border-bottom:1px solid rgba(23,23,26,.05);align-items:start">
+<div style="font:500 13px/1.3 'IBM Plex Mono';color:#8a5a1f">{{ i.n }}</div>
+<div style="font:450 12px/1.45 'IBM Plex Sans'">{{ i.problem }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#3d3b36">{{ i.fix }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:14px;margin-top:12px;flex-wrap:wrap">
+<div style="flex:1 1 200px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Clean rows import now.</b> Holding 1,220 members hostage to 27 problems is how a migration stalls for a week.</div>
+<div style="flex:1 1 200px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Each problem is fixable <b>in bulk or one at a time</b> — "apply 1 January to all 18" is one action, and the 4 duplicates need judgement.</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px">Nothing is guessed. A member with no join date gets a decision from a person, because an invented date becomes a wrong renewal charge three weeks later.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CON-06 · 07 · 13 · CON-10 · 11 · 12 · 16</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Subscriptions, platform, and the door</h2>
+<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-06 · SUBSCRIPTION</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Nadi Group · Growth</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">JOD 2,400 monthly · renews 1 Sep</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow:hidden">
+<sc-for list="{{ entitlements }}" as="e" hint-placeholder-count="5">
+<div style="padding:9px 12px;border-bottom:1px solid rgba(23,23,26,.05);display:flex;gap:10px;align-items:baseline"><span style="font:450 11.5px/1.35 'IBM Plex Sans';flex:1">{{ e.name }}</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:{{ e.color }}">{{ e.value }}</span></div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>They are at 3 of 3 clubs.</b> Adding a fourth moves them to Enterprise at JOD 4,100 — worth a conversation before they hit the wall, not after.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Changing a plan states what they gain or lose and when. Nothing is applied mid-cycle without saying so.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-07 · USAGE</div>
+<div style="padding:14px 15px">
+<div style="display:flex;flex-direction:column;gap:11px">
+<sc-for list="{{ usage }}" as="u" hint-placeholder-count="4">
+<div>
+<div style="display:flex;gap:8px;align-items:baseline"><span style="font:450 12px/1.3 'IBM Plex Sans';flex:1">{{ u.name }}</span><span style="font:500 11.5px/1.2 'IBM Plex Mono';color:{{ u.color }}">{{ u.value }}</span></div>
+<div style="height:4px;background:#ece9e3;margin-top:5px;border-radius:2px;overflow:hidden"><div style="height:4px;width:{{ u.pct }};background:{{ u.color }}"></div></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">WhatsApp messages will exceed the bundle by around <b>1,200</b> this month at JOD 0.02 each — roughly JOD 24. <b>An internal task is raised before it is charged</b>, not an invoice surprise afterwards.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-13 · TENANT BILLING</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Studio Nine · 2 payments failed</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Starter · JOD 280 monthly · 41 days overdue</div>
+<div style="margin-top:12px;padding:12px 13px;border:1px solid #8a3b1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a3b1f">If we suspend them</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px"><b>412 of their members</b> lose app access and door entry at their one club. Their staff keep read-only access so they can still run the desk manually.</div>
+</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Call them first</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(138,59,31,.4);color:#8a3b1f;padding:10px 12px;border-radius:6px">Suspend · tier 4</span></div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">The consequence is counted in <b>their members</b>, not their invoice. Suspending a gym locks people out of a building they have paid for.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-11 · SYSTEM HEALTH</div>
+<div style="padding:14px 15px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<sc-for list="{{ health }}" as="h" hint-placeholder-count="6">
+<div style="padding:9px 12px;border-bottom:1px solid rgba(23,23,26,.05);display:flex;gap:10px;align-items:center"><span style="width:7px;height:7px;border-radius:50%;background:{{ h.dot }};flex-shrink:0"></span><span style="font:450 11.5px/1.35 'IBM Plex Sans';flex:1">{{ h.name }}</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">{{ h.value }}</span></div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">The member-app cache queue is <b>14 minutes behind</b> — the origin of incident INC-0412 and of Rania's ticket. One signal, three screens, no duplicate investigation.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-10 · FEATURE FLAGS</div>
+<div style="padding:14px 15px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<sc-for list="{{ flags }}" as="f" hint-placeholder-count="4">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 11.5px/1.35 'IBM Plex Sans';flex:1">{{ f.name }}</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ f.color }}">{{ f.state }}</span></div>
+<div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">{{ f.meta }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Flags touching money or access need a second approver.</b> One engineer should not be able to turn off door entry for 40,000 people at 23:00.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Every change logs who, when and why. The kill switch is one tap and needs no approval — reversing a mistake must always be faster than making one.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-12 · AUDIT LOG</div>
+<div style="padding:14px 15px">
+<div style="display:flex;gap:7px;flex-wrap:wrap"><span style="font:500 10.5px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">All</span><span style="font:400 10.5px/1 'IBM Plex Sans';border:1px solid #8a3b1f;padding:7px 9px;border-radius:6px;color:#8a3b1f">Impersonation · 3</span></div>
+<div style="margin-top:11px">
+<sc-for list="{{ auditRows }}" as="a" hint-placeholder-count="4">
+<div style="padding:9px 0;border-bottom:1px solid rgba(23,23,26,.05);background:{{ a.bg }}"><div style="font:400 11.5px/1.45 'IBM Plex Sans';color:#2c2a26">{{ a.what }}</div><div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">{{ a.who }}</div></div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Impersonation rows are highlighted and <b>appear in the tenant's own audit log too</b>. Nothing Veyro staff do inside a customer's account is invisible to that customer.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CON-16 · STAFF SIGN IN · FOUND IN COMPLETION</div>
+<div style="padding:22px 16px 16px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:24px;height:24px;border-radius:5px;background:#17171a;color:#fffefb;font:500 13px/24px 'IBM Plex Sans';text-align:center">V</span><span style="font:500 15px/1.2 'IBM Plex Sans';letter-spacing:-.012em">Veyro Console</span><span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a;border:1px solid rgba(23,23,26,.14);padding:2px 5px;border-radius:3px">INTERNAL</span></div>
+<div style="font:500 19px/1.25 'IBM Plex Sans';letter-spacing:-.014em;margin-top:18px">Staff sign in</div>
+<span style="display:block;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px;border-radius:6px;margin-top:14px;text-align:center">Continue with Veyro SSO</span>
+<div style="margin-top:14px;padding:12px 13px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36"><b>No password field.</b> SSO with hardware-key MFA, and it is not optional. This is the account that can reach every customer's data — it gets the strongest door in the product.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px">The Console had no sign-in screen in the registry at all. Found while building — an oversight that would have surfaced on day one of implementation.</div>
+</div>
+</div>
+</div>
+<div style="margin-top:16px;padding:16px 18px;border:1px solid #2f5d3a;border-radius:6px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">INTERNAL SAAS CONSOLE · V1 COMPLETE</div>
+<div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px">All <b>15 V1 Console screens</b> drawn. No member name appears on any of them; every consequence is counted in the customer's members rather than their invoice; every impersonation is visible to the tenant. Zero new tokens. <b>All five surfaces are now complete.</b></div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const TICKET_CONTEXT = [
+  ['Yesterday 14:18', 'Class VEY-8841 edited · coach changed Omar → Dana', '#2c2a26'],
+  ['Yesterday 14:20', 'Member-app cache last refreshed for this club', '#8a5a1f'],
+  ['Today 08:02', '3 other tenants reporting stale class data', '#8a3b1f'],
+  ['Today 09:11', 'Cache refresh queue depth: 14 minutes', '#8a3b1f']
+];
+
+const INCIDENT = [
+  ['09:14', 'Opened from ticket #4182', '#3f5560'],
+  ['09:22', 'Confirmed across 4 tenants · not tenant-specific', '#8a3b1f'],
+  ['09:31', 'Cause found · refresh worker backlog after deploy', '#8a5a1f'],
+  ['09:40', 'Worker scaled · queue draining', '#2f5d3a'],
+  ['09:52', 'Nadi Group and Fit Republic notified', '#2f5d3a']
+];
+
+const AFFECTED = [
+  ['Nadi Group', '3 clubs · 4,812 members', 'TOLD', '#2f5d3a'],
+  ['Fit Republic', '14 clubs · 22,400', 'TOLD', '#2f5d3a'],
+  ['Iron House Riyadh', '5 clubs · 8,100', 'NOT YET', '#8a5a1f'],
+  ['Studio Nine', '1 club · 412', 'NOT YET', '#8a5a1f']
+];
+
+const IMPORT_ISSUES = [
+  ['18', 'No join date', 'Set one date for all 18, or use their first payment date'],
+  ['4', 'Duplicate phone numbers', 'Two records each · review side by side and merge or separate'],
+  ['3', 'Membership plan not recognised', 'Map "GOLD ANNUAL" to one of their four Veyro plans'],
+  ['2', 'Invalid phone format', 'Fix the number, or import without it and collect at the desk']
+];
+
+const ENTITLEMENTS = [
+  ['Clubs', '3 of 3', '#8a5a1f'],
+  ['Staff accounts', '14 of 25', '#57544d'],
+  ['Members', '4,812 of 10,000', '#57544d'],
+  ['WhatsApp bundle', '5,000 monthly', '#57544d'],
+  ['AI insights', 'included', '#2f5d3a']
+];
+
+const USAGE = [
+  ['Members', '4,812 of 10,000', '48%', '#57544d'],
+  ['Staff accounts', '14 of 25', '56%', '#57544d'],
+  ['WhatsApp messages', '4,180 of 5,000', '84%', '#8a5a1f'],
+  ['Storage', '2.1 GB of 20 GB', '11%', '#57544d']
+];
+
+const HEALTH = [
+  ['API', '#2f5d3a', '99.98% · 84ms'],
+  ['Payments', '#2f5d3a', 'healthy'],
+  ['Access controllers', '#8a5a1f', '1 of 412 down'],
+  ['WhatsApp', '#2f5d3a', 'healthy'],
+  ['JoFotara', '#2f5d3a', 'healthy'],
+  ['Member-app cache', '#8a3b1f', '14 min behind']
+];
+
+const FLAGS = [
+  ['Nutrition photo logging', 'ON · 40%', '#8a5a1f', 'Rolling out · 74 tenants'],
+  ['New booking calendar', 'ON · 3 tenants', '#57544d', 'Beta · Nadi Group included'],
+  ['Offline POS queue', 'ON · all', '#2f5d3a', 'Fully released 12 Jun'],
+  ['AI plan generation', 'OFF · 2 tenants', '#57544d', 'Paused pending clinical policy']
+];
+
+const AUDIT_ROWS = [
+  ['Viewed Nadi Group · read only · ticket #4182', 'Karim Aziz · today 09:24', '#f4ece5'],
+  ['Scaled cache refresh workers 4 → 12', 'Platform automation · today 09:38', '#fffefb'],
+  ['Enabled photo logging for 12 tenants', 'Sara Odeh · yesterday 16:02', '#fffefb'],
+  ['Viewed Studio Nine · read only · billing query', 'Karim Aziz · yesterday 11:40', '#f4ece5']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      ticketContext: TICKET_CONTEXT.map(t => ({ when: t[0], what: t[1], color: t[2] })),
+      incident: INCIDENT.map(i => ({ when: i[0], what: i[1], spine: i[2] })),
+      affected: AFFECTED.map(a => ({ name: a[0], impact: a[1], told: a[2], color: a[3] })),
+      importIssues: IMPORT_ISSUES.map(i => ({ n: i[0], problem: i[1], fix: i[2] })),
+      entitlements: ENTITLEMENTS.map(e => ({ name: e[0], value: e[1], color: e[2] })),
+      usage: USAGE.map(u => ({ name: u[0], value: u[1], pct: u[2], color: u[3] })),
+      health: HEALTH.map(h => ({ name: h[0], dot: h[1], value: h[2] })),
+      flags: FLAGS.map(f => ({ name: f[0], state: f[1], color: f[2], meta: f[3] })),
+      auditRows: AUDIT_ROWS.map(a => ({ what: a[0], who: a[1], bg: a[2] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

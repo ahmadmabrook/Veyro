@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH G · 11 SCREENS DRAWN · ADM-MEM-06 → ADM-MSH-09</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">The member record, and the rest of the lifecycle</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Six Member 360 sections and five lifecycle sheets. The sections are tabs inside a screen already drawn, so they are shown as the panel content they actually are rather than as six repeated shells.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-MEM-06 · 07 · 08 · MEMBER 360 SECTIONS · DEFAULT DENSITY</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Billing, attendance, documents</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 420px;min-width:400px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MEM-06 · BILLING · AHMAD NABULSI</div>
+<div style="padding:15px 17px">
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:rgba(23,23,26,.12);border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">OUTSTANDING</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px;color:#8a3b1f">55.00</div></div>
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PAID · LIFETIME</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px">1,485.00</div></div>
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">NEXT CHARGE</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px">21 Aug</div></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">INVOICES</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:7px;overflow-x:auto">
+<div style="min-width:380px;display:grid;grid-template-columns:96px minmax(0,1fr) 72px 78px;gap:11px;padding:8px 13px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>NUMBER</div><div>FOR</div><div>AMOUNT</div><div>STATE</div></div>
+<sc-for list="{{ invoices }}" as="i" hint-placeholder-count="5">
+<div style="min-width:380px;display:grid;grid-template-columns:96px minmax(0,1fr) 72px 78px;gap:11px;padding:0 13px;height:36px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#1b4079">{{ i.num }}</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';color:#3d3b36">{{ i.for }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ i.amt }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ i.color }}">{{ i.state }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:14px;margin-top:14px;flex-wrap:wrap">
+<div style="flex:1 1 160px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PAYMENT METHOD</div><div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Visa ···4417<br><span style="color:#8a3b1f">Expired July 2026</span></div></div>
+<div style="flex:1 1 160px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">SCHEDULE</div><div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Monthly on the 21st<br>Auto-renewing</div></div>
+</div>
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Take payment</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Update card</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">Reception sees this section without the lifetime figure and without the invoice ⋯ menu. Coach has no route to it.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MEM-07 · ATTENDANCE</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:16px;flex-wrap:wrap"><div><div style="font:500 17px/1.15 'IBM Plex Mono'">19d</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">SINCE LAST</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">2.8</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">WEEKLY AVG</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">214</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">LIFETIME</div></div></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">VISITS PER WEEK · 12 WEEKS</div>
+<div style="display:flex;align-items:flex-end;gap:3px;height:56px;margin-top:9px">
+<sc-for list="{{ weeks }}" as="w" hint-placeholder-count="12"><div style="flex:1;height:{{ w.h }};background:{{ w.c }};border-radius:1px"></div></sc-for>
+</div>
+<div style="display:flex;justify-content:space-between;margin-top:5px"><span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a">2 Jun</span><span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a">19 Aug</span></div>
+<div style="margin-top:11px;padding:10px 11px;border:1px solid #8a5a1f;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36"><b>Three weeks at zero.</b> The drop starts the week after his last PT session, not the week his payment failed.</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">RECENT VISITS</div>
+<div style="margin-top:7px">
+<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:52px">31 Jul</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">Khalda · 18:40 · card</span></div>
+<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(23,23,26,.05)"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:52px">29 Jul</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">Khalda · 07:15 · app</span></div>
+<div style="display:flex;gap:9px;padding:7px 0"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:52px">27 Jul</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">Abdoun · 19:02 · card</span></div>
+</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MEM-08 · DOCUMENTS</div>
+<div style="padding:15px 16px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden">
+<sc-for list="{{ docs }}" as="d" hint-placeholder-count="4">
+<div style="padding:11px 13px;border-bottom:1px solid rgba(23,23,26,.06)">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">{{ d.name }}</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ d.color }}">{{ d.state }}</span></div>
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:3px">{{ d.dates }}</div>
+</div>
+</sc-for>
+<div style="padding:11px 13px;font:500 12px/1.4 'IBM Plex Sans';color:#1b4079">＋ Upload a document</div>
+</div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36">His waiver expires in 23 days. Documents inside 30 days of expiry raise a Command Center item — nobody has to remember to look here.</div>
+<div style="margin-top:11px;padding:10px 11px;border:1px solid rgba(23,23,26,.16);border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36"><b>Medical clearance is hidden from this view.</b> It exists on his record and is visible only to roles with health permission. Reception sees three documents here, not four, and no indication a fourth exists.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-MEM-09 · 10 · 11</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Notes, manual add, and the merge</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 330px;min-width:320px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MEM-09 · NOTES &amp; COMMUNICATION</div>
+<div style="padding:15px 16px">
+<div style="padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36"><b>Marketing consent withdrawn 12 Jul.</b> Service messages permitted.</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">STAFF NOTES · INTERNAL, NEVER MEMBER-VISIBLE</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:7px;overflow:hidden">
+<div style="padding:11px 13px;border-bottom:1px solid rgba(23,23,26,.06)"><div style="font:400 12px/1.65 'IBM Plex Sans';color:#2c2a26">Mentioned his hours changed at work — mornings may suit him better than evenings now.</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:5px">Layla · 31 Jul 18:44</div></div>
+<div style="padding:11px 13px"><div style="font:400 12px/1.65 'IBM Plex Sans';color:#2c2a26">Asked about freezing rather than cancelling. Explained the allowance.</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:5px">Ziad · 12 Jul 11:20</div></div>
+</div>
+<div style="font:400 12px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px;margin-top:9px">Add a note…</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Append-only. Author and time are fixed at write. A correction is a new note, because a note that can be edited is not evidence of anything.</div>
+</div>
+</div>
+
+<div style="flex:1 1 330px;min-width:320px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MEM-10 · ADD MEMBER MANUALLY</div>
+<div style="padding:15px 16px">
+<div style="font:500 16px/1.3 'IBM Plex Sans'">New member · walk-in</div>
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:13px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">NAME</div><div style="font:400 12.5px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 12px;margin-top:4px">Hala Barakat</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PHONE</div><div style="font:400 12.5px/1.4 'IBM Plex Mono';border:1px solid #8a5a1f;border-radius:6px;padding:10px 12px;margin-top:4px;unicode-bidi:isolate">+962 79 662 4180</div></div>
+</div>
+<div style="margin-top:10px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">This number already has a record</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:4px"><b>Hala Barakat</b> · Club · Sweifieh · joined Feb 2025. Continue and you will create a second record for the same person.</div>
+<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:10px 12px;border-radius:6px">Open that record</span><span style="font:450 11.5px/1 'IBM Plex Sans';color:#57544d;padding:10px 4px">Different person</span></div>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:11px">Detection runs on phone as it is typed, before anything is saved. Preventing the duplicate costs one screen; ADM-MEM-11 exists because prevention is never perfect.</div>
+</div>
+</div>
+
+<div style="flex:1 1 360px;min-width:340px;border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#8a3b1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">ADM-MEM-11 · MERGE DUPLICATES · TIER 3, IRREVERSIBLE</div>
+<div style="padding:15px 16px">
+<div style="font:500 15.5px/1.3 'IBM Plex Sans'">Two records for Hala Barakat</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Pick which value survives for each field. Payment history from both always merges.</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:330px;display:grid;grid-template-columns:80px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>FIELD</div><div>M-03918 · FEB 2025</div><div>M-04901 · TODAY</div></div>
+<sc-for list="{{ merge }}" as="m" hint-placeholder-count="5">
+<div style="min-width:330px;display:grid;grid-template-columns:80px minmax(0,1fr) minmax(0,1fr);gap:10px;padding:9px 12px;border-bottom:1px solid rgba(23,23,26,.05);align-items:center">
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">{{ m.field }}</div>
+<div style="font:{{ m.aWeight }} 11.5px/1.4 'IBM Plex Sans';color:{{ m.aColor }}">{{ m.a }}</div>
+<div style="font:{{ m.bWeight }} 11.5px/1.4 'IBM Plex Sans';color:{{ m.bColor }}">{{ m.b }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36">The surviving record will be <b>M-03918</b> with 14 visits, 6 invoices and JOD 385.00 of history from both. The other ID stops resolving.</div>
+<div style="margin-top:11px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.06em">TYPE THE SURVIVING ID TO CONFIRM</div><div style="font:400 12.5px/1.4 'IBM Plex Mono';color:#a8a29a;border:1px solid #8a3b1f;border-radius:6px;padding:10px 12px;margin-top:5px">M-03918</div></div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:12px 14px;border-radius:6px">Merge records</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 13px;border-radius:6px">Cancel</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">A conflicting membership state — two active memberships at different clubs — <b>blocks the merge</b> with an explanation rather than picking one. That is a billing decision, not a data decision.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-MSH-02 · 03 · 04 · 06 · 09 · THE REST OF THE LIFECYCLE</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Renew, freeze, resume, downgrade, and the plan catalogue</h2>
+<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+
+<div style="flex:1 1 290px;min-width:280px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MSH-02 · RENEW</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Renew Lina Haddad · Club+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">The price has changed since she last renewed</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:4px">She paid <b>JOD 72.00</b>. Club+ is now <b>JOD 78.00</b>. Tell her before you take payment.</div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="display:flex;justify-content:space-between"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">12 months at 78.00</span><span style="font:500 12px/1.2 'IBM Plex Mono'">936.00</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">Annual discount 15%</span><span style="font:500 12px/1.2 'IBM Plex Mono';color:#2f5d3a">−140.40</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid rgba(23,23,26,.1)"><span style="font:500 12.5px/1.4 'IBM Plex Sans'">Today</span><span style="font:500 15px/1.2 'IBM Plex Mono'">795.60</span></div>
+</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Take 795.60</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Monthly instead</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">The price-change disclosure is not dismissible and is not a tooltip. A member discovering a rise on their statement is a complaint; hearing it at the desk is a conversation.</div>
+</div>
+</div>
+
+<div style="flex:1 1 290px;min-width:280px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MSH-03 · FREEZE</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Freeze Ahmad's membership</div>
+<div style="display:flex;gap:9px;margin-top:12px"><div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">FROM</div><div style="font:400 12px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:9px 11px;margin-top:4px">1 Sep</div></div><div style="flex:1"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">UNTIL</div><div style="font:400 12px/1.4 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:9px 11px;margin-top:4px">1 Oct</div></div></div>
+<div style="margin-top:9px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">REASON</div><div style="font:400 12px/1.4 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:9px 11px;margin-top:4px">Travel ▾</div></div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.75 'IBM Plex Sans';color:#3d3b36"><b>Billing pauses</b> from 1 Sep · <b>access off</b> for the month · renewal moves to 21 Oct · his Club rate is held · <b>2 of 3 freeze months</b> used this year</div>
+<div style="display:flex;gap:7px;margin-top:11px"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Freeze</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Cancel</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">At 3 of 3 the action blocks and names the manager who can override. Tier 2 — undoable for 30 seconds, because a freeze applied to the wrong member is common and cheap to reverse.</div>
+</div>
+</div>
+
+<div style="flex:1 1 290px;min-width:280px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MSH-04 · RESUME EARLY</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Yara is back early</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Frozen until 1 October. Resuming today restarts billing and access immediately.</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="display:flex;justify-content:space-between"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">Rest of August · 12 days</span><span style="font:500 12px/1.2 'IBM Plex Mono'">30.19</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid rgba(23,23,26,.1)"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">Renewal returns to</span><span style="font:500 12px/1.2 'IBM Plex Mono'">1 Sep</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:7px">One freeze month is returned to her allowance — she used 1 of the 2 she booked.</div>
+</div>
+<div style="display:flex;gap:7px;margin-top:11px"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Resume · take 30.19</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Access is restored on confirm, not overnight. A member standing at the desk expects the turnstile to work before they walk away from it.</div>
+</div>
+</div>
+
+<div style="flex:1 1 290px;min-width:280px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MSH-06 · DOWNGRADE · TIER 3</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Dana · Club+ to Club</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a5a1f">She loses</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Access to Abdoun and Sweifieh · 2 monthly PT sessions · <b>her 4 unused PT credits expire on 1 Sep</b></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36">Takes effect <b>1 September</b>, not today — she has paid for August at the higher rate and keeps it. New monthly: <b>JOD 55.00</b>.</div>
+<div style="display:flex;gap:7px;margin-top:11px"><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Use the credits first</span></div>
+<div style="display:flex;gap:7px;margin-top:7px"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Downgrade from 1 Sep</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">The loss is stated before the saving, and the credit expiry is the line that matters — a member who discovers it afterwards has been quietly charged for something they never got.</div>
+</div>
+</div>
+
+<div style="flex:1 1 400px;min-width:380px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-MSH-09 · PLANS &amp; PRICING · OWNER ONLY</div>
+<div style="padding:14px 16px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow-x:auto">
+<div style="min-width:380px;display:grid;grid-template-columns:minmax(0,1fr) 74px 62px 74px minmax(0,1fr);gap:10px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>PLAN</div><div>PRICE</div><div>ACTIVE</div><div>CHANGED</div><div>ENTITLEMENTS</div></div>
+<sc-for list="{{ plans }}" as="p" hint-placeholder-count="4">
+<div style="min-width:380px;display:grid;grid-template-columns:minmax(0,1fr) 74px 62px 74px minmax(0,1fr);gap:10px;padding:0 12px;height:36px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:450 12px/1.3 'IBM Plex Sans'">{{ p.name }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ p.price }}</div>
+<div style="font:400 11px/1.3 'IBM Plex Mono';color:#57544d">{{ p.active }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Mono';color:#57544d">{{ p.changed }}</div>
+<div style="font:400 10.5px/1.3 'IBM Plex Sans';color:#3d3b36;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.ent }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#8a3b1f">Raising Club from 55.00 to 58.00</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:4px"><b>2,140 members are on this plan.</b> 890 are inside a fixed-term commitment and keep 55.00 until it ends. The other 1,250 move at their next renewal, the earliest on 22 August.</div>
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#57544d;margin-top:6px">Effective date required · type "58.00" to confirm</div>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">The affected count is computed before the change is saved, not reported after. A price rise is the most consequential action in Admin and the only one where the blast radius is stated in members rather than currency.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · Member360 sections ×3 · DataGrid ×3 · Chart(bar) · DocumentRow · NoteRow · SideSheet ×5 · ConsequencePanel · MoneyValue · DuplicateWarning · MergeGrid · TypedConfirm · zero new tokens</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const INVOICES = [
+  ['INV-20418', 'Club · August', '55.00', 'UNPAID', '#8a3b1f'],
+  ['INV-20102', 'Club · July', '55.00', 'PAID', '#2f5d3a'],
+  ['INV-19884', 'PT package · 10', '280.00', 'PAID', '#2f5d3a'],
+  ['INV-19790', 'Club · June', '55.00', 'PAID', '#2f5d3a'],
+  ['INV-19455', 'Club · May', '55.00', 'PAID', '#2f5d3a']
+];
+
+const WEEKS = [
+  ['78%','#cbc6bc'],['92%','#cbc6bc'],['85%','#cbc6bc'],['100%','#cbc6bc'],
+  ['92%','#cbc6bc'],['78%','#cbc6bc'],['85%','#cbc6bc'],['64%','#a8a29a'],
+  ['36%','#a8a29a'],['4%','#8a5a1f'],['4%','#8a5a1f'],['4%','#8a5a1f']
+];
+
+const DOCS = [
+  ['Membership contract', 'CURRENT', '#2f5d3a', 'Signed 4 Mar 2024 · no expiry'],
+  ['Liability waiver', 'EXPIRES 23D', '#8a5a1f', 'Signed 11 Sep 2025 · expires 11 Sep 2026'],
+  ['Photo ID', 'CURRENT', '#2f5d3a', 'Uploaded 4 Mar 2024 · verified'],
+  ['Emergency contact', 'MISSING', '#8a5a1f', 'Never provided · asked twice']
+];
+
+const MERGE = [
+  ['Name', 'Hala Barakat', 'Hala Barakat'],
+  ['Phone', '+962 79 662 4180', '+962 79 662 4180'],
+  ['Email', 'hala.b@example.com', '— none —'],
+  ['Club', 'Sweifieh', 'Khalda'],
+  ['Joined', '12 Feb 2025', '19 Aug 2026']
+];
+
+const PLANS = [
+  ['Flex', '40.00', '612', 'Jan 2026', 'Off-peak · no classes'],
+  ['Club', '55.00', '2,140', 'Mar 2026', 'All hours · classes'],
+  ['Club+', '78.00', '1,384', 'Jul 2026', 'All clubs · 2 PT monthly'],
+  ['Student', '32.00', '676', 'Sep 2025', 'Off-peak · ID required']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      invoices: INVOICES.map(i => ({ num: i[0], for: i[1], amt: i[2], state: i[3], color: i[4] })),
+      weeks: WEEKS.map(w => ({ h: w[0], c: w[1] })),
+      docs: DOCS.map(d => ({ name: d[0], state: d[1], color: d[2], dates: d[3] })),
+      merge: MERGE.map(m => {
+        const same = m[1] === m[2];
+        const bEmpty = m[2].startsWith('—');
+        return {
+          field: m[0], a: m[1], b: m[2],
+          aWeight: same ? '400' : '500', bWeight: '400',
+          aColor: same ? '#57544d' : '#17171a',
+          bColor: same ? '#57544d' : bEmpty ? '#a8a29a' : '#17171a'
+        };
+      }),
+      plans: PLANS.map(p => ({ name: p[0], price: p[1], active: p[2], changed: p[3], ent: p[4] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

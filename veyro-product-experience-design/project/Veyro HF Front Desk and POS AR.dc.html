@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1440px;padding:0 0 110px">
+
+<header style="padding:60px 44px 32px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">PHASE 9 · ARABIC RTL · FRONT DESK &amp; POS</div>
+<h1 style="font:500 36px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">الاستقبال ونقطة البيع</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:15px 0 0;text-wrap:pretty">The POS cart is the hardest RTL surface in Veyro — a column of quantities, names and amounts where three different directional rules collide in every row. It was measured rather than mirrored, and the measurement changed the layout.</p>
+<div style="margin-top:20px;padding:15px 17px;border:1px solid #1b4079;border-radius:4px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#1b4079;letter-spacing:.07em">THE CART DECISION</div>
+<div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px"><b>The amount column stays at the logical end and the quantity at the logical start</b> — so in Arabic, quantity is rightmost and money leftmost, the reverse of the English screen. What does <i>not</i> reverse is the alignment inside the money column: amounts stay end-aligned to each other as an LTR block, because a column of numbers that agree on their decimal point is the entire reason for tabular figures. Mirroring the alignment as well would have produced a cart where <span style="font:400 12.5px 'IBM Plex Mono'">1.00</span> and <span style="font:400 12.5px 'IBM Plex Mono'">55.00</span> no longer line up.</div>
+</div>
+</header>
+
+<section style="padding:36px 44px 40px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANVAS 1 · الاستقبال · خلدا · ١٨:٤٢</div>
+<h2 style="font:500 21px/1.2 'IBM Plex Sans';margin:8px 0 18px;letter-spacing:-.015em">Front desk at peak, in Arabic</h2>
+<div dir="rtl" style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#f4f2ee;overflow:hidden;box-shadow:0 1px 2px rgba(23,23,26,.07)">
+
+<div style="display:flex;gap:14px;padding:0 18px;height:60px;align-items:center;background:#fffefb;border-bottom:1px solid rgba(23,23,26,.12)">
+<span style="width:24px;height:24px;border-radius:4px;background:#17171a;color:#fffefb;font:500 13px/24px 'IBM Plex Sans';text-align:center">V</span>
+<span style="font:600 15px/1.5 'IBM Plex Sans Arabic'">خلدا · الاستقبال</span>
+<div style="flex:1"></div>
+<div style="display:flex;gap:20px;align-items:baseline">
+<div style="text-align:start"><div style="font:500 16px/1.15 'IBM Plex Sans Arabic'">١٤٧</div><div style="font:400 11px/1.6 'IBM Plex Sans Arabic';color:#57544d">داخل النادي</div></div>
+<div style="text-align:start"><div style="font:500 16px/1.15 'IBM Plex Mono';unicode-bidi:isolate">١٩:٠٠</div><div style="font:400 11px/1.6 'IBM Plex Sans Arabic';color:#57544d">سبينينغ · ١٨ حجزاً</div></div>
+</div>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.24);padding:12px 17px;border-radius:6px">بيع</span>
+<span style="width:32px;height:32px;border-radius:50%;background:#dcd7cf"></span>
+</div>
+
+<div style="padding:20px 22px;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+
+<div style="flex:1 1 540px;min-width:480px;display:flex;flex-direction:column;gap:16px">
+
+<div style="border:2px solid #1b4079;border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 11.5px/1.6 'IBM Plex Sans Arabic';color:#1b4079">امسح البطاقة أو اكتب · المؤشر هنا</div>
+<div style="display:flex;gap:11px;align-items:center;margin-top:10px">
+<span style="flex:1;font:400 19px/1.7 'IBM Plex Sans Arabic';color:#a8a29a;border-bottom:1px solid rgba(23,23,26,.16);padding-bottom:9px">بطاقة أو رقم هاتف أو اسم<span style="color:#1b4079">|</span></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.24);padding:13px 17px;border-radius:6px">زائر</span>
+</div>
+<div style="font:400 12px/1.7 'IBM Plex Sans Arabic';color:#57544d;margin-top:9px">دخول البوابة والتطبيق يظهر تلقائياً في الأسفل · لا يحتاج أي إجراء</div>
+</div>
+
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:12px 16px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:9px;align-items:baseline">
+<span style="font:600 14.5px/1.5 'IBM Plex Sans Arabic';flex:1">الآن</span>
+<span style="font:400 11.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">مباشر · آخر ١٠ دقائق</span>
+</div>
+
+<div style="display:flex"><span style="width:3px;background:#8a5a1f;flex-shrink:0"></span>
+<div style="flex:1;padding:14px 16px;min-width:0">
+<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<span style="width:40px;height:40px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span>
+<div style="flex:1;min-width:200px">
+<div style="font:600 17px/1.5 'IBM Plex Sans Arabic'">أحمد النابلسي</div>
+<div style="font:400 12.5px/1.7 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">كلب · بطاقة <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">···8841</span> · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٨:٤٢</span></div>
+</div>
+<span style="font:500 11.5px/1.5 'IBM Plex Sans Arabic';color:#8a5a1f;border:1px solid #8a5a1f;padding:3px 8px;border-radius:3px">عليه <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono'">JOD 55.00</span></span>
+</div>
+<div style="font:400 13.5px/1.85 'IBM Plex Sans Arabic';color:#2c2a26;margin-top:10px;background:#faf8f4;padding:12px 14px;border-radius:4px"><b>دعه يدخل.</b> بطاقته منتهية وعليه ٥٥ ديناراً — اذكري الأمر بلطف واعرضي عليه التسديد الآن. يمكنه التدريب حتى <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">٢ أيلول</span> في كل الأحوال.</div>
+<div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
+<span style="font:600 14px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:14px 18px;border-radius:6px">استلمي <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono';font-weight:500">JOD 55.00</span></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:13px 17px;border-radius:6px">أرسلي رابطاً بدلاً من ذلك</span>
+<span style="font:450 13px/1.5 'IBM Plex Sans Arabic';color:#57544d;padding:14px 8px">ذكرتُه</span>
+</div>
+</div></div>
+
+<div style="display:flex;border-top:1px solid rgba(23,23,26,.08)"><span style="width:3px;background:#8a3b1f;flex-shrink:0"></span>
+<div style="flex:1;padding:14px 16px;min-width:0">
+<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<span style="width:40px;height:40px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span>
+<div style="flex:1;min-width:200px">
+<div style="font:600 17px/1.5 'IBM Plex Sans Arabic'">طارق عودة</div>
+<div style="font:400 12.5px/1.7 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">فليكس · تصريح التطبيق · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٨:٣٩</span></div>
+</div>
+<span style="font:500 11.5px/1.5 'IBM Plex Sans Arabic';color:#8a3b1f;border:1px solid #8a3b1f;padding:3px 8px;border-radius:3px">منتهية منذ ١٢ يوماً</span>
+</div>
+<div style="font:400 13.5px/1.85 'IBM Plex Sans Arabic';color:#2c2a26;margin-top:10px;background:#faf8f4;padding:12px 14px;border-radius:4px"><b>عضويته انتهت في <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">٧ آب</span>.</b> المهلة انتهت قبل خمسة أيام. كان يأتي ثلاث مرات أسبوعياً لمدة سنتين — يستحق أن تسأليه إن كان هناك ما تغيّر، قبل الحديث عن التجديد.</div>
+<div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
+<span style="font:600 14px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:14px 18px;border-radius:6px">جدّدي · فليكس <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono';font-weight:500">JOD 40.00</span></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:13px 17px;border-radius:6px">تصريح يوم · <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono'">8.00</span></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:13px 17px;border-radius:6px">أدخليه وسجّلي للمتابعة</span>
+</div>
+</div></div>
+
+<div style="display:flex;border-top:1px solid rgba(23,23,26,.08);background:#faf8f4"><span style="width:3px;background:#cbc6bc;flex-shrink:0"></span>
+<div style="flex:1;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<span style="width:30px;height:30px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';flex:1;min-width:150px">دانا قاسم</span>
+<span style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d">كلب بلس · البوابة · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٨:٤١</span></span>
+<span style="font:500 11.5px/1.5 'IBM Plex Sans Arabic';color:#2f5d3a">دخلت</span>
+</div></div>
+<div style="display:flex;border-top:1px solid rgba(23,23,26,.08);background:#faf8f4"><span style="width:3px;background:#cbc6bc;flex-shrink:0"></span>
+<div style="flex:1;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<span style="width:30px;height:30px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';flex:1;min-width:150px">هالة بركات</span>
+<span style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d">كلب · التطبيق · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٨:٤٠</span></span>
+<span style="font:500 11.5px/1.5 'IBM Plex Sans Arabic';color:#2f5d3a">دخلت</span>
+</div></div>
+<div style="padding:11px 16px;border-top:1px solid rgba(23,23,26,.08);font:400 12.5px/1.7 'IBM Plex Sans Arabic';color:#57544d">الدخول السليم يُخفى تلقائياً بعد ١٠ دقائق. الحالتان أعلاه فقط تحتاجانك.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;padding:15px 16px">
+<div style="font:600 13.5px/1.5 'IBM Plex Sans Arabic'"><span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٩:٠٠</span> · سبينينغ مع دانا</div>
+<div style="font:400 12.5px/1.8 'IBM Plex Sans Arabic';color:#3d3b36;margin-top:6px">١٨ حجزاً، وصل ١٢. ستة لم يصلوا بعد — الغياب يفرّغ الدرّاجات في <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٨:٥٥</span>.</div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">
+<span style="font:500 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.24);padding:12px 15px;border-radius:6px">سجّلي حضور أحد</span>
+<span style="font:500 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.24);padding:12px 15px;border-radius:6px">قائمة الانتظار · ٣</span>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;padding:15px 16px">
+<div style="font:600 13.5px/1.5 'IBM Plex Sans Arabic'">بيع سريع</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px">
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:13px 12px;border-radius:6px;text-align:center">ماء<br><span style="font:500 12px 'IBM Plex Mono';color:#57544d;unicode-bidi:isolate;direction:ltr">0.50</span></span>
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:13px 12px;border-radius:6px;text-align:center">ألواح بروتين<br><span style="font:500 12px 'IBM Plex Mono';color:#57544d;unicode-bidi:isolate;direction:ltr">2.00</span></span>
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:13px 12px;border-radius:6px;text-align:center">تصريح يوم<br><span style="font:500 12px 'IBM Plex Mono';color:#57544d;unicode-bidi:isolate;direction:ltr">8.00</span></span>
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:13px 12px;border-radius:6px;text-align:center">منشفة<br><span style="font:500 12px 'IBM Plex Mono';color:#57544d;unicode-bidi:isolate;direction:ltr">1.00</span></span>
+</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans Arabic';color:#57544d;margin-top:10px">الأصناف الأكثر بيعاً في هذا الفرع هذا الشهر، تُحدَّث أسبوعياً. ليست قائمة ثابتة.</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;padding:15px 16px">
+<div style="font:600 13.5px/1.5 'IBM Plex Sans Arabic'">وردية العمل</div>
+<div style="font:400 12.5px/1.9 'IBM Plex Sans Arabic';color:#3d3b36;margin-top:6px">بدأت <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٦:٠٠</span> · المحصّل <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono';font-weight:500">JOD 284.50</span><br>نقداً <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono'">96.00</span> · بطاقة <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono'">188.50</span><br>تنتهي <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">٢٢:٠٠</span></div>
+</div>
+</div>
+
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:10px">MEASURED · header 60 vs 56 · exception row +14px from line-height 1.85 · action buttons 4–11% wider · sidebar cards unchanged at 300 · every time, amount and card-mask bidi-isolated</div>
+</section>
+
+<section style="padding:34px 44px 40px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CANVAS 2 · نقطة البيع · السلة في العربية</div>
+<h2 style="font:500 21px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">The cart, measured</h2>
+<p style="font:400 13.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:80ch;margin:9px 0 16px">Cart width went from 250 to 288 — Arabic product names need the room, and the total line carries a currency code that cannot be abbreviated away. The tax note moved from one line to two.</p>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div dir="rtl" style="flex:1 1 560px;min-width:520px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="display:flex;gap:12px;padding:0 18px;height:56px;align-items:center;border-bottom:1px solid rgba(23,23,26,.12)">
+<span style="font:600 15px/1.5 'IBM Plex Sans Arabic';flex:1">بيع · أحمد النابلسي</span>
+<span style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d">كلب · المحفظة <span style="unicode-bidi:isolate;direction:ltr;font-family:'IBM Plex Mono'">JOD 0.00</span></span>
+<span style="font:500 13px/1.5 'IBM Plex Sans Arabic';color:#8a3b1f;border:1px solid rgba(138,59,31,.4);padding:8px 12px;border-radius:6px">إلغاء</span>
+</div>
+<div style="display:flex;align-items:stretch;min-height:400px">
+<div style="flex:1;padding:16px 18px;border-inline-end:1px solid rgba(23,23,26,.1);min-width:0">
+<div style="display:flex;gap:9px;flex-wrap:wrap">
+<span style="font:500 13px/1.5 'IBM Plex Sans Arabic';background:#17171a;color:#fffefb;padding:10px 14px;border-radius:6px">الأكثر بيعاً</span>
+<span style="font:400 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:9px 13px;border-radius:6px">مشروبات</span>
+<span style="font:400 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:9px 13px;border-radius:6px">مكمّلات</span>
+<span style="font:400 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:9px 13px;border-radius:6px">عضويات</span>
+<span style="font:400 13px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.2);padding:9px 13px;border-radius:6px">تدريب</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(122px,1fr));gap:9px;margin-top:14px">
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">ماء ٥٠٠ مل</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">0.50</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">لوح بروتين</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">2.00</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">شيكر</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">6.00</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">منشفة</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">1.00</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">واي ١ كغ</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">28.00</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">تصريح يوم</div><div style="font:500 13px/1.2 'IBM Plex Mono';margin-top:6px;unicode-bidi:isolate;direction:ltr">8.00</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 11px;text-align:center;background:#faf8f4;opacity:.55"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic'">كرياتين</div><div style="font:400 11.5px/1.5 'IBM Plex Sans Arabic';margin-top:6px;color:#8a5a1f">غير متوفر</div></div>
+<div style="border:1px dashed rgba(23,23,26,.26);border-radius:6px;padding:13px 11px;text-align:center"><div style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d">امسح<br>الباركود</div></div>
+</div>
+</div>
+<div style="width:288px;flex-shrink:0;padding:16px 16px;display:flex;flex-direction:column">
+<div style="font:500 11.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">السلة · ٣ أصناف</div>
+<div style="display:flex;flex-direction:column;gap:2px;margin-top:11px">
+<div style="display:flex;gap:8px;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;width:24px;unicode-bidi:isolate">٢×</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';flex:1">ماء ٥٠٠ مل</span><span style="font:500 12px/1.2 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr;min-width:44px;text-align:end">1.00</span></div>
+<div style="display:flex;gap:8px;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;width:24px;unicode-bidi:isolate">١×</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';flex:1">لوح بروتين</span><span style="font:500 12px/1.2 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr;min-width:44px;text-align:end">2.00</span></div>
+<div style="display:flex;gap:8px;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;width:24px;unicode-bidi:isolate">١×</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';flex:1">عضوية كلب<br><span style="font:400 11px/1.6 'IBM Plex Sans Arabic';color:#57544d">شهر آب</span></span><span style="font:500 12px/1.2 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr;min-width:44px;text-align:end">55.00</span></div>
+</div>
+<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(23,23,26,.14)">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">المجموع الفرعي</span><span style="font:500 12px/1.2 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr">58.00</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px"><span style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">ضريبة المبيعات ١٦٪</span><span style="font:500 12px/1.2 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr">2.72</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid rgba(23,23,26,.1)"><span style="font:600 15px/1.5 'IBM Plex Sans Arabic'">الإجمالي</span><span style="font:500 19px/1.15 'IBM Plex Mono';unicode-bidi:isolate;direction:ltr">JOD 60.72</span></div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans Arabic';color:#57544d;margin-top:6px">الضريبة على البيع بالتجزئة فقط<br>العضوية معفاة</div>
+</div>
+<div style="flex:1"></div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+<span style="font:600 15px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:16px;border-radius:6px;text-align:center">بطاقة</span>
+<div style="display:flex;gap:8px">
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;flex:1;text-align:center">نقداً</span>
+<span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;flex:1;text-align:center">كليك</span>
+</div>
+<span style="font:450 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d;padding:11px;text-align:center">خصم · يحتاج موافقة المدير</span>
+</div>
+</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CART · WHAT MOVED AND WHAT DID NOT</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>Moved:</b> quantity to the right, amounts to the left, cart width 250→288, the tax note onto two lines, and the total now carries JOD explicitly because “٦٠٫٧٢” alone in an Arabic total line is ambiguous about currency in a way the English “60.72” under a JOD subtotal is not.<br><b>Did not move:</b> amount alignment. Each amount is an isolated LTR run with <span style="font:400 12px 'IBM Plex Mono'">min-width</span> and end-alignment inside its own box, so the column agrees on its decimals. Tabular figures exist for exactly this, and mirroring the alignment would have destroyed it.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">QUANTITY NUMERALS ARE ARABIC-INDIC</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">٢× and ١× follow the tenant numeral setting — they are counts, not money. Prices and totals keep Latin digits with the code, because they appear on the receipt, the invoice and the JoFotara submission, and a member disputing a charge must read the same string in all four places. The rule is one line long and it decides every numeral in the product.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CLIQ IS كليك, NOT A TRANSLATION</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">The Jordanian instant-payment scheme is spoken as “CliQ” and written كليك in Arabic-language banking material. Translating it to a descriptive phrase would leave a receptionist looking for a button that does not match what the customer just said out loud.</div></div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · identical to the English canvas · cart 288 vs 250 · header 56 vs 52 · product tiles 122 vs 112 min · payment buttons unchanged (icon-free, so no mirroring)</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+abaa9e6c66b0ffca1bbf2833aae70c311c041e2cd37ea5cc826d76f3bdd77575  ./README.md
+67710cd527bf87018317be5ffd2fca64e441ff729c952ea9f953cd9c8bb81218  ./project/.thumbnail
+36e4174b1ac5e4c32f62c0def597ed2bc32b5987ea159d70829551c4c9dd4905  ./project/Veyro DS Core Components.dc.html
+24f633ef49b5675802165c2b6be26f516fae586b6cdcdfa50265afe8d727b791  ./project/Veyro DS Domain Components.dc.html
+3e4cfd1788c9f65517331e8f6960d6378e4cf31fa3925224174920c6c5728abd  ./project/Veyro DS Foundations.dc.html
+bb51adf6ed9dc3969972df4be534e4895d513b71a5bfffa7a70719f0abd4052f  ./project/Veyro DS Patterns.dc.html
+eb2a9efb6424c00e2ffea87ca9e07cfecd361194409ac4ea521b4815ce185eee  ./project/Veyro DS Validation Screens.dc.html
+bea1514276e6ccefb98d7773553d409e84bfcdc9a93518580d30efbd8448e309  ./project/Veyro DS v1 Completion Audit.dc.html
+8134975f7842140349c9d9f11034507c6129c2fce56395b1ef50e41a6747ec5c  ./project/Veyro DS v1 Final Audit.dc.html
+aa8f80ff4205501cafb58ad2d3cb04637b105dd114d76d17ab9e8a319235d9c0  ./project/Veyro Design System v1.dc.html
+646d3b7f04a4ab463b2d78062dd5454056ec516a3509ddca278c5b1435e07583  ./project/Veyro HF CRM and Console.dc.html
+0bb18f6ac93330166ef97410c4d1d4c00e8360ae760df5189857414f3343d3a6  ./project/Veyro HF Coach and Member AR.dc.html
+8190a6c2f6f51185f45ff07b2f772f9f309f4fd38c8faab01f8945cc812e05d9  ./project/Veyro HF Coach.dc.html
+97f7a420b597034c8155f6359e7ff3e3bb2b4561a88de965fb3ad6278b2e2a1c  ./project/Veyro HF Command Center AR.dc.html
+674a047850cea0dfac82be49690c73de7f34a7414f7114ddf2309908e1e209cb  ./project/Veyro HF Command Center.dc.html
+ab7abc83da41386b0853a9c71e7875edf22b804a1e58f62465ea7af957915a09  ./project/Veyro HF Foundation Audit.dc.html
+eeb77440f6d338c8ff1b63b222dafca8dd42cb6c560807eca52d8ac55a9086ee  ./project/Veyro HF Front Desk and POS AR.dc.html
+4c5c0103b39cc5fc431b7e2e65a4acfb29d1b57222143951b424f68b9a855817  ./project/Veyro HF Front Desk and POS.dc.html
+635aa1c6a950e62186e56a3439657c79abe334399c7650bd359c187a5235f37a  ./project/Veyro HF Member 360 AR.dc.html
+b6b5fd3402d9c7653e93123e587b5990020c8b5f1c67b39c7873941349c2d802  ./project/Veyro HF Member 360.dc.html
+67e06644e9ebd05fa69b06787f180b0a1b539a621eed591d0a6936b7b7fd738a  ./project/Veyro HF Member App.dc.html
+c9d66d5083e0c6f1ab5ed92d1c1db9b021b7fba93cf0fd2e3aeb510b38546d17  ./project/Veyro HF Remaining Modules.dc.html
+ea95912edc0beb9257da89e1a3a111c06d6535af5d0b2677d8d0f42b374de9ce  ./project/Veyro Phase 9 Audit.dc.html
+7f24196fd0f1907ec6b97d1b18bf0738c99918e5e6de15aec9863710015656be  ./project/Veyro Product Design Foundation.dc.html
+8685ff7ec0c820d2e67755cb59995646526ef5d8497cec0ba56eebe2cfb52fd1  ./project/Veyro Product Experience.dc.html
+22a0c1270479d4dcb4e12b14d495bf1e0354531da4ab80b841f1f2e26246fb6c  ./project/Veyro Prototype Audit.dc.html
+d2f7c09cabe9f16ac2b197c7d5520bbc3f6a4a1b471c736b8d3bfff8868d1d1e  ./project/Veyro Prototype Completion Audit.dc.html
+152c8428f04c6c6d3ea9b691acf1b1695475392f1f153be16ff33ff434ff03c5  ./project/Veyro Screen Registry.dc.html
+368efa24864556a8a4df965ef81370b3f9f87eef298bd2fd700a3dc0c8ed0d23  ./project/Veyro UX Review v1.dc.html
+e4aaa5f2e9b8d75602d36f4a0d0c302a1e56cfd194ccd178c1295030dfd6948d  ./project/Veyro UX Review v2.dc.html
+bbff8fc0c2b547eb483db36122a621fe5dda7e36715196b8320da43d7c5ec3a3  ./project/Veyro V1 Admin Billing and Ops.dc.html
+cb31ea40e387ac60455f27f4557b3688f8ed7c2460a0c64888e3383cd54f18e6  ./project/Veyro V1 Admin Members and Membership.dc.html
+b6d121364f9c2bd7f5accc125df3332418a704b660e7549365d13bcc28f62b62  ./project/Veyro V1 Batch F Command and CRM.dc.html
+87493a2cde59756879225e89e81016e900710fa8dd0c37743eb75a9c9d05bdbb  ./project/Veyro V1 Batch G Member Record and Lifecycle.dc.html
+3441543aae85e724731bbfb97f46c1a6e021c4b428413287cdda72a77f8362f9  ./project/Veyro V1 Batch H Payments and Retail.dc.html
+111b29402caa286a735172025d5b7b2d5736027a5a008e7907834df5f9d0c44a  ./project/Veyro V1 Batch I Scheduling and Access.dc.html
+954e6e1d1ab2c0ad56bf9d9257bfca5b9a8c325a8d0a8792cc6913d9bab0303d  ./project/Veyro V1 Batch J Staff and Communication.dc.html
+ffa120b0472da056d5e2bc0289e21adf393ac6bfa8d8196b32dff0692b836a7f  ./project/Veyro V1 Batch K Automation Reports and AI.dc.html
+eb5ef24a297759c1edb38ac999b203c629e925fd43fce8626e81319416db24bf  ./project/Veyro V1 Batch L Settings Search and Auth.dc.html
+5b879d47ffa5e1263c214ec5cbbe8fc2e8b7b343518475b8b0c1466cc14fccb1  ./project/Veyro V1 Batch M Front Desk and POS.dc.html
+f4941f8fa689578ce64c8d2896dbc8d38a4cc89e6c2cdb35df847ccf7f4dff43  ./project/Veyro V1 Batch N Coach.dc.html
+38e924a531649d654b52b52e664b53fa8d80b1d2b9dcca3b91c67016cf634416  ./project/Veyro V1 Batch O Member Training and Nutrition.dc.html
+82692960978f175a4e396d8b54bfd5fd9b4bc99e61927de681a91af181208792  ./project/Veyro V1 Batch P Member Booking and Account.dc.html
+f3819e00a1b524b5bdb2b625de4213c68ba8f8bf17b50865f8375fbe75b10df6  ./project/Veyro V1 Batch Q Console.dc.html
+3617d2245a26224c1c951cc311aeca7792173d0c1967bfe0e064fa696cc41fe6  ./project/Veyro V1 Canonical Completion Audit.dc.html
+fa4e550b570748f692d7c613c5c1de475fdb262e4e0170ec6c8af3d08313fee8  ./project/Veyro V1 Completion Report.dc.html
+0a691663c6e4287ce78fc84fb3a8b4252357c6f70175583e0c9974c0bfd90701  ./project/Veyro V1 Front Desk and Coach.dc.html
+f7d84f1930ef522edbfc696a2d971417872b0dcc4b07f005553759c1b32c3d16  ./project/Veyro V1 Member and Console.dc.html
+bdd9d0fbed1635fd86956e93fd41a1082d13280a4e6f0af40792782bd9aaa90d  ./project/Veyro Wireframes.dc.html
+8fa472f49d2d65e12662787f0c77ce8c9f41c656cb55d24836235a09f269a9d8  ./project/blueprint.md
+8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe  ./project/support.js
+80f4b381df26919b358b3e64e209c67beba2ba9224c0f4df3951d3b179d426ef  ./project/uploads/Gym_OS_Master_Product_Blueprint_v1_English.docx
+0736902dfb285cb57e2f370c0918df0b8f2aeeefbd24b3e5198fa03ed185b8f5  ./project/veyro-registry-data.js
+e71752cc02db47dd13b8ae386c10a07b05d2df9bbd3e8e4d364d419e7240c672  ./project/veyro-screen.js

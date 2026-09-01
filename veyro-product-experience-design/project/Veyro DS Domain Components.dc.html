@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1200px;padding:0 0 110px">
+
+<header style="padding:66px 54px 38px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">DESIGN SYSTEM v1 · STEP 4 — DOMAIN COMPONENTS · §38–§52</div>
+<h1 style="font:500 38px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:22ch">Veyro Ledger — domain components</h1>
+<p style="font:400 15.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:16px 0 0;text-wrap:pretty">Fifteen families that carry Veyro's actual subject matter — money, attention, bodies, food, access, time. Each is built from Step 3 primitives with content the approved wireframes already proved. A family earns its place here only when its <b>behaviour</b> differs, never when only its appearance does. Clears <b>DS-P0-4</b>.</p>
+<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:24px">
+<div><div style="font:500 20px/1 'IBM Plex Mono'">15</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DOMAIN FAMILIES</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ nVariants }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">VARIANTS</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">4</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">JORDAN-SPECIFIC STATES</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">RATIOS TRANSCRIBED</div></div>
+</div>
+</header>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · §38 · THE COMPONENT THE WHOLE ADMIN RESTS ON</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">AttentionRow</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:11px 0 0">The Command Center is a queue of these and almost nothing else. Anatomy: severity edge-mark · category · age · headline stating the fact · plain-language evidence · resolution action · secondary route. The headline is <b>never</b> a metric name — “6 payments failed” not “Payment failure rate”.</p>
+<div style="margin-top:18px;border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;overflow:hidden">
+<div style="display:flex;gap:9px;padding:9px 14px;border-bottom:1px solid rgba(23,23,26,.1);align-items:center;flex-wrap:wrap;background:#faf8f4">
+<span style="font:500 12.5px/1.3 'IBM Plex Sans'">Needs you now</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">9 open · 2 critical</span><div style="flex:1"></div><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Khalda · today</span>
+</div>
+<div style="display:flex;gap:0;border-bottom:1px solid rgba(23,23,26,.07)">
+<span style="width:3px;background:#8a3b1f"></span>
+<div style="flex:1;padding:13px 14px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">MONEY</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">2h ago</span><div style="flex:1"></div><span style="font:500 14px/1.2 'IBM Plex Mono';color:#8a3b1f">JOD 312.00</span></div>
+<div style="font:500 15.5px/1.35 'IBM Plex Sans';margin-top:7px">6 payments failed overnight</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">4 expired cards, 2 insufficient funds. Retried twice; a message is drafted for each. <b>No access is blocked</b> — these members can still train.</div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Send 6 payment links</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Review each</span><span style="font:500 12.5px/1 'IBM Plex Sans';color:#57544d;padding:11px 8px">Snooze to tomorrow</span></div>
+</div>
+</div>
+<div style="display:flex;gap:0;border-bottom:1px solid rgba(23,23,26,.07)">
+<span style="width:3px;background:#8a3b1f"></span>
+<div style="flex:1;padding:13px 14px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">COMPLIANCE</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">since 09:14</span></div>
+<div style="font:500 15.5px/1.35 'IBM Plex Sans';margin-top:7px">JoFotara has rejected 3 invoices</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">All three are missing a buyer tax number. The sales are recorded and the money is collected — only the e-invoice submission failed. Fix the field and they resubmit automatically.</div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Fix the 3 invoices</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">What is JoFotara?</span></div>
+</div>
+</div>
+<div style="display:flex;gap:0;border-bottom:1px solid rgba(23,23,26,.07)">
+<span style="width:3px;background:#8a5a1f"></span>
+<div style="flex:1;padding:13px 14px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 6px;border-radius:3px">RETENTION</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">this week</span></div>
+<div style="font:500 15.5px/1.35 'IBM Plex Sans';margin-top:7px">14 memberships expire in 7 days</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">9 have trained in the last two weeks and usually renew. 5 have not visited in over 20 days — those are the ones worth a call.</div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Send offer to the 9</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Call list for the 5</span></div>
+</div>
+</div>
+<div style="display:flex;gap:0">
+<span style="width:3px;background:#3f5560"></span>
+<div style="flex:1;padding:13px 14px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#3f5560;border:1px solid #3f5560;padding:2px 6px;border-radius:3px">STAFFING</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">Thu 22 Aug</span><div style="flex:1"></div><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">assigned to Rania</span></div>
+<div style="font:500 15.5px/1.35 'IBM Plex Sans';margin-top:7px">Spin 19:00 has no coach</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Omar declined; 18 members are booked. Two qualified coaches are free at that hour.</div>
+<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Offer to Dana or Yousef</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Open the class</span></div>
+</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">ORDERING IS A COMPONENT CONCERN</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Sorted by <b>severity, then money at risk, then age</b> — never by recency alone. A three-hour-old JOD 312 failure outranks a five-minute-old staffing note, and the queue must not reshuffle while someone is reading it: new items land in a “3 new” pill at the top rather than injecting themselves.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">STATES</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>Empty is the success state</b> — “Nothing needs you at Khalda. Last checked 14:20.” with the day's numbers below, never a blank panel. Resolving collapses the row in place with a 30s undo, and the count decrements visibly. Snoozed items show where they went. Permission-filtered queues state that items are hidden without saying what they are.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CONTRACTS</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Each row is an <span style="font:400 12px 'IBM Plex Mono'">article</span> with the headline as its label; the queue is a list with a live count. Severity is edge-mark <i>and</i> category chip <i>and</i> wording — never the bar alone. RTL: edge-mark moves to the logical start, amount to the logical end. Below bp.sm the action row stacks and the primary becomes full-width.</div></div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · §39 · §40 · WHERE MISTAKES COST REAL MONEY</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">MoneyValue and the payment family</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="flex:1 1 380px;min-width:340px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">MONEYVALUE · SEVEN KINDS, NEVER A BARE NUMBER</div>
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:12px">
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:500 14px/1.2 'IBM Plex Mono';width:118px;text-align:end">JOD 55.00</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">neutral · a fact, no colour</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:500 14px/1.2 'IBM Plex Mono';width:118px;text-align:end;color:#8a3b1f">JOD 55.00</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">owed · critical, always with a status word nearby</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:500 14px/1.2 'IBM Plex Mono';width:118px;text-align:end">−JOD 28.00</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">refunded · sign is explicit, never colour-only</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:500 14px/1.2 'IBM Plex Mono';width:118px;text-align:end">JOD 12.50</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">wallet credit · labelled “credit”, never a negative debt</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:400 13px/1.2 'IBM Plex Mono';width:118px;text-align:end;color:#57544d">restricted</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">no permission · never blank, never zero</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:400 13px/1.2 'IBM Plex Mono';width:118px;text-align:end;color:#57544d">—</span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">not applicable · em-dash, distinct from zero</span></div>
+<div style="display:flex;gap:12px;align-items:baseline"><span style="font:500 14px/1.2 'IBM Plex Mono';width:118px;text-align:end">JOD 41,280<span style="font:400 12px 'IBM Plex Mono';color:#57544d">.00</span></span><span style="font:400 11.5px/1.4 'IBM Plex Sans';color:#4a4842;flex:1">aggregate · fils de-emphasised, never truncated</span></div>
+</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px">Always three-letter code plus two decimals, tabular figures, end-aligned. <b>JOD is three decimals in banking and two in retail</b> — Veyro is a retail product and shows two everywhere, including exports, so a reconciliation never has to guess which convention a column used.</div>
+</div>
+<div style="flex:1 1 340px;min-width:320px">
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;padding:14px 16px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">REFUND · THE STRONGEST CONFIRMATION IN THE PRODUCT</div>
+<div style="font:500 15px/1.35 'IBM Plex Sans';margin-top:9px">Refund JOD 28.00 to Dana Qasem</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:6px">Back to the Visa ending 4417, arriving in 3–5 business days. The PT session is released back to her package. A credit note is issued to JoFotara automatically.</div>
+<div style="border-top:1px solid rgba(23,23,26,.1);margin-top:11px;padding-top:10px">
+<div style="font:500 11.5px/1.35 'IBM Plex Sans'">Reason</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;padding:8px 9px;margin-top:4px;font:400 12.5px/1.3 'IBM Plex Sans';color:#17171a">Coach cancelled, no replacement</div>
+<div style="font:400 11px/1.5 'IBM Plex Sans';color:#57544d;margin-top:5px">Recorded on the invoice and visible to the member.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:11px 14px;border-radius:6px">Refund JOD 28.00</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Cancel</span></div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">WHY NO “TYPE THE AMOUNT TO CONFIRM”</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Retyping proves dexterity, not intent — people copy the number without reading it. The real controls are stating the <b>consequence</b> in full, putting the amount in the button, requiring a reason that becomes part of the record, and holding a refund permission. Above a tenant threshold it escalates to approval rather than to more typing.</div>
+</div>
+</div>
+</div>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:940px;display:grid;grid-template-columns:150px 118px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>PAYMENT STATE</div><div>SEVERITY</div><div>WHAT THE USER IS TOLD — AND WHAT IS SAFE</div></div>
+<sc-for list="{{ payStates }}" as="p" hint-placeholder-count="10">
+<div style="min-width:940px;display:grid;grid-template-columns:150px 118px minmax(0,1fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12px/1.45 'IBM Plex Sans'">{{ p.state }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Mono';color:#57544d">{{ p.sev }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ p.copy }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · §41 · §42 · TOUCH DENSITY, SPEED IS THE FEATURE</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">POS cart and CheckInResult</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:18px;align-items:flex-start">
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;overflow:hidden;width:376px">
+<div style="padding:11px 14px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:9px;align-items:center"><span style="width:30px;height:30px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:500 13.5px/1.3 'IBM Plex Sans'">Dana Qasem</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Club · wallet JOD 12.50</div></div><span style="font:400 11px/1.4 'IBM Plex Sans';color:#1b4079">Change</span></div>
+<div style="display:flex;gap:10px;padding:11px 14px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><div style="flex:1"><div style="font:450 14px/1.3 'IBM Plex Sans'">Protein bar</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">×2 · JOD 1.75 each</div></div><span style="font:500 14px/1.2 'IBM Plex Mono'">3.50</span></div>
+<div style="display:flex;gap:10px;padding:11px 14px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><div style="flex:1"><div style="font:450 14px/1.3 'IBM Plex Sans'">PT ×10 package</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Coach Yousef · expires in 6 months</div></div><span style="font:500 14px/1.2 'IBM Plex Mono'">220.00</span></div>
+<div style="display:flex;gap:10px;padding:11px 14px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4"><div style="flex:1"><div style="font:450 13.5px/1.3 'IBM Plex Sans';color:#2f5d3a">Staff discount 10%</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">approved by Rania · logged</div></div><span style="font:500 14px/1.2 'IBM Plex Mono';color:#2f5d3a">−22.35</span></div>
+<div style="padding:12px 14px;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="display:flex;gap:10px;align-items:baseline"><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Subtotal</span><span style="font:400 12.5px/1.2 'IBM Plex Mono';color:#57544d">223.50</span></div>
+<div style="display:flex;gap:10px;align-items:baseline;margin-top:4px"><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Sales tax 16%</span><span style="font:400 12.5px/1.2 'IBM Plex Mono';color:#57544d">32.18</span></div>
+<div style="display:flex;gap:10px;align-items:baseline;margin-top:7px"><span style="font:500 15px/1.3 'IBM Plex Sans';flex:1">Total</span><span style="font:500 19px/1.2 'IBM Plex Mono'">JOD 233.33</span></div>
+</div>
+<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:8px"><span style="flex:1;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 12px;border-radius:6px;text-align:center">Card</span><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;text-align:center">Cash</span></div>
+<div style="display:flex;gap:8px"><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;text-align:center">CliQ</span><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;text-align:center">Wallet 12.50</span></div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">Split payment available after choosing the first method.</div>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CART RULES</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Tax is <b>always a visible line</b>, never folded into a total — Jordan's 16% must be legible on screen before it is legible on a receipt. Discounts name their approver inline, because “who authorised this” is the first question in every audit. Wallet shows its balance on the button so nobody has to remember it. A membership sale in the cart carries its own start date and renewal terms as a sub-line rather than a separate flow.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CHECKINRESULT · READ AT 1.5 METRES</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
+<div style="border:2px solid #2f5d3a;border-radius:6px;padding:11px 13px;display:flex;gap:11px;align-items:center"><span style="width:34px;height:34px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Dana Qasem</div><div style="font:400 12px/1.4 'IBM Plex Sans';color:#2f5d3a">Checked in · Club · 18th visit this month</div></div></div>
+<div style="border:2px solid #8a5a1f;border-radius:6px;padding:11px 13px;display:flex;gap:11px;align-items:center"><span style="width:34px;height:34px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Ahmad Nabulsi</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#8a5a1f">Checked in · JOD 55.00 overdue — mention it, do not block him</div></div></div>
+<div style="border:2px solid #8a3b1f;border-radius:6px;padding:11px 13px;display:flex;gap:11px;align-items:center"><span style="width:34px;height:34px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Omar Zaid</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#8a3b1f">Expired 3 days ago · offer renewal at the desk</div></div></div>
+</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px">Name and photo first — staff verify a person, not a status. <b>Every result is an outcome plus an instruction</b>; a receptionist should never have to decide what a colour means. Denial always states the reason and the override path.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · §43–§46 · COACH AND MEMBER</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">SetLogger, MealCard, ExerciseRow, ProgressChart</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:18px;align-items:flex-start">
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;overflow:hidden;width:322px">
+<div style="padding:12px 15px;border-bottom:1px solid rgba(23,23,26,.1)"><div style="font:500 17px/1.25 'IBM Plex Sans'">Barbell squat</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">4 sets × 8 · last week 82.5 kg</div></div>
+<div style="display:flex;gap:10px;padding:12px 15px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;width:34px">SET 1</span><span style="font:500 16px/1.2 'IBM Plex Mono';flex:1">85.0 kg × 8</span><span style="font:500 11px/1.4 'IBM Plex Mono';color:#2f5d3a">✓ done</span></div>
+<div style="display:flex;gap:10px;padding:12px 15px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;width:34px">SET 2</span><span style="font:500 16px/1.2 'IBM Plex Mono';flex:1">85.0 kg × 8</span><span style="font:500 11px/1.4 'IBM Plex Mono';color:#2f5d3a">✓ done</span></div>
+<div style="padding:12px 15px;border-bottom:1px solid rgba(23,23,26,.07)">
+<div style="display:flex;gap:10px;align-items:center"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#1b4079;width:34px">SET 3</span><span style="font:500 16px/1.2 'IBM Plex Mono';flex:1">85.0 kg × 8</span></div>
+<div style="display:flex;gap:8px;margin-top:10px"><span style="flex:1;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 12px;border-radius:6px;text-align:center">Log set 3</span><span style="width:48px;font:500 15px/1 'IBM Plex Mono';border:1px solid rgba(23,23,26,.28);padding:15px 0;border-radius:6px;text-align:center">−</span><span style="width:48px;font:500 15px/1 'IBM Plex Mono';border:1px solid rgba(23,23,26,.28);padding:15px 0;border-radius:6px;text-align:center">＋</span></div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:7px">Pre-filled from set 2. One tap logs it; adjust only if it changed.</div>
+</div>
+<div style="padding:11px 15px;display:flex;gap:9px;align-items:center;background:#17171a"><span style="font:500 20px/1.2 'IBM Plex Mono';color:#fffefb">1:28</span><span style="font:400 12px/1.4 'IBM Plex Sans';color:#c9c3b8;flex:1">rest · set 4 next</span><span style="font:500 11.5px/1 'IBM Plex Sans';color:#fffefb;border:1px solid rgba(255,255,255,.3);padding:8px 10px;border-radius:6px">Skip</span></div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;overflow:hidden;width:322px">
+<div style="padding:12px 15px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:10px;align-items:baseline"><div style="flex:1"><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">LUNCH · 13:00</div><div style="font:500 17px/1.3 'IBM Plex Sans';margin-top:3px">Chicken mansaf bowl</div></div></div>
+<div style="height:118px;background:#ece9e3;display:flex;align-items:center;justify-content:center;font:400 11px/1.4 'IBM Plex Mono';color:#85807a">MEAL IMAGE</div>
+<div style="padding:12px 15px">
+<div style="display:flex;gap:14px"><div><div style="font:500 15px/1.2 'IBM Plex Mono'">612</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">KCAL</div></div><div><div style="font:500 15px/1.2 'IBM Plex Mono'">48g</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">PROTEIN</div></div><div><div style="font:500 15px/1.2 'IBM Plex Mono'">54g</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">CARBS</div></div><div><div style="font:500 15px/1.2 'IBM Plex Mono'">22g</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:2px">FAT</div></div></div>
+<div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 12px;border-radius:6px;text-align:center">I ate this</span><span style="font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:15px 14px;border-radius:6px">Swap</span></div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:8px">Swap keeps the macros within 5% and offers three alternatives you have eaten before.</div>
+</div>
+</div>
+<div style="flex:1 1 280px;min-width:270px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">ONE-TAP IS THE WHOLE DESIGN</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Both components pre-fill from the last known value and make the common case a single 44px tap. SetLogger never asks for weight twice in a session; MealCard never asks a member to search for food that is already on their plan. <b>Adjustment is available but never required</b> — that is the difference between logging and data entry.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">OFFLINE IS THE NORMAL CASE</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Basements have no signal. Both write locally and mark themselves “saved on this phone · will sync”, with the count of pending items visible and never a blocking error. A failed sync surfaces once, at the app level, with a retry — not per set.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">PROGRESSCHART · HONEST BY DEFAULT</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Never a truncated y-axis, never a trend line through fewer than four points, and gaps rendered as gaps rather than interpolated. Direction is stated in words as well as slope — “down 1.8 kg over 6 weeks” — because a line going down is good for weight and bad for strength, and colour cannot carry that.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05 · §47 · §48</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">AI treatment and the nutrition policy gate</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="border:1px solid #4a3d7a;border-radius:4px;background:#fffefb;overflow:hidden;width:400px">
+<div style="padding:10px 14px;background:#edebf6;display:flex;gap:9px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#4a3d7a">✦</span><span style="font:500 11px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.06em">VEYRO SUGGESTS · REVIEW BEFORE SENDING</span></div>
+<div style="padding:13px 14px">
+<div style="font:400 13.5px/1.65 'IBM Plex Sans';color:#17171a">PT revenue at Khalda is down <b>JOD 1,840</b> against July. Two things account for almost all of it: Omar's client list dropped from 14 to 9 after he reduced his hours, and <b>31 sessions</b> were delivered but never verified, so they were not billed.</div>
+<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><span style="font:400 11px/1.4 'IBM Plex Mono';color:#4a3d7a;border:1px solid rgba(74,61,122,.42);padding:4px 8px;border-radius:3px">Omar's roster ↗</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#4a3d7a;border:1px solid rgba(74,61,122,.42);padding:4px 8px;border-radius:3px">31 unverified ↗</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#4a3d7a;border:1px solid rgba(74,61,122,.42);padding:4px 8px;border-radius:3px">July comparison ↗</span></div>
+<div style="border-top:1px solid rgba(23,23,26,.1);margin-top:12px;padding-top:11px;display:flex;gap:8px;flex-wrap:wrap"><span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 14px;border-radius:6px">Chase the 31 sessions</span><span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 13px;border-radius:6px">Open Omar's roster</span></div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Based on payments, sessions and rosters for 1–19 August. Confidence is high on the session gap, lower on the roster attribution.</div>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">FIVE RULES, NO EXCEPTIONS</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>1 · Always marked.</b> The ✦ and the <span style="font:400 12px 'IBM Plex Mono';color:#4a3d7a">color.semantic.ai</span> frame appear wherever a machine produced the content — no unattributed AI text anywhere in Veyro.<br><b>5 · Always Veyro's colour.</b> ai.600 is system-owned and never inherits brand.accent (guardrail G7). A tenant brand on an AI panel would make inference look like a first-party assertion; Veyro is accountable for what its AI says, so Veyro owns the colour it says it in. Applies to interpretation, recommendation, evidence links and executed-action confirmations alike.<br><b>2 · Always evidenced.</b> Every claim carries a link to the records behind it. A number without a route to its source is not shippable.<br><b>3 · Never auto-executes.</b> Output is a proposal; a human presses the button. Financial and destructive actions are excluded entirely.<br><b>4 · States its confidence in words</b>, not a percentage — “lower on the roster attribution” is actionable, “72%” is not.</div>
+</div>
+<div style="border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.08em">NUTRITION CLINICAL GATE · CONFIGURABLE, NOT DECIDED</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Per your instruction, Veyro defines no clinical criteria. The architecture provides a <b>policy routing point</b>: a plan passes through <span style="font:400 12px 'IBM Plex Mono'">nutritionPolicy.evaluate()</span> and lands in one of four outcomes — <b>auto-assign</b>, <b>coach review</b>, <b>qualified-professional review</b>, or <b>blocked with a referral</b>. The rules populating it are a market-specific compliance input, owned outside the product.</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#57544d;margin-top:9px">Until a market publishes rules, its tenants run in review-all or nutrition-disabled. <b>The UX does not change when rules arrive</b> — only which branch a plan takes. That was the requirement: configurable without redesign.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">06 · §49–§52</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">The remaining families</h2>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:1000px;display:grid;grid-template-columns:132px minmax(0,1.1fr) minmax(0,1.25fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>FAMILY</div><div>VARIANTS &amp; ANATOMY</div><div>THE DECISION THAT MATTERS</div></div>
+<sc-for list="{{ families }}" as="f" hint-placeholder-count="9">
+<div style="min-width:1000px;display:grid;grid-template-columns:132px minmax(0,1.1fr) minmax(0,1.25fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ f.name }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ f.anatomy }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ f.decision }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 54px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">07 · §75 · DEFERRED FROM STEP 2, DELIVERED HERE</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Jordan integration states</h2>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:940px;display:grid;grid-template-columns:124px 118px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>INTEGRATION</div><div>STATE</div><div>WHAT THE OPERATOR IS TOLD</div></div>
+<sc-for list="{{ jordan }}" as="j" hint-placeholder-count="8">
+<div style="min-width:940px;display:grid;grid-template-columns:124px 118px minmax(0,1fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12px/1.45 'IBM Plex Sans'">{{ j.system }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Mono';color:#57544d">{{ j.state }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ j.copy }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:20px;padding:19px 21px;border:1px solid rgba(0,0,0,.16);border-radius:6px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.09em">STEP 4 CLOSES</div>
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:9px">DS-P0-4 resolved. Fifteen families, each with variants, states and the three contracts inherited from Step 3. The separating principle held: PersonRow serves member, lead, coach and staff because the behaviour is identical, while SetLogger and MealCard are separate components because one-tap-log means something different for a set than for a meal.</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#57544d;margin-top:10px">Step 5 next: the ten canonical patterns, then platform mapping.</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900}}">
+const PAY_STATES = [
+  ['Paid', 'neutral', 'Amount, method, timestamp. No green badge — paid is the expected case and colouring it makes the unpaid row harder to find.'],
+  ['Pending', 'info', '“Sent to the bank, usually clears within an hour.” Never “processing” alone — a duration prevents the second attempt that causes a double charge.'],
+  ['Failed', 'critical', 'Reason in plain words (“the card expired”), what was NOT affected (“access is unchanged”), and the single recovery action. Never a provider error code as the headline.'],
+  ['Retrying', 'attention', 'Attempt number, next attempt time, and how to stop it. A silent retry loop is how a member gets charged three times.'],
+  ['Overdue', 'critical', 'Amount, days late, and whether access is affected under this tenant\'s policy — the answer differs per tenant and must never be inferred by the reader.'],
+  ['Refunded', 'neutral', 'Signed amount, destination, arrival window, reason, and who authorised it. All five, always.'],
+  ['Partially refunded', 'neutral', 'Both figures side by side — original and refunded — never a single net number that hides what happened.'],
+  ['Disputed', 'critical', 'What the member claims, the evidence deadline, and who owns the response. Time-boxed, so the deadline is the loudest element.'],
+  ['Cash pending', 'attention', '“Collected at the desk, not yet reconciled.” Distinguishes a drawer variance from a real shortfall at close.'],
+  ['Wallet applied', 'neutral', 'Credit used and remaining balance, both visible. A wallet with an invisible balance is a support ticket.']
+];
+
+const FAMILIES = [
+  ['PersonRow', 'Photo · name · membership or role · context line · status · one action. Four densities, four subjects: member, lead, coach, staff.', 'One component, not four. Behaviour is identical — identify a person, see their state, act once — so ClientCard and MemberCard would be the same thing with different words. The subject only changes which context line renders.'],
+  ['TimelineItem', 'Time · actor · event · amount or object · expandable detail. Types: payment, visit, booking, session, message, note, plan change, document, consent.', 'One spine, chronological, filterable by type — the Member 360 decision generalised. The actor is always named, including “Veyro” for automated events, because “who did this” is the question a timeline exists to answer.'],
+  ['MembershipCard', 'Plan · status · period · price · renewal terms · freeze allowance used. Variants: active, trial, frozen, expiring, expired, cancelled.', 'Renewal terms are always visible, never behind a link — the single most common member dispute is what they thought they signed up for. Freeze allowance shows used-of-total, so a refusal is never a surprise.'],
+  ['BookingCard', 'Class or session · time · coach · location · capacity · member state. Variants: confirmed, waitlisted, cancelled, no-show, full, in progress.', 'Waitlist shows position and honest odds (“3rd on the list — usually clears”). Cancellation states the deadline and what happens after it, on the card, before the member commits.'],
+  ['AccessPass', 'QR or NFC · member name · validity · club. States: valid, expiring today, expired, restricted, offline-cached.', 'Renders offline from cache and says so with a timestamp. A member at a turnstile with no signal is the normal case, not an edge case.'],
+  ['TaskRow', 'Owner · due · subject · source · one action. Variants: assigned, self-created, from an exception, overdue.', 'Every task names where it came from — an exception, a person, an automation. An orphan task with no provenance gets ignored, which is how a queue dies.'],
+  ['PlanBuilderRow', 'Day or meal slot · content · macros or volume · alternatives count · lock state.', 'The coach edits in place; nothing opens a second editor. Locked rows show why they are locked (policy, member allergy, medical note) rather than being merely disabled.'],
+  ['ConsentBlock', 'Purpose · scope · granted date · granting party · withdraw action. Types: marketing, health data, biometric, photo, minor guardian.', 'Health and biometric consent are separate records with separate withdrawal, never bundled into a terms checkbox. Withdrawal is always one action from where the consent is shown — never a support request.'],
+  ['StaffAvailability', 'Coach · hours · qualifications · current load · conflicts. Variants: available, partial, full, off, unqualified for this class.', '“Unqualified” is a distinct state from “unavailable” and says which qualification is missing. Assigning an unqualified coach to a class is a safety issue, not a scheduling inconvenience.']
+];
+
+const JORDAN = [
+  ['JoFotara', 'submitted', '“Sent to JoFotara · reference JF-88214.” Reference visible immediately, because that is what an accountant is asked for.'],
+  ['JoFotara', 'accepted', 'Quiet confirmation on the invoice with the timestamp. No banner — acceptance is the expected case.'],
+  ['JoFotara', 'rejected', 'The specific field at fault, in plain words (“missing buyer tax number”), plus the assurance that the sale and the money are recorded. Fix-and-resubmit is one action.'],
+  ['JoFotara', 'unreachable', '“JoFotara is not responding. Invoices are queued and will submit automatically — nothing is lost, and you can keep selling.” Selling never blocks on e-invoicing.'],
+  ['CliQ', 'awaiting transfer', 'Alias shown, amount shown, “waiting for the member to confirm in their bank app” with a live elapsed timer. Staff know whether to wait or move on.'],
+  ['CliQ', 'confirmed', 'Matched to the member and the order, with the bank reference retained on the invoice for reconciliation.'],
+  ['CliQ', 'unmatched', '“A JOD 55.00 transfer arrived that we could not match.” Sits in a reconciliation queue with the reference and the sender alias — never silently discarded, never auto-assigned to a guess.'],
+  ['CliQ', 'expired', 'The request timed out; the cart is preserved and another method is offered. The member is not charged and is told so.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      nVariants: '61',
+      payStates: PAY_STATES.map(p => ({ state: p[0], sev: p[1], copy: p[2] })),
+      families: FAMILIES.map(f => ({ name: f[0], anatomy: f[1], decision: f[2] })),
+      jordan: JORDAN.map(j => ({ system: j[0], state: j[1], copy: j[2] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

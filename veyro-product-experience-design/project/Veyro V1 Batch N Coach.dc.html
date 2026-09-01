@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH N · 14 NEW + 2 REVISITED · CCH-04 → CCH-19 · COACH COMPLETE</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Veyro Coach, finished</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Sixteen screens at 390px, Touch density, one hand — fourteen new, plus the client profile and programme builder revisited from Batch C. Together with the three drawn in Phase 9 this closes Coach at 19 of 19 — a real app for people who spend their day on a gym floor, not a reduced Admin.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CCH-04 · CCH-06 · CCH-07 · THE SESSION ARC</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Who needs me, what is about to happen, and closing it out</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="height:30px;display:flex;align-items:center;padding:0 18px;justify-content:space-between"><span style="font:500 10.5px/1 'IBM Plex Mono'">09:12</span><span style="font:400 9.5px/1 'IBM Plex Mono';color:#57544d">▮▮▮</span></div>
+<div style="padding:6px 17px 16px">
+<div style="font:500 19px/1.2 'IBM Plex Sans';letter-spacing:-.014em">Your clients</div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">14 active · 3 need you</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em;margin-top:14px">NEEDS ATTENTION</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+<sc-for list="{{ attention }}" as="a" hint-placeholder-count="3">
+<div style="border:1px solid {{ a.border }};border-radius:6px;padding:11px 12px;display:flex;gap:10px;align-items:center">
+<span style="width:34px;height:34px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span>
+<div style="flex:1;min-width:0"><div style="font:500 14px/1.3 'IBM Plex Sans'">{{ a.name }}</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:{{ a.color }};margin-top:1px">{{ a.why }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:16px">TODAY</div>
+<div style="margin-top:7px">
+<sc-for list="{{ clientsToday }}" as="c" hint-placeholder-count="3">
+<div style="padding:11px 2px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:center">
+<span style="font:500 11.5px/1.3 'IBM Plex Mono';width:42px;flex-shrink:0">{{ c.time }}</span>
+<span style="width:30px;height:30px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span>
+<div style="flex:1;min-width:0"><div style="font:450 13.5px/1.3 'IBM Plex Sans'">{{ c.name }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">{{ c.meta }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">EVERYONE ELSE · 8</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:6px">Show all clients</div>
+<div style="margin-top:13px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36"><b>Sorted by attention, not alphabet.</b> A coach with 40 clients needs the three who slipped, not the letter A.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="height:30px;display:flex;align-items:center;padding:0 18px;justify-content:space-between"><span style="font:500 10.5px/1 'IBM Plex Mono'">09:44</span><span style="font:400 9.5px/1 'IBM Plex Mono';color:#57544d">▮▮▮</span></div>
+<div style="padding:6px 17px 16px">
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">Starting in a minute</div>
+<div style="font:500 21px/1.2 'IBM Plex Sans';letter-spacing:-.015em;margin-top:2px">Ahmad · lower body</div>
+<div style="border:1px solid #8a5a1f;border-radius:6px;margin-top:13px;overflow:hidden">
+<div style="display:flex"><span style="width:3px;background:#8a5a1f;flex-shrink:0"></span>
+<div style="flex:1;padding:11px 12px"><div style="font:500 13.5px/1.35 'IBM Plex Sans'">Read this first</div><div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:3px">19 days off. Last time his knee felt tight on set 2 and you dropped him to 75. <b>Left knee — no deep loaded flexion</b>, recorded at intake.</div></div>
+</div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">TODAY'S PLAN · WEEK 8, DAY A</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:7px;overflow:hidden">
+<sc-for list="{{ plan }}" as="p" hint-placeholder-count="5">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline">
+<div style="flex:1"><div style="font:450 13px/1.35 'IBM Plex Sans'">{{ p.name }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;margin-top:1px">{{ p.scheme }}</div></div>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#85807a">{{ p.last }}</span>
+</div>
+</sc-for>
+</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:17px;border-radius:6px;margin-top:14px;text-align:center">Start the session</span>
+<div style="margin-top:11px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36">The thirty seconds before a client walks in. Everything a coach would otherwise try to remember, on one screen, with the limitation impossible to miss.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="height:30px;display:flex;align-items:center;padding:0 18px;justify-content:space-between"><span style="font:500 10.5px/1 'IBM Plex Mono'">10:41</span><span style="font:400 9.5px/1 'IBM Plex Mono';color:#57544d">▮▮▮</span></div>
+<div style="padding:6px 17px 16px">
+<div style="font:500 21px/1.2 'IBM Plex Sans';letter-spacing:-.015em">Session done</div>
+<div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Ahmad · 56 minutes · 5 exercises</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:14px;overflow:hidden">
+<sc-for list="{{ done }}" as="d" hint-placeholder-count="5">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline">
+<span style="font:450 13px/1.35 'IBM Plex Sans';flex:1">{{ d.name }}</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono'">{{ d.result }}</span>
+<sc-if value="{{ d.flag }}" hint-placeholder-val="{{ true }}"><span style="font:500 9px/1.4 'IBM Plex Mono';color:#8a5a1f">{{ d.flag }}</span></sc-if>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:400 12px/1.7 'IBM Plex Sans';color:#3d3b36">Knee held up at 75. Kept volume down after the layoff — build back to 82.5 over three weeks rather than next session.</div>
+<div style="font:400 10px/1.5 'IBM Plex Mono';color:#57544d;margin-top:6px">Voice note · 11s · transcribed</div>
+</div>
+<div style="margin-top:12px;padding:11px 12px;border:1px solid rgba(23,23,26,.16);border-radius:4px;font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36"><b>Confirming does four things:</b> verifies the session, uses 1 of his 4 credits, updates his app, and files the note on his record.</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:17px;border-radius:6px;margin-top:13px;text-align:center">Confirm · 3 credits left</span>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:11px;text-align:center">Book his next session</div>
+<div style="margin-top:11px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36"><b>One tap, not a second screen.</b> Verification being a separate visit is exactly why 31 sessions went unbilled.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CCH-09 · CCH-10 · CCH-17 · BUILDING AND ASSIGNING</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Exercises, assignment, and the sign-off queue</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-09 · EXERCISE PICKER · SHEET</div>
+<div style="padding:14px 17px 16px">
+<div style="font:400 14px/1.4 'IBM Plex Sans';color:#a8a29a;border:2px solid #1b4079;border-radius:6px;padding:12px 13px">squat<span style="color:#1b4079">|</span></div>
+<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">
+<span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Recent</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">Legs</span>
+<span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">At Khalda</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:12px;overflow:hidden">
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);background:#f4ece5">
+<div style="display:flex;gap:9px;align-items:baseline"><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Back squat</span><span style="font:500 9px/1.4 'IBM Plex Mono';color:#8a5a1f">CHECK</span></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Ahmad's intake records no deep loaded flexion. <b>Box squat</b> is the usual substitution.</div>
+<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:10px 12px;border-radius:6px">Use box squat</span><span style="font:450 11.5px/1 'IBM Plex Sans';color:#57544d;padding:10px 4px">Add anyway</span></div>
+</div>
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline"><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Box squat</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">used 8×</span></div>
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline"><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Goblet squat</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">used 3×</span></div>
+<div style="padding:12px 13px;display:flex;gap:9px;align-items:baseline"><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Split squat</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">used 12×</span></div>
+</div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36"><b>It warns, it does not block.</b> Veyro surfaces what a qualified person recorded; the coach decides. "Add anyway" is recorded on the session.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Recent first, filtered to equipment this club actually has. Coaches reuse the same forty movements.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-10 · ASSIGN A WORKOUT</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Lower body · Day A</div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">5 exercises · about 55 minutes</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">GIVE IT TO</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:7px;overflow:hidden">
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:center"><span style="font:400 12px/1 'IBM Plex Mono';color:#1b4079;width:16px">☑</span><span style="width:28px;height:28px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Ahmad Nabulsi</span></div>
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:center"><span style="font:400 12px/1 'IBM Plex Mono';color:#1b4079;width:16px">☑</span><span style="width:28px;height:28px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1">Faris Alami</span></div>
+<div style="padding:12px 13px;display:flex;gap:10px;align-items:center"><span style="font:400 12px/1 'IBM Plex Mono';color:#a8a29a;width:16px">☐</span><span style="width:28px;height:28px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span><span style="font:450 13.5px/1.35 'IBM Plex Sans';flex:1;color:#57544d">Sami Tabaa</span></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">WHEN</div>
+<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:9px 11px;border-radius:6px">Tomorrow</span><span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Pick days</span></div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Faris has no recorded limitations</b> — the same plan suits him unchanged. Assigning to two people at once states that it is two, so nobody sends a knee-modified plan to someone who never asked for one.</div>
+<span style="display:block;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:16px;border-radius:6px;margin-top:13px;text-align:center">Assign to 2 clients</span>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-17 · SIGN-OFF QUEUE · 22 SESSIONS</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.013em">22 sessions to confirm</div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#57544d;margin-top:3px">Back to 1 August · 6 clients</div>
+<div style="margin-top:12px;padding:11px 12px;border:1px solid #8a5a1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Until you confirm, these clients <b>cannot see their remaining credits</b> and the club cannot bill them. Some may think they have sessions they have already used.</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:12px;overflow:hidden">
+<sc-for list="{{ signoff }}" as="s" hint-placeholder-count="4">
+<div style="padding:11px 12px;border-bottom:1px solid rgba(23,23,26,.06)">
+<div style="display:flex;gap:9px;align-items:center"><span style="font:400 12px/1 'IBM Plex Mono';color:#1b4079;width:16px">☑</span><div style="flex:1"><div style="font:450 13px/1.35 'IBM Plex Sans'">{{ s.name }}</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;margin-top:1px">{{ s.meta }}</div></div><span style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ s.n }}</span></div>
+</div>
+</sc-for>
+</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:17px;border-radius:6px;margin-top:13px;text-align:center">Confirm all 22</span>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#1b4079;margin-top:11px;text-align:center">Review one by one</div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36">Sessions over 30 days old need a manager — the two from 1 August are excluded from the batch and named separately. A month-old memory is not verification.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CCH-11 · CCH-12 · CCH-13 · CCH-14 · PROGRESS, INTAKE, NUTRITION</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Four screens where the coach reads rather than acts</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-11 · PROGRESS</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Ahmad · 5 months</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">WEIGHT</div>
+<div style="display:flex;align-items:flex-end;gap:3px;height:48px;margin-top:8px">
+<sc-for list="{{ weight }}" as="w" hint-placeholder-count="10"><div style="flex:1;height:{{ w.h }};background:{{ w.c }};border-radius:1px"></div></sc-for>
+</div>
+<div style="display:flex;justify-content:space-between;margin-top:5px"><span style="font:400 9.5px/1.4 'IBM Plex Mono';color:#85807a">84.2 kg · Mar</span><span style="font:400 9.5px/1.4 'IBM Plex Mono';color:#85807a">78.0 · now</span></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">BEST LIFTS</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:7px;overflow:hidden">
+<sc-for list="{{ lifts }}" as="l" hint-placeholder-count="4">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">{{ l.name }}</span><span style="font:500 12.5px/1.2 'IBM Plex Mono'">{{ l.best }}</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:{{ l.color }};width:44px;text-align:end">{{ l.delta }}</span></div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Photos are not shown here.</b> Ahmad has not shared them with you — the toggle is his, on his own progress screen, and its state is visible to him at all times.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-12 · INTAKE &amp; GOALS</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.013em">New client · Sami</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">WHAT HE WANTS</div>
+<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:9px 11px;border-radius:6px">Get stronger</span><span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Lose weight</span><span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Feel better</span></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">WHEN HE CAN TRAIN</div>
+<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap"><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 9px;border-radius:6px">Sun</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 8px;border-radius:6px">Mon</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 9px;border-radius:6px">Tue</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 8px;border-radius:6px">Wed</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 9px;border-radius:6px">Thu</span></div>
+<div style="margin-top:13px;padding:12px 13px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.05em">ANYTHING THAT LIMITS HIM</div>
+<div style="font:400 12px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:11px 12px;margin-top:7px;background:#fffefb">Injuries, surgery, conditions…</div>
+<div style="font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:7px">What you record here drives the substitution warnings in the builder. <b>Write what he told you</b> — Veyro does not interpret it and does not define what counts as a limitation.</div>
+</div>
+<span style="display:block;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:16px;border-radius:6px;margin-top:13px;text-align:center">Save and build a programme</span>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-14 · WEEKLY CHECK-IN · DANA</div>
+<div style="padding:14px 17px 16px">
+<div style="display:flex;gap:14px;flex-wrap:wrap"><div><div style="font:500 17px/1.15 'IBM Plex Mono'">68.4</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">KG · −0.6</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">84%</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">ON PLAN</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">4</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">SESSIONS</div></div></div>
+<div style="margin-top:13px;padding:12px 13px;background:#faf8f4;border-radius:4px;font:400 12.5px/1.7 'IBM Plex Sans';color:#2c2a26">"Struggled with the evening meals when I worked late twice. Everything else was fine and I feel stronger."</div>
+<div style="font:400 10px/1.5 'IBM Plex Mono';color:#57544d;margin-top:6px">Submitted this morning</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">ADJUST HER TARGETS</div>
+<div style="display:flex;gap:9px;margin-top:7px">
+<div style="flex:1"><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d">CALORIES</div><div style="font:500 15px/1.2 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 11px;margin-top:3px">1,940</div></div>
+<div style="flex:1"><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d">PROTEIN</div><div style="font:500 15px/1.2 'IBM Plex Mono';border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:10px 11px;margin-top:3px">145</div></div>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #4a3d7a;border-radius:4px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.05em">✦ VEYRO NOTICED</div>
+<div style="font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Her adherence drops on the two days she trains late. <b>Two quicker evening options</b> might fix it without changing her targets at all.</div>
+</div>
+<span style="display:block;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:16px;border-radius:6px;margin-top:12px;text-align:center">Reply and adjust her plan</span>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-13 · EDIT A MEAL</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Dana · Tuesday dinner</div>
+<div style="margin-top:12px;padding:12px 13px;border:1px solid rgba(23,23,26,.16);border-radius:6px">
+<div style="font:450 14px/1.4 'IBM Plex Sans'">Grilled chicken, rice, salad</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:4px">640 kcal · 48P 62C 20F · 35 min</div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">QUICKER OPTIONS · UNDER 15 MIN</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:7px">
+<div style="border:2px solid #1b4079;border-radius:6px;padding:11px 12px;background:#f7f9fc"><div style="font:450 13.5px/1.35 'IBM Plex Sans'">Tuna and bean salad</div><div style="font:400 11px/1.5 'IBM Plex Mono';color:#57544d;margin-top:2px">625 kcal · 46P 58C 21F · 8 min</div></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:11px 12px"><div style="font:450 13.5px/1.35 'IBM Plex Sans'">Chicken shawarma wrap</div><div style="font:400 11px/1.5 'IBM Plex Mono';color:#57544d;margin-top:2px">660 kcal · 44P 66C 22F · bought</div></div>
+</div>
+<div style="margin-top:12px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 11.5px/1.5 'IBM Plex Sans';color:#3d3b36">Tuesday total</span><span style="font:500 12px/1.2 'IBM Plex Mono'">1,925 kcal</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:4px">Within 15 of her 1,940 target — recalculated as you choose.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="flex:1;font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px;border-radius:6px;text-align:center">Swap and tell her</span></div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:10px">She gets a note saying what changed and why — a plan that alters silently is one a member stops trusting.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CCH-15 · CCH-16 · CCH-18 · CCH-19</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Messaging, schedule, settings, and the shared iPad</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-15 · MESSAGES · AHMAD</div>
+<div style="padding:14px 17px 16px">
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="align-self:flex-start;max-width:82%;background:#f4f2ee;border-radius:8px 8px 8px 2px;padding:10px 12px"><div style="font:400 13px/1.6 'IBM Plex Sans'">Sorry about the last few weeks — work has been heavy. Still on for 09:45?</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:4px">Ahmad · 07:12</div></div>
+<div style="align-self:flex-end;max-width:82%;background:#e8edf6;border-radius:8px 8px 2px 8px;padding:10px 12px"><div style="font:400 13px/1.6 'IBM Plex Sans'">No problem at all. We'll start lighter today and build back up.</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:4px">You · 07:20 · read</div></div>
+</div>
+<div style="display:flex;gap:6px;margin-top:13px;flex-wrap:wrap"><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">See you then</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Sending your plan</span></div>
+<div style="display:flex;gap:9px;align-items:center;margin-top:11px"><span style="flex:1;font:400 13px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid rgba(23,23,26,.2);border-radius:6px;padding:12px 13px">Message…</span><span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:14px 15px;border-radius:6px">Send</span></div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36">Your clients see <b>"Yousef usually replies within a day"</b> — you set that, and it protects your evenings better than any notification setting.</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Separate channel from the club's WhatsApp. A message from a coach is from the coach.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-16 · YOUR WEEK</div>
+<div style="padding:14px 17px 16px">
+<div style="font:500 18px/1.25 'IBM Plex Sans';letter-spacing:-.013em">17–23 August</div>
+<div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">26 of 34 hours booked</div>
+<div style="display:flex;flex-direction:column;gap:2px;margin-top:13px">
+<sc-for list="{{ week }}" as="d" hint-placeholder-count="5">
+<div style="padding:11px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:11px;align-items:center">
+<div style="width:34px;flex-shrink:0"><div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ d.day }}</div><div style="font:400 9.5px/1.3 'IBM Plex Mono';color:#57544d">{{ d.date }}</div></div>
+<div style="flex:1;min-width:0"><div style="font:450 13px/1.35 'IBM Plex Sans'">{{ d.summary }}</div><div style="font:400 10.5px/1.4 'IBM Plex Mono';color:{{ d.color }};margin-top:1px">{{ d.detail }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36">Tapping an empty slot opens your availability. Tapping a session opens the pre-session screen. <b>Thursday afternoon shows the exception you asked for</b> and the one booking that sits inside it.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-18 · SETTINGS</div>
+<div style="padding:14px 17px 16px">
+<div style="display:flex;gap:11px;align-items:center"><span style="width:44px;height:44px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span><div style="flex:1"><div style="font:500 16px/1.25 'IBM Plex Sans'">Yousef Haddad</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Coach · Khalda</div></div></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">CERTIFICATIONS</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:7px;overflow:hidden">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Personal training L3</span><span style="font:500 9px/1.4 'IBM Plex Mono';color:#2f5d3a">TO MAR 2028</span></div>
+<div style="padding:10px 12px;display:flex;gap:9px;align-items:baseline"><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">First aid</span><span style="font:500 9px/1.4 'IBM Plex Mono';color:#8a5a1f">EXPIRES IN 44D</span></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">DEFAULT HOURS</div>
+<div style="font:400 12.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Sun–Thu <span style="font-family:'IBM Plex Mono'">07:00–12:00</span>, <span style="font-family:'IBM Plex Mono'">16:00–20:00</span></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:13px">REPLY EXPECTATION</div>
+<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">Same day</span><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Within a day</span><span style="font:400 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:7px 9px;border-radius:6px">2 days</span></div>
+<div style="margin-top:12px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11px/1.6 'IBM Plex Sans';color:#3d3b36">First aid expiring raises an <b>admin</b> item, not a coach one — chasing a certificate is the club's job, and Yousef seeing it here is a courtesy.</div>
+</div>
+</div>
+
+<div style="width:340px;flex-shrink:0;border:1px solid #8a5a1f;border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 17px;background:#8a5a1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">CCH-19 · SIGN IN · SHARED GYM iPAD</div>
+<div style="padding:20px 17px 16px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:24px;height:24px;border-radius:5px;background:#17171a;color:#fffefb;font:500 13px/24px 'IBM Plex Sans';text-align:center">V</span><span style="font:500 15px/1.2 'IBM Plex Sans';letter-spacing:-.012em">Veyro Coach</span></div>
+<div style="font:500 19px/1.25 'IBM Plex Sans';letter-spacing:-.014em;margin-top:18px">Who's using this?</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:13px">
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 14px;display:flex;gap:11px;align-items:center"><span style="width:34px;height:34px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span><span style="font:450 14px/1.35 'IBM Plex Sans';flex:1">Yousef Haddad</span></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 14px;display:flex;gap:11px;align-items:center"><span style="width:34px;height:34px;border-radius:50%;background:#ece9e3;flex-shrink:0"></span><span style="font:450 14px/1.35 'IBM Plex Sans';flex:1">Dana Khalil</span></div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;padding:13px 14px;display:flex;gap:11px;align-items:center"><span style="font:400 13px/1 'IBM Plex Mono';color:#57544d;width:34px;text-align:center">＋</span><span style="font:450 14px/1.35 'IBM Plex Sans';flex:1;color:#57544d">Someone else</span></div>
+</div>
+<div style="margin-top:14px;padding:12px 13px;border:1px solid #8a5a1f;border-radius:4px">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.05em">THIS IS A SHARED DEVICE</div>
+<div style="font:400 11.5px/1.7 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Face unlock is <b>off</b> here and your session ends after <b>15 minutes</b> of inactivity. Client health notes and messages are never cached on this iPad.</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px">On a personal phone this screen is a single password field with face unlock and a 30-day session. <b>The device decides, not the coach</b> — a shared iPad in a gym is a data-exposure risk whatever anyone intends.</div>
+</div>
+</div>
+</div>
+<div style="margin-top:16px;padding:16px 18px;border:1px solid #2f5d3a;border-radius:6px;background:#fffefb;max-width:84ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">VEYRO COACH · V1 COMPLETE</div>
+<div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px">All <b>19 V1 Coach screens</b> drawn. No revenue figures, no membership administration, no roster analytics anywhere in the surface — the four questions and nothing else. Zero new tokens. Remaining: Member (29), Console (12).</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const ATTENTION = [
+  ['Ahmad Nabulsi', '19 days without training', '#8a5a1f', '#8a5a1f'],
+  ['Hala Barakat', 'Asked about her plan · 2 days ago', '#8a5a1f', '#8a5a1f'],
+  ['Dana Qasem', 'Check-in submitted this morning', '#3f5560', 'rgba(63,85,96,.5)']
+];
+
+const CLIENTS_TODAY = [
+  ['09:45', 'Ahmad Nabulsi', 'lower body · week 8'],
+  ['11:00', 'Dana Qasem', 'upper body · week 4'],
+  ['17:30', 'Hala Barakat', 'full body · week 2']
+];
+
+const PLAN = [
+  ['Box squat', '4 × 6 · from 60kg', '75 × 5'],
+  ['Romanian deadlift', '3 × 8 · from 90kg', '100 × 8'],
+  ['Leg press', '3 × 10', '180 × 10'],
+  ['Walking lunge', '3 × 12 each', 'bodyweight'],
+  ['Calf raise', '4 × 15', '40 × 15']
+];
+
+const DONE = [
+  ['Box squat', '75 × 6, 6, 5', ''],
+  ['Romanian deadlift', '90 × 8, 8, 8', ''],
+  ['Leg press', '160 × 10, 10', 'CUT SHORT'],
+  ['Walking lunge', '3 × 12', ''],
+  ['Calf raise', '40 × 15, 15, 15, 12', '']
+];
+
+const SIGNOFF = [
+  ['Ahmad Nabulsi', '31 Jul, 24 Jul, 17 Jul · +3 more', '6'],
+  ['Dana Qasem', '12–19 Aug · all verified by her app', '5'],
+  ['Hala Barakat', '5–14 Aug', '4'],
+  ['Faris Alami', '1 Aug · needs Ziad', '2']
+];
+
+const WEIGHT = [
+  ['100%','#cbc6bc'],['96%','#cbc6bc'],['92%','#cbc6bc'],['88%','#cbc6bc'],['84%','#cbc6bc'],
+  ['80%','#cbc6bc'],['76%','#a8a29a'],['74%','#a8a29a'],['75%','#8a5a1f'],['74%','#8a5a1f']
+];
+
+const LIFTS = [
+  ['Back squat', '82.5 kg', '+17.5', '#2f5d3a'],
+  ['Deadlift', '110 kg', '+25', '#2f5d3a'],
+  ['Bench press', '70 kg', '+10', '#2f5d3a'],
+  ['Leg press', '180 kg', '+40', '#2f5d3a']
+];
+
+const WEEK = [
+  ['SUN', '17', '4 PT sessions', 'full · 07:00–12:00', '#57544d'],
+  ['MON', '18', '3 PT + spin 19:00', 'busy', '#57544d'],
+  ['TUE', '19', '4 PT sessions', 'today', '#1b4079'],
+  ['WED', '20', '3 PT sessions', '2 slots free at 16:00', '#57544d'],
+  ['THU', '21', '2 PT + spin 19:00', 'afternoon off · 1 booking inside it', '#8a5a1f']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      attention: ATTENTION.map(a => ({ name: a[0], why: a[1], color: a[2], border: a[3] })),
+      clientsToday: CLIENTS_TODAY.map(c => ({ time: c[0], name: c[1], meta: c[2] })),
+      plan: PLAN.map(p => ({ name: p[0], scheme: p[1], last: p[2] })),
+      done: DONE.map(d => ({ name: d[0], result: d[1], flag: d[2] })),
+      signoff: SIGNOFF.map(s => ({ name: s[0], meta: s[1], n: s[2] })),
+      weight: WEIGHT.map(w => ({ h: w[0], c: w[1] })),
+      lifts: LIFTS.map(l => ({ name: l[0], best: l[1], delta: l[2], color: l[3] })),
+      week: WEEK.map(w => ({ day: w[0], date: w[1], summary: w[2], detail: w[3], color: w[4] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

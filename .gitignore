@@ -1,0 +1,61 @@
+# Veyro — durable-authority repo .gitignore
+# Governing baselines, knowledge/, .claude/, and evidence are NEVER ignored — see the explicit
+# negative-pattern exceptions at the bottom if any of the broader patterns above would catch them.
+
+# OS cruft
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Editor / IDE user state (not the project's own .claude/ config, which is tracked deliberately)
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Secrets / credentials — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.mobileprovision
+*credentials*.json
+*secrets*.json
+.netrc
+.npmrc
+
+# Local, non-durable Claude Code settings (personal overrides; settings.json itself is tracked)
+.claude/settings.local.json
+
+# Build artifacts / dependency caches (none expected in this control-plane-only repo, excluded defensively)
+node_modules/
+.gradle/
+build/
+dist/
+out/
+*.class
+*.apk
+*.aab
+*.ipa
+.build/
+DerivedData/
+Pods/
+
+# Simulator / device / emulator artifacts
+*.xcappdata
+*.simulator-log
+*.trace
+/simulator-screenshots/
+
+# Generated temporary files
+*.tmp
+*.temp
+*.bak
+*.log
+/tmp/
+.cache/
+
+# Test-run scratch output produced by capability drills (evidence itself lives under knowledge/, not here)
+/scratch/

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f6f5f2;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#2b4fa8;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1180px;padding:0 0 110px">
+
+<header style="padding:70px 56px 40px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">PHASE 6 — UX REVIEW &amp; VALIDATION · SECOND PASS · AGAINST GYM OS MASTER BLUEPRINT v1.0</div>
+<h1 style="font:500 41px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:16px 0 0;max-width:20ch">Veyro UX Review &amp; Validation v2</h1>
+<p style="font:400 16px/1.6 'IBM Plex Sans';color:#4a4842;max-width:68ch;margin:16px 0 0;text-wrap:pretty">Re-run against the corrected wireframe set. Added since v1: the membership lifecycle suite with a shared consequence preview on Admin and Member, the full financial reversal set, the accessibility specification, class booking and waitlist, Coach Client 360, the unified composer, the undo taxonomy, table power features, chain-scale scope and queue ranking, the Arabic calendar, date range and time-axis chart — and the nutrition clinical policy re-architected as governed configuration rather than design-authored criteria.</p>
+<div style="margin-top:30px;padding:22px 24px;border:2px solid #2f5d3a;border-radius:8px;background:#fdfdfc;max-width:74ch">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880;letter-spacing:.08em">VERDICT</div>
+<div style="font:600 27px/1.2 'IBM Plex Sans';margin-top:8px;color:#2f5d3a">APPROVED FOR HIGH-FIDELITY</div>
+<div style="font:400 14.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:11px">All four P0 items are closed and all nine P1 items are closed. No structural UX issue remains in the reviewed set. Ten P2/P3 items and one validation task stay open; none of them changes a structure the design system depends on, so they proceed alongside high-fidelity rather than before it.</div>
+<div style="font:400 14.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:11px">Two qualifications, stated plainly rather than buried. <b>First:</b> the accessibility work is a specification, not a test — book one screen-reader session on the attention queue, POS and set logger during Phase 8. <b>Second:</b> the nutrition clinical policy is unblocked architecturally, not answered. The mechanism ships; the rules arrive from whoever holds clinical accountability per market, and until they do, a tenant operates in review-all or nutrition-disabled mode. Design has withdrawn its earlier draft criteria and should not author them.</div>
+<div style="display:flex;flex-wrap:wrap;gap:26px;margin-top:18px">
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#2f5d3a">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:4px">P0 OPEN</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono';color:#2f5d3a">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:4px">P1 OPEN</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono'">13</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:4px">ITEMS CLOSED</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono'">10</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:4px">P2/P3 OPEN</div></div>
+<div><div style="font:500 22px/1 'IBM Plex Mono'">{{ avgScore }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:4px">MEAN · WAS 8.6</div></div>
+</div>
+</div>
+</header>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">01</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">UX scorecard</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Every score below 10 is explained, and the explanation names the specific open item rather than a general reservation. Nothing is now scored on partial coverage — every dimension has drawn screens behind it.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:190px 58px minmax(0,1fr);gap:16px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>DIMENSION</div><div>SCORE</div><div>WHY / WHAT WOULD RAISE IT</div></div>
+<sc-for list="{{ scores }}" as="s" hint-placeholder-count="17">
+<div style="min-width:900px;display:grid;grid-template-columns:190px 58px minmax(0,1fr);gap:16px;padding:12px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div style="font:500 13px/1.45 'IBM Plex Sans'">{{ s.dim }}</div>
+<div><span style="{{ s.style }}">{{ s.n }}</span></div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36">{{ s.why }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">02</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Flow efficiency</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Meaningful interactions only — a tap that carries a decision. Scrolling, focus moves and reading are not counted. Every flow now sits at its target, so “now” and “target” agree throughout — the column is kept to show what changed since v1, where lead conversion dropped from 6 to 5 and nutrition creation from 5 to 4.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="min-width:1020px;display:grid;grid-template-columns:210px 52px minmax(0,1.4fr) 60px minmax(0,1fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>FLOW</div><div>NOW</div><div>PROBLEMS FOUND</div><div>TARGET</div><div>WHAT CHANGES</div></div>
+<sc-for list="{{ flows }}" as="f" hint-placeholder-count="12">
+<div style="min-width:1020px;display:grid;grid-template-columns:210px 52px minmax(0,1.4fr) 60px minmax(0,1fr);gap:14px;padding:12px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div><div style="font:500 12.5px/1.4 'IBM Plex Sans'">{{ f.name }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:3px">{{ f.ref }}</div></div>
+<div style="font:500 15px/1.2 'IBM Plex Mono'">{{ f.now }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36">{{ f.problems }}</div>
+<div style="font:500 15px/1.2 'IBM Plex Mono';color:#2b4fa8">{{ f.target }}</div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#6b6a63">{{ f.fix }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">03</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Missing-state audit</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Roughly forty states are now drawn across the set — the twelve from the first round plus the lifecycle blocking states, the reversal and provider-failure states, the booking and waitlist policy states, the nutrition routing states, and the five gaps closed in 3j. These are the ones that remain, each mapped to the screen that owns it. A screen is not validated until its list here is empty.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:210px 130px minmax(0,1fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>SCREEN</div><div>MISSING STATE</div><div>WHY IT MATTERS</div></div>
+<sc-for list="{{ missing }}" as="m" hint-placeholder-count="14">
+<div style="min-width:900px;display:grid;grid-template-columns:210px 130px minmax(0,1fr);gap:14px;padding:11px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ m.screen }}</div>
+<div><span style="font:500 9.5px/1.4 'IBM Plex Mono';background:rgba(0,0,0,.1);padding:3px 6px;border-radius:4px">{{ m.state }}</span></div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36">{{ m.why }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">04</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Issue register — closures first, then what remains</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">The five closure records state what was verified and why it holds — a closure with no evidence is not a closure. Everything below them is open, and none of it blocks.</p>
+<div style="margin-top:22px;display:grid;gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ issues }}" as="i" hint-placeholder-count="20">
+<div style="background:#fdfdfc;padding:15px 18px;display:grid;grid-template-columns:74px minmax(0,1fr);gap:16px;align-items:start;min-width:700px">
+<div style="display:flex;flex-direction:column;gap:6px"><span style="{{ i.sevStyle }}">{{ i.sev }}</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#8b8880">{{ i.id }}</span></div>
+<div>
+<div style="font:500 14.5px/1.4 'IBM Plex Sans'">{{ i.title }}</div>
+<div style="font:400 10.5px/1.4 'IBM Plex Mono';color:#8b8880;margin-top:5px">{{ i.where }}</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px;max-width:88ch">{{ i.problem }}</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#17171a;margin-top:8px;max-width:88ch;border-inline-start:2px solid #17171a;padding-inline-start:12px">{{ i.fix }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">05</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Consistency audit</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Where the same concept is currently drawn two ways, and the canonical Veyro pattern that resolves it. These become design-system entries in Phase 7, not per-module decisions.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="min-width:960px;display:grid;grid-template-columns:150px minmax(0,1.1fr) minmax(0,1.2fr);gap:16px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>CONCEPT</div><div>DRAWN INCONSISTENTLY AS</div><div>CANONICAL PATTERN</div></div>
+<sc-for list="{{ consistency }}" as="c" hint-placeholder-count="10">
+<div style="min-width:960px;display:grid;grid-template-columns:150px minmax(0,1.1fr) minmax(0,1.2fr);gap:16px;padding:12px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ c.concept }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#6b6a63">{{ c.now }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#2c2a26">{{ c.rule }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">06</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Blueprint traceability check</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Scope drift in both directions: Blueprint requirements missing from the UX, UX inventions with no Blueprint basis, capabilities sitting on the wrong surface, V1 omissions, and future scope leaking into V1. Nothing modified silently.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<div style="min-width:960px;display:grid;grid-template-columns:120px 128px minmax(0,1fr);gap:14px;padding:11px 17px;background:#f1efea;font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.06em"><div>FINDING</div><div>DOMAIN</div><div>DETAIL &amp; ACTION</div></div>
+<sc-for list="{{ trace }}" as="t" hint-placeholder-count="10">
+<div style="min-width:960px;display:grid;grid-template-columns:120px 128px minmax(0,1fr);gap:14px;padding:12px 17px;border-top:1px solid rgba(0,0,0,.07);background:#fdfdfc;align-items:start">
+<div><span style="{{ t.kindStyle }}">{{ t.kind }}</span></div>
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#4a4842">{{ t.domain }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36">{{ t.detail }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px;border-bottom:1px solid rgba(0,0,0,.09)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">07</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Scale, permissions, confirmation friction, duplicate entry</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow:hidden;margin-top:22px">
+<sc-for list="{{ panels }}" as="p" hint-placeholder-count="8">
+<div style="background:#fdfdfc;padding:17px 19px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#79776f;letter-spacing:.07em">{{ p.k }}</div>
+<div style="font:500 14.5px/1.4 'IBM Plex Sans';margin-top:7px">{{ p.t }}</div>
+<div style="font:400 13px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">{{ p.d }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:48px 56px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8b8880;letter-spacing:.1em">08</div>
+<h2 style="font:500 24px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What happens next</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:70ch;margin:12px 0 0">Phase 7 onward. The two external items are not design dependencies — they are configuration decisions the product surfaces without waiting for.</p>
+<div style="margin-top:22px;border:1px solid rgba(0,0,0,.11);border-radius:8px;overflow-x:auto">
+<sc-for list="{{ plan }}" as="p" hint-placeholder-count="9">
+<div style="min-width:760px;display:grid;grid-template-columns:34px 90px minmax(0,1fr);gap:16px;padding:13px 17px;border-bottom:1px solid rgba(0,0,0,.08);background:#fdfdfc;align-items:start">
+<div style="font:500 12px/1.5 'IBM Plex Mono';color:#a3a099">{{ p.i }}</div>
+<div><span style="{{ p.sevStyle }}">{{ p.sev }}</span></div>
+<div style="font:400 13.5px/1.6 'IBM Plex Sans';color:#2c2a26">{{ p.t }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:30px;padding:20px 22px;border:1px solid rgba(0,0,0,.16);border-radius:8px;background:#fdfdfc;max-width:78ch">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8b8880;letter-spacing:.08em">GATE · PHASE 6 CLEARED</div>
+<div style="font:400 14.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:9px">Phase 7 (design system) and Phase 8 (high-fidelity UI) are unblocked. Build the system from the ten canonical patterns in §05 — extracted from these wireframes, not from a generic kit — and carry the accessibility specification into the components as contracts rather than leaving it as screen annotation. Phase 10 state coverage, Phase 11 responsive and RTL, and Phase 13 design QA remain gates in their own right; this verdict clears Phase 6 only.</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900}}">
+const sevStyle = s => 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.05em;padding:3px 7px;border-radius:4px;display:inline-block;' + (
+  s === 'R0' || s === 'R1' ? 'background:#2f5d3a;color:#fff' :
+  s === 'GATE PASSED' ? 'background:#2f5d3a;color:#fff' :
+  s === 'EXTERNAL' ? 'background:transparent;color:#6b6a63;box-shadow:inset 0 0 0 1px rgba(0,0,0,.28)' :
+  s === 'VALIDATE' ? 'background:#2b4fa8;color:#fff' :
+  s === 'P0' ? 'background:#8a3b1f;color:#fff' :
+  s === 'P1' ? 'background:#17171a;color:#fdfdfc' :
+  s === 'P2' ? 'background:rgba(0,0,0,.12);color:#2c2a26' :
+  'background:transparent;color:#6b6a63;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)');
+
+const SCORES = [
+  ['Information architecture', 10, 'Twenty admin areas resolved into an eight-item composed rail with an area directory and ⌘K. The chain-scale scope picker in 3i closes the last gap — searchable, grouped by brand then region, recents first, multi-select for comparison. Holds at one club and at fifty.'],
+  ['Navigation', 9, 'Cross-module movement preserves context, the queue survives profile work, and per-surface keyboard maps are now specified with destructive actions excluded from unmodified keys. Not 10 because the automation builder arriving pre-filled from an exception is still only a described entry point (P2-4).'],
+  ['Learnability', 9, 'Exception rows teach by carrying reason and remedy; empty states instruct; the consequence preview in 3a explains money and entitlement consequences the user did not know. Not 10 because Command Center first-run is a single setup card rather than a guided path, and the nutrition first-run wizard remains referenced rather than drawn.'],
+  ['Task speed', 10, 'All six prioritized flows at or under target, and the newly drawn lifecycle actions land at 3–4 interactions with the consequence preview absorbed into the confirm rather than added as a step. Member freeze is 3 taps end to end.'],
+  ['Clarity', 10, 'Money states labelled wherever they appear, denial reasons specific, refund destinations named in consumer terms, and the chart admission rule now prevents the decorative regression. The provider-failed-mid-refund copy states uncertainty honestly rather than guessing.'],
+  ['Error prevention', 10, 'Idempotent retry, hard allergen blocking, conflict recovery, no-double-charge language, and now a three-class action taxonomy — undo for anything reversible in one step, confirm only where it teaches, step-up auth for money and permissions. The rule that a one-step-undoable action may not have a dialog is what stops drift in hi-fi.'],
+  ['Mobile UX', 9, 'One-handed logging, 44px targets, five-item bottom nav, sheets capped at two levels, destructive actions out of the thumb arc, and 200% text reflow specified per component. Not 10 because keyboard-obstruction behaviour on the weight-entry sheet is still unspecified.'],
+  ['Admin efficiency', 9, 'Queue-first with inline resolution, list-plus-inspector shell, saved views with a sharing model, column config that omits rather than locks restricted fields, and bulk actions that report per outcome — “412 of 480 sent, 68 blocked by consent” is the fix that matters at 4,800 members. Not 10 until the two remaining permission profiles are drawn (P2-3).'],
+  ['Coach UX', 10, 'Today is genuinely not a small Admin. Attention above agenda, prep before programming, assignment from the completion screen, and Client 360 now drawn with the restriction read first and an explicit list of member financial data a coach never sees.'],
+  ['Member UX', 10, 'One “now” card, three-tap jobs, no confirmation screens, payment problems stated without alarm, cancel plainly present at the bottom of my-membership rather than buried, and the sponsored-leaver grace state arriving on first app open with a price and a date.'],
+  ['Nutrition UX', 9, 'Draft-before-input reaches the 30–60 second target, Eat & Log is one tap, and the clinical question is now correctly architected rather than answered — the coach flow is identical at zero rules and thirty. Not 10 because weekly check-in review and the grocery list remain referenced rather than drawn.'],
+  ['POS UX', 10, 'Member-first cart makes correctness the default, and the reversal set is complete: line-level refunds with reason and destination, recurring-vs-one-off price override, credit reinstatement shown as revenue recognition, cash-shift close with tolerance. Wallet as the escape from an unresolved bank reversal is the right answer.'],
+  ['Accessibility', 9, 'Focus order specified per screen with the queue as one composite widget rather than 27 tab stops; POS focus returning to scan after every action with a documented trap exit; screen-reader narration written for all six journeys with amount-before-detail ordering; reduced motion and 200% text defined per component. Not 10 until this is validated with an actual screen-reader user — a specification is not a test.'],
+  ['RTL readiness', 10, 'Bidi isolation, numerals as tenant setting, timeline axis reversed rather than mirrored, bilingual exercise names, Arabic-length labels — and now the three genuine breakage points drawn: week calendar with a market-configurable week start and a vertical time axis that does not invert, a date range whose from-field stays first in reading order, and a time-axis chart where time flows right-to-left while the value axis does not mirror.'],
+  ['Permission handling', 9, 'Composed rails, absent rather than disabled controls, override as a request, D5 compensation boundary, coach financial exclusions now explicit, restricted columns omitted from the picker. Not 10 until Command Center and Member 360 are drawn as Reception and as Accountant (P2-3).'],
+  ['Scalability', 10, 'The queue ranking model is now designed rather than sorted — money at risk × time open × whether it is spreading, capped at nine groups, unowned outranking worked, aggregating by type with a location breakdown instead of 400 rows. Same model at one club and at fifty; only the aggregation changes.'],
+  ['Consistency', 9, 'One vocabulary and one status grammar across surfaces, ten canonical patterns named for Phase 7, and the composer, undo strip, approval request and consequence preview each exist once and are reused. Not 10 because the patterns are specified in this review rather than built — that is Phase 7’s job, and it is now unambiguous.']
+];
+
+const FLOWS = [
+  ['Membership sale at POS', '2c · F-03', '4', 'Resolved. The recurring-price risk is closed by 3e — override now states explicitly that a changed price persists every month, with a one-month alternative offered.', '4', 'No further change.'],
+  ['Lead → trial → member', '2e · F-02', '5', 'Improved from 6. Waiver now travels with the trial confirmation, so the desk verifies rather than collects.', '5', 'At target.'],
+  ['Command Center → resolve', '2a · F-01', '3', 'At target. Remaining nit: the automate affordance still needs a pattern-detection rule rather than per-row authoring (P2-4).', '3', 'Systematic offer once a pattern repeats.'],
+  ['Coach session → assign next', '2h · F-04', '4', 'At target, and the wrong-client correction is now drawn in 3j — moves logs, credit and commission together rather than leaving financial data on the wrong person.', '4', 'No further change.'],
+  ['Nutrition plan creation', '2m · F-05', '4', 'Improved from 5. Preview is now a peek inside assign rather than a separate destination, and routing for review does not add a step for the coach.', '4', 'At target.'],
+  ['Member: eat & log', '2k · F-06', '1', 'One tap from home. Cannot be improved.', '1', '—'],
+  ['Member: swap then log', '2k · F-06', '3', 'At target.', '3', '—'],
+  ['Member: log a set', '2k', '1', 'Prefilled with the progression; one tap.', '1', '—'],
+  ['Access denial resolution', '2i · F-08', '3', 'At target. Approval latency now stated — request state plus expected response time, so reception knows whether to wait.', '3', 'No further change.'],
+  ['Failed payment recovery', '3c · F-07', '3', 'Complete. Member-side card update is drawn on my-membership, which is where recovery actually finishes.', '3', 'At target.'],
+  ['Member freeze (self-service)', '3c · P0-1', '3', 'Take a break → duration → confirm. Veyro checks the allowance before offering the option, so no approval interrupts the common case.', '3', 'At target.'],
+  ['Admin freeze / upgrade / downgrade', '3a · 3b · P0-1', '4', 'Action → duration or plan → reason → confirm, with the consequence preview absorbed into the confirm step rather than added as a screen. Policy block, approval and contract minimum all name the route around them.', '4', 'At target.'],
+  ['Cancel membership', '3b · 3c · P0-1', '4', 'One retention alternative offered, then cancel is plainly available. A second save attempt would be a dark pattern and is explicitly excluded.', '4', 'At target.'],
+  ['Refund at POS', '3d · P0-3', '4', 'Select lines → reason → destination → request or confirm. Line-level rather than free-text amount, which is what keeps reconciliation intact. Provider-failed-mid-reversal has an honest uncertainty state and a wallet escape.', '4', 'At target.'],
+  ['Class booking', '3h · OPS-02', '2', 'Browse → book. Eligibility, price and cancellation terms are resolved before the tap, so a member never books and then learns they could not.', '2', 'At target.'],
+  ['Waitlist promotion', '3h · OPS-02', '1', 'Confirm from the notification, with a stated deadline and what happens if it passes.', '1', 'At target.']
+];
+
+const MISSING = [
+  ['Member 360 · 2b', 'minor', 'Guardian-linked profiles change who may act, who receives messages and what a coach may record. PPL-02 is V1.5, so this is correctly deferred — but it must be drawn before the household feature ships, not after.'],
+  ['Command Center · 2a', 'scope=all clubs', 'The chain aggregation model is now designed in 3i, but the regional composition with an owner column per row is still described rather than drawn. Low risk: it reuses the same row component.'],
+  ['POS · 2c', 'guest checkout', '⌘G still has no drawn destination. Guest sales are a real daily path and a measurable funnel in OPS-04. P2-5.'],
+  ['CRM · 2e', 'duplicate / merge', 'Merging two people is destructive and high-consequence. Described in the context panel, not drawn. Now classified as step-up auth by P1-4, which reduces the risk but does not design the screen.'],
+  ['Nutrition · 2m', 'first-run wizard', '2l is correctly demoted to the very first plan a coach builds, but the demoted version is not drawn as a first-run path with its own copy.'],
+  ['Coach · 2g', 'notification centre', 'Quiet hours and exception thresholds are stated as rules on three surfaces with no notification-centre design. P2-6.'],
+  ['Admin · analytics', 'report builder states', 'Too-broad query, queued export and scope-limited results. V2 scope, so deferred deliberately — flagged so it is not forgotten at V2 planning.'],
+  ['Automation builder', 'pre-filled from exception', 'The “Automate this” affordance exists on the queue; the builder arriving pre-filled from that exception is not drawn. P2-4.'],
+  ['Front Desk · 2i', 'at / over capacity', 'Occupancy displays 148/220 with no defined action at the limit, and safety limits are an operational obligation. P2-1.'],
+  ['Coach / Member', 'progress interpretation', 'Trends are inventoried; the surface where a coach writes the interpretation the member reads is still undesigned. P2-7.']
+];
+
+const ISSUES = [
+  ['R0-1', 'CLOSED · Membership lifecycle', 'Admin 3a · 3b · Member 3c', 'Was P0-1. Freeze, upgrade, downgrade, cancel, transfer and retroactive change are drawn on both Admin and Member behind one consequence-preview pattern with four fixed regions — what changes, what it costs, when it starts, what cannot be undone. Policy block, needs-approval and contract-minimum each name the route around them rather than presenting a wall.', 'Verified. Two details raise this above the bar: the downgrade preview cites her actual visit history to show she would have been refused entry for her last eight visits, and cancel offers exactly one alternative before making the action plainly available — a second attempt is explicitly excluded as a dark pattern.'],
+  ['R0-2', 'CLOSED · Accessibility specification', 'All surfaces · 3f', 'Was P0-2. Focus order per screen with the queue as one composite widget rather than 27 tab stops; POS focus returning to the scan field after every action with a documented trap exit; screen-reader narration written for all six journeys; reduced motion and 200% text defined per component.', 'Verified, with one caveat that does not block hi-fi: this is a specification, not a test. Schedule one screen-reader session on the POS and set-logger flows during Phase 8 — those two have the most keyboard state and the least forgiving users.'],
+  ['R0-3', 'CLOSED · Financial reversal', 'POS 3d · 3e', 'Was P0-3. Line-level refunds with mandatory reason and named destination, price override distinguishing recurring from one-off, credit reinstatement shown as a revenue-recognition movement, cash-shift close with tolerance and a manager rule above it. The provider-failed-mid-reversal state states uncertainty honestly and offers wallet as an escape that does not touch the bank while the first attempt is unresolved.', 'Verified. The strongest single decision in this round: refunding by line rather than by amount is what keeps reconciliation intact, and it removes the free-text field that causes most refund errors.'],
+  ['R0-4', 'RESOLVED ARCHITECTURALLY · Nutrition clinical policy', 'Settings 3g · builder 2m', 'Was P0-4. The design-authored trigger list has been withdrawn — it was a designer’s guess on a clinical question. What replaces it is a routing mechanism with an empty rule set: rules are governed data keyed off existing client fields, authored per market by whoever holds clinical accountability, changeable without touching a screen. The coach flow is identical at zero rules and at thirty.', 'No longer blocks hi-fi. The unconfigured state offers only two options — require review for all plans, or disable nutrition — and never “proceed without review”. Tenants may add rules, never weaken inherited ones, enforced by the system. The clinical determination itself remains an external gate and is correctly outside design scope.'],
+  ['R1', 'CLOSED · Nine P1 items', '3c · 3h · 3i · 3j', 'Coach Client 360 with financial exclusions explicit · Member membership, invoices and card update · sponsored-leaver grace · one composer with four states · undo/confirm/step-up taxonomy · saved views, column config and bulk partial-failure reporting · chain scope picker and designed queue ranking · Arabic calendar, date range and time-axis chart · per-surface keyboard maps · chart admission rule.', 'All verified. The undo taxonomy carries the most weight for Phase 7 — the rule that a one-step-undoable action may not have a dialog is what will stop hi-fi from accumulating confirmations.'],
+  ['VALIDATE-1', 'Screen-reader specification is untested', 'All surfaces', 'R0-2 specifies narration, focus order and live-region politeness correctly, but no assistive-technology user has used any of it. Specifications of this kind are usually 80% right and wrong in exactly the places that matter — composite widget navigation and announcement ordering under rapid input.', 'Book one session covering the attention queue, POS scan-and-tender, and the set logger. During Phase 8, not after. This is now a validation task rather than a design gap, which is why it does not block.'],
+  ['P2-1', 'Occupancy shown without a policy', 'Front Desk 2i', '148/220 is displayed with no defined action at the limit, and safety limits are an operational obligation rather than a nicety.', 'Define at-capacity and over-capacity states, who is notified, and whether entry is refused or queued.'],
+  ['P2-2', 'Freshness wording inconsistent', '2a · 2n', '“data 4 min old” and “POS 20 minutes behind” express one idea two ways.', 'One freshness component, one wording pattern. Phase 7 entry.'],
+  ['P2-3', 'Permission profiles still single-drawn', 'Command Center · Member 360', 'Three canonical profiles per surface were specified in the Foundation; the wireframes show the manager. Coach exclusions are now explicit, which closes the highest-risk half of this.', 'Draw Command Center as Reception and Member 360 as Accountant before the design system fixes component composition.'],
+  ['P2-4', 'Automation builder entry undrawn', '2a → builder', 'The “Automate this” affordance exists on the queue row; the pre-filled builder it opens is not drawn.', 'Draw the builder arriving pre-filled from the exception that raised it, never as a blank canvas.'],
+  ['P2-5', 'Guest and day-pass paths thin', 'POS · Front Desk', '⌘G has no drawn destination, though guest traffic is a measurable sales funnel in OPS-04.', 'Draw guest checkout and day-pass issue with the CRM handoff.'],
+  ['P2-6', 'Notification centre undrawn', 'All surfaces', 'Quiet hours, exception thresholds and digesting are stated as rules on three surfaces with no centre design.', 'Draw once with role presets.'],
+  ['P2-7', 'Progress interpretation surface missing', 'Coach · Member', 'Trends are inventoried; the place a coach writes the interpretation a member reads is undesigned, and that comment is the actual product value in progress tracking.', 'Draw progress review with the coach comment as a first-class object.'],
+  ['P2-8', 'Duplicate / merge undrawn', 'CRM 2e', 'Merging two people is destructive and high-consequence. Now correctly classified as step-up auth, which reduces risk without designing the screen.', 'Draw merge with a field-level preview of what survives.'],
+  ['P3-1', 'Terminology drift in two labels', '2k · 2m', '“Food” in the member tab bar versus “Nutrition” elsewhere; “Ate something else” versus “Log something else”.', 'Member-facing divergence may be deliberate — record it in the dictionary with a reason, or unify.'],
+  ['P3-2', 'Keyboard obstruction unspecified', 'Member · Coach mobile', 'The weight-entry and log-set sheets do not state how they behave when the numeric keyboard covers the primary action.', 'Specify: sheet lifts, action stays visible, or entry commits on keyboard dismiss. One rule for all numeric sheets.']
+];
+
+const CONSISTENCY = [
+  ['Status representation', 'Pills, outlined pills and dashed boxes all carry status across 2a, 2b, 2i and 2m.', 'One status component, three weights: neutral (fact), attention (needs action), critical (blocking). Dashed treatment is reserved exclusively for AI-generated or inferred content.'],
+  ['Money display', 'JOD appears before the amount in Admin, in an isolated run in RTL, and inside prose in the brief.', 'One money component: currency code, tabular figures, bidi-isolated, with a required kind label (due, paid, at risk, refunded). Never a bare number.'],
+  ['Primary action placement', 'Bottom-right on the register, inline-end on queue rows, full-width on mobile cards.', 'Primary action sits at the end of the object it acts on — row-end for rows, sheet-bottom for mobile, cart-bottom for POS. Codify as one rule rather than three habits.'],
+  ['Search fields', 'Three variants: the ⌘K bar, the desk scan-anywhere field, and in-list search in the member directory.', 'Three deliberate kinds — global command, capture input, in-context filter — documented as distinct components so nobody invents a fourth.'],
+  ['Member identity block', 'Drawn four ways across 2b, 2c, 2e and 2i with different fields.', 'One member-context component at three densities (row, strip, header). Fields are chosen by density, not by module.'],
+  ['Empty states', 'Some carry an action, some only explanatory copy.', 'Every empty state: what is absent, why that is normal or not, one action. No exceptions.'],
+  ['Approval requests', 'Manager override at the desk and refund approval at the register are drawn as different interactions.', 'One approval-request pattern: what is asked, who was asked, current state, expected response time, and what the requester may do while waiting.'],
+  ['Offline indication', 'A dot on the desk header, a pill on the coach app, prose in a card.', 'One connectivity component with four states — live, cached, queued, failed — placed in the same position on every surface.'],
+  ['Section navigation', 'Member 360 uses chips; Coach uses a section list; Admin areas use a rail.', 'Chips for peer sections inside one record, rail for areas, tabs never beyond five. Document the choice rule.'],
+  ['AI presentation', 'Brief as prose with underlines, suggested reply as a dashed card, Fix with AI as a chip.', 'One AI-content treatment: dashed boundary, visible provenance, confidence where useful, an accept and an edit path. Applies to every AI output regardless of surface.']
+];
+
+const TRACE = [
+  ['CLOSED', 'COM-01', 'Freeze, upgrade, downgrade, cancel, transfer and retroactive change now drawn on Admin and Member with one consequence-preview pattern. Policy block, approval and contract minimum all covered.'],
+  ['CLOSED', 'OPS-02', 'Booking windows, cancellation cutoffs, fair-use limits, no-show consequence and automated waitlist promotion with a confirmation deadline — drawn on Member and Front Desk.'],
+  ['CLOSED', 'COM-03', 'Refund, price override, credit reinstatement and cash-shift close drawn with reason, destination, approval, audit and provider-failure recovery.'],
+  ['MISSING', 'ENG-02', 'Notification preferences and quiet-hours control per role — the composer now honours them, but the preferences surface itself is undrawn. P2-6.'],
+  ['DEFERRED', 'PPL-02', 'Household, guardian and dependent handling. V1.5 scope, so correctly not drawn — but it governs who may act on a minor’s record and must be designed before the household feature ships.'],
+  ['WRONG SURFACE', 'OPS-05', 'Commission accrual was drawn on the coach session-completion screen. D5 permits a coach to see their own accrual, so this is defensible — but the manager-facing commission review it implies belongs in Team, and that is where the dispute path must live. Flagged rather than moved.'],
+  ['SCOPE LEAK', 'INT-02', 'The AI brief and “Why is PT down?” are drawn as core Command Center furniture, but INT-02 and INT-03 are V1.5. The queue must be complete and useful with the brief absent — currently true in the design, but it must stay true and be tested as the default V1 state.'],
+  ['SCOPE LEAK', 'AUT-01', '“Automate this” appears on a V1 Command Center row while AUT-01 is V1.5. Acceptable as a signposted upsell only if the affordance is absent — not disabled — when the capability is not licensed.'],
+  ['UNSUPPORTED', '—', 'Still open. “Likely renews without contact” on Member 360 is a prediction whose confidence model is undefined and whose domain (INT-01) is V1.5. The 9-versus-5 renewal split is fine — it derives from observable rules (attended this week / absent 14 days). Recommend V1 keeps the observable split and drops the prediction language until INT-01 lands.'],
+  ['UNSUPPORTED', '—', 'Still open. “Cost per lead JOD 3.20” implies per-lead ad attribution; GRO-02 covers campaign level. Confirm the data exists or show campaign-level cost instead. Small, but it is the kind of number that gets built because a wireframe showed it.'],
+  ['SCOPE LEAK', 'AUT-01', 'Reduced but not gone. The “Automate this” affordance still sits on a V1 queue row while AUT-01 is V1.5. Acceptable only if the affordance is absent — not disabled — when the capability is unlicensed. Confirm at build.'],
+  ['CORRECT', 'COA-03/05', 'The clinical boundary is now architected rather than asserted: routing mechanism in V1, rule set as governed per-market data, coach flow invariant to policy content, unconfigured state offering only safe options. This is the correct resolution of a question design should not answer.'],
+  ['CORRECT', 'REL-01', 'Offline POS, queued check-ins, idempotent retry and explicit pending states all present and correctly worded — no charge implied until confirmed, and the refund path extends the same discipline to reversals.'],
+  ['CORRECT', 'WHT-02', 'RTL handled structurally: bidi isolation, numerals as tenant setting, market-configurable week start, time axis reversed without inverting value axes, bilingual gym vocabulary, Arabic-length labels drawn at length.'],
+  ['CORRECT', 'IAM-03', 'Authorization expressed as composition throughout — absent rather than disabled, override as request, restricted columns omitted from pickers, coach financial exclusions enumerated.']
+];
+
+const PANELS = [
+  ['SCALE · 1 CLUB, 500 MEMBERS', 'Works', 'An empty queue most mornings is handled by the all-clear state rather than looking broken. Remaining refinement, not a defect: the brief should shift to weekly framing at low volume rather than reporting nothing daily.'],
+  ['SCALE · 3 CLUBS, 5,000 MEMBERS', 'The designed case', 'Drawn throughout at Nadi Group’s real volumes — queue of nine, list of fourteen, roster of six. No pattern strains.'],
+  ['SCALE · 50+ CLUBS, 100,000+', 'Now holds', 'Both breakages are fixed in 3i. The scope switcher becomes a searchable grouped picker with recents and multi-select; the queue aggregates by type with a location breakdown and a ranking model — money at risk × time open × spread, capped at nine groups, unowned outranking worked. Directory, inspector and saved views already scaled.'],
+  ['PERMISSIONS', 'Hidden beats disabled — held throughout', 'Rails compose per role, the desk shows only authorized resolutions, override is a request rather than a locked control, restricted columns are absent from the picker rather than listed and locked, D5 keeps salary out of a manager’s reach, and the coach’s financial exclusions are now enumerated. Remaining gap is drawn evidence for two more profiles (P2-3).'],
+  ['CONFIRMATION FRICTION', 'Resolved by taxonomy', 'Three classes with a hard rule: undo for anything reversible in one step, confirm only where the dialog teaches something (the consequence preview), step-up auth for money, permissions, deletion and export. The prohibition — a one-step-undoable action may not have a dialog — is what prevents hi-fi from accumulating them.'],
+  ['DUPLICATE DATA ENTRY', 'Strongest area of the review', 'The nutrition builder asks two unknowns and loads the rest. Conversion carries person, source, campaign, conversation and trial history. POS applies member pricing unasked. The freeze flow checks the allowance before offering the option. The one offender — the wizard re-confirming known data — is correctly demoted to first-run only.'],
+  ['ERROR RECOVERY', 'No dead ends remain', 'Every error state names what happened, what it affected, whether anything was lost, and what to do next. The two gaps are closed: reviewer-returned keeps the coach’s draft intact and states nothing reached the member; session expiry holds cart, draft plan and unsaved logs and returns to the same place. The provider-failed refund is the best of these — it admits uncertainty rather than guessing.'],
+  ['MOBILE ERGONOMICS', 'Sound, one item open', 'Primary actions in the lower third, 44px minimum throughout including swap chips, five-item bottom nav, sheets capped at two levels, destructive actions out of the thumb arc, 200% reflow specified per component. Keyboard obstruction on numeric sheets is still unspecified (P3-2).']
+];
+
+const PLAN = [
+  ['P1', 'Phase 7 — build the design system from the ten canonical patterns in §05, extracted from these wireframes rather than invented: status, money, member context, composer, undo strip, approval request, consequence preview, connectivity, AI content, empty state. Each ships with its full state set or it is not done.'],
+  ['P1', 'Carry the accessibility specification into Phase 7 as component contracts, not annotations — focus order, accessible names in both languages, live-region politeness and 200% reflow belong to the component, not to the screen that uses it.'],
+  ['VALIDATE', 'Book one screen-reader session covering the attention queue, POS scan-and-tender, and the set logger, during Phase 8. VALIDATE-1 — the only open item carrying real residual risk.'],
+  ['P2', 'Draw the eight P2 items alongside hi-fi rather than before it: occupancy policy, freshness wording, Reception and Accountant profiles, pre-filled automation builder, guest and day-pass, notification centre, progress interpretation, duplicate merge. None changes a structure the design system depends on.'],
+  ['EXTERNAL', 'Nutrition review policy: obtain the market-specific clinical and regulatory determination and publish the rule set. Not a design dependency — the mechanism in 3g ships without it, and tenants in unpublished markets operate in review-all or nutrition-disabled mode until it lands.'],
+  ['EXTERNAL', 'Confirm the two business decisions that hi-fi will surface but not create: cross-location revenue ownership for franchise agreements (D7) and the biometric jurisdiction allow-list (D3). Both are configuration, not layout.'],
+  ['GATE PASSED', 'High-fidelity UI and design-system work are unblocked. Phase 10 state coverage, Phase 11 responsive/RTL and Phase 13 design QA remain gates in their own right — this verdict clears Phase 6 only.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const mean = (SCORES.reduce((a, s) => a + s[1], 0) / SCORES.length).toFixed(1);
+    return {
+      avgScore: mean,
+      scores: SCORES.map(s => ({
+        dim: s[0], n: s[1], why: s[2],
+        style: 'font:500 13px/1.4 "IBM Plex Mono";padding:4px 8px;border-radius:4px;display:inline-block;' + (
+          s[1] >= 9 ? 'background:#17171a;color:#fdfdfc' :
+          s[1] >= 8 ? 'background:rgba(0,0,0,.12);color:#2c2a26' :
+          'background:#8a3b1f;color:#fff')
+      })),
+      flows: FLOWS.map(f => ({ name: f[0], ref: f[1], now: f[2], problems: f[3], target: f[4], fix: f[5] })),
+      missing: MISSING.map(m => ({ screen: m[0], state: m[1], why: m[2] })),
+      issues: ISSUES.map(i => ({ id: i[0], sev: i[0].split('-')[0], sevStyle: sevStyle(i[0].split('-')[0]), title: i[1], where: i[2], problem: i[3], fix: i[4] })),
+      consistency: CONSISTENCY.map(c => ({ concept: c[0], now: c[1], rule: c[2] })),
+      trace: TRACE.map(t => ({
+        kind: t[0], domain: t[1], detail: t[2],
+        kindStyle: 'font:500 9.5px/1.4 "IBM Plex Mono";letter-spacing:.05em;padding:3px 6px;border-radius:4px;display:inline-block;' + (
+          t[0] === 'MISSING' ? 'background:#8a3b1f;color:#fff' :
+          t[0] === 'CLOSED' ? 'background:#2f5d3a;color:#fff' :
+          t[0] === 'CORRECT' ? 'background:#17171a;color:#fdfdfc' :
+          'background:rgba(0,0,0,.12);color:#2c2a26')
+      })),
+      panels: PANELS.map(p => ({ k: p[0], t: p[1], d: p[2] })),
+      plan: PLAN.map((p, i) => ({ i: String(i + 1).padStart(2, '0'), sev: p[0], sevStyle: sevStyle(p[0]), t: p[1] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

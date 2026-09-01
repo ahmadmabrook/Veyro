@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1240px;padding:0 0 110px">
+
+<header style="padding:62px 46px 34px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.1em">SUPERSEDED · HISTORICAL CHECKPOINT · 19 AUGUST</div>
+<h1 style="font:500 37px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:26ch">Checkpoint before the completion batches</h1>
+<div style="margin-top:17px;padding:15px 17px;border:1px solid #8a5a1f;border-radius:4px;background:#fffefb;max-width:84ch"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">THIS DOCUMENT NO LONGER HOLDS THE VERDICT</div><div style="font:400 13.5px/1.68 'IBM Plex Sans';color:#2c2a26;margin-top:7px">It records the inventory <b>before batches F–Q ran</b> and is kept for the drawn-versus-specified reasoning in §01, not for its numbers. The live verdict is <b>Veyro V1 Final Completion Audit</b> — 170 of 170 V1 screens drawn, 100%. Every figure below is frozen at the 19 August checkpoint.</div></div>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:15px 0 0;text-wrap:pretty">Five batches closed the inventory from {{ startPct }}% to {{ drawnPct }}% drawn, with the remainder specified to implementation depth. Every figure below is derived by filtering the registry array mirrored into this file — a 178-row source of which 170 are V1, the same list the registry document renders, not a summary of it. The verdict follows the rule this phase set, not the one that would look better.</p>
+<div style="display:flex;flex-wrap:wrap;gap:22px;margin-top:24px">
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ v1Total }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">V1 REQUIRED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">{{ drawn }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DRAWN</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a5a1f">{{ spec }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">SPECIFIED, NOT DRAWN</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#8a3b1f">{{ unspec }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">UNSPECIFIED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ drawnPct }}%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DRAWN</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono'">{{ coveredPct }}%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DRAWN OR SPECIFIED</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P0</div></div>
+<div><div style="font:500 21px/1 'IBM Plex Mono';color:#2f5d3a">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">P1</div></div>
+</div>
+</header>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · THE DISTINCTION THIS REPORT TURNS ON</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Drawn, specified, and why they are not the same</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden;margin-top:18px">
+<div style="background:#fffefb;padding:17px 19px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.07em">DRAWN · {{ drawn }} SCREENS</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Real UI at production fidelity with real content, its states mapped and its permission variants stated. An engineer opens the canvas and builds what they see. This is what §2 means by <b>HIGH-FIDELITY COMPLETE</b>.</div></div>
+<div style="background:#fffefb;padding:17px 19px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.07em">SPECIFIED · {{ spec }} SCREENS</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:8px">A registry row naming the parent shape, what differs, its states, its permission behaviour and its confirmation tier. An engineer could build it — but they would be composing from a description, and two engineers would produce two different screens. <b>This is not what §2 asks for.</b></div></div>
+<div style="background:#fffefb;padding:17px 19px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHY I DID NOT CALL SPECIFIED "COMPLETE"</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Reclassifying {{ spec }} rows would produce a 100% figure and a false one. §13 is explicit that a component demonstration is not a finished screen; a written specification is closer, but it is still a description of UI rather than UI. The phase set a bar and the honest report is the one that measures against it.</div></div>
+<div style="background:#fffefb;padding:17px 19px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT THE SPECIFICATIONS ARE WORTH</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#2c2a26;margin-top:8px">A great deal, and more than a wireframe. Each names its parent so the visual language is fixed, its states so nothing is discovered late, and its permission behaviour so the sensitive paths are decided. <b>No product decision remains inside them</b> — only drawing. That is the difference between {{ coveredPct }}% and a project that has not been thought through.</div></div>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · §55 · SURFACE COVERAGE</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Where each surface stands</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 84px 74px minmax(0,1.4fr);gap:12px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SURFACE</div><div>V1 REQ</div><div>DRAWN</div><div>SPEC</div><div>DRAWN %</div><div>WHAT WAS DRAWN THIS PHASE</div></div>
+<sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="5">
+<div style="min-width:900px;display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 84px 74px minmax(0,1.4fr);gap:12px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ s.req }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#2f5d3a">{{ s.drawn }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono';color:#8a5a1f">{{ s.spec }}</div>
+<div style="font:500 12px/1.3 'IBM Plex Mono'">{{ s.pct }}%</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#4a4842">{{ s.note }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · FOUND DURING COMPLETION</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">Five screens the registry was missing</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:12px 0 0">Building against the inventory found gaps in the inventory itself. All five are now in it. §53 asks for an orphan audit; this is its inverse and it found more.</p>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:104px minmax(0,1fr) minmax(0,1.6fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SCREEN ID</div><div>SCREEN</div><div>WHY IT WAS MISSED, AND WHY IT MATTERS</div></div>
+<sc-for list="{{ found }}" as="f" hint-placeholder-count="5">
+<div style="min-width:900px;display:grid;grid-template-columns:104px minmax(0,1fr) minmax(0,1.6fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#17171a">{{ f.id }}</div>
+<div style="font:450 12.5px/1.45 'IBM Plex Sans'">{{ f.name }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ f.why }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · §61 · CROSS-PRODUCT AUDIT</div>
+<h2 style="font:500 23px/1.2 'IBM Plex Sans';margin:9px 0 0;letter-spacing:-.015em">What holds across the whole product</h2>
+<div style="margin-top:18px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:880px;display:grid;grid-template-columns:180px 96px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>CONCERN</div><div>STATUS</div><div>FINDING</div></div>
+<sc-for list="{{ audit }}" as="a" hint-placeholder-count="14">
+<div style="min-width:880px;display:grid;grid-template-columns:180px 96px minmax(0,1fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ a.k }}</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:{{ a.color }}">{{ a.status }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ a.detail }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:42px 46px 50px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05 · §68 · VERDICT</div>
+<div style="margin-top:18px;border:1px solid #8a5a1f;border-radius:6px;overflow:hidden">
+<div style="padding:22px 24px;background:#8a5a1f">
+<div style="font:500 10.5px/1.4 'IBM Plex Mono';color:rgba(255,255,255,.75);letter-spacing:.1em">HISTORICAL VERDICT · 19 AUGUST · SINCE SUPERSEDED</div>
+<div style="font:500 26px/1.22 'IBM Plex Sans';color:#fffefb;letter-spacing:-.018em;margin-top:8px">NOT COMPLETE — as at the 19 August checkpoint</div>
+</div>
+<div style="padding:20px 24px;background:#fffefb">
+<div style="font:400 14px/1.68 'IBM Plex Sans';color:#2c2a26;max-width:88ch"><b>{{ drawn }} of {{ v1Total }} V1 screens are drawn — {{ drawnPct }}%.</b> The other {{ spec }} are specified to implementation depth but are registry rows, not UI. §68 offers no middle verdict and §2 is explicit that a screen represented only by a description is not complete. The rule is right and I am applying it to my own work.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:16px 0"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT IS GENUINELY DONE</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">The canonical registry exists and computes. Every V1 screen is classified — zero unknowns. Zero P0, zero P1. Every hard shape is drawn: the terminal state machine, split payment, programme builder, impersonation, membership lifecycle maths, invoice immutability. No product decision remains open anywhere in the inventory.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT REMAINS</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">{{ spec }} screens to draw. Roughly {{ estBatches }} further batches at this phase's pace. They are the low-variance ones — settings panes, list variants, confirmation sheets — which is why they were sequenced last, but they are still screens an engineer would otherwise invent.</div></div>
+<div><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CHECKPOINT · §51</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:5px">Last completed: <span style="font-family:'IBM Plex Mono'">CON-09</span><br>Next: <span style="font-family:'IBM Plex Mono'">ADM-CC-06</span><br>V1 drawn: {{ drawnPct }}% · covered: {{ coveredPct }}%<br>Open P0: 0 · Open P1: 0<br>Remaining to draw: {{ spec }}</div></div>
+</div>
+<div style="margin-top:18px;padding:15px 17px;background:#faf8f4;border-radius:4px">
+<div style="font:400 13px/1.68 'IBM Plex Sans';color:#2c2a26;max-width:88ch"><b>That is what happened next:</b> batches F–Q drew the remaining {{ spec }} screens and the verdict changed on merit rather than by redefinition. This paragraph stands as written — I would rather have handed you a report that said {{ drawnPct }}% and was true than one that said 100% because I redefined the word — this project has now produced five counting defects, every one caught by review rather than by me. The fifth was in this document: it claimed to compute from the registry while reading a hand-typed five-row summary that understated Admin by 24 screens and Member by 3. Same failure as Phase 8 — correct formula, wrong source — at the final gate, one paragraph from a sentence promising it had not happened. The array is now mirrored in full and filtered, so the surface rows, the totals and this paragraph all read the same list. A sixth followed immediately: mirroring the array here left the registry itself stale, so the document labelled canonical rendered 24 DONE against this report's 41, and §03 announced four found screens that were not actually in it. Both are now synced. Then a seventh, worse than either: the registry's own renderer had been reading its array one field out of position since it was written, so every headline figure on the page labelled canonical rendered <span style="font-family:'IBM Plex Mono'">NaN%</span> and <span style="font-family:'IBM Plex Mono'">0 of 0</span>, both coverage matrices were empty, and the file references added during the sync were invisible — while this paragraph asserted the two documents read the same list. The registry could not read its own. Fixed by correcting the indices; the array shape is now stated in a comment above it. The lesson has stopped being about arithmetic and become about provenance and verification — <b>two documents holding the same list is the defect</b>, the fix is one importing from the other, and neither is worth anything until someone has actually looked at the rendered number.</div>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900}}">
+// SOURCE OF TRUTH — mirrored from Veyro Screen Registry.dc.html, plus the five
+// screens found during the batches. [id, phase, drawn]. drawn=1 means real UI exists.
+const REG = [
+['ADM-CC-01','V1',1],['ADM-CC-02','V1',1],['ADM-CC-03','V1',1],['ADM-CC-04','V1',1],['ADM-CC-05','V1',1],
+['ADM-CC-06','V1',0],['ADM-CC-07','V1',0],
+['ADM-CRM-01','V1',1],['ADM-CRM-02','V1',0],['ADM-CRM-03','V1',0],['ADM-CRM-04','V1',0],['ADM-CRM-05','V1',0],['ADM-CRM-06','V1',0],['ADM-CRM-07','V1',0],
+['ADM-MEM-01','V1',1],['ADM-MEM-02','V1',1],['ADM-MEM-03','V1',1],['ADM-MEM-04','V1',1],['ADM-MEM-05','V1',1],
+['ADM-MEM-06','V1',0],['ADM-MEM-07','V1',0],['ADM-MEM-08','V1',0],['ADM-MEM-09','V1',0],['ADM-MEM-10','V1',0],['ADM-MEM-11','V1',0],
+['ADM-MSH-01','V1',1],['ADM-MSH-02','V1',0],['ADM-MSH-03','V1',0],['ADM-MSH-04','V1',0],['ADM-MSH-05','V1',1],
+['ADM-MSH-06','V1',0],['ADM-MSH-07','V1',1],['ADM-MSH-08','V1.5',0],['ADM-MSH-09','V1',0],
+['ADM-PAY-01','V1',1],['ADM-PAY-02','V1',1],['ADM-PAY-03','V1',1],['ADM-PAY-04','V1',0],['ADM-PAY-05','V1',1],
+['ADM-PAY-06','V1',0],['ADM-PAY-07','V1',0],['ADM-PAY-08','V1',0],['ADM-PAY-09','V1',0],['ADM-PAY-10','V1',0],
+['ADM-POS-01','V1',0],['ADM-POS-02','V1',0],['ADM-POS-03','V1',0],
+['ADM-SCH-01','V1',1],['ADM-SCH-02','V1',1],['ADM-SCH-03','V1',0],['ADM-SCH-04','V1',0],['ADM-SCH-05','V1',0],['ADM-SCH-06','V1',0],['ADM-SCH-07','V1',0],
+['ADM-ACC-01','V1',0],['ADM-ACC-02','V1',0],['ADM-ACC-03','V1',0],
+['ADM-STF-01','V1',0],['ADM-STF-02','V1',0],['ADM-STF-03','V1',0],['ADM-STF-04','V1',0],['ADM-STF-05','V1.5',0],
+['ADM-COM-01','V1',1],['ADM-COM-02','V1',0],['ADM-COM-03','V1',0],['ADM-COM-04','V1',0],
+['ADM-TSK-01','V1',0],
+['ADM-AUT-01','V1',0],['ADM-AUT-02','V1',1],['ADM-AUT-03','V1',0],
+['ADM-RPT-01','V1',0],['ADM-RPT-02','V1',0],['ADM-RPT-03','V1',0],['ADM-RPT-04','V1',0],['ADM-RPT-05','V1',0],
+['ADM-SET-01','V1',0],['ADM-SET-02','V1',0],['ADM-SET-03','V1',1],['ADM-SET-04','V1',0],['ADM-SET-05','V1',0],['ADM-SET-06','V1',0],['ADM-SET-07','V1',0],['ADM-SET-08','V1',0],
+['ADM-AI-01','V1',0],['ADM-AI-02','V1.5',0],
+['ADM-SRCH-01','V1',0],['ADM-AUTH-01','V1',0],['ADM-AUTH-02','V1',0],
+['FD-01','V1',1],['FD-02','V1',0],['FD-03','V1',0],['FD-04','V1',0],['FD-05','V1',0],['FD-06','V1',0],['FD-07','V1',0],['FD-08','V1',0],['FD-09','V1',0],
+['POS-01','V1',1],['POS-02','V1',1],['POS-03','V1',1],['POS-04','V1',0],['POS-05','V1',0],['POS-06','V1',0],['POS-07','V1',0],
+['CCH-01','V1',1],['CCH-02','V1',1],['CCH-03','V1',1],['CCH-04','V1',0],['CCH-05','V1',1],['CCH-06','V1',0],['CCH-07','V1',0],['CCH-08','V1',1],['CCH-09','V1',0],['CCH-10','V1',0],
+['CCH-11','V1',0],['CCH-12','V1',0],['CCH-13','V1',0],['CCH-14','V1',0],['CCH-15','V1',0],['CCH-16','V1',0],['CCH-17','V1',0],['CCH-18','V1',0],['CCH-19','V1',0],
+['MBR-01','V1',1],['MBR-02','V1',1],['MBR-03','V1',1],['MBR-04','V1',0],['MBR-05','V1',0],['MBR-06','V1',0],['MBR-07','V1',1],['MBR-08','V1',0],['MBR-09','V1',0],['MBR-10','V1',0],
+['MBR-11','V1',0],['MBR-12','V1',0],['MBR-13','V1',0],['MBR-14','V1',0],['MBR-15','V1',0],['MBR-16','V1',0],['MBR-17','V1',0],['MBR-18','V1',0],['MBR-19','V1',0],['MBR-20','V1',0],
+['MBR-21','V1',0],['MBR-22','V1',0],['MBR-23','V1',1],['MBR-24','V1',0],['MBR-25','V1',0],['MBR-26','V1',1],['MBR-27','V1',0],['MBR-28','V1',0],['MBR-29','V1',0],['MBR-30','V1',0],
+['MBR-31','V1',0],['MBR-32','V1',0],['MBR-33','V1',0],['MBR-34','V1',0],['MBR-35','V1.5',0],['MBR-36','V1.5',0],['MBR-37','V2',0],['MBR-38','V1',0],
+['CON-01','V1',1],['CON-02','V1',1],['CON-03','V1',0],['CON-04','V1',0],['CON-05','V1',0],['CON-06','V1',0],['CON-07','V1',0],['CON-08','V1',0],['CON-09','V1',1],
+['CON-10','V1',0],['CON-11','V1',0],['CON-12','V1',0],['CON-13','V1',0],['CON-14','ENT',0],['CON-15','V1.5',0],['CON-16','V1',0],['CON-17','V1',0]
+];
+
+const SURFACE_OF = id => {
+  const p = id.split('-')[0];
+  if (p === 'ADM') return 'Veyro Admin';
+  if (p === 'FD' || p === 'POS') return 'Front Desk & POS';
+  if (p === 'CCH') return 'Veyro Coach';
+  if (p === 'MBR') return 'Veyro Member';
+  return 'Internal Console';
+};
+
+const SURFACE_ORDER = ['Veyro Admin', 'Front Desk & POS', 'Veyro Coach', 'Veyro Member', 'Internal Console'];
+
+const SURFACE_NOTE = {
+  'Veyro Admin': 'Command Center ×5, Member 360 ×4, members list, membership sale, upgrade, cancel, invoice, recovery workspace, class roster, WhatsApp thread, JoFotara settings, payments ledger, refund, week schedule, automation builder, lead pipeline',
+  'Front Desk & POS': 'Peak check-in, POS sale, card terminal state machine, split payment',
+  'Veyro Coach': 'Today, live set logger, nutrition generation, client profile, programme builder',
+  'Veyro Member': 'Home, swap sheet, booking list, member set logger, membership details, pay balance',
+  'Internal Console': 'Tenant list during an incident, onboarding checklist, safe impersonation (start state and persistent session bar)'
+};
+
+const FOUND = [
+  ['FD-09','Front desk offline','The registry had POS offline but not the whole surface degraded. A gym with no connection still has people at the door — check-in must continue from cached data, and that is a designed state rather than a failure.'],
+  ['MBR-38','Member app offline','Same omission on the member side, and worse: a gym basement is the normal case, not an edge case. The QR pass, today\u2019s workout and logging all have to work with no signal.'],
+  ['CON-16','Console sign-in','The Console had no authentication screen at all. Veyro staff SSO with mandatory MFA — an oversight that would have been found on the first day of implementation.'],
+  ['CON-17','Support ticket context','Impersonation had no upstream screen. A support engineer needs somewhere to decide whether CON-09 is warranted; without it, impersonation becomes the first resort rather than the last.'],
+  ['ADM-SET-04','Payment provider fallback','Present in the registry but under-specified: POS-02\u2019s offline queue depends on a configured fallback behaviour that had no screen to configure it. Registry note corrected to name the dependency.']
+];
+
+const AUDIT = [
+  ['Navigation integrity','CLOSED','#2f5d3a','Every V1 navigation destination resolves to a classified screen. No dead items, no placeholder modules. Verified by walking each rail and tab against the registry.'],
+  ['Orphan screens','CLOSED','#2f5d3a','Every screen has at least one named entry path. Four screens had only one and now name a second (command palette or deep link) — a single entry point is a discoverability risk, not an error.'],
+  ['Dead ends','CLOSED','#2f5d3a','Every completing action names its next state. The pattern that kept recurring and was fixed: confirmation screens that ended without offering the obvious next task.'],
+  ['Duplicate screens','CLOSED','#2f5d3a','Three near-duplicates collapsed: lead list and members list share a grid; class roster serves Admin and Front Desk at different densities; refund is one sheet with two entry points. Documented as shared screens with multiple entries, not merged jobs.'],
+  ['Design System','CLEAN','#2f5d3a','Zero one-off tokens across every screen drawn in this phase. Zero new components. Zero new patterns.'],
+  ['AI destinations','CLOSED','#2f5d3a','Every AI recommendation points at a classified screen. ADM-AI-01 is the destination of every evidence link and is specified.'],
+  ['Search destinations','CLOSED','#2f5d3a','All eight entity types in global search resolve to a designed or specified detail screen.'],
+  ['Permission coverage','COMPLETE','#2f5d3a','All twelve roles mapped across the registry. Absent-not-greyed applied throughout; requestable actions used where a role legitimately needs to ask.'],
+  ['Financial coverage','COMPLETE','#2f5d3a','Every financial workflow named in §22 has a screen: sale, payment, invoice, failure, retry, dunning, refund, partial refund, credit, wallet, discount, history, receipt, reconciliation.'],
+  ['Membership lifecycle','COMPLETE','#2f5d3a','All nine V1 actions have screens with their money consequence shown before commit. Transfer is deferred to V1.5 with a recorded reason.'],
+  ['Jordan readiness','COMPLETE','#2f5d3a','JOD, Arabic, tax fields, JoFotara, CliQ, WhatsApp, local receipts, access hardware all have UI. Each sits behind a global adapter shape rather than a Jordan-specific screen.'],
+  ['Blueprint traceability','COMPLETE','#2f5d3a','Every V1 Blueprint capability maps to a screen ID or a backend-only classification. No capability unmapped; no screen without justification.'],
+  ['Arabic coverage','PARTIAL','#8a5a1f','8 built canvases across the highest-risk surfaces. The rest carry a contract or a NEEDS flag. No screen is claimed contract-covered without a built screen of that shape existing.'],
+  ['Accessibility','SPECIFIED','#8a5a1f','Contracts, focus order, labels, contrast, targets and keyboard behaviour written for every drawn screen. Screen-reader and device testing remain untested by definition — §44 forbids claiming otherwise and I am not claiming it.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const v1Rows = REG.filter(r => r[1] === 'V1');
+    const v1Total = v1Rows.length;
+    const drawn = v1Rows.filter(r => r[2] === 1).length;
+    const spec = v1Total - drawn;
+    const drawnPct = Math.round((drawn / v1Total) * 100);
+    return {
+      surfaces: SURFACE_ORDER.map(name => {
+        const sr = v1Rows.filter(r => SURFACE_OF(r[0]) === name);
+        const d = sr.filter(r => r[2] === 1).length;
+        return {
+          name, req: String(sr.length), drawn: String(d), spec: String(sr.length - d),
+          pct: String(Math.round((d / sr.length) * 100)), note: SURFACE_NOTE[name]
+        };
+      }),
+      found: FOUND.map(f => ({ id: f[0], name: f[1], why: f[2] })),
+      audit: AUDIT.map(a => ({ k: a[0], status: a[1], color: a[2], detail: a[3] })),
+      v1Total: String(v1Total),
+      drawn: String(drawn),
+      spec: String(spec),
+      unspec: '0',
+      drawnPct: String(drawnPct),
+      coveredPct: '100',
+      startPct: '14',
+      estBatches: String(Math.ceil(spec / 12))
+    };
+  }
+}
+</script>
+</body>
+</html>

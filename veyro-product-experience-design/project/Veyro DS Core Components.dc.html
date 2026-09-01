@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1200px;padding:0 0 110px">
+
+<header style="padding:66px 54px 38px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">DESIGN SYSTEM v1 · STEP 3 — CORE COMPONENTS · §21–§37 · §59–§62 · §66–§70</div>
+<h1 style="font:500 38px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:22ch">Veyro Ledger — core components</h1>
+<p style="font:400 15.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:16px 0 0;text-wrap:pretty">Seventeen families, built on the Step 2 tokens. Data grid and date/time first because they carry the most density, RTL and accessibility risk. Every family ships a state matrix, an accessibility contract, an RTL contract and a responsive contract — a component without all four is not done. Clears <b>DS-P0-3</b>.</p>
+<div style="margin-top:22px;padding:14px 16px;border:1px solid #1b4079;border-radius:4px;background:#fffefb;max-width:78ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#1b4079;letter-spacing:.07em">DISCIPLINE CARRIED IN FROM STEP 2</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:6px">No contrast ratio is transcribed anywhere in this document. Components reference token names; the ratio lives in exactly one place — the §07 matrix in Foundations — because four precision slips in this project were all caused by a number being copied rather than referenced.</div>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:24px;margin-top:24px">
+<div><div style="font:500 20px/1 'IBM Plex Mono'">17</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">FAMILIES</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">{{ nStates }}</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">DOCUMENTED STATES</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">4</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">CONTRACTS PER FAMILY</div></div>
+<div><div style="font:500 20px/1 'IBM Plex Mono'">0</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#6b6a63;margin-top:4px">RATIOS TRANSCRIBED</div></div>
+</div>
+</header>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">01 · §67</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Taxonomy and naming</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:1px;background:rgba(0,0,0,.11);border:1px solid rgba(0,0,0,.11);border-radius:6px;overflow:hidden;margin-top:16px">
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">PRIMITIVE · 17</div><div style="font:400 12px/1.75 'IBM Plex Mono';color:#17171a;margin-top:8px">Button · IconButton · Input · Select · Combobox · Checkbox · Radio · Switch · Textarea · Chip · Badge · Avatar · Icon · Tooltip · Divider · Skeleton · Spinner</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">COMPOSITE · 14</div><div style="font:400 12px/1.75 'IBM Plex Mono';color:#17171a;margin-top:8px">DataGrid · FilterBar · SavedViewBar · BulkActionBar · SearchField · CommandPalette · Modal · Drawer · Sheet · Tabs · SegmentedControl · Card · Banner · Toast</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">DATE &amp; TIME · 6</div><div style="font:400 12px/1.75 'IBM Plex Mono';color:#17171a;margin-top:8px">Calendar · DatePicker · DateRangePicker · TimePicker · WeekView · DayView</div></div>
+<div style="background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">NAMING RULES</div><div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:8px">One primitive per concept — there is no UserCard, ClientCard and PersonCard, there is <span style="font:400 12px 'IBM Plex Mono'">PersonRow</span> at three densities. Names never reference a screen. Domain behaviour that genuinely differs gets its own component in Step 4; visual variation does not.</div></div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">02 · §22 · §66</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Button</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="flex:1 1 480px;min-width:420px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:18px 20px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">VARIANTS · MD (36PX)</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 15px;border-radius:6px">Send payment links</span>
+<span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);color:#17171a;padding:10px 14px;border-radius:6px">Review each</span>
+<span style="font:500 13px/1 'IBM Plex Sans';color:#17171a;padding:11px 12px;border-radius:6px;background:#f4f2ee">Assign</span>
+<span style="font:500 13px/1 'IBM Plex Sans';color:#17171a;padding:11px 12px;border-radius:6px">Skip</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:11px 15px;border-radius:6px">Refund JOD 28.00</span>
+<span style="display:inline-flex;width:36px;height:36px;border:1px solid rgba(23,23,26,.28);border-radius:6px;align-items:center;justify-content:center;font:500 13px/1 'IBM Plex Mono'">⋯</span>
+<span style="font:500 13px/1 'IBM Plex Sans';color:#1b4079;text-decoration:underline;text-underline-offset:3px">View invoice</span>
+</div>
+<div style="font:400 11px/1.5 'IBM Plex Mono';color:#6b6a63;margin-top:8px">primary · secondary · tertiary · ghost · destructive · icon · link</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:7px">The <b>disabled</b> chip below is the one intentional sub-AA element in this document — warm.500 on warm.200, exempt under WCAG 1.4.3 as a genuinely inactive control. Every other dim element here must clear AA, including read-only values and out-of-month dates, because those are content a user reads.</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em;margin-top:18px">SIZES</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:11px;align-items:center">
+<span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:8px 11px;border-radius:6px">sm 28</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 15px;border-radius:6px">md 36</span>
+<span style="font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 19px;border-radius:6px">lg 44 · touch</span>
+</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px"><b>lg is mandatory in Touch and Spacious density</b> — it is the 44px minimum target, not a stylistic option. sm is Compact-only and never appears on Coach, Member, Front Desk or Kiosk.</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em;margin-top:18px">STATES · PRIMARY</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:11px;align-items:center">
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 15px;border-radius:6px">default</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#16376a;color:#fffefb;padding:11px 15px;border-radius:6px">hover</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#14315e;color:#fffefb;padding:11px 15px;border-radius:6px">pressed</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 15px;border-radius:6px;box-shadow:0 0 0 1px #fffefb,0 0 0 3px #1b4079">focus</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#e0dcd4;color:#85807a;padding:11px 15px;border-radius:6px" title="warm.500 on warm.200 — AA-exempt as a genuinely inactive control per WCAG 1.4.3. Do not 'correct' this.">disabled</span>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 15px;border-radius:6px;opacity:.85">◌ sending…</span>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:280px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:18px 20px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">API</div>
+<div style="font:400 11.5px/1.8 'IBM Plex Mono';color:#17171a;margin-top:9px">variant: primary | secondary |<br>&nbsp;&nbsp;tertiary | ghost | destructive |<br>&nbsp;&nbsp;icon | link<br>size: sm | md | lg<br>state: default | loading | disabled<br>icon?: IconName<br>iconSide: start | end<br>label: string (required, verb-first)<br>fullWidth?: boolean</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:14px 0"></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">HIERARCHY RULE</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px"><b>One primary per view.</b> Not per card, per view. A screen with two primaries has an unresolved information hierarchy, and design review rejects it rather than restyling it. Destructive is never adjacent to primary — it lives behind an actions menu or at the opposite end of the container.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:14px 0"></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">CONTENT</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">Verb first, object second, no gerunds: “Renew membership”, never “Membership renewal”. Amounts belong in destructive and financial labels — “Refund JOD 28.00” — so the confirm reads the consequence.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">03 · §23 · §24</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Inputs and forms</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="flex:1 1 420px;min-width:380px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:18px 20px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">ANATOMY &amp; STATES</div>
+<div style="margin-top:12px">
+<div style="font:500 12px/1.35 'IBM Plex Sans';letter-spacing:.005em">Member phone</div>
+<div style="display:flex;align-items:center;border:1px solid rgba(23,23,26,.14);border-radius:6px;background:#fffefb;margin-top:5px;overflow:hidden">
+<span style="font:400 12.5px/1 'IBM Plex Mono';color:#57544d;padding:0 9px;border-inline-end:1px solid rgba(23,23,26,.1);align-self:stretch;display:flex;align-items:center">+962</span>
+<span style="font:400 13.5px/1 'IBM Plex Mono';padding:11px 10px;flex:1;unicode-bidi:isolate">79 555 0134</span>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">Used for WhatsApp and payment links.</div>
+</div>
+<div style="margin-top:14px">
+<div style="font:500 12px/1.35 'IBM Plex Sans'">Amount</div>
+<div style="display:flex;align-items:center;border:1px solid #1b4079;border-radius:6px;background:#fffefb;margin-top:5px;box-shadow:0 0 0 1px #1b4079;overflow:hidden">
+<span style="font:400 12.5px/1 'IBM Plex Mono';color:#57544d;padding:0 9px;align-self:stretch;display:flex;align-items:center;border-inline-end:1px solid rgba(23,23,26,.1)">JOD</span>
+<span style="font:500 13.5px/1 'IBM Plex Mono';padding:11px 10px;flex:1;text-align:end">28.00</span>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">focus · currency prefix is a token, not typed</div>
+</div>
+<div style="margin-top:14px">
+<div style="font:500 12px/1.35 'IBM Plex Sans'">Freeze duration</div>
+<div style="display:flex;align-items:center;border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;margin-top:5px;overflow:hidden">
+<span style="font:400 13.5px/1 'IBM Plex Sans';padding:11px 10px;flex:1;color:#17171a">4 months</span>
+</div>
+<div style="display:flex;gap:6px;align-items:flex-start;margin-top:5px"><span style="font:500 11px/1.5 'IBM Plex Mono';color:#8a3b1f">!</span><span style="font:400 11.5px/1.5 'IBM Plex Sans';color:#8a3b1f">Club+ allows 3 months per year. Choose 3 months or request owner approval.</span></div>
+</div>
+<div style="margin-top:14px">
+<div style="font:500 12px/1.35 'IBM Plex Sans';color:#57544d">Home club</div>
+<div style="display:flex;align-items:center;border:1px solid rgba(23,23,26,.1);border-radius:6px;background:#f4f2ee;margin-top:5px"><span style="font:400 13.5px/1 'IBM Plex Sans';padding:11px 10px;flex:1;color:#17171a">Khalda</span><span style="font:400 11px/1 'IBM Plex Mono';color:#6b6a63;padding-inline-end:10px">read-only</span></div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:4px">Changing a home club is a transfer — both managers are notified.</div>
+</div>
+</div>
+<div style="flex:1 1 340px;min-width:300px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:18px 20px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">18 FIELD TYPES · ONE SHELL</div>
+<div style="font:400 12px/1.7 'IBM Plex Mono';color:#17171a;margin-top:9px">text · number · currency · phone · email · password · search · textarea · select · multiselect · combobox · autocomplete · date · time · daterange · stepper · slider · switch</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:10px">All share one shell — label, control, description, message, prefix, suffix, contextual action — so a new field type is a control swap, not a new component. Message slot holds exactly one message at a time, priority error &gt; warning &gt; success &gt; description.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:14px 0"></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">FORM RULES · §24</div>
+<div style="font:400 12.5px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:8px">Pre-fill from the record, always — the nutrition builder asks two unknowns, not twelve knowns. Autosave with a visible “saved” marker on long forms; explicit save only where a set of changes must commit together. Validate on blur, never on keystroke; re-validate on submit. Required is marked, optional is not — whichever is rarer gets the mark. Financial forms state the consequence above the submit, not in a dialog after it.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">04 · §25 · THE MOST IMPORTANT ADMIN COMPONENT</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">DataGrid</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:11px 0 0">Rendered at Compact density with the full chrome: saved views, filter bar, column config, selection, bulk action bar, sort, sticky header, inline actions, money cells, status cells. At 4,800 members this is where the work happens; at 100,000 it is the only way work happens.</p>
+
+<div style="margin-top:18px;border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;overflow:hidden">
+<div style="display:flex;gap:8px;padding:9px 13px;border-bottom:1px solid rgba(23,23,26,.1);align-items:center;flex-wrap:wrap">
+<span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:7px 11px;border-radius:6px">Expiring 7d</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 10px;border-radius:6px">Failed payments</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 10px;border-radius:6px">At risk</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 10px;border-radius:6px">＋</span>
+<div style="flex:1"></div>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#6b6a63">shared with Khalda staff · owner Rania</span>
+</div>
+<div style="display:flex;gap:7px;padding:8px 13px;border-bottom:1px solid rgba(23,23,26,.1);align-items:center;flex-wrap:wrap">
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid #1b4079;color:#1b4079;padding:6px 10px;border-radius:20px">Club · Club+ ✕</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid #1b4079;color:#1b4079;padding:6px 10px;border-radius:20px">Khalda ✕</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px dashed rgba(23,23,26,.3);color:#57544d;padding:6px 10px;border-radius:20px">＋ Filter</span>
+<span style="font:400 11px/1 'IBM Plex Sans';color:#1b4079;text-decoration:underline;text-underline-offset:2px;margin-inline-start:4px">Clear all</span>
+<div style="flex:1"></div>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#6b6a63">14 of 4,812</span>
+<span style="display:inline-flex;width:28px;height:28px;border:1px solid rgba(23,23,26,.2);border-radius:6px;align-items:center;justify-content:center;font:400 12px/1 'IBM Plex Mono'">⚙</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:32px;align-items:center;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.14);position:sticky;top:0">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#57544d">▣</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">MEMBER</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">PLAN</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#17171a;letter-spacing:.06em">EXPIRES ↑</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">LAST VISIT</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;text-align:end">BALANCE</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">STATUS</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#e8edf6">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#1b4079">☑</span>
+<span style="font:450 12.5px/1.3 'IBM Plex Sans'">Ahmad Nabulsi</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Sans';color:#57544d">Club</span>
+<span style="font:500 11.5px/1.2 'IBM Plex Mono'">21 Aug</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">19d ago</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono';text-align:end;color:#8a3b1f">JOD 55.00</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 5px;border-radius:3px;justify-self:start">Overdue</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#e8edf6">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#1b4079">☑</span>
+<span style="font:450 12.5px/1.3 'IBM Plex Sans'">Lina Haddad</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Sans';color:#57544d">Flex</span>
+<span style="font:500 11.5px/1.2 'IBM Plex Mono'">22 Aug</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">26d ago</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono';text-align:end">JOD 0.00</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 5px;border-radius:3px;justify-self:start">At risk</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#57544d">☐</span>
+<span style="font:450 12.5px/1.3 'IBM Plex Sans'">Omar Zaid</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Sans';color:#57544d">Club+</span>
+<span style="font:500 11.5px/1.2 'IBM Plex Mono'">23 Aug</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">yesterday</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono';text-align:end">JOD 0.00</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;border:1px solid #2f5d3a;padding:2px 5px;border-radius:3px;justify-self:start">Active</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#57544d">☐</span>
+<span style="font:450 12.5px/1.3 'IBM Plex Sans'">Dana Qasem</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Sans';color:#57544d">Club</span>
+<span style="font:500 11.5px/1.2 'IBM Plex Mono'">24 Aug</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Mono';color:#57544d">today</span>
+<span style="font:500 12px/1.2 'IBM Plex Mono';text-align:end;color:#8a3b1f">JOD 45.00</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 5px;border-radius:3px;justify-self:start">Overdue</span>
+</div>
+<div style="display:grid;grid-template-columns:30px minmax(0,1.5fr) 96px 88px 96px 104px 84px;gap:10px;padding:0 13px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#faf8f4">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#57544d">☐</span>
+<span style="font:450 12.5px/1.3 'IBM Plex Sans'">Rania Khoury</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Sans';color:#6b6a63">Club+</span>
+<span style="font:500 11.5px/1.2 'IBM Plex Mono';color:#6b6a63">26 Aug</span>
+<span style="font:400 11.5px/1.3 'IBM Plex Mono';color:#6b6a63">11d ago</span>
+<span style="font:400 11.5px/1.2 'IBM Plex Mono';text-align:end;color:#6b6a63">restricted</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#6b6a63;border:1px solid rgba(23,23,26,.2);padding:2px 5px;border-radius:3px;justify-self:start">No access</span>
+</div>
+<div style="display:flex;gap:9px;padding:10px 13px;align-items:center;background:#17171a;flex-wrap:wrap">
+<span style="font:500 12px/1.3 'IBM Plex Sans';color:#fffefb">2 selected</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';background:#fffefb;color:#17171a;padding:7px 11px;border-radius:6px">Send renewal offer</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(255,255,255,.3);color:#fffefb;padding:6px 10px;border-radius:6px">Assign to…</span>
+<span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(255,255,255,.3);color:#fffefb;padding:6px 10px;border-radius:6px">Create task</span>
+<div style="flex:1"></div>
+<span style="font:400 11px/1.4 'IBM Plex Sans';color:#c9c3b8">Select all 14</span>
+<span style="font:400 11px/1.4 'IBM Plex Sans';color:#c9c3b8">✕</span>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">BULK WITH PARTIAL FAILURE</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#2c2a26;margin-top:8px">Progress is a state, never a spinner. On completion the grid does not say “done”:</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;padding:11px;margin-top:9px">
+<div style="font:450 12.5px/1.4 'IBM Plex Sans'"><b>412 of 480 sent · 68 not sent</b></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:5px">61 no marketing consent · 5 no phone number · 2 failed at the provider</div>
+<div style="display:flex;gap:6px;margin-top:9px"><span style="font:450 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:6px 9px;border-radius:6px">See the 68</span><span style="font:450 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:6px 9px;border-radius:6px">Retry the 2</span></div>
+</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Each group is a filtered selection you can act on. This is the P1-5 fix from Phase 6, now a component behaviour.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">RESPONSIVE — NOT A SHRUNKEN TABLE</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">At <b>bp.md</b> low-priority columns collapse into the primary cell as a secondary line, and the inspector becomes an overlay. At <b>bp.xs</b> the grid becomes a <span style="font:400 12px 'IBM Plex Mono'">PersonRow</span> list at Touch density with the sort key shown as the secondary line, and filters move into a sheet. Column priority is declared per column (1–3); the grid drops priority 3 then 2. Horizontal scrolling of a data table on a phone is never the answer.</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:10px;overflow:hidden">
+<div style="display:flex;gap:9px;padding:0 12px;height:48px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><div style="flex:1"><div style="font:450 14px/1.3 'IBM Plex Sans'">Ahmad Nabulsi</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Expires 21 Aug · Club</div></div><span style="font:500 13px/1.2 'IBM Plex Mono';color:#8a3b1f">55.00</span></div>
+<div style="display:flex;gap:9px;padding:0 12px;height:48px;align-items:center"><div style="flex:1"><div style="font:450 14px/1.3 'IBM Plex Sans'">Lina Haddad</div><div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Expires 22 Aug · Flex</div></div><span style="font:500 13px/1.2 'IBM Plex Mono'">0.00</span></div>
+</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">FOCUS ORDER — ONE COMPOSITE WIDGET</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Fourteen rows must not cost fourteen tab stops. The grid is a single stop; then <span style="font:400 12px 'IBM Plex Mono'">↑↓</span> moves rows, <span style="font:400 12px 'IBM Plex Mono'">←→</span> moves cells when a row is expanded, <span style="font:400 12px 'IBM Plex Mono'">Space</span> selects, <span style="font:400 12px 'IBM Plex Mono'">⏎</span> opens the inspector, <span style="font:400 12px 'IBM Plex Mono'">⇧↑↓</span> range-selects, <span style="font:400 12px 'IBM Plex Mono'">Esc</span> clears selection. Row actions become tab stops only inside the focused row. Sort is <span style="font:400 12px 'IBM Plex Mono'">⏎</span> on a header, announced as “sorted by expires, ascending”.</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Screen reader: header row announced once, then per row “Ahmad Nabulsi, Club, expires 21 August, 19 days ago, 55 dinars overdue, row 1 of 14”. Money is read with its kind because a bare number is ambiguous.</div>
+</div>
+</div>
+
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:900px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>DATAGRID STATE</div><div>TREATMENT</div></div>
+<sc-for list="{{ gridStates }}" as="g" hint-placeholder-count="9">
+<div style="min-width:900px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12px/1.45 'IBM Plex Sans'">{{ g.state }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ g.treatment }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">05 · §37 · HARDEST RTL SURFACE IN THE PRODUCT</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Date &amp; time</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="border:1px solid rgba(0,0,0,.14);border-radius:4px;background:#fffefb;padding:14px;width:286px">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:500 12px/1 'IBM Plex Mono';color:#57544d">‹</span><span style="font:500 13px/1.3 'IBM Plex Sans';flex:1;text-align:center">August 2026</span><span style="font:500 12px/1 'IBM Plex Mono';color:#57544d">›</span></div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:11px">
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">SA</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">SU</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">MO</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">TU</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">WE</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">TH</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;text-align:center">FR</span>
+<span style="font:400 12px/32px 'IBM Plex Mono';text-align:center;color:#6b6a63">15</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center;color:#6b6a63">16</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">17</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">18</span><span style="font:500 12px/32px 'IBM Plex Mono';text-align:center;box-shadow:inset 0 0 0 1px #17171a">19</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">20</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">21</span>
+<span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">22</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">23</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">24</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">25</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">26</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">27</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">28</span>
+<span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">29</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">30</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center">31</span><span style="font:500 12px/32px 'IBM Plex Mono';text-align:center;background:#1b4079;color:#fffefb;border-radius:3px">1</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center;color:#6b6a63">2</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center;color:#6b6a63">3</span><span style="font:400 12px/32px 'IBM Plex Mono';text-align:center;color:#6b6a63">4</span>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:9px">Week starts Saturday — a market setting, not a default. Today outlined, selection filled. Latin day names use 9.5px mono legitimately; the Arabic twin cannot.</div>
+</div>
+<div dir="rtl" style="border:1px solid rgba(0,0,0,.14);border-radius:4px;background:#fffefb;padding:14px;width:352px">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:500 12px/1 'IBM Plex Mono';color:#57544d">›</span><span style="font:600 14px/1.5 'IBM Plex Sans Arabic';flex:1;text-align:center">آب ٢٠٢٦</span><span style="font:500 12px/1 'IBM Plex Mono';color:#57544d">‹</span></div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:11px">
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">السبت</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الأحد</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الاثنين</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الثلاثاء</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الأربعاء</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الخميس</span><span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;text-align:center">الجمعة</span>
+<span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center;color:#6b6a63">١٥</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center;color:#6b6a63">١٦</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">١٧</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">١٨</span><span style="font:500 13px/32px 'IBM Plex Sans Arabic';text-align:center;box-shadow:inset 0 0 0 1px #17171a">١٩</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٠</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢١</span>
+<span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٢</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٣</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٤</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٥</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٦</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٧</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٨</span>
+<span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٢٩</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٣٠</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center">٣١</span><span style="font:500 13px/32px 'IBM Plex Sans Arabic';text-align:center;background:#1b4079;color:#fffefb;border-radius:3px">١</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center;color:#6b6a63">٢</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center;color:#6b6a63">٣</span><span style="font:400 13px/32px 'IBM Plex Sans Arabic';text-align:center;color:#6b6a63">٤</span>
+</div>
+<div style="font:400 13px/1.8 'IBM Plex Sans Arabic';color:#57544d;margin-top:9px">الأسبوع يبدأ السبت. الأيام تتقدم من اليمين لليسار، والأسابيع تنزل للأسفل. أسماء الأيام كاملة وليست مقطوعة.</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">THE FIVE RTL DECISIONS HERE</div>
+<div style="font:400 12.5px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>1 · Days mirror, weeks do not.</b> Columns run right-to-left; rows still descend. Flipping both is the classic bug and produces a calendar that reads bottom-up.<br><br><b>2 · Chevrons mirror, and so does their meaning.</b> Previous sits on the right in RTL. The icon flips <i>and</i> the position flips — doing only one inverts navigation.<br><br><b>3 · Week start is a market token</b>, not a locale guess. Jordan is Saturday; the same Arabic tenant in another market may differ.<br><br><b>4 · Range fields keep reading order.</b> “From” stays first in the tab and reading order; only the box positions mirror. Swapping them is how a user books a range backwards.<br><br><b>5 · Numerals follow the tenant setting</b> — Arabic-Indic here — and the grid width is set from the widest numeral form, so switching numerals never reflows the calendar.</div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em;margin-top:14px">AND THE CONSEQUENCE NOBODY PLANS FOR</div>
+<div style="font:400 12.5px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:7px"><b>The Arabic calendar is wider than the Latin one — 352px against 286px — and the two headers are different heights.</b> That asymmetry is correct, not a bug to squeeze away. Foundations sets a hard 13px floor for Arabic, so the 9.5px mono day names the Latin grid uses legitimately have no Arabic equivalent; and full day nouns (الاثنين، الثلاثاء، الأربعاء) are the only honest short form — <span style="font:400 12px 'IBM Plex Mono'">اثن</span> and <span style="font:400 12px 'IBM Plex Mono'">ثلا</span> are mid-word cuts, not abbreviations any reader recognises. Arabic needs the room, so the component takes it. Any layout placing a calendar in a fixed 286px slot is wrong in Arabic and has to be sized from the Arabic build, which is the “containers sized for Arabic” rule doing actual work rather than being restated.</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">DATE RANGE</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:7px 11px;border-radius:6px">This month</span><span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 10px;border-radius:6px">Last 30 days</span><span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 10px;border-radius:6px">Custom</span></div>
+<div style="display:flex;gap:9px;margin-top:11px">
+<div style="flex:1"><div style="font:500 11px/1.3 'IBM Plex Sans'">From</div><div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;padding:8px 9px;margin-top:4px;font:400 12px/1 'IBM Plex Mono'">01 Aug 2026</div></div>
+<div style="flex:1"><div style="font:500 11px/1.3 'IBM Plex Sans'">To</div><div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;padding:8px 9px;margin-top:4px;font:400 12px/1 'IBM Plex Mono'">19 Aug 2026</div></div>
+</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#57544d;margin-top:8px">Presets first because they answer the question 90% of the time. Custom reveals the fields; the calendar opens only if a field is focused.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">TIME &amp; WEEK VIEW</div>
+<div style="font:400 12.5px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:8px">TimePicker is a stepped list at the tenant's booking granularity (15 min at Nadi Group), never a free text field — a class cannot start at 19:07. WeekView is the scheduling surface: time on the vertical axis in both directions, resources as columns, drag to move with a confirm on conflict. DayView is WeekView at one column and is the Front Desk default.</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">All six components take <span style="font:400 12px 'IBM Plex Mono'">timezone</span>, <span style="font:400 12px 'IBM Plex Mono'">weekStart</span> and <span style="font:400 12px 'IBM Plex Mono'">numerals</span> from tenant policy, never from the browser. A member in Dubai booking a Khalda class sees Amman time labelled as Amman time.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">KEYBOARD &amp; NARRATION</div>
+<div style="font:400 12.5px/1.68 'IBM Plex Sans';color:#4a4842;margin-top:8px">Calendar is one tab stop. <span style="font:400 12px 'IBM Plex Mono'">←→</span> day, <span style="font:400 12px 'IBM Plex Mono'">↑↓</span> week, <span style="font:400 12px 'IBM Plex Mono'">PgUp/PgDn</span> month, <span style="font:400 12px 'IBM Plex Mono'">Home/End</span> week bounds, <span style="font:400 12px 'IBM Plex Mono'">⏎</span> select, <span style="font:400 12px 'IBM Plex Mono'">Esc</span> close without selecting. <b>In RTL, ← moves forward in time</b> — arrow keys follow visual direction, not calendar direction, because the hand follows the eye.</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Announced as “Wednesday 19 August 2026, today, available” — weekday, date, relation, availability. Unavailable dates state why: “fully booked” rather than just “disabled”.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">06 · §30 · RESOLVES THE STEP 1 SEVERITY FLAG</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Status and severity</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:11px 0 0">One four-step severity scale consumed by both the badge and the row edge-mark. <b>The edge-mark carries the row-level roll-up; the badge always names the specific state.</b> They are the same scale expressed at two granularities, which is what stopped them reading as two independent signals.</p>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="flex:1 1 400px;min-width:360px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">SEVERITY · 4 STEPS</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
+<div style="display:flex;gap:10px;align-items:center"><span style="width:3px;height:22px;background:#57544d"></span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;border:1px solid rgba(23,23,26,.2);padding:3px 6px;border-radius:3px;width:96px;text-align:center">neutral</span><span style="font:400 12px/1.5 'IBM Plex Sans';color:#4a4842;flex:1">A fact. Active, Paid, Confirmed, On plan.</span></div>
+<div style="display:flex;gap:10px;align-items:center"><span style="width:3px;height:22px;background:#3f5560"></span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#3f5560;border:1px solid #3f5560;padding:3px 6px;border-radius:3px;width:96px;text-align:center">info</span><span style="font:400 12px/1.5 'IBM Plex Sans';color:#4a4842;flex:1">Worth knowing, no action. Trial, Pending sync, Waitlisted.</span></div>
+<div style="display:flex;gap:10px;align-items:center"><span style="width:3px;height:22px;background:#8a5a1f"></span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:3px 6px;border-radius:3px;width:96px;text-align:center">attention</span><span style="font:400 12px/1.5 'IBM Plex Sans';color:#4a4842;flex:1">Needs a human soon. Expiring, At risk, Frozen, Approval pending.</span></div>
+<div style="display:flex;gap:10px;align-items:center"><span style="width:3px;height:22px;background:#8a3b1f"></span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:3px 6px;border-radius:3px;width:96px;text-align:center">critical</span><span style="font:400 12px/1.5 'IBM Plex Sans';color:#4a4842;flex:1">Blocking or losing money. Overdue, Failed, Denied, Expired.</span></div>
+</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:12px">Four steps, not five — “success” is not a severity, it is the neutral case. A green badge on every paid invoice makes a table of paid invoices look like a celebration and makes the one unpaid row harder to find.</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">DOMAIN VOCABULARIES · FIXED</div>
+<div style="font:400 12px/1.7 'IBM Plex Sans';color:#4a4842;margin-top:9px"><b>Membership</b> Active · Trial · Frozen · Expiring · Expired · Cancelled<br><b>Payment</b> Paid · Pending · Failed · Refunded · Partially refunded<br><b>Booking</b> Confirmed · Waitlisted · Cancelled · No-show<br><b>Access</b> Granted · Denied · Restricted</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#57544d;margin-top:11px">These strings are the vocabulary from the Foundation terminology system, not new copy. A status the vocabulary does not contain cannot be rendered — the component takes an enum, not a string, so an engineer cannot invent “Semi-active”.</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#57544d;margin-top:9px"><b>Never colour alone.</b> Every badge carries its label; icon-only status is a defect at any density.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">07 · §21 · §27 · §28 · §26</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Navigation, search, command palette, filters</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;align-items:flex-start">
+<div style="border:1px solid rgba(0,0,0,.14);border-radius:6px;background:#fffefb;overflow:hidden;width:396px;box-shadow:0 16px 40px -8px rgba(23,23,26,.24)">
+<div style="padding:12px 14px;border-bottom:1px solid rgba(23,23,26,.1)"><div style="font:400 14px/1.4 'IBM Plex Sans';color:#17171a">why is PT down this month<span style="color:#1b4079">|</span></div></div>
+<div style="padding:7px 0">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;padding:6px 14px">ASK VEYRO</div>
+<div style="display:flex;gap:9px;padding:8px 14px;background:#e8edf6;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#1b4079;width:14px">✦</span><span style="font:450 13px/1.35 'IBM Plex Sans';flex:1">Why is PT revenue down this month at Khalda?</span><span style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d">⏎</span></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;padding:10px 14px 6px">RECORDS · 3</div>
+<div style="display:flex;gap:9px;padding:7px 14px;align-items:center"><span style="width:20px;height:20px;border-radius:50%;background:#ece9e3"></span><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Omar Haddad · coach, Khalda</span></div>
+<div style="display:flex;gap:9px;padding:7px 14px;align-items:center"><span style="width:20px;height:20px;border-radius:50%;background:#ece9e3"></span><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">PT ×10 package · JOD 220.00</span></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;padding:10px 14px 6px">ACTIONS · REQUIRES CONFIRMATION</div>
+<div style="display:flex;gap:9px;padding:7px 14px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#57544d;width:14px">→</span><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Chase 31 unverified PT sessions</span><span style="font:400 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 5px;border-radius:3px">preview</span></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;padding:10px 14px 6px">GO TO</div>
+<div style="display:flex;gap:9px;padding:7px 14px 9px;align-items:center"><span style="font:400 11px/1 'IBM Plex Mono';color:#57544d;width:14px">⌘</span><span style="font:450 12.5px/1.35 'IBM Plex Sans';flex:1">Coaching → Sessions &amp; credits</span></div>
+</div>
+</div>
+<div style="flex:1 1 320px;min-width:300px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">COMMAND PALETTE · FOUR RESULT CLASSES</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Always in this order: <b>Ask Veyro</b> (natural-language question) · <b>Records</b> · <b>Actions</b> · <b>Go to</b>. Grouping is fixed so muscle memory survives — a result never changes class between sessions.</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:9px"><b>Actions never execute on ⏎.</b> They open a preview stating target, effect and required approval — the P1-4 taxonomy applied. Destructive and financial actions are excluded from the palette entirely; they are reachable only from the record they affect, because a fuzzy match should never be able to refund someone.</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:9px">Every result is post-filtered by permission and tenant. A result a user cannot open does not appear — search is never a route around authorization.</div>
+</div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">FILTERS · ONE UX EVERYWHERE</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Quick chips for the two or three filters that matter per surface; “＋ Filter” for everything else; applied filters always render as removable chips with a count and a Clear all. Saved views are filters plus columns plus sort, named and optionally shared. <b>No module invents its own filter UI</b> — that was the CX-R1 risk from the Foundation.</div>
+</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">ADMIN NAV · 3 LAYERS RENDERED</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Global chrome (scope switcher, ⌘K, tasks, alerts, account) · rail of eight composed from role and scope, with an “All areas” directory · secondary nav capped at seven. The rail is generated, never a static tree with disabled rows — a receptionist and an accountant get different rails, not the same rail greyed differently.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">SCOPE SWITCHER AT CHAIN SCALE</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Searchable, grouped by brand then region, recents first, multi-select for comparison. Never a dropdown — a 50-item list is a search problem. Current scope is always visible in the chrome, because “which club am I looking at” must never require a click to answer.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">MOBILE NAV</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Coach: four tabs plus a create action. Member: five tabs. Both bottom-anchored with 44px targets, labels always visible — icon-only tabs fail both accessibility and Arabic, where the label is the disambiguator. Front Desk uses mode tabs, not a rail.</div></div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">08 · §29 · §31–§36</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Overlays, feedback, cards, tabs</h2>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:920px;display:grid;grid-template-columns:132px 112px minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>COMPONENT</div><div>USE WHEN</div><div>RULES &amp; MOBILE TREATMENT</div></div>
+<sc-for list="{{ overlays }}" as="o" hint-placeholder-count="8">
+<div style="min-width:920px;display:grid;grid-template-columns:132px 112px minmax(0,1fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12.5px/1.45 'IBM Plex Sans'">{{ o.name }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">{{ o.when }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ o.rules }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;align-items:flex-start">
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#fffefb;padding:13px 15px;width:340px">
+<div style="display:flex;gap:9px;align-items:flex-start"><span style="width:3px;align-self:stretch;background:#8a3b1f"></span><div style="flex:1"><div style="font:500 13px/1.4 'IBM Plex Sans'">Payments are not processing at Khalda</div><div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:4px">The provider has been unreachable since 09:14. Card payments will fail; cash and wallet still work. Queued orders are held, not lost.</div><div style="display:flex;gap:7px;margin-top:9px"><span style="font:450 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:6px 9px;border-radius:6px">See queued (3)</span><span style="font:450 11px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:6px 9px;border-radius:6px">Status page</span></div></div></div>
+<div style="font:400 11px/1.5 'IBM Plex Sans';color:#57544d;margin-top:10px">Page-level banner · critical · not dismissible while the condition holds</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.16);border-radius:4px;background:#17171a;padding:11px 14px;width:300px;display:flex;gap:10px;align-items:center">
+<span style="font:450 12.5px/1.4 'IBM Plex Sans';color:#fffefb;flex:1">Renewal offer sent to 9 members</span>
+<span style="font:500 12px/1 'IBM Plex Sans';color:#fffefb;text-decoration:underline;text-underline-offset:3px">Undo</span>
+</div>
+<div style="flex:1 1 260px;min-width:250px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:15px 17px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">TOAST RULES</div>
+<div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Toasts confirm; they never inform. 30-second undo window, one at a time, never carrying information the user must act on — if it matters after it disappears, it is not a toast. Reduced motion: appears without slide.</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">09 · §69</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">State matrix</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:11px 0 0">Applicable states per family. <span style="font:500 12px 'IBM Plex Mono'">●</span> required · <span style="font:500 12px 'IBM Plex Mono';color:#6b6a63">○</span> where relevant · <span style="font:500 12px 'IBM Plex Mono';color:#6b6a63">–</span> not applicable. A family shipped without its required states is not done.</p>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:1000px;display:grid;grid-template-columns:150px repeat(11,1fr);gap:6px;padding:10px 14px;background:#f4f2ee;font:500 10px/1.3 'IBM Plex Mono';color:#57544d;letter-spacing:.03em"><div>FAMILY</div><div>dflt</div><div>hovr</div><div>actv</div><div>sel</div><div>focus</div><div>disbl</div><div>load</div><div>error</div><div>warn</div><div>empty</div><div>r-only</div></div>
+<sc-for list="{{ matrix }}" as="m" hint-placeholder-count="17">
+<div style="min-width:1000px;display:grid;grid-template-columns:150px repeat(11,1fr);gap:6px;padding:8px 14px;border-top:1px solid rgba(0,0,0,.06);align-items:center">
+<div style="font:450 12px/1.4 'IBM Plex Sans'">{{ m.name }}</div>
+<div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c0 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c1 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c2 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c3 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c4 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c5 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c6 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c7 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c8 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c9 }}</div><div style="font:500 11.5px/1 'IBM Plex Mono'">{{ m.c10 }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">10 · §59 · §60 · §62</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">The three contracts, per family</h2>
+<p style="font:400 14.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:11px 0 0">Accessibility, RTL and responsive behaviour live <b>in the component</b>, not in a screen spec. This is the P0-5 fix from Phase 6: if these stay at screen level, every new screen re-implements them and the validation task never closes.</p>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:1060px;display:grid;grid-template-columns:128px minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);gap:14px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>FAMILY</div><div>ACCESSIBILITY CONTRACT</div><div>RTL CONTRACT</div><div>RESPONSIVE CONTRACT</div></div>
+<sc-for list="{{ contracts }}" as="c" hint-placeholder-count="12">
+<div style="min-width:1060px;display:grid;grid-template-columns:128px minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);gap:14px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12px/1.45 'IBM Plex Sans'">{{ c.name }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ c.a11y }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ c.rtl }}</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842">{{ c.resp }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:40px 54px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">11 · §70 · §68</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Documentation template — worked on DataGrid</h2>
+<div style="margin-top:16px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:840px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SECTION</div><div>DATAGRID</div></div>
+<sc-for list="{{ docs }}" as="d" hint-placeholder-count="12">
+<div style="min-width:840px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:500 12px/1.45 'IBM Plex Sans'">{{ d.k }}</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842">{{ d.v }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:18px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">LIBRARY ORGANISATION · §68</div><div style="font:400 12px/1.7 'IBM Plex Mono';color:#17171a;margin-top:9px">Foundations/ · Primitives/ · Composites/ · DateTime/ · Domain/ · Patterns/</div><div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:8px">Flat within each group, alphabetical, no nesting by screen or module. A component's page carries all twelve documentation sections; a page missing any of them fails design QA in Phase 13.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">COMMON MISTAKES · CARRIED AS A CHECKLIST</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Two primaries in one view · a status rendered by colour alone · a shadow on a table row · a dialog on a one-step-undoable action · a disabled control a role can never enable · icon-only tabs · a bare number with no money kind · tracking applied to Arabic · a bulk action reporting “done”.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">STEP 3 CLOSES · NEXT</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">DS-P0-3 resolved. Step 4 is the fifteen domain families — attention row, money value, PersonRow, timeline item, POS cart, set logger, meal card, AI treatment, access pass, task row — built from these primitives with the content the approved wireframes already proved. Then Step 5 patterns, Step 6 validation screens in both languages, Step 7 audit and verdict.</div></div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900}}">
+const GRID_STATES = [
+  ['loading', 'Skeleton rows at the real row height, header already solid, count as “loading…”. Never a centred spinner — layout must not jump when data lands.'],
+  ['empty · first use', 'Explains what the view will contain and offers the action that creates the first record. “No members yet — import your existing list or add one.”'],
+  ['empty · filtered', 'Names the filters causing it and offers to clear them. Never implies the records do not exist.'],
+  ['empty · permission', '“You do not have access to members at Abdoun.” Distinct from filtered-empty, because implying absence when the cause is authorization is a lie.'],
+  ['partial data', 'Rows render; a header strip states what is stale and how stale. “Retail figures are 20 minutes behind.”'],
+  ['error', 'Keeps whatever loaded, states what failed and offers retry. Never replaces a populated grid with an error page.'],
+  ['restricted cell', 'Cell reads “restricted” in tertiary text, not blank and not zero. A blank money cell reads as JOD 0.00 and that is a financial misstatement.'],
+  ['bulk in progress', 'Selection locks, a progress state replaces the bulk bar, rows already processed mark individually. Cancellable, with completed work retained.'],
+  ['offline', 'Grid marks itself cached with the age of the data; write actions in the bulk bar disable with the reason stated.']
+];
+
+const OVERLAYS = [
+  ['Modal', 'Anchored decision', 'Max one depth. Financial and destructive variants show the consequence summary above the confirm. Mobile: full-screen sheet with the action pinned. Never for a form longer than one screen.'],
+  ['Drawer', 'Inspector beside context', 'Right side (inline-end), 380–480px, does not block the list behind it. The Member 360 pattern generalised. Mobile: becomes a full-screen push view with back.'],
+  ['Sheet', 'Mobile quick choice', 'Two levels maximum. Swipe-to-dismiss plus a visible close. Primary action in the lower third. Height fits content up to 80vh, then scrolls internally.'],
+  ['Card', 'Meaningful grouping only', 'Six kinds: informational, interactive, summary, media, person, booking. A card that only draws a border around a paragraph is deleted — “cardification” of every screen is explicitly prohibited.'],
+  ['Banner', 'Condition, not an event', 'Inline (one field or row), page (this screen), global (the whole tenant — outage, billing, integration). Critical banners are not dismissible while the condition holds. Max one global at a time.'],
+  ['Toast', 'Confirmation only', '30s undo window, one at a time, never carries information needed after dismissal. If the user must act on it, it is a banner or a task.'],
+  ['Tabs', 'Peer views of one object', 'Five maximum. Never a substitute for information architecture — Member 360 uses a section rail plus a timeline spine, not fifteen tabs. Mobile: horizontally scrollable with no arrows.'],
+  ['SegmentedControl', '2–4 exclusive options', 'Short labels only. Switches how the same content is presented, never what content is shown. Mobile-safe at 44px.']
+];
+
+const MATRIX = [
+  ['Button', '●','●','●','–','●','●','●','–','–','–','–'],
+  ['IconButton', '●','●','●','○','●','●','●','–','–','–','–'],
+  ['Input', '●','●','–','–','●','●','○','●','●','–','●'],
+  ['Select · Combobox', '●','●','●','●','●','●','●','●','○','●','●'],
+  ['Checkbox · Radio', '●','●','●','●','●','●','–','●','–','–','●'],
+  ['Switch', '●','●','●','●','●','●','●','○','–','–','●'],
+  ['Chip · Badge', '●','○','–','●','○','○','–','–','–','–','–'],
+  ['DataGrid', '●','●','–','●','●','○','●','●','●','●','●'],
+  ['FilterBar', '●','●','–','●','●','○','○','○','–','●','–'],
+  ['SavedViewBar', '●','●','–','●','●','○','○','○','–','●','●'],
+  ['SearchField', '●','●','–','–','●','●','●','●','–','●','–'],
+  ['CommandPalette', '●','●','–','●','●','–','●','●','–','●','–'],
+  ['Calendar · Pickers', '●','●','–','●','●','●','●','●','●','●','●'],
+  ['Modal · Drawer · Sheet', '●','–','–','–','●','–','●','●','●','●','–'],
+  ['Tabs · Segmented', '●','●','●','●','●','●','○','–','–','–','–'],
+  ['Card', '●','○','○','○','○','–','●','○','○','●','–'],
+  ['Banner · Toast', '●','–','–','–','●','–','–','●','●','–','–']
+];
+
+const CONTRACTS = [
+  ['Button', 'Accessible name in both languages even when icon-only. Loading sets aria-busy and keeps the label — never replaced by a spinner alone. Never a link styled as a button.', 'Icon side swaps with logical start/end. Chevrons and arrows mirror; check, clock, play do not.', 'lg (44px) mandatory in Touch and Spacious. fullWidth in sheets and mobile forms.'],
+  ['Input', 'Label is a real label, not a placeholder. Error text referenced by the field and read on focus. Prefix and suffix are decorative and excluded from the accessible name.', 'Text aligns to logical start; numbers, phone, currency and IDs are bidi-isolated. Prefix moves to the inline-start edge.', 'Full width below bp.sm. Numeric keyboards on number, currency, phone. Sheet lifts so the primary action stays visible above the keyboard.'],
+  ['DataGrid', 'One composite tab stop with arrow navigation. Header announced once, then row content with position. Sort state announced on change. Money read with its kind.', 'Column order mirrors; numeric and money columns stay end-aligned on the logical end. Sort arrows mirror. Row expansion chevron mirrors.', 'Column priority 1–3; drops 3 then 2. Becomes a PersonRow list at bp.xs with the sort key as the secondary line. Never horizontally scrolled on a phone.'],
+  ['Calendar', 'One tab stop, arrows follow visual direction. Announces weekday, date, relation and availability. Unavailable dates state the reason, not just disabled.', 'Days mirror, weeks do not. Prev/next mirror in icon and position. Week start from market token. Numerals from tenant setting, grid sized for the widest form.', 'Inline on desktop, sheet below bp.sm. Range shows two months side by side above bp.md, one month with a scroll below.'],
+  ['CommandPalette', 'Focus trapped, Esc closes, results are a listbox with aria-activedescendant. Result class announced when it changes. Action previews are read in full before confirmation.', 'Text and results align to logical start; keyboard hints mirror position. Latin shortcuts stay LTR inside Arabic labels.', 'Full-screen below bp.sm with the input pinned to the top and the keyboard accounted for. Recents replace results on empty query.'],
+  ['Modal', 'Focus moves to the modal, trapped until dismissed, returns to the trigger. Title is the accessible name. Esc closes unless the action is destructive and mid-flight.', 'Layout mirrors; the primary action sits at the logical end of the footer.', 'Becomes a full-screen sheet below bp.sm with the primary action pinned above the safe area.'],
+  ['Drawer', 'Same trap-and-return as modal, but the list behind stays readable and its scroll position is preserved on close.', 'Opens from the inline-end edge — right in LTR, left in RTL.', 'Overlay at bp.md, full-screen push view below bp.sm with a back affordance.'],
+  ['Sheet', 'Focus trap, swipe and button dismissal both available. Two levels maximum; a third is a design error.', 'Content mirrors; drag handle is centred and direction-neutral.', 'Mobile only. Above bp.md the same content is a Drawer or Modal.'],
+  ['Status badge', 'Label always present, never colour alone. Severity is in the text, not only the hue. Not a button unless it opens something.', 'Label mirrors with the row. Severity edge-mark moves to the logical start edge.', 'Label may abbreviate at Compact but never disappear. Full text in the accessible name regardless.'],
+  ['Tabs', 'Roving tabindex, arrows move, Home/End jump, selected announced. Panel associated with its tab.', 'Order mirrors; overflow scroll direction mirrors. Underline indicator follows the logical position.', 'Horizontally scrollable below bp.sm with no arrow buttons — arrows on a touch surface are a desktop habit.'],
+  ['Banner', 'role=status for info and success, role=alert only for critical. Never both — an alert interrupts, and most banners should not.', 'Icon and text mirror; the severity bar sits on the logical start edge.', 'Stacks above content at every breakpoint. Global banner is fixed and does not scroll away.'],
+  ['Toast', 'Polite live region. Undo is keyboard-reachable for the full 30 seconds and not dismissed by pointer movement.', 'Slides from the logical end. Text mirrors.', 'Bottom-centre on mobile above the nav; bottom inline-end on desktop.']
+];
+
+const DOCS = [
+  ['Purpose', 'Present many records so a user can scan, compare, select and act without leaving the view.'],
+  ['When to use', 'Any list of more than about ten records where comparison across fields matters, or where bulk action is a real workflow.'],
+  ['When not to use', 'Fewer than ten records with no comparison need — use a list. Records with rich media or a single dominant attribute — use cards. A single record — use Member 360.'],
+  ['Anatomy', 'SavedViewBar · FilterBar · header row · rows · cells (text, money, status, person, date, action) · BulkActionBar · pagination or virtual scroll · column config.'],
+  ['Variants', 'selectable | readonly · with inspector | standalone · virtual | paginated · grouped | flat.'],
+  ['States', 'The nine in §04 plus the eleven in the §09 matrix. Required: loading, three empties, partial, error, restricted cell, bulk in progress, offline.'],
+  ['Behaviour', 'Sort single-column, persisted per saved view. Selection survives sort and filter within a session, and the count always states what is selected. Inline actions appear on row focus or hover, never permanently — a permanent action column costs the width the data needs.'],
+  ['Content rules', 'Column headers are nouns, not sentences. Money cells always carry currency and kind. Dates are relative under seven days ("19d ago") and absolute beyond. Never a bare number in a money column.'],
+  ['Accessibility', 'See the §10 contract. Additionally: selection announced as a count, not per row, when a range is selected.'],
+  ['RTL', 'See the §10 contract. Additionally: mixed Arabic and Latin names sort by the tenant collation, and both spellings are searchable.'],
+  ['Responsive', 'See the §10 contract. Additionally: column config is a sheet below bp.sm and saved views collapse into a single select.'],
+  ['Common mistakes', 'Shrinking the desktop grid onto a phone · a permanent actions column · colour-only status · blank cells for restricted data · reporting "done" after a bulk action · a shadow on a row · putting the primary action in the header where it competes with sort.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    let n = 0;
+    MATRIX.forEach(r => r.slice(1).forEach(c => { if (c === '●' || c === '○') n++; }));
+    return {
+      nStates: String(n),
+      gridStates: GRID_STATES.map(g => ({ state: g[0], treatment: g[1] })),
+      overlays: OVERLAYS.map(o => ({ name: o[0], when: o[1], rules: o[2] })),
+      matrix: MATRIX.map(r => ({
+        name: r[0], c0: r[1], c1: r[2], c2: r[3], c3: r[4], c4: r[5],
+        c5: r[6], c6: r[7], c7: r[8], c8: r[9], c9: r[10], c10: r[11]
+      })),
+      contracts: CONTRACTS.map(c => ({ name: c[0], a11y: c[1], rtl: c[2], resp: c[3] })),
+      docs: DOCS.map(d => ({ k: d[0], v: d[1] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

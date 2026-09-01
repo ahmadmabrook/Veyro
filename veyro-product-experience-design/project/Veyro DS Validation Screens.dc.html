@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1200px;padding:0 0 110px">
+
+<header style="padding:66px 54px 38px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">DESIGN SYSTEM v1 · STEP 6 — VALIDATION SCREENS · §71–§74</div>
+<h1 style="font:500 38px/1.1 'IBM Plex Sans';letter-spacing:-.022em;margin:15px 0 0;max-width:22ch">Proof the system composes</h1>
+<p style="font:400 15.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:72ch;margin:16px 0 0;text-wrap:pretty">Six screens assembled <b>only</b> from Steps 2–5 — no new colours, no new spacing, no one-off components. Each names the parts it used. Two are rendered in Arabic RTL, and the Arabic ones are sized from the Arabic string rather than the English one. Clears <b>DS-P0-8</b>.</p>
+<div style="margin-top:20px;padding:14px 16px;border:1px solid #1b4079;border-radius:4px;background:#fffefb;max-width:78ch">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#1b4079;letter-spacing:.07em">WHAT WOULD COUNT AS A FAILURE HERE</div>
+<div style="font:400 13.5px/1.62 'IBM Plex Sans';color:#2c2a26;margin-top:6px">Needing a value outside the token scale, a component outside the library, or a rule bent to make a screen work. Any of those means the system is under-specified, not that the screen is special. None occurred — but two <b>gaps</b> did, and they are recorded at the end rather than quietly patched.</div>
+</div>
+</header>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 1 · ADMIN COMMAND CENTER · COMPACT · LTR</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Rania opens Veyro at 08:40</h2>
+<div style="margin-top:18px;border:1px solid rgba(23,23,26,.18);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="display:flex;gap:12px;padding:9px 14px;border-bottom:1px solid rgba(23,23,26,.12);align-items:center;background:#faf8f4;flex-wrap:wrap">
+<span style="font:500 13px/1.2 'IBM Plex Sans';letter-spacing:-.01em">Nadi Group</span>
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;border:1px solid rgba(23,23,26,.2);padding:4px 8px;border-radius:4px">Khalda ▾</span>
+<div style="flex:1"></div>
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;border:1px solid rgba(23,23,26,.16);padding:5px 9px;border-radius:6px">Search or ask · ⌘K</span>
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">Tasks 4</span>
+<span style="width:24px;height:24px;border-radius:50%;background:#ece9e3"></span>
+</div>
+<div style="display:flex">
+<div style="width:150px;border-inline-end:1px solid rgba(23,23,26,.1);padding:10px 0;background:#faf8f4">
+<div style="font:500 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;background:#e8edf6;color:#1b4079;border-inline-start:2px solid #1b4079">Command Center</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Members</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Leads</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Scheduling</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Payments</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Point of sale</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Coaching</div>
+<div style="font:400 11.5px/1.3 'IBM Plex Sans';padding:8px 14px;color:#3d3b36">Reports</div>
+<div style="font:400 11px/1.3 'IBM Plex Sans';padding:8px 14px;color:#57544d;margin-top:6px;border-top:1px solid rgba(23,23,26,.08)">All areas</div>
+</div>
+<div style="flex:1;padding:16px 18px;min-width:0">
+<div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">
+<div style="flex:1"><div style="font:500 20px/1.2 'IBM Plex Sans';letter-spacing:-.014em">Khalda needs you on three things</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Wednesday 19 August · last checked 08:38</div></div>
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">9 open · 2 critical</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:13px;overflow:hidden">
+<div style="display:flex"><span style="width:3px;background:#8a3b1f"></span><div style="flex:1;padding:12px 13px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">MONEY</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">2h ago</span><div style="flex:1"></div><span style="font:500 14px/1.2 'IBM Plex Mono';color:#8a3b1f">JOD 312.00</span></div>
+<div style="font:500 15px/1.35 'IBM Plex Sans';margin-top:6px">6 payments failed overnight</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:4px">4 expired cards, 2 insufficient funds. Retried twice; messages are drafted. No access is blocked.</div>
+<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Send 6 payment links</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Review each</span></div>
+</div></div>
+<div style="display:flex;border-top:1px solid rgba(23,23,26,.07)"><span style="width:3px;background:#8a3b1f"></span><div style="flex:1;padding:12px 13px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px">COMPLIANCE</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">since 09:14 yesterday</span></div>
+<div style="font:500 15px/1.35 'IBM Plex Sans';margin-top:6px">JoFotara rejected 3 invoices</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:4px">All three lack a buyer tax number. Sales and money are recorded — only submission failed.</div>
+<div style="display:flex;gap:8px;margin-top:10px"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Fix the 3 invoices</span></div>
+</div></div>
+<div style="display:flex;border-top:1px solid rgba(23,23,26,.07)"><span style="width:3px;background:#8a5a1f"></span><div style="flex:1;padding:12px 13px">
+<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 6px;border-radius:3px">RETENTION</span><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">this week</span></div>
+<div style="font:500 15px/1.35 'IBM Plex Sans';margin-top:6px">14 memberships expire in 7 days</div>
+<div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:4px">9 train regularly and usually renew. 5 have not visited in 20+ days.</div>
+<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Send offer to the 9</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Call list for the 5</span></div>
+</div></div>
+</div>
+<div style="display:flex;gap:26px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(23,23,26,.1);flex-wrap:wrap">
+<div><div style="font:500 16px/1.2 'IBM Plex Mono'">218</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">VISITS TODAY</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Mono'">JOD 1,412.00</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">COLLECTED</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Mono'">6</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">NEW LEADS</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Mono'">94%</div><div style="font:400 10px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">CLASS FILL</div></div>
+</div>
+</div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d;margin-top:11px">PARTS · AttentionRow ×3 · severity scale · MoneyValue(owed, aggregate) · nav rail · scope switcher · CommandPalette entry · pattern 01 · Compact density</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 2 · MEMBER 360 · DEFAULT · LTR</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">One member, without losing the list</h2>
+<div style="margin-top:18px;border:1px solid rgba(23,23,26,.18);border-radius:6px;background:#fffefb;overflow:hidden;display:flex;flex-wrap:wrap">
+<div style="flex:1 1 320px;min-width:300px;border-inline-end:1px solid rgba(23,23,26,.1)">
+<div style="display:flex;gap:7px;padding:9px 13px;border-bottom:1px solid rgba(23,23,26,.1);align-items:center;flex-wrap:wrap"><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:7px 10px;border-radius:6px">Expiring 7d</span><span style="font:450 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:6px 9px;border-radius:6px">Failed</span><div style="flex:1"></div><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d">14 of 4,812</span></div>
+<div style="display:flex;gap:9px;padding:0 13px;height:40px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07);background:#e8edf6"><span style="width:24px;height:24px;border-radius:50%;background:#dcd7cf"></span><div style="flex:1"><div style="font:450 12.5px/1.3 'IBM Plex Sans'">Ahmad Nabulsi</div></div><span style="font:500 11.5px/1.2 'IBM Plex Mono';color:#8a3b1f">55.00</span></div>
+<div style="display:flex;gap:9px;padding:0 13px;height:40px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><span style="width:24px;height:24px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:450 12.5px/1.3 'IBM Plex Sans'">Lina Haddad</div></div><span style="font:500 11.5px/1.2 'IBM Plex Mono'">0.00</span></div>
+<div style="display:flex;gap:9px;padding:0 13px;height:40px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><span style="width:24px;height:24px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:450 12.5px/1.3 'IBM Plex Sans'">Omar Zaid</div></div><span style="font:500 11.5px/1.2 'IBM Plex Mono'">0.00</span></div>
+<div style="display:flex;gap:9px;padding:0 13px;height:40px;align-items:center"><span style="width:24px;height:24px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:450 12.5px/1.3 'IBM Plex Sans'">Dana Qasem</div></div><span style="font:500 11.5px/1.2 'IBM Plex Mono';color:#8a3b1f">45.00</span></div>
+</div>
+<div style="flex:2 1 420px;min-width:360px;padding:16px 18px">
+<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+<span style="width:44px;height:44px;border-radius:50%;background:#dcd7cf"></span>
+<div style="flex:1;min-width:180px"><div style="font:500 20px/1.2 'IBM Plex Sans';letter-spacing:-.014em">Ahmad Nabulsi</div><div style="font:400 12px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Club · Khalda · member since Mar 2024 · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">+962 79 555 0134</span></div></div>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:3px 7px;border-radius:3px">Overdue</span>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:11px 13px;border-radius:6px">Take payment · JOD 55.00</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Message</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">⋯</span></div>
+<div style="display:flex;gap:14px;margin-top:14px;padding:11px 0;border-top:1px solid rgba(23,23,26,.1);border-bottom:1px solid rgba(23,23,26,.1);flex-wrap:wrap">
+<div><div style="font:500 14px/1.2 'IBM Plex Mono';color:#8a3b1f">JOD 55.00</div><div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">OWED</div></div>
+<div><div style="font:500 14px/1.2 'IBM Plex Mono'">21 Aug</div><div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">EXPIRES</div></div>
+<div><div style="font:500 14px/1.2 'IBM Plex Mono'">19d</div><div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">SINCE VISIT</div></div>
+<div><div style="font:500 14px/1.2 'IBM Plex Mono'">4 of 10</div><div style="font:400 9.5px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">PT LEFT</div></div>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 11px/1.4 'IBM Plex Mono';color:#1b4079;border-bottom:1.5px solid #1b4079;padding-bottom:4px">TIMELINE</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;padding-bottom:4px">MEMBERSHIP</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;padding-bottom:4px">BILLING</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;padding-bottom:4px">TRAINING</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;padding-bottom:4px">NUTRITION</span><span style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d;padding-bottom:4px">DOCUMENTS</span></div>
+<div style="margin-top:12px;display:flex;flex-direction:column;gap:0">
+<div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;width:62px">06:12</span><div style="flex:1"><div style="font:450 12.5px/1.45 'IBM Plex Sans'">Payment failed · card expired</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">Veyro · retried twice · message drafted</div></div><span style="font:500 12px/1.2 'IBM Plex Mono';color:#8a3b1f">JOD 55.00</span></div>
+<div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;width:62px">31 Jul</span><div style="flex:1"><div style="font:450 12.5px/1.45 'IBM Plex Sans'">PT session with Yousef</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">verified · 6th of 10</div></div></div>
+<div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(23,23,26,.06)"><span style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;width:62px">28 Jul</span><div style="flex:1"><div style="font:450 12.5px/1.45 'IBM Plex Sans'">Health notes updated</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">Dr. Samar · <span style="color:#57544d">restricted</span></div></div></div>
+<div style="display:flex;gap:11px;padding:9px 0"><span style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;width:62px">12 Jul</span><div style="flex:1"><div style="font:450 12.5px/1.45 'IBM Plex Sans'">Marketing consent withdrawn</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d">Ahmad · member app</div></div></div>
+</div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d;margin-top:11px">PARTS · pattern 02 · PersonRow ×4 · TimelineItem ×4 · MoneyValue(owed, restricted) · StatusBadge · ConsentBlock reference · Tabs · Default density</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 3 · FRONT DESK · TOUCH · ARABIC RTL</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">الاستقبال · 07:50 rush</h2>
+<p style="font:400 13.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:9px 0 0">Sized from the Arabic string. Note the widths: every label container here is wider than its English twin, and the layout was built that way rather than translated into a fixed English shell.</p>
+<div dir="rtl" style="margin-top:18px;border:1px solid rgba(23,23,26,.18);border-radius:6px;background:#fffefb;overflow:hidden;max-width:660px">
+<div style="display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid rgba(23,23,26,.12);align-items:center;background:#faf8f4;flex-wrap:wrap">
+<span style="font:600 15px/1.5 'IBM Plex Sans Arabic'">نادي خلدا</span>
+<span style="font:400 13px/1.6 'IBM Plex Sans Arabic';color:#57544d">الاستقبال</span>
+<div style="flex:1"></div>
+<span style="font:400 13px/1.6 'IBM Plex Sans Arabic';color:#57544d;unicode-bidi:isolate">٠٧:٥٠</span>
+</div>
+<div style="padding:14px 16px;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="border:1px solid #1b4079;border-radius:6px;box-shadow:0 0 0 1px #1b4079;padding:14px 14px;display:flex;gap:11px;align-items:center">
+<span style="font:400 13px/1.6 'IBM Plex Sans Arabic';color:#57544d">امسح البطاقة أو ابحث بالاسم أو الرقم</span>
+<div style="flex:1"></div>
+<span style="font:500 13px/1.6 'IBM Plex Sans Arabic';color:#1b4079">جاهز</span>
+</div>
+<div style="font:400 12.5px/1.75 'IBM Plex Sans Arabic';color:#57544d;margin-top:7px">يعود المؤشر إلى هذا الحقل بعد كل عملية.</div>
+</div>
+<div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+<div style="border:2px solid #2f5d3a;border-radius:6px;padding:13px 14px;display:flex;gap:12px;align-items:center">
+<span style="width:38px;height:38px;border-radius:50%;background:#dcd7cf"></span>
+<div style="flex:1"><div style="font:600 17px/1.5 'IBM Plex Sans Arabic'">دانا قاسم</div><div style="font:400 13px/1.7 'IBM Plex Sans Arabic';color:#2f5d3a;margin-top:2px">تم الدخول · عضوية كلب · الزيارة ١٨ هذا الشهر</div></div>
+</div>
+<div style="border:2px solid #8a5a1f;border-radius:6px;padding:13px 14px;display:flex;gap:12px;align-items:center">
+<span style="width:38px;height:38px;border-radius:50%;background:#dcd7cf"></span>
+<div style="flex:1"><div style="font:600 17px/1.5 'IBM Plex Sans Arabic'">أحمد النابلسي</div><div style="font:400 13px/1.7 'IBM Plex Sans Arabic';color:#8a5a1f;margin-top:2px">تم الدخول · عليه <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono';font-weight:500">JOD 55.00</span> متأخرة — أخبره ولا تمنعه</div></div>
+</div>
+<div style="border:2px solid #8a3b1f;border-radius:6px;padding:13px 14px;display:flex;gap:12px;align-items:flex-start">
+<span style="width:38px;height:38px;border-radius:50%;background:#dcd7cf"></span>
+<div style="flex:1"><div style="font:600 17px/1.5 'IBM Plex Sans Arabic'">عمر زيد</div><div style="font:400 13px/1.7 'IBM Plex Sans Arabic';color:#8a3b1f;margin-top:2px">انتهت العضوية قبل ٣ أيام · اعرض التجديد على الاستقبال</div>
+<div style="display:flex;gap:9px;margin-top:11px;flex-wrap:wrap"><span style="font:500 14px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:13px 16px;border-radius:6px">جدّد الآن</span><span style="font:500 14px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:12px 15px;border-radius:6px">أدخله كزيارة واحدة</span></div>
+</div>
+</div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d;margin-top:11px">PARTS · pattern 03 · CheckInResult ×3 · Button(lg) · bidi-isolated money · Arabic type rules (+0.15 LH, 13px floor, weight +1 step, no tracking) · Touch density</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 4 · COACH TODAY · TOUCH · LTR · 390PX</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">Yousef between clients</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;align-items:flex-start">
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:10px;background:#fffefb;overflow:hidden;width:372px">
+<div style="padding:14px 16px;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="font:500 22px/1.2 'IBM Plex Sans';letter-spacing:-.016em">4 sessions today</div>
+<div style="font:400 13px/1.55 'IBM Plex Sans';color:#57544d;margin-top:3px">Next: Dana at 09:00 · in 22 minutes</div>
+</div>
+<div style="padding:12px 16px;border-bottom:1px solid rgba(23,23,26,.07);display:flex;gap:11px;align-items:center">
+<span style="width:34px;height:34px;border-radius:50%;background:#dcd7cf"></span>
+<div style="flex:1"><div style="font:500 15px/1.3 'IBM Plex Sans'">Dana Qasem</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d">09:00 · Lower body · week 6 of 12</div></div>
+<span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 14px;border-radius:6px">Start</span>
+</div>
+<div style="padding:12px 16px;border-bottom:1px solid rgba(23,23,26,.07);display:flex;gap:11px;align-items:center">
+<span style="width:34px;height:34px;border-radius:50%;background:#ece9e3"></span>
+<div style="flex:1"><div style="font:500 15px/1.3 'IBM Plex Sans'">Ahmad Nabulsi</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d">11:00 · Upper body</div></div>
+</div>
+<div style="padding:13px 16px;border-bottom:1px solid rgba(23,23,26,.1);background:#faf8f4">
+<div style="font:500 11px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.06em">NEEDS YOU · 2</div>
+<div style="display:flex;gap:11px;align-items:flex-start;margin-top:9px"><span style="width:3px;align-self:stretch;background:#8a5a1f"></span><div style="flex:1"><div style="font:500 14.5px/1.35 'IBM Plex Sans'">Lina has not logged in 9 days</div><div style="font:400 12.5px/1.55 'IBM Plex Sans';color:#4a4842;margin-top:3px">She logged every day for five weeks before that. Worth one message.</div><div style="display:flex;gap:8px;margin-top:10px"><span style="font:500 13px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:13px 14px;border-radius:6px">Message Lina</span><span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:12px 13px;border-radius:6px">Open</span></div></div></div>
+</div>
+<div style="display:flex;padding:9px 0;border-top:1px solid rgba(23,23,26,.1)">
+<div style="flex:1;text-align:center;padding:6px 0"><div style="font:500 11.5px/1.4 'IBM Plex Sans';color:#1b4079">Today</div></div>
+<div style="flex:1;text-align:center;padding:6px 0"><div style="font:400 11.5px/1.4 'IBM Plex Sans';color:#57544d">Clients</div></div>
+<div style="flex:1;text-align:center;padding:6px 0"><div style="font:400 11.5px/1.4 'IBM Plex Sans';color:#57544d">Plans</div></div>
+<div style="flex:1;text-align:center;padding:6px 0"><div style="font:400 11.5px/1.4 'IBM Plex Sans';color:#57544d">Messages</div></div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:10px;background:#fffefb;overflow:hidden;width:340px">
+<div style="padding:13px 15px;border-bottom:1px solid rgba(23,23,26,.1)"><div style="font:500 17px/1.25 'IBM Plex Sans'">Barbell squat</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Set 3 of 4 · last week 82.5 kg</div></div>
+<div style="padding:13px 15px">
+<div style="display:flex;gap:10px;align-items:center"><span style="font:500 19px/1.2 'IBM Plex Mono';flex:1">85.0 kg × 8</span></div>
+<div style="display:flex;gap:8px;margin-top:11px"><span style="flex:1;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 12px;border-radius:6px;text-align:center">Log set 3</span><span style="width:48px;font:500 15px/1 'IBM Plex Mono';border:1px solid rgba(23,23,26,.28);padding:15px 0;border-radius:6px;text-align:center">−</span><span style="width:48px;font:500 15px/1 'IBM Plex Mono';border:1px solid rgba(23,23,26,.28);padding:15px 0;border-radius:6px;text-align:center">＋</span></div>
+<div style="font:400 12px/1.55 'IBM Plex Sans';color:#57544d;margin-top:8px">Saved on this phone · 3 sets waiting to sync</div>
+</div>
+<div style="padding:11px 15px;display:flex;gap:9px;align-items:center;background:#17171a"><span style="font:500 19px/1.2 'IBM Plex Mono';color:#fffefb">1:28</span><span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#c9c3b8;flex:1">rest · set 4 next</span><span style="font:500 12px/1 'IBM Plex Sans';color:#fffefb;border:1px solid rgba(255,255,255,.3);padding:9px 11px;border-radius:6px">Skip</span></div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d;margin-top:11px">PARTS · pattern 01 (Today as attention queue) · pattern 06 · PersonRow ×2 · AttentionRow · SetLogger · offline pending state · bottom nav ×4 · Touch density</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 5 · MEMBER HOME · SPACIOUS · ARABIC RTL · 390PX</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">ماذا أفعل الآن؟</h2>
+<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;align-items:flex-start">
+<div dir="rtl" style="border:1px solid rgba(23,23,26,.18);border-radius:10px;background:#fffefb;overflow:hidden;width:372px">
+<div style="padding:20px 20px 16px">
+<div style="font:400 13px/1.7 'IBM Plex Sans Arabic';color:#57544d">صباح الخير، دانا</div>
+<div style="font:600 27px/1.35 'IBM Plex Sans Arabic';margin-top:5px">تمرين الجسم السفلي</div>
+<div style="font:400 14px/1.8 'IBM Plex Sans Arabic';color:#3d3b36;margin-top:6px">مع يوسف الساعة <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono';font-weight:500">٠٩:٠٠</span> · ٤٥ دقيقة · ٦ تمارين</div>
+<div style="margin-top:16px"><span style="display:block;font:600 16px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:17px 18px;border-radius:6px;text-align:center">ابدأ التمرين</span></div>
+</div>
+<div style="padding:16px 20px;border-top:1px solid rgba(23,23,26,.1)">
+<div style="font:500 12px/1.6 'IBM Plex Sans Arabic';color:#57544d;letter-spacing:0">الغداء · <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono'">١٣:٠٠</span></div>
+<div style="font:600 19px/1.45 'IBM Plex Sans Arabic';margin-top:4px">منسف دجاج</div>
+<div style="display:flex;gap:16px;margin-top:11px">
+<div><div style="font:500 16px/1.2 'IBM Plex Sans Arabic'">٦١٢</div><div style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">سعرة</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Sans Arabic'">٤٨غ</div><div style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">بروتين</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Sans Arabic'">٥٤غ</div><div style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">كربوهيدرات</div></div>
+<div><div style="font:500 16px/1.2 'IBM Plex Sans Arabic'">٢٢غ</div><div style="font:400 12px/1.6 'IBM Plex Sans Arabic';color:#57544d;margin-top:2px">دهون</div></div>
+</div>
+<div style="display:flex;gap:9px;margin-top:13px"><span style="flex:1;font:600 15px/1.5 'IBM Plex Sans Arabic';background:#1b4079;color:#fffefb;padding:15px 14px;border-radius:6px;text-align:center">أكلت هذا</span><span style="font:500 15px/1.5 'IBM Plex Sans Arabic';border:1px solid rgba(23,23,26,.28);padding:14px 16px;border-radius:6px">بدّل</span></div>
+</div>
+<div style="padding:14px 20px;border-top:1px solid rgba(23,23,26,.1)">
+<div style="font:400 13.5px/1.8 'IBM Plex Sans Arabic';color:#3d3b36">عضويتك سارية حتى <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono';font-weight:500">٢٤ أيلول</span> · المحفظة <span style="unicode-bidi:isolate;font-family:'IBM Plex Mono';font-weight:500">JOD 12.50</span></div>
+</div>
+<div style="display:flex;padding:10px 0;border-top:1px solid rgba(23,23,26,.1)">
+<div style="flex:1;text-align:center;padding:7px 0"><div style="font:600 12.5px/1.6 'IBM Plex Sans Arabic';color:#1b4079">الرئيسية</div></div>
+<div style="flex:1;text-align:center;padding:7px 0"><div style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">التمرين</div></div>
+<div style="flex:1;text-align:center;padding:7px 0"><div style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">التغذية</div></div>
+<div style="flex:1;text-align:center;padding:7px 0"><div style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">الحصص</div></div>
+<div style="flex:1;text-align:center;padding:7px 0"><div style="font:400 12.5px/1.6 'IBM Plex Sans Arabic';color:#57544d">حسابي</div></div>
+</div>
+</div>
+<div style="flex:1 1 280px;min-width:270px;border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">WHAT THIS SCREEN PROVES</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">One question answered — “what now” — with exactly two actions above the fold and everything operational removed. No plan name, no adherence percentage, no membership admin. <b>Spacious density plus type.display in Arabic at weight 600</b>, which is the “+1 weight step” rule doing its job: at 500 the heading looked thinner than its Latin twin.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:14px 0"></div>
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">EVERY MIXED RUN ISOLATED</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Times, the September date, JOD amounts and macro units are each bidi-isolated. Without it <span style="font:400 12px 'IBM Plex Mono'">JOD 12.50</span> renders as <span style="font:400 12px 'IBM Plex Mono'">12.50 JOD</span> on the wrong side of its label — a money-ambiguity defect in a member's own wallet.</div>
+<div style="height:1px;background:rgba(0,0,0,.1);margin:14px 0"></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d">PARTS · MealCard · MembershipCard(summary) · Button(lg) · bottom nav ×5 · Arabic type rules · Spacious density</div>
+</div>
+</div>
+</section>
+
+<section style="padding:40px 54px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">SCREEN 6 · POS CHECKOUT WITH A PROVIDER OUTAGE · TOUCH · LTR</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">The screen that proves the error system</h2>
+<p style="font:400 13.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:74ch;margin:9px 0 0">Chosen deliberately: a happy-path POS screen proves nothing. This one composes an outage banner, a degraded payment method, a queued state and a still-completable sale — all from existing parts.</p>
+<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;align-items:flex-start">
+<div style="border:1px solid rgba(23,23,26,.18);border-radius:6px;background:#fffefb;overflow:hidden;width:396px">
+<div style="display:flex;gap:9px;padding:11px 14px;border-bottom:1px solid rgba(23,23,26,.1);align-items:flex-start;background:#faf8f4">
+<span style="width:3px;align-self:stretch;background:#8a3b1f"></span>
+<div style="flex:1"><div style="font:500 13.5px/1.35 'IBM Plex Sans'">Card payments are down</div><div style="font:400 12px/1.6 'IBM Plex Sans';color:#4a4842;margin-top:3px">The provider has been unreachable since 09:14. Cash, CliQ and wallet still work. Card orders are queued, not lost.</div></div>
+</div>
+<div style="padding:11px 14px;border-bottom:1px solid rgba(23,23,26,.1);display:flex;gap:10px;align-items:center"><span style="width:30px;height:30px;border-radius:50%;background:#ece9e3"></span><div style="flex:1"><div style="font:500 14px/1.3 'IBM Plex Sans'">Dana Qasem</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#57544d">Club · wallet JOD 12.50</div></div></div>
+<div style="display:flex;gap:10px;padding:11px 14px;align-items:center;border-bottom:1px solid rgba(23,23,26,.07)"><div style="flex:1"><div style="font:450 14px/1.3 'IBM Plex Sans'">Protein bar</div><div style="font:400 11.5px/1.4 'IBM Plex Mono';color:#57544d">×2 · JOD 1.75 each</div></div><span style="font:500 14px/1.2 'IBM Plex Mono'">3.50</span></div>
+<div style="padding:12px 14px;border-bottom:1px solid rgba(23,23,26,.1)">
+<div style="display:flex;gap:10px;align-items:baseline"><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Subtotal</span><span style="font:400 12.5px/1.2 'IBM Plex Mono';color:#57544d">3.50</span></div>
+<div style="display:flex;gap:10px;align-items:baseline;margin-top:4px"><span style="font:400 12px/1.4 'IBM Plex Sans';color:#57544d;flex:1">Sales tax 16%</span><span style="font:400 12.5px/1.2 'IBM Plex Mono';color:#57544d">0.56</span></div>
+<div style="display:flex;gap:10px;align-items:baseline;margin-top:7px"><span style="font:500 15px/1.3 'IBM Plex Sans';flex:1">Total</span><span style="font:500 19px/1.2 'IBM Plex Mono'">JOD 4.06</span></div>
+</div>
+<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:8px">
+<span style="flex:1;font:500 14px/1 'IBM Plex Sans';background:#e0dcd4;color:#85807a;padding:15px 12px;border-radius:6px;text-align:center">Card</span>
+<span style="flex:1;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 12px;border-radius:6px;text-align:center">Cash</span>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#8a5a1f">Card is unavailable while the provider is down. It will re-enable automatically.</div>
+<div style="display:flex;gap:8px"><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;text-align:center">CliQ</span><span style="flex:1;font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 12px;border-radius:6px;text-align:center">Wallet 12.50</span></div>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">FIVE RULES VISIBLE AT ONCE</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>1</b> The banner answers all four error questions — what, what is affected, is it safe, what now.<br><b>2</b> Card is <i>disabled with its condition stated</i>, the legitimate use of disabled from §57.<br><b>3</b> The sale still completes. An outage in one method never blocks trading.<br><b>4</b> Tax stays a visible line even at JOD 4.06.<br><b>5</b> Nothing here is new — banner, cart, MoneyValue, Button states, all from the library.</div>
+</div>
+<div style="border:1px solid #8a5a1f;border-radius:6px;background:#fffefb;padding:16px 18px;margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.08em">TWO GAPS THIS SCREEN EXPOSED</div>
+<div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>DS-P2-1 · a queued-order tray.</b> The banner says card orders are queued, but no component shows the queue or lets staff reconcile it when the provider returns. Composable from DataGrid plus TaskRow — but it is not specified, so it is logged rather than assumed.<br><br><b>DS-P2-2 · degraded-method precedence.</b> When one method is down, which becomes the default primary? Cash here, but the rule is not written. A tenant with no cash drawer needs a different answer.</div>
+<div style="font:400 12px/1.6 'IBM Plex Sans';color:#57544d;margin-top:9px">Both are P2 — real gaps, neither blocking hi-fi. Recording them is the point of building validation screens instead of swatch sheets.</div>
+</div>
+</div>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Mono';color:#57544d;margin-top:11px">PARTS · pattern 03 · pattern 04 · POS cart · Banner(global, critical) · Button(disabled with reason) · MoneyValue · integration-state copy · Touch density</div>
+</section>
+
+<section style="padding:40px 54px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">RESULT</div>
+<h2 style="font:500 22px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">What the six screens established</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:16px;margin-top:16px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;letter-spacing:.08em">PASSED</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Zero new colours, spacing values, radii or type sizes. Zero new components. All four densities exercised, both directions rendered, and the two hardest cases — an Arabic touch surface and a degraded-service checkout — composed without special-casing.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a5a1f;letter-spacing:.08em">GAPS FOUND · BOTH P2</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">DS-P2-1 queued-order tray · DS-P2-2 degraded-method precedence. Both surfaced only because screen 6 was chosen to be a failure case. A happy-path POS screen would have passed and taught nothing.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:16px 18px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.08em">STILL UNPROVEN</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px">Screen-reader behaviour, real Dynamic Type at XXL, an actual 100k-member grid, and a genuine offline-to-online sync. These are build-time validations. Naming them keeps the verdict honest — VALIDATE-1 stands.</div></div>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:900}}"></script>
+</body>
+</html>

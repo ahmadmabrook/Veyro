@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 110px">
+
+<header style="padding:60px 44px 32px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH B &amp; C · FRONT DESK + POS · COACH</div>
+<h1 style="font:500 34px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Thirty screens across two surfaces</h1>
+<p style="font:400 15px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:15px 0 0;text-wrap:pretty">Four drawn: the card terminal state machine, split payment, the coach programme builder, and the client profile. Everything else specified against them. These four were drawn because each introduces a shape that exists nowhere else in the product.</p>
+</header>
+
+<section style="padding:34px 44px 36px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">POS-02 · CARD TERMINAL · SIX STATES · TOUCH</div>
+<h2 style="font:500 20px/1.2 'IBM Plex Sans';margin:8px 0 0;letter-spacing:-.015em">The forty seconds a receptionist cannot explain away</h2>
+<p style="font:400 13.5px/1.6 'IBM Plex Sans';color:#4a4842;max-width:80ch;margin:9px 0 16px">A card payment has a state machine, and a member is watching it. Every state names what is happening and what the staff member should say or do — including the two states where the honest answer is "wait".</p>
+<div style="display:flex;flex-wrap:wrap;gap:14px">
+<sc-for list="{{ terminal }}" as="t" hint-placeholder-count="6">
+<div style="flex:1 1 300px;min-width:290px;border:1px solid {{ t.border }};border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:8px 14px;background:{{ t.headBg }};font:500 9.5px/1.4 'IBM Plex Mono';color:{{ t.headFg }};letter-spacing:.07em">{{ t.label }}</div>
+<div style="padding:15px 16px">
+<div style="font:500 17px/1.3 'IBM Plex Sans'">{{ t.title }}</div>
+<div style="font:500 22px/1.15 'IBM Plex Mono';margin-top:9px;color:{{ t.amountColor }}">{{ t.amount }}</div>
+<div style="font:400 13px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:9px">{{ t.body }}</div>
+<div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
+<sc-if value="{{ t.primary }}" hint-placeholder-val="{{ true }}"><span style="font:500 13px/1 'IBM Plex Sans';background:{{ t.primaryBg }};color:#fffefb;padding:14px 16px;border-radius:6px">{{ t.primary }}</span></sc-if>
+<sc-if value="{{ t.secondary }}" hint-placeholder-val="{{ true }}"><span style="font:500 13px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:13px 15px;border-radius:6px">{{ t.secondary }}</span></sc-if>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px;padding-top:10px;border-top:1px solid rgba(23,23,26,.08)">{{ t.note }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding:34px 44px 36px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">POS-03 · SPLIT PAYMENT · CCH-05 · CLIENT PROFILE</div>
+<h2 style="font:500 20px/1.2 'IBM Plex Sans';margin:8px 0 16px;letter-spacing:-.015em">Two screens with no precedent elsewhere</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 380px;min-width:360px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">POS-03 · SPLIT PAYMENT · MID-FLOW</div>
+<div style="padding:16px 18px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:500 15px/1.4 'IBM Plex Sans'">Total due</span><span style="font:500 22px/1.15 'IBM Plex Mono'">JOD 60.72</span></div>
+<div style="display:flex;flex-direction:column;gap:2px;margin-top:14px">
+<div style="display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(23,23,26,.07)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:52px">TAKEN</span><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Wallet</span><span style="font:500 13px/1.2 'IBM Plex Mono'">12.50</span></div>
+<div style="display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(23,23,26,.07)"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#2f5d3a;width:52px">TAKEN</span><span style="font:450 13.5px/1.4 'IBM Plex Sans';flex:1">Cash</span><span style="font:500 13px/1.2 'IBM Plex Mono'">20.00</span></div>
+<div style="display:flex;gap:10px;align-items:center;padding:13px 0;background:#e8edf6;margin:0 -18px;padding-left:18px;padding-right:18px;border-inline-start:2px solid #1b4079"><span style="font:500 10px/1.4 'IBM Plex Mono';color:#1b4079;width:52px">NOW</span><span style="font:500 14px/1.4 'IBM Plex Sans';flex:1">Card</span><span style="font:500 17px/1.15 'IBM Plex Mono'">28.22</span></div>
+</div>
+<div style="margin-top:16px;padding:13px 14px;background:#faf8f4;border-radius:4px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:500 13.5px/1.4 'IBM Plex Sans'">Still to collect</span><span style="font:500 19px/1.15 'IBM Plex Mono';color:#8a5a1f">JOD 28.22</span></div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:7px">The running remainder is always the largest number on screen after the total. A split that ends 50 fils short is the most common cash-drawer discrepancy there is.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+<span style="font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px 17px;border-radius:6px">Charge card 28.22</span>
+<span style="font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 16px;border-radius:6px">Change method</span>
+</div>
+<div style="font:400 11.5px/1.6 'IBM Plex Sans';color:#57544d;margin-top:11px"><b>Nothing settles until the split completes.</b> Wallet and cash are held, not taken — abandoning the sale releases both and the receipt is never issued. Partial capture is the one thing a split-payment screen must never do.</div>
+</div>
+</div>
+
+<div style="flex:1 1 380px;min-width:360px;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="padding:8px 16px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CCH-05 · CLIENT PROFILE · 390 WIDE</div>
+<div style="padding:16px 18px 18px">
+<div style="display:flex;gap:12px;align-items:center">
+<span style="width:48px;height:48px;border-radius:50%;background:#dcd7cf;flex-shrink:0"></span>
+<div style="flex:1"><div style="font:500 19px/1.25 'IBM Plex Sans';letter-spacing:-.014em">Ahmad Nabulsi</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">Week 8 of 12 · 4 credits left</div></div>
+</div>
+<div style="border:1px solid #8a5a1f;border-radius:6px;margin-top:14px;overflow:hidden">
+<div style="display:flex"><span style="width:3px;background:#8a5a1f;flex-shrink:0"></span>
+<div style="flex:1;padding:12px 13px"><div style="font:500 14px/1.35 'IBM Plex Sans'">19 days since he trained</div><div style="font:400 12.5px/1.6 'IBM Plex Sans';color:#3d3b36;margin-top:3px">Was coming 3× a week. No message, no cancellation — he just stopped. Session today at 09:45.</div></div>
+</div>
+</div>
+<div style="display:flex;gap:0;margin-top:16px;border-bottom:1px solid rgba(23,23,26,.1)">
+<span style="font:500 12.5px/1.4 'IBM Plex Sans';color:#1b4079;padding:0 0 9px;border-bottom:1.5px solid #1b4079;margin-inline-end:18px">Training</span>
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#57544d;padding:0 0 9px;margin-inline-end:18px">Nutrition</span>
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#57544d;padding:0 0 9px;margin-inline-end:18px">Progress</span>
+<span style="font:400 12.5px/1.4 'IBM Plex Sans';color:#57544d;padding:0 0 9px">Notes</span>
+</div>
+<div style="margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">CURRENT PROGRAMME</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;padding:12px 13px;margin-top:8px">
+<div style="font:450 14.5px/1.4 'IBM Plex Sans'">Lower-body strength · 12 weeks</div>
+<div style="display:flex;gap:3px;margin-top:9px">
+<sc-for list="{{ weeks }}" as="w" hint-placeholder-count="12"><span style="flex:1;height:6px;border-radius:1px;background:{{ w.c }}"></span></sc-for>
+</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:7px">8 done · 1 missed · 3 remaining</div>
+</div>
+</div>
+<div style="margin-top:14px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">LAST SESSION · 31 JULY</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;padding:12px 13px;margin-top:8px">
+<div style="font:400 12.5px/1.7 'IBM Plex Sans';color:#3d3b36">Squat <span style="font-family:'IBM Plex Mono';font-weight:500">82.5 × 5</span> · RDL <span style="font-family:'IBM Plex Mono';font-weight:500">100 × 8</span> · leg press <span style="font-family:'IBM Plex Mono';font-weight:500">180 × 10</span></div>
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#57544d;margin-top:7px;padding-top:7px;border-top:1px solid rgba(23,23,26,.08)">"Knee felt tight on the second set. Watch it next time."</div>
+</div>
+</div>
+<div style="margin-top:14px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:500 11.5px/1.4 'IBM Plex Sans'">Limitations</div>
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:4px">Left knee — previous meniscus surgery, 2019. No deep loaded flexion. <span style="color:#57544d">Recorded at intake.</span></div>
+</div>
+<span style="display:block;font:500 15px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:16px;border-radius:6px;margin-top:16px;text-align:center">Start today's session</span>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:34px 44px 36px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">CCH-08 · PROGRAMME BUILDER · THE BIGGEST HOLE IN COACH</div>
+<h2 style="font:500 20px/1.2 'IBM Plex Sans';margin:8px 0 16px;letter-spacing:-.015em">Twelve weeks, built on a phone between clients</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+<div style="width:390px;flex-shrink:0;border:1px solid rgba(23,23,26,.24);border-radius:16px;background:#fffefb;overflow:hidden;box-shadow:0 4px 12px -2px rgba(23,23,26,.14)">
+<div style="height:34px;display:flex;align-items:center;padding:0 20px;justify-content:space-between"><span style="font:500 11px/1 'IBM Plex Mono'">11:14</span><span style="font:400 10px/1 'IBM Plex Mono';color:#57544d">▮▮▮</span></div>
+<div style="padding:6px 18px 18px">
+<div style="display:flex;gap:10px;align-items:center">
+<div style="flex:1"><div style="font:500 20px/1.2 'IBM Plex Sans';letter-spacing:-.014em">Lower-body strength</div><div style="font:400 12.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">12 weeks · 3 days · for Ahmad</div></div>
+<span style="font:450 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.24);padding:11px 12px;border-radius:6px">Save</span>
+</div>
+<div style="border:1px solid #4a3d7a;border-radius:6px;margin-top:14px;overflow:hidden">
+<div style="padding:8px 13px;background:#edebf6;display:flex;gap:7px;align-items:center"><span style="font:400 10.5px/1 'IBM Plex Mono';color:#4a3d7a">✦</span><span style="font:500 10px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.06em">STARTED FROM A TEMPLATE, ADJUSTED FOR HIM</span></div>
+<div style="padding:11px 13px;font:400 12.5px/1.7 'IBM Plex Sans';color:#2c2a26">Deep squats removed and replaced with box squats — his intake records a 2019 meniscus repair with no deep loaded flexion.</div>
+</div>
+<div style="display:flex;gap:6px;margin-top:14px;flex-wrap:wrap">
+<span style="font:500 11.5px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:9px 11px;border-radius:6px">Wk 1–4</span>
+<span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">5–8</span>
+<span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">9–12</span>
+</div>
+<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+<span style="font:500 11.5px/1 'IBM Plex Sans';background:#e8edf6;color:#1b4079;padding:9px 11px;border-radius:6px">Day A</span>
+<span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Day B</span>
+<span style="font:400 11.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.2);padding:8px 10px;border-radius:6px">Day C</span>
+</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:6px;margin-top:12px;overflow:hidden">
+<sc-for list="{{ exercises }}" as="e" hint-placeholder-count="5">
+<div style="padding:12px 13px;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:10px;align-items:center">
+<span style="font:400 11px/1.4 'IBM Plex Mono';color:#85807a;width:14px">⣿</span>
+<div style="flex:1;min-width:0"><div style="font:450 14px/1.4 'IBM Plex Sans'">{{ e.name }}</div><div style="font:400 11.5px/1.5 'IBM Plex Mono';color:#57544d;margin-top:2px">{{ e.scheme }}</div></div>
+<sc-if value="{{ e.flag }}" hint-placeholder-val="{{ true }}"><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 5px;border-radius:3px">{{ e.flag }}</span></sc-if>
+</div>
+</sc-for>
+<div style="padding:12px 13px;font:500 13px/1.4 'IBM Plex Sans';color:#1b4079">＋ Add exercise</div>
+</div>
+<div style="margin-top:13px;padding:11px 12px;background:#faf8f4;border-radius:4px">
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Progression:</b> +2.5kg on the main lift each week if all sets complete. Applied automatically to weeks 5–12 — editable per week.</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:14px">
+<span style="flex:1;font:500 14px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:15px;border-radius:6px;text-align:center">Assign to Ahmad</span>
+<span style="font:500 14px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:14px 15px;border-radius:6px">Preview</span>
+</div>
+</div>
+</div>
+<div style="flex:1 1 320px;min-width:300px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:15px 17px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHY THIS FITS ON A PHONE</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">A twelve-week programme is 36 sessions and roughly 180 exercise entries. It fits because <b>the coach never enters 180 things</b>: a template supplies the structure, week blocks share a day pattern, and progression is a rule rather than 12 hand-typed weights. The screen edits a pattern, not a spreadsheet.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:15px 17px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">THE LIMITATION IS ENFORCED, NOT DISPLAYED</div><div style="font:400 12.5px/1.65 'IBM Plex Sans';color:#4a4842;margin-top:8px">Adding an exercise that conflicts with a recorded limitation flags at the point of adding, with the reason and the intake date. It does not block — a coach may have a reason — but it cannot be silent. <b>Veyro defines no clinical rule here</b>; it surfaces what a qualified person recorded.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:15px 17px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">STATES · CCH-08</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:8px"><b>Blank</b> offers templates first and an empty programme second. <b>Unsaved</b> autosaves every change with a quiet timestamp; there is no Save-or-lose modal. <b>Assigned</b> locks structural edits and offers "adjust from here" so a mid-programme change does not rewrite completed weeks. <b>Conflict</b> when two coaches edit the same shared template.</div></div>
+</div>
+</div>
+</section>
+
+<section style="padding:34px 44px 44px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">REMAINING FRONT DESK, POS AND COACH V1</div>
+<h2 style="font:500 20px/1.2 'IBM Plex Sans';margin:8px 0 16px;letter-spacing:-.015em">Twenty-six screens, specified</h2>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;overflow-x:auto">
+<div style="min-width:1080px;display:grid;grid-template-columns:96px minmax(0,1fr) 124px minmax(0,1.6fr);gap:13px;padding:10px 16px;background:#f4f2ee;font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SCREEN ID</div><div>SCREEN</div><div>PARENT SHAPE</div><div>WHAT DIFFERS · STATES · PERMISSIONS</div></div>
+<sc-for list="{{ specs }}" as="s" hint-placeholder-count="26">
+<div style="min-width:1080px;display:grid;grid-template-columns:96px minmax(0,1fr) 124px minmax(0,1.6fr);gap:13px;padding:10px 16px;border-top:1px solid rgba(0,0,0,.06);align-items:start">
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#17171a">{{ s.id }}</div>
+<div style="font:450 12px/1.45 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:400 10.5px/1.45 'IBM Plex Mono';color:#57544d">{{ s.parent }}</div>
+<div style="font:400 11.5px/1.55 'IBM Plex Sans';color:#4a4842">{{ s.diff }}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const TERMINAL = [
+  ['WAITING FOR THE CARD','#1b4079','#e8edf6','#1b4079','rgba(23,23,26,.2)','Present card','JOD 60.72','#17171a','Terminal is ready. Tap, insert or swipe.','','Cancel','No timeout shown to the member — a countdown makes people fumble. Staff can cancel at any point.'],
+  ['PROCESSING','#57544d','#f4f2ee','#57544d','rgba(23,23,26,.2)','Authorising','JOD 60.72','#17171a','Do not remove the card. This usually takes about five seconds.','','','No cancel here — an interrupted authorisation is the one state that produces a double charge. The button is absent, not disabled.'],
+  ['APPROVED','#2f5d3a','#2f5d3a','#fffefb','#2f5d3a','Print receipt','JOD 60.72','#2f5d3a','Paid by card ···4417. Receipt sent by WhatsApp, e-invoice submitted.','Print receipt','Next sale','Focus returns to the scan field immediately. The panel clears itself on the next scan — nothing to dismiss.'],
+  ['DECLINED','#8a3b1f','#8a3b1f','#fffefb','#8a3b1f','Try another card','JOD 60.72','#8a3b1f','The bank declined this card. Nothing has been charged. Ask for another card, or take cash.','Try another card','Take cash instead','Names what happened and confirms no money moved — the member is standing there and will ask. Never shows a bank error code.'],
+  ['TERMINAL UNREACHABLE','#8a5a1f','#8a5a1f','#fffefb','#8a5a1f','Queue this payment','JOD 60.72','#8a5a1f','The card reader is not responding. Cash and CliQ still work normally.','Queue this payment','Take cash instead','Queuing records the sale as PAYMENT PENDING, prints a receipt saying so, and submits when the terminal returns. It never says paid.'],
+  ['QUEUED · OFFLINE','#8a5a1f','#f4f2ee','#8a5a1f','rgba(138,90,31,.5)','','JOD 60.72','#8a5a1f','Payment pending. 3 sales are waiting to submit — the oldest is 14 minutes old.','View the queue','','A queued sale is visible to every till and to the Command Center. If it fails on submission it becomes an attention item naming the member, not a silent loss.']
+];
+
+const WEEKS = ['#2f5d3a','#2f5d3a','#2f5d3a','#2f5d3a','#2f5d3a','#8a5a1f','#2f5d3a','#2f5d3a','#ece9e3','#ece9e3','#ece9e3','#ece9e3'];
+
+const EXERCISES = [
+  ['Box squat','4 × 6 · from 60kg','SUBSTITUTED'],
+  ['Romanian deadlift','3 × 8 · from 90kg',''],
+  ['Leg press','3 × 10 · from 160kg',''],
+  ['Walking lunge','3 × 12 each · bodyweight',''],
+  ['Calf raise','4 × 15 · from 40kg','']
+];
+
+const SPECS = [
+  ['FD-02','Member lookup','Front desk','Search by name, phone or partial. Results show photo, plan, club and state so the receptionist confirms identity visually before acting. Ambiguous matches list side by side rather than guessing. No-match offers guest entry or lead capture.'],
+  ['FD-03','Access denial resolution','Check-in row','The denied member with the reason in plain words, what the desk may do about it, and whether the current user has override authority. Overrides record who, why and when, and appear in ADM-ACC-02. Without authority the screen names who to call.'],
+  ['FD-04','Guest and day pass','Sale sheet','Name, phone, waiver acceptance, payment, temporary credential issued to the turnstile. Waiver text is versioned and the accepted version is stored. Under-18 requires a guardian field.'],
+  ['FD-05','Walk-in trial signup','Add lead','Two fields and a start: name and phone. Creates a lead already in trial state with the clock running. Everything else is captured later by the sales team — a person standing at a desk will not complete a form.'],
+  ['FD-06','Class check-in roster','Class roster','Touch density, arrival tick per member, walk-up add if space, waitlist promotion with the member notified. Shows who has not arrived at five minutes past.'],
+  ['FD-07','Shift open and close','Cash reconciliation','Opening float count, closing count, expected from the ledger, variance with a required note above threshold, handover to the next person. Prints or emails the shift report.'],
+  ['FD-08','Scanner and device state','Front desk','Not a screen but a persistent strip: reader connected, printer ready, terminal online. Degraded states name the fallback rather than only the fault. Appears on Front Desk and POS.'],
+  ['POS-04','Membership sale at the desk','Membership sale','ADM-MSH-01 at Touch density inside POS. Terms summary and first billing date shown before payment. Produces the welcome flow: credential issue, app invitation, first class booking prompt.'],
+  ['POS-05','PT package sale','Sale sheet','Package size, assigned coach, expiry, price with any bundle discount. Credits appear on the member record immediately and are visible to the coach.'],
+  ['POS-06','Refund at the desk','Refund sheet','Tier 3 typed amount plus tier 4 manager approval, at Touch density. Method must match the original where the provider requires it, and the screen states when it cannot.'],
+  ['POS-07','Receipt','Standalone','Bilingual, tax fields, JoFotara reference when settled. Print, WhatsApp, email. The WhatsApp send respects service-message rules. Reprintable from the invoice for 12 months.'],
+  ['CCH-04','Client list','Members list','Touch density, sorted by attention rather than alphabet: needs attention, session today, then everyone. Each row carries credits remaining and days since last session.'],
+  ['CCH-06','Session detail · pre-session','Client profile','Today\u2019s plan, last session\u2019s numbers, flags (limitation, long absence, nutrition check-in overdue). The screen a coach reads in the thirty seconds before a client walks in.'],
+  ['CCH-07','Session complete','Sheet','Summary of what was logged, a note field, and one confirm that verifies the session, decrements the credit, updates the member app and offers the next booking. One tap — this is why 31 sessions went unverified in the old flow.'],
+  ['CCH-09','Exercise picker','Sheet','Search, muscle group, equipment available at this club. Shows a substitution suggestion when a recorded limitation conflicts. Recently used first, because coaches reuse the same forty movements.'],
+  ['CCH-10','Workout assignment','Sheet','Which client, which days, notify now or on the day. Assigning to several clients at once is supported and states how many.'],
+  ['CCH-11','Progress and measurements','Client profile tab','Weight trend, measurements, photo comparison, strength PBs. Photos require member consent and show the consent date. Coach cannot export.'],
+  ['CCH-12','Assessment and goals','Sale sheet','Intake form: history, limitations, goals, availability. Limitations recorded here drive the flags in CCH-08 and CCH-09. Medical content is entered by whoever is qualified per market — the field exists, the rule does not.'],
+  ['CCH-13','Nutrition plan editing','Nutrition generation','Per-meal swap, macro adjustment with the day total recomputing live, copy a day across the week. Reassigning after edits notifies the member with what changed.'],
+  ['CCH-14','Nutrition check-in review','Client profile tab','Weekly submission: weight, photos, adherence percentage, member note. Adjust targets inline. Overdue check-ins appear on Today.'],
+  ['CCH-15','Client messaging','WhatsApp thread','Coach-to-client thread with quick replies and media. Response-time expectation set by the coach and shown to the member. Not the same channel as club WhatsApp — a coach message is from the coach.'],
+  ['CCH-16','Coach schedule','Week grid','Touch density week view: PT sessions, classes, availability blocks. Tapping an empty slot opens availability editing; tapping a session opens CCH-06.'],
+  ['CCH-17','Unverified sessions','Client list','The 22, grouped by client and date, with batch verify and per-row dispute. Reached from the Today attention row. Sessions older than 30 days require a manager to verify.'],
+  ['CCH-18','Coach profile and settings','Settings','Availability defaults, notification preferences, language, certifications with expiry. Expiring certifications raise an admin attention item.'],
+  ['CCH-19','Coach sign-in','Standalone','Email plus biometric unlock. On a shared gym device biometric is disabled by policy and the session times out in 15 minutes — a coach app on a shared iPad is a data-exposure risk the design must handle.'],
+  ['FD-09','Front desk offline','Front desk','Whole-surface degraded state: check-in continues from cached membership data, sales queue, and a persistent strip states what is queued. Resolves and reconciles automatically. Added during this batch — it was missing from the registry and is a genuine V1 requirement.']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      terminal: TERMINAL.map(t => ({
+        label: t[0], border: t[4], headBg: t[2], headFg: t[3],
+        title: t[5], amount: t[6], amountColor: t[7], body: t[8],
+        primary: t[9], secondary: t[10], note: t[11],
+        primaryBg: t[1] === '#2f5d3a' ? '#1b4079' : t[1] === '#8a3b1f' ? '#1b4079' : t[1] === '#8a5a1f' ? '#1b4079' : '#1b4079'
+      })),
+      weeks: WEEKS.map(c => ({ c })),
+      exercises: EXERCISES.map(e => ({ name: e[0], scheme: e[1], flag: e[2] })),
+      specs: SPECS.map(s => ({ id: s[0], name: s[1], parent: s[2], diff: s[3] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

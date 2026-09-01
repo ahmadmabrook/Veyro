@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(shasum*)",
+      "Bash(find*)",
+      "Bash(ls*)",
+      "Read"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(*production*)",
+      "Bash(*prod deploy*)",
+      "Bash(*--prod*)"
+    ],
+    "defaultMode": "default"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat <<'EOF'\n{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Veyro MOD-000 control plane active. Before any action: read knowledge/00-System/SESSION_BOOTSTRAP.md, then CURRENT_STATE.md and CURRENT_HANDOFF.md. WIP=1, MOD-000 only until a Module Approval Certificate exists.\"}}\nEOF",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

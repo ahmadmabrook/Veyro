@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#f4f2ee;color:#17171a;font-family:"IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}a{color:#1b4079;text-decoration:none}a:hover{color:#17171a}</style></helmet>
+<main style="max-width:1400px;padding:0 0 100px">
+
+<header style="padding:58px 44px 30px;border-bottom:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">BATCH K · 8 SCREENS DRAWN · ADM-AUT-01 → ADM-AI-01</div>
+<h1 style="font:500 33px/1.12 'IBM Plex Sans';letter-spacing:-.022em;margin:14px 0 0;max-width:26ch">Automations, reports, and the evidence behind a claim</h1>
+<p style="font:400 14.5px/1.62 'IBM Plex Sans';color:#4a4842;max-width:76ch;margin:14px 0 0;text-wrap:pretty">Three automation screens, four reports, and the screen every "evidence ↗" link in the product resolves to. The AI detail screen is the one that matters most: it is where a machine claim becomes auditable or stays a guess.</p>
+</header>
+
+<section style="padding:32px 44px 34px">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-AI-01 · AI INSIGHT DETAIL · THE DESTINATION OF EVERY EVIDENCE LINK</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Why Veyro said PT revenue fell JOD 1,840</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+<div style="flex:1 1 540px;min-width:520px;border:1px solid #4a3d7a;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:10px 17px;background:#edebf6;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+<span style="font:400 11px/1 'IBM Plex Mono';color:#4a3d7a">✦</span>
+<span style="font:500 10px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.07em;flex:1">VEYRO INTERPRETATION · FULL DERIVATION</span>
+<span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#4a3d7a">generated 08:38 · 1.2s</span>
+</div>
+<div style="padding:16px 18px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">THE CLAIM</div>
+<div style="font:450 15px/1.6 'IBM Plex Sans';color:#17171a;margin-top:5px">Khalda's PT revenue is <b>JOD 1,840 below</b> the same point in July, and roughly <b>JOD 1,240</b> of that is recoverable.</div>
+
+<div style="height:1px;background:rgba(23,23,26,.1);margin:14px 0"></div>
+
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHAT WAS READ</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:8px;overflow-x:auto">
+<div style="min-width:480px;display:grid;grid-template-columns:minmax(0,1.1fr) 74px minmax(0,1.3fr);gap:11px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SOURCE</div><div>RECORDS</div><div>WHAT IT CONTRIBUTED</div></div>
+<sc-for list="{{ sources }}" as="s" hint-placeholder-count="4">
+<div style="min-width:480px;display:grid;grid-template-columns:minmax(0,1.1fr) 74px minmax(0,1.3fr);gap:11px;padding:9px 12px;border-bottom:1px solid rgba(23,23,26,.05);align-items:start">
+<div style="font:450 11.5px/1.4 'IBM Plex Sans'">{{ s.name }}</div>
+<div style="font:400 11px/1.4 'IBM Plex Mono';color:#57544d">{{ s.n }}</div>
+<div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#3d3b36">{{ s.what }}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em;margin-top:14px">THE ARITHMETIC</div>
+<div style="margin-top:8px;padding:13px 14px;background:#faf8f4;border-radius:4px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">July 1–19 · PT billed at Khalda</span><span style="font:500 12.5px/1.2 'IBM Plex Mono'">6,420.00</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">August 1–19 · PT billed at Khalda</span><span style="font:500 12.5px/1.2 'IBM Plex Mono'">4,580.00</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px solid rgba(23,23,26,.1)"><span style="font:500 12.5px/1.4 'IBM Plex Sans'">Difference</span><span style="font:500 15px/1.2 'IBM Plex Mono';color:#8a5a1f">−1,840.00</span></div>
+<div style="height:1px;background:rgba(23,23,26,.1);margin:11px 0"></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">Sessions delivered, not verified</span><span style="font:500 12.5px/1.2 'IBM Plex Mono'">31</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px"><span style="font:400 12px/1.5 'IBM Plex Sans';color:#3d3b36">Average billed rate at Khalda</span><span style="font:500 12.5px/1.2 'IBM Plex Mono'">40.00</span></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:8px;border-top:1px solid rgba(23,23,26,.1)"><span style="font:500 12.5px/1.4 'IBM Plex Sans'">Recoverable if all 31 are genuine</span><span style="font:500 15px/1.2 'IBM Plex Mono'">1,240.00</span></div>
+</div>
+
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#4a3d7a;letter-spacing:.07em;margin-top:14px">WHAT VEYRO IS AND IS NOT CONFIDENT ABOUT</div>
+<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#2f5d3a;border:1px solid #2f5d3a;padding:2px 6px;border-radius:3px;flex-shrink:0">CERTAIN</span><span style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;flex:1">The JOD 1,840 gap and the 31 unverified sessions. Both are counted from records, not estimated.</span></div>
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a5a1f;border:1px solid #8a5a1f;padding:2px 6px;border-radius:3px;flex-shrink:0">LIKELY</span><span style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;flex:1">That most of the 31 are genuine. Omar's historical verification rate is 94%, so <b>the 1,240 figure is an upper bound</b>, not an expectation.</span></div>
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a3b1f;border:1px solid #8a3b1f;padding:2px 6px;border-radius:3px;flex-shrink:0">UNCERTAIN</span><span style="font:400 12px/1.6 'IBM Plex Sans';color:#3d3b36;flex:1">That the roster change <i>caused</i> the decline. Omar's remaining nine clients also booked 18% less often, which the roster change does not explain. <b>Veyro cannot separate the two.</b></span></div>
+</div>
+
+<div style="margin-top:14px;padding:12px 13px;border:1px solid #8a3b1f;border-radius:4px">
+<div style="font:500 10px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.06em">WHAT THIS IS NOT</div>
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:5px">Not a forecast, not a confirmed recovery, and not a judgement about Omar's performance. It is a reading of billing records with the reasoning shown. <b>Nothing here has been acted on</b> — the request to verify has not been sent.</div>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+<span style="font:500 12.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:12px 14px;border-radius:6px">Open the 31 sessions</span>
+<span style="font:500 12.5px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:11px 13px;border-radius:6px">Preview the request to Khalda</span>
+<span style="font:450 12px/1 'IBM Plex Sans';color:#57544d;padding:12px 6px">This is wrong</span>
+</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:10px">"This is wrong" records the disagreement against the insight with a reason, and the same reading is not raised again for 30 days. An interpretation a manager cannot contradict is not an interpretation.</div>
+</div>
+</div>
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">WHY THREE CONFIDENCE BANDS AND NOT A PERCENTAGE</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">A number like "82% confident" reads as measured precision about something that is a judgement. Three named bands — counted, likely, cannot separate — say the same thing without borrowing authority the reasoning does not have.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">STATES · ADM-AI-01</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px"><b>Stale inputs</b> withholds the insight entirely rather than reasoning from old figures. <b>Insufficient data</b> says which comparison could not be made. <b>Disputed</b> shows the manager's objection above the claim. <b>Acted on</b> shows what was done, by whom, and what changed afterwards.</div></div>
+<div style="border:1px solid rgba(0,0,0,.12);border-radius:6px;background:#fffefb;padding:14px 16px"><div style="font:500 10px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">PERMISSIONS</div><div style="font:400 12.5px/1.62 'IBM Plex Sans';color:#4a4842;margin-top:7px">Owner and Regional see cross-club derivations. A Club Manager sees their own club's arithmetic. Reception never reaches this screen — an insight nobody can act on is noise. The indigo is <span style="font-family:'IBM Plex Mono'">color.semantic.ai</span> and never inherits a tenant brand.</div></div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1);background:#faf8f4">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-AUT-01 · ADM-AUT-03</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">What runs unattended, and what it did</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 420px;min-width:400px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-AUT-01 · AUTOMATIONS</div>
+<div style="padding:14px 16px">
+<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:190px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">6 running · JOD 8,940 recovered</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">Since 1 January · attributable to automation</div></div><span style="font:500 11.5px/1 'IBM Plex Sans';background:#1b4079;color:#fffefb;padding:9px 11px;border-radius:6px">New rule</span></div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow-x:auto">
+<div style="min-width:400px;display:grid;grid-template-columns:minmax(0,1.4fr) 62px 74px 84px;gap:11px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>RULE</div><div>STATE</div><div>RUNS · 30D</div><div>VALUE</div></div>
+<sc-for list="{{ automations }}" as="a" hint-placeholder-count="6">
+<div style="min-width:400px;display:grid;grid-template-columns:minmax(0,1.4fr) 62px 74px 84px;gap:11px;padding:0 12px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05)">
+<div style="font:450 11.5px/1.3 'IBM Plex Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ a.stateColor }}">{{ a.state }}</div>
+<div style="font:400 11px/1.3 'IBM Plex Mono';color:#57544d">{{ a.runs }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono';color:{{ a.valColor }}">{{ a.value }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>Value is attributed conservatively.</b> A recovered payment counts only if it settled within 14 days of the automation's message and the member had not already been contacted by a person. Double-counting a save that a receptionist actually made would flatter the feature and mislead the owner.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Paused rules stay visible with their history. A deleted rule keeps its run log — the actions it took are still part of the record.</div>
+</div>
+</div>
+
+<div style="flex:1 1 380px;min-width:365px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-AUT-03 · RUN HISTORY · WIN-BACK RULE</div>
+<div style="padding:14px 16px">
+<div style="display:flex;gap:16px;flex-wrap:wrap"><div><div style="font:500 17px/1.15 'IBM Plex Mono'">28</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">RUNS · 30D</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">24</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#2f5d3a;margin-top:3px">SENT</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">3</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">SKIPPED</div></div><div><div style="font:500 17px/1.15 'IBM Plex Mono'">1</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#8a3b1f;margin-top:3px">FAILED</div></div></div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:12px;overflow:hidden">
+<sc-for list="{{ runs }}" as="r" hint-placeholder-count="5">
+<div style="padding:10px 12px;border-bottom:1px solid rgba(23,23,26,.06)">
+<div style="display:flex;gap:9px;align-items:baseline;flex-wrap:wrap"><span style="font:400 10.5px/1.4 'IBM Plex Mono';color:#57544d;width:74px;flex-shrink:0">{{ r.when }}</span><span style="font:450 11.5px/1.4 'IBM Plex Sans';flex:1;min-width:110px">{{ r.who }}</span><span style="font:500 9.5px/1.4 'IBM Plex Mono';color:{{ r.color }}">{{ r.outcome }}</span></div>
+<div style="font:400 11px/1.5 'IBM Plex Sans';color:#3d3b36;margin-top:3px">{{ r.detail }}</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:11px;padding:11px 12px;border:1px solid #8a3b1f;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36"><b>The failure is retryable and named.</b> A WhatsApp send failed because the template was pending re-approval — the member was never contacted and Veyro did not silently fall back to email, because a channel a member chose is not interchangeable.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Skips are as important as sends. Three members were skipped because a person had already contacted them that week — the rule deferring to a human is the behaviour worth auditing.</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding:32px 44px 34px;border-top:1px solid rgba(0,0,0,.1)">
+<div style="font:400 10.5px/1.5 'IBM Plex Mono';color:#57544d;letter-spacing:.1em">ADM-RPT-01 · 02 · 03 · 04 · 05</div>
+<h2 style="font:500 19px/1.25 'IBM Plex Sans';margin:8px 0 14px;letter-spacing:-.014em">Reports, and the gate in front of an export</h2>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+
+<div style="flex:1 1 460px;min-width:440px;border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-RPT-02 · REVENUE · OWNER &amp; ACCOUNTANT</div>
+<div style="padding:15px 17px">
+<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+<div style="flex:1;min-width:200px"><div style="font:500 17px/1.25 'IBM Plex Sans';letter-spacing:-.013em">Revenue · August to date</div><div style="font:400 11.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:3px">All locations · data through 08:38</div></div>
+<div style="display:flex gap:6px"><span style="font:500 11px/1 'IBM Plex Sans';background:#17171a;color:#fffefb;padding:8px 10px;border-radius:6px">Month</span></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:rgba(23,23,26,.12);border:1px solid rgba(23,23,26,.14);border-radius:4px;overflow:hidden;margin-top:13px">
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">COLLECTED</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px">41,280</div></div>
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">INVOICED</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px">41,592</div></div>
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">OUTSTANDING</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px;color:#8a3b1f">312</div></div>
+<div style="background:#fffefb;padding:10px 12px"><div style="font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">REFUNDED</div><div style="font:500 16px/1.15 'IBM Plex Mono';margin-top:5px">168</div></div>
+</div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:14px">BY SOURCE</div>
+<div style="border:1px solid rgba(23,23,26,.14);border-radius:4px;margin-top:7px;overflow-x:auto">
+<div style="min-width:420px;display:grid;grid-template-columns:minmax(0,1.1fr) 80px 80px 80px 74px;gap:11px;padding:8px 12px;background:#faf8f4;border-bottom:1px solid rgba(23,23,26,.08);font:500 9px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em"><div>SOURCE</div><div>ABDOUN</div><div>KHALDA</div><div>SWEIFIEH</div><div>VS JULY</div></div>
+<sc-for list="{{ revenue }}" as="r" hint-placeholder-count="5">
+<div style="min-width:420px;display:grid;grid-template-columns:minmax(0,1.1fr) 80px 80px 80px 74px;gap:11px;padding:0 12px;height:34px;align-items:center;border-bottom:1px solid rgba(23,23,26,.05);background:{{ r.bg }}">
+<div style="font:{{ r.weight }} 11.5px/1.3 'IBM Plex Sans'">{{ r.name }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ r.a }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ r.k }}</div>
+<div style="font:500 11.5px/1.2 'IBM Plex Mono'">{{ r.s }}</div>
+<div style="font:500 11px/1.2 'IBM Plex Mono';color:{{ r.deltaColor }}">{{ r.delta }}</div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Export · needs a reason</span><span style="font:500 12px/1 'IBM Plex Sans';border:1px solid rgba(23,23,26,.28);padding:10px 12px;border-radius:6px">Compare periods</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Collected and invoiced are separate columns because they are separate facts. A report showing one number labelled "revenue" is the reason operators cannot reconcile their own books.</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-RPT-01 · REPORTS INDEX</div>
+<div style="padding:14px 15px">
+<sc-for list="{{ reports }}" as="r" hint-placeholder-count="6">
+<div style="padding:10px 0;border-bottom:1px solid rgba(23,23,26,.06);display:flex;gap:9px;align-items:baseline">
+<div style="flex:1"><div style="font:450 12.5px/1.4 'IBM Plex Sans';color:{{ r.nameColor }}">{{ r.name }}</div><div style="font:400 10.5px/1.5 'IBM Plex Sans';color:#57544d;margin-top:2px">{{ r.desc }}</div></div>
+<span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a;flex-shrink:0">{{ r.who }}</span>
+</div>
+</sc-for>
+<div style="margin-top:11px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">A Club Manager opening this screen sees four reports, not six. The two financial ones are absent — not listed and locked.</div>
+</div>
+</div>
+<div style="border:1px solid #8a3b1f;border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#8a3b1f;font:500 9.5px/1.4 'IBM Plex Mono';color:#fffefb;letter-spacing:.07em">ADM-RPT-05 · EXPORT GATE · TIER 4</div>
+<div style="padding:14px 15px">
+<div style="font:500 15px/1.3 'IBM Plex Sans'">Export 4,812 member records</div>
+<div style="font:400 12px/1.65 'IBM Plex Sans';color:#3d3b36;margin-top:5px">This file will contain names, phone numbers, email addresses, membership history and payment totals. It leaves Veyro and cannot be recalled.</div>
+<div style="margin-top:11px"><div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#8a3b1f;letter-spacing:.06em">WHY · RECORDED AND VISIBLE TO THE TENANT</div><div style="font:400 12px/1.4 'IBM Plex Sans';color:#a8a29a;border:1px solid #8a3b1f;border-radius:6px;padding:10px 12px;margin-top:5px">Annual audit — accountant request…</div></div>
+<div style="margin-top:10px;padding:11px 12px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.65 'IBM Plex Sans';color:#3d3b36">Optionally exclude phone and email, which covers most audit needs without exporting contact details at all.</div>
+<div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap"><span style="font:500 12px/1 'IBM Plex Sans';background:#8a3b1f;color:#fffefb;padding:11px 13px;border-radius:6px">Confirm identity &amp; export</span></div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">Step-up authentication, then the audit entry. Appears in front of every export containing personal or financial data, including the revenue report above.</div>
+</div>
+</div>
+</div>
+
+<div style="flex:1 1 300px;min-width:290px;display:flex;flex-direction:column;gap:14px">
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-RPT-03 · MEMBERSHIP</div>
+<div style="padding:14px 15px">
+<div style="display:flex;gap:14px;flex-wrap:wrap"><div><div style="font:500 16px/1.15 'IBM Plex Mono';color:#2f5d3a">+61</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">JOINED</div></div><div><div style="font:500 16px/1.15 'IBM Plex Mono';color:#8a3b1f">−23</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">LEFT</div></div><div><div style="font:500 16px/1.15 'IBM Plex Mono'">+38</div><div style="font:400 9px/1.4 'IBM Plex Mono';color:#57544d;margin-top:3px">NET</div></div></div>
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em;margin-top:13px">WHY THE 23 LEFT</div>
+<div style="margin-top:7px">
+<sc-for list="{{ churn }}" as="c" hint-placeholder-count="5">
+<div style="display:flex;gap:9px;align-items:center;padding:6px 0"><span style="font:400 11.5px/1.4 'IBM Plex Sans';flex:1">{{ c.reason }}</span><span style="font:500 11px/1.2 'IBM Plex Mono';width:22px;text-align:end">{{ c.n }}</span><span style="width:52px;height:4px;background:#ece9e3;border-radius:2px;overflow:hidden;flex-shrink:0"><span style="display:block;height:4px;width:{{ c.bar }};background:#57544d"></span></span></div>
+</sc-for>
+</div>
+<div style="margin-top:10px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36">Reasons come from ADM-MSH-07's required field. <b>Nine of 23 gave no reason</b> — shown honestly rather than folded into "other".</div>
+</div>
+</div>
+<div style="border:1px solid rgba(23,23,26,.2);border-radius:6px;background:#fffefb;overflow:hidden">
+<div style="padding:9px 15px;background:#f4f2ee;border-bottom:1px solid rgba(23,23,26,.1);font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.07em">ADM-RPT-04 · ATTENDANCE</div>
+<div style="padding:14px 15px">
+<div style="font:500 9.5px/1.4 'IBM Plex Mono';color:#57544d;letter-spacing:.06em">VISITS BY HOUR · KHALDA · WEEKDAYS</div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:52px;margin-top:9px">
+<sc-for list="{{ hours }}" as="h" hint-placeholder-count="14"><div style="flex:1;height:{{ h.h }};background:{{ h.c }};border-radius:1px"></div></sc-for>
+</div>
+<div style="display:flex;justify-content:space-between;margin-top:5px"><span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a">06:00</span><span style="font:400 9px/1.4 'IBM Plex Mono';color:#85807a">22:00</span></div>
+<div style="margin-top:10px;padding:10px 11px;background:#faf8f4;border-radius:4px;font:400 11.5px/1.6 'IBM Plex Sans';color:#3d3b36"><b>18:00–20:00 runs at 94% of floor capacity.</b> Two more classes at 07:00, where capacity sits at 41%, would move perhaps 30 people out of the evening crush.</div>
+<div style="font:400 11px/1.55 'IBM Plex Sans';color:#57544d;margin-top:9px">The conclusion is written in words beneath the chart. A manager should not have to interpret a heat strip to find the actionable hour.</div>
+</div>
+</div>
+</div>
+</div>
+<div style="font:400 11px/1.6 'IBM Plex Mono';color:#57544d;margin-top:12px">COMPONENTS · AITreatment(full derivation) · ConfidenceBand ×3 · DataGrid(Compact) ×4 · Chart(bar, heat strip) ×3 · MetricCell ×11 · RunLogRow · ExportGate(tier 4) · zero new tokens</div>
+</section>
+
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:900}}">
+const SOURCES = [
+  ['PT session records · Khalda', '312', 'Delivered sessions, verification state, coach, date'],
+  ['Invoices and payments', '486', 'What was actually billed in each period'],
+  ['Coach rosters and hours', '14', "Omar's client count before and after his hours changed"],
+  ['Booking history', '1,204', 'Session frequency per client, both months']
+];
+
+const AUTOMATIONS = [
+  ['Failed payment · retry and message', 'ON', '28', '4,180', '#2f5d3a', '#2f5d3a'],
+  ['Renewal reminder · 7 days out', 'ON', '96', '3,240', '#2f5d3a', '#2f5d3a'],
+  ['Win-back · no visit in 30 days', 'ON', '28', '1,120', '#2f5d3a', '#2f5d3a'],
+  ['Waitlist promotion', 'ON', '41', '—', '#2f5d3a', '#57544d'],
+  ['Document expiry warning', 'ON', '12', '—', '#2f5d3a', '#57544d'],
+  ['Birthday message', 'PAUSED', '0', '400', '#57544d', '#2f5d3a']
+];
+
+const RUNS = [
+  ['Today 06:00', 'Nour Khoury', 'SENT', '#2f5d3a', 'WhatsApp · 31 days since last visit'],
+  ['Today 06:00', 'Sami Tabaa', 'SKIPPED', '#57544d', 'Yasmin called him on Monday — deferring to the person'],
+  ['Today 06:00', 'Maya Rifai', 'FAILED', '#8a3b1f', 'Template pending re-approval · not contacted · retryable'],
+  ['18 Aug 06:00', 'Faris Alami', 'SENT', '#2f5d3a', 'WhatsApp · booked a class 2 days later'],
+  ['18 Aug 06:00', 'Tareq Odeh', 'SKIPPED', '#57544d', 'Membership already ended — win-back does not apply']
+];
+
+const REVENUE = [
+  ['Memberships', '13,240', '10,880', '6,910', '−4.1%', false, '#8a5a1f'],
+  ['Personal training', '2,890', '2,140', '1,320', '−18.9%', false, '#8a3b1f'],
+  ['Classes', '1,180', '740', '620', '+2.4%', false, '#2f5d3a'],
+  ['Retail', '630', '350', '380', '+6.1%', false, '#2f5d3a'],
+  ['Total', '17,940', '14,110', '9,230', '−7.8%', true, '#8a5a1f']
+];
+
+const REPORTS = [
+  ['Revenue', 'Collected, invoiced, outstanding, by source and club', 'OWNER · ACCT', '#17171a'],
+  ['Membership', 'Joins, leaves, net, churn reasons, cohort retention', 'OWNER · CM', '#17171a'],
+  ['Attendance', 'Visits by hour and day, class fill, capacity headroom', 'OWNER · CM', '#17171a'],
+  ['Coaching', 'Sessions delivered, verified, unverified, per coach', 'OWNER · CM', '#17171a'],
+  ['Leads and conversion', 'Source effectiveness, conversion rate, lost reasons', 'OWNER · SALES', '#17171a'],
+  ['Tax and e-invoicing', 'JoFotara submissions, rejections, reconciliation', 'ACCT ONLY', '#17171a']
+];
+
+const CHURN = [
+  ['No reason given', '9', '100%'],
+  ['Moving away', '5', '56%'],
+  ['Too expensive', '4', '44%'],
+  ['Not using it', '3', '33%'],
+  ['Went elsewhere', '2', '22%']
+];
+
+const HOURS = [
+  ['28%','#cbc6bc'],['41%','#cbc6bc'],['34%','#cbc6bc'],['22%','#cbc6bc'],
+  ['18%','#cbc6bc'],['24%','#cbc6bc'],['31%','#cbc6bc'],['38%','#cbc6bc'],
+  ['52%','#a8a29a'],['68%','#a8a29a'],['88%','#8a5a1f'],['100%','#8a5a1f'],
+  ['74%','#a8a29a'],['42%','#cbc6bc']
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      sources: SOURCES.map(s => ({ name: s[0], n: s[1], what: s[2] })),
+      automations: AUTOMATIONS.map(a => ({
+        name: a[0], state: a[1], runs: a[2], value: a[3],
+        stateColor: a[4], valColor: a[5]
+      })),
+      runs: RUNS.map(r => ({ when: r[0], who: r[1], outcome: r[2], color: r[3], detail: r[4] })),
+      revenue: REVENUE.map(r => ({
+        name: r[0], a: r[1], k: r[2], s: r[3], delta: r[4],
+        bg: r[5] ? '#faf8f4' : '#fffefb', weight: r[5] ? '500' : '450',
+        deltaColor: r[6]
+      })),
+      reports: REPORTS.map(r => ({ name: r[0], desc: r[1], who: r[2], nameColor: r[3] })),
+      churn: CHURN.map(c => ({ reason: c[0], n: c[1], bar: c[2] })),
+      hours: HOURS.map(h => ({ h: h[0], c: h[1] }))
+    };
+  }
+}
+</script>
+</body>
+</html>
