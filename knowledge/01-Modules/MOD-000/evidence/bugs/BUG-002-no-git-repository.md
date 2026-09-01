@@ -1,7 +1,8 @@
 ---
 doc: BUG-002
-status: OPEN
+status: CLOSED — Git repository initialized and verified
 found: 2026-09-01
+closed: 2026-09-01
 severity: Blocker
 found_by: veyro-scenario-reviewer (fresh context, Opus) during MOD-000 Scenario Catalog independent review
 ---
@@ -14,6 +15,19 @@ found_by: veyro-scenario-reviewer (fresh context, Opus) during MOD-000 Scenario 
 
 **Why it wasn't caught earlier:** every prior chunk's baseline/config verification checked file *contents* (hashes, JSON syntax, hook firing) but never checked whether the containing directory was actually under version control. The fresh-session re-verification in chunk 5 re-hashed files but did not check for `.git/`.
 
-**Fix (not applied in this chunk — flagged for owner/next chunk, not unilaterally decided):** initializing a Git repository here is a structural decision with real scope questions (should `Veyro-Mobile/` — see BUG-003 — be included or excluded; how should the 3 large docx baselines be stored, e.g. plain vs. Git LFS; what belongs in `.gitignore`). Recommend raising to the owner rather than deciding unilaterally mid-catalog-authoring-chunk. Once resolved: `git init`, commit the full `knowledge/`/`.claude/` tree and the 4 baseline artifacts (or reference them appropriately), verify a clone reproduces the vault byte-identically (see new `SCN-MOD000-053`).
+## Resolution (2026-09-01)
 
-**Cross-reference:** `knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md` SCN-MOD000-016, SCN-MOD000-053.
+Owner authorized resolution directly, including deletion of `Veyro-Mobile/` (BUG-003) which removed the scope ambiguity that previously blocked `git init`. Executed:
+
+1. `git init` at the Veyro project root — no prior repository existed.
+2. `.gitignore` authored before any `git add`, covering secrets/credentials, IDE/editor state, build artifacts, simulator/device artifacts, generated temp files, and the one local Claude Code override file (`.claude/settings.local.json`) — while explicitly never ignoring the 4 governing baselines, `knowledge/`, or `.claude/agents|rules|settings.json`.
+3. All 4 baseline hashes re-verified immediately before staging — exact match to `PROJECT_INDEX.md`, confirming zero baseline alteration from the git-init process itself.
+4. Working tree validated (103 files staged, grepped for secret/cache patterns, none found) before the first commit.
+5. Initial governed commit created: **`3e6d88fa03ad4569c6e34be57efa72b612fff77f`**.
+6. Clone-and-verify: cloned to a scratch path, re-hashed all 4 baselines in the clone — exact match, confirming genuine recoverability.
+
+No remote added, no push performed, no GitHub/GitLab/Azure repository created — per explicit instruction.
+
+Full evidence: `knowledge/01-Modules/MOD-000/evidence/durability/GIT_RECOVERY_PROOF.md`.
+
+**Cross-reference:** `knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md` SCN-MOD000-016, SCN-MOD000-053 (both now PASS, evidence-backed).
