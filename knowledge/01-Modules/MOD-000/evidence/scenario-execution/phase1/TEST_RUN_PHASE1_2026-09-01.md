@@ -1,9 +1,10 @@
 ---
 doc: TR-MOD000-20260901-001
 phase: 1 (Deterministic Automated Execution)
-status: COMPLETE
+status: COMPLETE — RECONCILED (see addendum at end; original labels retained above for history, corrected disposition is authoritative)
 executed_by: veyro-implementer (Sonnet), main session
 date: 2026-09-01
+reconciled: 2026-09-01 (same day, owner-directed)
 ---
 
 # Phase 1 — Deterministic Automated Execution — Test Run Record
@@ -50,3 +51,15 @@ None of these are *new* defects in the sense of "something broke" — they are t
 ## SCN-046 note (partial execution)
 
 The Notion-API live cross-check (comparing a Notion database row's field values against the current `knowledge/` state via a real API read) was not executed as an automated script this run — it was performed manually via the Notion MCP tool during this chunk's earlier work (Modules row `Updated` date bumped to 2026-09-01, matching `CURRENT_STATE.md`'s date). A fully automated version of this check would need a small script wired to the Notion MCP; not built this chunk. Recorded honestly as partial, not silently upgraded to full PASS.
+
+---
+
+## Reconciliation addendum (2026-09-01, same day, owner-directed)
+
+The original result labels above ("PASS" x14, "PARTIAL" for 087, "FAIL" for 088/089/091/093) were caught as internally inconsistent with the Phase 1 gate verdict of "no P0/P1" — calling something "FAIL" while simultaneously treating it as expected/non-blocking is a contradiction. Corrected same day. **Root cause:** scenarios 087/088/089/091/093 lacked an explicit governed disposition rule for "artifact absent" in the catalog; fixed at the source (catalog now states explicitly: artifact absent -> BLOCKED, not FAIL, required before Phase 10 certification not before Phase 1-9). Full corrected matrix, per-scenario justification, and the retired "PARTIAL" status resolution: see `knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md`, section "Phase 1 Reconciliation."
+
+**No underlying command or evidence changed.** Every raw command output captured in the table above remains exactly as executed — only the disposition label applied to 5 of the 19 results was corrected: 087 (PARTIAL -> BLOCKED overall, with its module-capabilities.yaml sub-check retained as PASS), 088/089/091/093 (FAIL -> BLOCKED, artifact pending, non-blocking for Phase 1 gate).
+
+**Corrected Phase 1 counts:** PASS = 15 (14 original PASS + 087's yaml sub-check), BLOCKED (artifact-pending, governed, non-execution-blocking) = 5 (087 overall, 088, 089, 091, 093), FAIL (true execution failure) = 0, OWNER_ASSISTED REQUIRED = 0, NOT_APPLICABLE = 0.
+
+**Phase 1 gate: PASS**, now correctly and consistently stated — zero true execution failures, zero unresolved defects required for this specific gate.
