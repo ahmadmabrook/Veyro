@@ -1,0 +1,5 @@
+{
+  "type": "backend",
+  "language": "python",
+  "code": "import requests\n\n# Replace with your API base URL (must be reachable from the internet).\nBASE_URL = \"https://staging.example.com\"\n\n\ndef test_health_endpoint() -> None:\n    response = requests.get(f\"{BASE_URL}/health\", timeout=30)\n    assert response.status_code == 200, f\"expected 200, got {response.status_code}\"\n\n\n# The test function MUST be called: TestSprite executes this file top to\n# bottom, so a defined-but-never-called function would pass vacuously.\ntest_health_endpoint()\n"
+}

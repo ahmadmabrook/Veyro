@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-01 (chunk 10 — Phase 1 execution complete)
+updated: 2026-09-01 (chunk 11 — Phase 1 reconciled, Phase 2 complete)
 ---
 
 # Current State
@@ -34,7 +34,7 @@ updated: 2026-09-01 (chunk 10 — Phase 1 execution complete)
 - [x] BUG-003 CLOSED — `Veyro-Mobile/` (owner's disposable, unrelated experiment) deleted per explicit owner authorization; manifest captured first, absence verified. See `evidence/bugs/BUG-003-undisclosed-android-project.md`.
 - [~] Required scenarios executed — **Phase 1 (deterministic, 19 scenarios) COMPLETE**, see below. Phases 2-10 (TestSprite offline, negative/fail-closed drills, code review, manual QA, security/performance review, regression, fresh-session proof, Gatekeeper) not yet run.
 - [x] Deterministic automated checks run — **PHASE 1 COMPLETE AND RECONCILED (2026-09-01).** 19 scenarios executed for real. **Corrected final matrix: 15 PASS, 5 BLOCKED (artifact-pending, governed non-execution-blocking), 0 FAIL, 0 OWNER_ASSISTED, 0 NOT_APPLICABLE.** (Original same-day report mislabeled the 5 artifact-pending results as "FAIL"/"PARTIAL" — internally inconsistent with the "no P0/P1" gate verdict; owner caught it, root-caused to the catalog lacking an explicit artifact-absent disposition rule for SCN-087/088/089/091/093, fixed at the catalog source same day, no underlying evidence changed — see reconciliation in the catalog and `evidence/scenario-execution/phase1/TEST_RUN_PHASE1_2026-09-01.md`.) The 5 BLOCKED items (SKL-/RULE- schemas, rollback procedure, evaluation template, regression harness, Skill/rules-profile policy) are required before Phase 10 certification, explicitly non-blocking for Phases 2-9 per the catalog's own governing text. Phase 1 gate: **PASS**, correctly and consistently stated. Pre-execution catalog defect found+fixed (F-22 reclassification never applied) — validator PASS on every run.
-- [ ] TestSprite exercised where applicable — offline-scope re-verified as part of Phase 1 (SCN-037), full Phase 2 (dedicated TestSprite pass) not yet run as its own phase.
+- [x] TestSprite exercised where applicable — **PHASE 2 COMPLETE (2026-09-01).** 7 commands run, strictly offline (`test scaffold` x2 including new backend variant, `test lint` positive+2 negative including new file-not-found case, `doctor`, `usage`). Credit balance confirmed unchanged (550 before/after) — zero cloud execution, zero spend. Phase 2 gate: PASS. Full record: `knowledge/01-Modules/MOD-000/evidence/scenario-execution/phase2/TEST_RUN_PHASE2_2026-09-01.md`.
 - [ ] Independent full code/config review (fresh context)
 - [ ] Actual Claude manual QA performed
 - [ ] Negative/fail-closed drills run

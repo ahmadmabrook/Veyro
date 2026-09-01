@@ -1,0 +1,29 @@
+{
+  "checked": 1,
+  "valid": 0,
+  "issues": [
+    {
+      "file": "bad_plan.json",
+      "field": "projectId",
+      "reason": "is required and must be a non-empty string"
+    },
+    {
+      "file": "bad_plan.json",
+      "field": "type",
+      "reason": "must be one of: \"frontend\", \"backend\""
+    },
+    {
+      "file": "bad_plan.json",
+      "field": "name",
+      "reason": "is required and must be a non-empty string"
+    },
+    {
+      "file": "bad_plan.json",
+      "field": "planSteps",
+      "reason": "is required and must be an array"
+    }
+  ]
+}
+{
+  "error": "lint: 4 problem(s) across 1 file(s)"
+}

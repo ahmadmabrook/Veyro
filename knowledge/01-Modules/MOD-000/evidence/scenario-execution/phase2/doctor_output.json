@@ -1,0 +1,64 @@
+{
+  "checks": [
+    {
+      "name": "CLI version",
+      "status": "ok",
+      "detail": "0.8.0"
+    },
+    {
+      "name": "Node.js",
+      "status": "ok",
+      "detail": "v22.23.2 (supported range: 20.19+, 22.13+, or 24+)"
+    },
+    {
+      "name": "Profile",
+      "status": "ok",
+      "detail": "default"
+    },
+    {
+      "name": "API endpoint",
+      "status": "ok",
+      "detail": "https://api.testsprite.com"
+    },
+    {
+      "name": "Credentials",
+      "status": "ok",
+      "detail": "API key configured (profile \"default\")"
+    },
+    {
+      "name": "Connectivity",
+      "status": "ok",
+      "detail": "reached GET /me, API key accepted (userId d4f894c8-60c1-70b9-1d29-49c2915ab8fe)"
+    },
+    {
+      "name": "Routing",
+      "status": "ok",
+      "detail": "v3 (V3 execution routing is ON)"
+    },
+    {
+      "name": "Organizations",
+      "status": "ok",
+      "detail": "Ahmad Mabrouk's workspace (6306a3ae-4a06-5d57-bd72-08f62290dda7, personal, role: owner)"
+    },
+    {
+      "name": "Org binding",
+      "status": "ok",
+      "detail": "Ahmad Mabrouk's workspace (6306a3ae-4a06-5d57-bd72-08f62290dda7, role: owner)"
+    },
+    {
+      "name": "Local tunnel",
+      "status": "warn",
+      "detail": "could not check (Request timed out after 3s (client-side). Use --request-timeout <seconds> or TESTSPRITE_REQUEST_TIMEOUT_MS to extend the deadline.)"
+    },
+    {
+      "name": "Verify skill",
+      "status": "warn",
+      "detail": "not installed here; run `testsprite setup` so your agent verifies its changes"
+    }
+  ],
+  "failures": 0,
+  "warnings": 2
+}
+[advisory] V3 routing is on for this account. While these gaps are open:
+  - `--target-url` is ignored on frontend runs (the run uses the project environment)
+  - a frontend rerun replays the run it was pointed at, not necessarily the latest saved code

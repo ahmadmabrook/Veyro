@@ -1,0 +1,14 @@
+{
+  "checked": 1,
+  "valid": 0,
+  "issues": [
+    {
+      "file": "/tmp/p2_ts/does_not_exist.json",
+      "field": "plan-from",
+      "reason": "file does not exist: /tmp/p2_ts/does_not_exist.json"
+    }
+  ]
+}
+{
+  "error": "lint: 1 problem(s) across 1 file(s)"
+}
