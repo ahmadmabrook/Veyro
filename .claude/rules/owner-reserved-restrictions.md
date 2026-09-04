@@ -4,7 +4,7 @@ scope: global
 
 # Rule: Owner-Reserved Restrictions (absolute)
 
-Applies to every agent, every module, no exceptions without explicit recorded owner approval in `knowledge/03-ExternalGates/`:
+Applies to every agent, every module, no exceptions without explicit recorded owner approval in `knowledge/00-System/OWNER_APPROVALS.md`:
 
 1. No paid services or spend of any kind.
 2. No processing of real member data — synthetic fixtures only.

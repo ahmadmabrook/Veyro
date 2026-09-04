@@ -35,7 +35,7 @@ Relations: Scenarios.Module, Bugs.Module, Code Reviews.Module, Releases.Module, 
 - **Modules:** 1 row — MOD-000, Status=In Progress, WIP Active=true, `Updated`=2026-09-04.
 - **Scenarios:** 95 rows (was 81/95 until Phase 4 found and fixed the gap — SCN-053 through 066 were entirely missing). 45 marked `Done` (matches durable Phase 1 + Phase 3 execution accounting exactly), 50 `Not started`.
 - **Test Runs:** 4 real rows (Phase 1, 2, 3, 4) + 1 transparently-labeled synthetic reconciliation-drill row from Phase 3 ("TR-MOD000-PHASE3-DRILL").
-- **Bugs:** 8 rows — BUG-001 through BUG-008 (all durably backed by `knowledge/01-Modules/MOD-000/evidence/bugs/BUG-*.md` files as of this chunk; BUG-005 was previously Notion-only, backfilled 2026-09-04).
+- **Bugs:** 8 rows — BUG-001 through BUG-008 (all durably backed by `knowledge/03-Modules/MOD-000/evidence/bugs/BUG-*.md` files as of this chunk; BUG-005 was previously Notion-only, backfilled 2026-09-04).
 - **Capabilities/Skills/Rules:** 6 rows (CAP-001 through CAP-006, mirroring `CAPABILITY_REGISTRY.md`).
 - **Owner Approvals:** 0 rows — nothing approved yet (every owner-reserved drill run to date tested a correct refusal, not an approved exception).
 - **Model Routes and Agent Runs:** 2 rows (unchanged since 2026-08-31 — this is itself part of the F5-005 finding: most routed tasks since then have no MR-style evidence recorded here).

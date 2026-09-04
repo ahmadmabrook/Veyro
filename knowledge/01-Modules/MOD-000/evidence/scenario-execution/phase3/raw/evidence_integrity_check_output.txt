@@ -1,3 +1,0 @@
-Expected-absent (forward references, non-blocking): 1
-  - knowledge/00-System/CURRENT_STATE.md: `knowledge/01-Modules/MOD-000/evidence/MODULE_APPROVAL_CERTIFICATE.md` (forward reference, not yet created by design)
-PASS — no broken evidence references (beyond expected forward refs), no missing bug linkage, updated: dates present.

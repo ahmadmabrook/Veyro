@@ -38,9 +38,10 @@ Read `knowledge/00-System/CURRENT_STATE.md`. It names the active module, its gat
 
 ## 3. Open defects, decisions, approvals
 
-- Defects: `knowledge/01-Modules/<active MOD>/evidence/bugs/`
-- Decisions/ADRs: `knowledge/02-Decisions/`
-- External gates / owner approvals: `knowledge/03-ExternalGates/`
+- Defects: `knowledge/03-Modules/<active MOD>/evidence/bugs/`
+- Decisions/ADRs: `knowledge/04-Decisions/`
+- External gates: `knowledge/00-System/EXTERNAL_GATES.md` (+ detail records in `knowledge/00-System/external-gates-evidence/`)
+- Owner approvals: `knowledge/00-System/OWNER_APPROVALS.md`
 
 ## 4. Handoff
 

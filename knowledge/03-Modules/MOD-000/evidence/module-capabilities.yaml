@@ -1,0 +1,43 @@
+module_id: MOD-000
+capabilities:
+  - capability_id: CAP-001
+    used_for: Notion Engineering Control Plane (9 databases) as live operational mirror
+    scope_note: Limited to the 9 named databases created for this project; no other Notion workspace content touched. Technical scope enforcement unconfirmed — see evidence/security/NOTION_SCOPE_AUDIT.md, BLOCKED: SCOPE_UNVERIFIED.
+    required_status: QUALIFIED (corrected 2026-09-05 — independent Opus review downgraded from APPROVED; a bounded re-test is required to restore APPROVED, see BUG-006)
+  - capability_id: CAP-002
+    used_for: TestSprite capability discovery/qualification drill (separate MOD-000 chunk)
+    scope_note: >-
+      test scaffold/test lint are local/offline (no network); doctor/usage authenticate
+      to api.testsprite.com (read-only, non-billed) — corrected 2026-09-05, was
+      inaccurately described as "local execution only". Synthetic fixtures only, no
+      real member data. Scope narrowed 2026-09-05 (independent Opus review, BUG-006):
+      test create/code/plan and all live-cloud commands are explicitly OUT of scope.
+    required_status: APPROVED (narrowed scope, independent Opus review 2026-09-05)
+  - capability_id: CAP-003
+    used_for: Reading governing baseline .docx files during bootstrap
+    scope_note: Read-only against the 3 frozen baseline docx files.
+    required_status: APPROVED (first-party/harness exemption)
+  - capability_id: CAP-004
+    used_for: All filesystem/shell operations building the control plane
+    scope_note: Project directory only.
+    required_status: APPROVED (first-party/harness exemption)
+  - capability_id: CAP-005
+    used_for: Browser tools for manual-QA evidence gathering (added 2026-09-05 — was previously used without a registry entry, a real gap independently found and fixed same day)
+    scope_note: Navigate/read/interact with pages for §12.1 drill evidence only.
+    required_status: QUALIFIED (positive test only, no negative test yet — see CAPABILITY_REGISTRY.md)
+  - capability_id: CAP-006
+    used_for: iOS Simulator control for manual-QA evidence gathering (added 2026-09-05, same reason as CAP-005)
+    scope_note: Boot/attach/interact with iOS Simulator for §12.1 drill evidence only.
+    required_status: QUALIFIED (positive+negative test real, but qualifying and reviewing agent were the same Opus invocation — a distinct independent Opus review is still needed for APPROVED, see CAPABILITY_REGISTRY.md)
+
+supply_chain_notes: >
+  Corrected 2026-09-04 (Phase 5, F5-003) — this note was stale, describing a
+  pre-qualification state that no longer matches CAPABILITY_REGISTRY.md (all
+  four rows have read APPROVED since 2026-08-31). Current, accurate state:
+  CAP-001 and CAP-002 completed positive+negative qualification on 2026-08-31,
+  but on Sonnet-tier agents, which is a real, open policy violation
+  (CAPABILITY_POLICY.md line 48 requires Opus for qualification runs) —
+  tracked as BUG-006, not yet remediated, blocking for Phase 10
+  certification. This is a genuine open defect, not a deliberate,
+  policy-compliant sequencing choice as previously (incorrectly) claimed
+  here.

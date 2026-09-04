@@ -1,4 +1,0 @@
-Expected-absent (forward references, non-blocking): 2
-  - knowledge/00-System/CURRENT_STATE.md: `knowledge/01-Modules/MOD-000/evidence/MODULE_APPROVAL_CERTIFICATE.md` (forward reference, not yet created by design)
-  - knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md: `.claude/rules/canary.md` (forward reference, not yet created by design)
-PASS — no broken evidence references (beyond expected forward refs) across 12 scanned files, no missing bug linkage, staleness check compared real dates.
