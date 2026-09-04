@@ -37,3 +37,33 @@ No paid services or spend. No real member data. No deploys/promotion to Producti
 ## Module discipline
 
 WIP=1. One active module at a time, recorded in `CURRENT_STATE.md`. A module is not "done" until it has a Module Approval Certificate signed by a fresh-context Gatekeeper role — never self-approved by the implementing session.
+
+## Zero known defects at approval (added 2026-09-04, Phase 5 F5-021, EIP DC-08)
+
+A module cannot be certified while any P0/P1/P2 product defect, failed
+Required scenario, or known regression exists. A confirmed defect must be
+recorded as a durable Bug (`knowledge/01-Modules/<MOD>/evidence/bugs/`),
+not left as prose inside a scenario or review document — a defect that
+only exists as narrative text does not show up in an "open bugs" count
+and creates a false-clean gate. (This gap is exactly what let Phases 1-4
+report "0 open bugs" while the catalog itself carried at least one
+self-declared, pre-audited FAIL.)
+
+## No silent scope or architecture change (added 2026-09-04, Phase 5 F5-021, EIP DC-09)
+
+A material deviation from the governing EIP's specified structure,
+process, or scope requires an ADR (`knowledge/02-Decisions/ADR-<NNN>-*.md`)
+recorded **before** implementation, plus applicable owner approval where
+the deviation touches an owner-reserved category. A deviation discovered
+after the fact must still get an ADR, honestly labeled as retroactive —
+silence is never an acceptable resolution.
+
+## No fake external approval (added 2026-09-04, Phase 5 F5-021, EIP DC-14)
+
+A session may never treat its own reasoning, a prior session's operating
+position, or an unaddressed ambiguity in a governing document as
+equivalent to actual owner or reviewer approval. An unresolved ambiguity
+in a governing baseline (e.g. a self-contradictory approval status) is
+recorded as `BLOCKED: OWNER_APPROVAL_REQUIRED` in
+`knowledge/03-ExternalGates/`, never silently resolved in the project's own
+favor and labeled "not blocking."

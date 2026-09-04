@@ -1,7 +1,7 @@
 ---
 doc: NOTION_CONTROL_PLANE
 status: LIVE
-updated: 2026-08-31
+updated: 2026-09-04 (Phase 5 remediation, F5-014 — was stale since 2026-08-31, missing 2 of 11 EIP Appendix C databases and every row written since chunk 1)
 ---
 
 # Notion Control Plane — Durable Reference
@@ -23,17 +23,24 @@ Notion is the live operational mirror; this file is the Git-durable record of wh
 | External Gates | `1c938d8a-17a7-436e-a2af-364de5f499be` | https://app.notion.com/p/f819ec1443a044d5b8756af5a77ee32b |
 | Releases | `a81144aa-adc1-4d04-bda8-c3c9abbd0f4d` | https://app.notion.com/p/9150b867724b4b1aa90bd81db6cc03da |
 | Model Routes and Agent Runs | `efcc6184-5986-42c5-ab10-47106b39d2f5` | https://app.notion.com/p/624e937ec5984d35bb415ca8d2abc821 |
+| Owner Approvals *(added 2026-09-04, Phase 5 F5-014)* | `922453bf-b579-4441-9fc3-07cd822cb84c` | https://app.notion.com/p/4cd06a3232ce4bba8757cc7aae7454f8 |
+| Capabilities / Skills / Rules *(added 2026-09-04, Phase 5 F5-014)* | `563927c8-4ace-465c-b4c0-861a18154116` | https://app.notion.com/p/3204924f4bcb4461be5e0a76ab667e2c |
 
-Relations: Scenarios.Module, Bugs.Module, Code Reviews.Module, Releases.Module, Model Routes and Agent Runs.Module all relate to Modules.
+**11 of 11 EIP Appendix C databases now exist** (was 9/11 until 2026-09-04).
 
-## Rows written so far
+Relations: Scenarios.Module, Bugs.Module, Code Reviews.Module, Releases.Module, Model Routes and Agent Runs.Module, Owner Approvals.Module, Capabilities/Skills/Rules.Module all relate to Modules. **Known gap (F5-014, not fixed this chunk):** Test Runs has no Module relation, only a Scenario relation — Appendix C calls for both.
 
-- Modules: 1 row — MOD-000 (page id `3cdce38f-1c9b-8181-b158-d5dd05cc3222`), Status=In Progress, WIP Active=true.
-- Model Routes and Agent Runs: 2 rows — Sonnet routing self-report (page id `3cdce38f-1c9b-81df-a1b8-c0406fa1489a`), Opus routing self-report (page id `3cdce38f-1c9b-811c-8519-d8db84af5a2c`). Both link to the MOD-000 Modules row.
-- Standalone page (not in a database): "Fresh-session CAP reuse proof - 2026-08-31" (page id `3cdce38f-1c9b-8104-87c4-df20838dda60`), created by a fresh-context agent as part of the capability-governance drill — see `knowledge/04-Capabilities/evidence/GOVERNANCE_DRILL/DRILL.md`.
-- Bugs: 1 row — "Manual QA drill overclaimed Accessibility + Edge/device as PASS" (page id `3cdce38f-1c9b-81cb-b351-ceba9dde6e59`), Severity=Major, Status=Done. Self-caught during the 2026-09-01 owner-directed correction pass.
-- 2026-09-01: Modules/MOD-000 row `Updated` bumped to 2026-09-01 to reflect this correction chunk.
+## Rows written so far (current as of 2026-09-04)
+
+- **Modules:** 1 row — MOD-000, Status=In Progress, WIP Active=true, `Updated`=2026-09-04.
+- **Scenarios:** 95 rows (was 81/95 until Phase 4 found and fixed the gap — SCN-053 through 066 were entirely missing). 45 marked `Done` (matches durable Phase 1 + Phase 3 execution accounting exactly), 50 `Not started`.
+- **Test Runs:** 4 real rows (Phase 1, 2, 3, 4) + 1 transparently-labeled synthetic reconciliation-drill row from Phase 3 ("TR-MOD000-PHASE3-DRILL").
+- **Bugs:** 8 rows — BUG-001 through BUG-008 (all durably backed by `knowledge/01-Modules/MOD-000/evidence/bugs/BUG-*.md` files as of this chunk; BUG-005 was previously Notion-only, backfilled 2026-09-04).
+- **Capabilities/Skills/Rules:** 6 rows (CAP-001 through CAP-006, mirroring `CAPABILITY_REGISTRY.md`).
+- **Owner Approvals:** 0 rows — nothing approved yet (every owner-reserved drill run to date tested a correct refusal, not an approved exception).
+- **Model Routes and Agent Runs:** 2 rows (unchanged since 2026-08-31 — this is itself part of the F5-005 finding: most routed tasks since then have no MR-style evidence recorded here).
+- Standalone page (not in a database): "Fresh-session CAP reuse proof - 2026-08-31".
 
 ## Reconciliation note
 
-This is currently a one-way sync (knowledge/ -> Notion, written manually per session). No automated sync job exists yet. Any session updating `CURRENT_STATE.md` should also update the relevant Notion row(s) in the same turn where practical, and note here if it could not.
+This is currently a one-way sync (knowledge/ -> Notion, written manually per session). No automated sync job exists yet. Any session updating `CURRENT_STATE.md` should also update the relevant Notion row(s) in the same turn where practical, and note here if it could not. **Known gap (F5-014):** prior to 2026-09-04, this file itself had not been updated since chunk 1, despite dozens of real rows being written in the interim — a session relying on this file alone (rather than live-querying Notion) would have reconstructed a badly stale picture. No process currently enforces keeping this file current; treat that as an open risk, not a solved one, even after this correction.

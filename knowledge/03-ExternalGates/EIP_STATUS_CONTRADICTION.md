@@ -1,8 +1,9 @@
 ---
 doc: EIP_STATUS_CONTRADICTION
-status: OPEN — owner-visible, informational, not blocking
+status: OPEN — BLOCKED: OWNER_APPROVAL_REQUIRED (corrected 2026-09-04, Phase 5 F5-015 — see note below; was previously mislabeled "informational, not blocking")
 found: 2026-09-01
 found_by: main session, resolving Scenario Catalog finding D-6
+corrected: 2026-09-04, Phase 5 independent review
 ---
 
 # EIP internal status contradiction — recorded, not guessed away
@@ -25,6 +26,33 @@ Since project inception (MOD-000 chunk 1), this document has been treated as the
 
 This is not a MOD-000 defect, not a Git/knowledge/Notion inconsistency, and not something this project caused — it is a property of the source document itself. Recording it here satisfies the instruction to "record it explicitly instead of guessing" rather than either (a) silently picking a reading with no trace, or (b) fabricating a fake "candidate promotion" workflow for a document that is, by its own front matter, already approved.
 
-## Owner action available (not required)
+## Correction, 2026-09-04 (Phase 5 finding F5-015)
 
-If the owner has visibility into which reading is authoritative (e.g. whether an actual re-audit-closure/promotion event happened outside this document's own text), recording that here would close this item. No action is required for MOD-000 to proceed on its current operating position.
+The line above ("No action is required for MOD-000 to proceed") was
+checked against the EIP's own text and found to be backwards. §23
+session-start step 2: "A candidate EIP may not be used until independent
+audit closure and explicit PROJECT_INDEX promotion. On any mismatch,
+missing hash or **ambiguous identity, STOP and reconcile before
+implementation**." §3 precedence #4: "A missing, ambiguous or mismatched
+binding **blocks implementation** until reconciled." §21.1 Special rule:
+"Candidate-baseline promotion is **fail-closed**." This document's own
+§21.1 body text explicitly names VEYRO-EIP-1.4.1-20260827 — the same ID
+this project has treated as governing since chunk 1 — as a candidate that
+"cannot be promoted until independent re-audit closure is recorded," and
+no such closure record exists anywhere in this project.
+
+This project's operating position (treating the front-matter
+self-declaration as authoritative) may well be correct, but per the EIP's
+own fail-closed rule, an unresolved ambiguous identity is a real blocker,
+not an informational note the project gets to waive for itself. It was
+incorrectly self-waived in the original version of this file.
+
+## Owner action required
+
+**`BLOCKED: OWNER_APPROVAL_REQUIRED`.** This item cannot be closed by any
+session unilaterally deciding which of the EIP's own two self-descriptions
+is authoritative — that is a call only the owner (or whoever holds the
+actual re-audit-closure record, if one exists outside this document) can
+make. Non-blocking for continued Phase 4-9 execution work (consistent with
+how MOD-000's other known-open items are scoped), but **blocking for Phase
+10 certification** until the owner records an explicit adjudication here.

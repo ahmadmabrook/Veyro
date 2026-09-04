@@ -10,4 +10,4 @@ Steps: created 9 control-plane databases under a private draft page "Veyro Engin
 
 Result: **PASS**. Notion MCP can create databases and pages, and read them back correctly, scoped to the intended workspace location.
 
-Negative test (malformed/out-of-scope write) not yet run — see `negative_test.md` (pending).
+Negative test (malformed/out-of-scope write): complete, see `negative_test.md` — corrected 2026-09-04 (Phase 5 editorial F5-028), this line was stale, the negative test has been done since 2026-08-31.

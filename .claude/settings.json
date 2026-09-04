@@ -20,7 +20,18 @@
       "Bash(*--prod*)",
       "Bash(testsprite test run*)",
       "Bash(testsprite test rerun*)",
-      "Bash(testsprite testlist run*)"
+      "Bash(testsprite testlist run*)",
+      "Edit(Gym_OS_Master_Product_Blueprint_v1_English.docx)",
+      "Edit(Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx)",
+      "Edit(Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx)",
+      "Edit(veyro-product-experience-design/**)",
+      "Write(Gym_OS_Master_Product_Blueprint_v1_English.docx)",
+      "Write(Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx)",
+      "Write(Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx)",
+      "Write(veyro-product-experience-design/**)",
+      "Bash(rm * Gym_OS_Master_Product_Blueprint_v1_English.docx*)",
+      "Bash(rm * Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx*)",
+      "Bash(rm * Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx*)"
     ],
     "defaultMode": "default"
   },

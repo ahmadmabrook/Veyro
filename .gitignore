@@ -1,6 +1,9 @@
 # Veyro — durable-authority repo .gitignore
-# Governing baselines, knowledge/, .claude/, and evidence are NEVER ignored — see the explicit
-# negative-pattern exceptions at the bottom if any of the broader patterns above would catch them.
+# Governing baselines, knowledge/, .claude/agents, .claude/rules, and evidence are NEVER
+# ignored by the patterns below. (Corrected 2026-09-04, Phase 5 editorial F5-028: this
+# comment previously pointed to "explicit negative-pattern exceptions at the bottom" that
+# don't exist — none have been needed since no broad pattern below actually catches those
+# paths; removed the stale pointer instead of inventing exceptions nothing requires.)
 
 # OS cruft
 .DS_Store

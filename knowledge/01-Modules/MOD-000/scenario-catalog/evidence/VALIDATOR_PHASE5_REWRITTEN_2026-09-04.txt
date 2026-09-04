@@ -1,0 +1,23 @@
+======================================================================
+MOD-000 SCENARIO CATALOG INTEGRITY VALIDATOR (rewritten 2026-09-04)
+======================================================================
+
+Catalog file: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md
+
+--- INFO (7) ---
+  [i] Parsed 95 distinct scenario IDs from the summary tables (range 001-095).
+  [i] Summary-table scenario count matches the catalog's declared total: 95.
+  [i] All 95 parsed scenarios have a valid Severity value ({'Major', 'Minor', 'Blocker'}).
+  [i] Every non-N/A, non-ALT scenario names both an Agent and a Model.
+  [i] All 19 mandatory EIP scenario categories are assigned to at least one real scenario row (not just the legend).
+  [i] Derived Required-scenario count (category not purely N/A/ALT): 94 of 95.
+  [i] Output 'Appendix I conformance' assessed N/A-with-justification (not a gap).
+
+--- WARNINGS (2) ---
+  [!] Required scenarios with a summary-table row but NO detail block ('### SCN-MOD000-NNN' header): 33 scenarios — ['057', '058', '065', '066', '067', '068', '069', '070', '071', '072', '073', '074', '075', '076', '077', '078', '079', '080', '081', '082', '083', '084', '085', '086', '087', '088', '089', '090', '091', '092', '093', '094', '095']
+  [!] 3 product-domain-word occurrence(s) found — human judgment required on whether each is legitimate (e.g. describing something a control-plane scenario governs) or an actual MOD-001 scope leak. First 5: L24 'membership': Every scenario below tests **control-plane/governance behavior** (baselines, memory, routing, capabilities, manual-QA to; L24 'billing': Every scenario below tests **control-plane/governance behavior** (baselines, memory, routing, capabilities, manual-QA to; L24 'scheduling': Every scenario below tests **control-plane/governance behavior** (baselines, memory, routing, capabilities, manual-QA to
+
+--- ERRORS (0) ---
+
+======================================================================
+RESULT: PASS — 0 errors, 2 warning(s) (non-blocking, tracked).

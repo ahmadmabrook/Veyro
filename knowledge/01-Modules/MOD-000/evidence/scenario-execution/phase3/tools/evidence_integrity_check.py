@@ -1,83 +1,114 @@
 #!/usr/bin/env python3
-"""Phase 3 durable-state/evidence integrity checker (read-only).
+"""Durable-state/evidence integrity checker (read-only).
 
-Checks, against the real repo state (no synthetic fixtures needed for this
-one — the real state is either sound or it isn't):
-1. Every evidence path referenced in CURRENT_STATE.md / SCENARIO_CATALOG.md
-   as backticked `knowledge/...` paths actually exists on disk.
+Rewritten 2026-09-04 (Phase 5 remediation, finding F5-020) — the original
+version's staleness check computed the latest evidence-commit timestamp
+but never actually compared it to anything (dead code, could never fail),
+and its path-reference scan covered only 2 of the ~10 durable "brain"
+files, which is exactly why a dangling `knowledge/02-Decisions/` reference
+in SESSION_BOOTSTRAP.md survived three prior phases undetected.
+
+Checks, against the real repo state:
+1. Every evidence/config path referenced (backticked `knowledge/...` or
+   `.claude/...` paths) across all durable "brain" files actually exists
+   on disk.
 2. Every bugs/BUG-*.md file referenced in CURRENT_STATE.md exists.
-3. CURRENT_STATE.md and CURRENT_HANDOFF.md `updated:` frontmatter dates are
-   not older than the latest commit touching MOD-000 evidence (staleness
-   check).
+3. CURRENT_STATE.md / CURRENT_HANDOFF.md `updated:` dates are not older
+   than the latest commit touching MOD-000 evidence (now an actual
+   comparison, not dead code).
 Exits 0 if clean, 1 if any check fails, printing every finding either way.
 """
 import re
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[7]
+ROOT = Path(subprocess.run(
+    ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True,
+    cwd=Path(__file__).resolve().parent,
+).stdout.strip())
 assert (ROOT / ".git").exists(), f"expected repo root, got {ROOT}"
 
-PATH_RE = re.compile(r"`(knowledge/[^`]+?\.(?:md|yaml|txt|json|py))`")
+PATH_RE = re.compile(r"`((?:knowledge|\.claude)/[^`]+?\.(?:md|yaml|yml|txt|json|py))`")
 BRACE_RE = re.compile(r"^(.*)\{([^{}]+)\}(\.[a-zA-Z0-9]+)$")
+
+# Every durable "brain" file that itself makes path claims — the original
+# version scanned only the first 2 of these.
+SCANNED_FILES = [
+    "knowledge/00-System/CURRENT_STATE.md",
+    "knowledge/00-System/CURRENT_HANDOFF.md",
+    "knowledge/00-System/SESSION_BOOTSTRAP.md",
+    "knowledge/00-System/PROJECT_INDEX.md",
+    "knowledge/00-System/DEVELOPMENT_CONSTITUTION.md",
+    "knowledge/00-System/MODEL_ROUTING.md",
+    "knowledge/00-System/EXTERNAL_GATES.md",
+    "knowledge/00-System/OWNER_APPROVALS.md",
+    "knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md",
+    "knowledge/04-Capabilities/CAPABILITY_POLICY.md",
+    "knowledge/04-Capabilities/CAPABILITY_REGISTRY.md",
+    "CLAUDE.md",
+]
 
 # Forward references: not yet created by design (a future gate's output path,
 # not a claimed-PASS evidence link). Absence here is expected, non-blocking.
 EXPECTED_NOT_YET_CREATED = {
     "knowledge/01-Modules/MOD-000/evidence/MODULE_APPROVAL_CERTIFICATE.md",
+    # Described in prose as a hypothetical/proposed throwaway test file
+    # (SCN-020's canary-rule test idea), not a claim that it currently exists.
+    ".claude/rules/canary.md",
 }
 
 def expand_braces(rel: str):
-    """Expand a single shell-brace-expansion group, e.g.
-    'a/b/{X,Y,Z}.md' -> ['a/b/X.md', 'a/b/Y.md', 'a/b/Z.md']. Passes through
-    unchanged if there's no brace group."""
     m = BRACE_RE.match(rel)
     if not m:
         return [rel]
     prefix, group, suffix = m.groups()
     return [f"{prefix}{name}{suffix}" for name in group.split(",")]
 
-def referenced_paths(md_file: Path):
-    text = md_file.read_text(encoding="utf-8", errors="replace")
+def referenced_paths(text: str):
     raw = sorted(set(PATH_RE.findall(text)))
+    raw = [r for r in raw if "*" not in r and "?" not in r]  # glob patterns aren't literal paths to check
     expanded = []
     for rel in raw:
         expanded.extend(expand_braces(rel))
     return sorted(set(expanded))
 
-def check_file_refs(md_file: Path, findings: list, expected_absent: list):
+def check_file_refs(rel_path: str, findings: list, expected_absent: list):
+    md_file = ROOT / rel_path
     if not md_file.exists():
-        findings.append(f"MISSING SOURCE FILE: {md_file}")
+        findings.append(f"MISSING SOURCE FILE: {rel_path}")
         return
-    for rel in referenced_paths(md_file):
+    text = md_file.read_text(encoding="utf-8", errors="replace")
+    for rel in referenced_paths(text):
         p = ROOT / rel
         if not p.exists():
             if rel in EXPECTED_NOT_YET_CREATED:
-                expected_absent.append(f"{md_file.relative_to(ROOT)}: `{rel}` (forward reference, not yet created by design)")
+                expected_absent.append(f"{rel_path}: `{rel}` (forward reference, not yet created by design)")
             else:
-                findings.append(f"BROKEN REFERENCE in {md_file.relative_to(ROOT)}: `{rel}` does not exist")
+                findings.append(f"BROKEN REFERENCE in {rel_path}: `{rel}` does not exist")
 
-def check_bug_refs(current_state: Path, findings: list):
-    text = current_state.read_text(encoding="utf-8", errors="replace")
+def check_bug_refs(findings: list):
+    text = (ROOT / "knowledge/00-System/CURRENT_STATE.md").read_text(encoding="utf-8", errors="replace")
     for bug_id in sorted(set(re.findall(r"BUG-\d{3}", text))):
         matches = list((ROOT / "knowledge/01-Modules/MOD-000/evidence/bugs").glob(f"{bug_id}-*.md"))
         if not matches:
             findings.append(f"BUG LINKAGE MISSING: {bug_id} referenced in CURRENT_STATE.md but no bugs/{bug_id}-*.md file found")
 
-def git_last_commit_epoch(rel_path: str) -> int:
+def git_last_commit_date(rel_path: str) -> str:
     out = subprocess.run(
-        ["git", "log", "-1", "--format=%ct", "--", rel_path],
+        ["git", "log", "-1", "--format=%cs", "--", rel_path],
         cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.strip()
-    return int(out) if out else 0
+    return out or None
 
 def check_staleness(findings: list):
-    latest_evidence_commit = 0
+    latest_evidence_date = "0000-00-00"
     for p in (ROOT / "knowledge/01-Modules/MOD-000/evidence").rglob("*"):
         if p.is_file():
-            c = git_last_commit_epoch(str(p.relative_to(ROOT)))
-            latest_evidence_commit = max(latest_evidence_commit, c)
+            d = git_last_commit_date(str(p.relative_to(ROOT)))
+            if d and d > latest_evidence_date:
+                latest_evidence_date = d
     for doc in ["knowledge/00-System/CURRENT_STATE.md", "knowledge/00-System/CURRENT_HANDOFF.md"]:
         p = ROOT / doc
         if not p.exists():
@@ -87,13 +118,25 @@ def check_staleness(findings: list):
         m = re.search(r"updated:\s*(\d{4}-\d{2}-\d{2})", text)
         if not m:
             findings.append(f"NO updated: DATE FOUND in {doc}")
+            continue
+        doc_date = m.group(1)
+        # A doc's own commit may postdate its "updated:" text if the commit itself
+        # is what set that date (same-day is fine) — only flag a REAL staleness gap:
+        # evidence committed strictly after the doc's last real commit, on a later date.
+        doc_commit_date = git_last_commit_date(doc) or doc_date
+        if latest_evidence_date > doc_commit_date:
+            findings.append(
+                f"STALE: {doc} last committed {doc_commit_date} (updated: field says {doc_date}), "
+                f"but MOD-000 evidence has a later commit dated {latest_evidence_date} — "
+                f"{doc} may not reflect the most recent evidence."
+            )
 
 def main():
     findings = []
     expected_absent = []
-    check_file_refs(ROOT / "knowledge/00-System/CURRENT_STATE.md", findings, expected_absent)
-    check_file_refs(ROOT / "knowledge/01-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md", findings, expected_absent)
-    check_bug_refs(ROOT / "knowledge/00-System/CURRENT_STATE.md", findings)
+    for rel_path in SCANNED_FILES:
+        check_file_refs(rel_path, findings, expected_absent)
+    check_bug_refs(findings)
     check_staleness(findings)
 
     if expected_absent:
@@ -107,7 +150,7 @@ def main():
             print(f"  - {f}")
         sys.exit(1)
     else:
-        print("PASS — no broken evidence references (beyond expected forward refs), no missing bug linkage, updated: dates present.")
+        print(f"PASS — no broken evidence references (beyond expected forward refs) across {len(SCANNED_FILES)} scanned files, no missing bug linkage, staleness check compared real dates.")
         sys.exit(0)
 
 if __name__ == "__main__":

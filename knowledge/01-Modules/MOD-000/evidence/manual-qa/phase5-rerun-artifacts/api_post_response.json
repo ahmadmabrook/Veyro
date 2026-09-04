@@ -1,0 +1,34 @@
+{
+  "args": {}, 
+  "data": "{\"drill\":\"MOD-000-EIP-12.1\",\"surface\":\"api-backend\",\"marker\":\"VEYRO-MOD000-API-DRILL-7F3A2B\",\"synthetic\":true,\"real_member_data\":false,\"items\":[{\"id\":\"SYNTH-001\",\"qty\":2},{\"id\":\"SYNTH-002\",\"qty\":5}]}", 
+  "files": {}, 
+  "form": {}, 
+  "headers": {
+    "Accept": "*/*", 
+    "Content-Length": "199", 
+    "Content-Type": "application/json", 
+    "Host": "httpbin.org", 
+    "User-Agent": "curl/8.7.1", 
+    "X-Amzn-Trace-Id": "Root=1-6a9a9d38-7ee5641f20444357604289cc", 
+    "X-Veyro-Drill": "VEYRO-MOD000-API-DRILL-7F3A2B"
+  }, 
+  "json": {
+    "drill": "MOD-000-EIP-12.1", 
+    "items": [
+      {
+        "id": "SYNTH-001", 
+        "qty": 2
+      }, 
+      {
+        "id": "SYNTH-002", 
+        "qty": 5
+      }
+    ], 
+    "marker": "VEYRO-MOD000-API-DRILL-7F3A2B", 
+    "real_member_data": false, 
+    "surface": "api-backend", 
+    "synthetic": true
+  }, 
+  "origin": "<REDACTED-EGRESS-IP>", 
+  "url": "https://httpbin.org/post"
+}

@@ -18,10 +18,13 @@ capabilities:
     required_status: APPROVED
 
 supply_chain_notes: >
-  CAP-001 and CAP-002 are currently PENDING in CAPABILITY_REGISTRY.md, not yet APPROVED.
-  MOD-000 is using them now for control-plane construction ahead of formal qualification
-  because they are first-party (Notion) or locally-installed non-networked-during-use (TestSprite)
-  low-risk tools being exercised against synthetic/control-plane data only, never real member data
-  or product code. Their formal positive/negative qualification tests are tracked as open MOD-000
-  gates (see CURRENT_STATE.md) and must complete, with registry status flipped to APPROVED, before
-  MOD-000 can be certified. This is a recorded, deliberate sequencing choice, not a policy violation.
+  Corrected 2026-09-04 (Phase 5, F5-003) — this note was stale, describing a
+  pre-qualification state that no longer matches CAPABILITY_REGISTRY.md (all
+  four rows have read APPROVED since 2026-08-31). Current, accurate state:
+  CAP-001 and CAP-002 completed positive+negative qualification on 2026-08-31,
+  but on Sonnet-tier agents, which is a real, open policy violation
+  (CAPABILITY_POLICY.md line 48 requires Opus for qualification runs) —
+  tracked as BUG-006, not yet remediated, blocking for Phase 10
+  certification. This is a genuine open defect, not a deliberate,
+  policy-compliant sequencing choice as previously (incorrectly) claimed
+  here.

@@ -1,12 +1,26 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-04 (chunk 13)
+updated: 2026-09-04 (chunk 14)
 ---
 
 # Current Handoff
 
-## What happened this chunk (13, 2026-09-04) — Phase 3 reconciliation + Phase 4
+## What happened this chunk (14, 2026-09-04) — Phase 5 independent review + remediation
+
+Fresh-context `veyro-code-reviewer` (Opus) ran a 10-area independent review of the entire MOD-000 control plane, reading the governing EIP directly rather than trusting prior summaries. Found 0 P0, 15 P1, 13 P2, 1 Editorial (29 total) — a real, well-grounded set of findings, every one spot-checked by the main session before trusting it (all confirmed accurate; a genuine "[harness: neutralized instruction-shaped text]" flag on the agent's raw output was checked and found to be nothing more than the review's own extensive quoting of `.claude/settings.json` content, not an actual injection attempt).
+
+Extensive same-chunk remediation followed, including spawning a second fresh-context Opus agent (`veyro-manual-qa`) to genuinely re-run the manual-QA drill (real form input/submit against a live test form, a backend write independently confirmed by a separate subsequent read, a full iOS interactive lifecycle including a negative deep-link control, and two real harness-tool defects discovered along the way). Full finding-by-finding disposition: `knowledge/01-Modules/MOD-000/evidence/code-review/CR-MOD000-001.md`.
+
+**Closed with real evidence, same chunk:** a live security gap (gitignored `settings.local.json` was auto-enabling all project MCP servers, invisible to Git review — fixed and audited), missing technical baseline write-protection (added, live-verified), a tautological scenario-catalog validator and a evidence-integrity checker with dead code (both rewritten and re-verified), 4 previously-incomplete Phase 3 negative drills (all 7 deny patterns now individually live-tested, a real stray-file-injection drill run on a scratch bundle copy, a real live write-attempt against the actual baseline correctly denied), 2 internally-inconsistent result tables corrected, 2 missing EIP-required Notion databases created, `CAPABILITY_POLICY.md`/`DEVELOPMENT_CONSTITUTION.md` substantially extended to cover previously-undocumented mandatory EIP elements, an admin/privileged-console rule authored, agent-definition role-routing contradictions fixed, and the manual-QA drill's 3 previously-overstated surfaces (Browser/Backend-API/iOS) now genuinely meet their EIP pass conditions — closing SCN-MOD000-061.
+
+**Real bugs filed this chunk:** BUG-006 (capability qualification ran on Sonnet, not Opus — policy violation, needs an architecture decision), BUG-007 (33 scenarios have no detail block), BUG-008 (manual-QA tier/pass-condition gaps — FIXED same chunk, see above), BUG-017 (vault schema deviates from EIP Appendix D — needs an owner decision between restructuring or ratifying).
+
+**Deliberately not fixed this chunk (honestly recorded, not rushed):** F5-005 (model-tier substitution proof is currently only a self-report; a genuine forced-fallback test needs harness-side infrastructure this session doesn't have — faking one would reintroduce exactly the "weak evidence credited as strong" pattern this review exists to catch), BUG-007's 33 scenario detail blocks (large content-authoring effort), BUG-006 and BUG-017 (both need an owner or `veyro-lead` architecture-tier decision, not a same-session code fix), and 5 smaller P2 items.
+
+**Net: P1 15→3 open + 1 needing a decision. P2 13→5 open. Editorial 1→0. P0 stayed 0 throughout.** All 4 governing baseline hashes re-verified unchanged multiple times across this chunk. Validator and evidence-integrity checker both re-run clean after every batch of edits.
+
+## What happened chunk 13 (2026-09-04, for context) — Phase 3 reconciliation + Phase 4
 
 The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" while its own evidence file already listed 2 scenarios as BLOCKED — an internal inconsistency the owner caught (same class of error as the original Phase 1 report). Required a full scenario-ID-mapped reconciliation, plus a formally-recorded Phase 4:
 
@@ -41,14 +55,15 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**Phase 4 gate: PASS. Phase 5 is legally ready to start.**
+**Phase 5 gate: NOT YET PASS.** Do not start Phase 6 until the remaining Phase 5 items below are either fixed or explicitly, durably carried forward with an owner/architecture decision recorded.
 
-1. Commit and push this chunk's Phase 3/4 reconciliation evidence, `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` updates, BUG-005, and the Notion Scenarios/Bugs fixes (already applied live to Notion; local commit is this chunk's close-out step).
-2. Phase 5: independent code/config review via `veyro-code-reviewer`, fresh context (must not be the session that did the implementation work).
-3. Phase 6: real manual QA via `veyro-manual-qa`, fresh context.
-4. Phase 7: security/performance review.
-5. Phase 8: cumulative regression + full reconciliation (close the Notion-API live cross-check gap in SCN-046).
-6. Phase 9: fresh-session restoration proof.
-7. Phase 10: author the 5 pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
+1. Commit and push this chunk's Phase 5 remediation (already done — see commit referenced in this chunk's close-out report).
+2. Resolve or explicitly carry forward: F5-005 (model-tier substitution proof — likely stays carried-forward, same as the pre-existing Opus-infra-unavailability gap, unless real harness-side infrastructure becomes available), BUG-007 (author 33 scenario detail blocks), BUG-006 (owner/`veyro-lead` decision: which agent performs capability qualification), BUG-017 (owner/`veyro-lead` decision: restructure vault to EIP Appendix D, or ratify current structure).
+3. Once those are resolved or recorded, get a **second fresh-context `veyro-code-reviewer` re-review** to confirm P1=0 (or that remaining items are legitimately owner/architecture-deferred, not code defects) before declaring Phase 5 PASS.
+4. Only then: Phase 6 real manual QA re-confirmation if anything changed (the Phase 5 re-run already covers most of it) via `veyro-manual-qa`, fresh context.
+5. Phase 7: security/performance review.
+6. Phase 8: cumulative regression + full reconciliation (close the Notion-API live cross-check gap in SCN-046, and the smaller Phase 5 P2 remainders — F5-014/019/021/023/027).
+7. Phase 9: fresh-session restoration proof.
+8. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 
-MOD-001 remains locked. WIP=1, MOD-000 only. Confirmed still correctly enforced this chunk (Phase 3 Tasks 3-4 both refused live).
+MOD-001 remains locked. WIP=1, MOD-000 only.
