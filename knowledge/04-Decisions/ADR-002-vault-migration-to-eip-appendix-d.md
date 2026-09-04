@@ -1,6 +1,6 @@
 ---
 doc: ADR-002
-status: STRUCTURALLY EXECUTED, NOT YET CLOSED — pending a clean second fresh-session restoration pass (a first pass found this file itself claiming completion prematurely; corrected here, a second pass caught this exact field still stale and this is the fix for that)
+status: EXECUTED AND CLOSED (2026-09-05) — Pass 1 found this file itself claiming completion prematurely (fixed); Pass 2 caught this exact status field still stale after that fix (fixed again); Pass 3 confirmed this file and all 5 related durable files (`CURRENT_STATE.md`, `CURRENT_HANDOFF.md`, `STATUS.md`, `BUG-017`, `MIGRATION_EVIDENCE_2026-09-05.md`) genuinely agree — see `FRESH_SESSION_RESTORE_PROOF_2026-09-05.md`. BUG-017 closed on this basis.
 date: 2026-09-05
 decided_by: Owner (explicit decision, 2026-09-05) — do not ratify ADR-001's deviation, migrate instead
 executed_by: main session, same chunk
@@ -87,15 +87,17 @@ requiring irreversible content surgery on the underlying record.
 5. **Baseline hashes:** re-verified unchanged before and after (the
    migration touches only `knowledge/`, `.claude/`, and root doc files —
    never the 4 governing baseline artifacts or the design bundle).
-6. **Fresh-session restoration:** attempted post-migration via an
-   independent fresh-context check. **Correction:** this line originally
-   asserted restoration was "proven" — false when written, and still
-   false as of the most recent (second) verification pass, which found
-   this exact ADR still claiming completion while its own decided/
-   executed content had genuinely landed. See
+6. **Fresh-session restoration:** proven via 3 independent fresh-context
+   checks. **Correction history, preserved:** this line originally
+   asserted restoration was "proven" when it wasn't (Pass 1 caught it);
+   the first correction was itself caught still-stale by Pass 2 (this
+   exact status field still claimed pending completion after the
+   underlying decided/executed content had genuinely landed). Pass 3
+   confirmed this file and 5 related durable files genuinely agree — see
    `knowledge/03-Modules/MOD-000/evidence/durability/FRESH_SESSION_RESTORE_PROOF_2026-09-05.md`
-   for the full, honest account across both passes — restoration is not
-   yet proven clean; a third pass is the actual closing condition.
+   for the full, honest account across all three passes. Restoration is
+   now proven clean; this was the actual closing condition, and it has
+   been met.
 
 ## No governing baseline was modified
 

@@ -6,47 +6,67 @@ updated: 2026-09-05 (chunk 15)
 
 # Current Handoff
 
-## What happened this chunk (15, 2026-09-05) — owner decisions on BUG-006/007/017/F5-005 implemented
+## What happened this chunk (15, 2026-09-05) — owner decisions on BUG-006/007/017/F5-005 implemented, P2 sweep, second re-review launched
 
 The owner gave four explicit decisions rather than leaving them to agent
 judgment, closing off the open-ended "architecture decision needed"
-framing chunk 14 left these in:
+framing chunk 14 left these in. **All four now have a real, verified
+outcome — not just a plan:**
 
 1. **BUG-017 (vault schema): migrate to EIP Appendix D, don't ratify the
-   deviation.** Executed same day — 8 `git mv` path moves (history
-   preserved), ~23 new required files authored, 45 referencing files
-   corrected. `knowledge/04-Decisions/ADR-002-vault-migration-to-eip-appendix-d.md`,
-   `evidence/durability/MIGRATION_EVIDENCE_2026-09-05.md`.
-   **Not yet closed**: a fresh-session restoration check (run as part of
-   this same remediation) found this session had prematurely written
-   claims of completion before actually verifying them — a real,
-   honestly-recorded self-consistency defect, now being corrected;
-   BUG-017 stays open until a second fresh-session pass comes back clean.
-   See `evidence/durability/FRESH_SESSION_RESTORE_PROOF_2026-09-05.md`
-   for the full account.
+   deviation.** Executed — 8 `git mv` path moves (history preserved),
+   ~23 new required files authored, 45 referencing files corrected.
+   **CLOSED**, but only after 3 independent fresh-context restoration
+   passes: Pass 1 and Pass 2 each caught this same session prematurely
+   claiming completion before it was true (a real, honestly-recorded
+   self-consistency defect, not hidden); Pass 3 confirmed 6 related
+   durable files genuinely agree. `knowledge/04-Decisions/ADR-002-vault-migration-to-eip-appendix-d.md`,
+   `evidence/durability/MIGRATION_EVIDENCE_2026-09-05.md`,
+   `evidence/durability/FRESH_SESSION_RESTORE_PROOF_2026-09-05.md`.
 2. **BUG-006 (capability qualification tier): Sonnet executes, an
    existing Opus role (`veyro-security-reviewer`) independently reviews
    and decides — no new agent needed.** That review ran for real: CAP-002
-   **APPROVED** (scope narrowed — a real "by extension" overclaim struck).
-   CAP-001 **downgraded to QUALIFIED**, stays open pending a narrow,
-   bounded re-test (genuine out-of-scope-write attempt, raw artifacts,
-   a stage-4 note on the Notion MCP's own untrusted upsell-nudge text)
-   — much smaller than the original open-ended framing.
+   **CLOSED, APPROVED** (scope narrowed — a real "by extension" overclaim
+   struck). CAP-001 **downgraded to QUALIFIED, still OPEN**, bounded to a
+   3-item re-test (genuine out-of-scope-write attempt, raw artifacts,
+   a stage-4 note on the Notion MCP's own untrusted upsell-nudge text).
+   This is the one P1 this chunk did not fully close.
 3. **BUG-007 (33 scenario detail blocks): not deferred — authored.**
-   Formal `### SCN-MOD000-NNN` headers with the full required field set
-   written for all 33, reusing the substantial existing round-2/3/4
-   review analysis rather than inventing content from scratch. Validator
-   re-run and independent `veyro-scenario-reviewer` pass still pending.
+   All 33 `### SCN-MOD000-NNN` blocks written with the full required
+   field set, validator confirms 0 missing. Independently reviewed by
+   fresh-context `veyro-scenario-reviewer`: 1 safety defect + 6
+   overclaimed-PASS + 2 mislabeled-status findings, all fixed.
+   **MOSTLY FIXED** — one structural concern (8/19 mandatory categories
+   rest on a single, mostly-unexecuted scenario) honestly carried
+   forward, not resolved.
 4. **F5-005 (model-tier runtime attestation): investigate, don't fake.**
-   Re-read the exact EIP requirement directly from the source docx
-   (§4.1: "hook/invocation record containing agent + session/run
-   identity and an observable session transcript/status/warning record
-   sufficient to detect substitution/fallback"). Real investigation into
-   what this Claude Code environment actually exposes, result to be
-   recorded honestly regardless of outcome.
+   Found a real, technically-grounded, non-self-report source: the
+   session transcript JSONL's `message.model` field. Built
+   `knowledge/05-QA/tools/mr_verify.py`, proved both Opus and Sonnet
+   paths on real transcripts, tested the fail-closed gate on 6 labeled
+   synthetic fixture cases (all correct). True Opus-infra-outage
+   behavior honestly left untested, not faked. **SUBSTANTIALLY FIXED.**
 
-5 smaller P2 items (F5-014/019/021/023/027) also being revisited per
-owner instruction rather than left "non-blocking" by default.
+5 smaller P2 items also revisited per owner instruction rather than left
+"non-blocking" by default: **F5-014** (Notion Test-Runs↔Modules relation
+added, verified in-schema — FIXED), **F5-019** (DC-16 escalation rule
+clarified against the catalog's own existing Gatekeeper/code-review
+closing gates — FIXED), **F5-021** (all 9 remaining DC rules added, all
+21 now present in `DEVELOPMENT_CONSTITUTION.md` — FIXED), **F5-023** (the
+5 cited scenarios re-checked: defects already fixed as side effects of
+other remediation, or found on inspection not to be defects at all —
+FIXED), **F5-027** (left open **by design**, not by time pressure — the
+catalog's own 2026-09-01 reconciliation rule explicitly warns against
+re-editing ~60 scenario Status lines individually; a small tooling fix
+is the better remedy and is tracked, not attempted this chunk).
+
+All work committed (`232fc9a`) and pushed; local HEAD and `origin/main`
+verified identical. A **second, independent fresh-context Phase 5
+re-review** (`veyro-code-reviewer`, Opus) was launched at the end of this
+chunk to verify all of the above without trusting this session's own
+account — its result is the actual Phase 5 gate decision, not this
+handoff note. Check `knowledge/03-Modules/MOD-000/evidence/code-review/CR-MOD000-001.md`
+for whether that second review has landed and what it found.
 
 ## What happened chunk 14, 2026-09-04 (for context) — Phase 5 independent review + remediation
 
@@ -56,11 +76,9 @@ Extensive same-chunk remediation followed, including spawning a second fresh-con
 
 **Closed with real evidence, same chunk:** a live security gap (gitignored `settings.local.json` was auto-enabling all project MCP servers, invisible to Git review — fixed and audited), missing technical baseline write-protection (added, live-verified), a tautological scenario-catalog validator and a evidence-integrity checker with dead code (both rewritten and re-verified), 4 previously-incomplete Phase 3 negative drills (all 7 deny patterns now individually live-tested, a real stray-file-injection drill run on a scratch bundle copy, a real live write-attempt against the actual baseline correctly denied), 2 internally-inconsistent result tables corrected, 2 missing EIP-required Notion databases created, `CAPABILITY_POLICY.md`/`DEVELOPMENT_CONSTITUTION.md` substantially extended to cover previously-undocumented mandatory EIP elements, an admin/privileged-console rule authored, agent-definition role-routing contradictions fixed, and the manual-QA drill's 3 previously-overstated surfaces (Browser/Backend-API/iOS) now genuinely meet their EIP pass conditions — closing SCN-MOD000-061.
 
-**Real bugs filed this chunk:** BUG-006 (capability qualification ran on Sonnet, not Opus), BUG-007 (33 scenarios have no detail block), BUG-008 (manual-QA tier/pass-condition gaps — FIXED same chunk, see above), BUG-017 (vault schema deviates from EIP Appendix D). **Update, chunk 15 (2026-09-05):** the owner gave explicit decisions on BUG-006/007/017/F5-005 rather than leaving them to agent judgment — see the chunk-15 section below. BUG-006 mostly CLOSED, BUG-017 executing (not yet closed, pending re-verification), BUG-007 authored, F5-005 under real investigation.
+**Real bugs filed this chunk:** BUG-006 (capability qualification ran on Sonnet, not Opus), BUG-007 (33 scenarios have no detail block), BUG-008 (manual-QA tier/pass-condition gaps — FIXED same chunk, see above), BUG-017 (vault schema deviates from EIP Appendix D). **Update, chunk 15 (2026-09-05, final):** BUG-017 CLOSED (3 restoration passes), BUG-006 mostly CLOSED (CAP-002 closed, CAP-001 open on a bounded re-test), BUG-007 mostly fixed (structural concern honestly carried forward), F5-005 substantially fixed (real attestation tool built and proven). See the chunk-15 section above for the full account.
 
-**Update, chunk 15 (2026-09-05):** all four items in the line above were subsequently addressed per explicit owner decision — see the chunk-15 section below for what actually happened to each (none were silently left as originally framed).
-
-**Net: P1 15→3 open + 1 needing a decision. P2 13→5 open. Editorial 1→0. P0 stayed 0 throughout.** All 4 governing baseline hashes re-verified unchanged multiple times across this chunk. Validator and evidence-integrity checker both re-run clean after every batch of edits.
+**Net (final, chunk 15, 2026-09-05): P1 15→1 open (BUG-006/CAP-001 only). P2 13→1 open by design (F5-027). Editorial 1→0. P0 stayed 0 throughout.** All 4 governing baseline hashes re-verified unchanged multiple times across this chunk (most recently right before the chunk-15 commit). Validator and evidence-integrity checker both re-run clean after every batch of edits, and again immediately before commit.
 
 ## What happened chunk 13 (2026-09-04, for context) — Phase 3 reconciliation + Phase 4
 
@@ -97,14 +115,14 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**Phase 5 gate: NOT YET PASS.** Do not start Phase 6 until the remaining Phase 5 items below are either fixed or explicitly, durably carried forward with an owner/architecture decision recorded.
+**Phase 5 gate: NOT YET PASS** (as of this note). Do not start Phase 6 until the second re-review below has landed and confirmed the gate criteria are met.
 
-1. Commit and push this chunk's Phase 5 remediation (already done — see commit referenced in this chunk's close-out report).
-2. **Superseded by chunk 15 — see the chunk-15 section below for what actually happened.** (Was: "Resolve or explicitly carry forward F5-005/BUG-007/BUG-006/BUG-017" — all four now have owner decisions implemented, none left as open architecture questions.)
-3. Once those are resolved or recorded, get a **second fresh-context `veyro-code-reviewer` re-review** to confirm P1=0 (or that remaining items are legitimately owner/architecture-deferred, not code defects) before declaring Phase 5 PASS.
-4. Only then: Phase 6 real manual QA re-confirmation if anything changed (the Phase 5 re-run already covers most of it) via `veyro-manual-qa`, fresh context.
+1. Commit and push chunk 15's Phase 5 remediation — **done**, commit `232fc9a`, local HEAD == `origin/main` verified.
+2. Owner decisions on BUG-006/007/017/F5-005 — **done**, see the chunk-15 section above. Only BUG-006/CAP-001 (bounded re-test) and F5-027 (open by design) remain outstanding of the original 29 findings.
+3. **Second fresh-context `veyro-code-reviewer` re-review — launched end of chunk 15, result pending.** This is the actual Phase 5 gate decision, not any session's own account. Check `CR-MOD000-001.md` for whether it has landed; if it reports P1=0 (or confirms the 1 remaining P1 is legitimately bounded, not a live defect), Phase 5 can PASS. If it finds anything this chunk missed or a regression, that must be fixed and re-verified before PASS.
+4. Only after Phase 5 formally PASSes: Phase 6 real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context.
 5. Phase 7: security/performance review.
-6. Phase 8: cumulative regression + full reconciliation (close the Notion-API live cross-check gap in SCN-046, and the smaller Phase 5 P2 remainders — F5-014/019/021/023/027).
+6. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027's small tooling-fix alternative, if still open, is fair game here too).
 7. Phase 9: fresh-session restoration proof.
 8. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 
