@@ -1,12 +1,22 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-04 (chunk 12)
+updated: 2026-09-04 (chunk 13)
 ---
 
 # Current Handoff
 
-## What happened since the last handoff (chunks 11-12, 2026-09-01 to 2026-09-04)
+## What happened this chunk (13, 2026-09-04) — Phase 3 reconciliation + Phase 4
+
+The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" while its own evidence file already listed 2 scenarios as BLOCKED — an internal inconsistency the owner caught (same class of error as the original Phase 1 report). Required a full scenario-ID-mapped reconciliation, plus a formally-recorded Phase 4:
+
+1. **Phase 3 reconciled.** Root cause: the "24" headline was never actually mapped to individual catalog scenario IDs. Rebuilt from scratch as a per-ID table (`SCENARIO_CATALOG.md` §"Phase 3 Reconciliation"): **21 PASS, 5 BLOCKED, 0 FAIL, 9 NOT EXECUTED** (35 of 95 catalog scenarios accounted for; the other 60 are out of Phase 3's actual scope — manual QA, capability-build/discovery-order, observational checks, ALT — and belong to later phases). All 5 BLOCKED scenarios are genuinely precondition-or-mechanism-absent (no owner-approval record exists yet; no resolution-budget metering exists yet; `.claude/skills/` doesn't exist yet), not a tested-and-failed control. Original mislabeled headline retained in `TEST_RUN_PHASE3_2026-09-04.md`, marked superseded, not deleted.
+2. **Phase 4 (Execution Reconciliation) formally executed and recorded** — `knowledge/01-Modules/MOD-000/evidence/scenario-execution/phase4/PHASE4_RECONCILIATION_2026-09-04.md`. Every checklist item independently re-verified (not trusted from prior reports): baseline hashes freshly re-hashed (unchanged), validator re-run (PASS, 0 errors), evidence-integrity checker re-run (PASS). Found and fixed two real, previously-undetected Notion/knowledge divergences:
+   - **BUG-005** backfilled — a Notion Bugs row ("Manual QA drill overclaimed Accessibility + Edge/device as PASS") existed with no corresponding durable `knowledge/` file, a real durability-rule violation now closed.
+   - **Notion Scenarios database reconciled** — was missing 14 of 95 scenario rows (SCN-053 through 066) entirely, and none of the 81 existing rows reflected any of the 45 scenarios actually executed (all still read "Not started"). Created the 14 missing rows and marked all 45 executed scenarios "Done"; verified via fresh SQL query: 45 Done / 50 Not started / 95 total, exact match to durable state.
+   - 0 open bugs, 0 unresolved P0/P1. **Phase 4 gate: PASS.**
+
+## What happened chunks 11-12 (2026-09-01 to 2026-09-04, for context)
 
 1. **Phase 1 reconciliation.** The original same-day Phase 1 report labeled 5 scenarios PASS/PARTIAL/FAIL inconsistently with its own "Phase 1 gate: PASS" verdict. Owner caught it and required a full reconciliation. Root cause: SCN-087/088/089/091/093 (EIP §21.1 mandatory-artifact-existence checks) lacked an explicit governed disposition rule for "artifact absent." Fixed at the catalog source: artifact absent -> **BLOCKED (artifact pending)**, never FAIL; required before Phase 10 certification, non-blocking for Phases 1-9. "PARTIAL" retired as a non-catalog-defined status. Corrected final matrix: 15 PASS, 5 BLOCKED, 0 FAIL. Original mislabeled results retained in history (not hidden), corrected disposition stated as authoritative. Committed `f34b5bd`.
 2. **Phase 2 — TestSprite offline-scope execution, COMPLETE.** 7 commands (doctor, 2x scaffold incl. new backend variant, 3x lint incl. 2 negative, usage), strictly within CAP-002's approved offline scope. Credit balance verified unchanged (550 -> 550). Phase 2 gate: PASS. Committed `47c29a9`.
@@ -18,9 +28,8 @@ updated: 2026-09-04 (chunk 12)
    - Full record: `knowledge/01-Modules/MOD-000/evidence/scenario-execution/phase3/TEST_RUN_PHASE3_2026-09-04.md`.
 4. Fixed a real bug in this chunk's own evidence-integrity checker script (brace-expansion glob notation `{A,B,C}.md` was mis-parsed as one literal path, producing 2 false-positive broken-reference findings) before trusting its PASS result — found via manual verification of the underlying files, fixed in the script, re-run clean.
 
-## What is NOT done (Phases 4-10)
+## What is NOT done (Phases 5-10)
 
-- Phase 4 — no separate pass needed; Phases 1-3 are already mutually reconciled and committed together as of this chunk.
 - Phase 5 — independent code/config review (`veyro-code-reviewer`, fresh context — must not be the session that did the implementation work).
 - Phase 6 — real manual QA (`veyro-manual-qa`, fresh context). Android, Accessibility (real screen-reader execution), Edge/device, and iOS interactive control (SCN-061) remain BLOCKED per existing evidence — do not flip without new real evidence.
 - Phase 7 — security/performance review.
@@ -32,8 +41,10 @@ updated: 2026-09-04 (chunk 12)
 
 ## Next legally allowed action
 
-1. Commit and push this chunk's Phase 3 evidence, `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` updates, and the `.claude/settings.json` hardening (already staged for commit as part of this chunk's close-out).
-2. Phase 5: independent code/config review via `veyro-code-reviewer`, fresh context.
+**Phase 4 gate: PASS. Phase 5 is legally ready to start.**
+
+1. Commit and push this chunk's Phase 3/4 reconciliation evidence, `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` updates, BUG-005, and the Notion Scenarios/Bugs fixes (already applied live to Notion; local commit is this chunk's close-out step).
+2. Phase 5: independent code/config review via `veyro-code-reviewer`, fresh context (must not be the session that did the implementation work).
 3. Phase 6: real manual QA via `veyro-manual-qa`, fresh context.
 4. Phase 7: security/performance review.
 5. Phase 8: cumulative regression + full reconciliation (close the Notion-API live cross-check gap in SCN-046).
