@@ -25,24 +25,48 @@ Per the scenario's own steps ("run a capability-discovery drill with a
 deliberately tight budget, e.g. 2 minutes / 500 tokens"), a synthetic
 120-second / 500-token budget was used across 3 cases:
 
+**Correction (2026-09-05, final Phase 5 re-review NF-8):** the 3 blocks
+below were originally abbreviated (missing the `reason` field, and
+`time_fraction` rounded to 3 decimals) while labeled as raw output. Real
+tool output uses `json.dumps(..., indent=2)` and full float precision —
+replaced below with the actual captured output, not a re-run (the tool
+and inputs are unchanged; only this file's transcription is corrected).
+
 **Case 1 — tokens exhausted first** (`elapsed=90s` of 120s budget,
 `tokens=520` of 500): `python3 resolution_bound.py 90 520 120 500`
 ```json
-{"verdict": "BLOCKED: CAPABILITY_GAP", "first_exhausted": "tokens", "time_fraction": 0.75, "token_fraction": 1.04}
+{
+  "verdict": "BLOCKED: CAPABILITY_GAP",
+  "reason": "tokens limit exhausted first (time_fraction=0.750, token_fraction=1.040). Resolution halted, not allowed to continue past either limit.",
+  "first_exhausted": "tokens",
+  "time_fraction": 0.75,
+  "token_fraction": 1.04
+}
 ```
 Exit code 1.
 
 **Case 2 — time exhausted first** (`elapsed=125s` of 120s budget,
 `tokens=300` of 500): `python3 resolution_bound.py 125 300 120 500`
 ```json
-{"verdict": "BLOCKED: CAPABILITY_GAP", "first_exhausted": "time", "time_fraction": 1.042, "token_fraction": 0.6}
+{
+  "verdict": "BLOCKED: CAPABILITY_GAP",
+  "reason": "time limit exhausted first (time_fraction=1.042, token_fraction=0.600). Resolution halted, not allowed to continue past either limit.",
+  "first_exhausted": "time",
+  "time_fraction": 1.0416666666666667,
+  "token_fraction": 0.6
+}
 ```
 Exit code 1.
 
 **Case 3 — neither limit reached** (`elapsed=60s` of 120s budget,
 `tokens=200` of 500): `python3 resolution_bound.py 60 200 120 500`
 ```json
-{"verdict": "CONTINUE", "time_fraction": 0.5, "token_fraction": 0.4}
+{
+  "verdict": "CONTINUE",
+  "reason": "Neither limit reached.",
+  "time_fraction": 0.5,
+  "token_fraction": 0.4
+}
 ```
 Exit code 0.
 

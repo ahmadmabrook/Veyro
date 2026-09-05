@@ -8,7 +8,7 @@ severity: P1
 
 # BUG-017: `knowledge/` vault schema deviates from EIP Appendix D — restructure-or-ratify decision needed
 
-## Update 2026-09-05 — decided, migration executed, closure pending re-verification
+## Update 2026-09-05 — decided, migration executed, closed after 3 independent restoration passes (heading corrected 2026-09-05, final Phase 5 re-review NF-10 — this heading still said "pending re-verification" 20 lines above the body's own "closed now" text)
 
 The owner explicitly decided: migrate to Appendix D, do not ratify the
 deviation. Full decision + path map: `knowledge/04-Decisions/ADR-002-vault-migration-to-eip-appendix-d.md`.

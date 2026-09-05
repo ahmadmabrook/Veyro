@@ -32,6 +32,21 @@ assert (ROOT / ".git").exists(), f"expected repo root, got {ROOT}"
 
 PATH_RE = re.compile(r"`((?:knowledge|\.claude)/[^`\n]+?\.(?:md|yaml|yml|txt|json|py))`")
 BRACE_RE = re.compile(r"^(.*)\{([^{}]+)\}(\.[a-zA-Z0-9]+)$")
+# Investigated 2026-09-05 (final Phase 5 re-review, NF-3): this checker has a
+# known blind spot -- SCENARIO_CATALOG.md's own prose convention writes many
+# evidence pointers as a bare `evidence/...` shorthand (meaning "relative to
+# some evidence root"), which PATH_RE never matches at all (it requires a
+# `knowledge/` or `.claude/` prefix). This is exactly how 3 wrong evidence
+# paths in the D-1 matrix went undetected -- those 3 have been fixed directly
+# (see SCENARIO_CATALOG.md's D-1 table). A naive fix (resolve every bare
+# `evidence/...` against knowledge/03-Modules/MOD-000/) was attempted and
+# reverted: the bare-path convention actually resolves against at least 3
+# different roots depending on context (MOD-000/evidence/, MOD-000/scenario-
+# catalog/evidence/, and knowledge/05-QA/capability-evidence/ post-BUG-017-
+# migration), so a single-prefix resolution produced ~20 false positives
+# rather than closing the gap. A real fix needs per-context resolution rules,
+# not a single prefix -- left as an honest, documented residual limitation
+# rather than landing a noisier, less-trustworthy checker.
 
 # Rewritten 2026-09-05 (vault migration, BUG-017): scan EVERY markdown/yaml
 # file under knowledge/ and .claude/ plus root CLAUDE.md, rather than a

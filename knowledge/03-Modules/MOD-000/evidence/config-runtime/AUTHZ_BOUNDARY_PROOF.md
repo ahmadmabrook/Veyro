@@ -30,11 +30,14 @@ specifies — no spurious block on any of them.
 ## Deny-side (cross-referenced, not re-run — already real, already executed)
 
 `SCN-MOD000-059`'s own evidence (`TEST_RUN_PHASE3_2026-09-04.md`) already
-individually live-tested 9 of the current 21 deny patterns and confirmed
-each one denies the matching command. Two of those deny patterns were
+individually live-tested 9 of the deny patterns and confirmed
+each one denies the matching command. **Corrected 2026-09-05 (final Phase 5
+re-review NF-7): the deny list had 21 entries when this was first written,
+but grew to 22 the same day when N-8 added a new pattern — counts below
+reflect 22.** Three of those deny patterns were
 additionally live-re-verified this chunk, for real, against actual
 governing-baseline files (see `evidence/config-runtime/SETTINGS_HOOK_RULE_PROOF.md`'s
-2026-09-05 correction): a direct `rm Gym_OS_Master_Product_Blueprint_v1_English.docx`
+2026-09-05 correction, N-8): a direct `rm Gym_OS_Master_Product_Blueprint_v1_English.docx`
 and `rm Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx` were both
 denied at the permission layer, files confirmed untouched by hash.
 
@@ -42,9 +45,9 @@ denied at the permission layer, files confirmed untouched by hash.
 
 Pass criteria: "Boundary exact" — every allow entry proceeds, every
 tested deny entry refuses. Confirmed for all 8 allow entries (this
-drill) and for 11 total deny entries across this project's history (9
-from SCN-059 + 2 baseline-`rm` patterns re-verified 2026-09-05). Not
-every one of the 21 current deny entries has been individually
+drill) and for 12 total deny entries across this project's history (9
+from SCN-059 + 3 baseline-`rm` patterns re-verified 2026-09-05, N-8). Not
+every one of the 22 current deny entries has been individually
 live-tested (a residual, honestly-noted gap, consistent with SCN-059's
 own existing disclosure) — but the scenario's own Steps only required
 "one action matching each allow entry" plus reliance on SCN-059's

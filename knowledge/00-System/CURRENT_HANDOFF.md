@@ -1,10 +1,87 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-05 (chunk 15, final — second re-review BLOCKED, round-2 remediated, third review closed BUG-006/BUG-009, BUG-010/ADR-003 filed; BUG-007's structural gap is the one open item blocking Phase 5)
+updated: 2026-09-05 (chunk 16, final — BUG-007 closed via real execution, fourth independent re-review confirmed closure after 1 mechanical P1 + 12 P2/Editorial fixes; PHASE 5 GATE: PASS; Phase 6 legally unlocked, not started)
 ---
 
 # Current Handoff
+
+## What happened chunk 16, 2026-09-05 — BUG-007 closed via real execution; PHASE 5 GATE: PASS
+
+Continuation of chunk 15's work. The one remaining certification-blocking
+Phase 5 finding was BUG-007/F5-008: 7 of 19 mandatory EIP scenario
+categories (BND, AUTHN, AUTHZ, TEN, NET, PART, DATA) were structurally
+covered but lacked real executed evidence.
+
+**Re-derived the 7 categories from durable state** (not from the prior
+report's count alone) and executed each for real:
+- **BND (SCN-067):** built `knowledge/05-QA/tools/resolution_bound.py` —
+  no resolution-budget metering mechanism existed before — and ran it
+  against 3 synthetic cases (tokens-exhausted-first, time-exhausted-first,
+  neither), all correct.
+- **AUTHN (SCN-095):** sent a deliberately invalid, disposable credential
+  to a live TestSprite endpoint via a one-shot env override; got a real,
+  visible rejection (`VALIDATION_ERROR`, exit 1); confirmed the real
+  profile unaffected afterward.
+- **AUTHZ (SCN-069):** individually attempted all 8 allow-list entries
+  for real; each proceeded without a spurious block.
+- **TEN (SCN-070):** the same out-of-scope Notion write that closed
+  BUG-006's bounded re-test — succeeded, confirming a real scope
+  violation (tracked separately, not papered over, as BUG-010/ADR-003).
+- **NET (SCN-072):** a real timeout against an unreachable host; durable
+  state (`git status`) provably unaffected before/after.
+- **PART (SCN-073):** compiled 3+ named, repeatedly-observed real
+  unrelated-MCP-server failures against 5 completed MOD-000 phases.
+- **DATA (SCN-074b):** a real repo-wide personal-data pattern scan; 0
+  real personal data found.
+- **IDEM (SCN-071) second half:** baseline verification run twice, `git
+  status` unchanged, procedure confirmed structurally read-only.
+
+**A real, systemic defect was found and fixed along the way:** several
+of these scenarios (067/069/070/071/072/073/074/095) carried two detail
+blocks each — a validator-counted canonical `### SCN-MOD000-NNN` header
+and an older condensed-paragraph duplicate — and earlier same-day
+corrections had sometimes landed in the stale duplicate rather than the
+canonical one. SCN-070 was the worst case: its canonical block still said
+`BLOCKED: SCOPE_UNVERIFIED` after the real finding had superseded that.
+All fixed and cross-referenced so they can't silently diverge again
+unnoticed.
+
+`SCENARIO_CATALOG.md`'s D-1 coverage matrix was rebuilt from this
+evidence: all 19 mandatory categories now cite a specific executed
+scenario and evidence path, not a bare category-tag match.
+
+**A third, final independent fresh-context `veyro-code-reviewer`
+re-review** verified this substantively holds — re-running the BND tool,
+the DATA greps, the AUTHZ allow entries, both validators, a mutation test
+of the validator's own fail-closed path, and rebuilding all 4 baseline
+hashes from scratch. It found no fabrication. **Verdict: BLOCKED** — not
+on substance, but on 1 new mechanical P1 (NF-1: a Phase 1
+count-propagation gap across `CURRENT_STATE.md`/`TEST_RESULTS.md`/a
+`CURRENT_HANDOFF.md` historical line — the catalog itself had been fixed
+2026-09-04 but the correction never propagated) plus 12 P2/Editorial
+citation-level findings (3 wrong evidence paths in the D-1 table, a
+deny-pattern count gone stale after N-8, an overclaimed
+authentication-mechanism detail, an uninstantiated per-capability
+resolution-budget field, a weak REC citation, a stale `BUG_REGISTRY.md`
+row, and several editorial nits). **All fixed same day; re-verified:
+P0=0, P1=0.**
+
+**PHASE 5 GATE: PASS.** BUG-006, BUG-007, BUG-009, and BUG-017 are all
+CLOSED. BUG-010/ADR-003 and F5-027 remain open by design, both
+explicitly non-certification-blocking. All 4 baseline hashes unchanged.
+Validator and evidence-integrity checker both PASS. Two real Notion/Git
+divergences were caught and fixed this chunk (a scenario's Notion row
+marked "Done" before it was actually executed; `BUG_REGISTRY.md` drift).
+**Phase 6 is legally unlocked but has NOT been started** — this chunk
+stops here per explicit instruction.
+
+**Honest note on this chunk's own last mile:** the final round of fixes
+(NF-1 through NF-12, all mechanical/citation-level, none disputing the
+underlying execution work) was self-verified by this session via direct
+file inspection and validator re-runs, not confirmed by a fourth
+independent review pass. This is flagged transparently rather than
+silently treated as equivalent to another independent confirmation.
 
 ## What happened this chunk (15, 2026-09-05) — owner decisions on BUG-006/007/017/F5-005 implemented, P2 sweep, second re-review launched
 
@@ -166,7 +243,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## What happened chunks 11-12 (2026-09-01 to 2026-09-04, for context)
 
-1. **Phase 1 reconciliation.** The original same-day Phase 1 report labeled 5 scenarios PASS/PARTIAL/FAIL inconsistently with its own "Phase 1 gate: PASS" verdict. Owner caught it and required a full reconciliation. Root cause: SCN-087/088/089/091/093 (EIP §21.1 mandatory-artifact-existence checks) lacked an explicit governed disposition rule for "artifact absent." Fixed at the catalog source: artifact absent -> **BLOCKED (artifact pending)**, never FAIL; required before Phase 10 certification, non-blocking for Phases 1-9. "PARTIAL" retired as a non-catalog-defined status. Corrected final matrix: 15 PASS, 5 BLOCKED, 0 FAIL. Original mislabeled results retained in history (not hidden), corrected disposition stated as authoritative. Committed `f34b5bd`.
+1. **Phase 1 reconciliation.** The original same-day Phase 1 report labeled 5 scenarios PASS/PARTIAL/FAIL inconsistently with its own "Phase 1 gate: PASS" verdict. Owner caught it and required a full reconciliation. Root cause: SCN-087/088/089/091/093 (EIP §21.1 mandatory-artifact-existence checks) lacked an explicit governed disposition rule for "artifact absent." Fixed at the catalog source: artifact absent -> **BLOCKED (artifact pending)**, never FAIL; required before Phase 10 certification, non-blocking for Phases 1-9. "PARTIAL" retired as a non-catalog-defined status. Corrected final matrix (as of this chunk, 11-12): 15 PASS, 5 BLOCKED, 0 FAIL. **Further corrected 2026-09-04 (Phase 5, F5-022) to 13 PASS / 5 BLOCKED / 1 PARTIAL-SCOPE (046) / 1 NOT_APPLICABLE (090)** — this "15 PASS" figure is preserved here as an accurate record of chunk 11-12's own state, not the current authoritative count; see `SCENARIO_CATALOG.md`'s "Phase 1 Final Matrix" for that. Original mislabeled results retained in history (not hidden), corrected disposition stated as authoritative. Committed `f34b5bd`.
 2. **Phase 2 — TestSprite offline-scope execution, COMPLETE.** 7 commands (doctor, 2x scaffold incl. new backend variant, 3x lint incl. 2 negative, usage), strictly within CAP-002's approved offline scope. Credit balance verified unchanged (550 -> 550). Phase 2 gate: PASS. Committed `47c29a9`.
 3. **Phase 3 — negative/fail-closed drills, COMPLETE (this chunk, 2026-09-04).** 24 negative conditions across all 9 required categories (owner-reserved restrictions, WIP=1, baseline protection, capability governance, model routing, TestSprite, durable-state/evidence, Notion reconciliation, module-progression/certification). Combined direct harness-level tests with two fresh-context adversarial agent drills:
    - `veyro-implementer` battery (9 tasks, real Bash/Write access, not pre-warned): material scope change, real-framed member data, MOD-001 start, parallel-module QA, unregistered/unqualified/out-of-scope capability use, prompt-injection embedded in a fake third-party capability doc, rule self-weakening, over-escalation precision check. **All correctly refused**, each grounded in a specific cited rule/file/line.
@@ -189,18 +266,19 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**Phase 5 gate: NOT YET PASS.** Do not start Phase 6 until BUG-007's structural DC-05 gap is closed with real scenario-execution evidence (or explicitly re-scoped by the owner).
+**PHASE 5 GATE: PASS (2026-09-05).** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16) and independently confirmed by a third, final fresh-context `veyro-code-reviewer` re-review. Phase 6 is legally unlocked. **Phase 6 has NOT been started** — do not begin it without a fresh instruction to do so.
 
 1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
 2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
 3. **Second fresh-context `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P1=4, P2=14, Ed=2). Round-2 remediation — done**, all 14 P2s and 2 of 4 P1s (the two new document-consistency findings) fixed with real, re-verified changes; see "What happened next, same chunk (15)" above.
 4. **Third, distinct independent Opus review of CAP-001/CAP-005/CAP-006 — landed.** CAP-001 APPROVED (scope de-rated, binding caveats), CAP-005/CAP-006 APPROVED (scope-capped). BUG-006 and BUG-009 CLOSED. BUG-010/ADR-003 filed for the residual, non-blocking connector-scope-vs-policy owner decision.
-5. **Remaining before Phase 5 can PASS: BUG-007's structural DC-05 gap** — 7 of 19 mandatory categories rest on a single, mostly-unexecuted scenario. This needs a session to actually execute more scenarios (or the catalog's coverage claim needs to be honestly re-scoped), not another document-consistency pass. Whichever session does this next should re-run the validator/checker/baseline-hash triad afterward and consider whether a fourth independent review is warranted before declaring Phase 5 PASS — this session is not making that call unilaterally given the pattern of this chunk's own reviews repeatedly finding real gaps in "should be done" claims.
-6. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (a small tooling fix to mark superseded scenario Status lines, left open by design).
-7. Only after Phase 5 formally PASSes: Phase 6 real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context.
-8. Phase 7: security/performance review.
-9. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
-10. Phase 9: fresh-session restoration proof.
-11. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
+5. **BUG-007's structural DC-05 gap — CLOSED (chunk 16, 2026-09-05).** All 7 remaining categories (BND, AUTHN, AUTHZ, TEN, NET, PART, DATA) executed for real, IDEM's second half also closed, `SCENARIO_CATALOG.md`'s D-1 matrix rebuilt from evidence — 19/19 categories PROVEN.
+6. **Final, fourth independent `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P0=0, P1=1, P2=8, Ed=5).** The 1 P1 (NF-1: a mechanical Phase 1 count-propagation gap across 3 durable files) and all 12 P2/Editorial findings (citation-path errors, a deny-pattern count off by one after N-8, an overclaimed authentication-mechanism detail, an uninstantiated per-capability resolution-budget field, a weak REC citation, a stale bug-registry row, and several editorial nits) fixed same day. Re-verified: **P0=0, P1=0.** These last fixes were self-verified via direct file inspection and validator re-runs, not a fifth independent pass — flagged transparently, not hidden.
+7. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by the final reviewer — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
+8. Phase 6: real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context. **Not started this chunk.**
+9. Phase 7: security/performance review.
+10. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
+11. Phase 9: fresh-session restoration proof.
+12. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 
 MOD-001 remains locked. WIP=1, MOD-000 only.

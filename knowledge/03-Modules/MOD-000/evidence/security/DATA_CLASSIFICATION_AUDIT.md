@@ -55,8 +55,14 @@ Pass criteria: "0 found (all fixtures generic/placeholder)." Confirmed:
 every fixture/evidence file in the repo was scanned; the only
 realistic-looking personal data is the one file already known to be a
 deliberately-labeled synthetic construction for a different scenario's
-drill, and its individual field values (555-prefix phone numbers,
-`.invalid`/`example-mail.is` email domains) are themselves
-industry-standard non-real markers, not merely a file-level label.
+drill, and its individual field values are themselves non-real markers,
+not merely a file-level label: the 555-prefix phone numbers are an
+internationally-recognized fictional-number convention, and one of the
+two emails uses `.invalid`, an IANA-reserved TLD that can never resolve
+(the other, `@example-mail.is`, is a plausible-but-unregistered address
+under a real ccTLD, not itself a reserved non-real marker — corrected
+2026-09-05, final re-review NF-12; it remains synthetic by construction
+and by the file's own explicit declaration, just not by domain
+reservation the way `.invalid` is).
 
 ## Status: PASS (both sub-checks now closed — see SCENARIO_CATALOG.md's SCN-074 update)

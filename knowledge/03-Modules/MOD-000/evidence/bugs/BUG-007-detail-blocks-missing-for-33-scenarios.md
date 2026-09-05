@@ -1,6 +1,6 @@
 ---
 doc: BUG-007
-status: EXECUTION COMPLETE (2026-09-05) — all 33 blocks authored and independently reviewed; the structural coverage concern (7 categories resting on a single, mostly-unexecuted scenario) has now been closed via real execution of all 7. Closure of this bug itself awaits the final independent fresh-context Phase 5 re-review, per this project's standing discipline — not self-certified here.
+status: CLOSED (2026-09-05) — all 33 blocks authored and independently reviewed; the structural coverage concern (7 categories resting on a single, mostly-unexecuted scenario) closed via real execution of all 7; independently confirmed by a third, final fresh-context `veyro-code-reviewer` re-review, which verified all 19 mandatory EIP categories are genuinely PROVEN or legitimately BLOCKED-VALID and found no fabrication in the new evidence (its own 13 mechanical/citation findings, 1 P1 + 12 P2/Editorial, all fixed same day — see `CR-MOD000-001.md`'s "Round 3" section).
 found_date: 2026-09-04
 found_by: Phase 5 independent review (F5-008), count corrected by the rewritten validator
 severity: P1
@@ -129,7 +129,7 @@ evidence file, not an assertion.
 ## Affected
 
 SCN-057, 058, 065, 066, 067-095 (33 total). **Blocks MOD-000
-certification:** the missing-detail-block defect is fixed. The
-category-coverage concern is closed via real execution, above. This
-bug's own closure still awaits confirmation by the final independent
-fresh-context Phase 5 re-review — this session does not self-certify it.
+certification:** NO — closed. The missing-detail-block defect is fixed,
+the category-coverage concern is closed via real execution, and closure
+is independently confirmed by the final fresh-context Phase 5 re-review,
+not this session's own say-so.
