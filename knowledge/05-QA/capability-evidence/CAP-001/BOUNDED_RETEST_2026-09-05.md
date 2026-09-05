@@ -1,6 +1,6 @@
 ---
 doc: CAP-001_BOUNDED_RETEST
-status: EXECUTED (2026-09-05) — mechanical execution by main session, independent Opus evaluation pending
+status: EXECUTED (2026-09-05); independently evaluated 2026-09-05 by a distinct fresh-context Opus review — APPROVED, scope de-rated, with binding caveats. See "Correction (2026-09-05, independent review)" appended below — original text preserved, not rewritten.
 date: 2026-09-05
 ---
 
@@ -105,3 +105,36 @@ inconclusive probe. This may itself argue for keeping CAP-001 at
 QUALIFIED (or lower) rather than upgrading to APPROVED, regardless of how
 (b) and (c) come out — that is exactly the kind of call this file
 deliberately leaves to the independent reviewer.
+
+## Correction (2026-09-05, independent review) — two overclaims found, original text above left unedited
+
+A distinct fresh-context `veyro-security-reviewer` review evaluated this
+file and, while confirming no fabrication, found two real overclaims in
+the prose above (not in the raw JSON, which checks out — the reviewer
+independently verified the response page id shares a workspace-correlated
+segment with the known Control Plane page id, and the URL shape matches
+what the server actually returns):
+
+1. **"Also directly confirmed by `notion-fetch id="self"`..." (line 43-47
+   above) has no raw artifact.** The workspace-id and "not a page-scoped
+   grant" conclusions rest on prose summary only — the actual `id="self"`
+   tool output was never pasted into this file. In a document whose
+   purpose is raw-artifact capture, the one call that mattered most for
+   the headline conclusion wasn't captured. The conclusion itself
+   (workspace-wide authorization) is not disputed — it's consistent with
+   item (a)'s demonstrated result — but it should have had its own raw
+   evidence block, not just a description.
+2. **"(raw response also captured above)" (line 63-64 above) is
+   inaccurate.** What's captured for the read-back is an elided ancestor-path
+   fragment (`<ancestor-path><parent-page ... title="Veyro Engineering
+   Control Plane"/></ancestor-path>`), not a raw response. It's adequate
+   to prove the move succeeded, but "raw" overclaims what's actually there.
+
+**Net effect on the finding: none.** Item (a)'s core result — an
+out-of-scope write succeeded — is fully supported by genuinely raw
+request/response JSON and is not in question. These two corrections are
+about evidentiary rigor in the surrounding prose, not about whether the
+underlying security finding is real. See `CAPABILITY_REGISTRY.md`'s
+CAP-001 row for the resulting demonstrated-vs-inferred distinction now
+applied project-wide, and `ADR-003`/`BUG-010` for the follow-on owner
+decision this finding requires.

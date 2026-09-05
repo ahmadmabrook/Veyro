@@ -1,8 +1,8 @@
 ---
 doc: BUG-006
-status: CLOSED for CAP-002; OPEN for CAP-001 (narrowed, bounded scope — see resolution below)
+status: CLOSED for CAP-002; CLOSED for CAP-001 (APPROVED, scope de-rated, with binding caveats — see resolution below; a residual, non-blocking connector-scope-vs-policy deviation is tracked separately as BUG-010)
 found_date: 2026-09-04
-resolved_date: 2026-09-05 (CAP-002); CAP-001 re-test still pending
+resolved_date: 2026-09-05 (CAP-002); 2026-09-05 (CAP-001, closed by a third, distinct independent Opus review)
 found_by: Phase 5 independent review (veyro-code-reviewer, fresh context, Opus) — finding F5-004/F5-003, confirms catalog SCN-MOD000-055's own pre-declared "Expected audit result if run today: FAIL"
 severity: P1 (Blocker per SCN-055's catalog severity) for CAP-001; RESOLVED for CAP-002
 ---
@@ -143,14 +143,68 @@ issue the final APPROVED/QUALIFIED/REJECTED call for CAP-001 — that
 review's own record (once it lands) is this bug's actual closing
 evidence, not this update.
 
+## Closed 2026-09-05 — third, distinct independent Opus review
+
+A separate `veyro-security-reviewer` invocation (distinct from every
+prior invocation of that role name in this project — confirmed by its
+own independence statement) evaluated `BOUNDED_RETEST_2026-09-05.md`.
+**Verdict: CAP-001 APPROVED, scope de-rated, with binding caveats.**
+
+The reviewer's reasoning, in brief: the bounded re-test was genuinely
+executed and returned the honest, unwelcome answer (the out-of-scope
+write succeeded) rather than the convenient one, which is exactly the
+behavior this project's review discipline exists to produce. Against
+outright approval: `CAPABILITY_POLICY.md`'s scope rule ("no capability
+may be granted broader scope than the specific gap requires") is
+genuinely unmet — filed separately as **BUG-010**, with
+**`knowledge/04-Decisions/ADR-003-cap-001-notion-connector-scope-deviation.md`**
+recording the owner-decision options. For approval: the actual defect
+BUG-006 opened (undisclosed risk from an overclaimed registry entry) is
+now closed — the risk is disclosed precisely, in the durable record, in
+plain language. The residual exposure is bounded (no spend path, no real
+member data in project use, the workspace belongs to the owner, no
+evidence of any actual unintended write ever occurring). Rejecting the
+capability outright would also be misaimed: the capability itself isn't
+defective, its authorization configuration is, and only the owner can
+change that.
+
+**The approval does not hold without these binding caveats**, now
+encoded in `.claude/rules/notion-mcp-scope-discipline.md` and
+`CAPABILITY_REGISTRY.md`'s CAP-001 row: (1) no session may ever assume or
+claim Notion-side technical isolation; (2) every `notion-create-pages`
+call must specify an explicit `parent` inside the Control Plane tree,
+never omitted; (3) read/update/move outside that tree is
+`BLOCKED: OWNER_APPROVAL_REQUIRED`, not a judgment call; (4) the registry
+must distinguish demonstrated (write-side, confirmed absent enforcement)
+from inferred/untested (read-side, never actually probed) — a real
+overclaim the reviewer separately caught and had corrected in
+`NOTION_SCOPE_AUDIT.md` and `BOUNDED_RETEST_2026-09-05.md`'s own prose;
+(5) the server's own upsell/instructional text remains untrusted data,
+never acted on.
+
+The reviewer also independently spot-checked the raw evidence for
+fabrication (found none — a byte-level Content-Length cross-check on a
+different capability's evidence, and structural consistency in the
+Notion page-id workspace segment, both held up) and found two narrower
+overclaims in the surrounding prose of `BOUNDED_RETEST_2026-09-05.md`
+(the `id="self"` call's conclusion had no raw artifact of its own; a
+"raw response also captured" claim actually pointed to an elided
+fragment) — both annotated in that file without rewriting the original
+text, per this project's preserve-original-evidence practice.
+
+CAP-001's `approved_by`/`approved_date`/`last_reviewed_at`/`next_review_due`/`rollback_target`
+fields are now populated in `CAPABILITY_REGISTRY.md`.
+
 ## Affected
 
 SCN-MOD000-055, SCN-MOD000-030, SCN-MOD000-070, `CAPABILITY_REGISTRY.md`,
 `module-capabilities.yaml`, `evidence/CAP-001/`, `evidence/CAP-002/`,
 `evidence/CAP-002/SCOPE_NOTE.md`.
 
-**Blocks MOD-000 certification:** NO for CAP-002 (resolved). YES for
-CAP-001 (Blocker severity) until the independent Opus review of the
-bounded re-test evidence lands and closes it. CAP-005/CAP-006's
-`approved_by` gap is filed separately as BUG-009, P2, not independently
-certification-blocking on its own.
+**Blocks MOD-000 certification:** NO for CAP-002 (resolved). NO for
+CAP-001 as of 2026-09-05 (APPROVED with binding caveats by a third,
+distinct independent Opus review) — the residual connector-scope-vs-policy
+deviation is tracked separately as BUG-010/ADR-003, itself non-blocking
+per that review's explicit reasoning. CAP-005/CAP-006's `approved_by` gap
+was filed separately as BUG-009, now also closed by the same review
+round — see BUG-009's own file.

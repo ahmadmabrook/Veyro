@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-05 (chunk 15)
+updated: 2026-09-05 (chunk 15, final — second re-review BLOCKED, round-2 remediated, third review closed BUG-006/BUG-009, BUG-010/ADR-003 filed; BUG-007's structural gap is the one open item blocking Phase 5)
 ---
 
 # Current Handoff
@@ -67,9 +67,80 @@ All work committed (`232fc9a`) and pushed; local HEAD and `origin/main`
 verified identical. A **second, independent fresh-context Phase 5
 re-review** (`veyro-code-reviewer`, Opus) was launched at the end of this
 chunk to verify all of the above without trusting this session's own
-account — its result is the actual Phase 5 gate decision, not this
-handoff note. Check `knowledge/03-Modules/MOD-000/evidence/code-review/CR-MOD000-001.md`
-for whether that second review has landed and what it found.
+account.
+
+## What happened next, same chunk (15) — second independent re-review returned BLOCKED; round-2 remediation; third independent review closes CAP-001/CAP-005/CAP-006
+
+**The second re-review did not confirm the account above.** It
+independently re-verified every finding against actual repo state
+(re-running the validator, the checker, and rebuilding all 4 baseline
+hashes itself rather than trusting prior reports) and returned
+**P0=0, P1=4, P2=14, Editorial=2 — verdict BLOCKED.** Two of the four P1s
+were genuinely new: `FRESH_SESSION_RESTORE_PROOF_2026-09-05.md`'s own
+front matter still said "Pass 3 pending" after its body had already
+recorded a clean Pass 3 — the exact recurring self-certification pattern
+this project's discipline exists to catch, found a third time, this time
+in that file's own header (N-1); and `BUG_REGISTRY.md` had drifted from
+the real per-bug files, including a false "0 open Blocker-severity bugs"
+line feeding the DC-08 gate (N-2). The other two P1s were confirmations
+that BUG-006 and BUG-007's structural gap were correctly still open, not
+resolved by item 2/3 above as first claimed.
+
+**Round-2 remediation (same chunk) fixed all 14 P2s and both new P1s**
+with real, re-verified changes: the scenario-catalog validator now treats
+a missing detail block as a blocking error, not a warning that still
+prints PASS; `mr_verify.py`'s tier-matching was tightened from substring
+containment to an anchored regex and its agent→tier map is now actually
+enforced (both gaps proven exploitable, then proven fixed, on real and
+synthetic transcripts); `.claude/settings.json`'s 3 baseline `rm` deny
+patterns had a literal-space bug that meant a direct `rm <file>` wouldn't
+match — fixed and live-re-verified against the real files;
+`evidence_integrity_check.py`'s blanket ADR-file exemption was narrowed
+so ADR-002's own migration path map is now actually checked (confirmed
+100% valid); all 21 DC rules are now genuinely present by ID
+(grep-verified — the first "all 21 present" claim above was itself false,
+9 IDs were unlabeled-though-covered and two sub-clauses were missing
+content entirely); SCN-071 was corrected (wrongly marked unexecuted, when
+Phase 1's own record shows it PASS), narrowing BUG-007's structural gap
+from 8 to 7 unproven categories.
+
+**BUG-006 and BUG-007's structural gap needed more than document edits.**
+CAP-001's bounded 3-item re-test was executed for real: a genuine
+out-of-scope Notion write (no `parent` specified) **succeeded** — a real
+finding, worse than the prior "unverified," confirming the connector has
+no technical page-tree enforcement. A **third, distinct** fresh-context
+Opus review (not the same invocation that ran the second re-review, and
+not the one that originally downgraded CAP-001) independently evaluated
+this evidence — plus, separately, CAP-005/CAP-006's existing qualification
+drill (BUG-009, filed by the second re-review's N-6 finding) — and:
+
+- **Approved CAP-001** with binding scope caveats, now encoded in
+  `.claude/rules/notion-mcp-scope-discipline.md`: never omit `parent` on
+  page creation, never read/update/move outside the Control Plane tree,
+  state demonstrated-vs-inferred capability facts precisely (the reviewer
+  also caught two narrower overclaims in the re-test's own prose and had
+  them annotated, not rewritten). The residual gap — the connector's
+  authorization is genuinely broader than `CAPABILITY_POLICY.md`'s scope
+  rule permits — is filed separately as **BUG-010**, with
+  **`ADR-003`** recording the owner's two options (re-scope the connector,
+  or formally accept the risk). Non-blocking; an owner decision, not a
+  code defect.
+- **Approved CAP-005 and CAP-006** with scope caveats (public-endpoint-only
+  for Browser; stock-Apple-app-only for iOS Simulator), closing BUG-009.
+  The reviewer independently corroborated the CAP-005 evidence with a
+  byte-level check (reconstructing the exact `Content-Length: 214` from
+  the drill's own listed field values) and disclosed, rather than hid, a
+  real sequencing gap: the mandatory §12.1 evidence was gathered while
+  both capabilities sat at `QUALIFIED`, not yet `APPROVED`.
+
+**Final state this chunk: BUG-006 CLOSED, BUG-007 MOSTLY FIXED (one
+genuinely open P1 — the structural DC-05 gap, unchanged by this round
+because closing it needs real scenario execution, not more remediation),
+BUG-009 CLOSED, BUG-010/ADR-003 filed (non-blocking), BUG-017 CLOSED,
+F5-005 substantially fixed.** All work committed (`b07562a`, `7523130`)
+and pushed. **Phase 5 gate: not yet PASS** — the structural DC-05 gap is
+the one blocking item. This handoff note is not the certifying record;
+`knowledge/03-Modules/MOD-000/evidence/code-review/CR-MOD000-001.md` is.
 
 ## What happened chunk 14, 2026-09-04 (for context) — Phase 5 independent review + remediation
 
@@ -118,15 +189,18 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**Phase 5 gate: NOT YET PASS** (as of this note). Do not start Phase 6 until the second re-review below has landed and confirmed the gate criteria are met.
+**Phase 5 gate: NOT YET PASS.** Do not start Phase 6 until BUG-007's structural DC-05 gap is closed with real scenario-execution evidence (or explicitly re-scoped by the owner).
 
-1. Commit and push chunk 15's Phase 5 remediation — **done**, commit `232fc9a`, local HEAD == `origin/main` verified.
-2. Owner decisions on BUG-006/007/017/F5-005 — **done**, see the chunk-15 section above. Only BUG-006/CAP-001 (bounded re-test) and F5-027 (open by design) remain outstanding of the original 29 findings.
-3. **Second fresh-context `veyro-code-reviewer` re-review — launched end of chunk 15, result pending.** This is the actual Phase 5 gate decision, not any session's own account. Check `CR-MOD000-001.md` for whether it has landed; if it reports P1=0 (or confirms the 1 remaining P1 is legitimately bounded, not a live defect), Phase 5 can PASS. If it finds anything this chunk missed or a regression, that must be fixed and re-verified before PASS.
-4. Only after Phase 5 formally PASSes: Phase 6 real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context.
-5. Phase 7: security/performance review.
-6. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027's small tooling-fix alternative, if still open, is fair game here too).
-7. Phase 9: fresh-session restoration proof.
-8. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
+1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
+2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
+3. **Second fresh-context `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P1=4, P2=14, Ed=2). Round-2 remediation — done**, all 14 P2s and 2 of 4 P1s (the two new document-consistency findings) fixed with real, re-verified changes; see "What happened next, same chunk (15)" above.
+4. **Third, distinct independent Opus review of CAP-001/CAP-005/CAP-006 — landed.** CAP-001 APPROVED (scope de-rated, binding caveats), CAP-005/CAP-006 APPROVED (scope-capped). BUG-006 and BUG-009 CLOSED. BUG-010/ADR-003 filed for the residual, non-blocking connector-scope-vs-policy owner decision.
+5. **Remaining before Phase 5 can PASS: BUG-007's structural DC-05 gap** — 7 of 19 mandatory categories rest on a single, mostly-unexecuted scenario. This needs a session to actually execute more scenarios (or the catalog's coverage claim needs to be honestly re-scoped), not another document-consistency pass. Whichever session does this next should re-run the validator/checker/baseline-hash triad afterward and consider whether a fourth independent review is warranted before declaring Phase 5 PASS — this session is not making that call unilaterally given the pattern of this chunk's own reviews repeatedly finding real gaps in "should be done" claims.
+6. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (a small tooling fix to mark superseded scenario Status lines, left open by design).
+7. Only after Phase 5 formally PASSes: Phase 6 real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context.
+8. Phase 7: security/performance review.
+9. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
+10. Phase 9: fresh-session restoration proof.
+11. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 
 MOD-001 remains locked. WIP=1, MOD-000 only.

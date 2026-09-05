@@ -61,11 +61,26 @@ request/response: `knowledge/05-QA/capability-evidence/CAP-001/BOUNDED_RETEST_20
 
 This resolves the ambiguity this file could not: it is **not** "the
 workspace just doesn't have much else in it" (explanation 2 from the
-original audit) — it is confirmed there is no technical page-tree
-restriction at all. CAP-001's "scope" is a project-convention
-description of *intended* use, not an enforced permission boundary. The
-registry's scope field must read exactly that way (see the correction
-made 2026-09-05 alongside this update), and this is real information for
-whoever makes CAP-001's next review-status call: the Notion MCP capability,
-as currently authorized, can read and write anywhere in the connected
-workspace, not just the Veyro Control Plane tree.
+original audit) — page creation outside the Control Plane tree is
+confirmed not technically prevented. CAP-001's "scope" is a
+project-convention description of *intended* use, not an enforced
+permission boundary, for that specific action.
+
+**Correction (2026-09-05, independent review) — demonstrated vs.
+inferred, stated precisely, original text above left unedited:** the
+sentence that previously stood here claimed the capability "can read and
+write anywhere in the connected workspace." That overstates what was
+actually shown. **Demonstrated:** page *creation* with no `parent`
+specified is not prevented — the one concrete test run. **Not tested,
+not confirmed either way:** read or update access to *pre-existing*
+non-Veyro workspace content — the only read-side probe this project ever
+ran was the 2026-09-04 single-letter search above, which the original
+audit itself correctly called inconclusive, and that probe was never
+repeated after the write-side result came in. Notion connectors can in
+principle be scoped differently for creating new content versus reading
+existing content, so the two are not interchangeable claims. The
+practical risk conclusion is unchanged — the connector's blast radius is
+confirmed wider than the registry previously implied, and
+`.claude/rules/notion-mcp-scope-discipline.md` treats both read and write
+outside the Control Plane tree as prohibited regardless — but the
+registry and this file must state only what was actually shown.
