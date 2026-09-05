@@ -39,8 +39,16 @@ Plus targeted review of every file whose name suggested fixture/test data:
   numeric matches were false positives from the pattern (hash fragments,
   byte counts, dates, IDs — e.g. `20444357604289`, `291745356`).
 - **0 credit-card-shaped strings** beyond a literal placeholder
-  (`0000000000000000`), and `bad_plan.json` contains no personal data at
-  all (`{"garbage": true, "not_a_plan": "at all"}`).
+  (`0000000000000000`) — **corrected 2026-09-05 (fourth Phase 5
+  re-review, NF4-8): a second, benign false positive
+  (`0416666666666667`) now also matches this pattern, a numeric
+  fragment of `"time_fraction": 1.0416666666666667` introduced into
+  `RESOLUTION_BOUND_DRILL.md` by that same day's own NF-8 fix (pasting
+  full-precision JSON instead of abbreviated output), after this audit
+  had already run. Re-run 2026-09-05: 2 credit-card-shaped matches
+  total, both confirmed non-personal-data (a placeholder and a float
+  fragment) — conclusion unaffected, count corrected.** `bad_plan.json`
+  contains no personal data at all (`{"garbage": true, "not_a_plan": "at all"}`).
 - **0 SSN-shaped strings.**
 - `member_record.md` (the one file with realistic-looking personal
   fields) opens with an explicit, unambiguous synthetic-fixture

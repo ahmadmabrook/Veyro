@@ -16,16 +16,20 @@ qualification evidence, preserved from `knowledge/04-Capabilities/evidence/`
 during the 2026-09-05 vault migration (git history intact via `git mv`):
 `knowledge/05-QA/capability-evidence/`.
 
-| CAP ID | Positive test | Negative test | Next review due |
-|---|---|---|---|
-| CAP-001 | `capability-evidence/CAP-001/positive_test.md` | `capability-evidence/CAP-001/negative_test.md` | not yet set (known gap — `next_review_due` field exists in policy per SCN-058 but not populated per-row yet) |
-| CAP-002 | `capability-evidence/CAP-002/positive_test.md` | `capability-evidence/CAP-002/negative_test.md` | not yet set |
-| CAP-005 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | none yet run | not yet set |
-| CAP-006 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | invalid-deep-link-scheme negative control, same file | not yet set |
+| CAP ID | Positive test | Negative test | Lifecycle status | Next review due |
+|---|---|---|---|---|
+| CAP-001 | `capability-evidence/CAP-001/positive_test.md` | `capability-evidence/CAP-001/negative_test.md` | ACTIVE | 2026-12-04 |
+| CAP-002 | `capability-evidence/CAP-002/positive_test.md` | `capability-evidence/CAP-002/negative_test.md` | ACTIVE | 2026-12-04 |
+| CAP-005 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | none yet run | ACTIVE | 2026-12-04 |
+| CAP-006 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | invalid-deep-link-scheme negative control, same file | ACTIVE | 2026-12-04 |
 
-**Known gap:** `next_review_due` enforcement is not yet populated for any
-row (F5-016's remediation added the *field* to the policy schema; backfilling
-actual dates for each capability is separate follow-up work).
+**Corrected 2026-09-05 (fourth Phase 5 re-review, NF4-3): this table
+previously said `next_review_due` was "not yet set" for every row after
+`CAPABILITY_REGISTRY.md` had already populated it (2026-09-05,
+`last_reviewed_at`/`next_review_due` = 2026-12-04, 90-day cadence) for
+all 4 rows above — this index just hadn't been synced to that. Fixed;
+`lifecycle_status` (all `ACTIVE`) added per `CAPABILITY_REGISTRY.md`'s
+own new "Lifecycle status" section.
 
 Also indexed here: the capability-governance drill
 (`capability-evidence/GOVERNANCE_DRILL/DRILL.md`) — inventory, gap

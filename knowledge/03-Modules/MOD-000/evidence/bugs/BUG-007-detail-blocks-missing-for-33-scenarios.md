@@ -1,6 +1,6 @@
 ---
 doc: BUG-007
-status: CLOSED (2026-09-05) — all 33 blocks authored and independently reviewed; the structural coverage concern (7 categories resting on a single, mostly-unexecuted scenario) closed via real execution of all 7; independently confirmed by a third, final fresh-context `veyro-code-reviewer` re-review, which verified all 19 mandatory EIP categories are genuinely PROVEN or legitimately BLOCKED-VALID and found no fabrication in the new evidence (its own 13 mechanical/citation findings, 1 P1 + 12 P2/Editorial, all fixed same day — see `CR-MOD000-001.md`'s "Round 3" section).
+status: EXECUTION WORK CLOSED, PENDING FIFTH INDEPENDENT CONFIRMATION (2026-09-05) — all 33 blocks authored and independently reviewed; the structural coverage concern (7 categories resting on a single, mostly-unexecuted scenario) closed via real execution of all 7. A third fresh-context `veyro-code-reviewer` re-review independently verified all 19 mandatory EIP categories are genuinely PROVEN, found no fabrication, but returned 13 mechanical/citation findings (1 P1 + 12 P2/Editorial) — self-fixed same day. A fourth independent re-review then independently re-confirmed all 19 categories PROVEN and 12 of those 13 fixes correct, but found this exact status field had not been updated to match (a P1, "NF4-1") — the fifth recurrence of this project's own premature-completion pattern, this time inside the commit meant to correct the fourth. Fixed here. This bug is CLOSED only once a fresh-context review confirms zero outstanding P0/P1 — not on this session's own say-so.
 found_date: 2026-09-04
 found_by: Phase 5 independent review (F5-008), count corrected by the rewritten validator
 severity: P1
@@ -129,7 +129,9 @@ evidence file, not an assertion.
 ## Affected
 
 SCN-057, 058, 065, 066, 067-095 (33 total). **Blocks MOD-000
-certification:** NO — closed. The missing-detail-block defect is fixed,
-the category-coverage concern is closed via real execution, and closure
-is independently confirmed by the final fresh-context Phase 5 re-review,
-not this session's own say-so.
+certification:** PENDING — the missing-detail-block defect is fixed and
+the category-coverage concern is closed via real execution (independently
+confirmed genuine, no fabrication, by two separate fresh-context
+reviews), but this bug is not marked CLOSED until a fresh-context review
+itself reports zero outstanding P0/P1 findings against the current
+state — not this session's own say-so.

@@ -34,6 +34,16 @@ see `SCN-MOD000-067`); it is not yet wired into any live capability's
 discovery flow, so this budget is currently a stated constraint, not yet
 a technically-enforced one, for any row above.
 
+## Lifecycle status (added 2026-09-05 — fourth Phase 5 re-review NF4-4)
+
+`CAPABILITY_POLICY.md`'s supply-chain review-fields table lists
+`lifecycle_status` (`ACTIVE`/`DEPRECATED`/`REVOKED`) as required on every
+registry entry, but it was never instantiated anywhere — not as a
+registry column, not in `CAPABILITY_EVAL_INDEX.md`. Instantiated here
+rather than as a 15th column on an already-wide table: **all 6
+capabilities (CAP-001 through CAP-006) are `ACTIVE`.** None is
+`DEPRECATED` or `REVOKED`. `CAPABILITY_EVAL_INDEX.md` mirrors this.
+
 ## Qualification history
 
 - CAP-001 Notion MCP: qualified 2026-08-31. A first independent Opus review (2026-09-05) downgraded it to QUALIFIED pending a bounded 3-item re-test. A second, distinct Opus review (2026-09-05, same day) evaluated that re-test's evidence and approved it with binding caveats — see `BUG-006`, `ADR-003`, `BUG-010` (the residual connector-scope-vs-policy deviation, filed separately, not certification-blocking).
