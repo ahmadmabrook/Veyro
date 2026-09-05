@@ -1,0 +1,10 @@
+getpwuid_r did not find a match for uid 501
+Filtering the log data using "subsystem == "com.apple.Accessibility" AND category == "ScreenReaderOutput""
+Timestamp               Ty Process[PID:TID]
+2026-09-05 21:30:46.728 Df scrod[50021:3c76746] [com.apple.Accessibility:ScreenReaderOutput] active: (
+    "<SCROVirtualBrailleDisplay: 0x1035f4140>"
+) pending (null)
+2026-09-05 21:30:46.734 Df scrod[50021:3c76746] [com.apple.Accessibility:ScreenReaderOutput] active: (
+    "<SCROVirtualBrailleDisplay: 0x1035f4140>"
+) pending (null)
+Child process terminated with signal 15: Terminated

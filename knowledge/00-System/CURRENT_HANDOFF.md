@@ -1,10 +1,97 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-05 (chunk 16, final — BUG-007 closed via real execution, independently confirmed genuine by three separate reviews (third, fourth, fifth); fifth returned P0=0/P1=0, verdict APPROVED; **PHASE 5 GATE: APPROVED**; Phase 6 legally unlocked, not started)
+updated: 2026-09-05 (chunk 17 — Phase 6 real manual QA executed via fresh-context, technically model-attested Opus `veyro-manual-qa`; Browser/Backend-API/iOS PASS with real interactive evidence; Android/Accessibility/Edge-device correctly remain BLOCKED with sharper, corrected reasoning; BUG-011 filed+fixed; **PHASE 6 GATE: PASS**; Phase 7 legally unlocked, not started)
 ---
 
 # Current Handoff
+
+## What happened chunk 17, 2026-09-05 — Phase 6 (real manual QA) executed; PHASE 6 GATE: PASS
+
+Per explicit instruction: "Phase 5 is APPROVED... Begin PHASE 6 ONLY... Do not
+proceed to Phase 7... Do not start MOD-001... Do not issue a Module Approval
+Certificate." Governed commit at start: `b4ca8314c048c9580faf47a4f839d070cc5ea1ca`.
+
+**Scope determination.** Re-derived from durable state rather than assumed:
+7 scenarios require actual Claude manual QA (SCN-039 Browser, SCN-040
+Backend/API, SCN-041 Android, SCN-042 iOS lifecycle, SCN-043 Accessibility,
+SCN-044 Edge/device, SCN-061 iOS interactive control). The catalog's D-9
+banner's broader claim was deliberately NOT interpreted as putting all ~95
+scenarios in Phase 6 scope — flagged in the evidence file as a scoping
+judgment call for a future reviewer to sanity-check, not silently resolved.
+
+**Execution: genuinely fresh-context, Opus-tier, technically model-attested
+`veyro-manual-qa`** (no Write tool — returned findings in final message text
+for this session to transcribe; not self-report of its own tier — verified
+after completion via `mr_verify.py` against the real subagent transcript:
+203 turns, 100% `claude-opus-5`, PASS).
+
+- **Browser (SCN-039): PASS.** Real multi-field form fill + submit against
+  a live public test form, server-echoed values confirmed, 2 negative
+  controls (missing required field, invalid format) both correctly
+  rejected. CAP-005 scope respected (public/stateless endpoint only).
+- **Backend/API (SCN-040): PASS.** Real POST request/response captured
+  (headers, body, cookies), independently-verified stateful side effect
+  (cookie set → separate re-read confirms selective survival → delete →
+  re-read confirms removal), 5 negative paths (malformed payload, wrong
+  method, missing auth header, oversized body, invalid content-type) all
+  correctly rejected. No mock-only certification.
+- **iOS Simulator (SCN-042, SCN-061): PASS.** Full interactive lifecycle:
+  a genuine cold-launch cycle (terminate → launch, new PID, cleared
+  state — the agent caught and rejected its own first "launch" attempt
+  because it was actually a resume of a still-running process from the
+  prior day, same PID; the deliberate terminate→launch cycle is what
+  actually proves the launch verb), deep-link open, background/foreground
+  transition PID-verified, negative deep-link control correctly rejected.
+  CAP-006 scope respected (stock Apple app only, no destructive `simctl`).
+  D-2 matrix's iOS row corrected from split lifecycle/interaction status
+  to a single **PASS, both**.
+- **Android (SCN-041): correctly remains BLOCKED**, reasoning sharpened.
+  Re-confirmed `adb`/`emulator` binaries ARE present on host (present but
+  not on PATH — narrower gap than a prior phase's vaguer "no tooling"
+  framing), but no AVD/system-image is provisioned (an owner-approval-scale
+  action, not attempted). A fail-closed proof was added: an invalid AVD
+  name was attempted and failed loudly, rather than silently no-opping.
+- **Accessibility (SCN-043): correctly remains BLOCKED — OWNER_ASSISTED
+  REQUIRED**, reasoning corrected (BUG-011, see below). VoiceOver genuinely
+  CAN be started for real (`launchctl`/`kickstart`, real PID, moving focus
+  cursor, real speech audio observed) — this contradicts the Phase 5
+  record's "never ran" framing. But announcement text still cannot be
+  captured and the screen reader's own gestures still cannot be driven
+  from this harness, so the BLOCKED verdict itself is unchanged — only the
+  reasoning is sharper and more precise now.
+- **Edge/device (SCN-044): correctly remains BLOCKED — NOT YET QUALIFIED.**
+  Exhaustive re-probe of Edge/BrowserStack/Sauce-class tooling; none
+  available. Browser viewport resize explicitly NOT treated as
+  edge/device execution, per the standing rule.
+
+**BUG-011 filed and fixed same day (P2):** the Phase 5 accessibility
+evidence file's reasoning was incomplete — it implied VoiceOver could not
+be started at all, when the real gap is narrower (can start; can't capture
+announcements or drive its own gestures). This is a correct-verdict,
+wrong-reasoning finding, not a false-BLOCKED finding — does not block
+MOD-000 certification. Original Phase 5 evidence text left unedited;
+correction appended below it, dated, per the project's standing
+preserve-history convention. See `evidence/bugs/BUG-011-*.md`.
+
+**Durable close-out, same chunk:** `CAPABILITY_DRILL_PHASE6_2026-09-05.md`
+authored (full matrix, per-surface evidence, run-identity/model-attestation
+table, restriction-compliance section, findings section); 8 raw artifacts
+copied into `evidence/manual-qa/phase6-artifacts/`; `SCENARIO_CATALOG.md`'s
+D-2 matrix and all 7 relevant scenarios' canonical detail blocks (039,
+040, 041, 042, 043, 044, 061) updated to close their stale "Follow-up
+flagged" items with real Phase 6 evidence; `MANUAL_QA.md` and
+`MANUAL_QA_INDEX.md` repointed to the new record; `BUG_REGISTRY.md`
+updated (BUG-011 row added, summary line corrected). `validate_catalog.py`
+and `evidence_integrity_check.py` both re-run clean after every batch of
+catalog edits. All 4 governing baseline hashes re-verified unchanged.
+
+**0 FAIL, 0 P0, 0 P1 this chunk.** All 7 required scenarios executed
+fresh, 0 skipped. No scenario marked PASS from file/config inspection,
+prior automated-test results, or prior agent self-report — every PASS
+carries real interactive evidence gathered this chunk. **PHASE 6 GATE:
+PASS.** Phase 7 is legally unlocked. It has NOT been started this chunk,
+per explicit instruction.
 
 ## What happened chunk 16, 2026-09-05 — BUG-007 closed via real execution; PHASE 5 GATE: APPROVED after five independent review rounds
 
@@ -296,10 +383,8 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
    - Full record: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/TEST_RUN_PHASE3_2026-09-04.md`.
 4. Fixed a real bug in this chunk's own evidence-integrity checker script (brace-expansion glob notation `{A,B,C}.md` was mis-parsed as one literal path, producing 2 false-positive broken-reference findings) before trusting its PASS result — found via manual verification of the underlying files, fixed in the script, re-run clean.
 
-## What is NOT done (Phases 5-10)
+## What is NOT done (Phases 7-10)
 
-- Phase 5 — independent code/config review (`veyro-code-reviewer`, fresh context — must not be the session that did the implementation work).
-- Phase 6 — real manual QA (`veyro-manual-qa`, fresh context). Android, Accessibility (real screen-reader execution), Edge/device, and iOS interactive control (SCN-061) remain BLOCKED per existing evidence — do not flip without new real evidence.
 - Phase 7 — security/performance review.
 - Phase 8 — cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046.
 - Phase 9 — fresh-session restoration proof.
@@ -309,7 +394,9 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 5 GATE: APPROVED.** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16), and that execution work was independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review. The fifth review independently re-verified all 19 mandatory EIP categories PROVEN, found no fabrication anywhere, and returned P0=0/P1=0 — verdict APPROVED. Its own 4 P2 + 3 Editorial findings (the same recurring propagation-gap species as the third and fourth reviews') were self-fixed same day. Phase 6 is legally unlocked but has NOT been started.
+**PHASE 6 GATE: PASS.** Real manual QA executed via a genuinely fresh-context, technically model-attested Opus `veyro-manual-qa` (chunk 17). All 7 required scenarios executed fresh with real interactive evidence: Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remain BLOCKED with corrected, sharper reasoning (not flipped without real evidence). BUG-011 filed and fixed same day (reasoning-only correction, verdict unaffected). 0 FAIL, 0 P0, 0 P1. Phase 7 is legally unlocked but has NOT been started.
+
+0. **PHASE 5 GATE: APPROVED** (chunk 16) — BUG-007's structural DC-05 gap was closed via real scenario execution, independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review; the fifth returned P0=0/P1=0, verdict APPROVED.
 
 1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
 2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
@@ -320,8 +407,8 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 7. **Fourth, independent `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P0=0, P1=1, P2=4, Ed=3).** Re-confirmed all 19 EIP categories independently (re-executed `resolution_bound.py`, re-ran the DATA greps, re-derived all 4 baseline hashes) and confirmed 12 of the third review's 13 fixes correct. Found 1 new P1 (NF4-1: the correction commit that walked back the premature PASS claim had itself missed `BUG-007`'s own durable bug file — the fifth recurrence of this project's own premature-completion pattern) + 4 P2 (a stale Phase-count reference in `STATUS.md`; `next_review_due`/`lifecycle_status` not synced to `CAPABILITY_EVAL_INDEX.md`; `lifecycle_status` never instantiated anywhere) + 3 Editorial (a deny-pattern count and a `.claude/rules/` file count each missed in one location by their own prior fixes; a credit-card-shaped-string count gone stale by a fix in a different file). All 8 self-fixed same day; re-verified: **P0=0, P1=0.**
 8. **Fifth, independent `veyro-code-reviewer` re-review — landed, verdict APPROVED (P0=0, P1=0, P2=4, Ed=3).** Independently re-verified all 8 of the fourth review's fixes correct, re-verified all 19 mandatory EIP categories PROVEN with real evidence (re-executing `resolution_bound.py`, re-running the DATA greps, re-deriving all 4 baseline hashes), and confirmed the underlying execution evidence was untouched by the fourth review's remediation commit. Its own 4 P2 + 3 Editorial findings — the same recurring propagation-gap species as before (a stale review-round reference in 2 files; a stale duplicate scenario block; a fourth copy of the pre-F5-022 Phase 1 count in `PHASE4_RECONCILIATION_2026-09-04.md`; a wrong finding-count and a stale heading in this project's own docs; a present-tense count claim gone stale by one) — self-fixed same day. **PHASE 5 GATE: APPROVED.**
 9. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by both the third and fourth reviewers — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
-10. Phase 6: real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context. **Not started this chunk.**
-11. Phase 7: security/performance review.
+10. **Phase 6: real manual QA — DONE (chunk 17, 2026-09-05).** Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence. Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remain BLOCKED, reasoning sharpened (BUG-011). **PHASE 6 GATE: PASS.**
+11. Phase 7: security/performance review. **Legally unlocked, not started.**
 12. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
 13. Phase 9: fresh-session restoration proof.
 14. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.

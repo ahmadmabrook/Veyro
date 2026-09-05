@@ -802,7 +802,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Inability to drive -> BLOCKED, not PASS-by-inspection.
 - **Pass criteria:** Real navigation + evidence capture.
 - **Blocker behavior:** N/A (passing).
-- **Follow-up flagged:** the original drill run used ad hoc Bash/Browser tool calls from the main session, not a formal invocation of the named `veyro-manual-qa` agent. Re-running through the named agent (fresh context) is recommended before final certification — flagged, not silently accepted as sufficient.
+- **Follow-up closed 2026-09-05 (Phase 6).** Re-run for real through the named `veyro-manual-qa` agent (fresh context, Opus, technically attested via `mr_verify.py` against the real subagent transcript — not self-report): real navigation, 7 fields across 5 control types filled with synthetic data, real Submit, server-echoed response, 2 negative controls (error-status page, unreachable host). See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-040 — Backend/API manual-QA control path proven with real request/response
 - **Category:** HP
@@ -820,7 +820,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Mock-only claim -> does not satisfy the EIP's explicit "no mock-only certification" rule.
 - **Pass criteria:** Real request/response with trace-level evidence.
 - **Blocker behavior:** N/A (passing).
-- **Follow-up flagged:** same named-agent re-run recommendation as SCN-039.
+- **Follow-up closed 2026-09-05 (Phase 6).** Re-run for real through the named `veyro-manual-qa` agent: real `POST` to a live endpoint with a custom header, verified request/response/headers, an independently-verified stateful side effect (set/read/delete cookies with a separate re-read confirming selective survival — not reproducible by a stateless echo), and 5 distinct negative paths (503, 404, unreachable host, malformed JSON, wrong method). Proxy limitation named explicitly: no real Veyro backend/DB/ledger exists before MOD-001, so this proves the control path only. See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-041 — Android manual-QA path correctly reports BLOCKED, not fabricated PASS (negative)
 - **Category:** NEG
@@ -838,6 +838,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Reporting PASS without real tooling -> the exact overclaiming failure this project already corrected once (for Accessibility/Edge) — this scenario confirms Android was never subject to that mistake.
 - **Pass criteria:** Correctly BLOCKED with named fallback.
 - **Blocker behavior:** Remains BLOCKED until owner installs tooling or provides a device farm, or MOD-001 scope makes it moot.
+- **Re-confirmed 2026-09-05 (Phase 6), more precisely.** `adb`/`emulator` binaries are present on this host but not on `PATH`, and no AVD/system-image is provisioned (`~/.android/avd` empty, no system-images directory, no `sdkmanager`). Fail-closed proof added: `emulator -avd <nonexistent>` fails loudly (`ERROR | Unknown AVD name`), confirming the invocation path itself is real, not silently no-op'd. Owner-assisted fallback narrowed accordingly: only an AVD/system-image (or a device/farm) is missing, not the control tooling itself. See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-042 — iOS Simulator manual-QA control path proven (boot/attach/interact/evidence)
 - **Category:** HP
@@ -855,7 +856,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Boot/attach/screenshot failing at any step -> BLOCKED, not PASS.
 - **Pass criteria:** Full lifecycle proven with evidence.
 - **Blocker behavior:** N/A (passing).
-- **Follow-up flagged:** same named-agent re-run recommendation; also, only lifecycle/screenshot was proven — interactive tap/swipe control (per the EIP's fuller "interact, deep-link, background/foreground" bar) was not exercised. Flagged as a real, specific gap for the execution phase.
+- **Follow-up closed.** The interactive-control gap was closed by SCN-061 (2026-09-04, re-confirmed 2026-09-05). The named-agent re-run gap was closed 2026-09-05 (Phase 6): a genuine cold-launch cycle (terminate→launch, new PID, cleared state — distinguishing it from a mere resume of an already-running process), a negative launch (nonexistent bundle id, distinct exit code), multi-touch pinch, in-page tap, text entry, swipe, https + custom-scheme deep links (plus a negative deep-link with a distinct exit code), and background/foreground with PID-identity verification. See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-043 — Accessibility (VoiceOver/TalkBack) path correctly reports BLOCKED/OWNER_ASSISTED, not fabricated PASS (negative)
 - **Category:** NEG
@@ -873,6 +874,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Any PASS claim without real screen-reader evidence -> critical overclaiming defect (already caught once).
 - **Pass criteria:** Correctly reported as BLOCKED/OWNER_ASSISTED, never fabricated.
 - **Blocker behavior:** Remains BLOCKED for MOD-000 itself (no UI to test); becomes a live gate for any future module that owns accessibility-relevant UI.
+- **Re-confirmed 2026-09-05 (Phase 6), reasoning corrected (BUG-011).** VoiceOver genuinely can be started (`launchctl start`/`kickstart`, real PID, moving focus cursor, real speech audio captured from the simulator's own log) — the earlier "the screen reader never ran" framing was itself incomplete, not just the disposition label. The verdict is unchanged: still correctly BLOCKED, because announcement text still cannot be captured and VoiceOver's own gestures still cannot be driven (an injected swipe lands as a raw touch, not a "next item" navigation). See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md` and `evidence/bugs/BUG-011-accessibility-drill-reasoning-incomplete.md`.
 
 ### SCN-MOD000-044 — Edge/device-bridge path correctly reports BLOCKED/NOT YET QUALIFIED, not fabricated PASS (negative)
 - **Category:** NEG
@@ -890,6 +892,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Fail-closed condition:** Any PASS claim from a proxy (viewport resize) -> critical overclaiming defect (already caught once).
 - **Pass criteria:** Correctly reported as BLOCKED.
 - **Blocker behavior:** Remains BLOCKED until an actual Edge simulator or device/vendor sandbox is provisioned — flagged as new-tooling/infra work outside MOD-000 bootstrap scope, consistent with prior correction.
+- **Re-confirmed 2026-09-05 (Phase 6).** Exhaustive re-probe (`command -v`, not `which`, which is unconditionally exit-0 in zsh and would false-positive): all 4 Edge channels, `msedgedriver`, `chromedriver`, `geckodriver`, `browserstack`(-local), `sauce`(ctl), `perfecto`, `appium`, `lambdatest` all absent; no matching `/Applications` entries or global npm packages. Verdict unchanged. See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-045 — Every mandatory MOD-000 gate has a genuine negative/fail-closed counterpart (meta)
 - **Category:** NEG (meta-scenario)
@@ -1099,7 +1102,7 @@ Every scenario below tests **control-plane/governance behavior** (baselines, mem
 - **Automation classification:** Manual. **Manual-QA requirement:** Yes. **Agent:** veyro-manual-qa. **Model:** Opus.
 - **Fail-closed condition:** Any of tap/deep-link/background-foreground failing -> BLOCKED, not PASS.
 - **Pass criteria:** Full interactive lifecycle proven.
-- **Status: PASS (2026-09-04, Phase 5, real fresh-context Opus execution).** Tap (dock + in-page, checkbox visibly toggled), swipe with observed scroll, two-finger pinch, text entry, two valid deep links (`https://` + `calshow://`), a negative-control invalid deep-link scheme that correctly failed distinctly (exit 115) from the valid ones (exit 0), and HOME background/foreground verified by identical process PID (91572) before and after with zoom/scroll state preserved. Fail-closed condition satisfied (the invalid-scheme negative control did fail, not silently pass). SCN-042 above remains correctly scoped to boot/attach/screenshot for its own narrower claim; this scenario is what closes the interactive-control gap.
+- **Status: PASS (2026-09-04, Phase 5; independently re-confirmed 2026-09-05, Phase 6).** Tap (dock + in-page, checkbox visibly toggled), swipe with observed scroll, two-finger pinch, text entry, two valid deep links (`https://` + `calshow://`), a negative-control invalid deep-link scheme that correctly failed distinctly (exit 115) from the valid ones (exit 0), and HOME background/foreground verified by identical process PID (91572) before and after with zoom/scroll state preserved. Fail-closed condition satisfied (the invalid-scheme negative control did fail, not silently pass). SCN-042 above remains correctly scoped to boot/attach/screenshot for its own narrower claim; this scenario is what closes the interactive-control gap. **Phase 6 re-run, new evidence, same conclusion:** a fresh `veyro-manual-qa` invocation (technically attested via `mr_verify.py`, not self-report) independently reproduced the full lifecycle with different fixture values and a deliberate cold-launch cycle (terminate→launch, distinct PID, cleared state) to prove launch specifically, not just resume. See `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
 
 ### SCN-MOD000-062 — Unresolved MOD-000 capability BLOCKs are enumerated in the Module Approval Certificate (new, from review F-18)
 - **Category:** LIFE, OBS — **Blocker**
@@ -1582,7 +1585,7 @@ Per EIP §21.1, MOD-000's Required categories are exactly: HP, VAL, NEG, BND, AU
 | Browser | Web/Admin/Front Desk Playwright-equivalent control | 039 | **PASS-capable** (real navigation/read proven) |
 | Backend/API | Real request/response, no mock-only | 040 | **PASS-capable** (real curl proven) |
 | Android | Emulator/device + adb/logcat control | 041 | **BLOCKED** — no tooling installed on host; owner-assisted fallback named |
-| iOS | Simulator lifecycle + interactive control | 042 (lifecycle), 061 (interaction) | **PASS-capable** for lifecycle; interaction **BLOCKED/NOT YET QUALIFIED** |
+| iOS | Simulator lifecycle + interactive control | 042 (lifecycle), 061 (interaction) | **PASS, both** — corrected 2026-09-05 (Phase 6, FINDING-P6-04): this row still said interaction was BLOCKED after SCN-061 closed PASS on 2026-09-04 and was independently re-confirmed PASS in Phase 6 (`evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`) |
 | Edge/device bridge | Real Edge simulator/vendor sandbox | 044 | **BLOCKED/NOT YET QUALIFIED** — no real sandbox connected, proxy correctly rejected |
 | VoiceOver/TalkBack | Actual screen-reader execution | 043 | **BLOCKED/OWNER_ASSISTED REQUIRED** — no automation path; tree-read correctly rejected as insufficient |
 | §21.1 MOD-000 QA item (1) | Detect synthetic missing capability | **075** (new) | Not yet executed |

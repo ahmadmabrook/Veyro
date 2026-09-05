@@ -1,0 +1,29 @@
+# VoiceOver execution evidence extract — MOD-000 Phase 6 manual QA, 2026-09-05
+# Device: iPhone 17 Pro 38391F5D-EFA5-4B36-8F6B-871CE953A525
+
+## Screen reader process actually running
+launchctl list -> 50376  0  com.apple.VoiceOverTouch   (PID present, not '-')
+defaults read com.apple.Accessibility VOTIsRunningKey -> 1
+
+## Real speech-audio pipeline started (selected verbatim log lines)
+2026-09-05 21:31:12.209 Df vot[50376:3c76f81] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x1099718f0, from  1 ch,  22050 Hz, lpcm (0x0000000E) 16-bit big-endian signed integer to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.211 Df vot[50376:3c76f81] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x109973630, from  1 ch,  22050 Hz, lpcm (0x0000000E) 16-bit big-endian signed integer to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.217 Df vot[50376:3c76f81] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109739e00; ; [50376]; play>; running count now 2
+2026-09-05 21:31:12.221 Df vot[50376:3c76f81] [com.apple.Accessibility:VOTAudio] play no SSS: 0-Sounds/ScreenChange.aiff
+2026-09-05 21:31:12.297 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x1098abea0, from  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32) to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.310 Df vot[50376:3c785cc] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 3
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+
+## VoiceOver web navigation subsystem active
+com.apple.Accessibility:AXBrailleHW
+com.apple.Accessibility:AXCommon
+com.apple.Accessibility:VOTAudio
+com.apple.Accessibility:VOTWebPageMovement
+
+## What could NOT be obtained (why this is not a PASS)
+- No announced/utterance text in any log stream; ScreenReaderOutput exposes only SCROVirtualBrailleDisplay objects:
+    "<SCROVirtualBrailleDisplay: 0x1035f4140>"
+    "<SCROVirtualBrailleDisplay: 0x1035f4140>"
+- Caption-panel prefs accepted (read back = 1) but no panel renders; no audio capture path.
+- Injected swipe is delivered to the app as a raw touch (it toggled a checkbox), NOT interpreted as a VoiceOver 'next item' gesture.

@@ -303,6 +303,24 @@ exactly the overclaim BUG-005 already corrected once. **BLOCKED — OWNER_ASSIST
 REQUIRED**, per EIP §12.1's explicit "No accessibility scenario is marked PASS
 without actual screen-reader execution evidence."
 
+**Correction 2026-09-05 (Phase 6, BUG-011) — the diagnosis above was incomplete,
+original text left unedited above for the record.** A later fresh-context
+`veyro-manual-qa` run found that `launchctl list`/a raw preference write is not
+the only way to start VoiceOver on this simulator: `xcrun simctl spawn <udid>
+launchctl start com.apple.VoiceOverTouch` (and `kickstart -k system/...`) **does**
+start the process for real (PID progression observed), with the focus cursor
+rendering and moving across real UI and genuine speech audio emitted (a CoreAudio
+AudioQueue with a `SPEECH` session user, captured directly from the simulator's
+own log). **The verdict is unchanged — still correctly BLOCKED — but the reason
+was wrong.** It is not "the screen reader cannot be started here." It is: the
+screen reader *can* be started, but (a) no announcement text is capturable
+(`ScreenReaderOutput` exposes only `SCROVirtualBrailleDisplay` objects, never an
+utterance string, and no caption-panel/audio-capture path exists despite all 4
+relevant preference keys being tried), and (b) VoiceOver's own gestures cannot be
+driven — an injected swipe is delivered as a raw touch, not interpreted as
+VoiceOver's "next item," proven directly (a swipe toggled a checkbox instead of
+advancing focus). Full account: `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md`.
+
 **Owner-assisted fallback:** owner (or a human QA pass) runs VoiceOver/TalkBack
 manually while Claude directs the exact steps and records Expected vs Actual, tagged
 `OWNER_ASSISTED`; or a dedicated accessibility-automation capability is qualified

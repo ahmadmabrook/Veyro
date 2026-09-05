@@ -1,0 +1,209 @@
+getpwuid_r did not find a match for uid 501
+Filtering the log data using "process == "vot""
+Timestamp               Ty Process[PID:TID]
+2026-09-05 21:31:12.209 Df vot[50376:3c76f81] [com.apple.coreaudio:ddagg]        AggregateDevice.mm:1008  PrimarySessionActiveWithInputEnabled 0 -> 0
+2026-09-05 21:31:12.209 Df vot[50376:3c76f81] [com.apple.coreaudio:ddagg]        AggregateDevice.mm:1008  PrimarySessionActiveWithInputEnabled 0 -> 0
+2026-09-05 21:31:12.209 Df vot[50376:3c76f81] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x1099718f0, from  1 ch,  22050 Hz, lpcm (0x0000000E) 16-bit big-endian signed integer to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.209 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:488   AudioQueueObject: aq@0x109739e00: New output; format  1 ch,  22050 Hz, lpcm (0x0000000E) 16-bit big-endian signed integer (passthrough? no)
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109739e00; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3224  CheckSpatialization: aq@0x109739e00 automatic spatialization check: spatialize=0
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3252  CheckSpatialization: aq@0x109739e00 CheckSpatialization mAutomaticSpatialization=1, mSpatializationEnabled=0 mContentRequiresAUSpatialMixer=0 mHasMetadata=0 mIsOffline=0 STSLabel valid:0 is stereo: 0
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10030 SetLoudnessFromLM: -> aq@0x109739e00:
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10148 SetLoudnessFromLM: is CoreAudioServices/LoudnessManager enabled? yes
+2026-09-05 21:31:12.210 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10151 SetLoudnessFromLM: is CoreAudioServices/LoudnessManagerV2 enabled? yes
+2026-09-05 21:31:12.211 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10154 SetLoudnessFromLM: is CoreAudioServices/lm-disable-hardware-check on? no
+2026-09-05 21:31:12.211 E  vot[50376:3c76f81] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.211 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10157 SetLoudnessFromLM: is hardware supported? no
+2026-09-05 21:31:12.211 E  vot[50376:3c76f81] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.211 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10167 SetLoudnessFromLM: hardware not supported, Loudness Manager disabled
+2026-09-05 21:31:12.211 Df vot[50376:3c76f81] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x109973630, from  1 ch,  22050 Hz, lpcm (0x0000000E) 16-bit big-endian signed integer to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.217 Df vot[50376:3c76f81] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109739e00; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.217 Df vot[50376:3c76f81] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:5764  ApplyParameters: aq@0x109739e00 volume 0.800 1.000 1.000 1.000 1.000 1.000, 1.000
+2026-09-05 21:31:12.217 Df vot[50376:3c76f81] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109739e00; ; [50376]; play>; running count now 2
+2026-09-05 21:31:12.221 Df vot[50376:3c76f81] [com.apple.Accessibility:VOTAudio] play no SSS: 0-Sounds/ScreenChange.aiff
+2026-09-05 21:31:12.231 Df vot[50376:3c76ff5] [com.apple.coreaudio:default] AQSTL aq(0x109739e00) start time resolved to: 5032220 ioTS st: 5032220 ht: 1877369.335432
+2026-09-05 21:31:12.297 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+2026-09-05 21:31:12.297 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update audio session properties: ducking:1, destination external 0. Force VO->HDMI: 0
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update to current route when external audio route not selected
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=1
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=2
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=3
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Changing route? [NO] - categories [AVAudioSessionCategoryVoiceOver/AVAudioSessionCategoryVoiceOver], options: [0/0]
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Route <AVAudioSessionRouteDescription: 0x105fbb9b0, 
+inputs = (
+); 
+outputs = (
+    "<AVAudioSessionPortDescription: 0x105fbb800, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+)>: Channel layout (
+    "<AVAudioSessionPortDescription: 0x105fbb850, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+) and channels (null)
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Default port channels: (
+)
+2026-09-05 21:31:12.298 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Set selected channels on synth: (null)
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:618   ~AudioQueueObject: aq@0x109738000: Deleting
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x1098abea0, from  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32) to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:488   AudioQueueObject: aq@0x109738000: New output; format  1 ch,  22050 Hz, Float32 (passthrough? no)
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3224  CheckSpatialization: aq@0x109738000 automatic spatialization check: spatialize=0
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3252  CheckSpatialization: aq@0x109738000 CheckSpatialization mAutomaticSpatialization=1, mSpatializationEnabled=0 mContentRequiresAUSpatialMixer=0 mHasMetadata=0 mIsOffline=0 STSLabel valid:0 is stereo: 0
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10030 SetLoudnessFromLM: -> aq@0x109738000:
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10148 SetLoudnessFromLM: is CoreAudioServices/LoudnessManager enabled? yes
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10151 SetLoudnessFromLM: is CoreAudioServices/LoudnessManagerV2 enabled? yes
+2026-09-05 21:31:12.303 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10154 SetLoudnessFromLM: is CoreAudioServices/lm-disable-hardware-check on? no
+2026-09-05 21:31:12.303 E  vot[50376:3c785cc] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.304 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10157 SetLoudnessFromLM: is hardware supported? no
+2026-09-05 21:31:12.304 E  vot[50376:3c785cc] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.304 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10167 SetLoudnessFromLM: hardware not supported, Loudness Manager disabled
+2026-09-05 21:31:12.305 Df vot[50376:3c76f71] [com.apple.Accessibility:AXBrailleHW] set braille string:  {
+    SCROTokenAttribute = 0;
+} type: 1
+2026-09-05 21:31:12.309 Df vot[50376:3c785cc] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.310 Df vot[50376:3c785cc] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:5764  ApplyParameters: aq@0x109738000 volume 1.000 1.000 1.000 1.000 1.000 1.000, 1.000
+2026-09-05 21:31:12.310 Df vot[50376:3c785cc] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 3
+2026-09-05 21:31:12.327 Df vot[50376:3c76ff5] [com.apple.coreaudio:default] AQSTL aq(0x109738000) start time resolved to: 5034337 ioTS st: 5034337 ht: 1877369.431432
+2026-09-05 21:31:12.334 E  vot[50376:3c79121] [com.apple.avfaudio:AVAB]          AVAudioBuffer.mm:281   mBuffers[0].mDataByteSize (0) should be non-zero
+2026-09-05 21:31:12.413 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]            AQMEIO_HAL.cpp:2857  FetchAndLogFrameSize GetCurrentIOBufferFrameSize deviceID=154, frame size is 512
+2026-09-05 21:31:12.423 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109739e00; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.423 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:459   AQME Default-InputOutput: client stopping: <AudioQueueObject@0x109739e00; ; [50376]; play>; running count now 2
+2026-09-05 21:31:12.424 Df vot[50376:3c76f5d] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:2875  CanScheduleDisposal: aq@0x109739e00: can schedule disposal: 0
+2026-09-05 21:31:12.424 Df vot[50376:3c76f5d] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:618   ~AudioQueueObject: aq@0x109739e00: Deleting
+2026-09-05 21:31:12.424 Df vot[50376:3c76f81] [com.apple.Accessibility:VOTAudio] sound complete: 0-Sounds/ScreenChange.aiff
+2026-09-05 21:31:12.517 Df vot[50376:3c76f81] [com.apple.Accessibility:VOTAudio] play with SSS: 0-Sounds/WebPageLoaded.aiff
+2026-09-05 21:31:12.536 Df vot[50376:3c76f7a] [com.apple.Accessibility:AXCommon] Chose new: 0, before pops: 0, (null)
+2026-09-05 21:31:12.542 E  vot[50376:3c76f7a] [com.apple.Accessibility:VOTWebPageMovement] Failed to find previous web element: no matching metadata found in cache
+2026-09-05 21:31:12.563 Df vot[50376:3c76f7a] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=1
+2026-09-05 21:31:12.563 Df vot[50376:3c76f7a] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=2
+2026-09-05 21:31:12.563 Df vot[50376:3c76f7a] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=3
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update audio session properties: ducking:1, destination external 0. Force VO->HDMI: 0
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update to current route when external audio route not selected
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=1
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=2
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=3
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Changing route? [NO] - categories [AVAudioSessionCategoryVoiceOver/AVAudioSessionCategoryVoiceOver], options: [0/0]
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Route <AVAudioSessionRouteDescription: 0x105fbba70, 
+inputs = (
+); 
+outputs = (
+    "<AVAudioSessionPortDescription: 0x105fbbb80, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+)>: Channel layout (
+    "<AVAudioSessionPortDescription: 0x105fbb780, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+) and channels (null)
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Default port channels: (
+)
+2026-09-05 21:31:12.564 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Set selected channels on synth: (null)
+2026-09-05 21:31:12.569 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]            AQMEIO_HAL.cpp:2857  FetchAndLogFrameSize GetCurrentIOBufferFrameSize deviceID=154, frame size is 512
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:459   AQME Default-InputOutput: client stopping: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 1
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:618   ~AudioQueueObject: aq@0x109738000: Deleting
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x1098abd20, from  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32) to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:488   AudioQueueObject: aq@0x109738000: New output; format  1 ch,  22050 Hz, Float32 (passthrough? no)
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3224  CheckSpatialization: aq@0x109738000 automatic spatialization check: spatialize=0
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3252  CheckSpatialization: aq@0x109738000 CheckSpatialization mAutomaticSpatialization=1, mSpatializationEnabled=0 mContentRequiresAUSpatialMixer=0 mHasMetadata=0 mIsOffline=0 STSLabel valid:0 is stereo: 0
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10030 SetLoudnessFromLM: -> aq@0x109738000:
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10148 SetLoudnessFromLM: is CoreAudioServices/LoudnessManager enabled? yes
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10151 SetLoudnessFromLM: is CoreAudioServices/LoudnessManagerV2 enabled? yes
+2026-09-05 21:31:12.573 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10154 SetLoudnessFromLM: is CoreAudioServices/lm-disable-hardware-check on? no
+2026-09-05 21:31:12.574 E  vot[50376:3c790ad] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.574 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10157 SetLoudnessFromLM: is hardware supported? no
+2026-09-05 21:31:12.574 E  vot[50376:3c790ad] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:12.574 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10167 SetLoudnessFromLM: hardware not supported, Loudness Manager disabled
+2026-09-05 21:31:12.579 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:12.579 Df vot[50376:3c790ad] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:5764  ApplyParameters: aq@0x109738000 volume 1.000 1.000 1.000 1.000 1.000 1.000, 1.000
+2026-09-05 21:31:12.579 Df vot[50376:3c790ad] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 2
+2026-09-05 21:31:12.594 Df vot[50376:3c76ff5] [com.apple.coreaudio:default] AQSTL aq(0x109738000) start time resolved to: 5040217 ioTS st: 5040217 ht: 1877369.698098
+2026-09-05 21:31:12.601 E  vot[50376:3c785cc] [com.apple.avfaudio:AVAB]          AVAudioBuffer.mm:281   mBuffers[0].mDataByteSize (0) should be non-zero
+2026-09-05 21:31:12.733 Df vot[50376:3c78f6c] [com.apple.coreaudio:ssc]    SSClientCompletion.cpp:33    Calling client's completion block now: clientPID = 50376, actionID = 4098
+2026-09-05 21:31:12.733 Df vot[50376:3c76f81] [com.apple.Accessibility:VOTAudio] sound complete: 0-Sounds/WebPageLoaded.aiff
+2026-09-05 21:31:13.735 Df vot[50376:3c78f6c] [com.apple.Accessibility:VOTAudio] Attempt session deactivate. is active: 1 - remove user: 0-Sounds/WebPageLoaded.aiff, all users: {(
+    SPEECH
+)}
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update audio session properties: ducking:1, destination external 0. Force VO->HDMI: 0
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update to current route when external audio route not selected
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=1
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=2
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=3
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Changing route? [NO] - categories [AVAudioSessionCategoryVoiceOver/AVAudioSessionCategoryVoiceOver], options: [0/0]
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Route <AVAudioSessionRouteDescription: 0x105fbbaa0, 
+inputs = (
+); 
+outputs = (
+    "<AVAudioSessionPortDescription: 0x105fbb8a0, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+)>: Channel layout (
+    "<AVAudioSessionPortDescription: 0x105fbb9f0, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+) and channels (null)
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Default port channels: (
+)
+2026-09-05 21:31:14.398 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Set selected channels on synth: (null)
+2026-09-05 21:31:14.403 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]            AQMEIO_HAL.cpp:2857  FetchAndLogFrameSize GetCurrentIOBufferFrameSize deviceID=154, frame size is 512
+2026-09-05 21:31:14.407 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:14.407 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:459   AQME Default-InputOutput: client stopping: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 1
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:618   ~AudioQueueObject: aq@0x109738000: Deleting
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x109979110, from  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32) to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:488   AudioQueueObject: aq@0x109738000: New output; format  1 ch,  22050 Hz, Float32 (passthrough? no)
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3224  CheckSpatialization: aq@0x109738000 automatic spatialization check: spatialize=0
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3252  CheckSpatialization: aq@0x109738000 CheckSpatialization mAutomaticSpatialization=1, mSpatializationEnabled=0 mContentRequiresAUSpatialMixer=0 mHasMetadata=0 mIsOffline=0 STSLabel valid:0 is stereo: 0
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10030 SetLoudnessFromLM: -> aq@0x109738000:
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10148 SetLoudnessFromLM: is CoreAudioServices/LoudnessManager enabled? yes
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10151 SetLoudnessFromLM: is CoreAudioServices/LoudnessManagerV2 enabled? yes
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10154 SetLoudnessFromLM: is CoreAudioServices/lm-disable-hardware-check on? no
+2026-09-05 21:31:14.408 E  vot[50376:3c79121] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10157 SetLoudnessFromLM: is hardware supported? no
+2026-09-05 21:31:14.408 E  vot[50376:3c79121] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:14.408 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10167 SetLoudnessFromLM: hardware not supported, Loudness Manager disabled
+2026-09-05 21:31:14.414 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:14.414 Df vot[50376:3c79121] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:5764  ApplyParameters: aq@0x109738000 volume 1.000 1.000 1.000 1.000 1.000 1.000, 1.000
+2026-09-05 21:31:14.414 Df vot[50376:3c79121] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 2
+2026-09-05 21:31:14.429 Df vot[50376:3c76ff5] [com.apple.coreaudio:default] AQSTL aq(0x109738000) start time resolved to: 5080671 ioTS st: 5080671 ht: 1877371.532763
+2026-09-05 21:31:14.430 E  vot[50376:3c79121] [com.apple.avfaudio:AVAB]          AVAudioBuffer.mm:281   mBuffers[0].mDataByteSize (0) should be non-zero
+2026-09-05 21:31:15.510 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Trying to speak without having set audio session properties, reseting now.
+2026-09-05 21:31:15.510 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update audio session properties: ducking:1, destination external 0. Force VO->HDMI: 0
+2026-09-05 21:31:15.510 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Update to current route when external audio route not selected
+2026-09-05 21:31:15.510 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=1
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=2
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.coremedia:] -AVSystemController- +[AVSystemController sharedInstance]: Failed to allocate AVSystemController, numberOfAttempts=3
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Changing route? [NO] - categories [AVAudioSessionCategoryVoiceOver/AVAudioSessionCategoryVoiceOver], options: [0/0]
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Route <AVAudioSessionRouteDescription: 0x105fbbae0, 
+inputs = (
+); 
+outputs = (
+    "<AVAudioSessionPortDescription: 0x105fbbaa0, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+)>: Channel layout (
+    "<AVAudioSessionPortDescription: 0x105fbb860, type = Speaker; name = Speaker; UID = Speaker; selectedDataSource = (null)>"
+) and channels (null)
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Default port channels: (
+)
+2026-09-05 21:31:15.511 Df vot[50376:3c76f80] [com.apple.Accessibility:VOTAudio] Set selected channels on synth: (null)
+2026-09-05 21:31:15.519 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]            AQMEIO_HAL.cpp:2857  FetchAndLogFrameSize GetCurrentIOBufferFrameSize deviceID=154, frame size is 512
+2026-09-05 21:31:15.528 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:15.528 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:459   AQME Default-InputOutput: client stopping: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 1
+2026-09-05 21:31:15.528 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:618   ~AudioQueueObject: aq@0x109738000: Deleting
+2026-09-05 21:31:15.528 Df vot[50376:3c79120] [com.apple.coreaudio:AudioConverter]        AudioConverter.cpp:1072  Created a new in process converter -> 0x10997bcc0, from  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32) to  1 ch,  22050 Hz, Float32 (actually:  1 ch,  22050 Hz, Float32)
+2026-09-05 21:31:15.528 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:488   AudioQueueObject: aq@0x109738000: New output; format  1 ch,  22050 Hz, Float32 (passthrough? no)
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3224  CheckSpatialization: aq@0x109738000 automatic spatialization check: spatialize=0
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:3252  CheckSpatialization: aq@0x109738000 CheckSpatialization mAutomaticSpatialization=1, mSpatializationEnabled=0 mContentRequiresAUSpatialMixer=0 mHasMetadata=0 mIsOffline=0 STSLabel valid:0 is stereo: 0
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10030 SetLoudnessFromLM: -> aq@0x109738000:
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10148 SetLoudnessFromLM: is CoreAudioServices/LoudnessManager enabled? yes
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10151 SetLoudnessFromLM: is CoreAudioServices/LoudnessManagerV2 enabled? yes
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10154 SetLoudnessFromLM: is CoreAudioServices/lm-disable-hardware-check on? no
+2026-09-05 21:31:15.529 E  vot[50376:3c79120] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:15.529 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10157 SetLoudnessFromLM: is hardware supported? no
+2026-09-05 21:31:15.530 E  vot[50376:3c79120] [com.apple.coreaudio:AQ]        LoudnessManager.mm:1215  IsHardwareSupported: no plist loaded, returning false
+2026-09-05 21:31:15.530 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:10167 SetLoudnessFromLM: hardware not supported, Loudness Manager disabled
+2026-09-05 21:31:15.536 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:15.536 Df vot[50376:3c79120] [com.apple.coreaudio:AQ]      AudioQueueObject.cpp:5764  ApplyParameters: aq@0x109738000 volume 1.000 1.000 1.000 1.000 1.000 1.000, 1.000
+2026-09-05 21:31:15.536 Df vot[50376:3c79120] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:245   AQME Default-InputOutput: client starting: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 2
+2026-09-05 21:31:15.549 Df vot[50376:3c76ff5] [com.apple.coreaudio:default] AQSTL aq(0x109738000) start time resolved to: 5105367 ioTS st: 5105367 ht: 1877372.652759
+2026-09-05 21:31:15.554 E  vot[50376:3c790ad] [com.apple.avfaudio:AVAB]          AVAudioBuffer.mm:281   mBuffers[0].mDataByteSize (0) should be non-zero
+2026-09-05 21:31:17.064 Df vot[50376:3c78f6c] [com.apple.coreaudio:aqme]            AQMEIO_HAL.cpp:2857  FetchAndLogFrameSize GetCurrentIOBufferFrameSize deviceID=154, frame size is 512
+2026-09-05 21:31:17.074 Df vot[50376:3c78f6c] [com.apple.coreaudio:aqme]              AQIONode.cpp:731   client <AudioQueueObject@0x109738000; ; [50376]; play> is NOT Now Playing eligible
+2026-09-05 21:31:17.074 Df vot[50376:3c78f6c] [com.apple.coreaudio:aqme]  MEDeviceStreamClient.cpp:459   AQME Default-InputOutput: client stopping: <AudioQueueObject@0x109738000; ; [50376]; play>; running count now 1
+2026-09-05 21:31:17.458 Df vot[50376:3c79121] [com.apple.Accessibility:VOTAudio] Attempt session deactivate. is active: 1 - remove user: SPEECH, all users: {(
+)}
+2026-09-05 21:31:17.459 Df vot[50376:3c79121] [com.apple.coreaudio:ddagg]        AggregateDevice.mm:1008  PrimarySessionActiveWithInputEnabled 0 -> 0
+2026-09-05 21:31:17.459 Df vot[50376:3c79121] [com.apple.Accessibility:VOTAudio] Session deactivated. at t=810325877.459262
+Child process terminated with signal 15: Terminated
