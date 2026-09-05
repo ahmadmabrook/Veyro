@@ -1,12 +1,12 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-05 (chunk 16, final — BUG-007 closed via real execution, fourth independent re-review confirmed closure after 1 mechanical P1 + 12 P2/Editorial fixes; PHASE 5 GATE: PASS; Phase 6 legally unlocked, not started)
+updated: 2026-09-05 (chunk 16 — BUG-007 execution work closed and independently confirmed genuine by a third review, which then found 1 mechanical P1 + 12 P2/Editorial findings; this session self-fixed all 13; a fourth independent review is now in progress to confirm those fixes before Phase 5 can be marked PASS)
 ---
 
 # Current Handoff
 
-## What happened chunk 16, 2026-09-05 — BUG-007 closed via real execution; PHASE 5 GATE: PASS
+## What happened chunk 16, 2026-09-05 — BUG-007 execution work closed and independently confirmed genuine; fourth review in progress to confirm the follow-on fixes
 
 Continuation of chunk 15's work. The one remaining certification-blocking
 Phase 5 finding was BUG-007/F5-008: 7 of 19 mandatory EIP scenario
@@ -67,14 +67,20 @@ resolution-budget field, a weak REC citation, a stale `BUG_REGISTRY.md`
 row, and several editorial nits). **All fixed same day; re-verified:
 P0=0, P1=0.**
 
-**PHASE 5 GATE: PASS.** BUG-006, BUG-007, BUG-009, and BUG-017 are all
-CLOSED. BUG-010/ADR-003 and F5-027 remain open by design, both
-explicitly non-certification-blocking. All 4 baseline hashes unchanged.
-Validator and evidence-integrity checker both PASS. Two real Notion/Git
-divergences were caught and fixed this chunk (a scenario's Notion row
-marked "Done" before it was actually executed; `BUG_REGISTRY.md` drift).
-**Phase 6 is legally unlocked but has NOT been started** — this chunk
-stops here per explicit instruction.
+**PHASE 5 GATE: PENDING FOURTH INDEPENDENT CONFIRMATION — not yet PASS.**
+BUG-006, BUG-007, BUG-009, and BUG-017 are all believed closed pending
+that confirmation. BUG-010/ADR-003 and F5-027 remain open by design,
+both explicitly non-certification-blocking. All 4 baseline hashes
+unchanged. Validator and evidence-integrity checker both PASS. Two real
+Notion/Git divergences were caught and fixed this chunk (a scenario's
+Notion row marked "Done" before it was actually executed;
+`BUG_REGISTRY.md` drift). A fourth, independent fresh-context
+`veyro-code-reviewer` review is running specifically to confirm the P0=0/
+P1=0 self-verification above before this gate can be marked PASS — per
+explicit instruction, self-verification after fixing a P1 is not
+sufficient; the loop repeats until an independent pass confirms it clean.
+**Phase 6 is not unlocked until Phase 5 actually PASSes, and has NOT been
+started regardless** — this chunk stops here per explicit instruction.
 
 **Honest note on this chunk's own last mile:** the final round of fixes
 (NF-1 through NF-12, all mechanical/citation-level, none disputing the
@@ -266,19 +272,20 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 5 GATE: PASS (2026-09-05).** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16) and independently confirmed by a third, final fresh-context `veyro-code-reviewer` re-review. Phase 6 is legally unlocked. **Phase 6 has NOT been started** — do not begin it without a fresh instruction to do so.
+**PHASE 5 GATE: PENDING FOURTH INDEPENDENT CONFIRMATION — not yet PASS.** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16), and that execution work was independently confirmed genuine by a third fresh-context `veyro-code-reviewer` re-review. That same review then found 13 mechanical/citation findings (1 P1 + 12 P2/Editorial); this session self-fixed all of them, and a fourth independent review is now running to confirm those fixes before this gate is settled. Phase 6 remains locked until then, and has NOT been started regardless.
 
 1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
 2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
 3. **Second fresh-context `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P1=4, P2=14, Ed=2). Round-2 remediation — done**, all 14 P2s and 2 of 4 P1s (the two new document-consistency findings) fixed with real, re-verified changes; see "What happened next, same chunk (15)" above.
 4. **Third, distinct independent Opus review of CAP-001/CAP-005/CAP-006 — landed.** CAP-001 APPROVED (scope de-rated, binding caveats), CAP-005/CAP-006 APPROVED (scope-capped). BUG-006 and BUG-009 CLOSED. BUG-010/ADR-003 filed for the residual, non-blocking connector-scope-vs-policy owner decision.
 5. **BUG-007's structural DC-05 gap — CLOSED (chunk 16, 2026-09-05).** All 7 remaining categories (BND, AUTHN, AUTHZ, TEN, NET, PART, DATA) executed for real, IDEM's second half also closed, `SCENARIO_CATALOG.md`'s D-1 matrix rebuilt from evidence — 19/19 categories PROVEN.
-6. **Final, fourth independent `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P0=0, P1=1, P2=8, Ed=5).** The 1 P1 (NF-1: a mechanical Phase 1 count-propagation gap across 3 durable files) and all 12 P2/Editorial findings (citation-path errors, a deny-pattern count off by one after N-8, an overclaimed authentication-mechanism detail, an uninstantiated per-capability resolution-budget field, a weak REC citation, a stale bug-registry row, and several editorial nits) fixed same day. Re-verified: **P0=0, P1=0.** These last fixes were self-verified via direct file inspection and validator re-runs, not a fifth independent pass — flagged transparently, not hidden.
-7. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by the final reviewer — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
-8. Phase 6: real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context. **Not started this chunk.**
-9. Phase 7: security/performance review.
-10. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
-11. Phase 9: fresh-session restoration proof.
-12. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
+6. **Third, independent `veyro-code-reviewer` re-review of the BUG-007 execution work — landed, verdict BLOCKED (P0=0, P1=1, P2=8, Ed=5).** Confirmed the execution work itself genuine (no fabrication). The 1 P1 (NF-1: a mechanical Phase 1 count-propagation gap across 3 durable files) and all 12 P2/Editorial findings (citation-path errors, a deny-pattern count off by one after N-8, an overclaimed authentication-mechanism detail, an uninstantiated per-capability resolution-budget field, a weak REC citation, a stale bug-registry row, and several editorial nits) were self-fixed same day by this session; re-verified by this session's own inspection: **P0=0, P1=0.** This self-verification is explicitly NOT a substitute for independent confirmation.
+7. **Fourth, independent `veyro-code-reviewer` re-review — in progress**, launched specifically to confirm the 13 self-applied fixes above before Phase 5 can be marked PASS. Per explicit instruction, this session does not declare Phase 5 PASS on its own re-verification after fixing a P1 — the loop repeats (fix, re-verify independently) until a fresh-context review itself reports P0=0 and P1=0.
+8. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by the third reviewer — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
+9. Phase 6: real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context. **Not started this chunk.**
+10. Phase 7: security/performance review.
+11. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
+12. Phase 9: fresh-session restoration proof.
+13. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 
 MOD-001 remains locked. WIP=1, MOD-000 only.
