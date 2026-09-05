@@ -31,13 +31,20 @@ capabilities:
     required_status: QUALIFIED (positive+negative test real, but qualifying and reviewing agent were the same Opus invocation — a distinct independent Opus review is still needed for APPROVED, see CAPABILITY_REGISTRY.md)
 
 supply_chain_notes: >
-  Corrected 2026-09-04 (Phase 5, F5-003) — this note was stale, describing a
-  pre-qualification state that no longer matches CAPABILITY_REGISTRY.md (all
-  four rows have read APPROVED since 2026-08-31). Current, accurate state:
-  CAP-001 and CAP-002 completed positive+negative qualification on 2026-08-31,
-  but on Sonnet-tier agents, which is a real, open policy violation
-  (CAPABILITY_POLICY.md line 48 requires Opus for qualification runs) —
-  tracked as BUG-006, not yet remediated, blocking for Phase 10
-  certification. This is a genuine open defect, not a deliberate,
-  policy-compliant sequencing choice as previously (incorrectly) claimed
-  here.
+  Corrected 2026-09-05 (second Phase 5 re-review, N-5) — this note was
+  stale again, still describing the pre-BUG-006-remediation state (all
+  four rows "APPROVED since 2026-08-31", BUG-006 "not yet remediated").
+  Current, accurate state as of 2026-09-05: `veyro-security-reviewer`
+  (Opus, fresh context) independently reviewed CAP-001/CAP-002 per the
+  corrected BUG-006 operating model. CAP-002 is now genuinely APPROVED
+  (scope narrowed to what was tested, approved_by populated). CAP-001 is
+  downgraded to QUALIFIED, not APPROVED — a distinct, real gap in the
+  original qualification evidence, open on a bounded 3-item re-test, not
+  a Sonnet-vs-Opus tier problem any more (see CAPABILITY_REGISTRY.md and
+  BUG-006's own file for the exact remaining scope). CAP-005/CAP-006 are
+  QUALIFIED, not APPROVED, for a related but distinct reason (qualifying
+  and reviewing agent were the same invocation) — tracked separately as
+  BUG-009. This file's own per-capability rows above (CAP-001/002/005/006)
+  are the current source of truth; this prose block is a summary of them,
+  not an independent claim, and must be kept in sync whenever those rows
+  change.

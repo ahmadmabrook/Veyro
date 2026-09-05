@@ -46,3 +46,28 @@ Result: the Agent call itself was **blocked before the agent ever ran**, by Clau
 ## What would close item 3
 
 A test where an agent with genuinely no other source of the rule's content (not stated in its own `.md` body, not in `CLAUDE.md`, not in `DEVELOPMENT_CONSTITUTION.md`) still follows a rule that exists ONLY in `.claude/rules/`. Current rules (`owner-reserved-restrictions.md`, `knowledge-vault-durability.md`) duplicate content already present in `CLAUDE.md`/`DEVELOPMENT_CONSTITUTION.md`/agent bodies, so no clean isolation is possible with the current rule set. Leaving this open rather than fabricating a pass.
+
+## Correction 2026-09-05 (second Phase 5 re-review, N-8) — baseline `rm` deny patterns had a real matching gap
+
+The second fresh-context re-review found (by pattern analysis, not execution)
+that `.claude/settings.json`'s 3 baseline-artifact `rm` deny entries were
+written as `Bash(rm * <filename>*)` — a **literal space** between the
+first `*` and the filename. A direct command like
+`rm Gym_OS_Master_Product_Blueprint_v1_English.docx` has no space between
+`rm ` and the filename, so it would not have matched. `Bash(rm -rf *)`
+(the only other rm-shaped deny entry) still caught recursive attempts, but
+a plain non-recursive `rm <baseline file>` was a real, live gap. Also
+missing entirely: no `rm`-shaped deny pattern for
+`veyro-product-experience-design/` (only `Edit`/`Write` were denied).
+
+**Fixed same day** — corrected all 3 patterns to `Bash(rm *<filename>*)`
+(no forced space) and added `Bash(rm *veyro-product-experience-design*)`.
+**Live-verified, not just read**, by attempting the exact previously-vulnerable
+commands against the real files:
+
+1. `rm Gym_OS_Master_Product_Blueprint_v1_English.docx` — **denied** by the harness before execution. File confirmed untouched afterward (`shasum` still `80f4b381...`, matching `PROJECT_INDEX.md`).
+2. `rm Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx` — **denied**.
+3. `rm veyro-product-experience-design/README.md` (the specific non-`-rf` gap the new pattern targets — `rm -rf veyro-product-experience-design/` was already covered by the generic `rm -rf *` rule and doesn't prove this) — **denied**.
+
+All three denials happened at the permission layer (the Bash tool call was
+refused, not executed-then-rolled-back) — the correct fail-closed behavior.

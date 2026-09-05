@@ -120,6 +120,32 @@ identity independently verified via `mr_verify.py` against its own
 transcript, closing the technical half of F5-005 for all future routed
 work even though historical backfill is not complete.
 
+## Correction 2026-09-05 (second Phase 5 re-review, N-9)
+
+Two real defects found in `mr_verify.py` by the second fresh-context
+`veyro-code-reviewer` re-review, both confirmed by that reviewer actually
+running the tool, not just reading it:
+
+1. `EXPECTED_TIER_BY_AGENT` was defined but never referenced — the
+   expected tier was purely caller-supplied, so passing `sonnet` for
+   `veyro-code-reviewer` returned PASS instead of catching the
+   discrepancy against the registered tier.
+2. Tier matching was `expected_tier in observed` (substring), so a
+   fabricated model id like `claude-opus-9-nonexistent-model-id` passed
+   as `opus` — reviewer confirmed this by constructing exactly that
+   string and getting PASS.
+
+Both fixed same day: the tool now enforces `EXPECTED_TIER_BY_AGENT` when
+`agent_label` names a known role (a disagreeing caller-supplied tier is
+itself a BLOCKED finding, not silently accepted), and tier matching uses
+an anchored regex (`^claude-<tier>-\d+(\.\d+)*$`) instead of substring
+containment. Re-verified: all 6 original synthetic fixture cases still
+behave identically (PASS/PASS/BLOCKED×4); the fabricated-model-id case
+now correctly returns BLOCKED; a wrong-tier-for-known-agent case now
+correctly returns BLOCKED; both original real-transcript checks
+(`veyro-security-reviewer`→opus, `veyro-implementer`→sonnet) still PASS
+against the same underlying transcripts.
+
 ## Disposition
 
 **F5-005: substantially closed.** A real, working, EIP-compliant runtime

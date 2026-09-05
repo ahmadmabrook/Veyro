@@ -1,6 +1,6 @@
 ---
 doc: FRESH_SESSION_RESTORE_PROOF
-status: LIVE — Pass 1 BLOCKED, Pass 2 BLOCKED (different remaining defect), fixed, Pass 3 pending
+status: CLOSED (2026-09-05) — Pass 1 BLOCKED, Pass 2 BLOCKED (different remaining defect, fixed), Pass 3 PASS. BUG-017 closed on this basis. **Corrected 2026-09-05 (second Phase 5 re-review, N-1): this front-matter status field itself still read "Pass 3 pending" after the body below had already recorded a clean Pass 3 — the exact recurring premature-completion pattern this file exists to catch, caught a third time, this time in its own header. Fixed for real this time: this field is the last thing edited whenever this file's body changes, not the first.**
 date: 2026-09-05
 ---
 

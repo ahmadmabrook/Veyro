@@ -49,10 +49,13 @@ outcome — not just a plan:**
 
 5 smaller P2 items also revisited per owner instruction rather than left
 "non-blocking" by default: **F5-014** (Notion Test-Runs↔Modules relation
-added, verified in-schema — FIXED), **F5-019** (DC-16 escalation rule
+added, verified in-schema — FIXED), **F5-019** (DC-17 escalation rule
 clarified against the catalog's own existing Gatekeeper/code-review
-closing gates — FIXED), **F5-021** (all 9 remaining DC rules added, all
-21 now present in `DEVELOPMENT_CONSTITUTION.md` — FIXED), **F5-023** (the
+closing gates — FIXED), **F5-021** (all 21 DC rules now present in
+`DEVELOPMENT_CONSTITUTION.md` **by explicit ID, grep-verified** — corrected
+twice same day: the first pass added 9 new sections but left another 9
+IDs unlabeled-though-covered, and DC-15/DC-17-subclauses genuinely
+missing; second Phase 5 re-review caught it, fully fixed — FIXED), **F5-023** (the
 5 cited scenarios re-checked: defects already fixed as side effects of
 other remediation, or found on inspection not to be defects at all —
 FIXED), **F5-027** (left open **by design**, not by time pressure — the

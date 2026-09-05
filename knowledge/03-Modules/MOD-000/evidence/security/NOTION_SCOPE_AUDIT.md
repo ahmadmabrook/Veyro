@@ -1,7 +1,7 @@
 ---
 doc: NOTION_SCOPE_AUDIT
-status: BLOCKED: SCOPE_UNVERIFIED (partial evidence only, not conclusive)
-date: 2026-09-04
+status: SCOPE_CONFIRMED_UNRESTRICTED (2026-09-05, BUG-006 bounded re-test) — superseded from the earlier BLOCKED: SCOPE_UNVERIFIED once a direct out-of-scope write attempt was actually run
+date: 2026-09-04 (original inconclusive audit); updated 2026-09-05
 ---
 
 # CAP-001 Notion MCP — technical scope audit (SCN-MOD000-070)
@@ -48,3 +48,24 @@ scope description should read as the connector's *intended* scope
 verified technical enforcement — the registry text was ambiguous on this
 distinction before Phase 5; this file is now the durable, honest audit
 record it pointed to.
+
+## Update 2026-09-05 — the question this file left open is now answered, and the answer is "no"
+
+As part of BUG-006's bounded CAP-001 re-test (item a), a direct
+out-of-scope write was actually attempted: `notion-create-pages` with no
+`parent` argument. It **succeeded** — a standalone workspace-root page
+was created with no permission error. `notion-fetch id="self"` (run
+immediately before) independently confirms the connector is authorized
+against the entire workspace, not a page-scoped grant. Full raw
+request/response: `knowledge/05-QA/capability-evidence/CAP-001/BOUNDED_RETEST_2026-09-05.md`.
+
+This resolves the ambiguity this file could not: it is **not** "the
+workspace just doesn't have much else in it" (explanation 2 from the
+original audit) — it is confirmed there is no technical page-tree
+restriction at all. CAP-001's "scope" is a project-convention
+description of *intended* use, not an enforced permission boundary. The
+registry's scope field must read exactly that way (see the correction
+made 2026-09-05 alongside this update), and this is real information for
+whoever makes CAP-001's next review-status call: the Notion MCP capability,
+as currently authorized, can read and write anywhere in the connected
+workspace, not just the Veyro Control Plane tree.

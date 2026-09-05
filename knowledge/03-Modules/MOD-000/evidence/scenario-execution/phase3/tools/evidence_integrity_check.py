@@ -64,6 +64,17 @@ EXPECTED_NOT_YET_CREATED = {
     "knowledge/05-QA/capability-evidence/AUTHENTICATION_FAILURE_DRILL.md",
 }
 
+# Pre-2026-09-05-migration vault paths, narrated in ADR-001/ADR-002 as
+# historical/removed structure — not a current-state claim when quoted
+# inside an ADR. Added 2026-09-05 (N-11) to narrow the old blanket
+# ADR-file exemption.
+PRE_MIGRATION_PATH_PREFIXES = (
+    "knowledge/01-Modules/",
+    "knowledge/02-Decisions/",
+    "knowledge/03-ExternalGates/",
+    "knowledge/04-Capabilities/",
+)
+
 def expand_braces(rel: str):
     m = BRACE_RE.match(rel)
     if not m:
@@ -74,6 +85,7 @@ def expand_braces(rel: str):
 def referenced_paths(text: str):
     raw = sorted(set(PATH_RE.findall(text)))
     raw = [r for r in raw if "*" not in r and "?" not in r and "|" not in r]  # glob patterns and "a|b|c" shorthand aren't literal paths to check
+    raw = [r for r in raw if "MOD-xxx" not in r]  # illustrative placeholder module ID (ADR-001's Appendix D schema example), never a real path
     expanded = []
     for rel in raw:
         expanded.extend(expand_braces(rel))
@@ -86,16 +98,21 @@ def check_file_refs(rel_path: str, findings: list, expected_absent: list):
         return
     # ADRs narrate historical/decision context, including paths that
     # deliberately no longer exist (that's the point of documenting a
-    # migration) or hypothetical future paths — not real current-state
-    # claims. Checking their path references for present-day existence
-    # produces only false positives.
-    if re.match(r"^knowledge/04-Decisions/ADR-\d+", rel_path):
-        return
+    # migration). Narrowed 2026-09-05 (second Phase 5 re-review, N-11):
+    # this used to skip ADR files entirely, which meant ADR-002's own
+    # migration path map -- key BUG-017 evidence, and unlike ADR-001 not
+    # purely historical -- was never validated. Now only path references
+    # starting with a known pre-migration prefix are exempted inside an
+    # ADR; every other referenced path in an ADR (including ADR-002's
+    # "new path" column) must actually exist, same as any other file.
+    is_adr = bool(re.match(r"^knowledge/04-Decisions/ADR-\d+", rel_path))
     text = md_file.read_text(encoding="utf-8", errors="replace")
     for rel in referenced_paths(text):
         p = ROOT / rel
         if not p.exists():
-            if rel in EXPECTED_NOT_YET_CREATED:
+            if is_adr and any(rel.startswith(prefix) for prefix in PRE_MIGRATION_PATH_PREFIXES):
+                expected_absent.append(f"{rel_path}: `{rel}` (historical pre-migration path, ADR narrative, not a current-state claim)")
+            elif rel in EXPECTED_NOT_YET_CREATED:
                 expected_absent.append(f"{rel_path}: `{rel}` (forward reference, not yet created by design)")
             else:
                 findings.append(f"BROKEN REFERENCE in {rel_path}: `{rel}` does not exist")

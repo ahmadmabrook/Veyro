@@ -183,7 +183,13 @@ def main():
     header_ids = set(re.findall(r"^### SCN-MOD000-(\d{3})", text, re.MULTILINE))
     no_detail = [sid for sid in required_ids if sid not in header_ids]
     if no_detail:
-        warnings.append(f"Required scenarios with a summary-table row but NO detail block ('### SCN-MOD000-NNN' header): {len(no_detail)} scenarios — {no_detail}")
+        # Escalated warning->error 2026-09-05 (second Phase 5 re-review, N-4/F5-009):
+        # this was previously a non-blocking warning, so PASS/exit-0 was insensitive to
+        # the exact defect class BUG-007 was filed for -- I proved this by deleting one
+        # detail block from a scratch copy and the validator still printed PASS. A
+        # missing detail block is a real EIP Section 9.1 violation, not cosmetic; it must
+        # fail the gate, not just get logged.
+        errors.append(f"Required scenarios with a summary-table row but NO detail block ('### SCN-MOD000-NNN' header): {len(no_detail)} scenarios — {no_detail}")
     else:
         info.append("Every Required scenario has both a summary-table row and a detail block.")
 

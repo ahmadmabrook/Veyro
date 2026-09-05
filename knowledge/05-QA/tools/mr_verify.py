@@ -40,6 +40,7 @@ strict — for exactly the reason EIP §4.1 requires it: an Opus-required
 assurance role silently running on Sonnet must never look like a pass.
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -49,6 +50,17 @@ EXPECTED_TIER_BY_AGENT = {
     "veyro-manual-qa": "opus", "veyro-security-reviewer": "opus",
     "veyro-performance-reviewer": "opus", "veyro-gatekeeper": "opus",
     "veyro-test-author": "sonnet",
+}
+
+# Family pattern per tier: "claude-<tier>-<version>", version = digits/dots only,
+# nothing trailing after it. Tightened 2026-09-05 (second Phase 5 re-review, N-9):
+# the prior check was `expected_tier in observed` (substring), which a fabricated
+# model id like "claude-opus-9-nonexistent-model-id" would pass -- confirmed by
+# the reviewer. This anchors both ends so only a genuine family+version string
+# matches.
+_FAMILY_RE = {
+    "opus": re.compile(r"^claude-opus-\d+(\.\d+)*$"),
+    "sonnet": re.compile(r"^claude-sonnet-\d+(\.\d+)*$"),
 }
 
 
@@ -74,6 +86,19 @@ def extract_models(transcript_text: str) -> list[str]:
 def verify(transcript_text: str, expected_tier: str, agent_label: str = "") -> dict:
     """Returns a dict: {"verdict": "PASS"|"BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
     "reason": str, "models_observed": [...], "expected_tier": expected_tier}"""
+    # Enforced 2026-09-05 (second Phase 5 re-review, N-9): EXPECTED_TIER_BY_AGENT was
+    # defined and never referenced, so a caller could pass "sonnet" for
+    # veyro-code-reviewer and get PASS. If agent_label names a known role, its
+    # registered tier is authoritative -- a caller-supplied tier that disagrees
+    # with it is itself a finding, not silently accepted.
+    if agent_label in EXPECTED_TIER_BY_AGENT:
+        registered_tier = EXPECTED_TIER_BY_AGENT[agent_label]
+        if registered_tier != expected_tier.lower():
+            return {
+                "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
+                "reason": f"Caller-supplied expected_tier '{expected_tier}' disagrees with the registered tier '{registered_tier}' for agent '{agent_label}' in EXPECTED_TIER_BY_AGENT — refusing to verify against a possibly-wrong tier.",
+                "models_observed": [], "expected_tier": expected_tier,
+            }
     models = extract_models(transcript_text)
     if not models:
         return {
@@ -89,10 +114,18 @@ def verify(transcript_text: str, expected_tier: str, agent_label: str = "") -> d
             "models_observed": distinct, "expected_tier": expected_tier,
         }
     observed = distinct[0]
-    if expected_tier.lower() not in observed.lower():
+    tier_key = expected_tier.lower()
+    pattern = _FAMILY_RE.get(tier_key)
+    if pattern is None:
         return {
             "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
-            "reason": f"Resolved model '{observed}' does not match required tier '{expected_tier}' for {agent_label or 'agent'}.",
+            "reason": f"Unknown expected tier '{expected_tier}' — must be one of {sorted(_FAMILY_RE)}.",
+            "models_observed": distinct, "expected_tier": expected_tier,
+        }
+    if not pattern.match(observed):
+        return {
+            "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
+            "reason": f"Resolved model '{observed}' does not match required tier '{expected_tier}' (expected pattern {pattern.pattern}) for {agent_label or 'agent'}.",
             "models_observed": distinct, "expected_tier": expected_tier,
         }
     return {

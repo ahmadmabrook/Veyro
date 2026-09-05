@@ -118,13 +118,39 @@ than `APPROVED` until a genuinely distinct fresh-context Opus review
 confirms them, for the same reviewer/implementer-separation reason CAP-001
 was just downgraded.
 
+## Bounded re-test executed (2026-09-05, second Phase 5 re-review follow-up)
+
+All 3 items from the bounded re-test above were run by the main session
+(mechanical execution, per the established operating model). Full raw
+evidence: `knowledge/05-QA/capability-evidence/CAP-001/BOUNDED_RETEST_2026-09-05.md`.
+
+- **(a) Genuine out-of-scope write:** executed, and it **succeeded** — no
+  refusal. This is a materially worse result than the prior
+  `BLOCKED: SCOPE_UNVERIFIED` finding: it's now a **confirmed** absence of
+  technical scope enforcement, not an inconclusive probe.
+  `evidence/security/NOTION_SCOPE_AUDIT.md` and `CAPABILITY_REGISTRY.md`'s
+  CAP-001 row both updated to state this as fact.
+- **(b) Raw request/response artifacts:** captured, including a
+  read-back fetch confirming persistence.
+- **(c) Stage-4 note on Notion MCP's own instructional text:** logged —
+  the upsell/upgrade-nudge text observed in `notion-fetch id="self"`
+  output, correctly never acted on, now formally recorded as evaluated.
+
+**This bug is not closed by this session's own say-so.** Per the
+established operating model, a fresh-context `veyro-security-reviewer`
+(Opus) must independently evaluate `BOUNDED_RETEST_2026-09-05.md` and
+issue the final APPROVED/QUALIFIED/REJECTED call for CAP-001 — that
+review's own record (once it lands) is this bug's actual closing
+evidence, not this update.
+
 ## Affected
 
-SCN-MOD000-055, SCN-MOD000-030, `CAPABILITY_REGISTRY.md`,
+SCN-MOD000-055, SCN-MOD000-030, SCN-MOD000-070, `CAPABILITY_REGISTRY.md`,
 `module-capabilities.yaml`, `evidence/CAP-001/`, `evidence/CAP-002/`,
 `evidence/CAP-002/SCOPE_NOTE.md`.
 
 **Blocks MOD-000 certification:** NO for CAP-002 (resolved). YES for
-CAP-001 (Blocker severity, unresolved) until the bounded re-test above
-runs. CAP-005/CAP-006's `approved_by` gap is P2, not independently
+CAP-001 (Blocker severity) until the independent Opus review of the
+bounded re-test evidence lands and closes it. CAP-005/CAP-006's
+`approved_by` gap is filed separately as BUG-009, P2, not independently
 certification-blocking on its own.

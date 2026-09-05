@@ -68,6 +68,20 @@ blocks (was 33). Then independently reviewed by a fresh-context
   absent)" for something that was simply not yet attempted, not
   externally blocked — relabeled NOT EXECUTED.
 
+## Update 2026-09-05 (second Phase 5 re-review, N-7)
+
+The reviewer independently re-verified the "8 unproven categories" claim
+below and found it **accurate, if anything understated** — all 8
+(BND/AUTHN/AUTHZ/TEN/IDEM/NET/PART/DATA) genuinely rest on a single,
+mostly-unexecuted scenario. One correction landed as a result: SCN-071
+(the IDEM scenario) was wrongly marked "not yet formally executed" in its
+own detail block — `TEST_RUN_PHASE1_2026-09-01.md` actually recorded it
+PASS on 2026-09-01, before this block was even authored. Fixed in
+`SCENARIO_CATALOG.md`. This narrows, but does not close, the structural
+gap: IDEM now has real (if partial — only the hash-comparison half of its
+pass criteria was tested) positive evidence, leaving 7 of 19 categories
+with no execution evidence at all, not 8.
+
 ## Structural concern carried forward, not resolved this chunk
 
 The reviewer's overall verdict: not clean enough to call BUG-007 fully
