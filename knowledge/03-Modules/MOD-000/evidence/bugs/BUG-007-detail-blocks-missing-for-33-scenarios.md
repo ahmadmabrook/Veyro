@@ -1,6 +1,6 @@
 ---
 doc: BUG-007
-status: MOSTLY FIXED (2026-09-05) — all 33 blocks authored and independently reviewed; real defects found in the review were fixed same day; one structural coverage concern carried forward honestly, not closed
+status: EXECUTION COMPLETE (2026-09-05) — all 33 blocks authored and independently reviewed; the structural coverage concern (7 categories resting on a single, mostly-unexecuted scenario) has now been closed via real execution of all 7. Closure of this bug itself awaits the final independent fresh-context Phase 5 re-review, per this project's standing discipline — not self-certified here.
 found_date: 2026-09-04
 found_by: Phase 5 independent review (F5-008), count corrected by the rewritten validator
 severity: P1
@@ -82,22 +82,54 @@ gap: IDEM now has real (if partial — only the hash-comparison half of its
 pass criteria was tested) positive evidence, leaving 7 of 19 categories
 with no execution evidence at all, not 8.
 
-## Structural concern carried forward, not resolved this chunk
+## Structural concern — now closed via real execution (2026-09-05)
 
-The reviewer's overall verdict: not clean enough to call BUG-007 fully
-remediated, primarily because **8 of the 19 EIP §9.1 mandatory categories
-(BND, AUTHN, AUTHZ, TEN, IDEM, NET, PART, DATA) each rest on a single
-scenario, most still unexecuted or only partially executed.** The
-catalog's own D-1 coverage matrix reads "COVERED" for all 19 in a sense
-that means "a scenario exists," not "the category is proven" — a real
-gap between what the matrix implies and what's actually been shown. Not
-fixed this chunk (would require either executing several more scenarios
-for real or adding a second, more honest coverage column) — tracked here
-rather than silently accepted as closed.
+The 7 categories confirmed genuinely unproven (BND, AUTHN, AUTHZ, TEN,
+NET, PART, DATA — IDEM had already been narrowed off this list by the
+SCN-071 correction above) were closed by actually executing their mapped
+scenarios, not by re-labeling or loosening pass criteria:
+
+- **BND (SCN-067):** a real resolution-bound enforcement mechanism
+  (`knowledge/05-QA/tools/resolution_bound.py`) was built — none existed
+  before — and run against 3 synthetic cases (tokens-exhausted-first,
+  time-exhausted-first, neither), all correct. `evidence/RESOLUTION_BOUND_DRILL.md`.
+- **AUTHN (SCN-095):** a real invalid/scratch credential was sent to a
+  live endpoint (`api.testsprite.com` via CAP-002), rejected, reported
+  as a genuine failure, not masked. `evidence/AUTHENTICATION_FAILURE_DRILL.md`.
+- **AUTHZ (SCN-069):** all 8 allow-list entries individually attempted
+  for real, each proceeded without a spurious block.
+  `evidence/config-runtime/AUTHZ_BOUNDARY_PROOF.md`.
+- **TEN (SCN-070):** a real out-of-scope Notion write was attempted (the
+  same test that closed BUG-006's CAP-001 re-test) — it succeeded,
+  confirming a genuine scope violation. The category is PROVEN by this
+  execution; the *result* (no technical scope enforcement) is a real,
+  separately-tracked risk (BUG-010/ADR-003), not something this closure
+  papers over.
+- **NET (SCN-072):** a real network call to an unreachable host was
+  made; clean timeout, durable state (`git status`) provably unaffected.
+  `evidence/durability/NETWORK_FAILURE_DRILL.md`.
+- **PART (SCN-073):** compiled 3+ named, repeatedly-observed real
+  unrelated-MCP-server failures and cross-checked them against 5
+  completed MOD-000 phases, all unaffected.
+  `evidence/durability/PARTITION_TOLERANCE_EVIDENCE.md`.
+- **DATA (SCN-074(b)):** a real repo-wide pattern scan for personal data
+  was run across every file in `knowledge/`; 0 real personal data found,
+  the one realistic-looking fixture confirmed synthetic at the field
+  level, not just by label. `evidence/security/DATA_CLASSIFICATION_AUDIT.md`.
+- **IDEM (SCN-071), the second half:** the baseline-verification
+  procedure was run twice in immediate succession; `git status`
+  unchanged, and the procedure is structurally read-only (no write
+  capability exists in it at all). `evidence/session-restore/IDEMPOTENCY_DRILL.md`.
+
+`SCENARIO_CATALOG.md`'s D-1 matrix rebuilt with per-category executed-scenario
+citations and evidence paths — no longer a bare "COVERED" claim. Every one
+of the 19 mandatory categories now shows PROVEN with a real, cited
+evidence file, not an assertion.
 
 ## Affected
 
 SCN-057, 058, 065, 066, 067-095 (33 total). **Blocks MOD-000
-certification:** the missing-detail-block defect itself is fixed. The
-category-coverage concern above remains a real, open item for the second
-fresh-context code-review re-review to weigh.
+certification:** the missing-detail-block defect is fixed. The
+category-coverage concern is closed via real execution, above. This
+bug's own closure still awaits confirmation by the final independent
+fresh-context Phase 5 re-review — this session does not self-certify it.
