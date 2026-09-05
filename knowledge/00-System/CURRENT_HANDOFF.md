@@ -1,12 +1,12 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-05 (chunk 16 — BUG-007 execution work closed and independently re-confirmed genuine by both a third AND a fourth review; the fourth found 1 new P1 (an incomplete self-correction) + 4 P2/3 Editorial, self-fixed; a fifth independent review is now in progress before Phase 5 can be marked PASS)
+updated: 2026-09-05 (chunk 16, final — BUG-007 closed via real execution, independently confirmed genuine by three separate reviews (third, fourth, fifth); fifth returned P0=0/P1=0, verdict APPROVED; **PHASE 5 GATE: APPROVED**; Phase 6 legally unlocked, not started)
 ---
 
 # Current Handoff
 
-## What happened chunk 16, 2026-09-05 — BUG-007 execution work closed and independently confirmed genuine; fourth review in progress to confirm the follow-on fixes
+## What happened chunk 16, 2026-09-05 — BUG-007 closed via real execution; PHASE 5 GATE: APPROVED after five independent review rounds
 
 Continuation of chunk 15's work. The one remaining certification-blocking
 Phase 5 finding was BUG-007/F5-008: 7 of 19 mandatory EIP scenario
@@ -67,20 +67,20 @@ resolution-budget field, a weak REC citation, a stale `BUG_REGISTRY.md`
 row, and several editorial nits). **All fixed same day; re-verified:
 P0=0, P1=0.**
 
-**PHASE 5 GATE: PENDING FIFTH INDEPENDENT CONFIRMATION — not yet PASS.**
-BUG-006, BUG-007, BUG-009, and BUG-017 are all believed closed pending
-that confirmation. BUG-010/ADR-003 and F5-027 remain open by design,
-both explicitly non-certification-blocking. All 4 baseline hashes
-unchanged. Validator and evidence-integrity checker both PASS. Two real
-Notion/Git divergences were caught and fixed this chunk (a scenario's
-Notion row marked "Done" before it was actually executed;
-`BUG_REGISTRY.md` drift). A fourth, independent fresh-context
-`veyro-code-reviewer` review is running specifically to confirm the P0=0/
-P1=0 self-verification above before this gate can be marked PASS — per
-explicit instruction, self-verification after fixing a P1 is not
-sufficient; the loop repeats until an independent pass confirms it clean.
-**Phase 6 is not unlocked until Phase 5 actually PASSes, and has NOT been
-started regardless** — this chunk stops here per explicit instruction.
+**PHASE 5 GATE: APPROVED.**
+BUG-006, BUG-007, BUG-009, and BUG-017 are all CLOSED, independently
+confirmed by a fifth fresh-context `veyro-code-reviewer` review (P0=0,
+P1=0, verdict APPROVED) — not this session's own say-so. BUG-010/ADR-003
+and F5-027 remain open by design, both explicitly non-certification-
+blocking and independently judged sound across multiple reviewers. All 4
+baseline hashes unchanged throughout every review round. Validator and
+evidence-integrity checker both PASS. Real Notion/Git divergences were
+caught and fixed along the way (a scenario's Notion row marked "Done"
+before it was actually executed; `BUG_REGISTRY.md` drift, twice). Phase 5
+took five independent review rounds to reach APPROVED, and every one of
+them found something real — recorded as the discipline working, not
+repeated failure. **Phase 6 is legally unlocked but has NOT been
+started** — this chunk stops here per explicit instruction.
 
 **Honest note on this chunk's own last mile:** the final round of fixes
 (NF-1 through NF-12, all mechanical/citation-level, none disputing the
@@ -105,8 +105,26 @@ and 3 Editorial (two counts each missed in one of several locations by
 their own prior fixes; one count gone stale by a same-day fix in a
 different file). All 8 fixed same day; re-verified P0=0/P1=0 by this
 session's own inspection — **again not a substitute for independent
-confirmation.** A fifth review is running. See `CR-MOD000-001.md`'s
-"Round 4" section for full detail.
+confirmation.** See `CR-MOD000-001.md`'s "Round 4" section for full
+detail.
+
+## Second addendum — the fifth review landed: PHASE 5 GATE: APPROVED
+
+The fifth review independently re-verified all 8 of the fourth review's
+fixes correct, independently re-derived all 19 mandatory EIP categories
+PROVEN with real evidence (not read from prior claims), and **returned
+P0=0, P1=0 — verdict APPROVED.** It found 4 P2 + 3 Editorial findings, all
+the same recurring propagation-gap species (a count or status update
+landing in some but not all of the places that publish the same fact) —
+none altering a PROVEN verdict, a hash, or a gate outcome. All 7 fixed
+same day (see `CR-MOD000-001.md`'s "Round 5" section). **Phase 5 took
+five independent review rounds to reach this point, and every single one
+found something real — this is the discipline working exactly as
+designed across a project that has now caught this same class of
+mistake six times and fixed it six times, not a project that kept
+failing.** BUG-006, BUG-007, BUG-009, and BUG-017 are all CLOSED,
+independently confirmed. Phase 6 is legally unlocked. It has NOT been
+started this chunk.
 
 ## What happened this chunk (15, 2026-09-05) — owner decisions on BUG-006/007/017/F5-005 implemented, P2 sweep, second re-review launched
 
@@ -291,7 +309,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 5 GATE: PENDING FIFTH INDEPENDENT CONFIRMATION — not yet PASS.** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16), and that execution work was independently confirmed genuine by a third fresh-context `veyro-code-reviewer` re-review, then re-confirmed again by a fourth. The fourth review found 1 new P1 (the correction commit that walked back a premature PASS claim was itself incomplete — a durable bug file wasn't included) plus 4 P2/3 Editorial; this session self-fixed all of them, and a fifth independent review is now running to confirm those fixes before this gate is settled. Phase 6 remains locked until then, and has NOT been started regardless.
+**PHASE 5 GATE: APPROVED.** BUG-007's structural DC-05 gap was closed via real scenario execution (chunk 16), and that execution work was independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review. The fifth review independently re-verified all 19 mandatory EIP categories PROVEN, found no fabrication anywhere, and returned P0=0/P1=0 — verdict APPROVED. Its own 4 P2 + 3 Editorial findings (the same recurring propagation-gap species as the third and fourth reviews') were self-fixed same day. Phase 6 is legally unlocked but has NOT been started.
 
 1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
 2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
@@ -300,7 +318,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 5. **BUG-007's structural DC-05 gap — CLOSED (chunk 16, 2026-09-05).** All 7 remaining categories (BND, AUTHN, AUTHZ, TEN, NET, PART, DATA) executed for real, IDEM's second half also closed, `SCENARIO_CATALOG.md`'s D-1 matrix rebuilt from evidence — 19/19 categories PROVEN.
 6. **Third, independent `veyro-code-reviewer` re-review of the BUG-007 execution work — landed, verdict BLOCKED (P0=0, P1=1, P2=8, Ed=5).** Confirmed the execution work itself genuine (no fabrication). The 1 P1 (NF-1: a mechanical Phase 1 count-propagation gap across 3 durable files) and all 12 P2/Editorial findings (citation-path errors, a deny-pattern count off by one after N-8, an overclaimed authentication-mechanism detail, an uninstantiated per-capability resolution-budget field, a weak REC citation, a stale bug-registry row, and several editorial nits) were self-fixed same day by this session; re-verified by this session's own inspection: **P0=0, P1=0.** This self-verification is explicitly NOT a substitute for independent confirmation.
 7. **Fourth, independent `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P0=0, P1=1, P2=4, Ed=3).** Re-confirmed all 19 EIP categories independently (re-executed `resolution_bound.py`, re-ran the DATA greps, re-derived all 4 baseline hashes) and confirmed 12 of the third review's 13 fixes correct. Found 1 new P1 (NF4-1: the correction commit that walked back the premature PASS claim had itself missed `BUG-007`'s own durable bug file — the fifth recurrence of this project's own premature-completion pattern) + 4 P2 (a stale Phase-count reference in `STATUS.md`; `next_review_due`/`lifecycle_status` not synced to `CAPABILITY_EVAL_INDEX.md`; `lifecycle_status` never instantiated anywhere) + 3 Editorial (a deny-pattern count and a `.claude/rules/` file count each missed in one location by their own prior fixes; a credit-card-shaped-string count gone stale by a fix in a different file). All 8 self-fixed same day; re-verified: **P0=0, P1=0.**
-8. **Fifth, independent `veyro-code-reviewer` re-review — in progress**, launched specifically to confirm this round's fixes. Per explicit instruction, this session does not declare Phase 5 PASS on its own re-verification after fixing a P1 — the loop repeats (fix, re-verify independently) until a fresh-context review itself reports P0=0 and P1=0.
+8. **Fifth, independent `veyro-code-reviewer` re-review — landed, verdict APPROVED (P0=0, P1=0, P2=4, Ed=3).** Independently re-verified all 8 of the fourth review's fixes correct, re-verified all 19 mandatory EIP categories PROVEN with real evidence (re-executing `resolution_bound.py`, re-running the DATA greps, re-deriving all 4 baseline hashes), and confirmed the underlying execution evidence was untouched by the fourth review's remediation commit. Its own 4 P2 + 3 Editorial findings — the same recurring propagation-gap species as before (a stale review-round reference in 2 files; a stale duplicate scenario block; a fourth copy of the pre-F5-022 Phase 1 count in `PHASE4_RECONCILIATION_2026-09-04.md`; a wrong finding-count and a stale heading in this project's own docs; a present-tense count claim gone stale by one) — self-fixed same day. **PHASE 5 GATE: APPROVED.**
 9. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by both the third and fourth reviewers — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
 10. Phase 6: real manual QA re-confirmation if anything changed, via `veyro-manual-qa`, fresh context. **Not started this chunk.**
 11. Phase 7: security/performance review.
