@@ -1,8 +1,8 @@
 ---
 doc: BUG-013
-status: MOSTLY FIXED (2026-09-06) — residual scope WIDER than first recorded, still OPEN, requires human edit
+status: NARROWED (2026-09-06, RR-3) — git-injection half CLOSED by owner's manual edit; rm-recursive half remains OPEN, requires a further human edit
 found_date: 2026-09-06
-found_by: Phase 7 fresh-context Opus veyro-security-reviewer (SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-16, SEC-17); residual scope widened by an independent Phase 7 re-review (RR-2)
+found_by: Phase 7 fresh-context Opus veyro-security-reviewer (SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-16, SEC-17); residual scope widened by an independent Phase 7 re-review (RR-2); git half confirmed CLOSED and rm half confirmed still OPEN by a third independent re-review (RR-3) after the owner's manual settings.json edit
 severity: P1 (primary), P2 (sub-findings)
 ---
 
@@ -119,17 +119,89 @@ families above. Until that happens, `git -c <flag> <destructive-subcommand>`
 against any covered git pattern, and bare `rm -r <path>`, remain real,
 live, unresolved bypasses.
 
+## RR-3 (2026-09-06): owner's manual edit verified — git half CLOSED, rm half still OPEN, plus corrected prior claim
+
+The owner hand-edited `.claude/settings.json` (a human edit — this
+session's own SEC-06 self-protection correctly blocks agent-side edits to
+this file) to add the wildcard-between-`git`-and-subcommand pattern family
+(`Bash(git * <subcommand>*<flag>*)`) across all 15 destructive git
+subcommands named above. A verification session then live-tested it
+directly, and a third, distinct fresh-context `veyro-security-reviewer`
+independently re-tested with its own fresh fixtures (not reusing the
+verification session's).
+
+**Confirmed CLOSED, both independently:** every git global-flag-injection
+variant tried — `-c core.pager=cat`, `--no-pager`, `-C <path>`, `-c
+advice.detachedHead=false`, stacked `-c` flags, `GIT_PAGER=cat git ...`,
+`command git ...`, `env git ...` — against all 15 covered subcommands
+(`reset --hard`, `push --force`, `branch -D`, `clean -fd`, `restore
+--staged .`, `filter-branch`, `filter-repo`, `reflog expire`, `update-ref
+-d`, `commit --amend`, `stash clear`/`drop`, `worktree remove --force`,
+`gc --prune=now`) — **16+ variants, all DENIED.** The re-reviewer
+additionally confirmed its fixture repo was byte-for-byte unchanged
+afterward (real refusals, not silent no-ops). `git status`/`log`/`diff`/
+`show` remain fully usable; the edit is purely additive with zero
+deletions; no previously-closed control regressed (`*production*`,
+`*--prod*`, baseline `cp`/`mv`/`tee`/`dd`/`truncate`/`sed -i` denies, and
+`.claude/settings.json`'s own `cp`/`sed -i` self-protection all re-tested
+and still hold).
+
+**Confirmed still OPEN, both independently:** the owner's edit made no
+`rm`-related change at all (`git diff` on the file shows only the git
+wildcard family added). Bare lowercase `rm -r <path>` (no `-f`) executes a
+real recursive delete with **no denial and no permission prompt at all**
+— confirmed live against disposable scratch fixtures by both sessions.
+The independent re-review went further and also proved `rm -rv`, `rm -vr`,
+`rm -Rv`, `rm -v -r`, and `find ... -delete` all execute uncaught —
+**broader than the four-pattern fix this file previously prescribed**,
+which itself only covered `-r`/`-r*`/`* -r *`/`* -r` and would still miss
+`-vr` (flag order reversed) and `-Rv` (uppercase `-R` inside a combined
+cluster, which the existing `Bash(rm -R *)` pattern requires a trailing
+space to catch and cannot see once `-R` is bundled with another short
+flag). **Corrected minimum fix**, per the independent re-review: either a
+blanket `Bash(rm *)` / `Bash(rm)` deny (these agent roles have no
+legitimate need for `rm` at all) plus `Bash(find * -delete*)` and
+`Bash(find * -exec rm*)`, or, if enumeration is still preferred, the
+complete set `Bash(rm -r*)`, `Bash(rm -R*)`, `Bash(rm -*r*)`, `Bash(rm
+-*R*)`, `Bash(rm * -r*)`, `Bash(rm * -R*)`, `Bash(rm * -*r*)`, `Bash(rm *
+-*R*)` (accepting that the `-*r*`/`-*R*` forms will also over-deny some
+benign non-recursive `rm` calls whose operand contains the letter after a
+flag — fail-closed, consistent with this project's SEC-17 stance).
+
+**Correction to this file's own prior claim:** the "Remediation applied"
+section above states baseline/self-protection redirection coverage
+(`cp`/`mv`/`tee`/`dd`/`truncate`/`sed -i`/"redirection") was added. The
+`cp`/`mv`/`tee`(-onto-baseline-docx)/`dd`/`truncate`/`sed -i` parts are
+real and hold. **The redirection (`>`/`>>`) part, and `tee` onto
+`.claude/settings.json`/`.claude/rules/**` specifically, do not work** —
+see the new `BUG-023` for the proof and full correction. This file is
+being corrected here, per this project's preserve-history convention,
+rather than silently rewritten.
+
+**Two new, distinct P1s were also found by the same RR-3 re-review** while
+verifying this bug — filed separately since they are different bypass
+classes, not sub-findings of the flag-reordering issue this bug was
+originally scoped to: `BUG-022` (absolute-path/wrapper invocation
+defeats the entire deny list, including the git family this bug just
+closed) and `BUG-023` (non-functional redirection denies, see above).
+
 ## Certification impact
 
-**Blocks Phase 7 PASS** until the residual gap above is closed (requires
-a human edit to `.claude/settings.json`, then live re-verification, then
-a fresh-context re-review). All other sub-findings (SEC-03/04/05/16) are
-fixed and live-verified; SEC-17 is a deliberate non-fix.
+**Blocks Phase 7 PASS.** The git-injection half of this bug is genuinely
+CLOSED. The `rm`-recursive half remains OPEN and, combined with the two
+new sibling bugs `BUG-022`/`BUG-023`, still blocks Phase 7 (P1=3 total
+across the three bugs). Requires a further human edit to
+`.claude/settings.json` for the `rm` family, then live re-verification,
+then another fresh-context re-review. All other sub-findings (SEC-03/04/16)
+are fixed and live-verified; SEC-05 is corrected (see above, RR-3);
+SEC-17 is a deliberate non-fix.
 
 ## Affected
 
 `.claude/settings.json`, `knowledge/03-Modules/MOD-000/evidence/
 scenario-execution/phase3/TEST_RUN_PHASE3_2026-09-04.md` (its claim that
 force-push/hard-reset are harness-denied is corrected to note the
-argument-ordering caveat that existed before this fix, and the residual
-`-c`-flag-injection caveat that remains).
+argument-ordering caveat that existed before this fix, now resolved for
+the git-injection form specifically), `knowledge/03-Modules/MOD-000/
+evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06
+disposition corrected re: redirection, see `BUG-023`).

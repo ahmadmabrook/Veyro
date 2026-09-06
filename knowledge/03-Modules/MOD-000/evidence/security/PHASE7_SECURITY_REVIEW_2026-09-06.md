@@ -1,6 +1,6 @@
 ---
 doc: PHASE7_SECURITY_REVIEW
-status: EXECUTED (2026-09-06) — Phase 7 security assurance
+status: EXECUTED, re-reviewed THREE times (2026-09-06) — Phase 7 security assurance, GATE BLOCKED (0 P0, 3 P1: BUG-013 narrowed-but-open, BUG-022 new, BUG-023 new)
 date: 2026-09-06
 ---
 
@@ -24,11 +24,11 @@ carries the durable disposition of each.
 | ID | Severity | Summary | Disposition |
 |---|---|---|---|
 | SEC-01 | P1 | Orchestrating session ran Opus-designated work (ADRs, gate verdicts) on Sonnet, unattested | **OPEN — owner decision required.** `BUG-012`, `ADR-004`. Blocks Phase 7 PASS. |
-| SEC-02 | P1 | `git push`/`git reset --hard` deny patterns evaded by flag reordering / global-flag injection | **MOSTLY FIXED.** `BUG-013`. Flag-reordering fixed and live-verified; a global-`-c`-flag-injection variant remains OPEN, requires a human edit to `.claude/settings.json` (this session's own new self-protection deny now correctly blocks further agent-side edits to that file). Blocks Phase 7 PASS until closed. |
+| SEC-02 | P1 | `git push`/`git reset --hard` deny patterns evaded by flag reordering / global-flag injection | **CLOSED (RR-3, 2026-09-06).** `BUG-013`. Flag-reordering fixed and live-verified; the global-flag-injection variant (`-c`/`-C`/`--no-pager`) was closed by the owner's manual edit and independently confirmed CLOSED by a third re-review (16+ variants, all denied). Note: `BUG-022` (absolute-path invocation) re-opens the same underlying family by a different route — see that bug, tracked separately. |
 | SEC-03 | P2 | `rm -fr`/`rm -r -f`/`rm --recursive --force` bypass `rm -rf` deny | FIXED, live-verified. `BUG-013`. |
 | SEC-04 | P2 | No deny coverage for `branch -D`, `checkout .`, `clean -f`, `filter-branch`, etc. | FIXED, live-verified for the tested subset. `BUG-013`. |
-| SEC-05 | P2 | Baselines protected against `rm`/`Edit`/`Write` but not `cp`/`mv`/`tee`/`dd`/`sed -i`/redirection | FIXED. `BUG-013`. |
-| SEC-06 | P2 | `.claude/settings.json`/`rules/**` had no self-protection | FIXED — and immediately proved itself by blocking this session's own further edit attempt. `BUG-013`. |
+| SEC-05 | P2 | Baselines protected against `rm`/`Edit`/`Write` but not `cp`/`mv`/`tee`/`dd`/`sed -i`/redirection | **PARTIALLY FIXED, corrected (RR-3, 2026-09-06).** `cp`/`mv`/`tee`(onto the 3 baseline docx)/`dd`/`truncate`/`sed -i` are real and hold. **The redirection (`>`/`>>`) part does not work — this session's original "FIXED" disposition was false.** See `BUG-023`: the harness evaluates the command with its redirection target stripped, so no `Bash(*>*<filename>*)` pattern ever fires, proven against decoy fixtures. |
+| SEC-06 | P2 | `.claude/settings.json`/`rules/**` had no self-protection | **PARTIALLY FIXED, corrected (RR-3, 2026-09-06).** The `Edit`/`Write` tool-level denies work and did correctly block this session's own further edit attempt — that finding stands. **But the Bash-layer redirection/`tee`-onto-settings.json denies do not fire** (same root cause as SEC-05, see `BUG-023`) — a decoy `.claude/settings.json` was tamperable via `>`, `>>`, `tee`, and a `python3 -c` file write. |
 | SEC-07 | P2 | Capability supply-chain governance had zero technical enforcement | FIXED — new `validate_capabilities.py`, live-verified against the reviewer's own injected fixtures. `BUG-014`. |
 | SEC-08 | P2 | `mr_verify.py` label normalization bypass | FIXED, live-verified. `BUG-015`. |
 | SEC-09 | P2 | `mr_verify.py` row-type/`<synthetic>`-sentinel/traceback gaps | FIXED, live-verified. `BUG-015`. |
@@ -175,3 +175,65 @@ session). 0 P0. 0 known-unfixed P2/Editorial from either review round.**
 Per this project's standing discipline, **Phase 7 gate remains BLOCKED**
 until that one human edit lands and a further fresh-context re-review
 confirms P0=0/P1=0.
+
+## Third independent re-review (RR-3, 2026-09-06) — verifying the owner's manual settings.json edit
+
+The owner manually hand-edited `.claude/settings.json` (a human edit, not
+an agent one — SEC-06's self-protection correctly blocks agent-side edits
+to this file) to add the wildcard-between-`git`-and-subcommand pattern
+family across all 15 destructive git subcommands. A verification session
+tested this directly, then a third, distinct fresh-context
+`veyro-security-reviewer` independently re-tested with its own fresh
+disposable fixtures.
+
+**Confirmed CLOSED, by both:** the entire git `-c`/`-C`/`--no-pager`
+global-flag-injection bypass. 16+ variants tested (`-c core.pager=cat`,
+`--no-pager`, `-C <path>`, `-c advice.detachedHead=false`, stacked `-c`
+flags, `GIT_PAGER=cat git ...`, `command git ...`, `env git ...`) against
+all 15 covered destructive subcommands — all denied. The re-reviewer
+additionally confirmed its fixture repo was byte-for-byte unchanged
+afterward. `git status`/`log`/`diff`/`show` remain fully usable; the edit
+is purely additive; no previously-closed control regressed.
+
+**Confirmed still OPEN, by both:** `BUG-013`'s `rm`-recursive residual —
+the owner's edit made no `rm`-related change, and bare `rm -r` (plus
+`-rv`/`-vr`/`-Rv`/`-v -r`/`find ... -delete`) still executes real
+recursive deletes with zero denial and zero permission prompt.
+
+**Two new P1s found, not previously scoped:**
+- **`BUG-022`** — absolute-path/wrapper invocation (`/usr/bin/git`,
+  `/bin/rm`, `/bin/cp`) bypasses the entire deny list, since every pattern
+  is anchored on the bare command token. Proven live: `/usr/bin/git -C
+  <fixture> reset --hard` and `/usr/bin/git branch -D` executed for real
+  against the reviewer's own disposable fixture (a real commit destroyed,
+  a real branch deleted) — re-opening the exact git family SEC-02 had
+  just closed, by a different route. Path-prefix twin patterns narrow but
+  cannot fully close this (`$(which git)`, a relative path, a shell
+  alias, or a copied binary all remain).
+- **`BUG-023`** — the `>`/`>>`/`tee`-onto-`.claude/settings.json`/
+  `.claude/rules` redirection deny patterns never fire at all (the
+  harness evaluates the command with its redirection target stripped
+  before matching), proven against decoy fixtures carrying the exact
+  protected filenames. This corrects the SEC-05/SEC-06 dispositions
+  above, which previously claimed this coverage was live-verified.
+
+**Architectural conclusion:** `permissions.deny` glob-on-command-string
+matching alone is not a sufficient technical enforcement layer for
+protected Bash operations. Recorded direction (not implemented this
+chunk): keep deny patterns as defense-in-depth, and add a project-scoped
+`PreToolUse` Bash security gate that parses/normalizes the requested
+command and fails closed before execution — a semantic check, not a
+string-glob check.
+
+**Baseline/validator/evidence-integrity regression check (RR-3):** all 4
+governing baseline hashes re-verified MATCH via `verify_baselines.py`;
+`validate_catalog.py` PASS, 0 errors; `evidence_integrity_check.py` PASS,
+no broken references beyond expected forward-references. Performance/
+resilience approval unaffected.
+
+**Current state after RR-3: 0 P0, 3 P1 (`BUG-013` narrowed-but-open,
+`BUG-022` new, `BUG-023` new), 0 known-unfixed P2/Editorial.** No
+`.claude/settings.json` edit was made during RR-3 or its recording — out
+of scope by explicit instruction, and the file's self-protection would
+block an agent-side edit regardless. **Phase 7 gate remains BLOCKED.
+Phase 8 is NOT legally unlocked.**
