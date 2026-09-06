@@ -83,7 +83,7 @@ state plainly that redirection is not enforced at the Bash layer — this
 has been done as of this recording (see both files' RR-3/BUG-023
 cross-references).
 
-## Remediation attempt (2026-09-06): PreToolUse guard built, NOT yet certified
+## Remediation attempt v1 (2026-09-06): deny-by-enumeration guard, superseded after 4 rounds
 
 A `.claude/security/bash_guard.py` PreToolUse hook was built and put
 through four independent fresh-context review rounds. Redirection/write-
@@ -99,7 +99,32 @@ path rather than per-subtree (`mv .claude /tmp/x`, `tar -czf x.tgz
 demonstrated live during the round-4 review itself, see the incident
 section of the full record). Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
-**This bug remains OPEN.**
+This whole design was superseded, not patched a fifth time. Preserved as
+evidence at `.claude/security/superseded_v1/`.
+
+## Remediation attempt v2 (2026-09-06): allow-by-construction redesign, 2-round cap reached, NOT certified
+
+v2's design closes this bug's class structurally rather than by
+enumerating redirection spellings: `>`/`>>`/`<`/`<<` (and every
+composition character) are unconditionally banned at Stage 1 for EVERY
+command, so no redirection form — including the zsh clobber/append
+spellings that defeated v1 (`>!`, `>>!`, `>>&`, `&>!`, `&>|`) — can ever
+reach a family validator at all; `tee`, `sed -i`, `cp`, and every other
+v1-era write primitive are simply absent from v2's allowed command list,
+so they deny as `UNKNOWN_COMMAND` regardless of arguments. The
+ancestor-directory gap (`mv .claude /tmp/x`) is likewise closed
+differently: `mv` is not an allowed command in v2 at all (it denies
+outright), where v1 had `mv` as a recognized-but-checked command that a
+directory-level argument could evade. Two independent review rounds (the
+maximum permitted for this redesign pass) both judged the architecture
+sound; round 2's residual findings (git refspec/remote-path syntax,
+read-family traversal via `..`/`$HOME`) were outside this bug's original
+scope, though the same underlying charset-based fix mechanism now
+protects the path arguments this bug cares about too. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
+**This bug remains OPEN** — the 2-round cap was reached without a round
+returning P0=0/P1=0 overall, so per this project's standing discipline it
+is not certified closed.
 
 ## Certification impact
 

@@ -88,7 +88,7 @@ is the only approach that can close this class of bypass rather than
 adding another enumerable pattern to a list that this bug and `BUG-013`
 have now shown is inherently reorderable/spoofable.
 
-## Remediation attempt (2026-09-06): PreToolUse guard built, NOT yet certified
+## Remediation attempt v1 (2026-09-06): deny-by-enumeration guard, superseded after 4 rounds
 
 A `.claude/security/bash_guard.py` PreToolUse hook was built per the
 architectural conclusion above and put through four independent
@@ -99,9 +99,29 @@ row: round 2 added `nice`/`su`/`awk`/`ssh`/etc., round 3 added zsh
 dialect gaps `noglob`/`nocorrect`/`repeat`/`coproc`, round 4 added
 `builtin` and fixed case-sensitive command-name matching). Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
-**This bug remains OPEN** — the guard is not yet certified clean by an
-independent review, and per this project's standing discipline it does
-not close this bug until one is.
+That pattern (every round finding something new) was itself treated as
+an architectural finding — this whole design was superseded, not patched
+a fifth time. Preserved as evidence at `.claude/security/superseded_v1/`.
+
+## Remediation attempt v2 (2026-09-06): allow-by-construction redesign, 2-round cap reached, NOT certified
+
+An entirely different design closes this bug's whole class structurally:
+absolute-path/wrapper invocation (`/usr/bin/git`, `/bin/rm`, `env git`,
+`RM`, `noglob`, `bash -c`, etc.) simply does not match ANY of v2's
+explicit command-family shapes, so every one of them is denied by
+construction — no wrapper-recognition code was written for any of them
+specifically (confirmed by both review rounds' regression testing
+against the full v1-era fixture corpus). Two independent review rounds
+(the maximum permitted for this redesign pass) both judged the
+architecture itself sound; round 2's residual findings were in different
+command families (git refspec syntax, read-family path-traversal), not
+in this bug's absolute-path/wrapper class, which held clean across both
+rounds. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
+**This bug remains OPEN** — the 2-round cap was reached without a round
+returning P0=0/P1=0 overall (even though this bug's specific class was
+never the source of either round's findings), so per this project's
+standing discipline it is not certified closed.
 
 ## Certification impact
 

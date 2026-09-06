@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-06 (chunk 20 — built `.claude/security/bash_guard.py` PreToolUse Bash security guard per chunk 19's architectural conclusion; FOUR independent fresh-context review rounds, every round found new P0-severity bypasses, all mechanically-fixable findings fixed and tested (suite 95→200, all passing); guard is explicitly NOT certified clean — disclosed open gaps remain; a real incident during round 4 (reviewer's heredoc mishap ran live commands against the repo) was self-restored and independently re-verified clean; **BUG-013/022/023 all remain OPEN**; no `.claude/settings.json` edit made; owner-facing settings-patch deliberately NOT authored since guard hasn't passed review; **PHASE 7 GATE: still BLOCKED**; Phase 8 NOT unlocked)
+updated: 2026-09-06 (chunk 21 — v1 Bash guard superseded after 4 failed review rounds per explicit architectural instruction, not patched a 5th time; built v2 from scratch on an allow-by-construction, fail-closed design; used the explicit 2-round review cap for this redesign pass — round 1 found 2P0/4P1, round 2 found 1P0/2P1 more, BOTH rounds independently judged the architecture itself sound; all findings fixed same-session (suite 111→145→174) but round-2 fixes are unverified by a third round, which the cap forbids dispatching automatically; **BUG-013/022/023 all remain OPEN**; no `.claude/settings.json` edit made; owner-facing settings-patch NOT authored; **PHASE 7 GATE: still BLOCKED**; Phase 8 NOT unlocked; next step is an explicit owner decision on granting a further review round)
 ---
 
 # Current Handoff
@@ -17,11 +17,126 @@ informally are) rather than retaining full prose, and if a chunk's full
 narrative is still valuable, archive it to
 `knowledge/03-Modules/<MOD>/evidence/handoff-archive/` and link it rather
 than keeping it inline. Not applied retroactively to the sections below
-(preserve-history convention) — applies from here forward. **Second
-application (2026-09-06, chunk 20): chunk 18 compressed to a summary line,
+(preserve-history convention) — applies from here forward. **Third
+application (2026-09-06, chunk 21): chunk 19 compressed to a summary line,
 full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-18-2026-09-06-phase7-security-review.md`**
-— chunks 20 and 19 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-19-2026-09-06-bug013-narrowed-bug022-023-found.md`**
+— chunks 21 and 20 are now the 2 kept in full.
+
+## What happened chunk 21, 2026-09-06 — v1 Bash guard superseded (4 failed review rounds); v2 allow-by-construction redesign built and reviewed under an explicit 2-round cap; BUG-013/022/023 remain OPEN
+
+Per explicit instruction: chunk 20's pattern — four independent review
+rounds of `bash_guard.py`, every single one finding a new P0-severity
+bypass — was treated as an architectural finding, not a queue of more
+patches. Explicit scope this chunk: redesign the Bash enforcement model
+into a simpler fail-closed architecture that does not attempt to
+implement a general Bash/zsh parser; do not continue patching individual
+syntax bypasses; do not activate any guard; do not modify
+`.claude/settings.json`; do not begin Phase 8; do not start MOD-001; a
+hard cap of two review rounds for this redesign pass, with an explicit
+instruction to STOP after two rounds if P0/P1 remain rather than keep
+iterating.
+
+**v1 superseded, not deleted.** `.claude/security/bash_guard.py` (the
+deny-by-enumeration guard from chunk 20) and its test suite were moved
+to `.claude/security/superseded_v1/` with a README explaining why —
+preserved as durable evidence of what was tried and why it failed, per
+this project's durability discipline.
+
+**New architecture: allow-by-construction, fail closed on ambiguity.**
+Rather than trying to recognize dangerous shell constructs (v1's
+approach, which kept meeting new ones), v2 does the opposite: (1) any
+shell composition/substitution marker anywhere in the raw command
+(`;`, `&&`, `||`, `|`, `&`, backtick, `$(`, `<(`, `>(`, `<<`, `>`, `<`,
+newline) is an unconditional, non-quote-aware deny — no exceptions; (2)
+what's left is tokenized with `shlex`, parse failure denies; (3) the
+exact tokenized argv must match one of a small explicit allowlist of
+command families (Class A safe read-only: git status/log/diff/show/
+rev-parse/ls-files/branch-list/remote-read/fetch-scoped/worktree-list/
+stash-list, plus find/shasum/ls/cat/head/tail/wc/pwd/stat/grep with
+restricted flags, plus `python3` limited to ~7 allowlisted project
+validator scripts; Class B narrowly governed mutation: `git add
+<specific safe paths>`, `git commit -m <msg>` or `-F <file>`, `git push`
+with zero flags, `git checkout -b <branch>`, `mkdir -p` under
+`knowledge/` only) — anything else, including every syntactic form v1
+tried and failed to defend against by recognition, is an explicit deny.
+Unlike v1 (silent when it didn't recognize a specific known-bad
+pattern), v2 renders an explicit ALLOW or DENY on every single Bash call
+once activated — UNKNOWN MUST DENY, with no third "defer" outcome
+anywhere in the file. `veyro-security-reviewer` was not spawnable
+directly this session (custom agent type unavailable); both v2 review
+rounds used `general-purpose` at Opus tier, explicitly briefed to read
+and adopt that role's own charter file
+(`.claude/agents/veyro-security-reviewer.md`) as its operating
+instructions before reviewing — disclosed here as a deviation from the
+normal agent-invocation path, not concealed.
+
+**Round 1** confirmed the architecture itself sound (traced every
+family-dispatch exit path, confirmed `classify()` always raises a
+verdict) and found **2 P0 + 4 P1 + 5 P2 + 6 Editorial**, all local
+implementation gaps: `git push`/`fetch` refspec syntax (`:branch`
+delete, `+branch` force) expressed as positionals bypassing the
+flag-based exclusion; `git add` protected-path check defeated by
+pathspec magic (`:/`), bare directory-level add (`git add .claude`),
+traversal, and git's own glob expansion; the project's mandated
+multi-line/attribution-trailer commit format being structurally
+impossible under an `-m`-only design; routine read-only shapes wrongly
+denied (`--porcelain`, `--format=`, `diff <ref> -- <path>`, no
+`checkout -b`); arbitrary URLs accepted by a "read-only" fetch/remote
+family; plus a `main()` path where a malformed JSON payload could raise
+uncaught and fail OPEN. **All fixed same session** via one shared
+mechanism — a strict literal-relative-path charset
+(`_is_safe_relative_path`) gating mutation-family path arguments, and a
+strict ref/remote charset (`_is_safe_ref_or_remote`, excluding `:`/`+`
+entirely) gating ref-consuming families — plus a new `git commit -F
+<file>` form so the attribution trailer never has to pass through the
+Bash command string as literal text. Test suite: 111 → 145.
+
+**Round 2** (the maximum permitted for this redesign pass) independently
+re-verified round 1's fixes (8 of 10 fully closed, 2 partially) and
+found **1 P0 + 2 P1 + 4 P2 + 5 Editorial** new findings — all traced to
+one root cause: the strict-charset mechanism had been wired into
+mutation and ref-consuming families, but the plain read-only file
+families (`cat`/`head`/`tail`/`wc`/`stat`/`grep`/`find`/`ls`/`shasum`)
+were still on a much weaker check that never rejected `$HOME`-style
+expansion, `..` traversal, or bare glob characters — most sharply,
+`find . *`, where a real shell's glob expansion of a maliciously-named
+file (creatable via the ungoverned Write tool) could inject a
+destructive predicate the guard never sees as text, reaching the exact
+BUG-013 class through an ALLOW verdict. Also: `git push /tmp/exfil.git`/
+`git push ~/exfil.git` (the round-1 ref/remote charset's "closes
+arbitrary remotes" claim held for URLs but not plain filesystem paths).
+**Reviewer's explicit architectural determination — the load-bearing
+judgment call this task required before proceeding further:** *"a small
+number of local bugs in an otherwise-sound design... both are bounded,
+enumerable, single-mechanism fixes of the same shape that already
+succeeded."* Re-confirmed independently with 120,000 fresh fuzz cases:
+zero fail-open paths, all v1-era regression fixtures still deny
+correctly. **Fixed same session** by making `_is_safe_relative_path` the
+single shared gate for every path-shaped argument in every family
+(mutation and read-only alike), and rewriting `find`'s walker to
+distinguish a value-taking flag's value (which may legitimately contain
+wildcards) from a bare positional (which must be a safe literal path).
+Test suite: 145 → 174.
+
+**The 2-round cap has now been reached.** Per explicit instruction, no
+third review was dispatched — even though the round-2 fixes reuse a
+mechanism both reviewers independently confirmed works everywhere it has
+been wired in. Those fixes are **unverified by independent review** and
+are not represented as certified. To be precise about what the cap does
+and does not mean: the second reviewer's own explicit determination was
+that the remaining findings are local implementation gaps, not evidence
+the allow-by-construction approach is unworkable under the current
+Claude Code Bash/PreToolUse model — both facts are recorded because they
+point to different next steps, and per the explicit cap the choice of
+which belongs to the owner now, not to another automatic iteration.
+
+**`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.** No
+`.claude/settings.json` edit was made. The owner-facing settings-
+integration patch file was not authored — activation requires a review
+round that returns P0=0/P1=0, which this pass did not reach. **Phase 7
+gate remains BLOCKED. Phase 8 is NOT legally unlocked.** Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
 
 ## What happened chunk 20, 2026-09-06 — built PreToolUse Bash guard for BUG-013/022/023; FOUR independent review rounds, every one found new P0s; guard NOT certified, all three bugs remain OPEN
 
@@ -156,218 +271,9 @@ requires deriving a safe-command allowlist broad enough not to cripple
 this repo's routine engineering workflow. Full four-round detail:
 `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
 
-## What happened chunk 19, 2026-09-06 — third independent re-review verifies owner's manual settings.json edit; BUG-013 narrowed but stays OPEN; two new P1s found (BUG-022, BUG-023); Phase 7 remains BLOCKED
+## What happened chunk 19, 2026-09-06 (compressed 2026-09-06 per retention rule) — third independent re-review verifies owner's settings.json edit; BUG-013 narrowed but stays OPEN; BUG-022/BUG-023 found
 
-Per explicit instruction: the owner had manually hand-edited
-`.claude/settings.json` (a human edit, not an agent one, since chunk 18's
-own self-protection fix correctly blocks agent-side edits to that file)
-to attempt closing `BUG-013`'s residual. This session was scoped to
-**verify only** — no further edits to `.claude/settings.json`, no Phase 8,
-no MOD-001.
-
-**Direct testing (this session, disposable fixtures only) then a third,
-distinct fresh-context `veyro-security-reviewer` re-review** (own fresh
-fixtures, not reusing this session's) both confirmed the same picture:
-
-- **Git `-c`/`-C`/`--no-pager`-global-flag-injection family: genuinely
-  CLOSED.** The owner's edit added a wildcard-between-`git`-and-subcommand
-  pattern family (`Bash(git * <subcommand>*<flag>*)`) covering all 15
-  destructive git subcommands in the family. Both this session and the
-  independent re-review live-tested 16+ variants (`-c core.pager=cat`,
-  `--no-pager`, `-C <path>`, `-c advice.x=false`, stacked `-c` flags,
-  `GIT_PAGER=cat git ...`, `command git ...`, `env git ...`) against
-  `reset --hard`, `push --force`, `branch -D`, `clean -fd`,
-  `restore --staged .`, `filter-branch`, `filter-repo`, `reflog expire`,
-  `update-ref -d`, `commit --amend`, `stash clear`/`drop`,
-  `worktree remove --force`, `gc --prune=now` — **all denied**, and the
-  re-reviewer additionally confirmed the fixture repo was byte-for-byte
-  unchanged afterward (real refusals, not silent no-ops). `git status`/
-  `log`/`diff`/`show` remain fully usable. The edit is purely additive (22
-  new patterns, zero deletions), valid JSON, and does not weaken any
-  previously-closed control (`*production*`, `*--prod*`, baseline
-  `cp`/`mv`/`tee`/`dd`/`truncate`/`sed -i` denies, and the
-  `.claude/settings.json` `cp`/`sed -i` self-protection denies were all
-  re-tested and still hold).
-- **The `rm`-recursive gap the owner's edit did not touch is still open.**
-  `.claude/settings.json`'s `rm` deny list only covers `-rf`/`-fr`/`-Rf`/
-  `-fR`/`-R`(capital alone)/`-r -f`/`-f -r`/`-R -f`/`-f -R`/`--recursive`/
-  `--force` combinations — never bare lowercase `-r` alone. Both this
-  session and the re-review proved live, real recursive deletes via
-  `rm -r`, `rm -rv`, `rm -vr`, `rm -Rv`, `rm -v -r`, and `find ... -delete`
-  (none denied, none even prompted — silent execution, exit 0, target
-  verifiably gone afterward) against disposable scratch fixtures only.
-  **`BUG-013` stays OPEN**, now narrowed to this one residual family (the
-  git half is closed).
-- **New, not previously scoped — `BUG-022` (P1): absolute-path / command-
-  wrapper invocation bypasses the entire deny list.** The re-reviewer
-  proved `/usr/bin/git -C <fixture-repo> reset --hard` and
-  `/usr/bin/git branch -D <branch>` **executed for real** against its own
-  disposable fixture (a real commit destroyed, a real branch deleted) —
-  re-opening the git family the owner's edit had just closed, by a
-  different route. Also proved `/bin/rm -rf`, and `/bin/cp` copying a real
-  governing baseline docx out to a scratch path. Every deny pattern in the
-  file is anchored on the bare command token (`git ...`, `rm ...`,
-  `cp ...`); none has an absolute-path or wrapper-invocation twin. `which
-  -a git` on this host returns only `/usr/bin/git`, so this is not an
-  exotic path — it is the actual resolved binary.
-- **New, not previously scoped — `BUG-023` (P1): the shell-redirection
-  deny patterns are non-functional, and this corrects a false prior
-  claim.** `Bash(*>*<baseline-docx>*)` and `Bash(*>*.claude/settings.json*)`
-  /`Bash(*>*.claude/rules*)` never fire — the harness evidently evaluates
-  the command with its redirection target stripped before matching.
-  Proved via decoy fixtures carrying the exact protected filenames (never
-  the real files): `echo TAMPERED > decoy/.claude/settings.json`, `>>`
-  append, `tee decoy/.claude/settings.json`, and
-  `python3 -c "open('decoy/.claude/settings.json','w').write(...)"` **all
-  executed** against the decoys. This directly contradicts
-  `PHASE7_SECURITY_REVIEW_2026-09-06.md`'s SEC-05/SEC-06 dispositions and
-  `BUG-013`'s own remediation section, both of which stated redirection
-  coverage was "added and live-verified" — that claim was false and is
-  corrected in both files this chunk. (`truncate`/`dd`/`tee`-onto-docx/
-  `sed -i`/`cp`/`mv` all correctly denied — this is specifically the `>`/
-  `>>`/`tee`-onto-`.claude/settings.json`/`tee`-onto-`.claude/rules`
-  family.)
-
-**Architectural conclusion recorded (not implemented this chunk, per
-explicit instruction):** `permissions.deny` glob-on-command-string
-matching alone is not a sufficient technical enforcement layer for
-protected Bash operations — it can be defeated by global-flag injection
-(now fixed for git, but proves the pattern-matching approach is
-inherently reorderable), absolute-path/wrapper invocation (`BUG-022`,
-cannot be fully closed by pattern enumeration — `$(which git)`, a relative
-path, a shell alias, or a copied binary all remain even after path-prefix
-twins are added), and silently-non-firing redirection patterns
-(`BUG-023`). The remediation direction, recorded here for a future
-session to implement: **keep deny patterns as defense-in-depth (they
-correctly catch the common/accidental case and cost nothing), and add a
-project-scoped `PreToolUse` Bash security gate that parses/normalizes the
-requested command and fails closed before execution for prohibited
-operations** — a semantic check rather than a string-glob check. Not
-implemented this chunk; recorded as the next real fix, not deferred
-silently.
-
-**Additive, no regression:** baseline hashes (4/4 MATCH, `verify_baselines.py`
-re-run this chunk), the scenario-catalog validator (`validate_catalog.py`,
-PASS, 0 errors), and the evidence-integrity checker
-(`evidence_integrity_check.py`, PASS, no broken refs beyond expected
-forward-references) were all independently re-run this chunk and remain
-clean. Performance/resilience approval (`PHASE7_PERFORMANCE_RESILIENCE_2026-09-06.md`)
-is unaffected — the settings.json edit has no performance surface.
-
-**No `.claude/settings.json` edit was made this chunk** — explicitly out
-of scope, and the file's own self-protection would block an agent-side
-edit regardless. **Phase 7 gate remains BLOCKED** (P0=0, P1=3: `BUG-013`
-narrowed-but-open, `BUG-022` new, `BUG-023` new). **Phase 8 is NOT legally
-unlocked.** Full record: `knowledge/03-Modules/MOD-000/evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`'s
-new "Third independent re-review (RR-3)" section;
-`evidence/bugs/BUG-013-*.md` (updated), `evidence/bugs/BUG-022-*.md` (new),
-`evidence/bugs/BUG-023-*.md` (new).
-
-
-Per explicit instruction: the owner had manually hand-edited
-`.claude/settings.json` (a human edit, not an agent one, since chunk 18's
-own self-protection fix correctly blocks agent-side edits to that file)
-to attempt closing `BUG-013`'s residual. This session was scoped to
-**verify only** — no further edits to `.claude/settings.json`, no Phase 8,
-no MOD-001.
-
-**Direct testing (this session, disposable fixtures only) then a third,
-distinct fresh-context `veyro-security-reviewer` re-review** (own fresh
-fixtures, not reusing this session's) both confirmed the same picture:
-
-- **Git `-c`/`-C`/`--no-pager`-global-flag-injection family: genuinely
-  CLOSED.** The owner's edit added a wildcard-between-`git`-and-subcommand
-  pattern family (`Bash(git * <subcommand>*<flag>*)`) covering all 15
-  destructive git subcommands in the family. Both this session and the
-  independent re-review live-tested 16+ variants (`-c core.pager=cat`,
-  `--no-pager`, `-C <path>`, `-c advice.x=false`, stacked `-c` flags,
-  `GIT_PAGER=cat git ...`, `command git ...`, `env git ...`) against
-  `reset --hard`, `push --force`, `branch -D`, `clean -fd`,
-  `restore --staged .`, `filter-branch`, `filter-repo`, `reflog expire`,
-  `update-ref -d`, `commit --amend`, `stash clear`/`drop`,
-  `worktree remove --force`, `gc --prune=now` — **all denied**, and the
-  re-reviewer additionally confirmed the fixture repo was byte-for-byte
-  unchanged afterward (real refusals, not silent no-ops). `git status`/
-  `log`/`diff`/`show` remain fully usable. The edit is purely additive (22
-  new patterns, zero deletions), valid JSON, and does not weaken any
-  previously-closed control (`*production*`, `*--prod*`, baseline
-  `cp`/`mv`/`tee`/`dd`/`truncate`/`sed -i` denies, and the
-  `.claude/settings.json` `cp`/`sed -i` self-protection denies were all
-  re-tested and still hold).
-- **The `rm`-recursive gap the owner's edit did not touch is still open.**
-  `.claude/settings.json`'s `rm` deny list only covers `-rf`/`-fr`/`-Rf`/
-  `-fR`/`-R`(capital alone)/`-r -f`/`-f -r`/`-R -f`/`-f -R`/`--recursive`/
-  `--force` combinations — never bare lowercase `-r` alone. Both this
-  session and the re-review proved live, real recursive deletes via
-  `rm -r`, `rm -rv`, `rm -vr`, `rm -Rv`, `rm -v -r`, and `find ... -delete`
-  (none denied, none even prompted — silent execution, exit 0, target
-  verifiably gone afterward) against disposable scratch fixtures only.
-  **`BUG-013` stays OPEN**, now narrowed to this one residual family (the
-  git half is closed).
-- **New, not previously scoped — `BUG-022` (P1): absolute-path / command-
-  wrapper invocation bypasses the entire deny list.** The re-reviewer
-  proved `/usr/bin/git -C <fixture-repo> reset --hard` and
-  `/usr/bin/git branch -D <branch>` **executed for real** against its own
-  disposable fixture (a real commit destroyed, a real branch deleted) —
-  re-opening the git family the owner's edit had just closed, by a
-  different route. Also proved `/bin/rm -rf`, and `/bin/cp` copying a real
-  governing baseline docx out to a scratch path. Every deny pattern in the
-  file is anchored on the bare command token (`git ...`, `rm ...`,
-  `cp ...`); none has an absolute-path or wrapper-invocation twin. `which
-  -a git` on this host returns only `/usr/bin/git`, so this is not an
-  exotic path — it is the actual resolved binary.
-- **New, not previously scoped — `BUG-023` (P1): the shell-redirection
-  deny patterns are non-functional, and this corrects a false prior
-  claim.** `Bash(*>*<baseline-docx>*)` and `Bash(*>*.claude/settings.json*)`
-  /`Bash(*>*.claude/rules*)` never fire — the harness evidently evaluates
-  the command with its redirection target stripped before matching.
-  Proved via decoy fixtures carrying the exact protected filenames (never
-  the real files): `echo TAMPERED > decoy/.claude/settings.json`, `>>`
-  append, `tee decoy/.claude/settings.json`, and
-  `python3 -c "open('decoy/.claude/settings.json','w').write(...)"` **all
-  executed** against the decoys. This directly contradicts
-  `PHASE7_SECURITY_REVIEW_2026-09-06.md`'s SEC-05/SEC-06 dispositions and
-  `BUG-013`'s own remediation section, both of which stated redirection
-  coverage was "added and live-verified" — that claim was false and is
-  corrected in both files this chunk. (`truncate`/`dd`/`tee`-onto-docx/
-  `sed -i`/`cp`/`mv` all correctly denied — this is specifically the `>`/
-  `>>`/`tee`-onto-`.claude/settings.json`/`tee`-onto-`.claude/rules`
-  family.)
-
-**Architectural conclusion recorded (not implemented this chunk, per
-explicit instruction):** `permissions.deny` glob-on-command-string
-matching alone is not a sufficient technical enforcement layer for
-protected Bash operations — it can be defeated by global-flag injection
-(now fixed for git, but proves the pattern-matching approach is
-inherently reorderable), absolute-path/wrapper invocation (`BUG-022`,
-cannot be fully closed by pattern enumeration — `$(which git)`, a relative
-path, a shell alias, or a copied binary all remain even after path-prefix
-twins are added), and silently-non-firing redirection patterns
-(`BUG-023`). The remediation direction, recorded here for a future
-session to implement: **keep deny patterns as defense-in-depth (they
-correctly catch the common/accidental case and cost nothing), and add a
-project-scoped `PreToolUse` Bash security gate that parses/normalizes the
-requested command and fails closed before execution for prohibited
-operations** — a semantic check rather than a string-glob check. Not
-implemented this chunk; recorded as the next real fix, not deferred
-silently.
-
-**Additive, no regression:** baseline hashes (4/4 MATCH, `verify_baselines.py`
-re-run this chunk), the scenario-catalog validator (`validate_catalog.py`,
-PASS, 0 errors), and the evidence-integrity checker
-(`evidence_integrity_check.py`, PASS, no broken refs beyond expected
-forward-references) were all independently re-run this chunk and remain
-clean. Performance/resilience approval (`PHASE7_PERFORMANCE_RESILIENCE_2026-09-06.md`)
-is unaffected — the settings.json edit has no performance surface.
-
-**No `.claude/settings.json` edit was made this chunk** — explicitly out
-of scope, and the file's own self-protection would block an agent-side
-edit regardless. **Phase 7 gate remains BLOCKED** (P0=0, P1=3: `BUG-013`
-narrowed-but-open, `BUG-022` new, `BUG-023` new). **Phase 8 is NOT legally
-unlocked.** Full record: `knowledge/03-Modules/MOD-000/evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`'s
-new "Third independent re-review (RR-3)" section;
-`evidence/bugs/BUG-013-*.md` (updated), `evidence/bugs/BUG-022-*.md` (new),
-`evidence/bugs/BUG-023-*.md` (new).
+Direct testing plus a third independent fresh-context re-review confirmed the owner's manual `.claude/settings.json` edit genuinely closed the git `-c`/`-C`/`--no-pager`-global-flag-injection family, but the `rm`-recursive residual stayed OPEN. The same re-review found two new P1s: `BUG-022` (absolute-path/wrapper invocation bypasses the entire deny list) and `BUG-023` (redirection deny patterns non-functional). Architectural conclusion recorded: deny-pattern matching alone is insufficient; a `PreToolUse` Bash security gate is the recommended direction (built in chunk 20, later superseded by the v2 redesign in chunk 21). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-19-2026-09-06-bug013-narrowed-bug022-023-found.md`.
 
 ## What happened chunk 18, 2026-09-06 (compressed 2026-09-06 per retention rule) — Phase 7 security/performance/resilience assurance executed, independently re-reviewed once, PHASE 7 GATE: BLOCKED
 
@@ -669,7 +575,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## What is NOT done (Phases 7-10)
 
-- Phase 7 — executed and independently re-reviewed, security remediation now spanning a PreToolUse guard put through FOUR independent review rounds (2026-09-06), **GATE: BLOCKED** (`BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all remain OPEN — a `.claude/security/bash_guard.py` guard was built to close all three, but every one of four independent review rounds found new P0-severity bypasses, and the guard is explicitly not yet certified clean — see `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` and `evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`). Not yet PASS.
+- Phase 7 — executed and independently re-reviewed, security remediation now spanning a v1 guard (4 failed rounds, superseded) and a v2 allow-by-construction redesign (2-round cap reached, 2026-09-06), **GATE: BLOCKED** (`BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all remain OPEN — both v2 review rounds judged the architecture itself sound, but the explicit 2-round cap was reached without a round returning P0=0/P1=0, and the final round's fixes are unverified — see `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`, `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for v1 history, and `evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`). Not yet PASS.
 - Phase 8 — cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046. **Blocked on Phase 7.**
 - Phase 9 — fresh-session restoration proof.
 - Phase 10 — pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
@@ -678,15 +584,14 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 7 GATE: BLOCKED (chunk 20, 2026-09-06), after building a PreToolUse Bash guard and putting it through four independent review rounds — every round found new P0s.** A `.claude/security/bash_guard.py` guard was built per the architectural conclusion below and hardened across RR-1 through RR-4 (see chunk 20's full narrative above and `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for the round-by-round record). All mechanically-fixable findings from all four rounds were fixed and tested (suite: 95→200, all passing). **The guard is explicitly NOT certified clean** — disclosed, unfixed gaps remain (zsh clobber/append redirection operators, heredoc live-expansion under an unquoted delimiter, ancestor-directory protection, `python -m` inline code, several git config shell-execution keys, a still-incomplete protected-path set). **`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN. Phase 8 is NOT legally unlocked** until a review round returns P0=0/P1=0.
+**PHASE 7 GATE: BLOCKED (chunk 21, 2026-09-06), after v1's guard was superseded (4 failed review rounds) and a v2 allow-by-construction redesign used its explicit 2-round review cap.** Both v2 rounds independently judged the architecture itself sound (round 2's reviewer explicit: "a small number of local bugs in an otherwise-sound design"); round 1 found 2P0/4P1, round 2 found 1P0/2P1 more in a different part of the family set, all fixed via the same proven charset mechanism (suite 111→145→174). **Per the explicit 2-round cap, no third review was dispatched — the round-2 fixes exist but are unverified by independent review.** `BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN. Phase 8 is NOT legally unlocked. Full record: `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
 
-**Architectural conclusion (recorded chunk 19, acted on chunk 20):** `permissions.deny` glob-on-command-string matching is not sufficient as the sole technical enforcement layer for protected Bash operations; a project-scoped `PreToolUse` Bash security gate that parses/normalizes commands and fails closed semantically is the correct direction. **Structural observation from four rounds of review, stated plainly:** enumerating dangerous command/operator/config-key shapes keeps finding fresh gaps every round — the same critique that motivated moving off `permissions.deny` in the first place. A future session should weigh continuing this enumeration approach against RR-2's proposed architectural alternative (allowlist known-safe command shapes, deny everything else) — not attempted this chunk because deriving a safe-command allowlist broad enough not to cripple this repo's routine workflow is a materially larger undertaking than another enumeration round.
+**Architectural history:** `permissions.deny` glob-on-command-string matching (settings.json) failed; v1's deny-by-enumeration `PreToolUse` guard failed four independent review rounds trying to *recognize* dangerous shell constructs — every round found a fresh syntactic shape it hadn't modeled. v2 inverted the model: allow-by-construction, fail closed on ambiguity, banning shell composition outright and matching only exact known-good command shapes. Both v2 review rounds confirmed this approach itself is sound — the two rounds' combined findings were confined to specific family validators missing a charset check that worked everywhere it was actually applied, not evidence of a new unbounded search space. That is a materially different failure signature than v1's, and is the basis for the reviewers' "local bug, not architectural" verdicts.
 
 **To unblock Phase 7, the next session (or the owner, directly) needs to:**
-1. Either dispatch a fifth independent `veyro-security-reviewer` review round and fix whatever it finds (repeat until one round returns P0=0/P1=0 — same discipline as every prior phase, including Phase 5's five rounds), or make the architectural call to redesign the guard as an allowlist rather than continuing to enumerate denylist gaps.
-2. The disclosed open items are a good starting punch list for either path: zsh clobber/append redirects (`>!`/`>>!`/`>>&`/`&>!`/`&>|`), heredoc live-expansion, ancestor-directory protection, `python -m` inline code, git config keys beyond the current set, and the protected-path set gaps (`CLAUDE.md`, `.mcp.json`, core governance docs) — see `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for full detail on each.
-3. Once a round confirms P0=0/P1=0: author `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md` (the exact `.claude/settings.json` addition, insertion point, and post-activation live-test matrix — deliberately not written yet, since writing it before the guard passes would imply a readiness it hasn't earned), have the owner apply it, live-verify, close `BUG-013`/`BUG-022`/`BUG-023`, update `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`BUG_REGISTRY.md`/`LOAD_SECURITY.md` to **PHASE 7 GATE: PASS**, mirror to Notion, commit, push.
-4. Only then is Phase 8 legally unlocked.
+1. **This decision now belongs to the owner, not to automatic iteration** (the 2-round cap for this redesign pass has been used): either grant a third review round for v2 (both prior rounds judged the architecture sound, so a third would plausibly reach P0=0/P1=0 given the pattern), or direct further work some other way.
+2. If a third round is granted and confirms P0=0/P1=0: author `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md` (the exact `.claude/settings.json` addition, insertion point, and post-activation live-test matrix — deliberately not written yet, since writing it before the guard passes would imply a readiness it hasn't earned), have the owner apply it, live-verify, close `BUG-013`/`BUG-022`/`BUG-023`, update `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`BUG_REGISTRY.md`/`LOAD_SECURITY.md` to **PHASE 7 GATE: PASS**, mirror to Notion, commit, push.
+3. Only then is Phase 8 legally unlocked.
 
 0. **PHASE 6 GATE: PASS** (chunk 17) — real manual QA via genuinely fresh-context, technically model-attested Opus `veyro-manual-qa`. All 7 required scenarios PASS/correctly-BLOCKED with real evidence; BUG-011 filed and fixed same day.
 0b. **PHASE 5 GATE: APPROVED** (chunk 16) — BUG-007's structural DC-05 gap was closed via real scenario execution, independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review; the fifth returned P0=0/P1=0, verdict APPROVED.

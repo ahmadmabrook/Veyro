@@ -209,6 +209,27 @@ across the three bugs). All other sub-findings (SEC-03/04/16) are fixed
 and live-verified; SEC-05 is corrected (see above, RR-3); SEC-17 is a
 deliberate non-fix.
 
+## Remediation attempt, v2 redesign (2026-09-06): architectural rebuild, still NOT certified
+
+The v1 PreToolUse guard referenced above failed four independent review
+rounds. Per explicit instruction, it was superseded (preserved, not
+deleted, at `.claude/security/superseded_v1/`) by a completely different
+**allow-by-construction, fail-closed** design — see
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`
+for the full record. This bug's exact class (`rm -r`/`-R`/`-rf` and all
+its recursive-delete variants) is denied by v2's default posture:
+`rm` is not in any allowed command family at all, so any invocation is
+an automatic `UNKNOWN_COMMAND` deny, regardless of flags. Two
+independent review rounds of v2 (the maximum permitted for this redesign
+pass) both confirmed the architecture itself sound; round 2 found a
+residual gap in a DIFFERENT family (`find`'s bare-positional glob
+expansion, `find . *`, could in principle reach a `-delete`-shaped
+argument via real-shell glob expansion of a maliciously-named file) —
+fixed same session. **This bug remains OPEN**: the 2-round cap for this
+redesign pass has been reached without an independent review confirming
+P0=0/P1=0, so per this project's standing discipline it is not certified
+closed even though v2 structurally excludes this bug's specific class.
+
 ## Affected
 
 `.claude/settings.json`, `knowledge/03-Modules/MOD-000/evidence/
@@ -217,4 +238,5 @@ force-push/hard-reset are harness-denied is corrected to note the
 argument-ordering caveat that existed before this fix, now resolved for
 the git-injection form specifically), `knowledge/03-Modules/MOD-000/
 evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06
-disposition corrected re: redirection, see `BUG-023`).
+disposition corrected re: redirection, see `BUG-023`),
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.

@@ -285,3 +285,62 @@ project's own discipline, the owner-facing settings-integration patch
 file was deliberately NOT authored this chunk — producing it would
 imply a readiness the guard has not earned. **Phase 7 gate remains
 BLOCKED. Phase 8 is NOT legally unlocked.**
+
+## v1 superseded; v2 allow-by-construction redesign built and reviewed twice (2026-09-06, same day)
+
+The pattern above — four independent review rounds, every one finding a
+new P0 — was treated as an architectural finding per explicit
+instruction: **do not continue patching individual Bash syntax bypasses
+one-by-one.** The v1 guard was superseded (preserved as evidence,
+not deleted, at `.claude/security/superseded_v1/`) by a completely
+different design: **allow-by-construction, fail closed on ambiguity.**
+Full design and both review rounds' detail:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
+
+In brief: v2 bans all shell composition/substitution syntax outright
+(unconditional, no quote-awareness), tokenizes what's left, and matches
+the exact argv against a small explicit allowlist of command families —
+anything not matching an exact allowed shape is denied, with no silent
+"defer" outcome anywhere in the file. `veyro-security-reviewer` was not
+spawnable this session (custom agent type unavailable); both v2 review
+rounds used `general-purpose` at Opus tier explicitly briefed to adopt
+that role's own charter file as its operating instructions.
+
+**Round 1**: reviewer confirmed the architecture sound (traced every
+family-dispatch exit path, confirmed `classify()` always raises a
+verdict), found 2 P0 + 4 P1 + 5 P2 + 6 Editorial — all local
+implementation gaps (git refspec syntax bypassing flag-based force/
+delete exclusion, `git add` pathspec-magic evasion, the project's
+mandated commit format being structurally impossible under the original
+design, several routine read-only shapes wrongly denied, arbitrary URLs
+accepted by a "read-only" fetch/remote family, plus assorted P2s
+including a `main()` fail-open path on malformed JSON). All fixed same
+session via a shared strict-charset mechanism; suite 111→145.
+
+**Round 2** (the maximum permitted for this redesign pass): independently
+re-verified round 1's fixes (8 of 10 fully closed, 2 partially), found
+1 P0 + 2 P1 + 4 P2 + 5 Editorial new findings — all traced to one root
+cause: the strict-charset mechanism had been wired into mutation
+families and ref-consuming families, but plain read-only file families
+(`cat`/`head`/`tail`/`wc`/`stat`/`grep`/`find`/`ls`/`shasum`) were still
+on a much weaker check that never rejected `$HOME`-style expansion,
+`..` traversal, or bare glob characters — most notably `find . *`, where
+a real shell's glob expansion of a maliciously-named file could inject a
+destructive predicate the guard never sees as text. **Reviewer's explicit
+architectural determination: "a small number of local bugs in an
+otherwise-sound design," re-confirmed with 120,000 fresh fuzz cases and
+zero fail-open results.** Fixed same session by making the proven
+charset mechanism the single shared gate for every path-shaped argument
+in every family; suite 145→174.
+
+**The 2-round cap has now been reached.** Per explicit instruction, no
+third review was dispatched. The round-2 fixes were applied (they reuse
+an already-proven mechanism per the reviewer's own recommendation) but
+are **unverified by independent review** and are not represented as
+certified. `BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN. No
+`.claude/settings.json` edit was made; the owner-facing settings patch
+was not authored. **Phase 7 gate remains BLOCKED. Phase 8 is NOT legally
+unlocked.** The next legally allowed action is an explicit owner decision
+on whether to grant a further review round for this architecture (both
+rounds so far judged it sound, so a third round would plausibly reach
+P0=0/P1=0), not another automatic iteration.
