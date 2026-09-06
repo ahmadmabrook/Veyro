@@ -8,6 +8,35 @@ updated: 2026-09-01
 
 Governed engineering asset per EIP §4.1 ("Automated Model & Agent Routing") and §21.1 required outputs ("MODEL_ROUTING.md + MR schema"). Material changes require an ADR, independent review, the MOD-000 routing qualification drill, and MR-linked evidence before the next assurance gate (§4.1).
 
+## Orchestrating-session tier vs. delegated-role tier (added 2026-09-06, Phase 7 BUG-012/ADR-004/OWN-003)
+
+This table's "Model" column states the tier required for the *judgment*
+named in each role — architecture review, code review, security review,
+certification, etc. It does not, on its own, say what tier the top-level
+orchestrating/lead session itself must run on when it is coordinating
+work rather than making one of these judgment calls directly.
+
+A Phase 7 security review found this ambiguous in practice: the
+orchestrating session had been authoring ADR text, making Phase gate
+determinations, and self-verifying remediation, on Sonnet, without this
+table ever saying whether that was compliant or not (`BUG-012`).
+
+**Owner decision (`OWN-003`, 2026-09-06):** Sonnet-tier orchestration is
+the accepted operating model. The orchestrating session's own role is
+coordination and execution — routing work, writing files, running
+checks, and **delegating every Opus-reserved judgment call in the table
+below to a fresh-context Opus subagent it spawns** (architecture review,
+code review, scenario review, manual QA, security/performance review,
+and certification all go through a spawned `veyro-*` Opus agent, never
+decided directly by the orchestrating session on its own authority). The
+orchestrating session may author the *text* that records a decision an
+Opus subagent (or the owner) actually made, but must not make an
+architecture/ADR/gate-verdict-class judgment call unilaterally on Sonnet
+and present it as settled without that delegation. See
+`knowledge/04-Decisions/ADR-004-orchestrating-session-model-tier.md` for
+the full options considered and `knowledge/00-System/OWNER_APPROVALS.md`
+for the approval record.
+
 ## Role -> Agent mapping (EIP §4.1 name vs. actual registered `.claude/agents/veyro-*`)
 
 The EIP's §4.1 routing table names roles generically; this project's actual registered agents (created in MOD-000 chunk 3, confirmed registered/invocable in chunk 5) use different, more specific names. This table is the authoritative reconciliation — no other document should be assumed to carry an implicit renaming.

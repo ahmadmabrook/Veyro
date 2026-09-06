@@ -62,6 +62,23 @@ def discover_scanned_files():
 
 SCANNED_FILES = discover_scanned_files()
 
+# Intentionally local-only, gitignored-by-design config — NOT a forward
+# reference (it will never be created by durable tooling; it's correct
+# for it to be absent from any clone). Added 2026-09-06 (Phase 7,
+# SEC-12/RES-01): both an independent security review and an independent
+# performance/resilience review found this checker PASSES in the working
+# copy but FAILS with 6 findings in a fresh clone of the same commit,
+# because `.claude/settings.local.json` (gitignored per `.gitignore`,
+# confirmed untracked via `git ls-files`) is referenced by path from 6
+# durable evidence files. A real disaster-recovery session that clones
+# and runs this checker got a false BLOCKED on a correctly-local-only
+# artifact. Kept as a distinct set from EXPECTED_NOT_YET_CREATED because
+# the semantics differ: those paths will exist once created; this path
+# is correct to never exist in a clone.
+EXPECTED_LOCAL_ONLY = {
+    ".claude/settings.local.json",
+}
+
 # Forward references: not yet created by design (a future gate's output path,
 # not a claimed-PASS evidence link). Absence here is expected, non-blocking.
 EXPECTED_NOT_YET_CREATED = {
@@ -129,6 +146,8 @@ def check_file_refs(rel_path: str, findings: list, expected_absent: list):
                 expected_absent.append(f"{rel_path}: `{rel}` (historical pre-migration path, ADR narrative, not a current-state claim)")
             elif rel in EXPECTED_NOT_YET_CREATED:
                 expected_absent.append(f"{rel_path}: `{rel}` (forward reference, not yet created by design)")
+            elif rel in EXPECTED_LOCAL_ONLY:
+                expected_absent.append(f"{rel_path}: `{rel}` (intentionally local-only/gitignored, correct to be absent in any clone)")
             else:
                 findings.append(f"BROKEN REFERENCE in {rel_path}: `{rel}` does not exist")
 
@@ -139,18 +158,44 @@ def check_bug_refs(findings: list):
         if not matches:
             findings.append(f"BUG LINKAGE MISSING: {bug_id} referenced in CURRENT_STATE.md but no bugs/{bug_id}-*.md file found")
 
-def git_last_commit_date(rel_path: str) -> str:
-    out = subprocess.run(
-        ["git", "log", "-1", "--format=%cs", "--", rel_path],
-        cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.strip()
-    return out or None
+def latest_commit_dates_under(rel_dir: str) -> dict:
+    """Latest commit date per tracked file under rel_dir, via ONE bulk
+    `git log` call rather than one subprocess per file.
+
+    Rewritten 2026-09-06 (Phase 7, PERF-01): an independent performance
+    review measured the original per-file `git log -1 -- <path>` loop at
+    93% of this checker's total runtime (1.17s of 1.26s for 68 files,
+    17.2ms/file, confirmed linear but with heavy per-call subprocess
+    overhead — sys time dominated). A single `git log --name-only`
+    pass over the same scope returns equivalent information in ~0.03s
+    (measured ~40x cheaper) by walking history once and recording, for
+    each path, the date of the first (newest, since git log is
+    newest-first) commit that touched it.
+    """
+    proc = subprocess.run(
+        ["git", "log", "--format=COMMIT:%cs", "--name-only", "--", rel_dir],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    )
+    latest_by_path: dict = {}
+    current_date = None
+    for line in proc.stdout.splitlines():
+        if line.startswith("COMMIT:"):
+            current_date = line[len("COMMIT:"):]
+            continue
+        line = line.strip()
+        if not line or current_date is None:
+            continue
+        if line not in latest_by_path:  # first time seen = newest, since log is newest-first
+            latest_by_path[line] = current_date
+    return latest_by_path
 
 def check_staleness(findings: list):
     latest_evidence_date = "0000-00-00"
-    for p in (ROOT / "knowledge/03-Modules/MOD-000/evidence").rglob("*"):
+    evidence_rel = "knowledge/03-Modules/MOD-000/evidence"
+    latest_by_path = latest_commit_dates_under(evidence_rel)
+    for p in (ROOT / evidence_rel).rglob("*"):
         if p.is_file():
-            d = git_last_commit_date(str(p.relative_to(ROOT)))
+            d = latest_by_path.get(str(p.relative_to(ROOT)))
             if d and d > latest_evidence_date:
                 latest_evidence_date = d
     for doc in ["knowledge/00-System/CURRENT_STATE.md", "knowledge/00-System/CURRENT_HANDOFF.md"]:
@@ -167,7 +212,11 @@ def check_staleness(findings: list):
         # A doc's own commit may postdate its "updated:" text if the commit itself
         # is what set that date (same-day is fine) — only flag a REAL staleness gap:
         # evidence committed strictly after the doc's last real commit, on a later date.
-        doc_commit_date = git_last_commit_date(doc) or doc_date
+        doc_commit_out = subprocess.run(
+            ["git", "log", "-1", "--format=%cs", "--", doc],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        doc_commit_date = doc_commit_out or doc_date
         if latest_evidence_date > doc_commit_date:
             findings.append(
                 f"STALE: {doc} last committed {doc_commit_date} (updated: field says {doc_date}), "

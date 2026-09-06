@@ -32,6 +32,11 @@ Thumbs.db
 # Local, non-durable Claude Code settings (personal overrides; settings.json itself is tracked)
 .claude/settings.local.json
 
+# Python bytecode cache (added 2026-09-06, Phase 7 — first Python tooling
+# in the repo, verify_baselines.py/validate_capabilities.py, generates these)
+__pycache__/
+*.pyc
+
 # Build artifacts / dependency caches (none expected in this control-plane-only repo, excluded defensively)
 node_modules/
 .gradle/

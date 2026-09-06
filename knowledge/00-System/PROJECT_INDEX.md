@@ -44,7 +44,7 @@ The task instructions contained two orderings for artifact #3 vs #4 (numbered li
 
 ## Active Module
 
-- **MOD-000** — Engineering execution control plane bootstrap (in progress). See [`knowledge/03-Modules/MOD-000/`](../01-Modules/MOD-000/).
+- **MOD-000** — Engineering execution control plane bootstrap (in progress). See [`knowledge/03-Modules/MOD-000/`](../03-Modules/MOD-000/).
 - MOD-001 and all product implementation: **locked** until MOD-000 passes all mandatory gates.
 
 ## Durable Authority Rule

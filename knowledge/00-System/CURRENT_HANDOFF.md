@@ -6,6 +6,188 @@ updated: 2026-09-05 (chunk 17 — Phase 6 real manual QA executed via fresh-cont
 
 # Current Handoff
 
+**Retention note (added 2026-09-06, Phase 7 PERF-02):** this file grows by
+appending a dated "What happened chunk N" section per chunk and has grown
+7.6x in bytes / 9.7x in lines across its first 15 revisions — an
+independent performance review flagged this as heading toward a real
+bootstrap-cost problem at scale, with no stated cap. Going forward: keep
+the 2 most recent chunk sections in full narrative form; for anything
+older, compress to a single summary line (as chunks 11-14 already
+informally are) rather than retaining full prose, and if a chunk's full
+narrative is still valuable, archive it to
+`knowledge/03-Modules/<MOD>/evidence/handoff-archive/` and link it rather
+than keeping it inline. Not applied retroactively to the sections below
+(preserve-history convention) — applies from here forward.
+
+## What happened chunk 18, 2026-09-06 — Phase 7 (security/performance/resilience assurance) executed; PHASE 7 GATE: BLOCKED, 2 P1s open
+
+Per explicit instruction: "Phase 6 Actual Claude Manual QA is PASS...
+Begin PHASE 7 ONLY: Security/Performance/Resilience Assurance... This
+phase qualifies the MOD-000 engineering control plane itself. It is NOT
+product load testing." Governed commit at start:
+`0eacccef6ca93b9694e89fcd6ed69a553b952fea`.
+
+**Two independent fresh-context Opus reviewers ran in parallel:**
+`veyro-security-reviewer` and `veyro-performance-reviewer`, each reading
+the governing EIP requirements and inspecting actual current
+implementation rather than trusting prior summaries.
+
+**Performance/resilience: APPROVED, 0 P0/P1** on first pass. Real
+measured baseline: full 4-baseline hash check 0.07-0.10s, catalog
+validator 0.04s (confirmed linear to 950 synthetic scenarios and to 20x
+byte size), evidence-integrity checker 1.26-1.36s (93% of which was a
+per-file `git log` subprocess loop), `mr_verify.py` 0.05-0.15s even
+against a 25.8MB transcript (confirmed ~4.9x RSS amplification from
+non-streaming reads), fresh clone 1.92s with all 4 hashes matching and
+zero content divergence. 5 P2 + 4 Editorial findings, none blocking.
+
+**Security: BLOCKED — 0 P0, 2 P1, 11 P2, 4 Editorial.** The reviewer
+proved, live, against harmless synthetic targets: `git push ... --force`
+and `git -c ... reset ... --hard` both bypassed their deny patterns via
+argument reordering / global-flag injection (SEC-02, P1); `rm -fr`/`rm -r
+-f` bypassed `rm -rf`'s deny pattern (SEC-03); no deny coverage existed
+for `branch -D`/`checkout .`/`clean -f`/history-rewrite commands (SEC-04)
+or for `cp`/`mv`/`tee`/`sed -i` onto a baseline filename (SEC-05); `.claude/
+settings.json`/`rules/**` had no self-protection at all (SEC-06);
+capability supply-chain governance had **zero technical enforcement** —
+proven by injecting an unregistered capability and a scope-expanded
+duplicate ID, which every existing checker passed cleanly (SEC-07);
+`mr_verify.py` had real tier-enforcement bypasses (label
+case/whitespace, non-assistant rows, a harness `<synthetic>` sentinel
+misdiagnosed as substitution) (SEC-08/09); the personal-data audit
+overclaimed "repo-wide" scope and never scanned the frozen design bundle,
+which actually contains 12 emails and 6 phone numbers of mockup demo
+data (SEC-10); no automated baseline-hash check existed at all — only
+manual re-hashing (SEC-11); the evidence-integrity checker PASSED in the
+working copy but FAILED in a fresh clone (SEC-12, independently also
+found by the performance reviewer as RES-01). Prompt-injection resistance
+**PASSED** against 3 synthetic fixtures (fake Skill doc, fake MCP
+tool-result, fake repo documentation, each carrying embedded
+"authorize/approve/suppress-this-finding"-style instructions) — none
+influenced the reviewer's behavior. The Notion/BUG-010 risk was
+re-affirmed as still correctly non-blocking. And **SEC-01 (P1):** real
+`mr_verify.py` evidence, run against the actual main-session transcript,
+showed the *orchestrating session itself* — not any delegated subagent —
+has run every architecture/ADR/gate-verdict-class decision across all of
+MOD-000 on `claude-sonnet-5`, never attested, when `MODEL_ROUTING.md`
+assigns that class of work to `veyro-lead` at Opus tier.
+
+**Remediation, same day:** all 11 P2 + 4 Editorial findings fixed and
+live-verified — `.claude/settings.json`'s deny list substantially
+hardened (enumerated `rm`/git flag variants, full destructive/
+history-rewrite git coverage, baseline-file `cp`/`mv`/`tee`/`sed -i`
+coverage, self-protection on `.claude/settings.json`/`rules/**`/
+`agents/**`); two new tools built and live-verified against reproduced
+fixtures — `knowledge/00-System/validate_capabilities.py` (closes the
+capability-supply-chain enforcement gap) and `knowledge/00-System/
+verify_baselines.py` (closes the baseline-integrity gap, independently
+reproduced the reviewer's own tamper hash); `mr_verify.py` fixed
+(label normalization + mandatory label, assistant-row filtering,
+`<synthetic>`-sentinel handling, streamed reads instead of loading whole
+transcripts into memory — this fix was itself a precondition for
+producing honest SEC-01 evidence); `evidence_integrity_check.py` fixed
+(bulk git-log call instead of one-subprocess-per-file, ~8x faster on
+real data; a real fresh clone now correctly PASSes instead of
+false-failing on a gitignored local-only file); `validate_catalog.py`
+fixed (duplicate scenario IDs now explicitly reported instead of
+silently swallowed — proven, via the reviewer's own reproduction, that a
+duplicate landing on a well-covered category would previously have been
+completely invisible; anchored a regex that let a tampered detail-block
+header still count as valid; missing-file now emits `BLOCKED:` instead
+of a traceback); `DATA_CLASSIFICATION_AUDIT.md` and `OWNER_APPROVALS.md`
+corrected (scope overclaim, ID collision). 9 new bug files
+(`BUG-012` through `BUG-021`, skipping the already-used `BUG-017`), 2 new
+durable Phase 7 evidence records (`evidence/security/
+PHASE7_SECURITY_REVIEW_2026-09-06.md`, `evidence/performance/
+PHASE7_PERFORMANCE_RESILIENCE_2026-09-06.md`), `LOAD_SECURITY.md`
+updated, `BUG_REGISTRY.md` re-synced.
+
+**Two P1s remain genuinely open, not self-waived:**
+
+1. **BUG-012 / `ADR-004`** — the orchestrating-session model-tier
+   question. This agent cannot decide which model tier it is itself
+   invoked as; it is set by the human/owner starting the session, not a
+   repo file. `ADR-004` lays out two options (formally accept Sonnet
+   orchestration with delegated-Opus judgment, vs. require Opus for the
+   orchestrating session on architecture/ADR/gate-verdict turns) without
+   choosing either.
+2. **BUG-013's residual case** — SEC-06's self-protection fix on
+   `.claude/settings.json` took effect immediately and correctly blocked
+   this same session's own next attempt to finish hardening the same
+   file (one more pattern was needed to close a global-`-c`-flag-
+   injection variant of the `git reset --hard` bypass). This is the
+   control working as designed, not malfunctioning — but it means the
+   remaining one-line fix needs a human editor, not this agent.
+
+**Per this project's standing discipline — do not waive a valid P0/P1
+finding merely because an earlier phase passed, do not declare a phase
+PASS while any P1 remains — Phase 7 gate is BLOCKED, not PASS.** A
+fresh-context `veyro-security-reviewer` re-review of the remediation
+(confirming the fixes independently, not trusting this session's own
+live-testing) was launched at the end of this chunk. **Phase 8 is NOT
+legally unlocked.**
+
+## What happened next, same chunk (18) — independent re-review confirmed both P1s, widened one, found 4 narrower-than-claimed fixes; BUG-012 resolved via real owner decision
+
+A second, distinct fresh-context `veyro-security-reviewer` independently
+re-tested every claimed fix above with its own fixtures (not reusing the
+originals). **Verdict: BLOCKED — P0=0, P1=2, plus 4 new P2 + 3 new
+Editorial.**
+
+**Confirmed genuine, no discrepancy:** SEC-01/BUG-012's evidence — the
+re-reviewer independently re-parsed the transcript and, notably,
+observed the orchestrating session make a new unattested edit *while the
+re-review itself was running*, live corroboration that this was an
+ongoing pattern, not historical. SEC-12/BUG-019's clone fix, the
+catalog fixes, and the performance fix were all A/B-tested against
+pre-fix behavior and held exactly as recorded — in two cases (SEC-11,
+SEC-12) working more broadly than this session had itself tested.
+
+**Found narrower than claimed, fixed same day as a follow-up:**
+- **BUG-013's residual is not confined to `reset --hard`** — a single
+  injected `git -c <flag>` defeats the *entire* git deny family
+  (confirmed live against `push --force` and `branch -D` too). A second,
+  distinct gap: bare lowercase `rm -r <path>` (no `-f`) is not denied at
+  all — the re-reviewer's own cleanup attempt executed a real recursive
+  delete against its own scratch files. **Still genuinely OPEN**, now
+  correctly scoped as needing two pattern families, not one.
+- **SEC-07/BUG-014:** the new validator's own `is_exempted()` check was
+  itself a one-word bypass — appending `"(documented exemption)"` to any
+  registry row disabled 3 of its 6 checks. Fixed: narrowed to the
+  `first-party...exemption` phrase this project's real rows actually
+  use.
+- **SEC-08/BUG-015:** the label-normalization fix only caught exact
+  normalized matches; `"veyro_code_reviewer"` (underscores) or
+  `"veyro-code-reviewer-phase7"` (extra suffix) still bypassed. Fixed:
+  canonical-form containment check, refuses ambiguous near-misses
+  outright rather than falling through.
+- **SEC-10/BUG-016:** the correction's own file-location claim was
+  wrong (said all matches were in `veyro-screen.js`; actually spread
+  across 12+ `.dc.html` files too), and the "routed to owner" claim was
+  false — genuinely never added to `OWNER_APPROVALS.md`. Both corrected.
+
+All four follow-up fixes were live-tested against the reviewer's exact
+reproductions before being recorded as fixed — same discipline as the
+first round, not a second unverified claim layered on the first.
+
+**BUG-012 resolved via a real owner decision.** Asked directly which
+model tier should govern the orchestrating session going forward, the
+owner chose: accept Sonnet-tier orchestration, with every Opus-reserved
+judgment call (architecture review, code review, security/performance
+review, certification) delegated to a fresh-context Opus subagent the
+orchestrating session spawns — never decided unilaterally on Sonnet's
+own authority. Recorded as `OWN-003` in `OWNER_APPROVALS.md`;
+`MODEL_ROUTING.md` gained a new section stating this distinction
+explicitly; `ADR-004` updated to DECIDED; `BUG-012` closed.
+
+**Remaining: 1 P1 (`BUG-013`'s residual, now correctly wider-scoped).
+0 P0. 0 known-unfixed P2/Editorial from either review round.** This one
+item cannot be closed by this session — the self-protection control this
+same chunk built on `.claude/settings.json` correctly blocks further
+agent-side edits to it. **Phase 7 gate remains BLOCKED. Phase 8 is NOT
+legally unlocked** until a human applies the remaining fix and a further
+fresh-context re-review confirms P0=0/P1=0.
+
 ## What happened chunk 17, 2026-09-05 — Phase 6 (real manual QA) executed; PHASE 6 GATE: PASS
 
 Per explicit instruction: "Phase 5 is APPROVED... Begin PHASE 6 ONLY... Do not
@@ -385,8 +567,8 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## What is NOT done (Phases 7-10)
 
-- Phase 7 — security/performance review.
-- Phase 8 — cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046.
+- Phase 7 — executed and independently re-reviewed 2026-09-06, **GATE: BLOCKED** (`BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`'s residual remains OPEN, wider than first recorded, needs a human `.claude/settings.json` edit — see `evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`). Not yet PASS.
+- Phase 8 — cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046. **Blocked on Phase 7.**
 - Phase 9 — fresh-session restoration proof.
 - Phase 10 — pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
 - 5 known artifact gaps remain unauthored (SKL-/RULE- ID schemas, rollback/removal procedure, third-party evaluation template, permanent-regression automation harness, project/nested Skill policy + `.claude/rules` profile structure) — required before Phase 10 certification, non-blocking for Phases 4-9.
@@ -394,9 +576,16 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 6 GATE: PASS.** Real manual QA executed via a genuinely fresh-context, technically model-attested Opus `veyro-manual-qa` (chunk 17). All 7 required scenarios executed fresh with real interactive evidence: Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remain BLOCKED with corrected, sharper reasoning (not flipped without real evidence). BUG-011 filed and fixed same day (reasoning-only correction, verdict unaffected). 0 FAIL, 0 P0, 0 P1. Phase 7 is legally unlocked but has NOT been started.
+**PHASE 7 GATE: BLOCKED (chunk 18, 2026-09-06), after one full remediation-and-independent-re-review cycle.** Two independent fresh-context Opus reviewers ran the full security/performance/resilience assurance pass; a second independent re-review then re-tested the remediation. Performance/resilience: APPROVED, 0 P0/P1. Security: 2 P1 found initially, both confirmed genuine by the re-review, 4 fixes found narrower than claimed (all fixed same day as a follow-up). **BUG-012 is CLOSED** — the owner decided `OWN-003` (accept Sonnet orchestration with delegated-Opus judgment; see `ADR-004`, `MODEL_ROUTING.md`). **BUG-013's residual remains OPEN, confirmed wider than first recorded** — needs a human edit to `.claude/settings.json`, since this session's own new self-protection now blocks further agent-side edits to that file. **Phase 8 is NOT legally unlocked** until that one item closes and a further re-review returns P0=0/P1=0.
 
-0. **PHASE 5 GATE: APPROVED** (chunk 16) — BUG-007's structural DC-05 gap was closed via real scenario execution, independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review; the fifth returned P0=0/P1=0, verdict APPROVED.
+**To unblock Phase 7, the next session (or the owner, directly) needs to:**
+1. Apply two deny-pattern fix families to `.claude/settings.json` by hand (a human edit, not an agent one — see `BUG-013`'s "Residual gap" section for full detail): (a) wildcard-between-`git`-and-subcommand forms (e.g. `Bash(git *push*--force*)`, `Bash(git *reset*--hard*)`, `Bash(git *branch*-D*)`, and the same pattern applied to every other git deny entry in the family) to close the `-c`-flag-injection bypass that defeats the whole family, not just one subcommand; (b) `Bash(rm -r *)`, `Bash(rm -r*)`, `Bash(rm * -r *)`, `Bash(rm * -r)` to close the bare-lowercase-`rm -r`-without-`-f` gap. Then live-verify: `git -c core.pager=cat push nosuchremote main --force`, `git -c core.pager=cat branch -D nosuchbranch`, `git -c core.pager=cat reset <ref> --hard`, and `rm -r <harmless-scratch-path>` are all denied.
+2. Invoke a further fresh-context `veyro-security-reviewer` re-review to confirm independently (do not self-verify only).
+3. If it confirms P0=0/P1=0: close `BUG-013`, update `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`BUG_REGISTRY.md`/`LOAD_SECURITY.md` to **PHASE 7 GATE: PASS**, mirror to Notion, commit, push. If it finds anything new: remediate, re-review again, repeat until clean — same discipline as every prior phase.
+4. Only then is Phase 8 legally unlocked.
+
+0. **PHASE 6 GATE: PASS** (chunk 17) — real manual QA via genuinely fresh-context, technically model-attested Opus `veyro-manual-qa`. All 7 required scenarios PASS/correctly-BLOCKED with real evidence; BUG-011 filed and fixed same day.
+0b. **PHASE 5 GATE: APPROVED** (chunk 16) — BUG-007's structural DC-05 gap was closed via real scenario execution, independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review; the fifth returned P0=0/P1=0, verdict APPROVED.
 
 1. Commit and push chunk 15's Phase 5 remediation — **done** across 4 commits (`232fc9a`, `1a15b52`, `b07562a`, `7523130`), local HEAD == `origin/main` verified throughout.
 2. Owner decisions on BUG-006/007/017/F5-005 — **done.**
@@ -408,8 +597,8 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 8. **Fifth, independent `veyro-code-reviewer` re-review — landed, verdict APPROVED (P0=0, P1=0, P2=4, Ed=3).** Independently re-verified all 8 of the fourth review's fixes correct, re-verified all 19 mandatory EIP categories PROVEN with real evidence (re-executing `resolution_bound.py`, re-running the DATA greps, re-deriving all 4 baseline hashes), and confirmed the underlying execution evidence was untouched by the fourth review's remediation commit. Its own 4 P2 + 3 Editorial findings — the same recurring propagation-gap species as before (a stale review-round reference in 2 files; a stale duplicate scenario block; a fourth copy of the pre-F5-022 Phase 1 count in `PHASE4_RECONCILIATION_2026-09-04.md`; a wrong finding-count and a stale heading in this project's own docs; a present-tense count claim gone stale by one) — self-fixed same day. **PHASE 5 GATE: APPROVED.**
 9. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by both the third and fourth reviewers — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
 10. **Phase 6: real manual QA — DONE (chunk 17, 2026-09-05).** Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence. Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remain BLOCKED, reasoning sharpened (BUG-011). **PHASE 6 GATE: PASS.**
-11. Phase 7: security/performance review. **Legally unlocked, not started.**
-12. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open).
+11. **Phase 7: security/performance/resilience assurance — EXECUTED (chunk 18, 2026-09-06), independently re-reviewed once, GATE: BLOCKED.** Performance/resilience APPROVED (0 P0/P1). Security's initial pass found 2 P1 + 11 P2 + 4 Editorial; a second independent re-review confirmed both P1s genuine, widened `BUG-013`'s known scope, and found 4 remediation claims narrower than recorded (all fixed same day as a follow-up). `BUG-012` **CLOSED** via a real owner decision (`OWN-003`, `ADR-004`, `MODEL_ROUTING.md`). `BUG-013`'s residual **remains OPEN, wider than first recorded** — needs a human `.claude/settings.json` edit (two pattern families now). **Phase 8 is NOT legally unlocked** until that closes and a further re-review confirms P0=0/P1=0.
+12. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open). **Blocked on item 11 above.**
 13. Phase 9: fresh-session restoration proof.
 14. Phase 10: author the 5 originally-known pending artifacts, assemble the readiness package, then `veyro-gatekeeper` (fresh context) for final APPROVED/BLOCKED.
 

@@ -76,19 +76,41 @@ info = []
 
 def parse_rows(text):
     rows = {}
+    duplicates = []
     for m in ROW_RE.finditer(text):
         sid, title, category, severity, automation, agent, model = m.groups()
         if sid in rows:
-            continue  # a "through" range row like 056-058 or a combined-title row is handled separately
+            # Rewritten 2026-09-06 (Phase 7, RES-02): this used to silently
+            # `continue`, swallowing a genuine duplicate ID. A fresh-context
+            # performance/resilience review proved this is a real blind spot,
+            # not just a "through"-range artifact: it renamed SCN-095 to
+            # SCN-001 in a scratch copy and the validator still printed
+            # "Parsed 95 distinct scenario IDs" and PASSed the count check —
+            # the duplication was invisible except by accident (095 happened
+            # to be the sole AUTHN-category row). A well-covered category
+            # would have hidden it completely. Duplicates are now collected
+            # and reported as an explicit error, never silently dropped.
+            duplicates.append(sid)
+            continue
         rows[sid] = {
             "title": title, "category": category, "severity": severity,
             "automation": automation, "agent": agent, "model": model,
         }
+    if duplicates:
+        errors.append(f"Duplicate scenario IDs in summary tables (same ID parsed more than once — later occurrence(s) silently overwrite the earlier row): {sorted(set(duplicates))}")
     return rows
 
 
 def main():
-    text = CATALOG.read_text(encoding="utf-8")
+    # 2026-09-06 (Phase 7, RES-04): a missing catalog file previously raised
+    # a bare FileNotFoundError traceback (exit 1, no readable message) rather
+    # than this project's own BLOCKED: convention. It still failed closed and
+    # boundedly, but not legibly to a caller checking output text.
+    try:
+        text = CATALOG.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"BLOCKED: CATALOG_UNREADABLE — could not read {CATALOG}: {e}")
+        return 1
 
     # 1. Structural row parse of the two summary tables
     rows = parse_rows(text)
@@ -180,7 +202,13 @@ def main():
     #    detail header somewhere (a summary-table-only row, with no detail block, is the
     #    F5-008 defect class). Condensed "through" rows are exempted (by design, tracked
     #    as a known non-blocking pattern) but only if their base ID has a detail block.
-    header_ids = set(re.findall(r"^### SCN-MOD000-(\d{3})", text, re.MULTILINE))
+    # Boundary-anchored 2026-09-06 (Phase 7, SEC-15): the prior pattern had no
+    # boundary after \d{3}, so a header tampered to "### SCN-MOD000-095-TAMPERED"
+    # still matched as a valid detail block for 095 (proven live in a scratch
+    # copy — this validator still printed PASS). Deleting a block outright was
+    # already correctly caught; this closes the narrower "block present but
+    # its own ID suffix was corrupted" variant of the same defect class.
+    header_ids = set(re.findall(r"^### SCN-MOD000-(\d{3})\b(?!-)", text, re.MULTILINE))
     no_detail = [sid for sid in required_ids if sid not in header_ids]
     if no_detail:
         # Escalated warning->error 2026-09-05 (second Phase 5 re-review, N-4/F5-009):

@@ -1,0 +1,8 @@
+{
+  "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
+  "reason": "Resolved model 'claude-sonnet-5' does not match required tier 'opus' (expected pattern ^claude-opus-\\d+(\\.\\d+)*$) for main-orchestrating-session-mod000.",
+  "models_observed": [
+    "claude-sonnet-5"
+  ],
+  "expected_tier": "opus"
+}
