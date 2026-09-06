@@ -1,6 +1,6 @@
 ---
 doc: MOD-000_LOAD_SECURITY
-status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed, re-reviewed THREE times, 3 P1 open (BUG-013 narrowed, BUG-022 new, BUG-023 new) pending a further human edit + re-review
+status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; a PreToolUse guard built for BUG-013/022/023 has been through FOUR independent review rounds, each finding new P0s, and is NOT yet certified — all 3 bugs remain OPEN
 updated: 2026-09-06
 ---
 
@@ -50,11 +50,32 @@ conclusion recorded**: `permissions.deny` glob-on-command-string matching
 alone is not a sufficient technical enforcement layer; the recommended
 direction, not yet implemented, is a project-scoped `PreToolUse` Bash
 security gate that parses/normalizes commands and fails closed
-semantically rather than by string pattern. Baseline hashes, the
-scenario-catalog validator, and the evidence-integrity checker were all
-independently re-verified clean this chunk. **Phase 7 gate: BLOCKED, not
-PASS** (P0=0, P1=3) — per this project's standing rule, not self-waived.
-The piecemeal pre-Phase-7 work listed in the prior version of this note
-(Phase 3 drills, F5-011, F5-001, the Notion-scope audit) is superseded as
-the current record by the formal Phase 7 pass above, but remains valid
+semantically rather than by string pattern.
+
+**A `.claude/security/bash_guard.py` PreToolUse guard was subsequently
+built** to implement that direction and put through **four** independent
+fresh-context review rounds — every single round found new
+P0-severity bypasses (command-segmentation gaps, an incomplete wrapper
+denylist, a discovery that this session's actual shell is zsh 5.9 not
+bash, zsh-specific redirection operators, case-sensitive command-name
+matching). All mechanically-fixable findings were fixed and tested
+(suite grew 95→200, all passing). **The guard is explicitly NOT
+certified clean** — disclosed, unfixed gaps remain (zsh clobber/append
+redirects, heredoc live-expansion, ancestor-directory protection,
+`python -m` inline code, more git config keys, protected-path set gaps).
+A real incident during the fourth review (a heredoc mishap executed live
+commands against the repo) was self-restored by the reviewer and
+independently re-verified clean by the orchestrating session. Full
+record: `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
+
+**`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.** Baseline hashes,
+the scenario-catalog validator, and the evidence-integrity checker were
+all independently re-verified clean. **Phase 7 gate: BLOCKED, not PASS**
+(P0=0, P1=3) — per this project's standing rule, not self-waived, and
+per the structural pattern this effort has now demonstrated four times
+running (every review round finds something new), not assumed closed
+just because no further round has been dispatched yet. The piecemeal
+pre-Phase-7 work listed in the prior version of this note (Phase 3
+drills, F5-011, F5-001, the Notion-scope audit) is superseded as the
+current record by the formal Phase 7 pass above, but remains valid
 supporting evidence, not retracted.

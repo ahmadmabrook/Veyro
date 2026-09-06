@@ -237,3 +237,51 @@ resilience approval unaffected.
 of scope by explicit instruction, and the file's self-protection would
 block an agent-side edit regardless. **Phase 7 gate remains BLOCKED.
 Phase 8 is NOT legally unlocked.**
+
+## PreToolUse Bash guard: built, four independent review rounds, NOT yet certified (2026-09-06, same day)
+
+Per the architectural conclusion recorded above and in `BUG-022`/
+`BUG-023`, a `.claude/security/bash_guard.py` PreToolUse hook was built
+to close all three open P1s with a semantic command-analysis check
+rather than another `.claude/settings.json` glob pattern. The hook
+mechanism itself was independently verified first against two sources
+(the installed Claude Code binary's own embedded docs and the live docs)
+— see `HOOK_CONTRACT_VERIFICATION_2026-09-06.md` — before any code was
+written.
+
+The guard then went through **four** independent fresh-context
+`veyro-security-reviewer` rounds (RR-1 through RR-4), each with no
+memory of the prior round's findings, per this project's standing
+discipline of never self-certifying security work. **Every single round
+found at least one new P0-severity bypass** the previous round's fixes
+had not closed — a pattern, not a fluke, and one this record states
+plainly rather than smoothing over: RR-1 found command-segmentation
+gaps (newline merging, wrapper delegation entirely unhandled), RR-2
+found an incomplete wrapper list plus a disruptive false-positive class,
+RR-3 found the guard had been designed against the wrong shell dialect
+(this session's actual shell is zsh 5.9, not bash) among other gaps, and
+RR-4 found zsh-specific redirection operators still missing plus
+case-sensitive command-name matching. Full round-by-round detail:
+`evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
+
+**RR-4 also surfaced a real incident**, disclosed there in full: the
+reviewer accidentally executed part of a heredoc test payload as live
+commands against this repository, self-detected it, self-restored via
+`mv`/`git checkout --`, and the orchestrating session independently
+re-verified the restoration (byte-identical `git status`, zero-diff on
+the two affected files against HEAD, test suite re-run clean) before
+continuing. No data was lost; recorded transparently rather than
+omitted.
+
+**Current true state: the guard exists, is substantially more robust
+than the deny-pattern approach it supplements, has fixed every
+mechanically-fixable finding from all four rounds, and STILL has
+disclosed, unfixed P0/P1 gaps (zsh clobber-redirect operators, heredoc
+live-expansion, ancestor-directory protection, several git config keys,
+`python -m` inline code, and a still-incomplete protected-path set).
+`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.** No
+`.claude/settings.json` edit was made. Per explicit instruction and this
+project's own discipline, the owner-facing settings-integration patch
+file was deliberately NOT authored this chunk — producing it would
+imply a readiness the guard has not earned. **Phase 7 gate remains
+BLOCKED. Phase 8 is NOT legally unlocked.**

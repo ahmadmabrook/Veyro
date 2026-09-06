@@ -185,16 +185,29 @@ originally scoped to: `BUG-022` (absolute-path/wrapper invocation
 defeats the entire deny list, including the git family this bug just
 closed) and `BUG-023` (non-functional redirection denies, see above).
 
+## Remediation attempt (2026-09-06): PreToolUse guard built, NOT yet certified
+
+Rather than a further `.claude/settings.json` pattern for the `rm`
+family alone, a `.claude/security/bash_guard.py` PreToolUse hook was
+built per the architectural conclusion in `BUG-022` to close this and
+the two sibling bugs together with a semantic check instead of another
+enumerable glob. It correctly denies the full recursive-delete family
+this bug named (`-r`/`-R`/`-rf`/`-fr`/reordered/verbose combos, `find
+-delete`) and has been through four independent fresh-context review
+rounds hardening it further — but has not yet reached a state with zero
+known P0/P1 findings; see
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`
+for the full four-round record. **This bug's `rm`-recursive half remains
+OPEN** pending a clean independent review of the guard.
+
 ## Certification impact
 
 **Blocks Phase 7 PASS.** The git-injection half of this bug is genuinely
 CLOSED. The `rm`-recursive half remains OPEN and, combined with the two
 new sibling bugs `BUG-022`/`BUG-023`, still blocks Phase 7 (P1=3 total
-across the three bugs). Requires a further human edit to
-`.claude/settings.json` for the `rm` family, then live re-verification,
-then another fresh-context re-review. All other sub-findings (SEC-03/04/16)
-are fixed and live-verified; SEC-05 is corrected (see above, RR-3);
-SEC-17 is a deliberate non-fix.
+across the three bugs). All other sub-findings (SEC-03/04/16) are fixed
+and live-verified; SEC-05 is corrected (see above, RR-3); SEC-17 is a
+deliberate non-fix.
 
 ## Affected
 

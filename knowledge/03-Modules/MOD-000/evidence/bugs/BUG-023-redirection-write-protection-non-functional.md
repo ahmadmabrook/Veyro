@@ -83,6 +83,24 @@ state plainly that redirection is not enforced at the Bash layer — this
 has been done as of this recording (see both files' RR-3/BUG-023
 cross-references).
 
+## Remediation attempt (2026-09-06): PreToolUse guard built, NOT yet certified
+
+A `.claude/security/bash_guard.py` PreToolUse hook was built and put
+through four independent fresh-context review rounds. Redirection/write-
+protection gaps directly in this bug's scope were found and fixed
+repeatedly across rounds (broader operator forms, quote-aware scanning
+replacing token-based detection, an expanded write-primitive command
+set, protected-path coverage extended to the guard's own directory) —
+but round 4 still found zsh-specific clobber/append redirection
+spellings (`>!`, `>>!`, `>>&`, `&>!`, `&>|`) unmodeled, and a
+disclosed-but-unfixed gap where protected-path matching is per-listed-
+path rather than per-subtree (`mv .claude /tmp/x`, `tar -czf x.tgz
+.claude` escape every check — this exact operation was accidentally
+demonstrated live during the round-4 review itself, see the incident
+section of the full record). Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
+**This bug remains OPEN.**
+
 ## Certification impact
 
 **Blocks Phase 7 PASS**, alongside `BUG-013`'s residual and `BUG-022`.

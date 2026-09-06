@@ -88,6 +88,21 @@ is the only approach that can close this class of bypass rather than
 adding another enumerable pattern to a list that this bug and `BUG-013`
 have now shown is inherently reorderable/spoofable.
 
+## Remediation attempt (2026-09-06): PreToolUse guard built, NOT yet certified
+
+A `.claude/security/bash_guard.py` PreToolUse hook was built per the
+architectural conclusion above and put through four independent
+fresh-context review rounds — each found new P0-severity bypasses,
+including absolute-path/wrapper-class gaps directly in this bug's scope
+(the guard's own wrapper denylist was found incomplete three times in a
+row: round 2 added `nice`/`su`/`awk`/`ssh`/etc., round 3 added zsh
+dialect gaps `noglob`/`nocorrect`/`repeat`/`coproc`, round 4 added
+`builtin` and fixed case-sensitive command-name matching). Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md`.
+**This bug remains OPEN** — the guard is not yet certified clean by an
+independent review, and per this project's standing discipline it does
+not close this bug until one is.
+
 ## Certification impact
 
 **Blocks Phase 7 PASS**, alongside `BUG-013`'s residual and `BUG-023`.
