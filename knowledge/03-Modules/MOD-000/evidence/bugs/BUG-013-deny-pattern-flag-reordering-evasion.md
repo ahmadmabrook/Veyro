@@ -1,6 +1,6 @@
 ---
 doc: BUG-013
-status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's rm-recursive class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof
+status: CLOSED (2026-09-08) — owner applied the activation patch, a fresh session live-verified the PreToolUse hook actually executes and this bug's rm-recursive/absolute-path class denies live; see "Live activation verification" section below
 found_date: 2026-09-06
 found_by: Phase 7 fresh-context Opus veyro-security-reviewer (SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-16, SEC-17); residual scope widened by an independent Phase 7 re-review (RR-2); git half confirmed CLOSED and rm half confirmed still OPEN by a third independent re-review (RR-3) after the owner's manual settings.json edit
 severity: P1 (primary), P2 (sub-findings)
@@ -286,6 +286,36 @@ proven unaffected — none of which a non-interactive session can perform
 on the owner's behalf. Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
+## Live activation verification (2026-09-08): CLOSED
+
+The owner manually applied the drafted activation patch to
+`.claude/settings.json` (`hooks.PreToolUse` registering
+`bash_guard.py` on the `Bash` matcher, plus the `.claude/security/**`/
+`CLAUDE.md`/`.mcp.json` deny additions). A fresh Claude Code session
+confirmed the patch's exact shape by inspection, then live-tested this
+bug's own fixture classes:
+
+- `rm -rf <disposable dir>` → **DENIED** (`BLOCKED: UNKNOWN_COMMAND —
+  'rm' is not an allowlisted command`); fixture confirmed to still
+  exist afterward.
+- `/bin/rm -rf <disposable dir>` → **DENIED** (absolute-path form,
+  `BLOCKED: UNKNOWN_COMMAND — '/bin/rm' is not an allowlisted
+  command`); fixture confirmed to still exist afterward.
+- `git reset --hard` → **DENIED** (`BLOCKED: UNRECOGNIZED_SUBCOMMAND`).
+- `git push --force` → **DENIED** (`BLOCKED: DISALLOWED_FLAG_OR_SHAPE`).
+
+The full 194-test automated suite was re-run live in this same session:
+194/194 passing. All 4 governing baseline hashes re-verified unchanged.
+Safe operations (`git status`/`log`/`diff`/`show`, safe reads, all 4
+governance validators) confirmed unaffected. Full live-test record:
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
+
+**This bug is CLOSED.** The v2 guard is now a live, enforcing
+PreToolUse hook — not merely a reviewed-but-inert script — and this
+bug's exact historical bypass class (recursive delete, in both bare
+and absolute-path form) is proven denied in a real, fresh session, not
+just against the guard's own test harness.
+
 ## Affected
 
 `.claude/settings.json`, `knowledge/03-Modules/MOD-000/evidence/
@@ -297,4 +327,5 @@ evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06
 disposition corrected re: redirection, see `BUG-023`),
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`,
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.

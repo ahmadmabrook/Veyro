@@ -41,6 +41,18 @@ capabilities:
       only — never another project's app on the same simulator. Destructive simctl
       operations (erase/delete/install non-Veyro build) out of scope.
     required_status: APPROVED (2026-09-05, distinct third independent Opus review — satisfies stage 5 on its own merits — see CAPABILITY_REGISTRY.md)
+  - capability_id: CAP-007
+    used_for: PreToolUse Bash security guard (`.claude/security/bash_guard.py`) — closes BUG-013/022/023 (deny-pattern evasion, absolute-path/wrapper bypass, non-functional redirection protection) with a live allow-by-construction hook (added 2026-09-08, first genuine MOD-000 dependency now that the guard is actually activated)
+    scope_note: >-
+      PreToolUse hook on the Bash tool only; reads one stdin JSON payload per
+      invocation, classifies the command against an explicit allow-by-construction
+      command-family list, denies anything not an exact match. Filesystem access
+      limited to SHA-256-hashing its own 7 pinned trusted-script paths (read-only).
+      Write/Edit/NotebookEdit/MCP tools are not covered by this hook — those remain
+      governed solely by .claude/settings.json's own permissions.deny globs, which
+      the owner's activation patch separately extended to cover .claude/security/**,
+      CLAUDE.md, and .mcp.json.
+    required_status: APPROVED (2026-09-08, fourth independent Opus review, P0=0/P1=0) — activated and live-verified 2026-09-08 (14/14 fresh-session live-test matrix PASS, see CAPABILITY_REGISTRY.md and evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md)
 
 supply_chain_notes: >
   Updated 2026-09-05 (round 2, closing BUG-006/CAP-001 and BUG-009/CAP-005/006):
@@ -59,3 +71,12 @@ supply_chain_notes: >
   own per-capability rows above are the current source of truth; this
   prose block is a summary of them and must be kept in sync whenever
   those rows change.
+
+  Updated 2026-09-08 (BUG-013/022/023 live activation verification): CAP-007
+  added to this manifest for the first time — a fourth independent Opus
+  review approved it for owner activation (P0=0/P1=0), the owner then
+  manually applied the drafted .claude/settings.json activation patch, and a
+  fresh Claude Code session ran the full 14-row live-test matrix (all PASS),
+  confirming the PreToolUse hook actually executes and denies its named
+  bypass classes live. CAP-007's lifecycle_status is now ACTIVE in
+  CAPABILITY_REGISTRY.md.

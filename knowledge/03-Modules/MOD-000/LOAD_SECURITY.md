@@ -1,6 +1,6 @@
 ---
 doc: MOD-000_LOAD_SECURITY
-status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap, a final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped remediation, and a fourth independent review — APPROVED FOR OWNER ACTIVATION (P0=0/P1=0) — all 3 bugs (BUG-013/022/023) moved to REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION, NOT closed; owner activation patch drafted, not applied
+status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed and PASSED. v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap, a final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped remediation, a fourth independent review (APPROVED FOR OWNER ACTIVATION, P0=0/P1=0), the owner's manual activation patch, and a fresh-session live-test matrix (14/14 PASS) — all 3 bugs (BUG-013/022/023) CLOSED. PHASE 7 GATE: PASS. Phase 8 legally unlocked.
 updated: 2026-09-08
 ---
 
@@ -158,20 +158,33 @@ fields to record; **CAP-007 is now APPROVED** in
 independently re-confirmed CLOSED for the Bash surface on the
 reviewer's own fresh fixtures, not merely the existing suite.
 
-**Per the owner's exact instruction, none of the three bugs are closed
-yet.** All three moved to **REMEDIATED — PENDING LIVE ACTIVATION
-VERIFICATION** — closure requires the owner to manually apply the
-drafted-not-applied activation patch
-(`evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`), start a
-fresh Claude Code session, and prove live that the hook executes,
-destructive fixtures deny, and safe operations remain unaffected. 6 P2
-and 9 Editorial findings remain as accepted-known residuals for a
+**The owner then manually applied the drafted activation patch** to
+`.claude/settings.json` (`hooks.PreToolUse` registering
+`bash_guard.py` on the `Bash` matcher, timeout 10; the
+`.claude/security/**`/`CLAUDE.md`/`.mcp.json` deny additions;
+`hooks.SessionStart` preserved byte-for-byte). **A fresh Claude Code
+session then ran the full 14-row live-test matrix from
+`BUG-013-022-023-OWNER-SETTINGS-PATCH.md` Part 7 — all 14 rows PASS**:
+activation config verified by inspection (all 7 sub-checks); safe
+operations (git status/log/diff/show, safe read, 194/194 automated
+tests) confirmed ALLOW; governed `git add`/`git commit` confirmed
+ALLOW; this project's own historical bypass fixtures (`rm -rf`,
+`/bin/rm -rf`, redirection onto `.claude/settings.json`, `git push
+--force`, `git reset --hard`, `grep -rf`) all confirmed DENY with
+distinct, guard-specific reasons (not a generic outer-permission
+message); Edit-tool self-protection on `.claude/security/bash_guard.py`
+and `CLAUDE.md` both confirmed DENY. An additional unknown-command probe
+(`uptime`) confirmed fail-closed DENY. All safe regression re-run clean
+afterward: all 4 governance validators PASS, all 4 baseline hashes
+unchanged, local HEAD == `origin/main`. Full record:
+`evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
+
+**BUG-013, BUG-022, and BUG-023 are now CLOSED.** 6 P2 and 9 Editorial
+findings from the fourth review remain as accepted-known residuals for a
 future, separately-authorized pass — not silently dropped. Full record:
 `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
-**Phase 7 gate: still BLOCKED, not PASS** — this session applied nothing
-to `.claude/settings.json`, and Phase 7 cannot PASS until the three bugs
-actually close post-activation. The piecemeal pre-Phase-7 work listed in
-the prior version of this note (Phase 3 drills, F5-011, F5-001, the
-Notion-scope audit) is superseded as the current record by the formal
-Phase 7 pass above, but remains valid supporting evidence, not
-retracted.
+**Phase 7 gate: PASS.** The piecemeal pre-Phase-7 work listed earlier in
+this note (Phase 3 drills, F5-011, F5-001, the Notion-scope audit) is
+superseded as the current record by the formal Phase 7 pass above, but
+remains valid supporting evidence, not retracted. **Phase 8 is legally
+unlocked** — not started this session.

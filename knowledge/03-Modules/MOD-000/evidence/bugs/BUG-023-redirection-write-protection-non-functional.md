@@ -1,6 +1,6 @@
 ---
 doc: BUG-023
-status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's redirection/write-primitive class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof; also corrects a false prior "live-verified" claim in Phase 7 evidence and BUG-013
+status: CLOSED (2026-09-08) — owner applied the activation patch, a fresh session live-verified the PreToolUse hook denies redirection-based mutation live; also corrects a false prior "live-verified" claim in Phase 7 evidence and BUG-013
 found_date: 2026-09-06
 found_by: Third independent Phase 7 re-review (RR-3), fresh-context Opus veyro-security-reviewer, verifying the owner's manual BUG-013 settings.json edit
 severity: P1
@@ -185,6 +185,29 @@ proof the hook executes, and live proof this bug's own redirection
 fixtures deny. Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
+## Live activation verification (2026-09-08): CLOSED
+
+The owner manually applied the drafted activation patch. A fresh
+session confirmed live: `echo test > .claude/settings.json` → **DENIED**
+(`BLOCKED: UNSUPPORTED_SHELL_COMPOSITION — command contains
+chaining/redirection/substitution syntax`) — the exact redirection
+class this bug was filed against, now denied by the live PreToolUse
+hook (which bans all redirection/composition syntax outright at Stage
+1, unlike the non-functional `permissions.deny` glob patterns this bug
+originally documented). `.claude/settings.json`'s content was confirmed
+unchanged immediately after (via `git diff --stat`, showing only the
+owner's own pre-existing patch diff, no new mutation). Full 194/194
+suite re-run live. Full live-test record:
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
+
+**This bug is CLOSED.** The scope caveat this bug carried throughout
+remains accurate going forward: this closure is for the Bash surface
+specifically (now live-enforced); Write/Edit/NotebookEdit/MCP tools are
+governed by `.claude/settings.json`'s own deny globs, which the
+just-applied Part 2 additions now extend to `.claude/security/**`,
+`CLAUDE.md`, and `.mcp.json` (confirmed live via LIVE-13/LIVE-14 in the
+verification record above).
+
 ## Affected
 
 `.claude/settings.json` (5 non-functional deny entries, 2 missing `tee`
@@ -193,4 +216,5 @@ PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06 rows corrected),
 `knowledge/03-Modules/MOD-000/evidence/bugs/BUG-013-*.md` (remediation
 section corrected), `knowledge/03-Modules/MOD-000/evidence/security/
 BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.

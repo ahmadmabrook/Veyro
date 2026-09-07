@@ -1,6 +1,6 @@
 ---
 doc: BUG-022
-status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's absolute-path/wrapper class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof
+status: CLOSED (2026-09-08) — owner applied the activation patch, a fresh session live-verified the PreToolUse hook denies absolute-path/wrapper invocation live; see "Live activation verification" section below
 found_date: 2026-09-06
 found_by: Third independent Phase 7 re-review (RR-3), fresh-context Opus veyro-security-reviewer, verifying the owner's manual BUG-013 settings.json edit
 severity: P1
@@ -190,6 +190,20 @@ fixtures deny, and live proof `.claude/security/**` is actually
 write-protected. Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
+## Live activation verification (2026-09-08): CLOSED
+
+The owner manually applied the drafted activation patch. A fresh
+session confirmed live: `/bin/rm -rf <disposable dir>` → **DENIED**
+(`BLOCKED: UNKNOWN_COMMAND — '/bin/rm' is not an allowlisted
+command`) — the exact absolute-path bypass this bug was filed
+against, now denied by the live PreToolUse hook rather than only by
+the guard's own offline test suite. The fixture directory was
+confirmed to still exist afterward. Full 194/194 suite re-run live;
+all 4 baseline hashes unchanged. Full live-test record:
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
+
+**This bug is CLOSED.**
+
 ## Affected
 
 `.claude/settings.json` (the entire `permissions.deny` list, structurally
@@ -197,4 +211,5 @@ write-protected. Full record:
 security/PHASE7_SECURITY_REVIEW_2026-09-06.md`, `knowledge/00-System/
 CURRENT_HANDOFF.md`, `knowledge/03-Modules/MOD-000/evidence/security/
 BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.

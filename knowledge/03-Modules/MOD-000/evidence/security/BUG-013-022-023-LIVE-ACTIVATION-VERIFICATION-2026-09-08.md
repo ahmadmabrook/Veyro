@@ -138,6 +138,30 @@ confirmed to have no unexpected mutation caused by the live tests
 beyond this evidence file's own intentional addition (`git status`/
 `git diff` reviewed before and after each destructive-fixture attempt).
 
+## Additional discovered guard behavior: `git add .claude/settings.json` itself denied
+
+Not part of the required 14-row matrix, but discovered while assembling
+this chunk's own closeout commit: `git add .claude/settings.json`
+(staging the owner's own already-applied, legitimate edit) was itself
+denied — `BLOCKED: DISALLOWED_FLAG_OR_SHAPE — git add did not match its
+governed-mutation shape`. The guard's `ClassB_GovernedMutation` shape for
+`git add` excludes protected paths (matching the existing
+`test_git_add_protected_path` unit test), and `.claude/settings.json` is
+one of them. This means the guard's self-protection extends to staging
+via `git add`, not only to `Edit`/`Write`/`rm`/`sed -i`/redirection — a
+stronger guarantee than this bug's fixture list required, discovered
+incidentally rather than tested for. Consequence: this chunk's own
+closeout commit could not include the settings.json file at all via
+Bash; it remains uncommitted in the working tree, unchanged from what
+the owner applied. This is consistent with, not a violation of, the
+task's instruction not to modify `.claude/settings.json` this session —
+noted here transparently since it affects how "local HEAD ==
+`origin/main` reconciliation" reads for this chunk (the settings.json
+diff is a real, intentional, owner-made local change that this session's
+guard-enforced tooling cannot commit; committing it would require the
+owner's own `git add`/`git commit`, or an owner-approved sanctioned
+exception).
+
 ## Result
 
 **All 14 required live checks: PASS.** PreToolUse live-execution proof:
