@@ -12,10 +12,12 @@ reported command.
 
 Run directly: `python3 .claude/security/tests/test_bash_guard.py`
 """
+import hashlib
 import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 import unittest
 
 GUARD_PATH = pathlib.Path(__file__).resolve().parent.parent / "bash_guard.py"
@@ -140,6 +142,26 @@ class ClassA_ReadOnly(GuardTestCase):
 
     def test_python_allowlisted_script_with_args(self):
         self.assert_allowed("python3 .claude/security/tests/test_bash_guard.py -v")
+
+    def test_python_allowlisted_script_validate_capabilities(self):
+        self.assert_allowed("python3 knowledge/00-System/validate_capabilities.py")
+
+    def test_python_allowlisted_script_mr_verify(self):
+        self.assert_allowed("python3 knowledge/05-QA/tools/mr_verify.py")
+
+    def test_python_allowlisted_script_resolution_bound(self):
+        self.assert_allowed("python3 knowledge/05-QA/tools/resolution_bound.py")
+
+    def test_python_allowlisted_script_validate_catalog(self):
+        self.assert_allowed(
+            "python3 knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py"
+        )
+
+    def test_python_allowlisted_script_evidence_integrity_check(self):
+        self.assert_allowed(
+            "python3 knowledge/03-Modules/MOD-000/evidence/scenario-execution/"
+            "phase3/tools/evidence_integrity_check.py"
+        )
 
 
 class ClassA_ShapeRejections(GuardTestCase):
@@ -720,6 +742,121 @@ class RR2_OffShapeCharsetEdgeCases(GuardTestCase):
 
     def test_commit_dash_F_bare_double_dash(self):
         self.assert_denied("git commit -F --")
+
+
+class RR3_GrepDashFAllSpellings(GuardTestCase):
+    """Round 3 P1-1: the RR2_GrepPatternFileFlag fix above only matched
+    the exact token `-f`. Every bundled short-flag form and the long
+    form fell through unchecked, treating `positionals[0]` (actually a
+    pattern-file PATH under -f semantics) as ordinary search text — an
+    unbounded file read via an explicit ALLOW. Every spelling below must
+    now deny; a legitimate grep with none of them must still allow."""
+
+    def test_bundled_rf(self):
+        self.assert_denied("grep -rf /etc/passwd knowledge")
+
+    def test_bundled_nf(self):
+        self.assert_denied("grep -nf /etc/passwd knowledge")
+
+    def test_bundled_if(self):
+        self.assert_denied("grep -if /etc/passwd knowledge")
+
+    def test_bundled_hf(self):
+        self.assert_denied("grep -hf /etc/passwd knowledge")
+
+    def test_bundled_rif(self):
+        self.assert_denied("grep -rif /etc/passwd knowledge")
+
+    def test_long_form_file(self):
+        self.assert_denied("grep --file /etc/passwd knowledge")
+
+    def test_long_form_file_equals(self):
+        self.assert_denied("grep --file=/etc/passwd knowledge")
+
+    def test_relative_path_still_denied(self):
+        # Not just absolute paths — the whole -f mode is unsupported,
+        # regardless of what the argument points at.
+        self.assert_denied("grep -rf knowledge/00-System/CLAUDE.md knowledge")
+
+    def test_uppercase_F_is_unrelated_and_still_allowed(self):
+        # -F is grep's own "fixed strings" flag (no argument, no path
+        # implication) — a different, real flag from lowercase -f. Case-
+        # sensitive matching must not conflate them.
+        self.assert_allowed("grep -Fn literal-string knowledge/CLAUDE.md")
+
+    def test_plain_grep_without_f_still_allowed(self):
+        self.assert_allowed("grep -rn TODO knowledge")
+
+
+class RR3_TrustedScriptIntegrity(GuardTestCase):
+    """Round 3 P1-2: `_ALLOWED_PYTHON_SCRIPTS` trusted a path string
+    alone, with no content check — an edit to any of the seven
+    allowlisted scripts (routine or malicious) silently and permanently
+    stayed trusted. `_script_integrity_ok` now hash-verifies the actual
+    file content on every invocation, in isolation (no real repository
+    file is read, written, or mutated by these tests)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(GUARD_PATH.parent))
+        import bash_guard  # noqa: PLC0415 (deliberately imported here, test-only)
+
+        cls.bash_guard = bash_guard
+
+    def setUp(self):
+        self._orig_repo_root = self.bash_guard.REPO_ROOT
+        self._orig_allowed = dict(self.bash_guard._ALLOWED_PYTHON_SCRIPTS)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.bash_guard.REPO_ROOT = pathlib.Path(self._tmp.name)
+
+    def tearDown(self):
+        self.bash_guard.REPO_ROOT = self._orig_repo_root
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = self._orig_allowed
+        self._tmp.cleanup()
+
+    def _write_fixture(self, relpath, content):
+        full = pathlib.Path(self._tmp.name) / relpath
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_bytes(content)
+        return full
+
+    def test_matching_hash_passes(self):
+        content = b"print('trusted fixture')\n"
+        self._write_fixture("fixture.py", content)
+        digest = hashlib.sha256(content).hexdigest()
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = {"fixture.py": digest}
+        self.assertTrue(self.bash_guard._script_integrity_ok("fixture.py"))
+
+    def test_tampered_content_fails_closed(self):
+        original = b"print('trusted fixture')\n"
+        tampered = b"print('trusted fixture')  # + one appended byte extra\n"
+        self._write_fixture("fixture.py", tampered)
+        digest_of_original = hashlib.sha256(original).hexdigest()
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = {"fixture.py": digest_of_original}
+        self.assertFalse(self.bash_guard._script_integrity_ok("fixture.py"))
+
+    def test_missing_file_fails_closed(self):
+        digest = hashlib.sha256(b"anything").hexdigest()
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = {"does-not-exist.py": digest}
+        self.assertFalse(self.bash_guard._script_integrity_ok("does-not-exist.py"))
+
+    def test_unlisted_path_fails_closed(self):
+        content = b"print('not on the allowlist at all')\n"
+        self._write_fixture("unlisted.py", content)
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = {}
+        self.assertFalse(self.bash_guard._script_integrity_ok("unlisted.py"))
+
+    def test_end_to_end_deny_via_classify_on_hash_mismatch(self):
+        # Exercise the real classify() path, not just the helper, with a
+        # deliberately wrong pinned hash — confirms the DENY actually
+        # propagates all the way through _python_readonly/classify(),
+        # not just that the helper function itself returns False.
+        content = b"print('trusted fixture')\n"
+        self._write_fixture("fixture.py", content)
+        self.bash_guard._ALLOWED_PYTHON_SCRIPTS = {"fixture.py": "0" * 64}
+        with self.assertRaises(self.bash_guard.Verdict) as ctx:
+            self.bash_guard.classify("python3 fixture.py")
+        self.assertEqual(ctx.exception.decision, "deny")
 
 
 if __name__ == "__main__":

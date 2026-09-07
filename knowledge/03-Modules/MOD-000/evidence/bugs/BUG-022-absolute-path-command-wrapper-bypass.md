@@ -148,10 +148,27 @@ than wrapping an untrusted command. See
 the owner's gate rule requires overall P0=0/P1=0, not met. No further
 review round is authorized. No `.claude/settings.json` edit was made.
 
+## Round 3 P1 remediation (2026-09-07): trusted-script hash pinning fixed the wrapper-class re-entry; write-protection residual disclosed, still OPEN
+
+Round 3's P1-2 (`_ALLOWED_PYTHON_SCRIPTS` trusting mutable, unhashed
+paths) was a re-entry into this bug's class via a different mechanism —
+rewriting a trusted script rather than wrapping an untrusted command.
+Fixed via SHA-256 content-hash pinning: a tampered allowlisted script
+can no longer be *executed* through the guard once its hash stops
+matching. **Disclosed residual, not silently closed:** this is tamper
+*detection*, not write *prevention* — `.claude/settings.json`'s Edit/Write
+deny coverage still does not extend to `.claude/security/**`, and this
+remediation pass was explicitly instructed not to touch
+`.claude/settings.json`. **This bug remains OPEN** — narrowly-scoped
+remediation, not an independent review; no Opus evaluation of this fix
+has occurred. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
 ## Affected
 
 `.claude/settings.json` (the entire `permissions.deny` list, structurally
 — every entry shares this gap), `knowledge/03-Modules/MOD-000/evidence/
 security/PHASE7_SECURITY_REVIEW_2026-09-06.md`, `knowledge/00-System/
 CURRENT_HANDOFF.md`, `knowledge/03-Modules/MOD-000/evidence/security/
-BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
+BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.

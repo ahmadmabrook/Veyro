@@ -85,11 +85,21 @@ below is an additional, narrower check specifically for the families
 that take a path argument, so that even a validly-shaped governed
 mutation can't target the project's governing artifacts.
 """
+import hashlib
 import json
 import os
+import pathlib
 import re
 import shlex
 import sys
+
+# Repository root, derived from this file's own location rather than the
+# process cwd or the hook payload's `cwd` field (neither is guaranteed
+# stable across every invocation context) — `.claude/security/bash_guard.py`
+# is always exactly two directories below the repo root in this project's
+# layout. Used only to resolve the fixed, project-owned script paths in
+# `_ALLOWED_PYTHON_SCRIPTS` below for hash verification.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # ---------------------------------------------------------------------------
 # Stage 1 — shell composition / substitution: unconditional deny
@@ -445,15 +455,41 @@ def _stat_readonly(tokens):
         _allow("stat")
 
 
+def _requests_grep_pattern_file(flags):
+    """True for every spelling that puts grep into "-f PATTERNFILE" mode
+    — Round 3 P1-1: the prior check only matched the single exact token
+    `-f`, so any bundled short-flag form (`-rf`, `-nf`, `-if`, `-hf`,
+    `-Ff`) or the long form (`--file`, `--file=...`) fell through to the
+    plain-pattern branch below, which treats `positionals[0]` as search
+    text rather than the path it actually is under `-f` semantics — an
+    unbounded-file-read ALLOW. Matched on a literal lowercase `f`
+    specifically (never uppercase `F`, grep's own unrelated
+    fixed-strings flag), the same case-sensitive-exact-shape convention
+    this whole file uses elsewhere; a bundle is any short flag with more
+    than one character after the dash."""
+    for f in flags:
+        if f in ("-f", "--file") or f.startswith("--file="):
+            return True
+        if f.startswith("--"):
+            continue  # some other recognized long flag, not this family
+        if f.startswith("-") and "f" in f[1:]:
+            return True
+    return False
+
+
 def _grep_readonly(tokens):
     flags, positionals = _split_flags_positionals(tokens)
     if not _generic_readonly_flags_ok(flags):
         return
-    if "-f" in flags:
-        # -f's value is a PATTERN FILE — a path, not search text — so
-        # every positional must be path-checked in this mode (RR-2 P2-2).
-        if positionals and all(_is_safe_relative_path(p) for p in positionals):
-            _allow("grep -f (pattern file)")
+    if _requests_grep_pattern_file(flags):
+        # `-f`/`--file` pattern-file mode is intentionally NOT supported
+        # in any spelling — its argument is a path read as pattern
+        # input, a materially different trust shape than the plain
+        # pattern-is-search-text case below, and Round 2's attempt to
+        # special-case just the literal `-f` token proved incomplete.
+        # Per this file's own "unknown must deny" rule and the explicit
+        # instruction not to broaden grep's recognized shapes: deny
+        # outright rather than add more per-spelling parsing.
         return
     # pattern + at least one explicit path — no implicit stdin reads,
     # since Stage 1 already forbids piping data into this process. Only
@@ -464,21 +500,72 @@ def _grep_readonly(tokens):
         _allow("grep")
 
 
-# Fixed allowlist of project-owned validator/checker scripts. Arguments
-# after the script path are passed through unrestricted (Stage 1 already
-# guarantees they carry no shell composition) — they are runtime
-# parameters to an already-trusted, fixed script, not attacker-
-# controlled code paths. Adding a new script here is a reviewable,
-# one-line change, not a parsing exercise.
+# Fixed allowlist of project-owned validator/checker scripts, pinned to
+# their exact SHA-256 content hash (Round 3 P1-2: a path string matching
+# this set was previously the ENTIRE trust decision — any edit to one of
+# these seven files, whether an authorized change or a compromise, was
+# silently and permanently re-trusted the next time its path was typed,
+# because the guard never looked at the file's actual content). A hash
+# mismatch or an unreadable/missing file now denies unconditionally; the
+# path being in this dict is necessary but no longer sufficient.
+#
+# Governance for updating this map (the deterministic mechanism the
+# owner's remediation instruction required): a change to any one of
+# these seven scripts and the update to its hash entry below MUST land
+# in the same reviewed commit — `sha256sum <path>` gives the exact value
+# to paste. A script edited without updating its hash here simply stops
+# being executable through this guard (fails closed, not silently
+# re-trusted); a hash entry changed without a corresponding real script
+# change is a reviewable, self-evident diff. Arguments after the script
+# path are still passed through unrestricted (Stage 1 already guarantees
+# they carry no shell composition) — they are runtime parameters to an
+# already-integrity-checked, fixed script, not attacker-controlled code
+# paths.
+#
+# Residual, explicitly not closed by this mechanism: this is content-
+# TAMPER DETECTION, not WRITE PREVENTION — nothing here stops an Edit/
+# Write tool call from modifying one of these seven files in the first
+# place (`.claude/settings.json`'s Edit/Write deny coverage does not
+# extend to `.claude/security/**`, and this remediation pass was
+# explicitly instructed not to modify `.claude/settings.json`). The
+# practical effect is still real: a tampered file simply can no longer
+# be *executed* through this guard once its hash no longer matches, so
+# the specific "trusted because path matched" execution bypass Round 3
+# found is closed — but the write itself is not prevented, only made
+# inert for this one execution path. Tracked as a distinct, still-open
+# follow-up requiring an owner-authorized `.claude/settings.json` change,
+# not silently treated as fully closed.
 _ALLOWED_PYTHON_SCRIPTS = {
-    "knowledge/00-System/validate_capabilities.py",
-    "knowledge/00-System/verify_baselines.py",
-    "knowledge/05-QA/tools/mr_verify.py",
-    "knowledge/05-QA/tools/resolution_bound.py",
-    "knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py",
-    "knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/tools/evidence_integrity_check.py",
-    ".claude/security/tests/test_bash_guard.py",
+    "knowledge/00-System/validate_capabilities.py":
+        "680ee3fbb0a0c076412f1dac084053c8613e4f00546511f18a73478f0aec6db2",
+    "knowledge/00-System/verify_baselines.py":
+        "d8deb8679c71fe775875690b0486228c2cf32e717f3c756d818cffbd2dca8a72",
+    "knowledge/05-QA/tools/mr_verify.py":
+        "be5a4ce85ca4bb1b7154bf0d422c5b70aa7213faaa140372fc4a994ced31d40e",
+    "knowledge/05-QA/tools/resolution_bound.py":
+        "c50105f7fc08be0d73d4728caf3b93acf60a2c3f0c5afd1014b50cba9194c527",
+    "knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py":
+        "d0bfab4e756a89600e67db98d77addeaad69b6695930605a3e38dfd526ae81fd",
+    "knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/tools/evidence_integrity_check.py":
+        "881c83ed1adff28f0c23f9c4a1b2e1b4d392620d3237d93e49b4e38a55dee409",
+    ".claude/security/tests/test_bash_guard.py":
+        "c3ab3e94e77824c3966755a398f1fae8aa1b4c39e5d21f6423c03fec437d409c",
 }
+
+
+def _script_integrity_ok(relpath):
+    """Read `REPO_ROOT / relpath` and compare its SHA-256 digest to the
+    pinned value in `_ALLOWED_PYTHON_SCRIPTS`. Every failure mode —
+    unknown path, missing file, unreadable file, hash mismatch — returns
+    False. There is no fallback that trusts the path string alone."""
+    pinned = _ALLOWED_PYTHON_SCRIPTS.get(relpath)
+    if not pinned:
+        return False
+    try:
+        data = (REPO_ROOT / relpath).read_bytes()
+    except OSError:
+        return False
+    return hashlib.sha256(data).hexdigest() == pinned
 
 
 def _python_readonly(tokens):
@@ -486,8 +573,8 @@ def _python_readonly(tokens):
         return
     script = tokens[0]
     normalized = script[2:] if script.startswith("./") else script
-    if normalized in _ALLOWED_PYTHON_SCRIPTS:
-        _allow(f"python3 {normalized} (allowlisted validator script)")
+    if normalized in _ALLOWED_PYTHON_SCRIPTS and _script_integrity_ok(normalized):
+        _allow(f"python3 {normalized} (allowlisted, hash-verified validator script)")
 
 
 _READONLY_DISPATCH = {

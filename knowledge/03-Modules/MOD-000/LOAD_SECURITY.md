@@ -1,6 +1,6 @@
 ---
 doc: MOD-000_LOAD_SECURITY
-status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap plus one final owner-authorized Round 3 — all three judged the architecture sound, but Round 3 (the final round) returned P0=0/P1=3, verdict BLOCKED — all 3 bugs (BUG-013/022/023) remain OPEN, no further review round authorized
+status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap plus one final owner-authorized Round 3 (BLOCKED, P0=0/P1=3), then a narrowly-scoped remediation of the 3 P1s (not an independent review) — all 3 bugs (BUG-013/022/023) remain OPEN, no further review round authorized
 updated: 2026-09-07
 ---
 
@@ -118,14 +118,28 @@ chunk. **Phase 7 gate: BLOCKED, not PASS.** Full record:
 `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`. Across
 all three v2 rounds, findings were local and bounded — the design itself
 was never re-opened as a question, a materially different pattern from
-v1's four rounds of structurally new findings. **No further review round
-is authorized under the current review budget** — the next legally
-allowed action is an explicit owner decision on a different control
-model or on the specific remediations the Round 3 reviewer identified
-(fix `grep -f`, pin/hash the trusted-script allowlist and protect
-`.claude/security/**`, register the guard in `CAPABILITY_REGISTRY.md`),
-not another automatic review iteration. The piecemeal pre-Phase-7 work
-listed in the prior version of this note (Phase 3 drills, F5-011,
-F5-001, the Notion-scope audit) is superseded as the current record by
-the formal Phase 7 pass above, but remains valid supporting evidence,
-not retracted.
+v1's four rounds of structurally new findings.
+
+**The owner then separately authorized a narrowly-scoped remediation
+pass (2026-09-07, explicitly NOT a Round 4 review) for the 3 named
+P1s.** `_grep_readonly`'s flag-membership check now denies every
+bundled/long-form `-f`/`--file` spelling, not just the one literal token
+Round 2 tested. `_ALLOWED_PYTHON_SCRIPTS` was converted from a bare path
+set to SHA-256 content-hash pinning via a new `_script_integrity_ok`
+check — tamper *detection* (a tampered file can no longer be executed
+through the guard) but not write *prevention* (`.claude/settings.json`
+was not touched this pass; that half is a disclosed, separately-tracked
+residual). The guard was registered as **CAP-007** in
+`CAPABILITY_REGISTRY.md`, honestly at `QUALIFIED — NOT APPROVED` rather
+than force-labeled `APPROVED`, since an `APPROVED` verdict requires an
+Opus review this remediation pass was explicitly not authorized to run.
+20 new regression tests were added (194/194 passing); all validators and
+baseline hashes were re-verified clean. **This is remediation, not
+certification — `BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN, and
+no further independent review round is authorized without fresh owner
+authorization.** Full record:
+`evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+The piecemeal pre-Phase-7 work listed in the prior version of this note
+(Phase 3 drills, F5-011, F5-001, the Notion-scope audit) is superseded
+as the current record by the formal Phase 7 pass above, but remains
+valid supporting evidence, not retracted.

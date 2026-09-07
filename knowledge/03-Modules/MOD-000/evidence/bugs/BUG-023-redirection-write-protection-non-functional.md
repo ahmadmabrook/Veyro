@@ -153,6 +153,17 @@ this bug named, recurring in a new location. See
 the owner's gate rule requires overall P0=0/P1=0, not met. No further
 review round is authorized. No `.claude/settings.json` edit was made.
 
+## Round 3 P1 remediation (2026-09-07): none of the 3 P1s were in this bug's class; still OPEN
+
+None of Round 3's three P1s (`grep -f` handling, trusted-script hash
+pinning, capability registration) were in this bug's own class
+(redirection/alternate-write primitives), which Round 3 had already
+re-confirmed CLOSED for the Bash surface, scope caveat unchanged
+(Write/Edit/MCP tools still bypass this hook entirely). This
+remediation pass did not touch anything in this bug's scope. **This bug
+remains OPEN** — narrowly-scoped remediation, not an independent review.
+Full record: `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
 ## Affected
 
 `.claude/settings.json` (5 non-functional deny entries, 2 missing `tee`
@@ -160,4 +171,5 @@ entries), `knowledge/03-Modules/MOD-000/evidence/security/
 PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06 rows corrected),
 `knowledge/03-Modules/MOD-000/evidence/bugs/BUG-013-*.md` (remediation
 section corrected), `knowledge/03-Modules/MOD-000/evidence/security/
-BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
+BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.

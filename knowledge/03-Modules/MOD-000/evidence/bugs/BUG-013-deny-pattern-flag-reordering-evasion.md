@@ -247,6 +247,19 @@ the whole guard for certification, not per-bug clearance, and that bar
 was not met. No further review round is authorized. No
 `.claude/settings.json` edit was made.
 
+## Round 3 P1 remediation (2026-09-07): narrowly-scoped fixes applied, still OPEN — not an independent review
+
+Per explicit owner authorization, a narrowly-scoped Sonnet remediation
+pass fixed Round 3's three P1 findings (`grep -f` handling, trusted-
+script hash pinning, `CAPABILITY_POLICY` registration as CAP-007) —
+none of which were in this bug's own class (`rm`-recursive delete),
+which Round 3 had already re-confirmed CLOSED for the Bash surface. 20
+new regression tests added (194/194 passing). **This bug remains OPEN**
+— this was explicitly a remediation pass, not a Round 4 review; no
+independent Opus evaluation of these fixes has occurred, and the owner's
+instruction for this turn was specifically not to request one. Full
+record: `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
 ## Affected
 
 `.claude/settings.json`, `knowledge/03-Modules/MOD-000/evidence/
@@ -257,4 +270,5 @@ the git-injection form specifically), `knowledge/03-Modules/MOD-000/
 evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06
 disposition corrected re: redirection, see `BUG-023`),
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`,
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.

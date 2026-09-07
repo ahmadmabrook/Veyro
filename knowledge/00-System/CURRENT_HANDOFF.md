@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-07 (chunk 22 — owner authorized exactly one final review round (Round 3) for the v2 guard, gated on P0=0/P1=0; `veyro-security-reviewer` (available directly, no substitution needed) returned **P0=0, P1=3, P2=5, Editorial=7, verdict BLOCKED**; architecture held under 500,000 fresh adversarial cases with zero fail-open results and all historical fixtures re-denying correctly; the 3 P1s local (a Round-2 `grep -f` fix that covered only its tested spelling not the class; an unpinned/unprotected trusted-Python-script allowlist; the guard never registered under `CAPABILITY_POLICY.md`); per the owner's exact pre-specified gate rule, this session STOPPED — no patch, no Round 4, no activation, no `.claude/settings.json` edit; recorded verbatim: **CURRENT PRETOOLUSE BASH CONTROL NOT CERTIFIABLE UNDER THE APPROVED REVIEW BUDGET**; **BUG-013/022/023 all remain OPEN**; **PHASE 7 GATE: still BLOCKED**; Phase 8 remains LOCKED; no further review round is authorized)
+updated: 2026-09-07 (chunk 23 — owner authorized a narrowly-scoped Sonnet remediation pass, explicitly NOT a Round 4 review, for Round 3's 3 P1 findings only; `grep -f` flag-membership check fixed (every bundled/long-form spelling now denies); `_ALLOWED_PYTHON_SCRIPTS` converted to SHA-256 content-hash pinning (tamper-detection; `.claude/settings.json` write-protection remains a disclosed residual, untouched this pass); guard registered as **CAP-007**, honestly `QUALIFIED — NOT APPROVED` (an Opus APPROVE decision was explicitly out of scope this turn); 20 new regression tests, 194/194 passing; all validators + 4 baseline hashes re-verified clean; **BUG-013/022/023 all remain OPEN — this was remediation, not certification**; **PHASE 7 GATE: still BLOCKED**; Phase 8 remains LOCKED; `.claude/settings.json` not staged/modified; no further independent review round authorized without fresh owner action)
 ---
 
 # Current Handoff
@@ -23,8 +23,96 @@ full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-19-2026-09-06-bug013-narrowed-bug022-023-found.md`.**
 **Fourth application (2026-09-07, chunk 22): chunk 20 compressed to a
 summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-20-2026-09-06-bash-guard-v1-four-review-rounds.md`**
-— chunks 22 and 21 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-20-2026-09-06-bash-guard-v1-four-review-rounds.md`.**
+**Fifth application (2026-09-07, chunk 23): chunk 21 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-21-2026-09-06-v1-superseded-v2-redesign-2round-cap.md`**
+— chunks 23 and 22 are now the 2 kept in full.
+
+## What happened chunk 23, 2026-09-07 — narrowly-scoped remediation of Round 3's 3 P1 findings (explicitly NOT a Round 4 review); BUG-013/022/023 remain OPEN
+
+Per explicit owner authorization: fix exactly the three Round 3 P1
+findings, add regression tests, rerun the suite and affected validators,
+verify baselines and git integrity, update evidence — nothing more.
+Binding: not a Round 4 review; no Phase 8; no MOD-001; no guard
+activation; no `.claude/settings.json` edit; no owner activation patch;
+no requesting or running another independent security review this turn.
+
+**1. `grep -f` handling — fixed.** Round 3's P1-1 was that the Round-2
+fix only matched the exact token `-f`, leaving every bundled short-flag
+spelling (`-rf`, `-nf`, `-if`, `-hf`) and both long forms (`--file`,
+`--file=...`) able to leak an unbounded file read. A new
+`_requests_grep_pattern_file(flags)` helper in `bash_guard.py` matches
+any short flag containing a literal lowercase `f` after the dash, plus
+the exact long forms — denying the whole `-f` pattern-file mode outright
+in every spelling rather than trying to path-check it (per the owner's
+explicit instruction not to broaden grep's recognized shapes). Uppercase
+`-F` (grep's real, unrelated fixed-strings flag) is untouched, preserving
+the case-sensitive-exact-shape convention the rest of the file uses. 10
+new regression tests (`RR3_GrepDashFAllSpellings`): every bad spelling
+denies, `-F` and a plain `grep -rn` still allow.
+
+**2. Trusted-script allowlist integrity — fixed, with one disclosed
+residual.** Round 3's P1-2 was that `_ALLOWED_PYTHON_SCRIPTS` trusted a
+path string alone — no content check — so any edit to one of the seven
+allowlisted scripts stayed silently, permanently trusted.
+`_ALLOWED_PYTHON_SCRIPTS` is now a `{path: sha256_hex}` map; a new
+`_script_integrity_ok()` reads the real file (resolved from
+`bash_guard.py`'s own location via `REPO_ROOT`, not process cwd) and
+denies on any hash mismatch, missing file, or unlisted path — no
+fallback that trusts the path alone. Update governance documented
+inline: a script edit and its hash update must land in the same commit.
+**Residual, explicitly not closed:** this is tamper *detection*, not
+write *prevention* — `.claude/settings.json`'s Edit/Write deny coverage
+still does not extend to `.claude/security/**`, and this pass did not
+touch `.claude/settings.json` per instruction; a future owner-authorized
+settings change is still needed to fully close this half. 5 new isolated
+unit tests (`RR3_TrustedScriptIntegrity`, using `tempfile` fixtures — no
+real repository file read, written, or mutated) plus 5 new end-to-end
+positive tests confirming all 7 real pinned hashes are correct against
+the actual current repository files.
+
+**3. `CAPABILITY_POLICY` registration — fixed, honestly scoped.**
+Round 3's P1-3 was that the guard — a project-authored executable hook
+with filesystem scope — had never been registered under this project's
+capability-governance process. Registered as **CAP-007** in
+`CAPABILITY_REGISTRY.md` with the full 15-field schema already used by
+CAP-001 through CAP-006 — no parallel mechanism invented.
+`review_status` recorded as **`QUALIFIED — NOT APPROVED`**, not
+force-labeled `APPROVED`: `CAPABILITY_POLICY.md`'s own model-routing rule
+bars a capability from becoming `APPROVED` "solely from a Sonnet
+implementation run," and this turn's explicit instruction was not to
+request an Opus review — recording `APPROVED` here would have violated
+the exact policy this registration exists to demonstrate compliance
+with. Deliberately **not** added to
+`knowledge/03-Modules/MOD-000/evidence/module-capabilities.yaml` this
+pass, since `validate_capabilities.py` requires every manifest-
+referenced capability's registry row to contain "approved" and MOD-000
+does not depend on this unactivated guard for any real gate yet — adding
+it now would either fail the validator or falsely claim a live
+dependency; deferred until the guard is both `APPROVED` and activated.
+The registry's `lifecycle_status` field (`ACTIVE`/`DEPRECATED`/
+`REVOKED`) has no value for "reviewed, not yet approved, not yet
+activated" — flagged as a schema gap (in the spirit of this project's
+existing BUG-010/F5-027 pattern) rather than force-fit.
+
+**Verification: 194/194 tests passing** (174 pre-existing + 20 new).
+`verify_baselines.py` — PASS, all 4 hashes unchanged.
+`validate_capabilities.py` — PASS, 6 capability/capabilities (CAP-007
+correctly not manifest-bound, so invisible to this check by design).
+`validate_catalog.py` — PASS, 0 errors. `evidence_integrity_check.py` —
+PASS (one new expected-forward-reference entry added for the still-
+unauthored owner settings patch file, matching the project's existing
+`APPROVAL.md`-style forward-reference pattern). Local HEAD verified
+against `origin/main` after commit (see this chunk's commit SHA below).
+
+**`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.** This chunk is
+remediation, not certification — no independent Opus evaluation of these
+three fixes has occurred, and none was authorized this turn.
+`.claude/settings.json` was not staged or modified — it remains the
+owner's own untouched pending edit. **Phase 7 gate remains BLOCKED.
+Phase 8 is NOT legally unlocked.** Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
 
 ## What happened chunk 22, 2026-09-07 — owner-authorized final Round 3 review of the v2 Bash guard: BLOCKED (P1=3); no further round authorized; BUG-013/022/023 remain OPEN
 
@@ -112,120 +200,9 @@ an explicit owner decision on a different control model, or on the
 specific remediations Round 3 identified. Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
 
-## What happened chunk 21, 2026-09-06 — v1 Bash guard superseded (4 failed review rounds); v2 allow-by-construction redesign built and reviewed under an explicit 2-round cap; BUG-013/022/023 remain OPEN
+## What happened chunk 21, 2026-09-06 (compressed 2026-09-07 per retention rule) — v1 Bash guard superseded; v2 allow-by-construction redesign built and reviewed under an explicit 2-round cap; BUG-013/022/023 remain OPEN
 
-Per explicit instruction: chunk 20's pattern — four independent review
-rounds of `bash_guard.py`, every single one finding a new P0-severity
-bypass — was treated as an architectural finding, not a queue of more
-patches. Explicit scope this chunk: redesign the Bash enforcement model
-into a simpler fail-closed architecture that does not attempt to
-implement a general Bash/zsh parser; do not continue patching individual
-syntax bypasses; do not activate any guard; do not modify
-`.claude/settings.json`; do not begin Phase 8; do not start MOD-001; a
-hard cap of two review rounds for this redesign pass, with an explicit
-instruction to STOP after two rounds if P0/P1 remain rather than keep
-iterating.
-
-**v1 superseded, not deleted.** `.claude/security/bash_guard.py` (the
-deny-by-enumeration guard from chunk 20) and its test suite were moved
-to `.claude/security/superseded_v1/` with a README explaining why —
-preserved as durable evidence of what was tried and why it failed, per
-this project's durability discipline.
-
-**New architecture: allow-by-construction, fail closed on ambiguity.**
-Rather than trying to recognize dangerous shell constructs (v1's
-approach, which kept meeting new ones), v2 does the opposite: (1) any
-shell composition/substitution marker anywhere in the raw command
-(`;`, `&&`, `||`, `|`, `&`, backtick, `$(`, `<(`, `>(`, `<<`, `>`, `<`,
-newline) is an unconditional, non-quote-aware deny — no exceptions; (2)
-what's left is tokenized with `shlex`, parse failure denies; (3) the
-exact tokenized argv must match one of a small explicit allowlist of
-command families (Class A safe read-only: git status/log/diff/show/
-rev-parse/ls-files/branch-list/remote-read/fetch-scoped/worktree-list/
-stash-list, plus find/shasum/ls/cat/head/tail/wc/pwd/stat/grep with
-restricted flags, plus `python3` limited to ~7 allowlisted project
-validator scripts; Class B narrowly governed mutation: `git add
-<specific safe paths>`, `git commit -m <msg>` or `-F <file>`, `git push`
-with zero flags, `git checkout -b <branch>`, `mkdir -p` under
-`knowledge/` only) — anything else, including every syntactic form v1
-tried and failed to defend against by recognition, is an explicit deny.
-Unlike v1 (silent when it didn't recognize a specific known-bad
-pattern), v2 renders an explicit ALLOW or DENY on every single Bash call
-once activated — UNKNOWN MUST DENY, with no third "defer" outcome
-anywhere in the file. `veyro-security-reviewer` was not spawnable
-directly this session (custom agent type unavailable); both v2 review
-rounds used `general-purpose` at Opus tier, explicitly briefed to read
-and adopt that role's own charter file
-(`.claude/agents/veyro-security-reviewer.md`) as its operating
-instructions before reviewing — disclosed here as a deviation from the
-normal agent-invocation path, not concealed.
-
-**Round 1** confirmed the architecture itself sound (traced every
-family-dispatch exit path, confirmed `classify()` always raises a
-verdict) and found **2 P0 + 4 P1 + 5 P2 + 6 Editorial**, all local
-implementation gaps: `git push`/`fetch` refspec syntax (`:branch`
-delete, `+branch` force) expressed as positionals bypassing the
-flag-based exclusion; `git add` protected-path check defeated by
-pathspec magic (`:/`), bare directory-level add (`git add .claude`),
-traversal, and git's own glob expansion; the project's mandated
-multi-line/attribution-trailer commit format being structurally
-impossible under an `-m`-only design; routine read-only shapes wrongly
-denied (`--porcelain`, `--format=`, `diff <ref> -- <path>`, no
-`checkout -b`); arbitrary URLs accepted by a "read-only" fetch/remote
-family; plus a `main()` path where a malformed JSON payload could raise
-uncaught and fail OPEN. **All fixed same session** via one shared
-mechanism — a strict literal-relative-path charset
-(`_is_safe_relative_path`) gating mutation-family path arguments, and a
-strict ref/remote charset (`_is_safe_ref_or_remote`, excluding `:`/`+`
-entirely) gating ref-consuming families — plus a new `git commit -F
-<file>` form so the attribution trailer never has to pass through the
-Bash command string as literal text. Test suite: 111 → 145.
-
-**Round 2** (the maximum permitted for this redesign pass) independently
-re-verified round 1's fixes (8 of 10 fully closed, 2 partially) and
-found **1 P0 + 2 P1 + 4 P2 + 5 Editorial** new findings — all traced to
-one root cause: the strict-charset mechanism had been wired into
-mutation and ref-consuming families, but the plain read-only file
-families (`cat`/`head`/`tail`/`wc`/`stat`/`grep`/`find`/`ls`/`shasum`)
-were still on a much weaker check that never rejected `$HOME`-style
-expansion, `..` traversal, or bare glob characters — most sharply,
-`find . *`, where a real shell's glob expansion of a maliciously-named
-file (creatable via the ungoverned Write tool) could inject a
-destructive predicate the guard never sees as text, reaching the exact
-BUG-013 class through an ALLOW verdict. Also: `git push /tmp/exfil.git`/
-`git push ~/exfil.git` (the round-1 ref/remote charset's "closes
-arbitrary remotes" claim held for URLs but not plain filesystem paths).
-**Reviewer's explicit architectural determination — the load-bearing
-judgment call this task required before proceeding further:** *"a small
-number of local bugs in an otherwise-sound design... both are bounded,
-enumerable, single-mechanism fixes of the same shape that already
-succeeded."* Re-confirmed independently with 120,000 fresh fuzz cases:
-zero fail-open paths, all v1-era regression fixtures still deny
-correctly. **Fixed same session** by making `_is_safe_relative_path` the
-single shared gate for every path-shaped argument in every family
-(mutation and read-only alike), and rewriting `find`'s walker to
-distinguish a value-taking flag's value (which may legitimately contain
-wildcards) from a bare positional (which must be a safe literal path).
-Test suite: 145 → 174.
-
-**The 2-round cap has now been reached.** Per explicit instruction, no
-third review was dispatched — even though the round-2 fixes reuse a
-mechanism both reviewers independently confirmed works everywhere it has
-been wired in. Those fixes are **unverified by independent review** and
-are not represented as certified. To be precise about what the cap does
-and does not mean: the second reviewer's own explicit determination was
-that the remaining findings are local implementation gaps, not evidence
-the allow-by-construction approach is unworkable under the current
-Claude Code Bash/PreToolUse model — both facts are recorded because they
-point to different next steps, and per the explicit cap the choice of
-which belongs to the owner now, not to another automatic iteration.
-
-**`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.** No
-`.claude/settings.json` edit was made. The owner-facing settings-
-integration patch file was not authored — activation requires a review
-round that returns P0=0/P1=0, which this pass did not reach. **Phase 7
-gate remains BLOCKED. Phase 8 is NOT legally unlocked.** Full record:
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
+v1 (deny-by-enumeration, 4 failed rounds) was superseded per explicit architectural instruction, preserved at `.claude/security/superseded_v1/`. v2 was built from scratch: allow-by-construction, fail closed on ambiguity — ban all shell composition outright, tokenize the remainder, match the exact argv against a small explicit command-family allowlist, anything else denies. Round 1 (2P0+4P1+5P2+6Ed) and Round 2 (1P0+2P1+4P2+5Ed, the redesign-pass cap) both independently judged the architecture itself sound; all findings were local implementation gaps, fixed via a shared strict-charset mechanism (suite 111→145→174). **BUG-013/022/023 remained OPEN** — the cap was reached without a round returning P0=0/P1=0. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-21-2026-09-06-v1-superseded-v2-redesign-2round-cap.md`.
 
 ## What happened chunk 20, 2026-09-06 (compressed 2026-09-07 per retention rule) — built PreToolUse Bash guard v1 for BUG-013/022/023; FOUR independent review rounds, every one found new P0s; guard NOT certified, superseded in chunk 21
 
@@ -535,7 +512,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## What is NOT done (Phases 7-10)
 
-- Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, and an owner-authorized final Round 3 (2026-09-07), **GATE: BLOCKED, final** (`BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all remain OPEN — Round 3 returned P0=0/P1=3, verdict BLOCKED, and per the owner's exact gate rule no further review round is authorized — see `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`, `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for v1 history, and `evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`). Not PASS, and not certifiable under the current review budget — next step is an explicit owner decision on a different control model or on Round 3's identified fixes.
+- Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, an owner-authorized final Round 3 (BLOCKED, P0=0/P1=3), and a narrowly-scoped Sonnet remediation of those 3 P1s (2026-09-07, not a review), **GATE: BLOCKED** (`BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all remain OPEN — the 3 P1s were fixed same day but not independently re-reviewed, so per this project's standing discipline none of the three bugs are certified closed — see `evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`, `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for v1 history, and `evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md`). Not PASS — next step is an explicit owner decision on requesting a fresh independent review of the remediation (the review budget for it must be newly authorized) or a different control model.
 - Phase 8 — cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046. **Blocked on Phase 7.**
 - Phase 9 — fresh-session restoration proof.
 - Phase 10 — pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
@@ -544,15 +521,15 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 ## Next legally allowed action
 
-**PHASE 7 GATE: BLOCKED, final (chunk 22, 2026-09-07).** v1's guard was superseded (4 failed review rounds); v2's allow-by-construction redesign used its explicit 2-round review cap (both rounds judged the architecture sound); the owner then authorized exactly one further round (Round 3) as the final verification round, gated on P0=0/P1=0 for activation. Round 3 (`veyro-security-reviewer`, fresh context) returned **P0=0, P1=3, P2=5, Editorial=7 — verdict BLOCKED.** The architecture held completely (500,000 fresh adversarial cases, zero fail-open results, every historical fixture re-denying correctly); the three P1s are local (a Round-2 `grep -f` fix that covered only its tested spelling; an unpinned/unprotected trusted-Python-script allowlist; the guard never registered under `CAPABILITY_POLICY.md`). Per the owner's exact, pre-specified gate rule, this session **stopped**: no patch, no Round 4 request, no activation, no `.claude/settings.json` edit. Recorded verbatim as instructed: **CURRENT PRETOOLUSE BASH CONTROL NOT CERTIFIABLE UNDER THE APPROVED REVIEW BUDGET.** `BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN. Phase 8 is NOT legally unlocked. **No further review round is authorized under the current review budget.** Full record: `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
+**PHASE 7 GATE: BLOCKED (chunk 23, 2026-09-07).** v1's guard was superseded (4 failed review rounds); v2's allow-by-construction redesign used its explicit 2-round review cap (both rounds judged the architecture sound) plus one owner-authorized final Round 3, which returned **P0=0, P1=3, P2=5, Editorial=7 — verdict BLOCKED** (three local findings: a Round-2 `grep -f` fix that covered only its tested spelling; an unpinned/unprotected trusted-Python-script allowlist; the guard never registered under `CAPABILITY_POLICY.md`). Per the owner's exact gate rule, that session stopped and recorded **CURRENT PRETOOLUSE BASH CONTROL NOT CERTIFIABLE UNDER THE APPROVED REVIEW BUDGET.**
 
-**Architectural history:** `permissions.deny` glob-on-command-string matching (settings.json) failed; v1's deny-by-enumeration `PreToolUse` guard failed four independent review rounds trying to *recognize* dangerous shell constructs — every round found a fresh syntactic shape it hadn't modeled. v2 inverted the model: allow-by-construction, fail closed on ambiguity, banning shell composition outright and matching only exact known-good command shapes. All three v2 review rounds (including this final Round 3) confirmed this approach itself is sound — every round's findings were confined to specific family validators or supply-chain gaps, never evidence of a new unbounded search space. That is a materially different failure signature than v1's, and is the basis for all three reviewers' "local bug, not architectural" verdicts. Round 3's own P1-1 is a useful caution for future work: a remediation that closes the one fixture a review tested is not the same as closing the class.
+**The owner then separately authorized a narrowly-scoped remediation pass (chunk 23) for those 3 P1s only — explicitly not a Round 4 review.** All three were fixed: `grep -f`'s flag-membership check now denies every bundled/long-form spelling; `_ALLOWED_PYTHON_SCRIPTS` is now SHA-256 content-hash pinned (tamper-detection — the `.claude/settings.json` write-protection half remains a disclosed, separately-tracked residual, since that file was not touched this pass); the guard is registered as **CAP-007**, honestly `QUALIFIED — NOT APPROVED` (an `APPROVED` verdict needs an Opus review this turn was explicitly not authorized to run). 20 new regression tests (194/194 passing); all validators and baseline hashes re-verified clean. Full record: `evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
 
-**The next legally allowed action is now squarely the owner's, not another automatic review round** (the review budget — 2-round redesign cap plus the one authorized final round — has been fully used, and the owner's gate rule explicitly forbids requesting a Round 4). Two paths, either owner-directed:
-1. **Direct the specific remediations Round 3 identified** (fix `_grep_readonly`'s flag-membership check or drop `-f` support; content-hash-pin `_ALLOWED_PYTHON_SCRIPTS` and extend `.claude/settings.json`'s Edit/Write deny coverage to `.claude/security/**`; register the guard in `CAPABILITY_REGISTRY.md` with a full supply-chain row) — this would need a fresh owner authorization for whatever review round follows those fixes, since the current budget is spent.
-2. **Direct a different control model entirely**, if the owner judges three rounds without a clean pass (across two independent architectures) as reason enough to reconsider the approach.
+**`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN — remediation is not certification.** No independent Opus evaluation of these three fixes has occurred. Phase 8 is NOT legally unlocked. `.claude/settings.json` was not staged or modified.
 
-Whichever the owner chooses: once a review round genuinely returns P0=0/P1=0, author `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md` (the exact `.claude/settings.json` addition, insertion point, and post-activation live-test matrix), have the owner apply it, live-verify, close `BUG-013`/`BUG-022`/`BUG-023`, update `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`BUG_REGISTRY.md`/`LOAD_SECURITY.md` to **PHASE 7 GATE: PASS**, mirror to Notion, commit, push. Only then is Phase 8 legally unlocked.
+**Architectural history:** `permissions.deny` glob-on-command-string matching (settings.json) failed; v1's deny-by-enumeration `PreToolUse` guard failed four independent review rounds trying to *recognize* dangerous shell constructs — every round found a fresh syntactic shape it hadn't modeled. v2 inverted the model: allow-by-construction, fail closed on ambiguity, banning shell composition outright and matching only exact known-good command shapes. All three v2 review rounds (including the final Round 3) confirmed this approach itself is sound — every round's findings were confined to specific family validators or supply-chain gaps, never evidence of a new unbounded search space. Round 3's own P1-1 remains a useful caution for future work: a remediation that closes the one fixture a review tested is not the same as closing the class — worth remembering when this chunk's own fixes eventually get reviewed.
+
+**The next legally allowed action is the owner's: authorize a fresh independent review of this remediation** (a new review round, not a continuation of the exhausted Round 3 budget — this needs its own explicit authorization, scope, and gate rule, the same discipline used for Round 3 itself), or direct a different path entirely. Once a review round genuinely returns P0=0/P1=0, author `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md` (the exact `.claude/settings.json` addition, insertion point, and post-activation live-test matrix), have the owner apply it, live-verify, close `BUG-013`/`BUG-022`/`BUG-023`, update `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`BUG_REGISTRY.md`/`LOAD_SECURITY.md` to **PHASE 7 GATE: PASS**, mirror to Notion, commit, push. Only then is Phase 8 legally unlocked.
 
 0. **PHASE 6 GATE: PASS** (chunk 17) — real manual QA via genuinely fresh-context, technically model-attested Opus `veyro-manual-qa`. All 7 required scenarios PASS/correctly-BLOCKED with real evidence; BUG-011 filed and fixed same day.
 0b. **PHASE 5 GATE: APPROVED** (chunk 16) — BUG-007's structural DC-05 gap was closed via real scenario execution, independently confirmed genuine by a third, a fourth, AND a fifth fresh-context `veyro-code-reviewer` re-review; the fifth returned P0=0/P1=0, verdict APPROVED.
