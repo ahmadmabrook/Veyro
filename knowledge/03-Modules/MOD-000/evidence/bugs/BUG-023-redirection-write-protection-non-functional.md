@@ -133,10 +133,31 @@ Not fixed this chunk — recording and evidence-correction only, per
 explicit instruction not to modify `.claude/settings.json` in this
 session.
 
+## Round 3 (2026-09-07): final owner-authorized review round — still OPEN
+
+`veyro-security-reviewer` returned P0=0, P1=3, verdict BLOCKED. This
+bug's class (redirection/alternate-write primitives) was independently
+re-confirmed CLOSED **for the Bash surface**: every redirection spelling
+dies at Stage 1 on the raw string before any parsing, and every v1-era
+write primitive (`tee`, `sed -i`, `mv`, `cp`, `dd`, `rsync`, `scp`,
+`curl -o`, `wget -O`, etc.) is simply an unknown command. The scope
+caveat already on this bug is unchanged and now independently
+re-verified: closure is Bash-only — Write/Edit/NotebookEdit/MCP tools
+never reach this hook, and remain governed solely by
+`.claude/settings.json`'s globs, which (per Round 3's P1-2) do not cover
+`.claude/security/**`. None of Round 3's three P1s are in this bug's
+redirection/write-primitive class directly, but P1-2's write-protection
+gap on the guard's own directory is the same underlying failure mode
+this bug named, recurring in a new location. See
+`BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`. **This bug remains OPEN** —
+the owner's gate rule requires overall P0=0/P1=0, not met. No further
+review round is authorized. No `.claude/settings.json` edit was made.
+
 ## Affected
 
 `.claude/settings.json` (5 non-functional deny entries, 2 missing `tee`
 entries), `knowledge/03-Modules/MOD-000/evidence/security/
 PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06 rows corrected),
 `knowledge/03-Modules/MOD-000/evidence/bugs/BUG-013-*.md` (remediation
-section corrected).
+section corrected), `knowledge/03-Modules/MOD-000/evidence/security/
+BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.

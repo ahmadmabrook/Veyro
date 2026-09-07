@@ -1,7 +1,8 @@
 ---
 doc: BASH_GUARD_V2_ARCHITECTURE
-status: IN PROGRESS — 2-round review cap for this redesign pass reached; NOT certified; BUG-013/022/023 remain OPEN
+status: BLOCKED — owner-authorized Round 3 (final round) returned P0=0/P1=3; not certified; BUG-013/022/023 remain OPEN; no further round authorized
 date: 2026-09-06
+updated: 2026-09-07
 ---
 
 # `.claude/security/bash_guard.py` v2 — allow-by-construction redesign
@@ -192,11 +193,32 @@ round that returns P0=0/P1=0, which this pass did not reach.
 | Governed mutation pathways (Class B) | n/a | 5 (git add / git commit -m / git commit -F / git push / git checkout -b / mkdir -p) |
 | Unknown-command default | silent no-op (defer to `.claude/settings.json`) | explicit DENY |
 
+## Round 3 (2026-09-07) — final owner-authorized review round: BLOCKED
+
+The owner authorized exactly one further review round as the final
+verification round for this architecture, with activation/patch-creation
+conditioned on P0=0 AND P1=0. `veyro-security-reviewer` (Opus, fresh
+context, available directly this session — no substitution needed)
+returned **P0=0, P1=3, P2=5, Editorial=7**, verdict **BLOCKED**. The
+architecture itself held under 500,000 fresh adversarial cases with zero
+fail-open results and all historical BUG-013/022/023 fixtures re-denying
+correctly; the three P1s are local (a Round-2 `grep -f` fix that only
+covered its tested spelling, not the class; the allowlisted-Python-script
+mechanism trusting mutable, unhashed, unprotected file paths; and the
+guard itself not being a registered capability under
+`CAPABILITY_POLICY.md`). Per the owner's exact gate rule, this session
+does not patch, does not request a Round 4, does not activate, and does
+not touch `.claude/settings.json`. **BUG-013/022/023 remain OPEN. Phase 7
+remains BLOCKED. Phase 8 remains LOCKED.** No further review round is
+authorized under the current review budget. Full record:
+`BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
+
 ## Affected / cross-referenced
 
 `.claude/security/bash_guard.py`, `.claude/security/tests/test_bash_guard.py`,
 `.claude/security/superseded_v1/**`, `knowledge/03-Modules/MOD-000/
 evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` (v1 history),
+`BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md` (Round 3 record),
 `HOOK_CONTRACT_VERIFICATION_2026-09-06.md`, `BUG_REGISTRY.md`,
 `BUG-013-*.md`, `BUG-022-*.md`, `BUG-023-*.md`, `CURRENT_STATE.md`,
 `CURRENT_HANDOFF.md`, `LOAD_SECURITY.md`.

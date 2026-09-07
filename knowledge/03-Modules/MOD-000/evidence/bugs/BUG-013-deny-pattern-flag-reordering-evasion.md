@@ -230,6 +230,23 @@ redesign pass has been reached without an independent review confirming
 P0=0/P1=0, so per this project's standing discipline it is not certified
 closed even though v2 structurally excludes this bug's specific class.
 
+## Round 3 (2026-09-07): final owner-authorized review round — still OPEN
+
+The owner authorized exactly one further review round, gated on
+P0=0/P1=0 for activation. `veyro-security-reviewer` returned P0=0,
+P1=3, verdict BLOCKED. This bug's specific class (`rm -r`/`-R`/`-rf` and
+all recursive-delete variants, `find -delete`) was independently
+re-confirmed CLOSED for the Bash surface — 30 variants tested, all
+denied, including new probes beyond the historical fixture set. None of
+Round 3's three P1s are in this bug's class (they are `grep -f`
+path-check gaps, an unpinned trusted-script list, and missing
+capability-registry entry — see
+`BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`). **This bug remains OPEN
+regardless** — the owner's gate rule requires overall P0=0/P1=0 across
+the whole guard for certification, not per-bug clearance, and that bar
+was not met. No further review round is authorized. No
+`.claude/settings.json` edit was made.
+
 ## Affected
 
 `.claude/settings.json`, `knowledge/03-Modules/MOD-000/evidence/
@@ -239,4 +256,5 @@ argument-ordering caveat that existed before this fix, now resolved for
 the git-injection form specifically), `knowledge/03-Modules/MOD-000/
 evidence/security/PHASE7_SECURITY_REVIEW_2026-09-06.md` (SEC-05/SEC-06
 disposition corrected re: redirection, see `BUG-023`),
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`,
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.

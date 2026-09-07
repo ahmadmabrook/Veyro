@@ -1,7 +1,7 @@
 ---
 doc: MOD-000_LOAD_SECURITY
-status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign used its explicit 2-round cap, both rounds judged the architecture sound but neither returned P0=0/P1=0 — all 3 bugs (BUG-013/022/023) remain OPEN
-updated: 2026-09-06
+status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap plus one final owner-authorized Round 3 — all three judged the architecture sound, but Round 3 (the final round) returned P0=0/P1=3, verdict BLOCKED — all 3 bugs (BUG-013/022/023) remain OPEN, no further review round authorized
+updated: 2026-09-07
 ---
 
 # MOD-000 — Load/Security (index)
@@ -91,20 +91,41 @@ in an otherwise-sound design," re-confirmed via 120,000 fuzz cases with
 zero fail-open results. Test suite: 111 → 145 → 174. Full record:
 `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`.
 
-**The 2-round cap has been reached — per explicit instruction, no third
-review was dispatched.** The round-2 fixes are applied but unverified by
-independent review. **`BUG-013`, `BUG-022`, and `BUG-023` all remain
-OPEN.** Baseline hashes, the scenario-catalog validator, and the
-evidence-integrity checker were all independently re-verified clean.
-**Phase 7 gate: BLOCKED, not PASS** — per this project's standing rule,
-not self-waived. Unlike v1's pattern (four rounds, every one finding
-something structurally new, treated as architectural failure), both v2
-rounds found local, bounded implementation gaps in an architecture both
-reviewers judged sound — recorded honestly as a materially different
-situation, not glossed into the same conclusion. The next legally
-allowed action is an explicit owner decision on whether to grant a
-third review round, not another automatic iteration. The piecemeal
-pre-Phase-7 work listed in the prior version of this note (Phase 3
-drills, F5-011, F5-001, the Notion-scope audit) is superseded as the
-current record by the formal Phase 7 pass above, but remains valid
-supporting evidence, not retracted.
+**The owner then authorized exactly one further round (Round 3) as the
+final verification round for this architecture, gated on P0=0/P1=0 for
+activation.** `veyro-security-reviewer` (Opus, fresh context — available
+directly this session, no substitution needed) independently
+re-inspected the guard from scratch, re-tested every Round 1/Round 2
+finding's remediation, re-ran all historical BUG-013/022/023 bypass
+classes, and ran 500,000 fresh adversarial cases against `classify()`.
+Result: **P0=0, P1=3, P2=5, Editorial=7 — verdict BLOCKED.** The
+architecture held completely (zero fail-open cases across 500,000
+probes, every historical fixture denying correctly); the three P1s are
+local — a Round-2 `grep -f` fix that closed only its tested spelling,
+not the class (`-rf`/`-nf`/`-if`/`--file` variants still leak an
+unbounded file read); `_ALLOWED_PYTHON_SCRIPTS` trusting seven mutable,
+unhashed script paths that `.claude/settings.json` does not protect from
+Edit/Write (the guard's own directory has no write protection); and the
+guard itself never having been registered under `CAPABILITY_POLICY.md`.
+Per the owner's exact, pre-specified gate rule, any P0/P1 in this round
+means: stop, do not patch, do not request Round 4, do not activate, do
+not touch `.claude/settings.json`. Recorded verbatim as instructed:
+**CURRENT PRETOOLUSE BASH CONTROL NOT CERTIFIABLE UNDER THE APPROVED
+REVIEW BUDGET.** **`BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN.**
+Baseline hashes, the scenario-catalog validator, and the
+evidence-integrity checker were all independently re-verified clean this
+chunk. **Phase 7 gate: BLOCKED, not PASS.** Full record:
+`evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`. Across
+all three v2 rounds, findings were local and bounded — the design itself
+was never re-opened as a question, a materially different pattern from
+v1's four rounds of structurally new findings. **No further review round
+is authorized under the current review budget** — the next legally
+allowed action is an explicit owner decision on a different control
+model or on the specific remediations the Round 3 reviewer identified
+(fix `grep -f`, pin/hash the trusted-script allowlist and protect
+`.claude/security/**`, register the guard in `CAPABILITY_REGISTRY.md`),
+not another automatic review iteration. The piecemeal pre-Phase-7 work
+listed in the prior version of this note (Phase 3 drills, F5-011,
+F5-001, the Notion-scope audit) is superseded as the current record by
+the formal Phase 7 pass above, but remains valid supporting evidence,
+not retracted.

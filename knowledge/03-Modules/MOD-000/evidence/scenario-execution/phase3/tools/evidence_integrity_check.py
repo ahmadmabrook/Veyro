@@ -83,6 +83,12 @@ EXPECTED_LOCAL_ONLY = {
 # not a claimed-PASS evidence link). Absence here is expected, non-blocking.
 EXPECTED_NOT_YET_CREATED = {
     "knowledge/03-Modules/MOD-000/APPROVAL.md",
+    # The owner settings-activation patch: deliberately not authored until
+    # a Bash-guard review round returns P0=0/P1=0 (writing it earlier would
+    # imply a readiness the guard hasn't earned) — referenced in
+    # CURRENT_HANDOFF.md as the next step once that happens, per the
+    # BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md gate outcome.
+    "knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md",
     # Described in prose as a hypothetical/proposed throwaway test file
     # (SCN-020's canary-rule test idea), not a claim that it currently exists.
     ".claude/rules/canary.md",

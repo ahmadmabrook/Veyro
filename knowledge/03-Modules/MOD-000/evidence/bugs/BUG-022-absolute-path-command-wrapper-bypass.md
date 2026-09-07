@@ -129,9 +129,29 @@ standing discipline it is not certified closed.
 Not fixed this chunk — recording only, per explicit instruction not to
 modify `.claude/settings.json` in this session.
 
+## Round 3 (2026-09-07): final owner-authorized review round — still OPEN
+
+`veyro-security-reviewer` returned P0=0, P1=3, verdict BLOCKED. This
+bug's class (absolute-path/wrapper/case-variant invocation) was
+independently re-confirmed CLOSED for the Bash surface across the full
+historical fixture set plus new probes (`env`, `command`, `builtin`,
+`nice`, `sudo`, `doas`, `su -c`, `xargs`, `timeout`, `nohup`, `setsid`,
+`stdbuf`, `eval`, `exec`, `source`, every shell `-c` form, every inline
+interpreter invocation, case variants) — inline interpreter invocation
+confirmed genuinely unreachable, not merely unlisted. One of the three
+new P1s (`_ALLOWED_PYTHON_SCRIPTS` trusting seven mutable, unhashed
+paths with no write protection on `.claude/security/**`) is a residual
+of this bug's *class* via a different mechanism — re-entering
+wrapper-style arbitrary execution by rewriting a trusted script rather
+than wrapping an untrusted command. See
+`BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`. **This bug remains OPEN** —
+the owner's gate rule requires overall P0=0/P1=0, not met. No further
+review round is authorized. No `.claude/settings.json` edit was made.
+
 ## Affected
 
 `.claude/settings.json` (the entire `permissions.deny` list, structurally
 — every entry shares this gap), `knowledge/03-Modules/MOD-000/evidence/
 security/PHASE7_SECURITY_REVIEW_2026-09-06.md`, `knowledge/00-System/
-CURRENT_HANDOFF.md`.
+CURRENT_HANDOFF.md`, `knowledge/03-Modules/MOD-000/evidence/security/
+BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`.
