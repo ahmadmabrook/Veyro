@@ -1,7 +1,7 @@
 ---
 doc: MOD-000_LOAD_SECURITY
-status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap plus one final owner-authorized Round 3 (BLOCKED, P0=0/P1=3), then a narrowly-scoped remediation of the 3 P1s (not an independent review) — all 3 bugs (BUG-013/022/023) remain OPEN, no further review round authorized
-updated: 2026-09-07
+status: LIVE — N/A-with-justification for load; Phase 7 security/resilience executed; v1 Bash guard superseded after 4 failed review rounds; v2 allow-by-construction redesign went through its 2-round cap, a final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped remediation, and a fourth independent review — APPROVED FOR OWNER ACTIVATION (P0=0/P1=0) — all 3 bugs (BUG-013/022/023) moved to REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION, NOT closed; owner activation patch drafted, not applied
+updated: 2026-09-08
 ---
 
 # MOD-000 — Load/Security (index)
@@ -134,12 +134,44 @@ residual). The guard was registered as **CAP-007** in
 than force-labeled `APPROVED`, since an `APPROVED` verdict requires an
 Opus review this remediation pass was explicitly not authorized to run.
 20 new regression tests were added (194/194 passing); all validators and
-baseline hashes were re-verified clean. **This is remediation, not
-certification — `BUG-013`, `BUG-022`, and `BUG-023` all remain OPEN, and
-no further independent review round is authorized without fresh owner
-authorization.** Full record:
+baseline hashes were re-verified clean. Full record:
 `evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
-The piecemeal pre-Phase-7 work listed in the prior version of this note
-(Phase 3 drills, F5-011, F5-001, the Notion-scope audit) is superseded
-as the current record by the formal Phase 7 pass above, but remains
-valid supporting evidence, not retracted.
+
+**The owner then authorized one final independent verification pass on
+that remediation (2026-09-08) — explicitly not a reopening of the review
+loop.** A fourth independent fresh-context `veyro-security-reviewer`
+re-inspected the code from scratch, independently re-verified all three
+P1 fixes (27 `grep -f` spellings; symlink/tamper/exception-path probing
+of the hash-pinning mechanism in an isolated temp tree; a field-by-field
+CAP-007 audit against `CAPABILITY_POLICY.md`), re-ran the 194-test
+suite, and built ~250 of its own fresh adversarial fixtures across
+every historical threat category. **Result: P0=0, P1=0, P2=6,
+Editorial=9 — verdict APPROVED FOR OWNER ACTIVATION**, conditional on
+the eventual activation patch adding `.claude/security/**`
+write-protection — the reviewer's explicit determination is that its
+current absence IS certification-blocking for activation (the
+trusted-script hash pins live inside the same unprotected file), not a
+defect to wave away. The reviewer also determined CAP-007 now has
+sufficient independent evidence for `APPROVED` and specified the exact
+fields to record; **CAP-007 is now APPROVED** in
+`CAPABILITY_REGISTRY.md`. BUG-013/022/023's respective classes were all
+independently re-confirmed CLOSED for the Bash surface on the
+reviewer's own fresh fixtures, not merely the existing suite.
+
+**Per the owner's exact instruction, none of the three bugs are closed
+yet.** All three moved to **REMEDIATED — PENDING LIVE ACTIVATION
+VERIFICATION** — closure requires the owner to manually apply the
+drafted-not-applied activation patch
+(`evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`), start a
+fresh Claude Code session, and prove live that the hook executes,
+destructive fixtures deny, and safe operations remain unaffected. 6 P2
+and 9 Editorial findings remain as accepted-known residuals for a
+future, separately-authorized pass — not silently dropped. Full record:
+`evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
+**Phase 7 gate: still BLOCKED, not PASS** — this session applied nothing
+to `.claude/settings.json`, and Phase 7 cannot PASS until the three bugs
+actually close post-activation. The piecemeal pre-Phase-7 work listed in
+the prior version of this note (Phase 3 drills, F5-011, F5-001, the
+Notion-scope audit) is superseded as the current record by the formal
+Phase 7 pass above, but remains valid supporting evidence, not
+retracted.

@@ -1,6 +1,6 @@
 ---
 doc: BUG-013
-status: NARROWED (2026-09-06, RR-3) — git-injection half CLOSED by owner's manual edit; rm-recursive half remains OPEN, requires a further human edit
+status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's rm-recursive class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof
 found_date: 2026-09-06
 found_by: Phase 7 fresh-context Opus veyro-security-reviewer (SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-16, SEC-17); residual scope widened by an independent Phase 7 re-review (RR-2); git half confirmed CLOSED and rm half confirmed still OPEN by a third independent re-review (RR-3) after the owner's manual settings.json edit
 severity: P1 (primary), P2 (sub-findings)
@@ -259,6 +259,32 @@ new regression tests added (194/194 passing). **This bug remains OPEN**
 independent Opus evaluation of these fixes has occurred, and the owner's
 instruction for this turn was specifically not to request one. Full
 record: `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
+## Final independent verification (2026-09-08): APPROVED FOR OWNER ACTIVATION — status moved to REMEDIATED, PENDING LIVE ACTIVATION VERIFICATION
+
+A fourth independent fresh-context Opus review (`veyro-security-reviewer`,
+owner-authorized as the final verification pass on the remediation
+above) independently re-verified this bug's class (`rm`-recursive
+delete and all variants) against fresh adversarial fixtures it built
+itself, not just the existing suite, and confirmed it CLOSED for the
+Bash surface. Overall guard result: **P0=0, P1=0, P2=6, Editorial=9 —
+verdict APPROVED FOR OWNER ACTIVATION**, conditional on the owner
+activation patch including `.claude/security/**` write-protection (the
+reviewer determined its current absence is certification-blocking for
+*activation*, not a defect in the guard's code). CAP-007 (the guard's
+capability-registry entry) was APPROVED by this same review. The owner
+activation patch was drafted (not applied):
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`.
+
+**Per the owner's exact instruction, this bug is NOT closed yet.**
+Status moves to **REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION**:
+closure requires the owner to manually apply the settings patch, a
+fresh Claude Code session to start, the PreToolUse hook to be proven to
+actually execute, live destructive fixtures (including this bug's own
+`rm -r`/`-rf` class) to be proven denied, and safe operations to be
+proven unaffected — none of which a non-interactive session can perform
+on the owner's behalf. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
 ## Affected
 

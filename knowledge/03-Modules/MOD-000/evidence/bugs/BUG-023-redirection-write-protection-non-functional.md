@@ -1,6 +1,6 @@
 ---
 doc: BUG-023
-status: OPEN — also corrects a false prior "live-verified" claim in Phase 7 evidence and BUG-013
+status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's redirection/write-primitive class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof; also corrects a false prior "live-verified" claim in Phase 7 evidence and BUG-013
 found_date: 2026-09-06
 found_by: Third independent Phase 7 re-review (RR-3), fresh-context Opus veyro-security-reviewer, verifying the owner's manual BUG-013 settings.json edit
 severity: P1
@@ -163,6 +163,27 @@ re-confirmed CLOSED for the Bash surface, scope caveat unchanged
 remediation pass did not touch anything in this bug's scope. **This bug
 remains OPEN** — narrowly-scoped remediation, not an independent review.
 Full record: `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
+## Final independent verification (2026-09-08): APPROVED FOR OWNER ACTIVATION — status moved to REMEDIATED, PENDING LIVE ACTIVATION VERIFICATION
+
+A fourth independent fresh-context Opus review independently re-verified
+this bug's class (redirection/alternate-write primitives) with 19
+composition-marker fixtures, including markers embedded inside an
+otherwise-allowed command's own arguments, and confirmed it CLOSED for
+the Bash surface. The scope caveat already on this bug is re-confirmed
+unchanged: closure is Bash-surface-only, Write/Edit/NotebookEdit/MCP
+tools never reach this hook. Overall guard result: **P0=0, P1=0, P2=6,
+Editorial=9 — verdict APPROVED FOR OWNER ACTIVATION**, conditional on
+the activation patch protecting `.claude/security/**`. Drafted (not
+applied) patch:
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`.
+
+**Per the owner's exact instruction, this bug is NOT closed yet.**
+Status moves to **REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION** —
+closure requires the owner to apply the patch, a fresh session, live
+proof the hook executes, and live proof this bug's own redirection
+fixtures deny. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
 ## Affected
 

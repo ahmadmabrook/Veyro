@@ -1,6 +1,6 @@
 ---
 doc: BUG-022
-status: OPEN — requires architectural fix, not closeable by pattern enumeration alone
+status: REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION (2026-09-08) — v2 guard's absolute-path/wrapper class re-confirmed CLOSED for the Bash surface by a fourth independent review (P0=0/P1=0, APPROVED FOR OWNER ACTIVATION); NOT closed — awaits owner applying the drafted settings patch, a fresh session, and live proof
 found_date: 2026-09-06
 found_by: Third independent Phase 7 re-review (RR-3), fresh-context Opus veyro-security-reviewer, verifying the owner's manual BUG-013 settings.json edit
 severity: P1
@@ -163,6 +163,32 @@ remediation pass was explicitly instructed not to touch
 remediation, not an independent review; no Opus evaluation of this fix
 has occurred. Full record:
 `knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`.
+
+## Final independent verification (2026-09-08): APPROVED FOR OWNER ACTIVATION — status moved to REMEDIATED, PENDING LIVE ACTIVATION VERIFICATION
+
+A fourth independent fresh-context Opus review independently re-verified
+this bug's class (absolute-path/wrapper/case-variant invocation) against
+its own fresh fixtures — 26 wrapper/absolute-path/interpreter forms,
+including several not previously fixture-tested (`--force-with-lease`,
+`switch`, `restore`, `script`, `stdbuf`) — and confirmed it CLOSED for
+the Bash surface. The reviewer also gave the certification-blocking-
+weakness determination this bug's write-protection residual (above)
+specifically asked for: **yes, for activation** — the trusted-script
+hash pins live inside `bash_guard.py` itself, which has no write
+protection today, so the hash-pinning fix does not fully close this
+bug's wrapper-class re-entry until `.claude/security/**` is protected.
+Overall guard result: **P0=0, P1=0, P2=6, Editorial=9 — verdict APPROVED
+FOR OWNER ACTIVATION**, conditional on the activation patch including
+that exact protection. The drafted (not applied) patch:
+`knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`.
+
+**Per the owner's exact instruction, this bug is NOT closed yet.**
+Status moves to **REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION** —
+closure requires the owner to apply the patch, a fresh session, live
+proof the hook executes, live proof this bug's own wrapper/absolute-path
+fixtures deny, and live proof `.claude/security/**` is actually
+write-protected. Full record:
+`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
 
 ## Affected
 
