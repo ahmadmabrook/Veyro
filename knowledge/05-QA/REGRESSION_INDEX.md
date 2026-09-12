@@ -1,7 +1,7 @@
 ---
 doc: REGRESSION_INDEX
-status: LIVE — no permanent automated regression suite exists yet (known gap)
-updated: 2026-09-05
+status: LIVE — no permanent, CI-wired automated regression suite exists yet for the catalog level (known gap, SCN-091 BLOCKED); the Bash-guard surface specifically now has one (194 tests)
+updated: 2026-09-12
 ---
 
 # Permanent Regression Suite Index
@@ -24,3 +24,15 @@ EIP's sense (not CI-wired, not automatically triggered).
 
 This file will carry real pass-evidence links once SCN-091's harness is
 authored.
+
+## Update (2026-09-12, Phase 8 closeout reconciliation)
+
+`.claude/security/tests/test_bash_guard.py` (194 tests) IS a real,
+permanent, automated regression suite for the Bash-surface security
+guard specifically — re-run clean at every checkpoint across Phases
+7-8, most recently as part of this chunk's own closeout. This is
+narrower in scope than SCN-091's own ask (a catalog-wide, CI-wired
+harness covering all 95 scenarios), which remains genuinely unauthored
+and correctly BLOCKED (artifact-pending, required before Phase 10). Not
+conflating the two: the Bash guard's suite closes one real slice of this
+gap, not the whole of it.

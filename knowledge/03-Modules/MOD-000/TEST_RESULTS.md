@@ -18,7 +18,7 @@ Appendix D field: "Deterministic automated/integration/E2E results and run refer
 | Phase 5 | Independent code/config review, 5 rounds | APPROVED, 0 P0/P1 | `evidence/code-review/CR-MOD000-001.md` |
 | Phase 6 | Real manual QA, 7 required scenarios | PASS, 0 P0/P1 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md` |
 | Phase 7 | Security/performance/resilience assurance, Bash guard live activation | PASS (2026-09-08, after owner activation + 14/14 live-test matrix) | `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` |
-| Phase 8 | Cumulative regression across all 95 scenarios and Phases 1-7 | PASS (2026-09-12) — 2 staleness defects found and fixed (SCN-015, SCN-031/BUG-024), SCN-046's Notion-API cross-check finally closed, all permanent suites re-verified, live guard proven active throughout | `evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md` |
+| Phase 8 | Cumulative regression across all 95 scenarios and Phases 1-7, closeout-corrected | PASS (2026-09-12) — all 95 scenarios resolve to exactly one canonical disposition (76 PASS/14 BLOCKED/3 OWNER_ASSISTED/2 NOT_APPLICABLE/0 FAIL); BUG-024 (P1, closed) and BUG-025 (P2, open, non-blocking) found; Notion Scenario DB fully reconciled (95/95 verified, 46 corrected) | `evidence/scenario-execution/phase8/PHASE8_CANONICAL_95_MATRIX_2026-09-12.md` |
 | Bash guard automated suite (current) | 194 fixture tests across all bypass classes | PASS, 194/194 (re-confirmed Phase 8) | `.claude/security/tests/test_bash_guard.py` |
 
 0 P0, 0 FAIL across all deterministic runs to date. Full per-scenario
