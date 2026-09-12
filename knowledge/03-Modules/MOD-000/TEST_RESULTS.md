@@ -1,7 +1,7 @@
 ---
 doc: MOD-000_TEST_RESULTS
 status: LIVE
-updated: 2026-09-05
+updated: 2026-09-12 (Phase 8 cumulative regression added; this index previously stopped at Phase 4, a real staleness gap Phase 8 itself was designed to catch)
 ---
 
 # MOD-000 — Test Results (index)
@@ -15,6 +15,16 @@ Appendix D field: "Deterministic automated/integration/E2E results and run refer
 | Phase 4 | Execution reconciliation of Phases 1-3 | PASS | `evidence/scenario-execution/phase4/PHASE4_RECONCILIATION_2026-09-04.md` |
 | Catalog validator | Structural integrity of the 95-scenario catalog | PASS, 0 errors | `scenario-catalog/evidence/VALIDATOR_PHASE5_REWRITTEN_2026-09-04.txt` (latest) |
 | Evidence-integrity checker | Broken-reference/bug-linkage/staleness scan | PASS | `evidence/scenario-execution/phase3/raw/` (latest run) |
+| Phase 5 | Independent code/config review, 5 rounds | APPROVED, 0 P0/P1 | `evidence/code-review/CR-MOD000-001.md` |
+| Phase 6 | Real manual QA, 7 required scenarios | PASS, 0 P0/P1 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE6_2026-09-05.md` |
+| Phase 7 | Security/performance/resilience assurance, Bash guard live activation | PASS (2026-09-08, after owner activation + 14/14 live-test matrix) | `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` |
+| Phase 8 | Cumulative regression across all 95 scenarios and Phases 1-7 | PASS (2026-09-12) — 2 staleness defects found and fixed (SCN-015, SCN-031/BUG-024), SCN-046's Notion-API cross-check finally closed, all permanent suites re-verified, live guard proven active throughout | `evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md` |
+| Bash guard automated suite (current) | 194 fixture tests across all bypass classes | PASS, 194/194 (re-confirmed Phase 8) | `.claude/security/tests/test_bash_guard.py` |
 
 0 P0, 0 FAIL across all deterministic runs to date. Full per-scenario
-detail lives in the referenced files, not duplicated here.
+detail lives in the referenced files, not duplicated here. **This index
+was found stale during Phase 8's own regression pass** — it had not
+been updated since Phase 4 (2026-09-05) despite Phases 5-8 all
+completing since, an instance of exactly the "stale Phase status"
+propagation gap Phase 8 exists to catch; corrected here, not silently
+left.

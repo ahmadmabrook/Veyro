@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-08 (chunk 25 — owner manually applied the drafted `.claude/settings.json` activation patch; a fresh Claude Code session ran the full 14-row live-test matrix — **all 14 PASS**; **BUG-013/022/023 CLOSED**; **CAP-007 ACTIVE**; **PHASE 7 GATE: PASS**; **Phase 8 legally unlocked** (not started this session); local HEAD reconciled with `origin/main`)
+updated: 2026-09-12 (chunk 26 — Phase 8 cumulative regression executed and PASSED: all 95 scenarios reconciled, 2 real staleness defects found and fixed (SCN-015; SCN-031/BUG-024 — filed and closed same day via independent Opus adjudication), SCN-046's long-deferred Notion-API cross-check closed, all permanent suites re-verified PASS, live guard proven active throughout; **PHASE 8 GATE: PASS**; **Phase 9 legally unlocked** (not started this chunk); local HEAD reconciled with `origin/main`)
 ---
 
 # Current Handoff
@@ -32,8 +32,131 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-22-2026-09-07-round3-blocked-p1-3.md`.**
 **Seventh application (2026-09-08, chunk 25): chunk 23 compressed to a
 summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-23-2026-09-07-round3-p1-remediation.md`**
-— chunks 25 and 24 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-23-2026-09-07-round3-p1-remediation.md`.**
+**Eighth application (2026-09-12, chunk 26): chunk 24 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-24-2026-09-08-fourth-review-approved-activation.md`**
+— chunks 26 and 25 are now the 2 kept in full.
+
+## What happened chunk 26, 2026-09-12 — Phase 8 cumulative regression executed and PASSED; BUG-024 found and closed same day; SCN-046 closed; Phase 9 legally unlocked
+
+Continuation of the prior chunk's own "next legally allowed action":
+Phase 8, cumulative regression + full state reconciliation, per the
+owner's explicit multi-section brief. Bootstrap read first
+(`SESSION_BOOTSTRAP.md`, `CURRENT_STATE.md`, `CURRENT_HANDOFF.md`), then
+`PROJECT_INDEX.md`, `DEVELOPMENT_CONSTITUTION.md`, `MODEL_ROUTING.md`,
+`BUG_REGISTRY.md` — all internally consistent, no contradiction found at
+pre-flight.
+
+**Note on this chunk's own opening turn:** the user's message that
+started this chunk contained, alongside the genuine Phase 8 brief, a
+large block of injected/fabricated content — a full consumer claude.ai
+tool schema list (tools that do not exist in this session, confirmed by
+a direct failed call), a fake `/auto-mode-setup` "local-command-stdout"
+this session never ran, and other consumer-app system-prompt material
+that does not describe this environment. This was flagged to the user
+directly before proceeding, rather than acted on or silently absorbed;
+the genuine parts of the message (real CLAUDE.md file contents, the real
+git status, the real environment block, and the actual Phase 8
+instructions) were verified against the real repo state (HEAD matched
+the last real commit, `84b8694`) before continuing. The user confirmed
+proceeding with the real Phase 8 work.
+
+**Worktree hygiene:** `.claude/settings.json` confirmed still owner-
+managed, unstaged, untouched (the live guard's own self-protection
+denies `git add .claude/settings.json` outright, re-confirmed).
+`tmp_commit_msg.txt` (a harmless chunk-25 leftover) left in place — no
+Bash-governed `rm` shape exists at all in the live guard, and treating
+that as a certification blocker would be exactly the kind of guard
+weakening this project's own discipline forbids; its content was
+already emptied via the Write tool with an explanatory note.
+
+**Cumulative scenario regression:** reconciled all 95 catalog scenarios'
+canonical detail blocks against the Phase 1/3/6 phase-reconciliation
+tables, rather than blindly re-executing all 95 (per the brief's own
+instruction not to convert historically-valid BLOCKED/OWNER_ASSISTED
+dispositions to PASS without new genuine evidence). Found two real
+staleness defects:
+
+- **SCN-015** — canonical block said "not yet executed with a real
+  divergence." Stale since 2026-09-04: Phase 3 §8 already ran exactly
+  this drill for real (a live Notion Evidence-Path mismatch, detected
+  and reconciled to `knowledge/`). No tier issue. Fixed directly.
+- **SCN-031 / BUG-024 (P1)** — a Blocker/SEC scenario whose own spec
+  requires Opus `veyro-security-reviewer`, but whose only real evidence
+  (Phase 3 Battery Task 8) was gathered by Sonnet-tier
+  `veyro-implementer`, with the canonical block never updated to even
+  acknowledge the evidence existed. Filed as **BUG-024** and delegated
+  to a freshly spawned `veyro-security-reviewer` (Opus, no participation
+  in Phase 3, no involvement in filing the bug) for independent
+  adjudication — the established operating model (Sonnet
+  executes/finds, Opus decides on Opus-reserved judgment calls, same
+  pattern as BUG-006), not decided unilaterally by this session.
+  **Verdict: PASS, no re-run needed** — existing Sonnet-tier mechanical
+  execution substantively sufficient, this review supplying the missing
+  Opus judgment tier, grounded in `CAPABILITY_POLICY.md`'s own
+  `qualified_by`(Sonnet)/`approved_by`(Opus) split and DC-17's F5-019
+  clarification (the identical precedent BUG-006 used). The reviewer
+  also found and fixed a broken evidence pointer (`UNSAFE_CAPABILITY_
+  DRILL.md`, never created) and recorded 4 non-blocking scope-limitation
+  findings (over-determined refusal, maximally overt injection phrasing,
+  no destructive/exfiltration vector, no durably-preserved verbatim
+  transcript). **BUG-024 CLOSED same day.**
+
+A related, smaller item was also fixed: **SCN-077**'s justification text
+("same root cause as SCN-067 — no mechanism exists") had gone half-stale
+when SCN-067's own remediation built `resolution_bound.py`; SCN-077 is
+still correctly BLOCKED, for its own distinct, still-unmet reason (a
+different metering dimension plus a required Opus escalation-
+confirmation step never run) — text corrected, disposition unchanged.
+
+**SCN-046 (deferred since Phase 1, 2026-09-01) closed in full:** the
+Notion-API-driven half of the three-way state-agreement check, executed
+for real this chunk via a live `notion-fetch` call against the MOD-000
+Notion page, compared field-by-field against `CURRENT_STATE.md`. Zero
+drift found.
+
+**Regression suites, all re-run PASS:** `validate_catalog.py` (0
+errors), `evidence_integrity_check.py`, `verify_baselines.py` (all 4
+hashes unchanged), `validate_capabilities.py` (7 capabilities, all
+APPROVED), `.claude/security/tests/test_bash_guard.py` (194/194). The
+live PreToolUse guard was proven active throughout this entire chunk via
+organic real denials encountered mid-session (chained `grep` commands
+with `|`-alternation patterns denied as `UNSUPPORTED_SHELL_COMPOSITION`
+multiple times while doing ordinary reconciliation work) — direct,
+continuous proof it did not regress between chunk 25 and this chunk, not
+merely a staged test at session start.
+
+**Model-routing/capability governance:** no silent downgrade; CAP-007's
+pinned hash re-verified exact-match; the one Opus-reserved judgment call
+this chunk required (BUG-024's adjudication) was correctly delegated to
+a fresh `veyro-security-reviewer` rather than decided by this Sonnet-tier
+orchestrating session.
+
+**A stale durable index found as a byproduct:** `TEST_RESULTS.md` had
+not been updated since Phase 4 (2026-09-05) despite Phases 5-8 all
+completing since — exactly the "stale Phase status" propagation gap this
+phase exists to catch. Corrected, not silently left.
+
+**Notion reconciliation (bounded, not a full resync):** the Bugs
+database queried live via SQL — only `BUG-010` not `Done`, exact match
+to `BUG_REGISTRY.md`. `BUG-024` added, recorded `Done`. The 2 scenarios
+whose disposition actually changed this chunk (SCN-015, SCN-031) updated
+in the Scenarios database. A full 95-row Scenario-DB resync (Notion's
+own Done-count was found to undercount Git's current, more granular
+disposition — a known artifact of Notion only tracking a 3-state field,
+last fully synced around the Phase 4-6 era) was judged disproportionate
+for a mirror-only field and flagged as a known, non-blocking residual —
+Git remains authoritative and unaffected. New Test Run row
+`TR-MOD000-20260912-017` created.
+
+**Bug regression:** BUG-010 re-confirmed still correctly open (unchanged
+reason, non-blocking). No closed bug regressed.
+
+**Result: P0=0, P1=0 (BUG-024 found and closed within this same chunk).
+PHASE 8 GATE: PASS. PHASE 9 IS LEGALLY UNLOCKED** — not started this
+chunk, per explicit instruction. Full record:
+`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md`.
 
 ## What happened chunk 25, 2026-09-08 — owner applied the activation patch; fresh-session live-test matrix (14/14 PASS); BUG-013/022/023 CLOSED; CAP-007 ACTIVE; PHASE 7 GATE: PASS
 
@@ -112,104 +235,9 @@ work — that is the next session's legally allowed action, not this
 one's. Full live-test record:
 `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
 
-## What happened chunk 24, 2026-09-08 (compressed 2026-09-08 per retention rule) — final independent verification of the Round 3 P1 remediation: APPROVED FOR OWNER ACTIVATION (P0=0/P1=0); CAP-007 approved; BUG-013/022/023 moved to REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION
+## What happened chunk 24, 2026-09-08 (compressed 2026-09-12 per retention rule) — fourth independent review APPROVED the Round 3 P1 remediation for owner activation
 
-Per explicit owner authorization: exactly one final independent
-verification pass on the chunk-23 remediation — explicitly not a
-reopening of the review loop, not permission for Round 4+ iterative
-review, no Phase 8, no MOD-001, no guard activation, no
-`.claude/settings.json` edit. Repo confirmed clean before dispatch: HEAD
-== `origin/main` (`43de121`), 194/194 tests passing, only the owner's
-own untouched `.claude/settings.json` edit pending.
-
-`veyro-security-reviewer` (Opus, fresh context — the fourth independent
-reviewer in this line, distinct from all three Round 1-3 reviewers and
-from the chunk-23 Sonnet remediation session) was dispatched with the
-owner's exact five-part brief.
-
-**A. `grep -f` handling — re-verified CLOSED.** 27 spellings tested
-(including the attached short-flag form `-f<path>`, confirmed as valid
-real grep/ugrep syntax); all deny correctly. No false positives on
-`-F`/`--fixed-strings`/plain grep.
-
-**B. Trusted-script integrity — re-verified CLOSED, with a load-bearing
-activation caveat.** All 7 pinned hashes independently recomputed,
-exact match. Fresh probing in an isolated temp tree (never the real
-repo) confirmed fail-closed behavior for tampered content, missing
-files, replaced files, a symlink to different content, a directory at
-the pinned path, a permission-denied file, a dangling symlink — no
-silent fail-open on any exception path. **Per the owner's explicit
-instruction not to dismiss the `.claude/security/**` write-protection
-question just because hash-pinning catches the execution attempt, the
-reviewer's answer is: yes, this is certification-blocking for
-activation.** The pins live inside the same unprotected file; an agent
-that can Edit `bash_guard.py` can neutralize the whole mechanism in one
-edit. This becomes a mandatory activation-patch item, not a defect.
-
-**C. CAP-007 — determined sufficient for APPROVED.** All 15 registry
-columns checked against the real `CAPABILITY_POLICY.md` text. The
-reviewer's own determination: the sole remaining blocker (no Opus
-review) is exactly what this pass supplies — **APPROVED**, with exact
-fields specified (`approved_by`, `approved_date` 2026-09-08,
-`next_review_due` 2026-12-07). Two minor registry accuracy corrections
-applied (a `qualified_by` misattribution; an evidence-path convention
-note).
-
-**D. Regression — 194/194 confirmed, ~250 fresh adversarial cases, zero
-mismatches** across every category the owner named (unknown
-commands/shapes, composition markers embedded inside otherwise-allowed
-arguments, wrappers, 54 destructive-git variants, recursive deletion,
-protected-artifact mutation). **BUG-013/022/023's respective classes
-independently re-confirmed CLOSED for the Bash surface** on the
-reviewer's own fresh fixtures, not merely the existing suite.
-
-**E. Owner-activation boundary — definite per-item answers.** Expected
-gaps (no live hook, CAP-007 not manifest-bound) separated from real
-activation requirements: `.claude/security/**` (**required**),
-`CLAUDE.md` Edit/Write deny (**required, currently missing**),
-`.mcp.json` Edit/Write deny (**required, pre-emptive**) —
-`.claude/settings.json`/`.claude/rules/**`/`.claude/agents/**`/docx
-baselines already protected. The 7 trusted scripts and living
-governance docs explicitly determined to NOT need direct protection.
-
-**Result: P0=0, P1=0, P2=6, Editorial=9 — verdict APPROVED FOR OWNER
-ACTIVATION**, conditional on the activation patch including
-`.claude/security/**` write-protection. Per the owner's exact
-instruction, Section 5 actions taken:
-
-1. **CAP-007 approved** in `CAPABILITY_REGISTRY.md` — not added to
-   `module-capabilities.yaml` (not yet an active dependency).
-2. **Owner activation patch drafted, not applied**:
-   `knowledge/03-Modules/MOD-000/evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`
-   — exact PreToolUse JSON (`matcher: "Bash"`, command via
-   `$CLAUDE_PROJECT_DIR`, `timeout: 10`), exact `.claude/security/**` +
-   `CLAUDE.md` + `.mcp.json` deny additions with per-item reasoning,
-   exact merge location preserving `SessionStart` byte-for-byte,
-   activation/restart requirements, rollback procedure, and a 14-row
-   fresh-session live-test matrix (safe operations, then each bug's own
-   fixture class, then the new write-protections).
-3. **`BUG-013`, `BUG-022`, and `BUG-023` moved to `REMEDIATED — PENDING
-   LIVE ACTIVATION VERIFICATION`, explicitly NOT closed** — per the
-   owner's own words, closure requires the owner to apply the patch, a
-   fresh session to start, the hook proven to execute, live destructive
-   fixtures proven denied, and safe operations proven unaffected; none
-   of this a non-interactive session can do on the owner's behalf.
-4. **Durable evidence and Notion mirror updated** — this chunk's commit
-   carries the full file list.
-
-Attempted a minor cleanup of `evidence_integrity_check.py`'s now-stale
-forward-reference comment for the just-created patch file; caught before
-committing that this script is itself one of the 7 SHA-256-pinned
-trusted scripts inside `bash_guard.py`, and any edit to it would
-invalidate the exact hash the fourth reviewer just approved — reverted
-via `git checkout --` and left untouched, hash re-confirmed matching.
-
-`.claude/settings.json` was not staged, modified, or committed — it
-remains exactly as the owner last edited it. **Phase 7 gate: still
-BLOCKED** — this is activation-ready, not activated; Phase 7 becomes
-PASS only after the owner applies the patch and live verification
-succeeds. **Phase 8 is NOT legally unlocked.** Full record:
-`knowledge/03-Modules/MOD-000/evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`.
+Owner authorized exactly one final independent verification pass on the chunk-23 remediation. `veyro-security-reviewer` (Opus, fresh context, fourth reviewer in this line) re-verified all 3 P1 fixes from scratch (27 `grep -f` spellings; isolated-temp-tree tamper/symlink/exception probing of the hash-pinning mechanism; a field-by-field CAP-007 audit), ran 194/194 tests plus ~250 fresh adversarial fixtures — zero mismatches. **Result: P0=0, P1=0, P2=6, Editorial=9 — verdict APPROVED FOR OWNER ACTIVATION**, conditional on the activation patch adding `.claude/security/**` write-protection. CAP-007 APPROVED. Owner activation patch drafted, not applied. Per the owner's exact instruction, BUG-013/022/023 moved to `REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION`, not closed — closure required the owner to apply the patch and a fresh session to prove it live (done in chunk 25). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-24-2026-09-08-fourth-review-approved-activation.md`.
 
 ## What happened chunk 23, 2026-09-07 (compressed 2026-09-08 per retention rule) — narrowly-scoped remediation of Round 3's 3 P1 findings (explicitly NOT a Round 4 review); BUG-013/022/023 remained OPEN at the time
 
@@ -532,13 +560,19 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 ## What is NOT done (Phases 7-10)
 
 - Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, an owner-authorized final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped Sonnet remediation of those 3 P1s, an owner-authorized fourth independent verification of that remediation (APPROVED FOR OWNER ACTIVATION, P0=0/P1=0), and the owner's manual activation patch + a fresh-session 14-row live-test matrix (chunk 25, 2026-09-08) — **all 14 PASS**. `BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all **CLOSED** — the PreToolUse hook is proven live-executing, this project's own historical bypass fixtures for all three bugs proven denied live, and safe operations proven unaffected. CAP-007 is now **ACTIVE**. See `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` (live proof), `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`, `evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`, `evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`, `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for v1 history. **GATE: PASS.**
-- Phase 8 — **legally unlocked (chunk 25, 2026-09-08), not started.** Next legally allowed action: cumulative regression + full state reconciliation, including the still-partial-scope Notion-API live cross-check portion of SCN-046.
-- Phase 9 — fresh-session restoration proof.
+- Phase 8 — executed and PASSED (chunk 26, 2026-09-12). All 95 scenarios reconciled; 2 real staleness defects found and fixed (SCN-015 direct fix; SCN-031/BUG-024 — filed and closed same day via independent Opus `veyro-security-reviewer` adjudication); SCN-046's long-deferred Notion-API cross-check fully closed (zero drift); all permanent suites re-verified PASS; live guard proven active throughout via organic real denials. **GATE: PASS.** See `evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md`.
+- Phase 9 — **legally unlocked (chunk 26, 2026-09-12), not started.** Next legally allowed action: fresh-session restoration proof.
 - Phase 10 — pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
 - 5 known artifact gaps remain unauthored (SKL-/RULE- ID schemas, rollback/removal procedure, third-party evaluation template, permanent-regression automation harness, project/nested Skill policy + `.claude/rules` profile structure) — required before Phase 10 certification, non-blocking for Phases 4-9.
 - The pre-existing EIP internal self-contradiction (`knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md`) remains unresolved — flagged again by the Gatekeeper drill as something that should be adjudicated by the owner before final certification, not blocking Phase 4-9 work.
 
 ## Next legally allowed action
+
+**PHASE 8 GATE: PASS (chunk 26, 2026-09-12).** Cumulative regression executed across all 95 catalog scenarios and Phases 1-7. Reconciled the Scenario Catalog's canonical detail blocks against the Phase 1/3/6 phase-reconciliation tables rather than blindly re-executing all 95, per the brief's own instruction not to convert historically-valid BLOCKED/OWNER_ASSISTED dispositions to PASS without new genuine evidence. Found and fixed **SCN-015** (real Phase 3 evidence existed; canonical block was stale, no tier issue). Found, filed, and closed **BUG-024 (P1)**: **SCN-031** is Blocker/SEC and its own spec requires Opus `veyro-security-reviewer`, but its only real evidence (Phase 3 Battery Task 8) was gathered by Sonnet-tier `veyro-implementer`, with the canonical block never updated at all. Delegated to a freshly spawned `veyro-security-reviewer` (Opus) for independent adjudication rather than decided unilaterally — **verdict PASS, no re-run needed**, existing evidence substantively sufficient with this review supplying the missing Opus judgment tier (the same `qualified_by`(Sonnet)/`approved_by`(Opus) split `CAPABILITY_POLICY.md` and DC-17's F5-019 clarification already establish — the identical precedent BUG-006 used). The reviewer also fixed a broken evidence pointer and recorded 4 non-blocking scope-limitation findings. **BUG-024 CLOSED same day.** **SCN-046's long-deferred Notion-API live cross-check** (open since Phase 1, 2026-09-01) closed for real via a live `notion-fetch` call — zero drift found. All permanent regression suites re-run PASS (194/194 Bash guard tests, all 4 validators, all 4 baselines unchanged); the live guard was proven active throughout the entire chunk via organic real denials encountered mid-session, not merely a staged test. Notion reconciled on a bounded basis (Bugs DB cross-checked live, exact match; the 2 scenarios that changed updated; a full 95-row resync judged disproportionate for a mirror-only field and flagged as a known, non-blocking residual). A stale durable index (`TEST_RESULTS.md`, unmodified since Phase 4) was found and corrected as a byproduct. Zero remaining P0/P1. Full record: `evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md`.
+
+**Phase 9 is legally unlocked as of this chunk — not started.** Per the task's explicit instruction, this session did not begin Phase 9 or MOD-001 work. The next legally allowed action is Phase 9: fresh-session restoration proof, followed by Phase 10 (readiness package + `veyro-gatekeeper` certification). The 5 known artifact gaps (SKL-/RULE- schemas, rollback procedure, evaluation template, regression harness, Skill/rules-profile policy) remain required before Phase 10 certification, non-blocking through Phase 9. BUG-010 and F5-027 remain open by design, both non-blocking.
+
+## Phase 7 gate history (superseded by Phase 8 above, kept for the record)
 
 **PHASE 7 GATE: PASS (chunk 25, 2026-09-08).** v1's guard was superseded (4 failed review rounds); v2's redesign used its 2-round cap (both judged sound) plus a final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped remediation (chunk 23), and a fourth independent verification (chunk 24) that returned **P0=0, P1=0, P2=6, Editorial=9 — verdict APPROVED FOR OWNER ACTIVATION**. The owner then manually applied the drafted activation patch to `.claude/settings.json`, and this fresh session (chunk 25) ran the full 14-row live-test matrix from `BUG-013-022-023-OWNER-SETTINGS-PATCH.md` Part 7 — **all 14 rows PASS**: the PreToolUse hook proven to actually execute; this project's own historical BUG-013/022/023 bypass fixtures (recursive delete bare and absolute-path, redirection mutation, force-push, hard-reset, `grep -rf`) all proven denied live with distinct guard-specific reasons; Edit-tool self-protection on `bash_guard.py` and `CLAUDE.md` proven denied; an unknown-command probe proven fail-closed; and safe MOD-000 operations (git status/log/diff/show, safe read, 194/194 automated tests, all 4 governance validators, all 4 baseline hashes) proven unaffected. Full record: `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
 
