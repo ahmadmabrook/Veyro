@@ -1,6 +1,6 @@
 ---
 doc: PHASE8_CANONICAL_95_MATRIX
-status: FINAL — Phase 8 closeout correction
+status: FINAL — Phase 8 closeout correction; updated 2026-09-13 (Phase 10 readiness) to reflect 5 scenarios closing PASS as their readiness-gap artifacts were authored (087, 088, 089, 091, 093). See "Phase 10 update" section below.
 date: 2026-09-12
 ---
 
@@ -14,16 +14,22 @@ non-canonical buckets (NOT EXECUTED, "documented limitation",
 detail block in `SCENARIO_CATALOG.md` carries the full reasoning and
 evidence citation; this file is the consolidated roll-up.
 
-## Canonical totals
+## Canonical totals (updated 2026-09-13, Phase 10 readiness)
 
 | Status | Count |
 |---|---|
-| PASS | 76 |
-| BLOCKED | 14 |
+| PASS | 82 |
+| BLOCKED | 8 |
 | OWNER_ASSISTED | 3 |
 | NOT_APPLICABLE | 2 |
 | FAIL | 0 |
 | **Total** | **95** |
+
+(2026-09-12 original totals: 76 PASS / 14 BLOCKED. 2026-09-13: 6
+scenarios — 087, 088, 089, 091, 093 (the 5 named readiness-gap
+artifacts) and 084 (BUG-025, a distinct but related EIP §4.2 stage-9
+requirement) — moved BLOCKED→PASS as Phase 10 readiness authored their
+required artifacts. See "Phase 10 update" section below.)
 
 ## Full matrix
 
@@ -36,20 +42,54 @@ evidence citation; this file is the consolidated roll-up.
 | 005 | PASS | 024 | PASS | 043 | OWNER_ASSISTED | 062 | PASS | 081 | PASS |
 | 006 | PASS | 025 | PASS | 044 | OWNER_ASSISTED | 063 | PASS | 082 | PASS |
 | 007 | PASS | 026 | PASS | 045 | PASS | 064 | PASS | 083 | PASS |
-| 008 | PASS | 027 | PASS | 046 | PASS | 065 | BLOCKED | 084 | BLOCKED |
+| 008 | PASS | 027 | PASS | 046 | PASS | 065 | BLOCKED | 084 | PASS |
 | 009 | PASS | 028 | PASS | 047 | PASS | 066 | BLOCKED | 085 | PASS |
 | 010 | PASS | 029 | PASS | 048 | PASS | 067 | PASS | 086 | PASS |
-| 011 | PASS | 030 | PASS | 049 | PASS | 068 | PASS | 087 | BLOCKED |
-| 012 | PASS | 031 | PASS | 050 | PASS | 069 | PASS | 088 | BLOCKED |
-| 013 | BLOCKED | 032 | PASS | 051 | PASS | 070 | PASS | 089 | BLOCKED |
+| 011 | PASS | 030 | PASS | 049 | PASS | 068 | PASS | 087 | PASS |
+| 012 | PASS | 031 | PASS | 050 | PASS | 069 | PASS | 088 | PASS |
+| 013 | BLOCKED | 032 | PASS | 051 | PASS | 070 | PASS | 089 | PASS |
 | 014 | PASS | 033 | PASS | 052 | NOT_APPLICABLE | 071 | PASS | 090 | NOT_APPLICABLE |
-| 015 | PASS | 034 | PASS | 053 | PASS | 072 | PASS | 091 | BLOCKED |
+| 015 | PASS | 034 | PASS | 053 | PASS | 072 | PASS | 091 | PASS |
 | 016 | PASS | 035 | PASS | 054 | PASS | 073 | PASS | 092 | PASS |
-| 017 | PASS | 036 | PASS | 055 | PASS | 074 | PASS | 093 | BLOCKED |
+| 017 | PASS | 036 | PASS | 055 | PASS | 074 | PASS | 093 | PASS |
 | 018 | PASS | 037 | PASS | 056 | PASS | 075 | PASS | 094 | PASS |
 | 019 | PASS | 038 | PASS | 057 | PASS | 076 | BLOCKED | 095 | PASS |
 
-Sum check: 76 + 14 + 3 + 2 + 0 = 95. ✓
+Sum check (2026-09-13): 82 + 8 + 3 + 2 + 0 = 95. ✓
+
+## Phase 10 update (2026-09-13): 5 readiness-gap scenarios + BUG-025/SCN-084 closed PASS
+
+Phase 10 readiness required closing the 5 known MOD-000 artifact gaps
+named throughout `CURRENT_STATE.md`/`REQUIREMENTS.md` since Phase 1:
+SKL-/RULE- ID schemas (SCN-087), rollback/removal procedure (SCN-088),
+third-party evaluation template (SCN-089), permanent-regression
+automation harness (SCN-091), and project/nested Skill policy
+(SCN-093). All 5 required artifacts were authored this chunk (see each
+scenario's own canonical detail block in `SCENARIO_CATALOG.md` for the
+specific artifact and evidence citation) and moved BLOCKED→PASS.
+
+**A sixth scenario, SCN-084 (BUG-025, material-capability-change
+re-evaluation), was also closed this chunk.** It was not one of the 5
+named readiness gaps, but its own catalog text explicitly said
+"required before Phase 10 certification" — the same EIP §21.1/§4.2
+requirement class. `knowledge/05-QA/tools/capability_drift_check.py`
+was built to close it (see BUG-025's own file for why it had to be a
+new script rather than an edit to the existing, guard-hash-pinned
+`validate_capabilities.py`).
+
+**A sixth, related scenario (SCN-094, "initial `.claude/rules` profile
+structure") was found already correctly PASS in this file's own
+2026-09-12 matrix above, while `SCENARIO_CATALOG.md`'s own canonical
+detail block for it still said BLOCKED** — a real, pre-existing
+staleness defect of the same species this project has repeatedly found
+and fixed in its own durable files (a canonical roll-up and a scenario's
+own detail block disagreeing about current state). Not a scenario this
+Phase 10 pass needed to newly close (the underlying `RULES_PROFILE_STRUCTURE.md`
+document did not exist before this chunk either, so the matrix's prior
+PASS was itself not fully substantiated) — the detail block is now
+corrected to PASS with real evidence (the profile-structure document
+this chunk authored), which is what actually makes this file's
+pre-existing PASS for 094 true today, not merely consistent.
 
 ## What changed this closeout pass, and why
 
@@ -134,22 +174,33 @@ is a real, disclosed limitation of the mirror, not a false equivalence).
 via SQL, not assumed). **46 rows were divergent and updated; 49 already
 matched and were left untouched** — no blind rewrite of unchanged rows.
 
-Post-update verification (all queried live):
+Post-update verification (all queried live, 2026-09-12):
 - **Total Scenario rows in Notion: 95.** Distinct names: 95. **No
   duplicate scenario IDs, no missing rows** — exact match to Git's 95.
-- **Status counts: 76 `Done`, 19 `Not started`.** Exact match to the
-  canonical matrix's 76 PASS and 19 (14 BLOCKED + 3 OWNER_ASSISTED + 2
-  NOT_APPLICABLE) combined.
+- **Status counts as of 2026-09-12: 76 `Done`, 19 `Not started`.** Exact
+  match to that date's canonical matrix (76 PASS and 19 non-PASS
+  combined). **Re-reconciled 2026-09-13 (Phase 10 readiness)** after 6
+  more scenarios closed PASS — live re-verification: **82 `Done`, 13
+  `Not started`**, exact match to the current 82/8/3/2/0 totals above.
+  See `knowledge/00-System/NOTION_CONTROL_PLANE.md` for the current
+  figure; not restated as a second pinned number here to avoid the two
+  copies drifting apart the way this file's own "Full matrix" table
+  (SCN-091's cell) briefly drifted from its front matter and "Phase 10
+  update" section this same chunk — found and fixed by the final
+  certification-scope Gatekeeper review (P1-1), corrected same day.
 
 ## Gate implication
 
 **FAIL = 0.** No certification-required scenario was left improperly
 "not executed" — every one of the original 14 received an individually-
-determined, evidence-based canonical status. The 14 BLOCKED + 3
-OWNER_ASSISTED scenarios are all explicitly permitted by this project's
-own governance to leave MOD-000 able to proceed through Phase 8/9 (none
-represents a failed assertion; each names a specific, real, honestly-
-determined reason — absent artifact, absent mechanism, owner-reserved
-action pending, or a rejected self-check pending correct-tier
-re-execution). Required-before-Phase-10 items remain tracked as such,
-not silently waived.
+determined, evidence-based canonical status. As of 2026-09-13 (Phase 10
+readiness), the current 8 BLOCKED + 3 OWNER_ASSISTED scenarios are all
+explicitly permitted by this project's own governance to leave MOD-000
+able to proceed through certification (none represents a failed
+assertion; each names a specific, real, honestly-determined reason —
+absent artifact, absent mechanism, owner-reserved action pending, or a
+rejected self-check pending correct-tier re-execution). Required-before-Phase-10
+items remain tracked as such, not silently waived; see
+`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/PRE_GATEKEEPER_READINESS_PACKAGE_2026-09-13.md`
+§5 for the current per-scenario reasons, corrected against this file and
+each scenario's own canonical detail block.

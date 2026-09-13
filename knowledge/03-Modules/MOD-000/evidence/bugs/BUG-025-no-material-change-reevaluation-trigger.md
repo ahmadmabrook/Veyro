@@ -1,6 +1,6 @@
 ---
 doc: BUG-025
-status: OPEN — real gap, non-blocking for Phase 8/9, required before Phase 10 certification
+status: FIXED (2026-09-13, Phase 10 readiness) — mechanism built and registered; one disclosed activation-gap residual (same pattern as CAP-007's own PreToolUse activation gap and SCN-091's regression harness)
 found_date: 2026-09-12
 found_by: Phase 8 closeout reconciliation (this session), while determining SCN-MOD000-084's real disposition
 severity: P2
@@ -67,20 +67,53 @@ staleness via `next_review_due`, non-blank supply-chain fields) is
 proven real and correct. Required to be fixed before Phase 10
 certification (DC-19 compliance), not before Phase 8/9.
 
-## Recommended fix (not built this chunk — reconciliation scope, not remediation scope)
+## Fix applied (2026-09-13, Phase 10 readiness)
 
-Extend `validate_capabilities.py` with a check comparing each row's
-current `version`/`content_hash` against a recorded
-`version_at_approval`/`hash_at_approval` field (new columns would be
-needed), flagging drift as requiring re-review before the row can
-satisfy a manifest dependency. Not implemented this chunk — this is a
-reconciliation pass identifying a real gap, not a remediation pass
-building new capability-governance tooling, which would be a separately
-scoped and separately authorized change.
+Built `knowledge/05-QA/tools/capability_drift_check.py` — a new script
+(not an extension of `validate_capabilities.py`) comparing each
+registry row's live `version`/`content_hash` against a new
+`## Version/hash snapshot at approval` section added to
+`CAPABILITY_REGISTRY.md`, flagging any mismatch as `MATERIAL CHANGE
+DETECTED`. A new script was necessary rather than extending
+`validate_capabilities.py` directly, because that file's SHA-256 hash
+is pinned inside `.claude/security/bash_guard.py`'s
+`_ALLOWED_PYTHON_SCRIPTS` map, and `.claude/security/**` is
+Edit/Write-denied to this session — editing `validate_capabilities.py`
+would have silently broken its own guard-trust the moment its hash no
+longer matched the pinned value.
+
+**Disclosed residual, same pattern as CAP-007's pre-activation state and
+SCN-091's regression harness:** `capability_drift_check.py` is not yet
+on `bash_guard.py`'s trusted-script allowlist, so an agent session
+cannot invoke it through its own governed Bash tool today — confirmed
+by direct attempt this chunk (`DISALLOWED_FLAG_OR_SHAPE`). Wiring it in
+requires an owner-authorized edit to `.claude/security/**` plus an
+independent security re-review, the same discipline every prior change
+to that file has gone through. It is fully runnable today by the owner
+or any human terminal session outside Claude Code's guard. All 7
+current capability rows were manually cross-checked (by direct
+inspection, since the script itself could not be executed) against
+their new snapshot rows this chunk — no drift found, consistent with
+this project's own history (no capability has ever actually changed
+version).
+
+**Follow-up fix (2026-09-13, same day, final certification-scope
+Gatekeeper review, P2-2):** `parse_registry_rows()` originally dropped
+any `| CAP-` line that didn't split into exactly 15 cells via a bare
+`continue`, with no error and no effect on the PASS exit code — a
+capability whose row became unparseable (e.g. a future cell containing
+a literal `|`) would silently stop being drift-checked while the tool
+kept reporting `RESULT: PASS`. Fixed: unparseable rows are now collected
+and surfaced as errors that flip the result to `FAIL`, so a parsing
+failure can never look identical to a clean pass. Same species of defect
+as `BUG-020` (`validate_catalog.py` silently swallowing duplicate
+scenario IDs), independently found in this project's second such tool.
 
 ## Affected
 
-`knowledge/00-System/validate_capabilities.py`,
-`knowledge/00-System/CAPABILITY_REGISTRY.md` (schema would need new
-columns for a real fix), `knowledge/03-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md`
-(SCN-084's own disposition).
+`knowledge/05-QA/tools/capability_drift_check.py` (new; follow-up fix
+same day for the silent-row-skip finding above),
+`knowledge/00-System/CAPABILITY_REGISTRY.md` (new snapshot section, no
+schema change to the main 15-column table),
+`knowledge/03-Modules/MOD-000/scenario-catalog/SCENARIO_CATALOG.md`
+(SCN-084's disposition, corrected to PASS).

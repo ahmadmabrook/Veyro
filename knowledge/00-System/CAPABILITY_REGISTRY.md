@@ -63,6 +63,46 @@ omitted pending that verification). None is `DEPRECATED` or `REVOKED`.
 
 - CAP-007 (`.claude/security/bash_guard.py`): registered 2026-09-07 at `QUALIFIED — NOT APPROVED` (Sonnet-only implementation, no Opus review yet). A fourth independent fresh-context Opus review (2026-09-08, owner-authorized as a final verification pass on the Round 3 P1 remediation) evaluated the fix, ran the existing 194-test suite plus its own ~250 fresh adversarial fixtures, found P0=0/P1=0 (6 P2 + 9 Editorial, none activation-blocking on their own), and **APPROVED** it — conditional on the eventual `.claude/settings.json` activation patch including `.claude/security/**` write-protection, which the reviewer determined is a certification-blocking weakness for activation specifically (not a code defect). See `BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md` and `BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`. **Update, same day:** the owner applied the drafted activation patch and a fresh-session live-test matrix (14/14 PASS) confirmed the guard genuinely enforcing — CAP-007 is now `APPROVED` and `ACTIVE`. See `BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md`.
 
+## Version/hash snapshot at approval (added 2026-09-13, Phase 10 readiness, closes BUG-025/SCN-084)
+
+`validate_capabilities.py` checks required fields are non-blank but
+never compared a capability's *current* `version`/`content_hash`
+against the value recorded *at approval time* — a capability could
+change materially with `review_status` left untouched and still report
+PASS. This table is the snapshot `knowledge/05-QA/tools/capability_drift_check.py`
+compares the live rows above against. **Update this table in the same
+commit as any `version`/`content_hash` cell change above** — the two
+tables agreeing is what "no drift" means; letting a live cell change
+without updating its snapshot row would itself defeat the check.
+
+| id | version (at approval) | content_hash (at approval) |
+|---|---|---|
+| CAP-001 | live server, tools observed 2026-08-31 | N/A (hosted) |
+| CAP-002 | 0.8.0 | N/A (external binary, not project-controlled) |
+| CAP-003 | as shipped in this environment | not independently hashed (first-party, trusted by default) |
+| CAP-004 | N/A | N/A |
+| CAP-005 | as shipped in this environment | N/A (harness-native) |
+| CAP-006 | as shipped in this environment | N/A (harness-native) |
+| CAP-007 | v2, Round-3-P1-remediated (2026-09-07); superseded v1 preserved at `.claude/security/superseded_v1/`, not a version of this capability | SHA-256 of `bash_guard.py`: `315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245` (independently recomputed and confirmed exact-match 2026-09-08; recompute and update this cell whenever the file changes — see governance note below) |
+
+**Honest scope note:** for CAP-001/002/003/005/006, "version" is a
+descriptive string, not a strict semver — drift detection for these
+rows is exact-string-match on whatever value the registry cell holds,
+which catches a materially different string (e.g. a real TestSprite CLI
+version bump) but would not catch a hosted MCP server changing its
+underlying behavior with no version string change at all (CAP-001 has
+no version concept beyond "live server" — this is a pre-existing
+limitation of the field, not one this check introduces). CAP-007's
+`content_hash` is the one row with a real, precise SHA-256 — drift
+there is caught exactly.
+
+**Activation gap, disclosed (same pattern as `run_regression.py`):**
+`capability_drift_check.py` is not yet on `bash_guard.py`'s
+trusted-script allowlist, so an agent session cannot invoke it through
+its own governed Bash tool today — that requires an owner-authorized
+edit to `.claude/security/**` plus an independent security re-review.
+Runnable today by the owner or any human terminal session.
+
 ## Rejected / revoked
 
 (none yet)

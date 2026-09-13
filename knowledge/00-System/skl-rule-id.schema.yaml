@@ -1,0 +1,85 @@
+# Schema for SKL-<NNN> (Skill) and RULE-<NNN> (Rule) capability IDs.
+# Authored 2026-09-13, Phase 10 readiness (SCN-MOD000-087 sub-check b —
+# "SKL-/RULE- ID schemas exist alongside CAP- schema already documented").
+#
+# This is deliberately NOT a parallel registry. CAPABILITY_POLICY.md
+# already governs "every Skill, Rule, Plugin, MCP server, hook, or
+# script" under one 9-stage lifecycle, and CAPABILITY_REGISTRY.md's
+# 15-column table already has every field a Skill or Rule needs
+# (provenance, version, content_hash, scope, review_status,
+# qualified_by/approved_by, lifecycle_status, rollback_target, etc).
+# A Skill or Rule gets a row in the SAME registry table, distinguished
+# only by its `id` prefix. This file defines that ID format and the
+# (small) set of fields that differ in meaning for a Skill/Rule row
+# versus a Capability/MCP/tool row.
+
+id_formats:
+  skill: "SKL-<NNN>"   # e.g. SKL-001. Zero-padded 3 digits, project-scoped
+                        # sequence, assigned in creation order. A Skill is
+                        # any .claude/skills/<name>/SKILL.md bundle,
+                        # project-scoped or nested.
+  rule:  "RULE-<NNN>"  # e.g. RULE-001. Same numbering convention. A Rule
+                        # is any `.claude/rules/*.md` file. The 4 rule
+                        # files that already exist as of this schema's
+                        # authoring (owner-reserved-restrictions.md,
+                        # knowledge-vault-durability.md,
+                        # notion-mcp-scope-discipline.md,
+                        # admin-privileged-console-baseline.md) predate
+                        # this schema and have not been retroactively
+                        # assigned RULE-<NNN> IDs — see the backfill note
+                        # below. New rules created after this schema's
+                        # authoring MUST be assigned a RULE-<NNN> ID and a
+                        # CAPABILITY_REGISTRY.md row before use, per
+                        # CAPABILITY_POLICY.md stage 6-7 (a Rule "cannot
+                        # become ACTIVE based only on a description").
+
+registry_row_field_notes:
+  # All 15 CAPABILITY_REGISTRY.md columns apply. Notes on fields whose
+  # meaning is Skill/Rule-specific rather than generic-capability-generic:
+  provenance: >
+    For a Skill: where the SKILL.md bundle came from (project-authored,
+    Anthropic first-party public skill, marketplace/plugin). For a Rule:
+    always "project-authored" (Rules are never third-party per this
+    project's model — DC-20 requires a Rule to derive from a
+    higher-precedence Veyro baseline, which by definition means it is
+    authored here, not imported).
+  content_hash: >
+    SHA-256 of the SKILL.md file (or the rule .md file). Required —
+    Skills/Rules are filesystem-resident project artifacts, not exempt
+    the way CAP-003/CAP-004's harness-native exemption applies (that
+    exemption is for harness tools with no project-controlled file to
+    hash; a Skill/Rule always has one).
+  scope: >
+    For a Rule: which path(s)/surface(s) it applies to (see
+    `RULES_PROFILE_STRUCTURE.md` for the current surface-to-rule
+    mapping this project maintains). For a Skill: what task domain it
+    covers and whether it is project-scoped (this repo only) or nested
+    (available to sub-invocations/other projects).
+  rollback_target: >
+    For both: per `CAPABILITY_ROLLBACK_PROCEDURE.md`'s generic
+    procedure — typically "delete the file, remove its registry row,
+    set lifecycle_status: REVOKED" unless the Rule/Skill has caused a
+    durable side effect requiring a more specific undo step.
+
+backfill_note: >
+  The 4 `.claude/rules/*.md` files that exist as of this schema's
+  authoring (2026-09-13) predate both this schema and
+  CAPABILITY_REGISTRY.md's original authoring (2026-08-31/2026-09-04).
+  They are NOT retroactively assigned RULE-<NNN> IDs or registry rows in
+  this pass — doing so now would be a mechanical relabeling exercise
+  with no governance value (their content, authorship, and binding
+  status are already fully documented in
+  `knowledge/03-Modules/MOD-000/CAPABILITIES.md` and this project's ADRs/
+  bug files), and retrofitting IDs onto already-shipped, already-reviewed
+  artifacts risks implying a re-review happened when it didn't. This
+  schema governs new Skills/Rules created from this point forward. If a
+  future session judges the 4 existing rules should be formally
+  backfilled into the registry under RULE-<NNN> IDs, that is a
+  legitimate follow-up, not a defect in this schema's scope.
+
+no_active_skills_note: >
+  `.claude/skills/` does not exist yet (BUG-004, still true as of
+  2026-09-13 — no Skill has been needed on this project so far). This
+  schema is authored proactively, per EIP §21.1's requirement that the
+  schema exist "alongside" the CAP- schema, not because a Skill is
+  pending creation.

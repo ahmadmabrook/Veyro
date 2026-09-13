@@ -190,7 +190,8 @@ remains valid supporting evidence, not retracted.
 
 **Phase 8 update (2026-09-12): PASS.** Cumulative regression across all
 95 catalog scenarios and Phases 1-7 executed and passed — canonical
-matrix 76 PASS/14 BLOCKED/3 OWNER_ASSISTED/2 NOT_APPLICABLE/0 FAIL, one
+matrix totals live only in the matrix file itself (updated 2026-09-13 by
+Phase 10 readiness; not restated here to avoid drift), one
 new P1 found and closed same day (BUG-024), all permanent regression
 suites (194/194 Bash guard tests, all 4 validators, all 4 baselines)
 re-confirmed PASS. Full record:
