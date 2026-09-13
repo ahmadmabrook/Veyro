@@ -150,6 +150,18 @@ def main():
         if snap_version == live_version and snap_hash == live_hash:
             info.append(f"{cid}: version/hash unchanged since approval — no drift.")
 
+    # Reverse direction (found by the second certification-scope Gatekeeper
+    # review, 2026-09-13): the loop above only walks live registry rows, so a
+    # capability present in the snapshot section but deleted or renamed out
+    # of the live table produced no error and still exited PASS. A missing
+    # capability is itself a material change worth flagging, not silence.
+    for cid in sorted(set(snapshot) - set(rows)):
+        errors.append(
+            f"{cid}: has a snapshot row but no corresponding live registry "
+            f"row — either deleted, renamed, or the registry table is "
+            f"malformed. This capability is unaccounted for."
+        )
+
     print("=" * 70)
     print("MOD-000 CAPABILITY MATERIAL-CHANGE / VERSION-DRIFT CHECK")
     print("=" * 70)

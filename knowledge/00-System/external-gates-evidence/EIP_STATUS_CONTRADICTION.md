@@ -3,7 +3,7 @@ doc: EIP_STATUS_CONTRADICTION
 status: CLOSED (2026-09-13, OWN-002) — owner adjudicated in favor of the front matter; see "Owner adjudication" section below. (Prior history: corrected 2026-09-04, Phase 5 F5-015, from a previous mislabeling as "informational, not blocking"; found genuinely blocking for Phase 10 certification by the final certification-scope Gatekeeper review, 2026-09-13, before the owner closed it same day.)
 found: 2026-09-01
 found_by: main session, resolving Scenario Catalog finding D-6
-corrected: 2026-09-04, Phase 5 independent review
+corrected: 2026-09-13, owner adjudication (OWN-002) — closes the finding entirely; the 2026-09-04 Phase 5 correction (see status line above) addressed an earlier mislabeling, not this closure
 ---
 
 # EIP internal status contradiction — recorded, not guessed away

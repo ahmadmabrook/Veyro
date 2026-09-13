@@ -109,6 +109,15 @@ failure can never look identical to a clean pass. Same species of defect
 as `BUG-020` (`validate_catalog.py` silently swallowing duplicate
 scenario IDs), independently found in this project's second such tool.
 
+**Second follow-up fix (2026-09-13, second certification-scope
+Gatekeeper round):** the original fix closed the forward direction
+(a malformed live row) but not the reverse — a capability present in
+the snapshot section but missing from the live registry table (deleted
+or renamed) produced no error either, since the main loop only iterates
+over parsed live rows. Fixed: after the main loop, `set(snapshot) -
+set(rows)` is computed and any capability present only in the snapshot
+is reported as an error, forcing `FAIL` rather than a silent PASS.
+
 ## Affected
 
 `knowledge/05-QA/tools/capability_drift_check.py` (new; follow-up fix

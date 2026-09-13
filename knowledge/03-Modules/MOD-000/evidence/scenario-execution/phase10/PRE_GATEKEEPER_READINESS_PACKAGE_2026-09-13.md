@@ -142,16 +142,17 @@ before this session began is unrelated to this chunk's work — see §10).
 review (P0-1): this section originally omitted an open, self-declared
 BLOCKS_APPROVAL external gate.** `EXTERNAL_GATES.md`'s EXT-01 (the EIP
 v1.4.1 front-matter-vs-§21.1 self-contradiction over its own approval
-status) carries `Status: BLOCKED: OWNER_APPROVAL_REQUIRED` with its
+status) had carried `Status: BLOCKED: OWNER_APPROVAL_REQUIRED` with its
 **Blocks** column stating verbatim "Phase 10 certification only
-(non-blocking for Phases 1-9)." No `OWN-002` row exists yet in
-`OWNER_APPROVALS.md` to close it. Per DC-16 ("cannot be waived by a
+(non-blocking for Phases 1-9)." Per DC-16 ("cannot be waived by a
 Module Gatekeeper") and DC-14 (an unresolved governing-baseline
 ambiguity must never be silently resolved in the project's own favor and
-labeled "not blocking"), **this is a genuine, owner-reserved blocker on
+labeled "not blocking"), this was a genuine, owner-reserved blocker on
 MOD-000 certification specifically — not a violation caused by this
 chunk's own work, but a pre-existing open item this section should have
-surfaced and did not.** See the "Post-Gatekeeper correction" section at
+surfaced and did not. **This is now resolved: the owner recorded
+`OWN-002` the same day, closing EXT-01** — see the "Post-Gatekeeper
+correction" section at
 the end of this file.
 
 ## 8. Capability governance
@@ -223,11 +224,25 @@ independent judgment:
    boundary directly against the TSD source text; the boundary has never
    actually been at risk in practice (no MOD-001 work has been
    attempted), but the scenario's own pass condition remains unmet.
-6. **EXT-01** (P0, added 2026-09-13 per the Gatekeeper's own correction —
-   omitted here originally) — see §7 above and the "Post-Gatekeeper
-   correction" section at the end of this file. This is the one item on
-   this list that is genuinely certification-blocking, not merely
-   non-blocking-and-disclosed.
+6. **EXT-01** (was P0, added 2026-09-13 per the Gatekeeper's own
+   correction — omitted here originally; **CLOSED same day** via the
+   owner's `OWN-002` decision) — see §7 above and the "Post-Gatekeeper
+   correction" section at the end of this file. This was, at the time it
+   was found, the one item on this list that was genuinely
+   certification-blocking rather than merely non-blocking-and-disclosed;
+   it no longer is.
+8. **`.claude/settings.json`'s Phase 7 activation patch has never been
+   committed to Git** (P1, found by the second certification round,
+   2026-09-13) — `git log -- .claude/settings.json` points to `170a08e`
+   (2026-09-06, pre-activation); the live PreToolUse hook the owner
+   applied on 2026-09-08 exists only in this working tree's uncommitted
+   diff. A fresh clone of `origin/main` would have no active Bash guard,
+   so CAP-007/BUG-013/022/023's closures rest on non-durable state. This
+   session cannot fix it — the guard denies staging that exact path, by
+   design. **Requires the owner**: commit it directly outside this
+   guarded session, or record an explicit `OWN-<NNN>` accepting the
+   non-durable state with a written recovery procedure. See
+   `knowledge/00-System/CURRENT_STATE.md`'s "Chunk 30" entry.
 7. **Prospective `OWN-004`** (P2, design-bundle demo-data — 12
    email-shaped and 6 phone-format strings in the frozen
    `veyro-product-experience-design/` baseline, from BUG-016/Phase 7
@@ -320,3 +335,29 @@ P0=0/P1=0 now holds — this readiness package's own prior self-check
 already proved unreliable once (see above), so this closure is not
 self-certified as sufficient; it is presented to the next Gatekeeper
 round for independent verification like everything else in this file.
+
+## Round 2 (2026-09-13, same day): BLOCKED again — P0=0, P1=4
+
+A second, independent, fresh-context certification round confirmed the
+`OWN-002`/EXT-01 closure was procedurally sound and the round-1 P1
+(SCN-091 cell) fix held, but found 4 new P1s — none a recurrence of
+round 1's findings, all pre-existing staleness this document's own
+round-1 remediation pass missed:
+
+1. `CURRENT_STATE.md`, `CURRENT_HANDOFF.md`, and `STATUS.md` all still
+   claimed, in places this readiness package didn't touch, that the
+   certification Gatekeeper dispatch had never occurred.
+2. `CURRENT_HANDOFF.md`'s older, separate "What is NOT done"/"Next
+   legally allowed action" sections, never reached by round 1's sweep,
+   still stated superseded 76/14/3/2/0 totals and "Phase 10 not
+   started."
+3. **`.claude/settings.json`'s Phase 7 activation patch was never
+   committed to Git** — added to §11 above as item 8. Genuinely
+   requires the owner; not resolvable this session.
+4. Round 1's own verdict had no dedicated evidence file. Authored:
+   `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_1_2026-09-13.md`.
+
+Items 1, 2, and 4 fixed same day. **Item 3 remains open — the next
+legally allowed action is the owner's decision on `.claude/settings.json`,
+then a third fresh-context certification round.** No certificate exists.
+MOD-001 remains locked.
