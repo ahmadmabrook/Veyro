@@ -242,9 +242,12 @@ independent judgment:
    committed to Git** (was P1, found by the second certification round,
    2026-09-13) — **RESOLVED same day**: the owner committed it directly
    (commit `c9992d6`, outside this guarded session, since the guard
-   denies staging that exact path by design) and pushed. Local HEAD,
-   `origin/main`, and `git log -- .claude/settings.json` all now point
-   to `c9992d6`. Live-reverified after the commit: the guard still
+   denies staging that exact path by design) and pushed. `git log --
+   .claude/settings.json` points to `c9992d6` as that path's most recent
+   commit (correctly true regardless of how much further HEAD advances
+   with unrelated commits — do not read a specific HEAD/`origin/main`
+   hash here as a durable claim; check `git log -- .claude/settings.json`
+   directly for the current state of this specific fact). Live-reverified after the commit: the guard still
    allows safe reads and still denies destructive commands
    (`UNKNOWN_COMMAND` on a live `rm -rf` attempt). See
    `knowledge/00-System/CURRENT_STATE.md`'s "Chunk 30" entry.
@@ -358,10 +361,14 @@ round-1 remediation pass missed:
 Items 1, 2, and 4 fixed same day. **Item 3 resolved same day**: the
 owner was asked directly and chose to commit `.claude/settings.json`
 themselves (commit `c9992d6`), rather than accept a documented
-non-durable state — confirmed via `git log`, local HEAD, and
-`origin/main` all matching, and a live re-verification that the guard
-still functions correctly post-commit. **All four round-2 P1s are now
-closed.**
+non-durable state — confirmed at the time via `git log -- .claude/settings.json`
+pointing to that commit and a live re-verification that the guard still
+functions correctly post-commit. (Local HEAD and `origin/main` have
+since advanced past `c9992d6` with further remediation commits, as
+expected — the durable claim is that `.claude/settings.json` itself is
+committed, which `git log` on that specific path continues to confirm,
+not that HEAD stays pinned to any one commit.) **All four round-2 P1s
+are now closed.**
 
 ## Round 3 (2026-09-13, same day): BLOCKED again — P0=0, P1=2
 
@@ -379,13 +386,20 @@ species a third consecutive time, in two forms:
    round 2 itself had flagged about round 1, recurring in round 2's own
    remediation of that exact finding.
 
-**Both fixed same day, this time via a vault-wide `grep` sweep for the
-literal stale phrases ("requires owner action", "owner action still
-pending", "never committed to Git" without a resolution note) rather
-than patching only the specific lines the reviewer cited** — per the
-reviewer's own explicit closing recommendation that the fix should be
-"a sweep for the class, not a patch of the six locations I cited."
-Authored `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_2_2026-09-13.md`.
+**Both fixed same day, via a targeted `grep` for the literal stale
+phrases** ("requires owner action", "owner action still pending",
+"never committed to Git" without a resolution note) **against the
+specific files the round-3 reviewer had just read** — `CURRENT_STATE.md`,
+`CURRENT_HANDOFF.md`, and this readiness package. **This did not, at
+the time, actually cover every occurrence in the vault**: a fourth
+certification round (below) found the identical phrasing still present
+in a section of `CURRENT_HANDOFF.md` the round-3 grep pass had not
+reached (a stale Phase 7 sub-bullet under "What is NOT done"), and
+flagged this section's own description of the fix — "a vault-wide
+sweep" — as itself inaccurate, since the sweep's actual scope was
+narrower than described. Corrected here to describe what was actually
+done, not what was intended. Authored
+`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_2_2026-09-13.md`.
 Also fixed round 3's Editorial findings: an ambiguous pronoun reference
 in `PHASE10_MODEL_ROUTING_RESOLUTION_2026-09-13.md` (read as if
 `capability_drift_check.py` were hash-pinned, when it is `mr_verify.py`
@@ -395,6 +409,29 @@ contradiction note not mentioning its own `OWN-002` closure; the
 since 2026-09-01), and this section's own item numbering (8 was
 inserted ahead of 7).
 
-**The next legally allowed action is a fourth fresh-context
+## Round 4 (2026-09-13, same day): BLOCKED again — P0=0, P1=4
+
+A fourth independent certification round independently re-verified the
+`.claude/settings.json` commit and live guard behavior (both sound),
+confirmed all of round 3's specific fixes landed correctly, and found
+the identical documentation-drift species a fourth time: (1) the
+Phase 7 sub-bullet noted above, missed by round 3's narrower-than-claimed
+sweep; (2) `STATUS.md`, `CURRENT_HANDOFF.md`, and `CURRENT_STATE.md`
+disagreeing on how many certification rounds had run; (3) round 3's own
+verdict had no dedicated evidence file — authored
+`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_3_2026-09-13.md`;
+(4) this section's own account of the round-3 sweep overstated its
+actual scope, corrected above.
+
+**Remediation took a different approach than a fifth sweep-and-hope
+pass**, per round 4's own explicit structural observation that a grep
+for yesterday's stale phrasing cannot catch tomorrow's: `STATUS.md`'s
+and `CURRENT_HANDOFF.md`'s front matter and bodies were rewritten to
+stop restating the certification-round count and next-action anywhere
+in them — `CURRENT_STATE.md`'s own front matter is now the sole source
+of truth for that fact, the same de-duplication pattern Phase 9 used
+for its own repeatedly-drifting Gatekeeper-round-count self-references.
+
+**The next legally allowed action is a fifth fresh-context
 certification round.** No certificate exists yet. MOD-001 remains
 locked.
