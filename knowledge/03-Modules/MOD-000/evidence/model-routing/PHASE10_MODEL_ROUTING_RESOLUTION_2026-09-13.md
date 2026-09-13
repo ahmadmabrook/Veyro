@@ -69,9 +69,14 @@ specifically to prevent.
 ## Forward-looking recommendation (not a Phase 10 blocker)
 
 If a future session or the harness itself exposes a documented,
-addressable per-subagent-dispatch transcript path, `mr_verify.py` should
-be extended (as a new script, per the same reasoning as
-`capability_drift_check.py` — its own SHA-256 hash is pinned in
-`.claude/security/bash_guard.py`'s allowlist and must not be edited
-in-place) to consume it, closing BUG-027 for real. Tracked in
-`BUG_REGISTRY.md`, not attempted this chunk.
+addressable per-subagent-dispatch transcript path, `mr_verify.py`
+itself should be extended to consume it (not a new script this time —
+per the same reasoning `capability_drift_check.py`'s own docstring
+gives for why *it* had to be new: `mr_verify.py`'s own SHA-256 hash is
+pinned in `.claude/security/bash_guard.py`'s allowlist and must not be
+edited in-place without an owner-authorized guard edit first). Closing
+BUG-027 for real. Tracked in `BUG_REGISTRY.md`, not attempted this
+chunk. (Corrected 2026-09-13, third certification-scope Gatekeeper
+round, Editorial: the sentence above previously read ambiguously as if
+`capability_drift_check.py` — which is NOT allowlist-pinned, that is
+precisely its own disclosed activation gap — were the pinned file.)

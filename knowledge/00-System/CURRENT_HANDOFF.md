@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-13 (chunk 30 — **Phase 10 certification IN PROGRESS, not yet PASS.** Two independent certification-scope Gatekeeper rounds have now run (chunk 29: BLOCKED, P0=1/P1=1, both remediated same day including an actual owner decision, OWN-002, closing EXT-01; chunk 30, this one: BLOCKED again, P0=0/P1=4, all documentation staleness plus one real durability gap — `.claude/settings.json`'s Phase 7 activation patch was never committed to Git, requires owner action). A third fresh-context round is required after this chunk's fixes. No certificate exists. MOD-001 remains locked. Full detail: `knowledge/00-System/CURRENT_STATE.md`'s own "Chunk 30" entry.)
+updated: 2026-09-13 (chunk 30 — **Phase 10 certification IN PROGRESS, not yet PASS.** Two independent certification-scope Gatekeeper rounds have run (round 1: BLOCKED, P0=1/P1=1, both remediated same day including an actual owner decision, OWN-002, closing EXT-01; round 2: BLOCKED again, P0=0/P1=4 — documentation staleness plus one real durability gap, `.claude/settings.json`'s Phase 7 activation patch never committed to Git; **all four fully remediated same day, including the owner committing the file directly, commit `c9992d6`**). A third certification round then found 2 more P1s (both the same recurring documentation-drift species, both fixed) — see the round-3 note below. No certificate exists. MOD-001 remains locked.)
 ---
 
 # Current Handoff
@@ -50,7 +50,7 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-28-2026-09-12-phase9-restoration-proof-pass.md`**
 — chunks 30 and 29 are now the 2 kept in full.
 
-## What happened chunk 30, 2026-09-13 — second certification-scope Gatekeeper round: BLOCKED again (P0=0, P1=4), all documentation staleness the chunk-29 remediation missed plus one real durability gap (`.claude/settings.json`'s activation patch never committed); session-actionable items fixed, owner action still pending on the durability gap
+## What happened chunk 30, 2026-09-13 — second certification-scope Gatekeeper round: BLOCKED again (P0=0, P1=4), all documentation staleness the chunk-29 remediation missed plus one real durability gap (`.claude/settings.json`'s activation patch never committed); all four fully remediated same day, including the owner committing the file directly (`c9992d6`) — then a THIRD round found 2 more of the identical documentation-drift species, also fixed same day. Full round-2 record: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_2_2026-09-13.md`.
 
 Continuation of chunk 29's own next action: after the owner recorded
 `OWN-002` (closing `EXT-01`, the first round's P0), the certification

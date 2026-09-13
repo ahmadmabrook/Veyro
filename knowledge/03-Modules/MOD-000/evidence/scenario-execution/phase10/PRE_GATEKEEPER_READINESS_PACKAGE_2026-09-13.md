@@ -231,6 +231,13 @@ independent judgment:
    was found, the one item on this list that was genuinely
    certification-blocking rather than merely non-blocking-and-disclosed;
    it no longer is.
+7. **Prospective `OWN-004`** (P2, design-bundle demo-data — 12
+   email-shaped and 6 phone-format strings in the frozen
+   `veyro-product-experience-design/` baseline, from BUG-016/Phase 7
+   SEC-10) — not registered as an EXT gate, `BUG-016` classifies it
+   non-blocking; added here 2026-09-13 per the Gatekeeper's finding
+   (P2-7) that its omission from this list, while not itself a
+   violation, undercut this section's "explicitly, not hidden" standard.
 8. **`.claude/settings.json`'s Phase 7 activation patch had never been
    committed to Git** (was P1, found by the second certification round,
    2026-09-13) — **RESOLVED same day**: the owner committed it directly
@@ -241,13 +248,6 @@ independent judgment:
    allows safe reads and still denies destructive commands
    (`UNKNOWN_COMMAND` on a live `rm -rf` attempt). See
    `knowledge/00-System/CURRENT_STATE.md`'s "Chunk 30" entry.
-7. **Prospective `OWN-004`** (P2, design-bundle demo-data — 12
-   email-shaped and 6 phone-format strings in the frozen
-   `veyro-product-experience-design/` baseline, from BUG-016/Phase 7
-   SEC-10) — not registered as an EXT gate, `BUG-016` classifies it
-   non-blocking; added here 2026-09-13 per the Gatekeeper's finding
-   (P2-7) that its omission from this list, while not itself a
-   violation, undercut this section's "explicitly, not hidden" standard.
 
 ## 12. Pre-Gatekeeper self-check
 
@@ -361,6 +361,40 @@ themselves (commit `c9992d6`), rather than accept a documented
 non-durable state — confirmed via `git log`, local HEAD, and
 `origin/main` all matching, and a live re-verification that the guard
 still functions correctly post-commit. **All four round-2 P1s are now
-closed. The next legally allowed action is a third fresh-context
+closed.**
+
+## Round 3 (2026-09-13, same day): BLOCKED again — P0=0, P1=2
+
+A third independent certification round confirmed the `.claude/settings.json`
+commit was real (re-read the file's committed content directly,
+re-verified the guard's live behavior itself, including denials this
+round triggered organically before it had read any evidence) and found
+no new substantive defect — but found the identical documentation-drift
+species a third consecutive time, in two forms:
+
+1. Three files (`CURRENT_STATE.md`, `CURRENT_HANDOFF.md` in two places)
+   still said the `.claude/settings.json` gap "requires owner action" or
+   was "still pending," after the owner had already resolved it.
+2. Round 2's own verdict had no dedicated evidence file — the same gap
+   round 2 itself had flagged about round 1, recurring in round 2's own
+   remediation of that exact finding.
+
+**Both fixed same day, this time via a vault-wide `grep` sweep for the
+literal stale phrases ("requires owner action", "owner action still
+pending", "never committed to Git" without a resolution note) rather
+than patching only the specific lines the reviewer cited** — per the
+reviewer's own explicit closing recommendation that the fix should be
+"a sweep for the class, not a patch of the six locations I cited."
+Authored `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_2_2026-09-13.md`.
+Also fixed round 3's Editorial findings: an ambiguous pronoun reference
+in `PHASE10_MODEL_ROUTING_RESOLUTION_2026-09-13.md` (read as if
+`capability_drift_check.py` were hash-pinned, when it is `mr_verify.py`
+that is), two stale-signal items in `PROJECT_INDEX.md` (the EIP
+contradiction note not mentioning its own `OWN-002` closure; the
+`last_verified` field not reflecting many successful re-verifications
+since 2026-09-01), and this section's own item numbering (8 was
+inserted ahead of 7).
+
+**The next legally allowed action is a fourth fresh-context
 certification round.** No certificate exists yet. MOD-001 remains
 locked.
