@@ -435,3 +435,29 @@ for its own repeatedly-drifting Gatekeeper-round-count self-references.
 **The next legally allowed action is a fifth fresh-context
 certification round.** No certificate exists yet. MOD-001 remains
 locked.
+
+## Round 5 (2026-09-13, same day): BLOCKED again — P0=0, P1=3
+
+A fifth independent round found round 4's de-duplication attempt had
+not actually been carried out: `CURRENT_STATE.md` itself — the file
+nominated as sole source of truth — was never updated and remained
+three-way self-contradictory, and two more restatements survived in
+`CURRENT_HANDOFF.md` the round-4 edit had not reached. Also found:
+round 4's own verdict had no evidence file (the fourth consecutive
+round to be caught in this exact gap); `STATUS.md`'s absolute
+"no round count anywhere" claim sat beside a sentence naming one; and
+`NOTION_CONTROL_PLANE.md`'s owner-approvals summary omitted `OWN-002`.
+
+**All fixed same day**, this time verified by re-grepping the affected
+files after editing rather than only asserting the fix's scope, and by
+instituting a standing rule (`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/README.md`,
+new) that every certification round authors its own evidence file in
+the same commit as its remediation — closing the recurring
+missing-evidence-file gap by construction. Full record:
+`CERTIFICATION_ROUND_4_2026-09-13.md`, `CERTIFICATION_ROUND_5_2026-09-13.md`.
+
+**The next legally allowed action is a sixth fresh-context
+certification round.** No certificate exists yet. MOD-001 remains
+locked. (This is the last time this document states a round ordinal —
+`CURRENT_STATE.md`'s front matter is the sole source of truth for it
+from here forward.)

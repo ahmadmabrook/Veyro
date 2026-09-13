@@ -136,11 +136,12 @@ non-blocking Editorial items, also fixed same day except the scratch
 files (the Bash guard denies `rm` outright for any path — harmless,
 never staged).
 
-**PHASE 10 CERTIFICATION: NEXT ACTION IS A THIRD REVIEW ROUND.** No certificate exists yet.
-MOD-001 remains locked. **Next legally allowed action: dispatch a third
-fresh-context certification-scope `veyro-gatekeeper` round** — all
-session-actionable and owner-actionable items from round 2 are now
-closed.
+**All session-actionable and owner-actionable items from round 2 are
+closed.** No certificate exists yet. MOD-001 remains locked. (This
+paragraph deliberately does not state a round number or "next action"
+— see `CURRENT_STATE.md`'s front matter, the sole place that fact is
+kept, per round 5's finding that restating it here even once is enough
+to drift.)
 
 ## What happened chunk 29, 2026-09-13 — Phase 10 readiness: 5 known artifact gaps closed, plus SCN-094 and SCN-084/BUG-025, canonical matrix now 82/8/3/2/0, Notion reconciled, BUG-027 (Phase 9's `mr_verify.py` gap) resolved as a disclosed, accepted, non-blocking limitation
 
@@ -626,26 +627,23 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 - Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, an owner-authorized final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped Sonnet remediation of those 3 P1s, an owner-authorized fourth independent verification of that remediation (APPROVED FOR OWNER ACTIVATION, P0=0/P1=0), and the owner's manual activation patch + a fresh-session 14-row live-test matrix (chunk 25, 2026-09-08) — **all 14 PASS**. `BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all **CLOSED** — the PreToolUse hook is proven live-executing, this project's own historical bypass fixtures for all three bugs proven denied live, and safe operations proven unaffected. CAP-007 is now **ACTIVE**. **GATE: PASS.** A durability caveat found by the second Phase 10 certification Gatekeeper round (P1-3, 2026-09-13) — the owner's activation edit to `.claude/settings.json` had been applied live but never committed to Git — **is RESOLVED (same day, round 2's remediation)**: the owner committed it directly from a real terminal, commit `c9992d6`, confirmed via `git log -- .claude/settings.json`, local HEAD, and `origin/main` all matching, and the guard's live behavior re-verified correct afterward (re-confirmed again by the third and fourth certification rounds). No owner action is pending on this item.
 - Phase 8 — executed, closeout-corrected, and PASSED (chunks 26-27, 2026-09-12; canonical matrix updated again in chunk 29, 2026-09-13, Phase 10 readiness). All 95 scenarios resolve to exactly one canonical disposition — current totals live only in `PHASE8_CANONICAL_95_MATRIX_2026-09-12.md` (not restated here to avoid drift; see that file's own "Phase 10 update" section). Full Notion Scenario DB reconciled (re-reconciled again 2026-09-13 after 6 more scenarios closed). All permanent suites re-verified PASS; live guard proven active throughout via organic real denials. **GATE: PASS.**
 - Phase 9 — **PASS (2026-09-13)** — ninth independent Gatekeeper round APPROVED, P0=0/P1=0. See the chunk-28 section above and the Phase 9 proof file. **GATE: PASS.**
-- Phase 10 — **IN PROGRESS, not yet PASS.** The 5 known readiness artifact gaps were authored (chunk 29, 2026-09-13) — see the next bullet. A first fresh-context certification-scope `veyro-gatekeeper` round (chunk 29) returned **BLOCKED** (P0=1: EXT-01 owner-approval gate open; P1=1: a stale scenario-matrix cell). Both were remediated same day; the P0 was closed by an actual owner decision, recorded as `OWN-002`. A second fresh-context certification round (this chunk, 30) independently re-verified that remediation and found it procedurally sound, but returned **BLOCKED again** on 4 new P1s — none a recurrence of the first round's findings, all documentation staleness the first remediation pass missed (this section and the "Next legally allowed action" section below being two of them) plus the `.claude/settings.json` durability gap named above. Never self-approved; a third fresh-context round is required after this chunk's fixes.
+- Phase 10 — **IN PROGRESS, not yet PASS.** The 5 known readiness artifact gaps were authored (chunk 29, 2026-09-13) — see the next bullet. Multiple independent certification-scope `veyro-gatekeeper` rounds have run; the first found `EXT-01` (owner-approval gate) open, closed by an actual owner decision recorded as `OWN-002`; every round since has found the same recurring documentation-drift species. Never self-approved. **This bullet deliberately does not state a round count or next action — see `CURRENT_STATE.md`'s front matter, the sole place that fact lives.**
 - 5 known artifact gaps: **AUTHORED (chunk 29, 2026-09-13)** — `knowledge/00-System/skl-rule-id.schema.yaml`, `CAPABILITY_ROLLBACK_PROCEDURE.md`, `CAPABILITY_EVALUATION_TEMPLATE.md`, `knowledge/05-QA/tools/run_regression.py`, `SKILL_SCOPING_POLICY.md`, plus `RULES_PROFILE_STRUCTURE.md` for the related `.claude/rules` profile-structure gap. Closing SCN-087/088/089/091/093/094.
 - The pre-existing EIP internal self-contradiction (`knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md`, tracked as `EXT-01`) — **RESOLVED 2026-09-13.** The owner adjudicated in favor of the EIP's own front matter (fully approved/final); the §21.1 "candidate" language is ruled a drafting inconsistency in the source document, not a live blocker. Recorded as `OWN-002` in `OWNER_APPROVALS.md`. `EXT-01` is CLOSED.
 
 ## Next legally allowed action
 
-**Corrected 2026-09-13, fourth certification-scope Gatekeeper round
-(P1-1/P1-2): this section previously described round 2's initial,
-unremediated findings as still-current, including prescribing "a third
-round" after a third AND fourth round had already run.** Current state,
-as of the fourth round: four independent certification-scope
-`veyro-gatekeeper` rounds have run, all returned BLOCKED, and every
-finding through round 3 is remediated — including `.claude/settings.json`'s
-activation patch, which the owner committed directly (`c9992d6`) during
-round 2's remediation. Round 4's own findings (this same species of
-staleness recurring a fourth time, plus round 3's own verdict having no
-dedicated evidence file) are being fixed this chunk. **The next legally
-allowed action is: dispatch a fifth fresh-context certification-scope
-`veyro-gatekeeper` round.** Not MOD-001 — that remains locked until a
-round returns APPROVED and a certificate is issued.
+**Corrected 2026-09-13, fifth certification-scope Gatekeeper round
+(P1-2): this section previously restated the round count and next
+action in its own words each time a round found the prior wording
+stale — itself an instance of the exact drift the count-and-next-action
+fact keeps suffering. It no longer does either, at all.** Every
+finding through the most recent round is remediated except whatever
+that round's own report says is still open — read `CURRENT_STATE.md`'s
+front matter for the current round count, verdict, and next legally
+allowed action; it is the sole place this fact is kept, and no other
+file, including this one, restates it. Not MOD-001 — that remains
+locked until a round returns APPROVED and a certificate is issued.
 
 BUG-010 remains open by design (owner-decision-pending, non-blocking). BUG-025 is FIXED (2026-09-13, Phase 10 readiness). F5-027 remains open by design, non-blocking.
 
