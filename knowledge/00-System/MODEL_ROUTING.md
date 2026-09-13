@@ -1,7 +1,7 @@
 ---
 doc: MODEL_ROUTING
 status: LIVE
-updated: 2026-09-01
+updated: 2026-09-06 (Phase 7, BUG-012/ADR-004/OWN-003 — added the orchestrating-session-tier section below; this front matter date had gone stale, still saying 2026-09-01, caught by Phase 9's second Gatekeeper pass, Editorial)
 ---
 
 # Model Routing — Veyro

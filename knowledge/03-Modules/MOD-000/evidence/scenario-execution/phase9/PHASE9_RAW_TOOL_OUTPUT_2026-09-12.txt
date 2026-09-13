@@ -1,0 +1,67 @@
+Phase 9 tool-run digest, captured 2026-09-12/13 while remediating
+findings from multiple rounds of independent Gatekeeper review. This
+file deliberately does not pin a round count (see the note below) — for
+the current round count and full findings, see
+PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md's own front matter.
+
+CORRECTION (2026-09-13, third Gatekeeper pass P2-1): this file was
+originally written as if it were verbatim tool output. It is not —
+several lines below are summaries/paraphrases of real runs, not copied
+output. Every fact stated is independently confirmed true (re-run live
+by this session and by the third Gatekeeper reviewer separately), but
+this file should be read as a run digest, not a transcript. For actual
+verbatim output, re-run each command listed below directly.
+
+=== git rev-parse HEAD ===
+9c43ea3adc3fcc9f51d607ed6d35a5ed24466e79
+
+=== git rev-parse origin/main ===
+9c43ea3adc3fcc9f51d607ed6d35a5ed24466e79
+
+(identical — local HEAD == origin/main, independently re-confirmed by
+every Gatekeeper review round dispatched during Phase 9, in addition to
+this session's own runs; avoid pinning a specific round count in this
+file, since it is not updated in lockstep with every round — see
+PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md's front matter for
+the current round count)
+
+=== python3 knowledge/00-System/verify_baselines.py ===
+Exit result: PASS. All 4 governing baseline hashes matched
+knowledge/00-System/PROJECT_INDEX.md exactly on every run this chunk.
+
+=== python3 knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py ===
+Exit result: PASS, 0 errors, 1 tracked non-blocking warning (3
+product-domain-word occurrences, human-judgment-required, unchanged
+across this chunk). 95 distinct scenario IDs parsed on every run; all 19
+mandatory EIP categories covered; every Required scenario has both a
+summary-table row and a detail block.
+
+=== python3 knowledge/00-System/validate_capabilities.py ===
+Exit result: PASS on every run this chunk. 7 capabilities (CAP-001
+through CAP-007), all registered and APPROVED with required fields
+present.
+
+=== python3 knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/tools/evidence_integrity_check.py ===
+Exit result: PASS on every run this chunk (run 3 times as files were
+added/edited; file count climbed from 155 to 156 as this chunk's own new
+evidence files were added — this is expected, not a discrepancy). No
+broken evidence references beyond the pre-existing expected-absent
+forward references; no missing bug linkage.
+
+=== python3 .claude/security/tests/test_bash_guard.py ===
+Exit result: OK, 194/194 tests passing, on every run this chunk (run
+multiple times, ~6.9s each run).
+
+=== Live Notion Bugs-database SQL query ===
+Query: SELECT "Name", "Status", "Severity" FROM
+"collection://78ab7d8f-943a-4c7b-923b-01ce3781d875" WHERE "Status" !=
+'Done' ORDER BY "Name"
+
+Result: exactly two rows — BUG-010 (Not started, Minor) and BUG-025 (Not
+started, Minor). Exact match to knowledge/05-QA/BUG_REGISTRY.md's
+durable state at query time (only BUG-010 and BUG-025 open, both P2, 0
+Blocker, 0 P1).
+
+BUG-026 was subsequently created in the live Bugs database (page id
+3d9ce38f-1c9b-81c4-8d35-cc1bfaa27c79, Status: Done, linked to the MOD-000
+module page) — it had not been mirrored to Notion before that point.

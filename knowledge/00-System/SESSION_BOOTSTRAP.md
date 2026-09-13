@@ -20,6 +20,24 @@ report `BLOCKED: BASELINE_INTEGRITY_FAILURE` and do not proceed. (Corrected
 baselines, silently skipping the design bundle, which is exactly the
 artifact BUG-001 was found in.)
 
+**Primary, guard-compatible check (corrected 2026-09-13, Phase 9 fifth
+Gatekeeper pass P2-2):**
+
+```bash
+python3 knowledge/00-System/verify_baselines.py
+```
+
+This is a single command, allowlisted by the live `.claude/security/bash_guard.py`
+PreToolUse guard (CAP-007, active since 2026-09-08), and covers all 4
+baselines including the design bundle manifest — hash-diffed directly
+against `PROJECT_INDEX.md`. Prefer this over the raw shell commands
+below.
+
+**Reference/offline alternative** (the guard denies the multi-command
+and piped forms below as `UNSUPPORTED_SHELL_COMPOSITION` — run only if
+`verify_baselines.py` itself is unavailable or under suspicion, one
+command at a time, not chained):
+
 ```bash
 shasum -a 256 Gym_OS_Master_Product_Blueprint_v1_English.docx
 shasum -a 256 Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx

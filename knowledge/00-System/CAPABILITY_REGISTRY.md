@@ -1,7 +1,7 @@
 ---
 doc: CAPABILITY_REGISTRY
 status: LIVE
-updated: 2026-09-08 (Phase 7, CAP-007 APPROVED and now ACTIVE — owner applied the activation patch, fresh-session live verification passed all 14 required checks, see additions below)
+updated: 2026-09-12 (Phase 9 restoration proof, second Gatekeeper pass P1-4 — corrected the resolution-budget section's stale CAP-001-through-CAP-006 range to include CAP-007)
 ---
 
 # Capability Registry
@@ -35,7 +35,7 @@ resolution budget: default maximum 45 minutes of active orchestration
 and, when runtime token telemetry is observable, 50,000 model tokens."
 F5-016's fix added the rule to `CAPABILITY_POLICY.md`'s prose but never
 instantiated a per-record field here, which this correction closes:
-**every capability row in this registry (CAP-001 through CAP-006) uses
+**every capability row in this registry (CAP-001 through CAP-007) uses
 the EIP default resolution budget (45 min / 50,000 tokens) — none has a
 registered override.** The enforcement mechanism for this budget is
 `knowledge/05-QA/tools/resolution_bound.py` (built and proven 2026-09-05,

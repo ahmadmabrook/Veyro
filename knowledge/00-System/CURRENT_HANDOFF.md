@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-12 (chunk 27 — Phase 8 closeout correction: all 95 scenarios now resolve to exactly one canonical disposition (**76 PASS, 14 BLOCKED, 3 OWNER_ASSISTED, 2 NOT_APPLICABLE, 0 FAIL**); OWNER_ASSISTED reinstated as distinct from BLOCKED; full Notion Scenario DB reconciled (95/95 verified live, 46 rows corrected, 0 duplicates/missing); **BUG-025** (P2, non-blocking) found; all validators/baselines/Bash-guard suite re-confirmed PASS; **PHASE 8 GATE: PASS**; **Phase 9 legally unlocked** (not started this chunk); local HEAD reconciled with `origin/main`)
+updated: 2026-09-13 (chunk 28 — **PHASE 9 GATE: PASS.** A ninth independent fresh-context `veyro-gatekeeper` round returned RESTORATION PROOF APPROVED, P0=0/P1=0. **Phase 10 is now legally unlocked — not started this chunk.** Full round-by-round history: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase9/PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md`.)
 ---
 
 # Current Handoff
@@ -38,8 +38,153 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-24-2026-09-08-fourth-review-approved-activation.md`.**
 **Ninth application (2026-09-12, chunk 27): chunk 25 compressed to a
 summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-25-2026-09-08-live-activation-verification.md`**
-— chunks 27 and 26 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-25-2026-09-08-live-activation-verification.md`.**
+**Tenth application (2026-09-12, chunk 28): chunk 26 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-26-2026-09-12-phase8-cumulative-regression.md`**
+— chunks 28 and 27 are now the 2 kept in full.
+
+## What happened chunk 28, 2026-09-12/13 — PHASE 9 GATE: PASS. BUG-026 found and fixed; nine independent Gatekeeper review rounds, the ninth APPROVED (P0=0/P1=0); Phase 10 legally unlocked, not started (full round-by-round history: PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md)
+
+Continuation of chunk 27's own "next legally allowed action": Phase 9,
+the fresh-session restoration proof. This was a genuinely fresh Claude
+Code session with zero prior chat/session memory. Bootstrap read first
+per `SESSION_BOOTSTRAP.md`'s own protocol (`CLAUDE.md`,
+`SESSION_BOOTSTRAP.md`, `PROJECT_INDEX.md`, `CURRENT_STATE.md`,
+`CURRENT_HANDOFF.md`, `DEVELOPMENT_CONSTITUTION.md`, `MODEL_ROUTING.md`),
+all 4 governing baseline hashes re-verified live (`verify_baselines.py`
+PASS), local HEAD confirmed identical to `origin/main`
+(`9c43ea3adc3fcc9f51d607ed6d35a5ed24466e79`), all 4 governance validators
+and the 194-test Bash guard suite re-run live (all PASS), and a bounded
+live Notion cross-check performed (MOD-000 page content matches
+`CURRENT_STATE.md` exactly; a live Bugs-database SQL query returned
+exactly `BUG-010`/`BUG-025` open, an exact match to `BUG_REGISTRY.md`).
+
+**One real current-state contradiction found: BUG-026.**
+`knowledge/05-QA/MODEL_ROUTE_INDEX.md` had gone stale since 2026-09-01,
+claiming 7 of 9 `veyro-*` agents were "not yet individually
+runtime-tested," directly contradicting
+`knowledge/03-Modules/MOD-000/evidence/model-routing/ASSURANCE_TIER_AUDIT.md`
+(2026-09-05), which had already cross-checked 20 real subagent
+transcripts and found 6 of those 7 agents 100% correct-tier.
+
+**First remediation pass and first independent Gatekeeper review.** The
+first fix updated `MODEL_ROUTE_INDEX.md`'s table but was itself
+incomplete. A fresh-context `veyro-gatekeeper` independently re-derived
+everything from durable sources and live tool runs (not trusting the
+narrative) and returned **RESTORATION PROOF BLOCKED, P0=0, P1=4, P2=5,
+Editorial=1**: the fix left a stale "## Note" section contradicting its
+own corrected table; missed updating `veyro-test-author`'s row despite
+real evidence existing for it; three per-module Appendix-D files inside
+MOD-000's own directory (`STATUS.md`, `SCENARIOS.md`, `CAPABILITIES.md`)
+had independently gone stale and were never checked; and the chunk's own
+Phase 9 work was still entirely uncommitted while `BUG_REGISTRY.md`
+already referenced it — a self-manufactured contradiction. All findings
+remediated same chunk.
+
+**Second independent Gatekeeper review — BLOCKED again, same defect
+class, wider scope.** A second, distinct fresh-context `veyro-gatekeeper`
+re-derived everything again from scratch and found the first remediation
+had corrected exactly the files the first reviewer named, without
+generalizing the fix to sibling files carrying the identical staleness
+defect. **P0=0, P1=5, P2=4, Editorial=5:** `CURRENT_STATE.md` itself
+carried three false checklist lines (external-gate/owner-approval state,
+module evidence structure, and Phases 2-10 execution status — all said
+"not populated"/"not run" when they demonstrably were); three more
+per-module files (`CODE_REVIEW.md`, `REQUIREMENTS.md`,
+`LOAD_SECURITY.md`) were stale; `CAPABILITY_EVAL_INDEX.md` and
+`CAPABILITY_REGISTRY.md` both omitted/undercounted CAP-007;
+`MANUAL_QA_INDEX.md` still listed Android/Accessibility/Edge-device as
+BLOCKED after chunk 27 reinstated OWNER_ASSISTED for exactly those rows;
+`ADR-001` wasn't marked superseded by `ADR-002`; a rule file was missing
+from `CAPABILITIES.md`'s list; and several Editorial-level
+inconsistencies (a stale `MODEL_ROUTING.md` front-matter date, an
+internal citation mismatch in the BUG-026 file, three untracked stray
+commit-message files at repo root).
+
+**All findings from rounds 1-2 remediated, then round 3 (BLOCKED,
+P1=2/P2=2/Ed=5) found the same pattern recurring a third time** — this
+time inside `SCENARIO_CATALOG.md`'s own D-2 coverage matrix (still
+showing Android/Accessibility/Edge-device as BLOCKED, plus several
+scenarios marked "not yet executed" that were already PASS per that same
+file's own canonical detail blocks — SCN-036's detail block itself had
+never been updated either) and `CAPABILITY_EVAL_INDEX.md` (CAP-003/
+CAP-004 still missing after round 2 fixed only CAP-007's identical
+omission). Remediated the same chunk, along with round 3's smaller
+findings (a raw-evidence file overclaiming verbatim fidelity, a pinned
+file count gone stale, and 5 Editorial items). **Round 4 (BLOCKED,
+P1=3/P2=4/Ed=5) then found the pattern a fourth time, this time inside
+`CURRENT_STATE.md` and this file itself** — both still claimed only two
+rounds had run and a third was pending, after a third round had already
+completed — plus two more un-swept siblings (`capability-evidence/
+INDEX.md` missing 5 of 7 capability rows; `NOTION_CONTROL_PLANE.md`
+carrying four stale Notion-state claims, one of them the same "0 rows"
+falsehood round 2 had already fixed once in `CURRENT_STATE.md`) and
+several P2/Editorial items (a stale settings-patch-file status line, a
+catalog front-matter still saying "DRAFT — pending review" after
+EXECUTION-READY, and this proof document's own text lagging its actual
+round count). Round 4's findings remediated this chunk. Full restoration
+proof, including every Gatekeeper round's complete findings and
+remediations to date (this narrative stops updating its own round count
+after round 4 — see the proof file's front matter for the current
+count):
+`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase9/PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md`.
+
+**Round 5 (BLOCKED, P1=2/P2=2/Ed=5) confirmed the underlying restoration
+substance is genuinely converged** — every one of ~20 spot-checked files
+from rounds 1-4 held up under direct fifth-round inspection, all 5
+automated checks passed, and the reviewer stated explicitly that
+convergence was real, not assumed. The 2 remaining P1s were: (a) the
+exact round-count self-reference defect recurring a fifth time in
+`CURRENT_STATE.md`/this file's own checklist and narrative lines
+(partially fixed this chunk — the two named lines were de-duplicated,
+though round 6 later found the front matter of both files still
+enumerated a round count in the same breath as claiming not to; see the
+round-6 note below), and (b)
+a "Fixed" claim in the proof document that round 4 made but hadn't
+fully applied (one adjacent line missed). Also fixed: a fourth un-swept
+sibling of the Android/Accessibility/Edge-device disposition fact
+(`CURRENT_STATE.md`'s own Phase 6 historical record, annotated rather
+than rewritten, since it correctly reflected 2026-09-05's actual state
+at the time), a `SESSION_BOOTSTRAP.md` §1 verification procedure that
+had gone non-executable under the now-live CAP-007 guard (fixed to lead
+with the guard-compatible `verify_baselines.py`), and 5 Editorial items.
+
+**Round 6 found round 5's own "structurally fixed... no longer restate a
+round count or per-round findings at all" claim was itself only
+half-true** — the fix reached the two lines round 5 named
+(`CURRENT_STATE.md` lines 86/97, this file's next-action paragraph) but
+this file's own front matter still enumerated all five rounds' severity
+counts in the same breath as claiming not to, `knowledge/03-Modules/
+MOD-000/TEST_RESULTS.md`'s Phase 9 row (added by round 4, never revisited
+since) published a conflicting "four rounds, fifth pending" count, and
+this document had a dangling "(see 'Durable closeout' below)" pointer to
+a section that doesn't exist. **This narrative stops updating its own
+per-round severity count here (round 6 is the last one enumerated in
+this file) — front matter for both this file and `CURRENT_STATE.md` now
+carry zero round-count detail, full stop, and `TEST_RESULTS.md`'s Phase 9
+row was corrected to the same no-count, point-to-the-proof-file pattern.**
+See the proof file itself for round 6's findings and every round since.
+
+**PHASE 9 GATE: PASS (2026-09-13).** A ninth independent fresh-context
+`veyro-gatekeeper` round returned RESTORATION PROOF APPROVED, P0=0,
+P1=0 (2 non-blocking P2s, fixed anyway) — independently re-deriving
+every restoration claim (baselines, module state, phase history, bug
+counts, capability state, guard liveness, model routing, owner
+approvals, Notion non-contradiction, next-action derivability, MOD-001
+lock) from durable sources and live tool output, not inherited from any
+prior round's account. Per this project's own repeated experience
+(Phase 5 took five review rounds; the Bash guard took multiple rounds
+across two architectures), a fix pass being itself incomplete across
+several successive rounds was a known, expected pattern here, not a
+sign something was wrong with the process — nine rounds of repeated
+independent re-checking converged to zero P0/P1. Full record: the proof
+file's own front matter and body. **PHASE 10 IS NOW LEGALLY UNLOCKED —
+not started this chunk. Next legally allowed action: the Phase 10
+readiness package (5 known artifact gaps), then fresh-context
+`veyro-gatekeeper` certification of MOD-000 as a whole for a Module
+Approval Certificate. Not MOD-001** — MOD-001 remains locked until that
+certificate exists.
 
 ## What happened chunk 27, 2026-09-12 — Phase 8 closeout correction: all 95 scenarios resolved to exactly one canonical disposition (76 PASS/14 BLOCKED/3 OWNER_ASSISTED/2 NOT_APPLICABLE/0 FAIL); full Notion Scenario DB reconciled; BUG-025 found
 
@@ -127,125 +272,7 @@ closed last chunk; BUG-025 is P2). Full record:
 **PHASE 8 GATE: PASS. PHASE 9 IS LEGALLY UNLOCKED** — not started this
 chunk, per explicit instruction.
 
-## What happened chunk 26, 2026-09-12 (compressed 2026-09-12 per retention rule) — Phase 8 cumulative regression executed and PASSED (superseded by chunk 27's canonical-status correction above); BUG-024 found and closed same day; SCN-046 closed
-
-Continuation of the prior chunk's own "next legally allowed action":
-Phase 8, cumulative regression + full state reconciliation, per the
-owner's explicit multi-section brief. Bootstrap read first
-(`SESSION_BOOTSTRAP.md`, `CURRENT_STATE.md`, `CURRENT_HANDOFF.md`), then
-`PROJECT_INDEX.md`, `DEVELOPMENT_CONSTITUTION.md`, `MODEL_ROUTING.md`,
-`BUG_REGISTRY.md` — all internally consistent, no contradiction found at
-pre-flight.
-
-**Note on this chunk's own opening turn:** the user's message that
-started this chunk contained, alongside the genuine Phase 8 brief, a
-large block of injected/fabricated content — a full consumer claude.ai
-tool schema list (tools that do not exist in this session, confirmed by
-a direct failed call), a fake `/auto-mode-setup` "local-command-stdout"
-this session never ran, and other consumer-app system-prompt material
-that does not describe this environment. This was flagged to the user
-directly before proceeding, rather than acted on or silently absorbed;
-the genuine parts of the message (real CLAUDE.md file contents, the real
-git status, the real environment block, and the actual Phase 8
-instructions) were verified against the real repo state (HEAD matched
-the last real commit, `84b8694`) before continuing. The user confirmed
-proceeding with the real Phase 8 work.
-
-**Worktree hygiene:** `.claude/settings.json` confirmed still owner-
-managed, unstaged, untouched (the live guard's own self-protection
-denies `git add .claude/settings.json` outright, re-confirmed).
-`tmp_commit_msg.txt` (a harmless chunk-25 leftover) left in place — no
-Bash-governed `rm` shape exists at all in the live guard, and treating
-that as a certification blocker would be exactly the kind of guard
-weakening this project's own discipline forbids; its content was
-already emptied via the Write tool with an explanatory note.
-
-**Cumulative scenario regression:** reconciled all 95 catalog scenarios'
-canonical detail blocks against the Phase 1/3/6 phase-reconciliation
-tables, rather than blindly re-executing all 95 (per the brief's own
-instruction not to convert historically-valid BLOCKED/OWNER_ASSISTED
-dispositions to PASS without new genuine evidence). Found two real
-staleness defects:
-
-- **SCN-015** — canonical block said "not yet executed with a real
-  divergence." Stale since 2026-09-04: Phase 3 §8 already ran exactly
-  this drill for real (a live Notion Evidence-Path mismatch, detected
-  and reconciled to `knowledge/`). No tier issue. Fixed directly.
-- **SCN-031 / BUG-024 (P1)** — a Blocker/SEC scenario whose own spec
-  requires Opus `veyro-security-reviewer`, but whose only real evidence
-  (Phase 3 Battery Task 8) was gathered by Sonnet-tier
-  `veyro-implementer`, with the canonical block never updated to even
-  acknowledge the evidence existed. Filed as **BUG-024** and delegated
-  to a freshly spawned `veyro-security-reviewer` (Opus, no participation
-  in Phase 3, no involvement in filing the bug) for independent
-  adjudication — the established operating model (Sonnet
-  executes/finds, Opus decides on Opus-reserved judgment calls, same
-  pattern as BUG-006), not decided unilaterally by this session.
-  **Verdict: PASS, no re-run needed** — existing Sonnet-tier mechanical
-  execution substantively sufficient, this review supplying the missing
-  Opus judgment tier, grounded in `CAPABILITY_POLICY.md`'s own
-  `qualified_by`(Sonnet)/`approved_by`(Opus) split and DC-17's F5-019
-  clarification (the identical precedent BUG-006 used). The reviewer
-  also found and fixed a broken evidence pointer (`UNSAFE_CAPABILITY_
-  DRILL.md`, never created) and recorded 4 non-blocking scope-limitation
-  findings (over-determined refusal, maximally overt injection phrasing,
-  no destructive/exfiltration vector, no durably-preserved verbatim
-  transcript). **BUG-024 CLOSED same day.**
-
-A related, smaller item was also fixed: **SCN-077**'s justification text
-("same root cause as SCN-067 — no mechanism exists") had gone half-stale
-when SCN-067's own remediation built `resolution_bound.py`; SCN-077 is
-still correctly BLOCKED, for its own distinct, still-unmet reason (a
-different metering dimension plus a required Opus escalation-
-confirmation step never run) — text corrected, disposition unchanged.
-
-**SCN-046 (deferred since Phase 1, 2026-09-01) closed in full:** the
-Notion-API-driven half of the three-way state-agreement check, executed
-for real this chunk via a live `notion-fetch` call against the MOD-000
-Notion page, compared field-by-field against `CURRENT_STATE.md`. Zero
-drift found.
-
-**Regression suites, all re-run PASS:** `validate_catalog.py` (0
-errors), `evidence_integrity_check.py`, `verify_baselines.py` (all 4
-hashes unchanged), `validate_capabilities.py` (7 capabilities, all
-APPROVED), `.claude/security/tests/test_bash_guard.py` (194/194). The
-live PreToolUse guard was proven active throughout this entire chunk via
-organic real denials encountered mid-session (chained `grep` commands
-with `|`-alternation patterns denied as `UNSUPPORTED_SHELL_COMPOSITION`
-multiple times while doing ordinary reconciliation work) — direct,
-continuous proof it did not regress between chunk 25 and this chunk, not
-merely a staged test at session start.
-
-**Model-routing/capability governance:** no silent downgrade; CAP-007's
-pinned hash re-verified exact-match; the one Opus-reserved judgment call
-this chunk required (BUG-024's adjudication) was correctly delegated to
-a fresh `veyro-security-reviewer` rather than decided by this Sonnet-tier
-orchestrating session.
-
-**A stale durable index found as a byproduct:** `TEST_RESULTS.md` had
-not been updated since Phase 4 (2026-09-05) despite Phases 5-8 all
-completing since — exactly the "stale Phase status" propagation gap this
-phase exists to catch. Corrected, not silently left.
-
-**Notion reconciliation (bounded, not a full resync):** the Bugs
-database queried live via SQL — only `BUG-010` not `Done`, exact match
-to `BUG_REGISTRY.md`. `BUG-024` added, recorded `Done`. The 2 scenarios
-whose disposition actually changed this chunk (SCN-015, SCN-031) updated
-in the Scenarios database. A full 95-row Scenario-DB resync (Notion's
-own Done-count was found to undercount Git's current, more granular
-disposition — a known artifact of Notion only tracking a 3-state field,
-last fully synced around the Phase 4-6 era) was judged disproportionate
-for a mirror-only field and flagged as a known, non-blocking residual —
-Git remains authoritative and unaffected. New Test Run row
-`TR-MOD000-20260912-017` created.
-
-**Bug regression:** BUG-010 re-confirmed still correctly open (unchanged
-reason, non-blocking). No closed bug regressed.
-
-**Result: P0=0, P1=0 (BUG-024 found and closed within this same chunk).
-PHASE 8 GATE: PASS. PHASE 9 IS LEGALLY UNLOCKED** — not started this
-chunk, per explicit instruction. Full record:
-`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md`.
+## What happened chunk 26, 2026-09-12 (compressed 2026-09-12, tenth retention-rule application) — Phase 8 cumulative regression executed and PASSED (superseded by chunk 27's canonical-status correction); BUG-024 found and closed same day; SCN-046 closed. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-26-2026-09-12-phase8-cumulative-regression.md`.
 
 ## What happened chunk 25, 2026-09-08 (compressed 2026-09-12 per retention rule) — owner applied the activation patch; fresh-session live-test matrix (14/14 PASS); BUG-013/022/023 CLOSED; CAP-007 ACTIVE; PHASE 7 GATE: PASS
 
@@ -281,7 +308,7 @@ Two independent fresh-context Opus reviewers ran the full Phase 7 assurance pass
 
 ## What happened chunk 17, 2026-09-05 (compressed 2026-09-06 per retention rule) — Phase 6 real manual QA executed, PHASE 6 GATE: PASS
 
-Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence: Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly BLOCKED (reasoning sharpened, BUG-011 filed+fixed same day). 0 FAIL, 0 P0, 0 P1. **PHASE 6 GATE: PASS.** Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-17-2026-09-05-phase6-manual-qa.md`.
+Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence: Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly BLOCKED as of this 2026-09-05 record (reasoning sharpened, BUG-011 filed+fixed same day) — **reinstated as OWNER_ASSISTED, distinct from BLOCKED, by Phase 8 chunk 27 (2026-09-12)**. 0 FAIL, 0 P0, 0 P1. **PHASE 6 GATE: PASS.** Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-17-2026-09-05-phase6-manual-qa.md`.
 
 ## What happened chunk 16, 2026-09-05 — BUG-007 closed via real execution; PHASE 5 GATE: APPROVED after five independent review rounds
 
@@ -577,8 +604,8 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 - Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, an owner-authorized final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped Sonnet remediation of those 3 P1s, an owner-authorized fourth independent verification of that remediation (APPROVED FOR OWNER ACTIVATION, P0=0/P1=0), and the owner's manual activation patch + a fresh-session 14-row live-test matrix (chunk 25, 2026-09-08) — **all 14 PASS**. `BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all **CLOSED** — the PreToolUse hook is proven live-executing, this project's own historical bypass fixtures for all three bugs proven denied live, and safe operations proven unaffected. CAP-007 is now **ACTIVE**. See `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` (live proof), `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`, `evidence/security/BUG-013-022-023-OWNER-SETTINGS-PATCH.md`, `evidence/security/BASH_GUARD_V2_ROUND3_P1_REMEDIATION_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ROUND3_REVIEW_2026-09-07.md`, `evidence/security/BASH_GUARD_V2_ARCHITECTURE_2026-09-06.md`, `evidence/security/BASH_GUARD_DEVELOPMENT_2026-09-06.md` for v1 history. **GATE: PASS.**
 - Phase 8 — executed, closeout-corrected, and PASSED (chunks 26-27, 2026-09-12). All 95 scenarios now resolve to exactly one canonical disposition: **76 PASS, 14 BLOCKED, 3 OWNER_ASSISTED, 2 NOT_APPLICABLE, 0 FAIL.** 2 bugs found (BUG-024 P1, closed same day via independent Opus adjudication; BUG-025 P2, open, non-blocking). Full Notion Scenario DB reconciled (95/95 verified live, 46 rows corrected). All permanent suites re-verified PASS; live guard proven active throughout via organic real denials. **GATE: PASS.** See `evidence/scenario-execution/phase8/PHASE8_CANONICAL_95_MATRIX_2026-09-12.md`.
-- Phase 9 — **legally unlocked (chunk 27, 2026-09-12), not started.** Next legally allowed action: fresh-session restoration proof.
-- Phase 10 — pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
+- Phase 9 — **PASS (2026-09-13)** — ninth independent Gatekeeper round APPROVED, P0=0/P1=0. See the chunk-28 section above and the Phase 9 proof file. **GATE: PASS.**
+- Phase 10 — **legally unlocked as of Phase 9 PASS — not started.** Pre-Gatekeeper readiness package, then `veyro-gatekeeper` (fresh context) for APPROVED/BLOCKED. Never self-approved.
 - 5 known artifact gaps remain unauthored (SKL-/RULE- ID schemas, rollback/removal procedure, third-party evaluation template, permanent-regression automation harness, project/nested Skill policy + `.claude/rules` profile structure) — required before Phase 10 certification, non-blocking for Phases 4-9.
 - The pre-existing EIP internal self-contradiction (`knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md`) remains unresolved — flagged again by the Gatekeeper drill as something that should be adjudicated by the owner before final certification, not blocking Phase 4-9 work.
 
@@ -586,7 +613,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 
 **PHASE 8 GATE: PASS (chunks 26-27, 2026-09-12 — chunk 27 is the corrected, authoritative closeout).** Chunk 26 ran the cumulative regression but used non-canonical final categories (NOT EXECUTED, "documented limitation", "formerly-partial", "partial-scope") and folded OWNER_ASSISTED into BLOCKED. Chunk 27 corrected both, per explicit owner instruction: **every one of the 95 scenarios now resolves to exactly one of PASS/BLOCKED/OWNER_ASSISTED/NOT_APPLICABLE/FAIL — 76 + 14 + 3 + 2 + 0 = 95.** The 14 previously-"NOT EXECUTED" scenarios were individually re-examined: 11 resolved PASS with fresh real evidence (scratch drills, live write attempts, direct code inspection, synthetic gap walkthroughs), 3 resolved BLOCKED via rejected self-checks (SCN-013/060/065/066 all name Opus-tier judgment calls or a specific scratch-copy drill shape this session could not legitimately self-administer). SCN-059 (PASS, superseded mechanism), SCN-020 (BLOCKED, canonical status assigned to an already-honest gap), and SCN-041/043/044 (**OWNER_ASSISTED**, reinstated as distinct from BLOCKED) were also resolved. **BUG-025 (P2, non-blocking)** found: `validate_capabilities.py` has no material-change/version-drift detection, confirmed by direct code inspection. **Full Notion Scenario DB reconciliation**: all 95 rows verified live via SQL, 46 divergent rows corrected, 49 already-correct rows left untouched, 0 duplicates, 0 missing — final Notion counts (76 Done / 19 Not started) exact match to the canonical matrix. All permanent regression suites re-confirmed PASS. Zero remaining P0/P1 (BUG-024 closed chunk 26; BUG-025 is P2). Full record: `evidence/scenario-execution/phase8/PHASE8_CANONICAL_95_MATRIX_2026-09-12.md` (chunk 27, authoritative), `evidence/scenario-execution/phase8/PHASE8_CUMULATIVE_REGRESSION_2026-09-12.md` (chunk 26, superseded on the disposition-taxonomy point only — its underlying findings and suite results are unaffected and remain accurate).
 
-**Phase 9 is legally unlocked as of chunk 27 — not started.** Per the task's explicit instruction, this session did not begin Phase 9 or MOD-001 work. The next legally allowed action is Phase 9: fresh-session restoration proof, followed by Phase 10 (readiness package + `veyro-gatekeeper` certification). The 5 known artifact gaps (SKL-/RULE- schemas, rollback procedure, evaluation template, regression harness, Skill/rules-profile policy) remain required before Phase 10 certification, non-blocking through Phase 9. BUG-010, BUG-025, and F5-027 remain open by design, all non-blocking.
+**Phase 9 (fresh-session restoration proof) is PASS as of chunk 28** (corrected 2026-09-13, Phase 9 restoration proof closeout — ninth Gatekeeper round APPROVED, P0=0/P1=0). See the chunk-28 section above for what happened and the Phase 9 proof file's own front matter for full detail. **PHASE 10 IS NOW LEGALLY UNLOCKED, not started.** The next legally allowed action is the Phase 10 readiness package, followed by fresh-context `veyro-gatekeeper` certification of MOD-000 as a whole, **not MOD-001**. The 5 known artifact gaps (SKL-/RULE- schemas, rollback procedure, evaluation template, regression harness, Skill/rules-profile policy) remain required before Phase 10 certification can complete. BUG-010, BUG-025, and F5-027 remain open by design, all non-blocking.
 
 ## Phase 7 gate history (superseded by Phase 8 above, kept for the record)
 
@@ -610,7 +637,7 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 7. **Fourth, independent `veyro-code-reviewer` re-review — landed, verdict BLOCKED (P0=0, P1=1, P2=4, Ed=3).** Re-confirmed all 19 EIP categories independently (re-executed `resolution_bound.py`, re-ran the DATA greps, re-derived all 4 baseline hashes) and confirmed 12 of the third review's 13 fixes correct. Found 1 new P1 (NF4-1: the correction commit that walked back the premature PASS claim had itself missed `BUG-007`'s own durable bug file — the fifth recurrence of this project's own premature-completion pattern) + 4 P2 (a stale Phase-count reference in `STATUS.md`; `next_review_due`/`lifecycle_status` not synced to `CAPABILITY_EVAL_INDEX.md`; `lifecycle_status` never instantiated anywhere) + 3 Editorial (a deny-pattern count and a `.claude/rules/` file count each missed in one location by their own prior fixes; a credit-card-shaped-string count gone stale by a fix in a different file). All 8 self-fixed same day; re-verified: **P0=0, P1=0.**
 8. **Fifth, independent `veyro-code-reviewer` re-review — landed, verdict APPROVED (P0=0, P1=0, P2=4, Ed=3).** Independently re-verified all 8 of the fourth review's fixes correct, re-verified all 19 mandatory EIP categories PROVEN with real evidence (re-executing `resolution_bound.py`, re-running the DATA greps, re-deriving all 4 baseline hashes), and confirmed the underlying execution evidence was untouched by the fourth review's remediation commit. Its own 4 P2 + 3 Editorial findings — the same recurring propagation-gap species as before (a stale review-round reference in 2 files; a stale duplicate scenario block; a fourth copy of the pre-F5-022 Phase 1 count in `PHASE4_RECONCILIATION_2026-09-04.md`; a wrong finding-count and a stale heading in this project's own docs; a present-tense count claim gone stale by one) — self-fixed same day. **PHASE 5 GATE: APPROVED.**
 9. Also outstanding, non-blocking: **BUG-010** (owner picks: re-scope the Notion connector, or accept the risk in `OWNER_APPROVALS.md`) and **F5-027** (open by design, independently judged sound by both the third and fourth reviewers — a small tooling fix, not a per-row edit, is the theoretically-correct remedy, not built this chunk).
-10. **Phase 6: real manual QA — DONE (chunk 17, 2026-09-05).** Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence. Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remain BLOCKED, reasoning sharpened (BUG-011). **PHASE 6 GATE: PASS.**
+10. **Phase 6: real manual QA — DONE (chunk 17, 2026-09-05).** Fresh-context, technically model-attested Opus `veyro-manual-qa` executed all 7 required scenarios with real evidence. Browser/Backend-API/iOS PASS; Android/Accessibility/Edge-device correctly remained BLOCKED as of this record, reasoning sharpened (BUG-011) — **reinstated as OWNER_ASSISTED, distinct from BLOCKED, by Phase 8 chunk 27 (2026-09-12)**. **PHASE 6 GATE: PASS.**
 11. **Phase 7: security/performance/resilience assurance — EXECUTED (chunk 18, 2026-09-06), independently re-reviewed once, GATE: BLOCKED.** Performance/resilience APPROVED (0 P0/P1). Security's initial pass found 2 P1 + 11 P2 + 4 Editorial; a second independent re-review confirmed both P1s genuine, widened `BUG-013`'s known scope, and found 4 remediation claims narrower than recorded (all fixed same day as a follow-up). `BUG-012` **CLOSED** via a real owner decision (`OWN-003`, `ADR-004`, `MODEL_ROUTING.md`). `BUG-013`'s residual **remains OPEN, wider than first recorded** — needs a human `.claude/settings.json` edit (two pattern families now). **Phase 8 is NOT legally unlocked** until that closes and a further re-review confirms P0=0/P1=0.
 12. Phase 8: cumulative regression + full reconciliation (close the still-partial-scope Notion-API live cross-check gap in SCN-046; F5-027 is fair game here too if still open). **Blocked on item 11 above.**
 13. Phase 9: fresh-session restoration proof.

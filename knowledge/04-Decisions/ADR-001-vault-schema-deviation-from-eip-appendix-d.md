@@ -1,6 +1,6 @@
 ---
 doc: ADR-001
-status: RECORDED (retroactive — see note below)
+status: SUPERSEDED by ADR-002 (2026-09-05) — the owner chose option (a) below (physically restructure to match Appendix D), executed the same day; this ADR is retained as the historical record of the deviation being found, not as a currently-open decision
 date: 2026-09-04
 decided_by: main session, Phase 5 remediation (retroactively documenting a deviation made in chunk 1, 2026-08-31)
 ---
@@ -31,7 +31,7 @@ schema. Differences, as found by Phase 5:
 | `knowledge/00-System/EXTERNAL_GATES.md`, `OWNER_APPROVALS.md` | `knowledge/03-ExternalGates/` (directory of individual gate files) |
 | `knowledge/00-System/CAPABILITY_POLICY.md` / `CAPABILITY_REGISTRY.md` | `knowledge/04-Capabilities/` |
 | `knowledge/05-QA/{BUG_REGISTRY,REGRESSION_INDEX,TESTSPRITE_INDEX,MANUAL_QA_INDEX,MODEL_ROUTE_INDEX,CAPABILITY_EVAL_INDEX,MANUAL_REGRESSION_CORE,LOAD_ENVIRONMENTS}.md` | No `05-QA/` — individual files scattered under `01-Modules/MOD-000/evidence/` and `00-System/` |
-| `knowledge/01-Product/`, `02-Architecture/`, `04-Decisions/`, `06-Sessions/`, `07-Releases/` | None exist; `02-Decisions/` created by this ADR |
+| `knowledge/01-Product/`, `02-Architecture/`, `04-Decisions/`, `06-Sessions/`, `07-Releases/` | None exist; `04-Decisions/` created by this ADR |
 
 ## Rationale for not doing a full mechanical restructure now
 
@@ -54,14 +54,20 @@ or the repo should be physically reorganized to match Appendix D literally.
    forward, per DC-09.
 2. Records the deviation honestly, rather than leaving it undocumented.
 
-## What remains open (requires an owner decision — filed as BUG-017)
+## What was open at the time this ADR was recorded (RESOLVED 2026-09-05 — see ADR-002)
 
 Whether to (a) physically restructure the vault to match Appendix D
 exactly, or (b) formally amend the project's own governing documents
 (`CLAUDE.md`, `SESSION_BOOTSTRAP.md`) to declare the actual structure as
-the accepted, permanent deviation from Appendix D. Either is a legitimate
-outcome; neither should be chosen unilaterally by an agent. See
-`evidence/bugs/BUG-017-vault-schema-deviation-unresolved.md`.
+the accepted, permanent deviation from Appendix D. **The owner chose (a)
+on 2026-09-05** — see `ADR-002-vault-migration-to-eip-appendix-d.md` for
+the executed migration (8 `git mv` path moves, ~23 new required files,
+45 referencing files corrected, 3 independent fresh-context restoration
+passes) and `OWNER_APPROVALS.md`'s `OWN-001` row for the approval record.
+`BUG-017` is CLOSED. The current `knowledge/` layout (as read by any
+session today) already reflects the post-migration Appendix D structure
+— the "Actual repo has" column above describes the pre-migration state
+this ADR was originally written against, not current state.
 
 ## Also created by this same Phase 5 pass (independent of the restructure question)
 

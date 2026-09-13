@@ -1,7 +1,7 @@
 ---
 doc: BUG-013-022-023-OWNER-SETTINGS-PATCH
-status: DRAFTED, NOT APPLIED — ready for owner manual activation; BUG-013/022/023 remain OPEN (moved to REMEDIATED — PENDING LIVE ACTIVATION VERIFICATION) until this patch is applied and live-verified
-updated: 2026-09-08
+status: APPLIED AND LIVE-VERIFIED (2026-09-08) — the owner applied this patch and a fresh session ran the full 14-row live-test matrix, all PASS; BUG-013/022/023 are now CLOSED. This file is retained as the historical record of the drafted patch, not a currently-pending action.
+updated: 2026-09-13 (Phase 9 restoration proof, fourth Gatekeeper pass P2-1 — this status line had gone stale since 2026-09-08, still saying the patch was drafted/not-applied and the bugs were open, after the owner applied it and a live-test matrix closed all three the same day)
 ---
 
 # Owner Activation Patch — `.claude/security/bash_guard.py` PreToolUse hook
