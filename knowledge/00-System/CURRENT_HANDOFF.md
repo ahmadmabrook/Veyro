@@ -112,22 +112,29 @@ sections this file had not touched in several chunks. Item 4 (a proper
 round-1 evidence file) authored at
 `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_1_2026-09-13.md`.
 
-**Item 3 (`.claude/settings.json`) remains open — owner action
-required, not resolvable this chunk.** All P2/Editorial findings (a
-scenario-reason mismap and a missing durability-gap disclosure inside
-the readiness package itself, a silent-row-skip risk in
-`capability_drift_check.py` that a first remediation pass had already
-fixed but this round independently re-verified, a missing reverse-direction
-check in the same script this round newly found, `OWNER_APPROVALS.md`'s
-row-ordering, a stale front-matter date in `EIP_STATUS_CONTRADICTION.md`,
-and the growing count of untracked scratch commit-message files at the
-repo root) are non-blocking and tracked in the readiness package's own
-updated findings log, not restated here.
+**Item 3 (`.claude/settings.json`) resolved this same chunk.** Asked
+directly, the owner chose to commit the file themselves rather than
+accept a documented non-durable state — commit `c9992d6`, run from a
+real terminal outside this guarded session. Confirmed: local HEAD,
+`origin/main`, and `git log -- .claude/settings.json` all point to
+`c9992d6`; the guard live-reverified functioning correctly afterward
+(safe `git status` allowed, a live `rm -rf` attempt denied
+`UNKNOWN_COMMAND`). **All four round-2 P1s are now closed.** The
+missing reverse-direction check `capability_drift_check.py` fixed the
+same day (added afresh this round — the silent-row-skip fix was a
+different, earlier gap the first remediation pass had already closed).
+Remaining findings (`OWNER_APPROVALS.md`'s row-ordering, a stale
+front-matter date in `EIP_STATUS_CONTRADICTION.md`, and the growing
+count of untracked scratch commit-message files at the repo root) are
+non-blocking Editorial items, also fixed same day except the scratch
+files (the Bash guard denies `rm` outright for any path — harmless,
+never staged).
 
-**PHASE 10 CERTIFICATION: STILL BLOCKED.** No certificate exists.
-MOD-001 remains locked. **Next legally allowed action: get the owner's
-decision on `.claude/settings.json` (item 3), then dispatch a third
-fresh-context certification-scope `veyro-gatekeeper` round.**
+**PHASE 10 CERTIFICATION: NEXT ACTION IS A THIRD REVIEW ROUND.** No certificate exists yet.
+MOD-001 remains locked. **Next legally allowed action: dispatch a third
+fresh-context certification-scope `veyro-gatekeeper` round** — all
+session-actionable and owner-actionable items from round 2 are now
+closed.
 
 ## What happened chunk 29, 2026-09-13 — Phase 10 readiness: 5 known artifact gaps closed, plus SCN-094 and SCN-084/BUG-025, canonical matrix now 82/8/3/2/0, Notion reconciled, BUG-027 (Phase 9's `mr_verify.py` gap) resolved as a disclosed, accepted, non-blocking limitation
 

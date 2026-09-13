@@ -231,17 +231,15 @@ independent judgment:
    was found, the one item on this list that was genuinely
    certification-blocking rather than merely non-blocking-and-disclosed;
    it no longer is.
-8. **`.claude/settings.json`'s Phase 7 activation patch has never been
-   committed to Git** (P1, found by the second certification round,
-   2026-09-13) — `git log -- .claude/settings.json` points to `170a08e`
-   (2026-09-06, pre-activation); the live PreToolUse hook the owner
-   applied on 2026-09-08 exists only in this working tree's uncommitted
-   diff. A fresh clone of `origin/main` would have no active Bash guard,
-   so CAP-007/BUG-013/022/023's closures rest on non-durable state. This
-   session cannot fix it — the guard denies staging that exact path, by
-   design. **Requires the owner**: commit it directly outside this
-   guarded session, or record an explicit `OWN-<NNN>` accepting the
-   non-durable state with a written recovery procedure. See
+8. **`.claude/settings.json`'s Phase 7 activation patch had never been
+   committed to Git** (was P1, found by the second certification round,
+   2026-09-13) — **RESOLVED same day**: the owner committed it directly
+   (commit `c9992d6`, outside this guarded session, since the guard
+   denies staging that exact path by design) and pushed. Local HEAD,
+   `origin/main`, and `git log -- .claude/settings.json` all now point
+   to `c9992d6`. Live-reverified after the commit: the guard still
+   allows safe reads and still denies destructive commands
+   (`UNKNOWN_COMMAND` on a live `rm -rf` attempt). See
    `knowledge/00-System/CURRENT_STATE.md`'s "Chunk 30" entry.
 7. **Prospective `OWN-004`** (P2, design-bundle demo-data — 12
    email-shaped and 6 phone-format strings in the frozen
@@ -357,7 +355,12 @@ round-1 remediation pass missed:
 4. Round 1's own verdict had no dedicated evidence file. Authored:
    `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_1_2026-09-13.md`.
 
-Items 1, 2, and 4 fixed same day. **Item 3 remains open — the next
-legally allowed action is the owner's decision on `.claude/settings.json`,
-then a third fresh-context certification round.** No certificate exists.
-MOD-001 remains locked.
+Items 1, 2, and 4 fixed same day. **Item 3 resolved same day**: the
+owner was asked directly and chose to commit `.claude/settings.json`
+themselves (commit `c9992d6`), rather than accept a documented
+non-durable state — confirmed via `git log`, local HEAD, and
+`origin/main` all matching, and a live re-verification that the guard
+still functions correctly post-commit. **All four round-2 P1s are now
+closed. The next legally allowed action is a third fresh-context
+certification round.** No certificate exists yet. MOD-001 remains
+locked.
