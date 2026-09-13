@@ -1,7 +1,7 @@
 ---
 doc: EXTERNAL_GATES
 status: LIVE
-updated: 2026-09-05 (Phase 5 vault migration — schema corrected to match Appendix D's own field list)
+updated: 2026-09-13 (Phase 10 — EXT-01 CLOSED via owner adjudication OWN-002)
 ---
 
 # External Gates (index)
@@ -25,7 +25,7 @@ schema for consistency.
 
 | EXT ID | Gate class | Gated capability | Owner | Blocks | Evidence | Status | Last verified |
 |---|---|---|---|---|---|---|---|
-| EXT-01 | Governing-baseline integrity | N/A (not a product capability — the EIP's own front matter and §21.1 body self-contradict on the EIP's approval status) | Ahmad Mabrouk | Phase 10 certification only (non-blocking for Phases 1-9) | `knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md` | BLOCKED: OWNER_APPROVAL_REQUIRED | 2026-09-04 |
+| EXT-01 | Governing-baseline integrity | N/A (not a product capability — the EIP's own front matter and §21.1 body self-contradict on the EIP's approval status) | Ahmad Mabrouk | Was: Phase 10 certification only (non-blocking for Phases 1-9) | `knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md`, `knowledge/00-System/OWNER_APPROVALS.md` (OWN-002) | **CLOSED (2026-09-13)** — owner adjudicated in favor of the front matter; §21.1's "candidate" language ruled a drafting inconsistency in the source document, not a live blocker | 2026-09-13 |
 
 Any session finding a new external gate (an owner-reserved decision point,
 an unresolved contradiction in governing baselines, a product release-wave

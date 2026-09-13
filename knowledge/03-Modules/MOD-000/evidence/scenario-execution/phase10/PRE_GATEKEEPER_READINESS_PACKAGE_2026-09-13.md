@@ -303,9 +303,20 @@ Phase 10 entries. In brief:
 **MOD-001 remains locked. No `APPROVAL.md` certificate exists.** Per the
 certification rule, remediation of everything except P0-1 was performed
 this same chunk (see the corrections inline above and in the files this
-section names); P0-1 requires the owner personally and cannot be closed
-by any session. **The next legally allowed action is: the owner records
-an `OWN-002` decision on EXT-01, after which a fresh-context
-`veyro-gatekeeper` certification re-review may be dispatched** — not
-before, since a re-review dispatched now would return `BLOCKED` again on
-the same, unclosed P0.
+section names); P0-1 required the owner personally and could not be
+closed by any session.
+
+## P0-1 resolved (2026-09-13, same chunk): owner recorded OWN-002
+
+The owner was asked directly and adjudicated the EIP front-matter-vs-§21.1
+contradiction **in favor of the front matter** — the EIP is treated as
+fully approved and final; the §21.1 "candidate" language is ruled a
+drafting inconsistency in the source document, not a live blocker.
+Recorded as `OWN-002` in `OWNER_APPROVALS.md`; `EXTERNAL_GATES.md`'s
+EXT-01 row and `EIP_STATUS_CONTRADICTION.md`'s own status both updated
+to CLOSED. **The next legally allowed action is: dispatch a fresh-context
+`veyro-gatekeeper` certification re-review** to independently confirm
+P0=0/P1=0 now holds — this readiness package's own prior self-check
+already proved unreliable once (see above), so this closure is not
+self-certified as sufficient; it is presented to the next Gatekeeper
+round for independent verification like everything else in this file.

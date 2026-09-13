@@ -1,6 +1,6 @@
 ---
 doc: EIP_STATUS_CONTRADICTION
-status: OPEN — BLOCKED: OWNER_APPROVAL_REQUIRED (corrected 2026-09-04, Phase 5 F5-015 — see note below; was previously mislabeled "informational, not blocking")
+status: CLOSED (2026-09-13, OWN-002) — owner adjudicated in favor of the front matter; see "Owner adjudication" section below. (Prior history: corrected 2026-09-04, Phase 5 F5-015, from a previous mislabeling as "informational, not blocking"; found genuinely blocking for Phase 10 certification by the final certification-scope Gatekeeper review, 2026-09-13, before the owner closed it same day.)
 found: 2026-09-01
 found_by: main session, resolving Scenario Catalog finding D-6
 corrected: 2026-09-04, Phase 5 independent review
@@ -47,12 +47,35 @@ own fail-closed rule, an unresolved ambiguous identity is a real blocker,
 not an informational note the project gets to waive for itself. It was
 incorrectly self-waived in the original version of this file.
 
-## Owner action required
+## Owner action required (historical — resolved below)
 
-**`BLOCKED: OWNER_APPROVAL_REQUIRED`.** This item cannot be closed by any
-session unilaterally deciding which of the EIP's own two self-descriptions
-is authoritative — that is a call only the owner (or whoever holds the
-actual re-audit-closure record, if one exists outside this document) can
-make. Non-blocking for continued Phase 4-9 execution work (consistent with
-how MOD-000's other known-open items are scoped), but **blocking for Phase
-10 certification** until the owner records an explicit adjudication here.
+**`BLOCKED: OWNER_APPROVAL_REQUIRED`.** This item could not be closed by
+any session unilaterally deciding which of the EIP's own two
+self-descriptions is authoritative — that was a call only the owner (or
+whoever holds the actual re-audit-closure record, if one exists outside
+this document) could make. Non-blocking for Phase 4-9 execution work,
+**blocking for Phase 10 certification** until the owner recorded an
+explicit adjudication here. Confirmed genuinely certification-blocking
+by the final MOD-000-certification-scope Gatekeeper review (2026-09-13,
+P0-1) after a Phase 10 readiness self-check had failed to surface it.
+
+## Owner adjudication (2026-09-13, OWN-002)
+
+The owner adjudicated this contradiction **in favor of the front
+matter**: the governing EIP (`VEYRO-EIP-1.4.1-20260827`) is treated as
+fully approved and final, exactly as its own cover page and Document
+Control table state. The §21.1 body text's "this candidate...cannot be
+promoted until independent re-audit closure is recorded" language is
+adjudicated to be a drafting inconsistency in the source document
+itself, not a live blocker on this project — no separate re-audit-closure
+record exists or is required beyond this adjudication. This matches the
+reading this project has operated under since inception (see "This
+project's operating position" above), now made an explicit, recorded
+owner decision rather than an unratified operating assumption.
+
+**`EXT-01` is now CLOSED.** See `knowledge/00-System/OWNER_APPROVALS.md`
+(`OWN-002`) and `knowledge/00-System/EXTERNAL_GATES.md`. This does not
+alter, rename, or regenerate the EIP document itself (still governed by
+`.claude/rules/knowledge-vault-durability.md`'s baseline-immutability
+rule) — it resolves how this project reads an internal inconsistency in
+that document's own text, nothing more.
