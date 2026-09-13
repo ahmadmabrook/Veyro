@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-13 (chunk 30 — **PHASE 10 CERTIFICATION: APPROVED. MOD-000 APPROVED. MOD-001 UNLOCKED for planning in a future session; not started this session.** Multiple independent certification-scope Gatekeeper rounds ran, most returning BLOCKED on findings remediated the same day (a real owner-approval gate, `EXT-01`, closed via `OWN-002`; a real durability gap, `.claude/settings.json`'s uncommitted Phase 7 activation patch, closed by the owner committing it directly; several rounds finding the same recurring documentation-drift species, eventually fixed by de-duplication rather than repeated sweeps) — the final round returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0. Certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md`. **This file still does not restate the certification-round count anywhere in it — see `CURRENT_STATE.md`'s own front matter for that full history.**)
+updated: 2026-09-13 (chunk 31 — new session activated **MOD-001** for planning/specification after independently re-verifying MOD-000's certificate, baseline hashes, and bug/owner-approval state. Found and filed **BUG-028**: no guard-compliant way to read the governing EIP/TSD `.docx` files in this CAP-007-guarded session. Owner decided "you extract, I continue" — owner will run `pandoc` outside this session to produce `knowledge/00-System/EIP_MIRROR.md`/`TSD_MIRROR.md`; GOV-01 requirement materialization, the module specification, Scenario Catalog, and independent Scenario Review are paused pending those mirrors. MOD-001 is at ACTIVATED/PLANNING, not READY — Definition of Ready was not reached this session.)
 ---
 
 # Current Handoff
@@ -47,8 +47,102 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-27-2026-09-12-phase8-closeout-canonical-correction.md`.**
 **Twelfth application (2026-09-13, chunk 30): chunk 28 compressed to a
 summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-28-2026-09-12-phase9-restoration-proof-pass.md`**
-— chunks 30 and 29 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-28-2026-09-12-phase9-restoration-proof-pass.md`.**
+**Thirteenth application (2026-09-13, chunk 31): chunk 29 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-29-2026-09-13-phase10-readiness-package.md`**
+— chunks 31 and 30 are now the 2 kept in full.
+
+## What happened chunk 31, 2026-09-13 — MOD-001 activated for planning/specification; BUG-028 (no guard-compliant docx read path for the EIP/TSD) found and routed to the owner
+
+New session, zero prior chat context. Bootstrap ran per
+`SESSION_BOOTSTRAP.md`: read this file, `CURRENT_STATE.md`,
+`PROJECT_INDEX.md`, `DEVELOPMENT_CONSTITUTION.md`, `MODEL_ROUTING.md`,
+MOD-000's `APPROVAL.md`, `BUG_REGISTRY.md` (correct path:
+`knowledge/05-QA/BUG_REGISTRY.md`, not `knowledge/00-System/` as an
+earlier assumption guessed), and `OWNER_APPROVALS.md`. **Did not trust
+the prior session's stated expected values merely because they appeared
+in the activation prompt** — independently re-derived each one:
+`verify_baselines.py` re-run this session, **PASS, 4/4 hashes match**;
+`MOD-000/APPROVAL.md` read directly, confirms `MOD-000 CERTIFICATION
+APPROVED`, P0=0/P1=0, sixth independent certification round; bug
+registry confirmed 0 open Blocker/P1, 1 open P2 (`BUG-010`,
+non-blocking); owner approvals confirmed `OWN-001/002/003` recorded, one
+prospective `OWN-004` open (non-blocking). **MOD-001 activated** in
+`CURRENT_STATE.md`, `PROJECT_INDEX.md` (whose "Active Module" section
+still said "MOD-000 (in progress)... MOD-001 locked" — corrected, a real
+staleness the moment MOD-000 was certified), and this file. WIP=1 now
+points at MOD-001; MOD-002+ remain locked.
+
+**Real capability gap found while attempting the mission's required
+step 4-6 ("independently read the governing EIP MOD-001 execution
+card"): `BUG-028`.** This session's Bash tool is gated by
+`.claude/security/bash_guard.py` (CAP-007, allow-by-construction — only
+an explicit command-family allowlist passes). Direct attempts confirmed
+it has no shape for reading the governing `.docx` files: `pandoc -t
+markdown ... -o ...` → `BLOCKED: UNKNOWN_COMMAND`; `unzip -l ...` →
+`BLOCKED: UNKNOWN_COMMAND`; the Claude Code `Read` tool separately
+refuses binary `.docx` outright. No durable markdown mirror of the
+EIP/TSD exists in `knowledge/` (unlike the design bundle's own
+`blueprint.md` mirror of the Blueprint) — `DEVELOPMENT_CONSTITUTION.md`'s
+own text cites a `/tmp/eip_full.md` extract a pre-CAP-007 session made
+(2026-09-05, before the guard activated 2026-09-08); confirmed gone this
+session (`/tmp` is not durable). This is not a MOD-000 regression —
+MOD-000's own Scenario Catalog/`REQUIREMENTS.md` were authored in chunk
+1 (2026-09-01), before the guard existed, so MOD-000 never needed fresh
+docx access under CAP-007. It is the first time *this* project's
+planning discipline has hit its own Bash guard as a wall rather than a
+protection.
+
+**Per this project's fail-closed rule and DC-16/DC-09 (no unilateral
+architecture/security change, no silent scope resolution), this was not
+worked around.** Four options were surfaced to the owner via
+`AskUserQuestion`: (1) proceed best-effort from the mission brief's own
+supplied GOV-01 text, flagged as not independently docx-verified,
+mirroring the existing `.claude/rules/admin-privileged-console-baseline.md`
+precedent; (2) owner extracts the EIP/TSD to markdown outside this
+guarded session and commits durable mirrors; (3) draft a narrow,
+read-only `bash_guard.py` allowlist addition for owner-authorized,
+independently-security-reviewed activation; (4) stop entirely. **Owner
+chose option 2** — commands to run in the owner's own terminal (not
+through this guarded session) were provided:
+
+```
+pandoc -t markdown "Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx" -o knowledge/00-System/EIP_MIRROR.md
+pandoc -t markdown "Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx" -o knowledge/00-System/TSD_MIRROR.md
+```
+
+Filed as `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`,
+indexed in `knowledge/05-QA/BUG_REGISTRY.md`. **Status: OPEN — OWNER
+ACTION IN PROGRESS.**
+
+**What this session completed:** fresh-session bootstrap and
+prerequisite verification (section 1 of the mission); governing-baseline
+re-verification (section 2, PASS); MOD-001 activation in durable state
+(section 3); this capability-gap finding and owner referral (part of
+section 8, capability-gap analysis — the rest of that analysis depends
+on knowing the real GOV-01 workstream list, which depends on the
+mirrors); `knowledge/03-Modules/MOD-001/STATUS.md` scaffolded. **What
+did NOT happen this session, and why:** GOV-01-R01..R08 full
+requirement materialization with docx-sourced traceability (section 5),
+the additional MOD-001-owned EIP/TSD control-obligation traceability
+table (section 6), the architecture-gate negative-fixture plan
+(section 7), the full repository/environment/CI-CD plan derived from
+TSD architecture (sections 9-12), the module specification (section
+15), the Scenario Catalog (section 16), the independent fresh-context
+`veyro-scenario-reviewer` pass (section 20), and the Definition of Ready
+determination (section 21) — all explicitly depend on real EIP/TSD text
+this session could not obtain. **MOD-001 remains at ACTIVATED/PLANNING.
+No Definition-of-Ready verdict was reached. MOD-001 implementation has
+not started and is not authorized to start.**
+
+**Next legally allowed action:** once `knowledge/00-System/EIP_MIRROR.md`
+and `TSD_MIRROR.md` exist (owner-produced), a session (this one resumed,
+or a fresh one) reads them, completes GOV-01 materialization and the
+full module specification/Scenario Catalog, dispatches fresh-context
+`veyro-scenario-reviewer` (Opus) for independent review, and only then
+determines Definition of Ready. Not MOD-001 implementation — that stays
+locked until Definition of Ready is met and independently confirmed.
 
 ## What happened chunk 30, 2026-09-13 — certification rounds 2 through 6: rounds 2-5 each returned BLOCKED, each remediated same day, most finding the identical recurring documentation-drift species; **round 6 returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0** (this narrative deliberately stops enumerating "round N of M" past this point — see `CURRENT_STATE.md`'s front matter for the full count-by-round history)
 
@@ -160,152 +254,7 @@ paragraph deliberately does not state a round number or "next action"
 kept, per round 5's finding that restating it here even once is enough
 to drift.)
 
-## What happened chunk 29, 2026-09-13 — Phase 10 readiness: 5 known artifact gaps closed, plus SCN-094 and SCN-084/BUG-025, canonical matrix now 82/8/3/2/0, Notion reconciled, BUG-027 (Phase 9's `mr_verify.py` gap) resolved as a disclosed, accepted, non-blocking limitation
-
-Continuation of chunk 28's own next-action: the Phase 10 readiness
-package. Per this project's hard-won Phase 9 lesson (nine Gatekeeper
-rounds repeatedly finding a fact corrected in one file but not
-generalized to siblings stating the identical fact), this chunk found
-the exact five known gaps from durable evidence rather than guessing
-them, closed each with a real artifact, and proactively swept for
-sibling staleness before any external review round could find it.
-
-**Five known readiness artifact gaps closed, all cited directly against
-EIP §21.1's Required-outputs list:** `knowledge/00-System/skl-rule-id.schema.yaml`
-(SKL-/RULE- ID format schemas, sharing `CAPABILITY_REGISTRY.md`'s
-existing 15-column table rather than a parallel registry — closes
-SCN-087's second sub-check); `knowledge/00-System/CAPABILITY_ROLLBACK_PROCEDURE.md`
-(a 7-step generic rollback procedure — closes SCN-088);
-`knowledge/00-System/CAPABILITY_EVALUATION_TEMPLATE.md` (an 8-section
-template for EIP §4.2 stage-4 evaluation — closes SCN-089);
-`knowledge/05-QA/tools/run_regression.py` (a permanent regression
-harness wrapping the 5 existing checks, writing timestamped pass records
-to `knowledge/05-QA/tools/regression-runs/` — closes SCN-091, with a
-disclosed residual: the wrapper itself is not yet on the Bash guard's
-trusted-script allowlist, so this session could not execute it directly
-— confirmed by attempt, `DISALLOWED_FLAG_OR_SHAPE` — so a first pass
-record was produced by running the 5 constituent checks individually
-instead, all PASS); `knowledge/00-System/SKILL_SCOPING_POLICY.md`
-(project-scoped vs. nested Skill decision policy — closes SCN-093).
-
-**Two related closures found via the same review, not in the named
-five:** SCN-094 (`.claude/rules/` profile structure) was found to
-already say PASS in the canonical matrix but BLOCKED in the catalog's
-own detail block — a genuine pre-existing contradiction, resolved by
-authoring `knowledge/00-System/RULES_PROFILE_STRUCTURE.md` (the
-surface→rule mapping table the matrix's PASS verdict had implicitly
-assumed existed) and making both sources agree. SCN-084/**BUG-025**
-(capability material-change/version-drift detection) was fixed via a
-new `knowledge/05-QA/tools/capability_drift_check.py`, deliberately kept
-separate from the hash-pinned `validate_capabilities.py` rather than
-edited in place — editing that file would have silently broken its own
-guard-trust the moment its pinned hash no longer matched. A new
-"Version/hash snapshot at approval" section was added to
-`CAPABILITY_REGISTRY.md` recording each capability's exact live
-`version`/`content_hash` cell text at this point in time; a
-self-introduced bug was caught and fixed here — the first draft used
-cleaned/truncated values that would not have exactly matched the live
-cells, which would have caused a false "MATERIAL CHANGE DETECTED" the
-first time the script could actually run. Same disclosed activation-gap
-residual as `run_regression.py`.
-
-**Canonical 95-scenario matrix updated:** `PHASE8_CANONICAL_95_MATRIX_2026-09-12.md`
-gained a new "Phase 10 update (2026-09-13)" section — totals changed
-from 76/14/3/2/0 to **82 PASS + 8 BLOCKED + 3 OWNER_ASSISTED + 2
-NOT_APPLICABLE + 0 FAIL = 95**. `validate_catalog.py` re-run after each
-batch of catalog edits, remaining PASS (0 errors, 1 pre-existing
-non-blocking warning) throughout.
-
-**Proactive stale-reference sweep — the Phase 9 lesson applied before an
-external review found it, not after.** A search for the superseded "76
-PASS" figure found 9 hits beyond the matrix file itself. Fixed:
-`CURRENT_STATE.md` (two lines — the Phase 8 historical line and the
-BUG-025 mention), `STATUS.md`, `SCENARIOS.md`, `TEST_RESULTS.md` (also
-its stale "BUG-025 open, non-blocking" phrase), `LOAD_SECURITY.md`,
-`NOTION_CONTROL_PLANE.md` (text corrected immediately; the Done/Not-started
-counts themselves deferred until the real Notion reconciliation ran
-later this same chunk, not claimed done in advance), and
-`REQUIREMENTS.md` (twice — once mid-chunk when it was still stale at
-81/9 after the SCN-084 fix, corrected again to 82/8). `CURRENT_HANDOFF.md`'s
-own "76 PASS" hits inside chunk 27's historical narrative were correctly
-left untouched (per this file's own preserve-history convention), but
-**this sweep incorrectly assumed that was the only place this file said
-it — the second certification-scope Gatekeeper round (chunk 30) found
-this file's own "What is NOT done (Phases 7-10)" and "Next legally
-allowed action" sections, an entirely different, much older part of
-this file, still asserting present-tense 76/14/3/2/0 and "Phase 10 not
-started" as current fact.** Fixed in chunk 30, not this chunk — recorded
-here so this exact false "already checked" claim is not repeated a third
-time. Separately, `SCENARIO_CATALOG.md`
-itself was found to carry a second, independent copy of the same
-duplicated-fact-drift pattern: its own "D-3 required outputs" narrative
-section (distinct from the canonical `### SCN-MOD000-NNN` detail blocks)
-still said BLOCKED for 087/088/089/091/093/094 after the canonical
-blocks had already been fixed to PASS — corrected using the file's own
-existing "superseded — see canonical block" convention (already used for
-083/084), not by restating the PASS text a second time. All 5 governance
-checks re-run after the sweep: PASS, 0 regression.
-
-**BUG-027 found and ACCEPTED AS DISCLOSED LIMITATION, resolving (not
-re-disclosing) the Phase 9 model-routing gap.** Phase 9 had disclosed
-but not attempted to close: `mr_verify.py` was never run against the
-nine Gatekeeper Agent-tool dispatches. This chunk actually ran it —
-`mr_verify.py <this-session's-own-transcript> opus veyro-gatekeeper` —
-and got `BLOCKED: MODEL_ASSURANCE_UNVERIFIED`, observing only
-`claude-sonnet-5`. Direct inspection of the tool's own `extract_models()`
-logic confirmed this result is itself misleading, not a real finding:
-it scans every assistant-type row in the given file indiscriminately and
-cannot isolate an Agent-tool-dispatched subagent's turns from the
-orchestrating session's own — this session's own model (Sonnet 5, per
-its own system context), not any Gatekeeper subagent's. No tool exists
-in this session to enumerate or locate a separate per-subagent
-transcript file to test the tool against correctly instead. **Formal
-disposition: ACCEPTED AS A DISCLOSED, NON-BLOCKING LIMITATION**, not
-silently left open — full detail in the new `BUG-027-*.md` and
-`PHASE10_MODEL_ROUTING_RESOLUTION_2026-09-13.md`. Compensating controls:
-harness-level `model: opus` frontmatter pinning in
-`.claude/agents/veyro-gatekeeper.md` (read directly this chunk — a
-configuration-enforced guarantee, not a self-report), the explicit
-non-default `model: "opus"` parameter set on every one of the nine
-Phase 9 dispatches (per `PHASE9_GATEKEEPER_ROUTING_2026-09-13.md`'s own
-table), and consistent Opus-tier-depth behavioral evidence (new genuine
-defects found across all nine independently-dispatched rounds).
-
-**Bash guard live-reverified this chunk** (not merely the automated
-suite): a safe `git status` ALLOWed; `rm -rf <disposable path>` and
-`curl https://example.com` both DENIED with `UNKNOWN_COMMAND`. All 5
-governance checks confirmed PASS: `verify_baselines.py` (4/4 governing
-hashes match), `validate_catalog.py` (0 errors, 1 pre-existing warning),
-`validate_capabilities.py` (7/7 capabilities APPROVED), `evidence_integrity_check.py`
-(file count not pinned here — see that tool's own live output; only the 12 pre-existing expected-absent forward
-references), `test_bash_guard.py` (194/194).
-
-**Notion Scenarios database reconciled live via SQL**: 6 rows flipped
-`Not started` → `Done` (087, 088, 089, 091, 093, 084 — 094 was already
-correctly `Done`, resolving the pre-existing catalog contradiction noted
-above). Post-update: **82 `Done` / 13 `Not started`**, exact match to
-the canonical matrix. **Notion Bugs database reconciled**: BUG-025
-flipped to `Done`; BUG-027 created (`Done`, accepted, non-blocking);
-BUG-010 left unchanged (`Not started` — owner-decision-pending by
-design, per `ADR-003`). A new "Phase 10 update" section was appended to
-the live MOD-000 Notion page (not editing its historical Phase 8
-section, per the same preserve-history convention this file itself
-uses).
-
-**Corrected before this chunk closed (2026-09-13, same day): the formal
-Pre-Gatekeeper Readiness Package, the self-check, and the final
-MOD-000-certification-scope `veyro-gatekeeper` dispatch all DID happen
-later this same chunk** — see
-`knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/PRE_GATEKEEPER_READINESS_PACKAGE_2026-09-13.md`.
-Verdict: **MOD-000 CERTIFICATION BLOCKED** (P0=1: `EXT-01`, an open
-owner-approval gate; P1=1: a stale scenario-matrix cell). Both
-remediated same day — the P0 via an actual owner decision, recorded as
-`OWN-002`, closing `EXT-01`. **No certificate has been issued yet. MOD-001
-remains locked.** A second certification round ran afterward (chunk 30
-— see that section) and found more staleness this remediation missed;
-see chunk 30 for the current state. **This paragraph is intentionally
-left describing chunk 29's own history rather than the current state —
-do not read it as "not yet done."**
+## What happened chunk 29, 2026-09-13 (compressed 2026-09-13, thirteenth retention-rule application) — Phase 10 readiness package: 5 known artifact gaps closed, SCN-094/SCN-084/BUG-025 closed, canonical matrix to 82/8/3/2/0, Notion reconciled, BUG-027 accepted as disclosed limitation; first certification round BLOCKED (P0=1 EXT-01, P1=1), both remediated same day via OWN-002. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-29-2026-09-13-phase10-readiness-package.md`.
 
 ## What happened chunk 28, 2026-09-12/13 (compressed 2026-09-13, twelfth retention-rule application) — PHASE 9 GATE: PASS. BUG-026 found and fixed; nine independent Gatekeeper review rounds, the ninth APPROVED (P0=0/P1=0); Phase 10 legally unlocked, not started. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-28-2026-09-12-phase9-restoration-proof-pass.md`.
 

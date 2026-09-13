@@ -1,14 +1,20 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-13 (chunk 30 — **PHASE 10 CERTIFICATION: APPROVED.** SIX certification-scope Gatekeeper rounds ran in total; the sixth independently returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0, and explicitly signed off that a Module Approval Certificate may now be issued. **This front-matter line is this project's live-state source of truth for the certification-round count** — every other file that used to restate it (`CURRENT_HANDOFF.md`, `STATUS.md`, the Phase 10 readiness package's live-state sections) has had that restatement removed; a correctly-dated historical sentence describing what was true after a specific past round (e.g. "the next action after round 4 was round 5") is not a violation of this rule and is not swept away — only present-tense claims about the *current* count are. **MOD-000 is now APPROVED. MOD-001 is UNLOCKED for planning in a future session** — this session does not begin MOD-001 implementation. Certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md`.)
+updated: 2026-09-13 (new session — MOD-000 verified APPROVED from durable state; MOD-001 ACTIVATED for planning/specification per EIP §8 unlock rule. MOD-001 implementation has NOT started. WIP=1 now points at MOD-001. MOD-002+ remain locked. A real capability gap was found and filed as `BUG-028`: this Bash-guarded session cannot extract text from the governing EIP/TSD `.docx` files — no `pandoc`/`unzip`/inline-`python3` on CAP-007's allowlist, confirmed by direct denied attempts — and no durable markdown mirror of the relevant sections existed in `knowledge/`. Owner chose "you extract, I continue": owner will run `pandoc` outside this guarded session to produce `knowledge/00-System/EIP_MIRROR.md` / `TSD_MIRROR.md`; deep GOV-01 requirement materialization, Scenario Catalog authoring, and the independent Scenario Review are paused pending those mirrors landing.)
 ---
 
 # Current State
 
-**Active module:** MOD-000 — Engineering execution control plane bootstrap
-**WIP:** 1 (MOD-000 APPROVED; MOD-001 UNLOCKED for planning in a future session — not started this session)
-**Module status: APPROVED.** Module Approval Certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md`.
+**Active module:** MOD-001 — Repository, CI/CD, Environments & Quality Engineering (Foundation wave, TSD scope GOV-01)
+**WIP:** 1 (MOD-001 activated for planning/specification only — implementation has NOT started; MOD-002+ remain LOCKED)
+**Module status: ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS.** Not Ready, not Approved. See `knowledge/03-Modules/MOD-001/STATUS.md`.
+
+**Prerequisite (MOD-000) verified from durable evidence, not merely trusted from this prompt:** Module Approval Certificate exists (`knowledge/03-Modules/MOD-000/APPROVAL.md`, verdict `MOD-000 CERTIFICATION APPROVED`, sixth independent certification-scope `veyro-gatekeeper` round, 2026-09-13, P0=0/P1=0). `verify_baselines.py` re-run this session: **PASS, 4/4 governing baseline hashes match** `PROJECT_INDEX.md` exactly. `knowledge/05-QA/BUG_REGISTRY.md` re-read this session: 0 open Blocker, 0 open P1; BUG-010 (P2, Notion connector scope, owner-decision-pending) is the sole pre-existing open item and is non-blocking for MOD-001 activation. `OWNER_APPROVALS.md` re-read: OWN-001/002/003 recorded, one prospective OWN-004 item open (design-bundle demo-data, non-blocking). No P0/P1 from MOD-000 invalidates this transition. `PROJECT_INDEX.md`'s "Active Module" section (which still said "MOD-000 (in progress)... MOD-001 locked") has been corrected below to match this file, since that line had gone stale the moment MOD-000 was certified.
+
+## MOD-000 (APPROVED — historical record, preserved unchanged below for evidence continuity)
+
+Full detail lives in `knowledge/03-Modules/MOD-000/APPROVAL.md` and `knowledge/03-Modules/MOD-000/STATUS.md`. The gate checklist below is MOD-000's own history, kept verbatim per this project's "preserve MOD-000 historical evidence unchanged" rule — it is not re-describing current state.
 
 ## MOD-000 gate checklist (EIP-required, tracked here as durable truth)
 
@@ -147,3 +153,15 @@ that MOD-000 may receive its Module Approval Certificate.** Full
 record: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_6_2026-09-13.md`.
 
 **Every box above is now checked and the Module Approval Certificate exists at `knowledge/03-Modules/MOD-000/APPROVAL.md`.** MOD-001 is UNLOCKED for planning. Per explicit instruction, MOD-001 implementation does not begin in this session — the next legally allowed action is MOD-001 planning, in a later session.
+
+## MOD-001 — Active module (planning/specification stage, this session)
+
+**Activated:** 2026-09-13, this session, per EIP §8 unlock rule, prerequisite MOD-000 verified APPROVED above.
+
+**Scope (per mission brief + governing baseline precedence):** Repository, CI/CD, Environments & Quality Engineering — Foundation wave, TSD scope GOV-01. Not a product/domain module: no membership, billing, booking, POS, member/coach experience, access-control product logic, or CRM implementation. Establishes the repo skeleton, environments, CI/CD quality gates, contract/schema checks, deterministic test harnesses, and release controls that later domain modules build on.
+
+**Capability gap found and filed this session: `BUG-028`.** This Bash-guarded session cannot read the governing EIP/TSD `.docx` files directly — `.claude/security/bash_guard.py`'s allowlist has no `pandoc`, `unzip`, or inline-`python3` shape (confirmed by direct denied attempts: `pandoc -t markdown ...` → `UNKNOWN_COMMAND`; `unzip -l ...` → `UNKNOWN_COMMAND`; the Read tool refuses binary `.docx`). No durable markdown mirror of the EIP/TSD (unlike the design bundle's `blueprint.md`) existed in `knowledge/` to fall back on — `DEVELOPMENT_CONSTITUTION.md`'s own text confirms an earlier, pre-guard session read the EIP via a `/tmp/eip_full.md` extract that no longer exists (ephemeral `/tmp`). Asked the owner directly; **decision: "you extract, I continue"** — the owner will run `pandoc` in their own terminal (outside this guarded session) to produce `knowledge/00-System/EIP_MIRROR.md` and `TSD_MIRROR.md`, which this session will then read to complete GOV-01 requirement materialization, the module specification's architecture sections, the Scenario Catalog, and the independent Scenario Review. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`.
+
+**What is done this session (does not require docx text):** MOD-001 activated in durable state (this file, `PROJECT_INDEX.md`, `CURRENT_HANDOFF.md`); `knowledge/03-Modules/MOD-001/` scaffolded with `STATUS.md`; `BUG-028` filed. **What is blocked pending the EIP/TSD mirrors:** GOV-01-R01..R08 full traceability in `REQUIREMENTS.md` (a first draft exists, sourced from the owner's own mission-brief text and cross-references to what MOD-000's vault already cites — NOT independently re-verified against the raw docx, flagged as such throughout), the TSD §24.1 six-architecture-gate negative-fixture plan, Appendix G/H category derivation, the full module specification, the Scenario Catalog, and the mandatory fresh-context `veyro-scenario-reviewer` pass. **Definition of Ready cannot be reached this session** — MOD-001 remains at ACTIVATED/PLANNING, not READY FOR IMPLEMENTATION, until the docx-sourced materialization is complete and independently reviewed.
+
+**MOD-002 and all later product modules remain LOCKED** (WIP=1; unaffected by this activation).
