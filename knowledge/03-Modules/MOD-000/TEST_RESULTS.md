@@ -1,7 +1,7 @@
 ---
 doc: MOD-000_TEST_RESULTS
 status: LIVE
-updated: 2026-09-13 (Phase 9 row added, fourth Gatekeeper pass Editorial finding — this index had no Phase 9 row and never had a Phase 2 row; both real gaps, same "stale index" species this file's own 2026-09-12 update note already names)
+updated: 2026-09-13 (Phase 10 row added — MOD-000 CERTIFICATION APPROVED)
 ---
 
 # MOD-000 — Test Results (index)
@@ -22,6 +22,7 @@ Appendix D field: "Deterministic automated/integration/E2E results and run refer
 | Phase 8 | Cumulative regression across all 95 scenarios and Phases 1-7, closeout-corrected | PASS (2026-09-12) — all 95 scenarios resolve to exactly one canonical disposition (current totals in the matrix file itself, updated 2026-09-13 by Phase 10 readiness — not restated here to avoid drift); BUG-024 (P1, closed) and BUG-025 (P2, **FIXED 2026-09-13**, see `capability_drift_check.py`) found; Notion Scenario DB fully reconciled (95/95 verified, 46 corrected) | `evidence/scenario-execution/phase8/PHASE8_CANONICAL_95_MATRIX_2026-09-12.md` |
 | Bash guard automated suite (current) | 194 fixture tests across all bypass classes | PASS, 194/194 (re-confirmed Phase 8/9) | `.claude/security/tests/test_bash_guard.py` |
 | Phase 9 | Fresh-session restoration proof — durable-sources-only state reconstruction, independent Gatekeeper review | **PASS (2026-09-13).** BUG-026 found and fixed. Nine independent fresh-context Gatekeeper rounds ran; the ninth returned APPROVED, P0=0/P1=0, independently reconfirming every restoration claim. Phase 10 legally unlocked. | `evidence/scenario-execution/phase9/PHASE9_FRESH_SESSION_RESTORATION_PROOF_2026-09-12.md` |
+| Phase 10 | Final MOD-000 certification — readiness package, pre-Gatekeeper self-check, independent certification-scope Gatekeeper review | **APPROVED (2026-09-13).** 5 known artifact gaps + SCN-094 + SCN-084/BUG-025 closed; canonical matrix updated to 82/8/3/2/0; a real owner-approval gate (`EXT-01`) and a real durability gap (`.claude/settings.json`'s uncommitted activation patch) both found and closed, the latter requiring the owner personally. Multiple independent certification rounds ran (see that directory's own files for the count); the final round returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0, with an explicit sign-off. Module Approval Certificate issued. | `evidence/scenario-execution/phase10/CERTIFICATION_ROUND_6_2026-09-13.md`; certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md` |
 
 0 P0, 0 FAIL across all deterministic runs to date. Full per-scenario
 detail lives in the referenced files, not duplicated here. **This index

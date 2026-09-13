@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-13 (chunk 30 — **Phase 10 certification IN PROGRESS, not yet PASS.** Multiple independent certification-scope Gatekeeper rounds have run, each returning BLOCKED on findings remediated the same day (round 1's P0, `EXT-01`, closed via an actual owner decision, `OWN-002`; round 2's real durability gap, `.claude/settings.json`'s uncommitted Phase 7 activation patch, closed by the owner committing it directly, `c9992d6`; every round since has found the same recurring documentation-drift species — a fact fixed where a reviewer pointed, not generalized to every sibling stating it). **This file deliberately does not restate the current round count anywhere in it, including in this sentence — see `CURRENT_STATE.md`'s own front matter for the current count and next action, kept in exactly one place.** No certificate exists. MOD-001 remains locked.)
+updated: 2026-09-13 (chunk 30 — **PHASE 10 CERTIFICATION: APPROVED. MOD-000 APPROVED. MOD-001 UNLOCKED for planning in a future session; not started this session.** Multiple independent certification-scope Gatekeeper rounds ran, most returning BLOCKED on findings remediated the same day (a real owner-approval gate, `EXT-01`, closed via `OWN-002`; a real durability gap, `.claude/settings.json`'s uncommitted Phase 7 activation patch, closed by the owner committing it directly; several rounds finding the same recurring documentation-drift species, eventually fixed by de-duplication rather than repeated sweeps) — the final round returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0. Certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md`. **This file still does not restate the certification-round count anywhere in it — see `CURRENT_STATE.md`'s own front matter for that full history.**)
 ---
 
 # Current Handoff
@@ -50,7 +50,24 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-28-2026-09-12-phase9-restoration-proof-pass.md`**
 — chunks 30 and 29 are now the 2 kept in full.
 
-## What happened chunk 30, 2026-09-13 — certification rounds 2, 3, and 4: each returned BLOCKED, each remediated same day, each finding the identical recurring documentation-drift species (this narrative deliberately stops enumerating "round N of M" past this point — see `CURRENT_STATE.md`'s front matter for the current count)
+## What happened chunk 30, 2026-09-13 — certification rounds 2 through 6: rounds 2-5 each returned BLOCKED, each remediated same day, most finding the identical recurring documentation-drift species; **round 6 returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0** (this narrative deliberately stops enumerating "round N of M" past this point — see `CURRENT_STATE.md`'s front matter for the full count-by-round history)
+
+**Final outcome of this chunk: MOD-000 is APPROVED.** The sixth
+independent, fresh-context certification-scope `veyro-gatekeeper` round
+specifically tested whether round 5's structural fixes (de-duplicating
+the round-count fact; the standing rule that every round authors its
+own evidence file) actually held, rather than just re-checking
+engineering state — both held under independent re-verification. The
+reviewer found only non-blocking P2/Editorial items (a readiness-package
+sentence over-claiming vault-wide uniqueness; `STATUS.md`'s absolute
+"no round count" claim needing narrower scoping; a stale evidence-subtree
+enumeration; the usual carried-forward disclosed limitations) and
+explicitly signed off that MOD-000 may receive its Module Approval
+Certificate. **Certificate issued: `knowledge/03-Modules/MOD-000/APPROVAL.md`.**
+Full verdict: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_6_2026-09-13.md`.
+
+**MOD-001 is UNLOCKED for planning in a future session. Per explicit
+instruction, MOD-001 implementation does not begin in this session.**
 
 **Round 2** returned BLOCKED (P0=0, P1=4): all documentation staleness the chunk-29 remediation missed, plus one real durability gap — `.claude/settings.json`'s Phase 7 activation patch had been applied live but never committed to Git. All four remediated same day, including the owner committing the file directly (`c9992d6`). Full record: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIFICATION_ROUND_2_2026-09-13.md`.
 
@@ -627,23 +644,20 @@ The chunk-12 Phase 3 close-out report stated "PASS: 24, FAIL: 0, BLOCKED: 0" whi
 - Phase 7 — executed and independently re-reviewed across a v1 guard (4 failed rounds, superseded), a v2 allow-by-construction redesign's 2-round cap, an owner-authorized final Round 3 (BLOCKED, P0=0/P1=3), a narrowly-scoped Sonnet remediation of those 3 P1s, an owner-authorized fourth independent verification of that remediation (APPROVED FOR OWNER ACTIVATION, P0=0/P1=0), and the owner's manual activation patch + a fresh-session 14-row live-test matrix (chunk 25, 2026-09-08) — **all 14 PASS**. `BUG-012` CLOSED via owner decision `OWN-003`; `BUG-013`/`BUG-022`/`BUG-023` all **CLOSED** — the PreToolUse hook is proven live-executing, this project's own historical bypass fixtures for all three bugs proven denied live, and safe operations proven unaffected. CAP-007 is now **ACTIVE**. **GATE: PASS.** A durability caveat found by the second Phase 10 certification Gatekeeper round (P1-3, 2026-09-13) — the owner's activation edit to `.claude/settings.json` had been applied live but never committed to Git — **is RESOLVED (same day, round 2's remediation)**: the owner committed it directly from a real terminal, commit `c9992d6`, confirmed via `git log -- .claude/settings.json`, local HEAD, and `origin/main` all matching, and the guard's live behavior re-verified correct afterward (re-confirmed again by the third and fourth certification rounds). No owner action is pending on this item.
 - Phase 8 — executed, closeout-corrected, and PASSED (chunks 26-27, 2026-09-12; canonical matrix updated again in chunk 29, 2026-09-13, Phase 10 readiness). All 95 scenarios resolve to exactly one canonical disposition — current totals live only in `PHASE8_CANONICAL_95_MATRIX_2026-09-12.md` (not restated here to avoid drift; see that file's own "Phase 10 update" section). Full Notion Scenario DB reconciled (re-reconciled again 2026-09-13 after 6 more scenarios closed). All permanent suites re-verified PASS; live guard proven active throughout via organic real denials. **GATE: PASS.**
 - Phase 9 — **PASS (2026-09-13)** — ninth independent Gatekeeper round APPROVED, P0=0/P1=0. See the chunk-28 section above and the Phase 9 proof file. **GATE: PASS.**
-- Phase 10 — **IN PROGRESS, not yet PASS.** The 5 known readiness artifact gaps were authored (chunk 29, 2026-09-13) — see the next bullet. Multiple independent certification-scope `veyro-gatekeeper` rounds have run; the first found `EXT-01` (owner-approval gate) open, closed by an actual owner decision recorded as `OWN-002`; every round since has found the same recurring documentation-drift species. Never self-approved. **This bullet deliberately does not state a round count or next action — see `CURRENT_STATE.md`'s front matter, the sole place that fact lives.**
+- Phase 10 — **PASS. APPROVED.** The 5 known readiness artifact gaps were authored (chunk 29, 2026-09-13) — see the next bullet. Multiple independent certification-scope `veyro-gatekeeper` rounds ran; the first found `EXT-01` (owner-approval gate) open, closed by an actual owner decision recorded as `OWN-002`; several rounds after that found the same recurring documentation-drift species, eventually fixed by de-duplication; the final round returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0, with an explicit sign-off. Never self-approved — this was an independent fresh-context verdict. **Module Approval Certificate: `knowledge/03-Modules/MOD-000/APPROVAL.md`. This bullet deliberately does not state a round count — see `CURRENT_STATE.md`'s front matter for that full history.**
 - 5 known artifact gaps: **AUTHORED (chunk 29, 2026-09-13)** — `knowledge/00-System/skl-rule-id.schema.yaml`, `CAPABILITY_ROLLBACK_PROCEDURE.md`, `CAPABILITY_EVALUATION_TEMPLATE.md`, `knowledge/05-QA/tools/run_regression.py`, `SKILL_SCOPING_POLICY.md`, plus `RULES_PROFILE_STRUCTURE.md` for the related `.claude/rules` profile-structure gap. Closing SCN-087/088/089/091/093/094.
 - The pre-existing EIP internal self-contradiction (`knowledge/00-System/external-gates-evidence/EIP_STATUS_CONTRADICTION.md`, tracked as `EXT-01`) — **RESOLVED 2026-09-13.** The owner adjudicated in favor of the EIP's own front matter (fully approved/final); the §21.1 "candidate" language is ruled a drafting inconsistency in the source document, not a live blocker. Recorded as `OWN-002` in `OWNER_APPROVALS.md`. `EXT-01` is CLOSED.
 
 ## Next legally allowed action
 
-**Corrected 2026-09-13, fifth certification-scope Gatekeeper round
-(P1-2): this section previously restated the round count and next
-action in its own words each time a round found the prior wording
-stale — itself an instance of the exact drift the count-and-next-action
-fact keeps suffering. It no longer does either, at all.** Every
-finding through the most recent round is remediated except whatever
-that round's own report says is still open — read `CURRENT_STATE.md`'s
-front matter for the current round count, verdict, and next legally
-allowed action; it is the sole place this fact is kept, and no other
-file, including this one, restates it. Not MOD-001 — that remains
-locked until a round returns APPROVED and a certificate is issued.
+**MOD-000 CERTIFICATION APPROVED.** The Module Approval Certificate
+exists: `knowledge/03-Modules/MOD-000/APPROVAL.md`. **MOD-001 is
+UNLOCKED for planning — this session does not begin MOD-001
+implementation.** The next legally allowed action is MOD-001 planning,
+in a later session, starting from the certificate and
+`PROJECT_INDEX.md`'s governing baseline precedence. (This section still
+deliberately states no certification-round count — read
+`CURRENT_STATE.md`'s front matter for that full history.)
 
 BUG-010 remains open by design (owner-decision-pending, non-blocking). BUG-025 is FIXED (2026-09-13, Phase 10 readiness). F5-027 remains open by design, non-blocking.
 
