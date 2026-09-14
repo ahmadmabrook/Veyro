@@ -24,15 +24,15 @@ required_agent_roles:
   - role: veyro-critical-engineer
     scope: "Bounded to 3 slices per ADR-005 Decision 1: tenant-isolation/RLS harness, authn negative-credential fixture pattern, RLS+permission architecture gates (GOV-01-R02/R04)"
     model: opus
-    status: "REGISTRATION BLOCKED — BUG-029 (.claude/agents/** Edit/Write-denied in guarded sessions), routed to owner"
+    status: "FILE REGISTERED (BUG-029 closed) — ROUTING NOT YET FUNCTIONAL: veyro-implementer.md's escalation list doesn't name this role (BUG-030, owner action needed)"
   - role: veyro-infra-sre-engineer
     scope: "infra/**, CI workflows, observability"
     model: sonnet
-    status: "REGISTRATION BLOCKED — BUG-029"
+    status: "REGISTERED (BUG-029 closed)"
   - role: veyro-backend-engineer
     scope: "backend/**, bounded — excludes the critical-slice harness itself"
     model: sonnet
-    status: "REGISTRATION BLOCKED — BUG-029"
+    status: "REGISTERED (BUG-029 closed)"
   - role: veyro-implementer
     scope: "Routine implementation outside the above"
     model: sonnet
@@ -47,13 +47,14 @@ required_cross_cutting_controls:
   - Security (RLS/permission architecture gates, secret scanning, SAST/dependency scanning)
   - Privacy (data-classification lint)
   - Tenant Isolation (GOV-01-R02 harness)
+  - Financial (added — P2 finding, was silently omitted; N/A-with-justification is not being asserted, so it is listed as active: MOD-001's release-evidence/artifact-signing work and RB-GOV-01's rollback runbook both touch financial-adjacent release integrity even though MOD-001 owns no real financial domain logic itself)
   - Access/Life-Safety (SCN-MOD001-060/067's framing)
   - Localization/RTL (RTL lint tooling)
   - Accessibility (a11y lint tooling)
   - Load (CI-runner/environment smoke-load, bounded per IMPLEMENTATION.md §5)
   - Observability (release-evidence, capability-manifest validation)
 missing_capability_blockers:
-  - "BUG-029: .claude/agents/** Edit/Write-denied — blocks registration of all 3 new agents above. Owner action needed."
+  - "BUG-030: veyro-implementer.md's escalation list doesn't name veyro-critical-engineer, so nothing routes to it from the tier below. Editing existing .claude/agents/ files is Edit/Write-denied in guarded sessions. Owner action needed."
 capability_evidence_ids: []  # No CAP-<NNN>/SKL-<NNN>/RULE-<NNN> evidence IDs generated yet — planning stage, no capability qualification run performed
 notes: >-
   This manifest is a planning-stage draft, not a certified module-capabilities

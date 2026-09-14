@@ -187,7 +187,9 @@ testing."
 - **IN scope:** the *foundations* — harness/tooling/CI wiring — for
   each of: load testing (CI-runner and environment smoke-load only, per
   the module card's own "Load / performance" field — not full
-  application-scale load, see §12 below), performance baselining,
+  application-scale load, see `IMPLEMENTATION.md` §5 **— corrected,
+  Scenario Review round 2, P2-1: this previously cited a nonexistent
+  "§12 below" within this file**), performance baselining,
   security scanning (SAST/dependency/secret/container/IaC per TSD
   §24.1), accessibility (a11y) tooling, localization (RTL/Arabic)
   tooling, offline-testing patterns (relevant to later edge/mobile/POS
@@ -195,7 +197,7 @@ testing."
   degraded-mode fixtures).
 - **OUT of scope:** application-scale load tests belonging to later
   domain modules; full production accessibility audits of screens that
-  don't exist yet (MOD-001 owns zero screens — see §7).
+  don't exist yet (MOD-001 owns zero screens — see §4 below).
 - **Implementation obligations:** SAST/dependency/secret/container/IaC
   scanning wired into CI (this overlaps directly with GOV-01-R04's CI
   gates — implemented once, satisfies both); an a11y lint tool wired for
@@ -218,12 +220,12 @@ testing."
 - **Security implications:** direct — this requirement includes the
   security-scanning tooling itself.
 - **Performance/load implications:** explicitly bounded to CI-runner
-  and environment smoke-load per the module card (§12 of this document);
-  not application load.
+  and environment smoke-load per the module card (`IMPLEMENTATION.md`
+  §5); not application load.
 - **Owner/external gates:** none for tooling; any paid scanning
   service (e.g. a commercial SAST SaaS) would need DC-16 owner approval
   before activation — default to free/open-source/already-available
-  tooling first, per the capability-gap analysis in §8.
+  tooling first, per the capability-gap analysis in `CAPABILITIES.md`.
 
 ### GOV-01-R04 — CI gates
 
@@ -251,8 +253,9 @@ enumeration.
   modules' job.
 - **Implementation obligations:** an actual CI pipeline definition (this
   project's TSD names no specific CI vendor in what I've read so far —
-  §9 below plans without inventing one) implementing every stage above
-  in TSD §24.1's order; the domain contract uniqueness lint specifically
+  `IMPLEMENTATION.md` §3 plans without inventing one) implementing every
+  stage above in TSD §24.1's order; the domain contract uniqueness lint
+  specifically
   (compares normalized authoritative-entity sets, command inventories,
   published-event sets, runbook IDs, SLI/SLO signals and failure-
   vocabulary across all 57 §10 domains — a real, non-trivial validator
@@ -269,10 +272,19 @@ enumeration.
   suite harnesses), GOV-01-R06 (migration-safety detail).
 - **Acceptance criteria:** every TSD §24.1 stage runs; every one of the
   6 architecture gates has a passing valid-fixture proof AND a
-  deliberate-violation fail-closed proof (§5's table); no gate is
-  bypassable via absolute-path/wrapper/shell-composition tricks (mirrors
-  this project's own Bash-guard discipline, applied to the CI gates
-  themselves).
+  deliberate-violation fail-closed proof (`IMPLEMENTATION.md` §4's
+  table); no gate is bypassable at the **CI-workflow-configuration
+  layer** — **corrected (Scenario Review round 2, P1-2): this
+  previously described a local shell-invocation bypass model
+  (absolute-path/wrapper/shell-composition tricks, mirroring
+  `bash_guard.py`), which round 1's own P1-3 finding already ruled the
+  wrong threat model for a CI gate and corrected in `SCENARIOS.md`
+  SCN-020/`IMPLEMENTATION.md` §3 — this file was not updated to match
+  at the time.** The real bypass classes a CI gate must resist:
+  branch-protection admin override, required-status-check name drift,
+  direct/force push bypassing the PR path, and `pull_request_target`
+  running base-branch workflow code with secrets (see SCN-020's own
+  detail block for the full, current list).
 - **Security implications:** direct and central — CI gates are a
   primary security control (secret scanning, SAST, dependency
   vulnerability, artifact signing/provenance).

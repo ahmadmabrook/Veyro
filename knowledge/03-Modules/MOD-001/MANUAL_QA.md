@@ -41,6 +41,14 @@ engineering-infrastructure, not consumer product.
    stock-Apple-apps-only scope currently; MOD-001's own mobile toolchain
    matrix, once it exists, is a document/CI-convention check, not a real
    app build — MOD-006 owns the real mobile app).
+9. **Model-routing qualification drill (added, Scenario Review round 2,
+   P1-7)** — a real dispatch to `veyro-implementer` with a critical-slice
+   task and a routine task, confirming escalation to
+   `veyro-critical-engineer` fires correctly and doesn't over-fire (per
+   `SCN-MOD001-104`/`105`'s own detail blocks, corrected to target
+   `veyro-implementer` rather than the critical-slice agent directly —
+   see `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`). Blocked on
+   `BUG-030`.
 
 **None of this has been executed** — implementation has not started.
 This is the plan `veyro-manual-qa` (Opus, fresh context) will execute
@@ -59,19 +67,22 @@ absent manual-execution path:
 | Manual-QA surface | Scenario IDs it executes |
 |---|---|
 | 1. Local developer bootstrap | 001, 002, 003, 036, 071 |
-| 2. CI workflow behavior | 004-015, 020, 023, 024, 034, 084-096, 098 |
+| 2. CI workflow behavior | 004-015, 020, 023, 024, 034, 084-096, 098, 102, 103, 110, 111, 112 |
 | 3. Environment setup (QA/staging) | 037, 038, 041, 049, 068, 069, 073, 074, 101 |
 | 4. Generated artifacts | 017, 018, 042, 057, 063, 091, 093, 098 |
-| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090 |
-| 6. Migration drill | 022, 059, 066, 070 |
-| 7. Release/rollback drill | 044-048, 058, 060, 067, 072 |
-| 8. Mobile build/toolchain bootstrap | 050-055, 099, 100 |
+| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090, 106, 109 |
+| 6. Migration drill | 022, 059, 066, 070, 113, 114 |
+| 7. Release/rollback drill | 044-048, 058, 060, 067, 072, 107, 108 |
+| 8. Mobile build/toolchain bootstrap | 050-055, 099, 100, 115 |
+| 9. Model-routing qualification drill | 104, 105 |
 
-Remaining Required scenarios not listed above (016, 021, 021b, 026-033,
-035, 039, 040, 043, 056, 061, 062, 064, 065, 075-083, 092, 094, 097) are
-executed as part of the CI-workflow-behavior surface (surface 2) by
-default, since they are CI-gate/harness checks with no distinct manual
-surface of their own — recorded explicitly here rather than left
-absent, closing the review's finding that most categories (IDEM, CONC,
-TEN, AUTHN, AUTHZ, PRIV, LOC, A11Y, DATA, INT, OBS) had no manual-QA
-mapping at all.
+**Corrected (Scenario Review round 2, P1-7): SCN-102-105 were entirely
+absent from this mapping — fixed above (102/103 → surface 2; 104/105 →
+new surface 9). 092 and 094 were double-listed inside both the `084-096`
+range and the "remaining" list below — removed from the remaining
+list, kept only in surface 2's range.** Remaining Required scenarios
+not listed above (016, 021, 021b, 026-033, 035, 039, 040, 043, 056,
+061, 062, 064, 065, 075-083, 097) are executed as part of the
+CI-workflow-behavior surface (surface 2) by default, since they are
+CI-gate/harness checks with no distinct manual surface of their own —
+recorded explicitly here rather than left absent.

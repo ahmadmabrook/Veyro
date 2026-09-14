@@ -59,9 +59,13 @@ real, ADR-005-decided position:
 the authn negative-credential fixture pattern, and the RLS+permission
 architecture gates) — see `MODEL_ROUTE.md`.
 
-**Registration of all three new agents is currently blocked**
-(`BUG-029` — `.claude/agents/**` is Edit/Write-denied in this guarded
-session) and routed to the owner.
+**Registration: files exist (`BUG-029` CLOSED, byte-verified), but the
+routing integration around `veyro-critical-engineer` does not yet work**
+— `veyro-implementer.md`'s own escalation list doesn't name the new
+role, so nothing actually routes to it from the tier below (`BUG-030`,
+found by independent review, owner action needed — same
+Edit/Write-deny protection applies to existing `.claude/agents/` files
+too).
 
 ## Capability-gap analysis, per MOD-001 workstream
 

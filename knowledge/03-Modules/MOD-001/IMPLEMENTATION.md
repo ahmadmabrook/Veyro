@@ -185,14 +185,31 @@ never destructive tests against real project baselines.
 
 | Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
 |---|---|---|---|---|---|---|
-| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **or (added round 2, P1-6) a source file appearing under a §4.3 path prefix that has neither an activated-profile record NOR a deferral marker at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile (or, for the no-marker case, citing the absence of any marker) | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
 
-Each deferred empty shell (`admin-web/`, `frontdesk-web/`, `mobile/`)
-carries a marker file (e.g. `admin-web/.profile-pending`) naming the
-§4.3 profile that must activate before real code lands there; the check
-reads that marker rather than an inferred mapping, so the deferral is a
-declared, checkable contract, not an absence a validator has to guess
-at.
+**Corrected (Scenario Review round 2, P1-6): the original marker-only
+design was fail-open.** General Web (`web/**`), Edge (`edge/**`) and
+Data/AI have no directory in §1's topology and therefore no marker for
+a marker-only check to read — a module creating one of those paths with
+real code would trip nothing. And a single `mobile/.profile-pending`
+marker cannot express three distinct deferred profiles (KMP Mobile
+`mobile/shared/**`, iOS Host `mobile/iosApp/**`, Android Host
+`mobile/androidApp/**`). Fixed: every §4.3 path prefix named in
+`MODEL_ROUTING.md`'s surface-profile table — including ones with no
+directory yet — must resolve to either an activated-profile record in
+`module-capabilities.yaml` or an explicit deferral marker; a path
+prefix with **neither** denies by default (`SCN-MOD001-112`), closing
+the fail-open hole. `mobile/` now carries three sub-markers:
+`mobile/shared/.profile-pending`, `mobile/iosApp/.profile-pending`,
+`mobile/androidApp/.profile-pending` (each naming its own distinct §4.3
+profile), instead of one marker at `mobile/.profile-pending`. Each
+deferred empty shell's marker file names the §4.3 profile that must
+activate before real code lands there; the check reads that marker
+(or, for not-yet-created path prefixes, the absence of both a marker
+and a directory triggers the same no-marker denial the moment matching
+source files appear) rather than an inferred mapping, so the deferral
+is a declared, checkable contract, not an absence a validator has to
+guess at.
 
 Each gate's fixtures are synthetic tables/files created and destroyed
 within the test harness's own throwaway schema/fixture directory — never
@@ -208,14 +225,24 @@ testing (that belongs to later domain modules per GOV-01-R03's own
 IN/OUT boundary). Planned scope:
 
 1. **CI runner smoke-load** — the full pipeline (§3 above) completes
-   within a bounded time budget on a synthetic/trivial repo state;
-   measured once implementation exists, budget to be set from that
-   measurement (no invented number here).
+   within a **pre-declared 15-minute budget** on a synthetic/trivial
+   repo state (`SCN-MOD001-068`). **Corrected (Scenario Review round 2,
+   P1-4): this previously said the budget would be "set from that
+   measurement (no invented number here)," which is self-referential
+   and unfalsifiable — `SCENARIOS.md` SCN-068 already fixed this on the
+   scenario side (round 1, P1-7); this file was not updated to match at
+   the time.** 15 minutes is a deliberately tight ceiling for a pipeline
+   with no real product code yet (GitHub Actions' free-tier per-job
+   timeout default is 6 hours). If the first real measurement exceeds
+   it, the budget is revisited via a recorded decision, not silently
+   loosened.
 2. **Environment smoke-load** — LOCAL/QA/staging environments boot
-   successfully under a small number of concurrent requests against a
-   trivial health-check endpoint; proves the environment itself isn't
-   the bottleneck, not that the (nonexistent) product can handle load.
-3. **Gate-bypass-under-load validation** — confirm none of the 6
+   successfully under 10 concurrent requests against a trivial
+   health-check endpoint, each responding within 2 seconds
+   (`SCN-MOD001-069`); proves the environment itself isn't the
+   bottleneck, not that the (nonexistent) product can handle load.
+3. **Gate-bypass-under-load validation** (`SCN-MOD001-111`, added round
+   2 — this scope item had no scenario before) — confirm none of the 6
    architecture gates or CI stages can be skipped by racing/concurrent
    pipeline runs, timeout-induced partial execution, or a
    resource-exhausted CI runner silently passing.

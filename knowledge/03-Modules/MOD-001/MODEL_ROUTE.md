@@ -75,12 +75,27 @@ clarification — the same operating model MOD-000 already established.
 real `Agent` call with `model: opus` set explicitly, not self-decided.
 
 **ADR-005's binding pre-Definition-of-Ready conditions on model
-routing, not yet satisfied:** (1) the three new agent files exist —
-blocked by `BUG-029`, owner action needed; (2) independent fresh-context
-Opus review of `veyro-critical-engineer`'s definition, once authored;
-(3) routing-qualification-drill re-run (SCN-MOD000-080/081 pattern)
-against the new role, evidence under
-`knowledge/03-Modules/MOD-001/evidence/model-routing/`; (4) MR-linked
-evidence (`MR-MOD001-<YYYYMMDD>-<NNN>`); (5) this file and
-`MODEL_ROUTING.md` reflecting the registered (not merely planned) state.
-None of these can complete until `BUG-029` resolves.
+routing:**
+(1) **DONE** — the three new agent files exist (`BUG-029` CLOSED,
+byte-verified against ADR-005's spec);
+(2) **DONE, verdict BLOCKED** — independent fresh-context Opus review
+ran (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`);
+found the definition itself sound but found the routing integration
+around it broken (`BUG-030`);
+(3) **run, but invalid** — the drill dispatched directly to
+`veyro-critical-engineer` rather than to `veyro-implementer` as
+`SCN-MOD000-080/081`'s own pattern requires, so it could not have
+caught `BUG-030`; a corrected re-run is blocked on that bug
+(`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`);
+(4) **partially done** — MR evidence recorded with agent/session ids,
+but its own verdict is now "behaviorally sound, does not establish
+routing correctness," pending the corrected drill;
+(5) **done for existence, not yet for correctness** — `MODEL_ROUTING.md`
+now says REGISTERED, which is true of the files but not yet true of the
+escalation path (`BUG-030`).
+
+**Current sole blocker: `BUG-030`** — `veyro-implementer.md`'s
+escalation list doesn't name `veyro-critical-engineer`, and fixing it
+requires an owner-applied edit to an *existing* `.claude/agents/` file
+(same Edit/Write-deny protection, confirmed to apply to existing files
+too, not just new ones).

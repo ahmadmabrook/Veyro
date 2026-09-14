@@ -44,9 +44,9 @@ therefore "the complete included critical-journey catalog," not a fixed
 number — every requirement, gate, and validator this module owns needs
 its own real scenario, which is what §3 below now provides. The 8-Critical-requirements
 floor (GOV-01-R01..R08) remains true as an absolute minimum but was
-never the operative constraint. This catalog contains **106** scenarios
-(including 021b) — 104 Required + 2 Optional (ALT) — comfortably above
-every applicable floor.
+never the operative constraint. This catalog contains **115** scenarios
+(001-115 plus 021b) — 113 Required + 2 Optional (ALT) — comfortably
+above every applicable floor.
 
 ## 1. Category coverage matrix
 
@@ -61,23 +61,30 @@ real second scenario is 066 (058 + 066), with 059 correctly DR-only.
 SCN-073/074 were reclassified out of ALT into their substantive
 categories (INT, PERF) per P2-10 (§3 rationale in their own blocks) and
 27 new scenarios (075-101) were added closing P0-1, P0-2, P0-4, P1-2,
-P1-5, and four P2-7 negative companions. Every category MOD-001 is
-Required for (Appendix G row, all R except ALT=O) is now covered by at
-least 2 real scenarios, each independently verified against its own
-detail block's stated category tag (not merely the table's own
-say-so):
+P1-5, and four P2-7 negative companions. **Round 2 (P1-1) found this
+table's own "independently verified against each detail block" claim
+was false in 4 places at the time: 075 was listed under AUTHN but
+tagged SEC in its own block; 067 was silently dual-counted under TEN
+and LIFE though tagged LIFE only; 042 and 084 (both tagged SEC) appeared
+in no row at all.** All four corrected below — 075 moved to SEC (where
+its detail block actually tags it); 067 removed from TEN (LIFE-only,
+matching its tag; TEN's floor still holds at 3 without it); 042 and 084
+added to SEC. Every category MOD-001 is Required for (Appendix G row,
+all R except ALT=O) is covered by at least 2 real scenarios; this table
+was re-verified against each entry's own detail-block tag as part of
+round 2's remediation, not merely re-asserted:
 
 | Category | R/O | Scenario IDs |
 |---|---|---|
 | HP | R | 001, 010, 023, 036, 041, 048, 055 |
 | ALT | O | 071, 072 |
 | VAL | R | 002, 024, 037 |
-| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062 |
-| BND | R | 004, 012, 026, 085, 087, 088, 089, 090 |
-| AUTHN | R | 005, 027, 075, 097 |
+| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 109 |
+| BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 106, 110, 112 |
+| AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
-| TEN | R | 007, 014, 096, 067 |
-| SEC | R | 008, 015, 020, 029, 057, 063, 064, 076-083, 086, 094, 098, 102-105 |
+| TEN | R | 007, 014, 096 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -86,14 +93,14 @@ say-so):
 | OFF | R | 032, 050 |
 | REC | R | 058, 066 |
 | LIFE | R | 060, 067 |
-| DATA | R | 017, 033, 051, 099 |
-| INT | R | 018, 034, 052, 073, 100 |
+| DATA | R | 017, 033, 051, 099, 114 |
+| INT | R | 018, 034, 052, 073, 100, 115 |
 | LOC | R | 039, 053 |
 | A11Y | R | 040, 054 |
-| PERF | R | 068, 069, 074, 101 |
-| OBS | R | 021, 021b, 035, 061, 091, 093 |
-| MIG | R | 022, 070 |
-| DR | R | 059, 066 |
+| PERF | R | 068, 069, 074, 101, 111 |
+| OBS | R | 021, 021b, 035, 061, 091, 093, 107 |
+| MIG | R | 022, 070, 113 |
+| DR | R | 059, 066, 108 |
 
 No category rests on a single scenario (every row lists ≥2 IDs; several
 of the added Group K entries reinforce SEC and BND, which own most of
@@ -137,7 +144,7 @@ Group K.
 | Staging environment bootstrap without production activation | 041, 049 |
 | Rollback behavior | 058, 059, 060 |
 | Feature-flag/release controls | 044, 045 |
-| Mobile-version/release policy | 052, 053, 054, 099, 100, 101 |
+| Mobile-version/release policy | 115 (the actual version-support/kill-switch policy, corrected round 2 P1-10 — was 052-054/099-101, which test dual-platform-trigger/RTL/a11y/runner-assignment, not this policy) |
 | Deterministic regression | 061 |
 | TestSprite integration scope | 062 |
 | CI runner smoke-load | 068 |
@@ -147,6 +154,12 @@ Group K.
 | Owner-reserved production/spend/data denial | 056, 060, 064, 065 |
 | Model-assurance forced-fallback (not separately named in the mission's list but mandatory per EIP_MIRROR.md lines 1109-1111) | 075 |
 | Additional capability-governance/scenario-matrix/external-gate/Appendix-I fail-closed drills (P0-2, not separately named but required by the module card's own manual-QA field) | 076-093 |
+| GOV-01-R01 per-layer deliberate-failure proof (added round 2, P0-2) | 106 |
+| GOV-01-R08 release-train/changelog/lifecycle-stage lint (added round 2, P0-2) | 107, 108 |
+| Card-mandated test-failure and screen-count drills (added round 2, P0-3) | 109, 110 |
+| Gate-bypass-under-load (added round 2, P1-5) | 111 |
+| Surface-profile activation, no-marker-at-all case (added round 2, P1-6) | 112 |
+| GOV-01-R06 rolling-deploy compatibility and migration-record template (added round 2, P1-9) | 113, 114 |
 
 All 29 rows (27 mission-named + 2 added for completeness) now have
 real, on-topic, independently-checkable coverage.
@@ -323,31 +336,51 @@ Steps: an event referenced in code with no registry entry (companion to
 008). Expected: `UNREGISTERED_EVENT_CONTRACT` denial.
 
 **SCN-MOD001-020 · SEC · Blocker · Gate-bypass attempt (CI-workflow layer) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
-**Corrected (Scenario Review round 1, P1-3):** the original draft tested
-a *local shell-invocation* bypass taxonomy (absolute path, wrapper,
-malformed flag — modeled on `bash_guard.py`'s BUG-013/022/023 history).
-That is the wrong threat model for a CI gate: a CI gate is bypassed at
-the *workflow-configuration* layer, not the shell-invocation layer the
-Bash guard defends. Rewritten to test the actual bypass classes a CI
-pipeline gate faces. Preconditions: a working, gate-enforcing GitHub
-Actions workflow. Steps, each attempted independently against a
-disposable fixture branch/PR, never against `main` or the governing
-baselines: (a) add `continue-on-error: true` to the gate step in the
-same PR the gate should block; (b) add a `[skip ci]`-style commit-message
-token; (c) edit the gating workflow file itself (weakening or removing
-the gate step) in the same PR the gate would otherwise block; (d)
-trigger the workflow via `workflow_dispatch` bypassing the normal
-PR-triggered path; (e) open the equivalent PR from a fork, where
-GitHub's default behavior may withhold secrets/required-status
-enforcement differently than a same-repo branch. Expected: every attempt
-still results in the gate blocking the merge — branch-protection
-required-status-checks configuration (not the workflow file's own
-content) is what actually gates the merge button, so a same-PR edit to
-the workflow file cannot retroactively un-gate that same PR; a
-fork-PR/`workflow_dispatch` run is proven to still require the same
-status check before merge is possible. Negative/failure behavior IS this
-scenario's subject. See `IMPLEMENTATION.md` §3's "Bypass protection"
-column, corrected to match.
+**Corrected (round 1, P1-3):** the original draft tested a *local
+shell-invocation* bypass taxonomy (absolute path, wrapper, malformed
+flag — modeled on `bash_guard.py`'s BUG-013/022/023 history). That is
+the wrong threat model for a CI gate. Rewritten to the CI-workflow-
+configuration layer. **Further corrected (round 2, P1-3): the round-1
+rewrite still omitted the highest-yield real bypass classes and never
+actually inspected the control it claimed protected the gate — both
+fixed below.** Preconditions: a working, gate-enforcing GitHub Actions
+workflow with branch protection configured on the target branch. Steps,
+each attempted independently against a disposable fixture branch/PR,
+never against `main` or the governing baselines: (a) add `continue-on-error:
+true` to the gate step in the same PR the gate should block; (b) add a
+`[skip ci]`-style commit-message token; (c) edit the gating workflow
+file itself (weakening or removing the gate step) in the same PR the
+gate would otherwise block; (d) trigger the workflow via
+`workflow_dispatch` bypassing the normal PR-triggered path; (e) open
+the equivalent PR from a fork; (f) **[added round 2]** attempt to merge
+via a repository-admin "bypass required status checks" override — the
+single most common real-world CI-gate bypass, and the one this
+scenario's original Expected-result claim assumed away without
+checking; (g) **[added round 2]** rename the gating job so the branch
+protection's *required check name* no longer matches (name-drift
+bypass — the required check simply never reports, and GitHub treats an
+unreported check as non-blocking by default in some configurations);
+(h) **[added round 2]** attempt a direct/force push to the protected
+branch, bypassing the PR path entirely; (i) **[added round 2]** a
+`pull_request_target`-triggered workflow that runs base-branch workflow
+code with repository secrets against a fork PR's ref. Also, **[added
+round 2]** before asserting any outcome: directly inspect the branch
+protection rule's own configuration (required-status-check names,
+"include administrators" setting, restrict-who-can-push list) rather
+than only observing merge-attempt outcomes — the original version
+asserted what the configuration "actually gates" without checking it.
+Expected: (a)-(e) still result in the gate blocking the merge, per the
+inspected branch-protection configuration; (f) is expected to succeed
+unless "include administrators" is enabled — if it succeeds, that is
+the correct, disclosed residual (admin override is a deliberate escape
+hatch, not a defect, but its existence and who holds it must be
+recorded, not silently assumed away); (g) is expected to succeed
+(demonstrating a real gap) unless the required-check name is generated
+from the job's stable ID rather than its display name; (h) and (i) are
+expected to be denied/inert given the branch-protection and workflow
+trigger-permission configuration this project would adopt. Evidence:
+the branch-protection configuration snapshot plus all 9 attempt
+outcomes. Negative/failure behavior IS this scenario's subject.
 
 ### Group D — Capability/registry integrity, rule-family coverage, baseline binding
 
@@ -1052,12 +1085,140 @@ task (e.g. "scaffold the `contracts/openapi/` directory") and confirm
 routing selects `veyro-implementer`, not `veyro-critical-engineer`.
 Expected: no over-escalation. Evidence: same directory as 104.
 
+### Group M — Scenario Review round 2 remediation: GOV-01-R01/R06/R08 coverage gaps, missed card drills, load-bypass, surface-profile fail-open fix (P0-2, P0-3, P1-5, P1-6, P1-9, P1-10)
+
+**SCN-MOD001-106 · BND · Major · GOV-01-R01, per-layer deliberate-failure proof (P0-2) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `REQUIREMENTS.md` GOV-01-R01's own acceptance criteria — "a
+deliberately broken fixture at each layer is proven to fail the correct
+gate (not silently pass)." Steps: for each of the 7 test-pyramid layers
+(unit, component, integration, contract, E2E, mobile UI, exploratory),
+introduce one deliberately broken fixture (e.g. a unit test asserting a
+false condition; a contract test against a malformed OpenAPI stub) and
+run that layer's harness. Expected: each layer's harness fails and
+reports which layer/fixture failed — no layer silently passes a broken
+fixture. Evidence: 7 failure reports, one per layer. Negative case IS
+the scenario's own subject; the companion positive (harness passes a
+correct fixture) is 001/002.
+
+**SCN-MOD001-107 · OBS · Major · GOV-01-R08, release-train/changelog generation (P0-2) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+Source: GOV-01-R08 (`EIP_MIRROR.md` lines 17577-17580). Steps: a
+synthetic release cycle runs through the release-train cadence
+convention and produces a changelog entry via the changelog tool
+wired to the release pipeline (GOV-01-R05). Expected: a real changelog
+entry is generated, correctly formatted per the convention document.
+Evidence: the generated changelog file/entry. Negative: a release with
+no changelog-worthy change produces no spurious entry.
+
+**SCN-MOD001-108 · DR · Major · GOV-01-R08, beta→GA→deprecation lifecycle-stage lint (P0-2) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+Steps: a synthetic release declares a lifecycle stage (beta/GA/
+deprecated) in its release-evidence record; the lint confirms the
+declared stage is a valid, recognized value and that a transition
+(e.g. beta→GA) follows the documented state machine. Expected: PASS on
+a valid transition. Negative: an invalid transition (e.g. GA directly
+to a stage skipping deprecation's required notice period, if the
+policy requires one) is denied, citing the violated transition rule.
+
+**SCN-MOD001-109 · NEG · Blocker · Card-mandated drill: deliberately-failing test blocks the pipeline (P0-3) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 4188-4192 — "prove CI blocks each
+architecture gate: ... secret/migration/schema/**test failures**."
+Secret (029), migration (070), and schema (034) are covered; this
+closes the missing "test failures" case. Steps: a synthetic unit test
+deliberately asserts a false condition; push it through the full CI
+pipeline (`IMPLEMENTATION.md` §3). Expected: the pipeline halts at the
+unit-test stage, blocking every downstream stage — build, integration,
+deploy never run. Evidence: pipeline run log showing the halt point.
+
+**SCN-MOD001-110 · BND · Blocker · Card-mandated drill: screen-contract count mismatch (P0-3) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 4189-4191 — "screen contract/**count**."
+Distinct from SCN-013 (an unmapped Screen ID) — this tests a *count*
+mismatch: the canonical screen registry reports N screens for a given
+surface, but `screen-contracts.yaml` generates a different count (e.g.
+one screen silently dropped during generation). Expected: the generator/
+validator denies with a named count-mismatch error citing the expected
+vs. actual count, rather than silently emitting a short manifest.
+
+**SCN-MOD001-111 · PERF · Blocker · Gate-bypass-under-load (P1-5) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
+Source: `IMPLEMENTATION.md` §5.3 (Load / performance scope, "confirm
+none of the 6 architecture gates or CI stages can be skipped by
+racing/concurrent pipeline runs, timeout-induced partial execution, or a
+resource-exhausted CI runner silently passing"). Steps, three attempted
+independently: (a) trigger two concurrent pipeline runs against the same
+PR/ref and confirm both runs' gates are independently enforced, not
+racing to a shared, prematurely-cleared status; (b) deliberately induce
+a CI-step timeout mid-gate and confirm the step reports failure, not a
+silently-skipped/partial pass; (c) simulate a resource-exhausted runner
+(e.g. an OOM-killed gate process) and confirm the pipeline reports
+failure, not a false green from a process that never finished. Expected:
+all three fail closed.
+
+**SCN-MOD001-112 · SEC · Blocker · Surface-profile activation gate — no-marker-at-all case (P1-6) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Corrected (round 2, P1-6): the gate design itself was fail-open** —
+General Web/Edge/Data-AI have no directory yet and thus no marker for
+the original marker-only check to read, and one `mobile/.profile-pending`
+marker couldn't express three distinct deferred mobile sub-profiles
+(KMP Mobile/iOS Host/Android Host). Fixed in `IMPLEMENTATION.md` §4
+gate 7: every §4.3 path prefix named in `MODEL_ROUTING.md`'s table must
+carry either an activated-profile record in `module-capabilities.yaml`
+or an explicit deferral marker — a path prefix with *neither* denies by
+default, closing the fail-open hole. `mobile/` now carries 3 sub-markers
+(`mobile/shared/.profile-pending`, `mobile/iosApp/.profile-pending`,
+`mobile/androidApp/.profile-pending`). Steps: a synthetic path prefix
+matching a §4.3 profile's glob (e.g. a new `edge/` directory) is created
+with neither an activated-profile record nor a deferral marker.
+Expected: `SURFACE_PROFILE_NOT_ACTIVATED` denial citing the path and
+the *absence* of any marker (distinct from SCN-103's marker-present/
+profile-not-activated case). Companion positive: 102.
+
+**SCN-MOD001-113 · MIG · Major · GOV-01-R06, rolling-deploy N-1 compatibility (P1-9) · Automated · veyro-backend-engineer/Sonnet · NOT EXECUTED**
+Source: TSD §24.2 (`TSD_MIRROR.md` lines 11667-11669) — "Schema and
+application deployment ordering is tested against at least previous
+supported version for rolling deploy compatibility." Steps: deploy a
+synthetic schema change while a synthetic "previous version" application
+instance is still running against the old shape (simulating a rolling
+deploy's overlap window). Expected: the old-version instance continues
+operating correctly against the new schema (the expand-phase guarantee)
+— proven, not merely asserted by the migration-safety harness's
+ordering alone.
+
+**SCN-MOD001-114 · DATA · Major · GOV-01-R06, migration-record template (P1-9) · Automated · veyro-backend-engineer/Sonnet · NOT EXECUTED**
+Source: TSD §24.2 (`TSD_MIRROR.md` lines 11664-11666) — "Every migration
+records owner, expected lock/write impact, rollback/forward-fix strategy
+and data validation query." Steps: run a synthetic migration through the
+migration-record template and confirm all 4 required fields are
+populated. Expected: PASS with all 4 fields present. Negative: a
+migration submitted with any field missing is rejected by the template
+check before the migration is allowed to run.
+
+**SCN-MOD001-115 · INT · Blocker · GOV-01-R07, version-support/kill-switch policy enforcement (P1-10) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Added (round 2, P1-10): the "Mobile-version/release policy" named
+family previously pointed only at dual-platform-trigger/RTL/a11y/
+runner-assignment scenarios (052-054, 099-101) — real scenarios, but
+none tested GOV-01-R07's own actual policy content.** Source:
+`EIP_MIRROR.md` line 17572-17575 and TSD §24.3 (`TSD_MIRROR.md` lines
+11672-11681) — minimum supported version, optional/forced update, and
+kill-switch policy. Steps: a synthetic backend API version-negotiation
+check runs against three synthetic client versions: one within the
+minimum-supported range (expect: normal operation), one below minimum
+with only an optional-update policy in effect (expect: operates with an
+update prompt, not blocked), one below minimum with the kill-switch
+active for a security/critical-incompatibility case (expect: blocked,
+citing the forced-update requirement). Evidence: three recorded
+negotiation outcomes. Negative/failure behavior: a client below minimum
+that is NOT blocked when the kill-switch is active is the failure this
+scenario exists to catch.
+
 ## 4. Status
 
-**All 106 scenarios (001-105 plus 021b): NOT EXECUTED.** No scenario is
-marked PASS. Implementation has not started. Scenarios 104/105 (the
-`veyro-critical-engineer` routing-qualification drill) additionally
-cannot execute until `BUG-029` resolves and the agent is registered.
+**Corrected (Scenario Review round 2, P0-1): this section previously
+contradicted the real evidence tree — fixed.** Of the (now expanded,
+see round 2's remediation below) scenario set: SCN-104/105 were
+dispatched and produced real, recorded behavioral evidence
+(`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`) — but that drill
+targeted the wrong subject (see round 2's own P0-2/addendum below) and
+does not establish routing correctness, so 104/105 remain correctly
+**NOT EXECUTED as valid drills** pending `BUG-030`'s resolution and a
+corrected re-run. Every other scenario: **NOT EXECUTED.** No scenario is
+marked PASS. Implementation has not started.
 
 ## 5. Review Log
 
@@ -1172,7 +1333,117 @@ drill. **MOD-001 cannot reach Definition of Ready until `BUG-029`
 resolves** — this is now the sole remaining blocker, distinct from and
 in addition to Scenario Review round 2's own verdict.
 
-**Round 2:** pending re-dispatch after the remediation above (this
-session's own edits) is complete. Round 2 is expected to still find
-`BUG-029`'s open registration gap if dispatched before the owner acts —
-that is a correct, honest BLOCKED outcome, not a regression.
+**Round 2 (2026-09-14):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the remediated set (106 scenarios) plus the
+ADR-005/BUG-029 documentation changes. **Verdict:
+`MOD-001 SCENARIO REVIEW BLOCKED`.** P0=3, P1=10, P2=8, Editorial=4.
+Findings and disposition:
+
+- P0-1: `BUG-029`'s closure hadn't propagated — `STATUS.md`,
+  `SCENARIOS.md` (this section), `MODEL_ROUTE.md`, `CAPABILITIES.md`,
+  and `evidence/module-capabilities.yaml` all still said
+  registration-blocked while `MODEL_ROUTING.md` already said
+  REGISTERED, and this file marked SCN-104/105 both `NOT EXECUTED` and
+  "cannot execute" while the drill record showed both PASS. **Fixed:**
+  all five files corrected this session (see their own edit history);
+  §4 above corrected to state the real, nuanced status rather than
+  either extreme.
+- P0-2: GOV-01-R01 and GOV-01-R08's own declared scenario coverage
+  (BND for R01; OBS/DR for R08) didn't correspond to any real scenario
+  — the catalog's own §0 floor claim ("every requirement... needs its
+  own real scenario") was false for these two Critical requirements.
+  **Fixed:** SCN-106 (R01, per-layer deliberately-broken-fixture proof)
+  and SCN-107/108 (R08, release-train/changelog generation and the
+  beta→GA→deprecation lifecycle-stage lint) added — see Group M below.
+- P0-3: the card's own mandated "test failures" and "screen contract
+  **count**" deliberate-violation drills (`EIP_MIRROR.md` lines
+  4188-4192) were missed by round 1's Group K sweep. **Fixed:**
+  SCN-109 (deliberately-failing test blocks the pipeline) and SCN-110
+  (screen-contract *count* mismatch, distinct from SCN-013's
+  unmapped-ID case) added.
+- P1-1: the category matrix's own "independently verified against each
+  detail block" claim was false in 4 places (SCN-075 listed under AUTHN
+  but tagged SEC; SCN-067 silently dual-counted TEN+LIFE; SCN-042/084
+  appeared in no category row). **Fixed:** matrix corrected below.
+- P1-2: `REQUIREMENTS.md`'s GOV-01-R04 acceptance criteria still
+  described the retired local-shell-invocation bypass model P1-3
+  (round 1) replaced in `SCENARIOS.md`/`IMPLEMENTATION.md`. **Fixed:**
+  `REQUIREMENTS.md` corrected to the CI-workflow-layer model.
+- P1-3: SCN-020's rewritten threat model, while correctly scoped to the
+  CI-workflow layer, omitted the highest-yield real bypass classes
+  (branch-protection admin override, required-check name drift, direct
+  push bypassing the PR path, `pull_request_target`) and never actually
+  inspected the branch-protection configuration it claimed protected
+  the gate. **Fixed:** SCN-020 expanded with all four classes plus a
+  step that inspects the protection rule itself, not just outcomes.
+- P1-4: `IMPLEMENTATION.md` §5.1 still specified the self-referential
+  PERF budget P1-7 (round 1) had already fixed in `SCENARIOS.md`.
+  **Fixed:** §5.1 corrected to the same pre-declared 15-minute budget.
+- P1-5: `IMPLEMENTATION.md` §5.3's "gate-bypass-under-load" scope
+  (racing/concurrent runs, timeout-induced partial execution, resource
+  exhaustion) had no scenario. **Fixed:** SCN-111 added.
+- P1-6: the `surface_profile_activation` gate (added round 1 for
+  ADR-005 Decision 2 Part 3) was fail-open by its own marker-only
+  design — General Web/Edge/Data-AI have no directory yet and thus no
+  marker to check, and one `mobile/.profile-pending` marker cannot
+  express three distinct deferred mobile sub-profiles. **Fixed:**
+  `IMPLEMENTATION.md` §4 gate 7 corrected to require a marker (or
+  activated-profile record) for *every* deferred §4.3 path prefix
+  named in `MODEL_ROUTING.md`'s own table, denying by default on a
+  missing marker rather than only on a marker/reality mismatch;
+  `mobile/` split into three sub-markers. SCN-112 added for the
+  no-marker-at-all case.
+- P1-7: `MANUAL_QA.md` §2's mapping omitted SCN-102/103/104/105
+  entirely, leaving 4 Blocker-severity scenarios (including the
+  routing drill itself) with no manual-execution path. **Fixed:**
+  mapping extended.
+- P1-8: `ADR-005` binding condition 2 (independent review of the
+  critical-engineer definition) had no durable evidence file — only
+  session context. **Fixed:**
+  `evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`
+  authored, recording that review's real verdict (BLOCKED, see below).
+- P1-9: GOV-01-R06's own committed obligations (a rolling-deploy N-1
+  compatibility test; a migration-record template capturing TSD
+  §24.2's 4 required fields) had no scenario. **Fixed:** SCN-113/114
+  added.
+- P1-10: the "Mobile-version/release policy" named-family row pointed
+  at scenarios (052-054, 099-101) that test dual-platform triggers and
+  RTL/a11y/runner-assignment, never GOV-01-R07's actual version-support/
+  kill-switch/crash-monitoring/remote-config policy. **Fixed:** row
+  corrected to point at new scenarios; see Group M.
+- P2/Editorial (8+4): dangling section self-references in
+  `REQUIREMENTS.md` (§12/§8/§9/§5 don't exist in that file's own
+  numbering — fixed, corrected to point at `IMPLEMENTATION.md`'s real
+  section numbers); `TEST_PLAN.md`'s stale regression-triviality framing
+  and "6 architecture-gate validators" count (now 7) — fixed; Group
+  K/L's missing Evidence/Negative-failure fields — fixed for the P0/P1
+  items above, carried forward as a disclosed residual for the
+  remainder (a full per-scenario format pass on all 26 Group K/L
+  entries was judged disproportionate this round; flagged, not hidden);
+  `evidence/module-capabilities.yaml`'s silently-dropped Financial
+  cross-cutting control — fixed, added explicitly with rationale;
+  SCN-092's missing durability/determinism sub-check, SCN-084's missing
+  multi-family-naming sub-case, SCN-087's overstated §9.1 citation, and
+  SCN-095's off-by-one line citation — left as disclosed residuals, not
+  fixed this round (real but low-impact, and this round's budget went to
+  the P0/P1 items); front-matter/count-denominator inconsistencies
+  (066/67 vs 70, `status` line) — fixed.
+
+**Addendum — the independent `veyro-critical-engineer` definition
+review (ADR-005 binding condition 2) also returned BLOCKED**, finding
+the definition itself sound but the routing integration broken:
+`veyro-implementer.md`'s own escalation list doesn't name the new role,
+so nothing actually routes to it from the tier below. This is
+`BUG-030` — a second instance of the `.claude/agents/**` Edit/Write-deny
+capability gap, this time for *existing* files. The routing drill this
+session ran (SCN-104/105) also targeted the wrong subject (dispatched
+directly to `veyro-critical-engineer` instead of testing whether
+`veyro-implementer` escalates to it) and has been corrected in its own
+evidence file to say so; a valid re-run is blocked on `BUG-030`.
+
+**MOD-001 remains NOT READY. Sole remaining blocker: `BUG-030`,
+owner action needed.** Everything else round 2 found has been
+remediated in this same session. A round-3 Scenario Review is not
+dispatched this session — re-dispatching now would only re-confirm the
+same known, already-disclosed blocker; the efficient next step is the
+owner's `BUG-030` fix, then a corrected routing drill, then round 3.
