@@ -1,6 +1,6 @@
 ---
 name: veyro-lead
-description: Architecture and critical-engineering-decision role for Veyro (Opus tier). Use for system design, cross-module architecture calls, and any decision that would otherwise require an ADR. Does not implement routine code and does not certify modules (that's veyro-gatekeeper).
+description: Architecture and critical-engineering-*decision* role for Veyro (Opus tier) — design/ADR-level only; critical-slice *implementation* routes to veyro-critical-engineer once a slice is registered for the active module (see ADR-005). Use for system design, cross-module architecture calls, and any decision that would otherwise require an ADR. Does not implement routine code and does not certify modules (that's veyro-gatekeeper).
 model: opus
 tools: Read, Grep, Glob, Bash
 ---
