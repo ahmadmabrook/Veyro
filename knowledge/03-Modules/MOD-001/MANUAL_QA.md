@@ -1,0 +1,77 @@
+---
+doc: MOD-001_MANUAL_QA
+status: LIVE — PLAN ONLY (no implementation exists to QA yet)
+module: MOD-001
+updated: 2026-09-14
+---
+
+# MOD-001 — Manual QA Plan
+
+Per DC-04 (Claude actual manual QA is mandatory — automation cannot
+substitute) and the mission's instruction to derive real manual surfaces
+rather than inventing consumer UI tests, since MOD-001 is
+engineering-infrastructure, not consumer product.
+
+## Planned manual-QA surfaces (once implementation exists)
+
+1. **Local developer bootstrap** — a genuinely fresh clone of the repo,
+   following only committed documentation, brought up to a running
+   local environment (§2 of `IMPLEMENTATION.md`). Claude actually runs
+   the bootstrap commands and observes the result, not just reads them.
+2. **CI workflow behavior** — trigger a real PR (against a disposable
+   branch/fixture, never against `main` or the governing baselines) and
+   observe the GitHub Actions run through to completion, both a passing
+   case and a deliberately-broken case per gate (§4 of `IMPLEMENTATION.md`).
+3. **Environment setup (QA/staging)** — actually stand up the QA and
+   staging environment configs and confirm they boot, using CAP-005
+   (Browser, public/unauthenticated-endpoint scope) where a web surface
+   exists to hit.
+4. **Generated artifacts** — inspect a real signed build artifact,
+   `screen-contracts.yaml`'s generated output, and a release-evidence
+   record for the correct field set (`RB-GOV-01`'s contract).
+5. **Failure diagnostics** — deliberately break a gate and confirm the
+   failure message/report is genuinely actionable (names the file,
+   line, and violation type), not just "FAILED".
+6. **Migration drill** — a real Alembic expand→migrate→switch→contract
+   cycle against a disposable QA database, plus a deliberately
+   out-of-order destructive migration proven rejected.
+7. **Release/rollback drill** — a real synthetic canary deploy-and-
+   rollback cycle in staging (never real traffic/real Production).
+8. **Mobile build/toolchain bootstrap** — using CAP-006 (iOS Simulator,
+   stock-Apple-apps-only scope currently; MOD-001's own mobile toolchain
+   matrix, once it exists, is a document/CI-convention check, not a real
+   app build — MOD-006 owns the real mobile app).
+
+**None of this has been executed** — implementation has not started.
+This is the plan `veyro-manual-qa` (Opus, fresh context) will execute
+against once MOD-001 has real code to QA, per DC-04/DC-07 (fresh-context
+QA, never the implementing session's own narrative).
+
+## Scenario → manual-surface mapping (added, Scenario Review round 1, P1-8)
+
+Every Required scenario in `SCENARIOS.md` — regardless of its own
+"Automation" field — needs at least one real, Claude-driven execution
+before MOD-001 approval, per Appendix G/§9.1/DC-05. This table maps
+each of the 8 manual-QA surfaces above to the scenario IDs it will
+actually execute, so no Required scenario is left with an implicit or
+absent manual-execution path:
+
+| Manual-QA surface | Scenario IDs it executes |
+|---|---|
+| 1. Local developer bootstrap | 001, 002, 003, 036, 071 |
+| 2. CI workflow behavior | 004-015, 020, 023, 024, 034, 084-096, 098 |
+| 3. Environment setup (QA/staging) | 037, 038, 041, 049, 068, 069, 073, 074, 101 |
+| 4. Generated artifacts | 017, 018, 042, 057, 063, 091, 093, 098 |
+| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090 |
+| 6. Migration drill | 022, 059, 066, 070 |
+| 7. Release/rollback drill | 044-048, 058, 060, 067, 072 |
+| 8. Mobile build/toolchain bootstrap | 050-055, 099, 100 |
+
+Remaining Required scenarios not listed above (016, 021, 021b, 026-033,
+035, 039, 040, 043, 056, 061, 062, 064, 065, 075-083, 092, 094, 097) are
+executed as part of the CI-workflow-behavior surface (surface 2) by
+default, since they are CI-gate/harness checks with no distinct manual
+surface of their own — recorded explicitly here rather than left
+absent, closing the review's finding that most categories (IDEM, CONC,
+TEN, AUTHN, AUTHZ, PRIV, LOC, A11Y, DATA, INT, OBS) had no manual-QA
+mapping at all.

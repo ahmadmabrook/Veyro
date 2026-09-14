@@ -45,13 +45,50 @@ The EIP's §4.1 routing table names roles generically; this project's actual reg
 |---|---|---|---|
 | "Architecture, ADRs, module planning, dependency/risk decisions" — veyro-lead / veyro-architect | `veyro-lead` | Opus | EIP names both `veyro-lead` and `veyro-architect` as alternates; only `veyro-lead` is registered. No separate `veyro-architect` agent exists — `veyro-lead` covers this role fully. |
 | "Routine production implementation..." — veyro-developer | `veyro-implementer` | Sonnet | Renamed. `veyro-developer` does not exist as a registered agent name; `veyro-implementer` is the actual implementation. |
-| "Critical implementation slices: authn/authz, tenant isolation/RLS, payments, ledger, entitlements, booking races, access decisions, privacy/deletion, fiscalization, crypto/security boundaries" — veyro-critical-engineer | **not yet registered** | Opus | Real gap, recorded honestly (not papered over). See SCN-MOD000-080/081. Until a dedicated `veyro-critical-engineer` agent is authored, this role is covered by `veyro-lead` (architecture) directing `veyro-implementer` (Sonnet) under explicit Opus supervision, per the EIP's own fallback text ("Opus or Opus-led pair... may direct Sonnet implementation after the critical design is fixed"). MOD-000 itself does not contain any critical implementation slices (no authn/authz/payments/etc. in a control-plane bootstrap module), so this gap has not blocked MOD-000 to date, but must be closed before MOD-001+ touches any critical slice. |
+| "Critical implementation slices: authn/authz, tenant isolation/RLS, payments, ledger, entitlements, booking races, access decisions, privacy/deletion, fiscalization, crypto/security boundaries" — veyro-critical-engineer | **Registration pending owner action (`BUG-029`) — see `ADR-005`** | Opus | **Closed via `knowledge/04-Decisions/ADR-005-mod001-critical-slice-and-surface-profile-routing.md` Decision 1 (2026-09-14), not via the fallback text below, which is now scoped to an execution *mode* rather than a substitute for the role.** MOD-001's GOV-01-R02 (tenant-isolation/RLS harness, authentication negative-credential fixture pattern) and the RLS/permission architecture gates (GOV-01-R04) are the first real critical slices this project has hit (MOD-000 had none). Per ADR-005: `.claude/agents/veyro-critical-engineer.md` must be authored and registered (Opus) before MOD-001's Definition of Ready, bounded to exactly those 3 slices — not all of MOD-001. **File creation is itself blocked this session** (`.claude/agents/**` is Edit/Write-denied by `.claude/settings.json`, confirmed by direct attempt) — filed as `BUG-029`, routed to the owner, same pattern as `BUG-028`. Within the registered role, the EIP's own execution-mode fallback remains available: Opus (`veyro-critical-engineer`) either implements the slice directly, or fixes the critical design and directs `veyro-implementer` (Sonnet) for the remaining routine implementation — the router records which mode was used (§4.1: "Router records whether Opus directly implemented or supervised"). See SCN-MOD000-080/081 for the escalation-drill pattern this role's own qualification re-run (once registered) will follow. |
 | "Deterministic unit/integration/E2E test authoring..." — veyro-test-engineer / veyro-developer | `veyro-test-author` | Sonnet | Renamed. |
 | "Scenario Catalog deepening and QA design" — veyro-scenario-reviewer | `veyro-scenario-reviewer` | Opus, fresh context | Exact match. |
 | "Independent full code review" — veyro-code-reviewer | `veyro-code-reviewer` | Opus, fresh context | Exact match. |
 | "Actual Claude manual QA" — veyro-manual-qa | `veyro-manual-qa` | Opus, fresh context | Exact match. |
 | "Security/privacy review and load/performance analysis" — veyro-security-reviewer / veyro-performance-reviewer | `veyro-security-reviewer`, `veyro-performance-reviewer` | Opus | Exact match, both registered. |
 | "Final module approval / unlock decision" — veyro-gatekeeper | `veyro-gatekeeper` | Opus, fresh context | Exact match. |
+
+## §4.3 surface-profile agents (added 2026-09-14, ADR-005 Decision 2)
+
+The role→agent table above covers §4.1's lifecycle roles only; it
+previously had no rows at all for §4.3's ten surface-specific
+implementation-specialist profiles (Backend, Admin Web, general Web,
+Front Desk/POS, KMP Mobile, iOS Host, Android Host, Edge, Data/AI,
+Infra/SRE) — a real gap `ADR-005` found while resolving MOD-001's
+profile-activation question. DC-21: these "become binding starting
+MOD-001." Honest registration status, per that ADR's decision that an
+empty, code-free directory shell does not itself activate a profile,
+but two profiles genuinely activate for MOD-001's own real content:
+
+| §4.3 profile | Path scope | Registered agent | Status |
+|---|---|---|---|
+| Infra/SRE/CI | `infra/**`, CI, observability | `veyro-infra-sre-engineer` | **ACTIVATED for MOD-001** — registration pending owner action, `BUG-029` |
+| Backend | `backend/**` | `veyro-backend-engineer` | **ACTIVATED for MOD-001, bounded** (excludes the critical-slice harness itself — see `veyro-critical-engineer`) — registration pending owner action, `BUG-029` |
+| Admin Web | `admin-web/**` | not yet registered | Deferred — no real admin-web source code exists yet |
+| General Web | `web/**` (non-admin) | not yet registered | Deferred |
+| Front Desk/POS | `frontdesk-web/**` (+ Edge Bridge) | not yet registered | Deferred |
+| KMP Mobile | `mobile/shared/**` | not yet registered | Deferred |
+| iOS Host | `mobile/iosApp/**` | not yet registered | Deferred |
+| Android Host | `mobile/androidApp/**` | not yet registered | Deferred |
+| Edge | `edge/**` | not yet registered | Deferred — no `edge/` surface owned by any module yet |
+| Data/AI | data-ai-scoped paths | not yet registered | Deferred |
+
+Each deferred profile activates when the module that first adds real
+source code under its path scope registers the corresponding agent —
+enforced mechanically, not left to interpretation, by MOD-001's own
+`surface_profile_activation` CI check (`knowledge/03-Modules/MOD-001/IMPLEMENTATION.md`
+§4), which fails closed if a surface path acquires source files of its
+own type without the owning module's `module-capabilities.yaml`
+recording the matching activated profile. Cross-cutting Security,
+Privacy, Tenant Isolation, Financial, Access/Life-Safety, Localization/
+RTL, Accessibility, Load, and Observability controls are additive and
+apply to MOD-001 now, independent of any surface-profile activation
+state (DC-21's own text).
 
 ## Escalation triggers (Sonnet -> Opus, automatic)
 

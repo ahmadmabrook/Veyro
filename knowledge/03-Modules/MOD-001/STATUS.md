@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-13 (activation — planning/specification stage only, this session)
+updated: 2026-09-14 (planning continuation — BUG-028 closed, GOV-01 requirements materialized from real EIP/TSD mirror text, module specification and Scenario Catalog authored, independent Scenario Review dispatched)
 ---
 
 # MOD-001 — Module Status
@@ -40,49 +40,70 @@ has touched zero paid services, zero real member data, zero Production
 activation. `OWNER_APPROVALS.md`'s owner-reserved restrictions remain in
 force unchanged.
 
-**Blocking gap: `BUG-028` (capability gap, non-MOD-000-inherited, new to
-MOD-001).** This session cannot read the governing EIP/TSD `.docx` files
-directly — `.claude/security/bash_guard.py`'s allowlist (CAP-007) has no
-`pandoc`/`unzip`/inline-`python3` shape, confirmed by direct denied
-attempts, and no durable markdown mirror of the relevant EIP/TSD sections
-(MOD-001 execution card, GOV-01-R01..R08 exact text, TSD §24.1 six
-architecture gates, Appendix G/H) exists in `knowledge/`. Owner decision:
-**"you extract, I continue"** — owner runs `pandoc` outside this guarded
-session to produce `knowledge/00-System/EIP_MIRROR.md` /
-`TSD_MIRROR.md`; this session (or a continuation of it) then completes
-GOV-01 materialization, the module specification, the Scenario Catalog,
-and the independent `veyro-scenario-reviewer` pass against those mirrors.
-See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`.
+**`BUG-028` — CLOSED (2026-09-14).** Owner extracted the EIP/TSD to
+durable markdown mirrors outside this guarded session
+(`knowledge/00-System/EIP_MIRROR.md`, `TSD_MIRROR.md`); this session
+independently verified them (baselines still PASS 4/4, mirror identity
+text matches, real MOD-001 content reads correctly) before relying on
+them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`.
 
-**Gate checklist (this session):**
+**Gate checklist:**
 
 - [x] Fresh-session bootstrap + prerequisite verification (MOD-000
       certificate, baseline hashes, bug registry, owner approvals, WIP=1,
       MOD-002 lock) — all independently re-verified from durable state.
 - [x] MOD-001 activated in durable control plane (`CURRENT_STATE.md`,
       `PROJECT_INDEX.md`, `CURRENT_HANDOFF.md`, this file).
-- [x] Capability gap found, filed (`BUG-028`), and routed to the owner
-      for a decision (not silently worked around or silently deferred).
-- [ ] GOV-01-R01..R08 requirement materialization with full docx-sourced
-      traceability — **BLOCKED pending `EIP_MIRROR.md`/`TSD_MIRROR.md`**.
-      A first draft exists in `REQUIREMENTS.md`, sourced from the owner's
-      own mission-brief text, explicitly flagged as not independently
-      docx-verified.
-- [ ] Additional MOD-001-owned EIP/TSD control obligations (§24.1
-      architecture gates, Appendix G/H, capability/registry integrity,
-      etc.) traced — **BLOCKED pending mirrors**.
-- [ ] Capability-gap analysis (full, all MOD-001 workstreams) —
-      **partially done** (the docx-read gap itself); the rest depends on
-      knowing the real GOV-01 workstream list, which depends on the
-      mirrors.
-- [ ] Repository/environment/CI-CD plan, architecture-gate negative-fixture
-      plan — **draft-level only**, pending mirrors for TSD-derived
-      topology detail.
-- [ ] Module specification (full) — **not started**, pending the above.
-- [ ] Scenario Catalog — **not started**, pending the above.
-- [ ] Independent fresh-context `veyro-scenario-reviewer` pass —
-      **not started**.
-- [ ] Definition of Ready — **not reached this session.**
+- [x] Capability gap found, filed, routed to owner, resolved, and
+      closed (`BUG-028`).
+- [x] GOV-01-R01..R08 requirement materialization with full docx-sourced
+      traceability — `REQUIREMENTS.md` §1, every requirement cites exact
+      `EIP_MIRROR.md`/`TSD_MIRROR.md` line ranges, no TBD placeholders.
+- [x] Additional MOD-001-owned EIP/TSD control obligations traced —
+      `REQUIREMENTS.md` §3 (six architecture gates, capability-governance
+      validation, baseline-binding validation, Appendix-B/Appendix-I
+      traceability validators, idempotency-contract lint, AsyncAPI event
+      registry, scenario-matrix validator, external-gate consistency
+      validator, Appendix I invariants DOM-001/DOM-002/EVT-001/IAM-002/
+      INV-GOV-01/RB-GOV-01).
+- [x] Capability-gap analysis (full, all MOD-001 workstreams) —
+      `CAPABILITIES.md`. No blocker found; tool/vendor selection
+      correctly deferred to implementation time per DC-18/DC-19.
+- [x] Repository/environment/CI-CD plan, architecture-gate
+      negative-fixture plan — `IMPLEMENTATION.md` §1-9, grounded in TSD's
+      own reference-stack table (not invented) and TSD §24.1's real
+      pipeline-stage ordering.
+- [x] Module specification (full) — this file + `REQUIREMENTS.md` +
+      `IMPLEMENTATION.md` + `CAPABILITIES.md` + `LOAD_SECURITY.md` +
+      `MODEL_ROUTE.md` + `TEST_PLAN.md` together constitute it, per this
+      project's existing MOD-000 file-set convention.
+- [x] Scenario Catalog — `SCENARIOS.md`, 102 scenarios (100 Required + 2
+      Optional/ALT, after Scenario Review round 1's remediation), full
+      Appendix G category coverage (all 24 Required categories at ≥2
+      scenarios each, independently re-verifiable against each
+      scenario's own detail-block tag), 29 named scenario families
+      covered (27 mission-named + 2 added), none marked PASS
+      (implementation hasn't started).
+- [~] Independent fresh-context `veyro-scenario-reviewer` (Opus) pass —
+      **round 1 dispatched, returned BLOCKED (P0=4, P1=9, P2=11,
+      Editorial=4); all findings remediated same session (see Review Log
+      in `SCENARIOS.md`); round 2 pending re-dispatch.**
+- [ ] **`ADR-005` (architecture decision, delegated to `veyro-lead`/Opus
+      per `OWN-003`, resolving round 1's P0-3 and P1-9) — DECIDED.**
+      Requires 3 new agents (`veyro-critical-engineer` bounded to 3
+      critical slices; `veyro-infra-sre-engineer`; `veyro-backend-engineer`
+      bounded) and a new `surface_profile_activation` CI gate before
+      Definition of Ready. All documentation consequences applied this
+      session (`MODEL_ROUTING.md`, `MODEL_ROUTE.md`, `REQUIREMENTS.md`,
+      `CAPABILITIES.md`, `IMPLEMENTATION.md`, `SCENARIOS.md` SCN-102-105).
+- [ ] **`BUG-029` (new capability gap: `.claude/agents/**` Edit/Write-denied,
+      blocking agent-file creation) — OPEN, OWNER ACTION NEEDED.** This is
+      now the sole remaining blocker to Definition of Ready — everything
+      else this session could do is done.
+- [ ] Definition of Ready — **blocked on `BUG-029`, then round 2's
+      verdict once the 3 agent files exist and their own binding
+      conditions (independent review, routing drill, MR evidence) are
+      satisfied.**
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

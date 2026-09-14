@@ -1,0 +1,64 @@
+module_id: MOD-001
+status: PLANNING — NOT READY (see knowledge/03-Modules/MOD-001/STATUS.md)
+applicable_capability_profiles:
+  - Infra/SRE/CI (ACTIVATED — ADR-005 Decision 2; agent: veyro-infra-sre-engineer)
+  - Backend (ACTIVATED, bounded — ADR-005 Decision 2; agent: veyro-backend-engineer)
+  - Admin Web (DEFERRED — no real source code yet)
+  - General Web (DEFERRED)
+  - Front Desk/POS (DEFERRED)
+  - KMP Mobile (DEFERRED)
+  - iOS Host (DEFERRED)
+  - Android Host (DEFERRED)
+  - Edge (DEFERRED)
+  - Data/AI (DEFERRED)
+repository_paths_surfaces:
+  - backend/**
+  - admin-web/** (deferred — marker only)
+  - frontdesk-web/** (deferred — marker only)
+  - mobile/** (deferred — marker only)
+  - contracts/**
+  - infra/**
+  - .github/workflows/**
+  - tools/**
+required_agent_roles:
+  - role: veyro-critical-engineer
+    scope: "Bounded to 3 slices per ADR-005 Decision 1: tenant-isolation/RLS harness, authn negative-credential fixture pattern, RLS+permission architecture gates (GOV-01-R02/R04)"
+    model: opus
+    status: "REGISTRATION BLOCKED — BUG-029 (.claude/agents/** Edit/Write-denied in guarded sessions), routed to owner"
+  - role: veyro-infra-sre-engineer
+    scope: "infra/**, CI workflows, observability"
+    model: sonnet
+    status: "REGISTRATION BLOCKED — BUG-029"
+  - role: veyro-backend-engineer
+    scope: "backend/**, bounded — excludes the critical-slice harness itself"
+    model: sonnet
+    status: "REGISTRATION BLOCKED — BUG-029"
+  - role: veyro-implementer
+    scope: "Routine implementation outside the above"
+    model: sonnet
+    status: ACTIVE (already registered, MOD-000)
+  - role: veyro-lead
+    scope: "Architecture/ADR decisions (this module's ADR-005)"
+    model: opus
+    status: ACTIVE (already registered, MOD-000)
+required_rule_ids: []  # No RULE-<NNN> IDs materialized yet — planning stage; backend/ and infra/ rule families need real content before implementation per ADR-005, not yet authored
+required_skill_ids: []  # None identified as missing this session — see knowledge/03-Modules/MOD-001/CAPABILITIES.md's gap analysis
+required_cross_cutting_controls:
+  - Security (RLS/permission architecture gates, secret scanning, SAST/dependency scanning)
+  - Privacy (data-classification lint)
+  - Tenant Isolation (GOV-01-R02 harness)
+  - Access/Life-Safety (SCN-MOD001-060/067's framing)
+  - Localization/RTL (RTL lint tooling)
+  - Accessibility (a11y lint tooling)
+  - Load (CI-runner/environment smoke-load, bounded per IMPLEMENTATION.md §5)
+  - Observability (release-evidence, capability-manifest validation)
+missing_capability_blockers:
+  - "BUG-029: .claude/agents/** Edit/Write-denied — blocks registration of all 3 new agents above. Owner action needed."
+capability_evidence_ids: []  # No CAP-<NNN>/SKL-<NNN>/RULE-<NNN> evidence IDs generated yet — planning stage, no capability qualification run performed
+notes: >-
+  This manifest is a planning-stage draft, not a certified module-capabilities
+  row. It exists to satisfy Appendix H.1's "manifest exists before Scenario
+  Review can PASS" requirement and to give MOD-001's own
+  surface_profile_activation CI gate (IMPLEMENTATION.md §4) something real
+  to validate against once implementation starts. See ADR-005 for the full
+  reasoning behind the profile-activation split.

@@ -1,9 +1,10 @@
 ---
 doc: BUG-028
-status: OPEN — OWNER ACTION IN PROGRESS
+status: CLOSED
 module: MOD-001
-severity: P1 (blocks GOV-01 requirement materialization; does not block MOD-001 activation/bookkeeping)
+severity: P1 (blocked GOV-01 requirement materialization; never blocked MOD-001 activation/bookkeeping)
 opened: 2026-09-13
+closed: 2026-09-14
 ---
 
 # BUG-028 — No guard-compliant docx read path for the governing EIP/TSD
@@ -75,10 +76,42 @@ pandoc -t markdown "Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_A
 pandoc -t markdown "Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx" -o knowledge/00-System/TSD_MIRROR.md
 ```
 
-**Status: OPEN — OWNER ACTION IN PROGRESS.** Not resolved until both
-mirror files exist under `knowledge/00-System/` and this session (or a
-continuation) confirms it can read them and completes the blocked
-MOD-001 planning steps listed in `knowledge/03-Modules/MOD-001/STATUS.md`.
+**Status: CLOSED (2026-09-14).** Owner ran `pandoc` outside this guarded
+session and committed both mirrors (`knowledge/00-System/EIP_MIRROR.md`,
+22433 lines; `knowledge/00-System/TSD_MIRROR.md`, 18070 lines). This
+session independently verified, not merely trusted:
+
+1. `verify_baselines.py` re-run — **PASS, 4/4** governing baseline
+   hashes unchanged. The mirrors are new files alongside the baselines,
+   not edits to them.
+2. Each mirror's own identity text matches the artifact it claims to be:
+   `EIP_MIRROR.md` line 46 reads `Document ID  VEYRO-EIP-1.4.1-20260827`
+   (exact match to `PROJECT_INDEX.md`'s bound identity); `TSD_MIRROR.md`'s
+   Document Control table (lines 30-60) reads `Document: Veyro Technical
+   System Design`, `Version: 1.4.1`.
+3. Read real MOD-001-relevant content out of both mirrors and confirmed
+   it is genuinely substantive, not boilerplate or truncated: the full
+   §21.2 MOD-001 execution card (`EIP_MIRROR.md` lines 4099-4302), the
+   GOV-01-R01..R08 Appendix B traceability rows (lines 17540-17580,
+   matching the mission brief's own GOV-01 text exactly — cross-check
+   passed), Appendix G's three category-matrix tables showing MOD-001's
+   full required-category row (lines 19585, 19748, 19911), Appendix H's
+   capability-governance sections (lines 20581+), and TSD §24.1 "Pipeline
+   Gates" (`TSD_MIRROR.md` lines 11595-11654, confirming the "six
+   architecture gates" are: RLS lint, module dependency/SQL lint, event
+   contract lint, permission lint, screen contract lint, and domain
+   contract uniqueness lint).
+
+**The docx-read capability gap for this session's MOD-001 planning is
+genuinely resolved.** The residual — no *durable, guard-compliant*
+extraction path exists for a *future* guarded session without repeating
+this same owner round-trip — is real but explicitly out of scope for
+this bug (this bug was about unblocking MOD-001 planning now, not about
+building CAP-007 allowlist infrastructure). If a later module's planning
+hits the same wall, re-open a fresh bug rather than reopening this one;
+option 3 from the original decision set (a reviewed, narrow
+`bash_guard.py` allowlist addition) remains available if the owner wants
+a standing fix instead of repeating the manual extraction each time.
 
 ## Non-goals of this fix
 

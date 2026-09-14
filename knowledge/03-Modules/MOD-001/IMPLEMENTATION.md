@@ -1,0 +1,272 @@
+---
+doc: MOD-001_IMPLEMENTATION
+status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
+module: MOD-001
+updated: 2026-09-14
+---
+
+# MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
+
+**This is a plan. No code, repo structure, or CI configuration described
+below has been created yet.** Implementation begins in a later turn,
+after Definition of Ready is met (see `STATUS.md`).
+
+Stack references below are drawn from TSD's own "Reference Choice"
+technology table (`TSD_MIRROR.md` lines 970-1034), which the TSD itself
+labels non-mandatory ("not a mandated vendor unless explicitly stated. A
+reviewer may recommend alternatives if they preserve the contracts,
+SLOs and operational model") — this plan follows the reference choices
+rather than inventing an alternative stack, since no reason to deviate
+has been found.
+
+## 1. Repository topology
+
+Derived from TSD's reference stack + Appendix H.2's `.claude/` layout
+(`EIP_MIRROR.md` lines 20646-20685) + TSD's "modular monolith" backend
+guidance (`TSD_MIRROR.md` line 513: "Start with a modular monolith").
+
+```
+Veyro/
+├── .claude/                        # already exists (MOD-000)
+│   ├── agents/                     # already exists. **Corrected (Scenario
+│   │                               #   Review round 1, P0-3/P1-9 → ADR-005):
+│   │                               #   "adds no new agents" was wrong.**
+│   │                               #   MOD-001 requires 3 new agents:
+│   │                               #   veyro-critical-engineer (Opus,
+│   │                               #   bounded to 3 critical slices),
+│   │                               #   veyro-infra-sre-engineer (Sonnet),
+│   │                               #   veyro-backend-engineer (Sonnet,
+│   │                               #   bounded). Registration blocked by
+│   │                               #   BUG-029, routed to owner.
+│   ├── rules/                      # already exists (4 files); MOD-001
+│   │                               #   scaffolds the 11 Appendix H.2 families
+│   │                               #   as directories, but **corrected (same
+│   │                               #   ADR-005 finding): the backend/ and
+│   │                               #   infra/ families need REAL content
+│   │                               #   (matching the 2 activated §4.3
+│   │                               #   profiles), not empty scaffolds — the
+│   │                               #   other 9 stay empty/ready-to-populate**
+│   │                               #   until their own owning module claims
+│   │                               #   them
+│   └── skills/                     # does not exist yet (BUG-004, MOD-000);
+│                                   #   MOD-001 creates it only if a real
+│                                   #   need is found during implementation,
+│                                   #   per BUG-004's own precedent — not
+│                                   #   speculatively
+├── knowledge/                      # already exists (MOD-000) — unchanged
+├── backend/                        # NEW — Python 3.13+/FastAPI/Pydantic/
+│   ├── app/                        #   SQLAlchemy 2/Alembic, modular
+│   │   ├── modules/                #   monolith: one sub-package per
+│   │   │   └── _shared/            #   owned domain (empty until MOD-002+
+│   │   ├── contracts/               #   claims a domain); _shared/ holds
+│   │   └── main.py                 #   cross-cutting (auth middleware
+│   ├── alembic/                    #   scaffold, tenant-context resolver)
+│   ├── tests/
+│   │   ├── unit/
+│   │   ├── component/
+│   │   ├── integration/
+│   │   └── contract/
+│   └── pyproject.toml
+├── admin-web/                      # NEW — TypeScript/React/Next.js,
+│   ├── app/                        #   empty shell; real screens arrive
+│   ├── components/                 #   with the module that owns them
+│   │                               #   (MOD-001 owns none — §4 of
+│   │                               #   REQUIREMENTS.md)
+│   └── tests/
+├── frontdesk-web/                  # NEW — Next.js PWA + Veyro Edge Bridge
+│   └── (same shape as admin-web)   #   integration point, empty shell
+├── mobile/                         # NEW — Kotlin Multiplatform + Compose
+│   ├── shared/                     #   Multiplatform; commonMain holds
+│   │   └── src/commonMain/         #   shared logic/UI, iosMain/androidMain
+│   ├── iosApp/                     #   hold native adapters only
+│   └── androidApp/
+├── contracts/                      # NEW — cross-service shared schemas:
+│   ├── openapi/                    #   OpenAPI specs (permission lint,
+│   ├── events/                     #   screen contract lint inputs);
+│   │   └── asyncapi/               #   AsyncAPI/JSON-Schema event registry
+│   └── screen-contracts.yaml       #   (event contract lint gate, EVT-001);
+│                                   #   generated by MOD-001's own tooling,
+│                                   #   contains an explicit empty MOD-001
+│                                   #   entry (REQUIREMENTS.md §4)
+├── infra/                          # NEW — IaC (exact tool TBD at
+│   ├── environments/               #   implementation time — TSD names no
+│   │   ├── local/                  #   specific IaC vendor read so far),
+│   │   ├── qa/                     #   environment configs, CI-runner
+│   │   └── staging/                #   definitions. No `production/` — DC-16
+│   └── ci/                         #   owner-reserved, not scaffolded until
+│                                   #   the owner explicitly authorizes it
+├── .github/workflows/              # NEW — CI pipeline definitions
+│                                   #   (reuses this repo's existing GitHub
+│                                   #   remote; GitHub Actions, no new
+│                                   #   vendor — see CAPABILITIES.md)
+└── tools/                          # NEW — MOD-001's own validators:
+    ├── validate_architecture_gates.py   # the 6 TSD §24.1 gates
+    ├── validate_capability_manifest.py  # extends MOD-000's pattern to
+    │                                    #   any module, not just MOD-000
+    ├── validate_scenario_matrix.py      # generalizes validate_catalog.py
+    ├── validate_baseline_binding.py     # generalizes verify_baselines.py
+    ├── validate_external_gates.py       # new (§20/§21/§22.0 consistency)
+    ├── validate_appendix_i.py           # new (invariant/runbook traceability)
+    └── generate_screen_contracts.py     # imports the canonical registry
+```
+
+No governing-baseline docx, no `knowledge/` file, and no existing
+`.claude/` file is modified or moved by this plan — everything above is
+additive.
+
+## 2. Environment boundaries
+
+| | LOCAL | QA | STAGING |
+|---|---|---|---|
+| **Purpose** | Individual developer iteration; MOD-001's own harness self-tests run here by default | Automated CI runs (every PR); the environment MOD-001's own architecture-gate/CI validators execute against | Pre-production rehearsal: canary/rollout drills, migration drills, release-evidence generation rehearsal |
+| **Configuration source** | `.env.local` (gitignored) + `infra/environments/local/` defaults | `infra/environments/qa/` + CI-injected secrets (GitHub Actions encrypted secrets, not committed) | `infra/environments/staging/` + a separate secret scope from QA |
+| **Secrets mechanism** | Local `.env` file, developer-managed, never committed (extends this repo's existing `.gitignore`) | GitHub Actions repository/environment secrets | GitHub Actions environment secrets, distinct environment scope from QA (so a QA credential leak cannot reach staging) |
+| **Permitted data** | Synthetic/fixture data only | Synthetic/fixture data only | Synthetic/fixture data only — **no real member data in any of the three**, per DC-16, unaffected by environment tier |
+| **Prohibited data** | Real member data, real payment credentials, real production secrets | Same | Same |
+| **Deployment mechanism** | Manual (`docker compose up` or equivalent — exact tool selected at implementation time) | Automatic on CI green (GitHub Actions workflow) | Automatic on QA-gate green, gated by a manual approval step (still not Production) |
+| **Migration policy** | Alembic upgrade/downgrade run manually by the developer | Alembic upgrade run automatically as a CI stage, against a disposable QA database, following TSD §24.2's expand→migrate→switch→contract ordering | Same as QA, plus the rollback-runbook (`RB-GOV-01`) drill runs here |
+| **Reset/seed policy** | Reset freely, any time, by the developer | Reset on every CI run (ephemeral database per run, or truncate-and-reseed) | Reset on a scheduled cadence (e.g. nightly) — never mid-drill |
+| **Observability** | Local logs only | CI-run logs archived as workflow artifacts | Same as QA, plus the canary/SLO-guardrail monitoring GOV-01-R05 requires |
+| **External services** | None (mocked/stubbed) | Sandboxed equivalents only (per TSD §24.1: "Integration tests with PostgreSQL/event/workflow/provider sandboxes") | Sandboxed equivalents only — no real payment/messaging provider credentials |
+| **Promotion gates** | N/A (no promotion out of local) | Must pass all TSD §24.1 CI stages before promoting to staging | Must pass staging's E2E/synthetic/load-subset/a11y/localization gates (TSD §24.1) before any further promotion — which does not exist in this plan, since Production is owner-reserved |
+| **Rollback** | Discard local changes | Re-run CI on the prior commit (no persistent QA state to roll back) | The `RB-GOV-01` runbook's own procedure, drilled synthetically |
+
+**Production is explicitly not represented in this topology.** DC-16 (No
+deploys/promotion to Production) means no `infra/environments/production/`
+directory, no production secret scope, and no production deployment
+workflow exist in this plan or will be scaffolded during MOD-001
+implementation without explicit, separately recorded owner approval in
+`OWNER_APPROVALS.md`.
+
+## 3. CI/CD quality-gate specification
+
+Derived directly from TSD §24.1's own pipeline-stage ordering
+(`TSD_MIRROR.md` lines 11595-11654), mapped to GitHub Actions workflow
+jobs (reusing the existing GitHub remote):
+
+| Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
+|---|---|---|---|---|---|---|---|
+| Format/lint/type checks | Every push/PR | Source tree | Pass/fail + lint report | Yes | Same linter run locally | CI log + lint report artifact | Runs via the pinned CI workflow file only; no `--no-verify`-equivalent flag exposed |
+| **6 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. **Corrected (Scenario Review round 1, P1-3):** bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content — a same-PR edit to the gate step, a `[skip ci]` token, `workflow_dispatch`, or a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge, since the required check is configured on the branch, not read from whatever the PR's own workflow file currently says |
+| Unit tests | Every push/PR | `backend/tests/unit/`, mobile/web unit suites | Pass/fail + coverage | Yes | `pytest`/platform-native runner locally | Test report artifact | N/A — no known bypass class yet; will be re-examined once real tests exist |
+| Domain contract / tenant-isolation / authorization / financial-invariant tests | Every push/PR (once a domain exists) | Fixture DB + RLS-enabled schema | Pass/fail | Yes, once applicable | Same suite locally against a local Postgres | Report artifact naming the failed invariant ID | RLS enforced at the database role level, not just application code — cannot be bypassed by application-layer changes alone |
+| SAST / dependency / secret / container / IaC scanning + SBOM/provenance | Every push/PR | Source tree, dependency manifest, container image, IaC files | Findings report + SBOM | Yes (secret/critical-vuln findings block; advisory findings do not, per tool default) | Same scanners run locally | Findings report artifact | Scanner runs from the pinned workflow; no scanner-skip flag committed |
+| Build signed immutable artifact/image | On merge to main | Source tree | Signed artifact + provenance record | Yes | A dev-only self-signed build locally | Signature verification log | Signing key held in CI secrets, not the repo; a locally-built artifact cannot carry a valid CI signature |
+| Integration tests | Every push/PR | Sandboxed Postgres/event/workflow/provider fixtures | Pass/fail | Yes, once applicable | Docker-composed sandbox locally | Report artifact | N/A yet |
+| API/event schema compatibility + migration-safety checks | Every push/PR touching `contracts/` or `backend/alembic/` | OpenAPI/AsyncAPI diffs, Alembic migration diff | Pass/fail + compatibility report | Yes | Same checker locally | Named incompatible-change report | Schema-diff tool runs against the actual committed contract files, not a developer's local, possibly-stale copy |
+| Deploy to staging + E2E/synthetic/load-subset/a11y/localization gates | On merge to main, after all above pass | Staging environment | Pass/fail + evidence bundle | Yes | Cannot fully replicate locally (needs the shared staging environment) — this is the one stage with no local equivalent, disclosed as such | Evidence bundle artifact | Staging deploy only triggers from CI, never a developer's local `kubectl`/deploy command (no such credential exists locally) |
+| Canary/rollout with SLO/guardrail monitoring | After staging gates pass | Staging environment | Promote/rollback decision | Yes | N/A (needs staging) | Rollback-trigger log | Automated rollback trigger tied to real guardrail signals, not a manually-callable endpoint |
+| Promote or rollback; publish release metadata | End of pipeline | Canary result | Release-evidence record (`RB-GOV-01` field set) | Yes | N/A | Release-evidence artifact | N/A |
+| Domain contract uniqueness lint | Every push/PR, once >1 domain exists | All domains' contracts | Pass/fail + cross-domain conflict report | Yes, once applicable | `tools/validate_architecture_gates.py` locally | Named conflicting-domain-pair report | Runs against the full committed contract set, not a partial local view |
+
+**No gate is certification theater** — every row above has a concrete
+input, output, and failure-evidence artifact. Several rows are correctly
+marked "once applicable" because no domain module exists yet; the gate
+mechanism itself (the CI workflow step, the validator script) is what
+MOD-001 delivers now, exercised against synthetic/trivial fixtures where
+no real domain content exists to test.
+
+## 4. Architecture-gate negative-fixture plan (TSD §24.1's six gates)
+
+Per the mission's explicit instruction: synthetic/test fixtures only,
+never destructive tests against real project baselines.
+
+| Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
+|---|---|---|---|---|---|---|
+| **1. RLS lint** | A tenant table with `tenant_id NOT NULL` + RLS policy + `FORCE ROW LEVEL SECURITY` | A tenant table missing `FORCE ROW LEVEL SECURITY`, queried under the **production-equivalent, non-privileged runtime role** (TSD §24.1, `TSD_MIRROR.md` lines 11599-11601: "runtime role cannot own/bypass. Negative isolation tests run with production-equivalent role" — **corrected, Scenario Review round 1 P1-4**: the original draft here specified a `BYPASSRLS`-capable role, which is exactly the elevated attribute the TSD's negative-test rule excludes, and would have made the fixture untestable/meaningless) | CI fails with a named `RLS_NOT_ENFORCED` violation citing the table | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate rls` | `evidence/security/RLS_GATE_FIXTURE_<date>.md` |
+| **2. Module dependency/SQL lint** | A module importing only its own owned table prefix/schema, or an approved read-model interface; **for the four intentional bidirectional pairs, the one §6.3-listed synchronous edge may import the opposite interface** (TSD `TSD_MIRROR.md` lines 11606-11608; **added, Scenario Review round 1 P1-5** — the original draft only covered the owned-prefix rule, missing this normative half of the gate) | A module's code directly importing another module's raw table/ORM model; **or the reverse-direction synchronous import on one of the four §6.3 bidirectional pairs (the edge the TSD requires stay event-driven)** | CI fails with `CROSS_DOMAIN_SQL_IMPORT` citing the importing/imported module pair, or `REVERSE_EDGE_NOT_EVENT_DRIVEN` for the §6.3 case | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate module-deps` | Same directory |
+| **3. Event contract lint** | An event referenced in code that exists in the AsyncAPI/JSON-Schema registry | An event referenced in code with no matching registry entry | CI fails with `UNREGISTERED_EVENT_CONTRACT` citing the event name | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate event-contract` | Same directory |
+| **4. Permission lint** | An API command/query declaring `action`/`resource`/`scope` | A command/query with an undeclared or unregistered permission name | CI fails with `UNREGISTERED_PERMISSION` citing the endpoint | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate permission` | Same directory |
+| **5. Screen contract lint** | A V1 Screen ID mapped to a BFF/read-model or typed command manifest row | A Screen ID with no mapped BFF/command row before feature release | CI fails with `UNMAPPED_SCREEN_CONTRACT` citing the Screen ID | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate screen-contract` | Same directory |
+| **6. Domain contract uniqueness lint** | Two domains with disjoint command inventories, event sets, runbook IDs, SLI/SLO signal names | Two domains reusing an identical `RB-<DOMAIN>` ID, or a domain's SLO naming a foreign domain's signal (e.g. booking-capacity in a billing SLO) | CI fails with `DOMAIN_CONTRACT_COLLISION` citing both domains and the colliding artifact | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate domain-uniqueness` | Same directory |
+
+**Added (Scenario Review round 1, P1-9 → `ADR-005` Decision 2, Part
+3):**
+
+| Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
+|---|---|---|---|---|---|---|
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+
+Each deferred empty shell (`admin-web/`, `frontdesk-web/`, `mobile/`)
+carries a marker file (e.g. `admin-web/.profile-pending`) naming the
+§4.3 profile that must activate before real code lands there; the check
+reads that marker rather than an inferred mapping, so the deferral is a
+declared, checkable contract, not an absence a validator has to guess
+at.
+
+Each gate's fixtures are synthetic tables/files created and destroyed
+within the test harness's own throwaway schema/fixture directory — never
+against `knowledge/`, the governing baselines, or any real project state.
+
+## 5. Load / performance scope (bounded, per the EIP card's own field)
+
+The EIP card's "Load / performance" field (`EIP_MIRROR.md` line
+4230-4231) reads, verbatim: "CI runner and environment smoke-load;
+validate no gate is bypassable." This module's load/performance
+obligation is explicitly **not** application-scale business load
+testing (that belongs to later domain modules per GOV-01-R03's own
+IN/OUT boundary). Planned scope:
+
+1. **CI runner smoke-load** — the full pipeline (§3 above) completes
+   within a bounded time budget on a synthetic/trivial repo state;
+   measured once implementation exists, budget to be set from that
+   measurement (no invented number here).
+2. **Environment smoke-load** — LOCAL/QA/staging environments boot
+   successfully under a small number of concurrent requests against a
+   trivial health-check endpoint; proves the environment itself isn't
+   the bottleneck, not that the (nonexistent) product can handle load.
+3. **Gate-bypass-under-load validation** — confirm none of the 6
+   architecture gates or CI stages can be skipped by racing/concurrent
+   pipeline runs, timeout-induced partial execution, or a
+   resource-exhausted CI runner silently passing.
+
+## 6. Security scope (bounded, per the EIP card's own field)
+
+Verbatim from the card (`EIP_MIRROR.md` lines 4267-4271): "Mandatory
+baseline: authentication/authorization as applicable, tenant isolation,
+input/output data exposure, secrets/dependency hygiene, sensitive
+logging, privacy classification and abuse-negative scenarios."
+Distinguishing actual MOD-001 implementation obligations from harnesses
+for future modules:
+
+- **MOD-001 implementation obligations:** the RLS/permission lint gates
+  themselves (they ARE the tenant-isolation/authz enforcement mechanism,
+  not just a test of one); secret-scanning in CI (secrets/dependency
+  hygiene); a sensitive-logging lint (no secret/PII patterns in log
+  statements — a real, buildable static check); dependency-vulnerability
+  scanning.
+- **Harnesses for future modules, not MOD-001 implementation itself:**
+  the actual authentication mechanism (MOD-007/008's scope); real
+  privacy classification of real data fields (no real fields exist yet
+  — MOD-001 builds the *lint* that will enforce a classification tag
+  once fields exist); abuse-negative scenario *content* for specific
+  business flows (MOD-001 builds the fixture pattern/harness those
+  scenarios will use).
+
+## 7. Capability dependencies
+
+See `CAPABILITIES.md` for the full gap analysis. Summary: no new
+approved capability is required to reach Definition of Ready this
+session. Tool/vendor selections named above (GitHub Actions, pytest-class
+tooling, Alembic) are implementation-time decisions following the TSD's
+own non-mandatory reference stack — not commitments requiring owner
+approval, since none involves spend, real data, or Production at the
+planning stage.
+
+## 8. Owner/external gates
+
+None standing for MOD-001 itself (EIP card: "External gates — None").
+DC-16's always-on restrictions apply throughout: no paid CI tier, no
+paid scanning SaaS, no real Apple/Google developer account, no real
+signing certificate, no production environment — all explicitly
+deferred above, not decided here.
+
+## 9. Rollback strategy (module-level)
+
+If MOD-001 implementation needs to be rolled back after starting: no
+production state exists to roll back (DC-16 — no Production promotion
+ever occurred), so rollback is git-level (revert the implementation
+commits) plus a QA/staging environment reset (§2's own reset policy) —
+no data-migration rollback is needed unless a synthetic migration drill
+was mid-flight, in which case `RB-GOV-01`'s own procedure applies to
+that drill's disposable fixture schema only.
