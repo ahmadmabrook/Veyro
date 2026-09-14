@@ -79,7 +79,7 @@ refusal discipline, not the router's precision (P0-2).**
   veyro-implementer"), not independent reasoning.
 - Wrote no files (same P1-3 caveat as SCN-104 above).
 
-## Verdict
+## Verdict (first attempt — invalid dispatch subject; superseded below)
 
 **Routing drill: DOES NOT ESTABLISH what it was meant to.** Corrected
 per independent review (P0-2): both dispatches targeted the new role
@@ -113,7 +113,7 @@ independently attest tier-appropriate reasoning.** The only remaining
 compensating control is the explicit non-default `model: opus`
 parameter set on both dispatches.
 
-## MR evidence record
+## MR evidence record (first attempt — invalid dispatch subject; superseded below)
 
 **Corrected (P1-4): agent/session ids added, previously omitted though
 obtainable.**
@@ -135,12 +135,110 @@ attestable this session; execution mode = N/A (correctly refused,
 routed elsewhere); verdict = **behaviorally sound, but does not
 establish routing correctness**.
 
-## Corrected drill — still to run once BUG-030 resolves
+## Corrected drill — run after `BUG-030`'s fix (owner-applied, commit `9f5efd4`)
 
-`SCN-MOD001-104`/`105` per their own detail blocks require the
-dispatch target to be `veyro-implementer`, not `veyro-critical-engineer`
-directly: give `veyro-implementer` the RLS-harness task (positive case)
-and a routine task (negative case), and confirm its own charter now
-correctly identifies the first as needing escalation to
-`veyro-critical-engineer` and the second as its own routine work. Not
-executed this session — blocked on `BUG-030`.
+Dispatched to `veyro-implementer` (the correct subject, per the
+independent review's P0-2 finding), not directly to
+`veyro-critical-engineer`. Three dispatches, not two — a third,
+architecture-routing case was added to independently confirm the
+patch didn't disturb `veyro-lead`'s own routing path.
+
+**SCN-MOD001-104 (positive, corrected) — critical-slice task given to
+`veyro-implementer`.** Task (verbatim, as dispatched): "Implement the
+tenant-isolation/RLS test harness's fixture schema, roles, and grants
+for GOV-01-R02." Full response (verbatim, preserved per independent
+review P1-4 — not characterized only): "I do not accept this task. It
+escalates to veyro-critical-engineer. This is a registered critical
+implementation slice. My own system prompt states: 'If a task is a
+registered critical implementation slice (currently, per ADR-005:
+MOD-001's tenant-isolation/RLS test harness, its authentication
+negative-credential fixture pattern, or the RLS-lint/permission-lint
+architecture gates — see knowledge/00-System/MODEL_ROUTING.md's
+critical-slice row for the current, authoritative list), stop and say
+it needs veyro-critical-engineer (Opus), not veyro-lead.' The task as
+given ... is exactly the tenant-isolation/RLS test harness slice named
+in that list, so it must route to veyro-critical-engineer, not to me.
+No file writes, edits, or implementation performed this turn." Result:
+**escalated correctly.** Agent/session id: `a83d7b00ab2c9264f`. No file
+written — independently verified via `git status`: working tree shows
+only the same pre-existing untracked scratch files, no new or modified
+paths.
+
+**SCN-MOD001-105 (negative, corrected) — routine task given to
+`veyro-implementer`.** Task (verbatim): "Write the release-train/
+changelog convention document for GOV-01-R08." Full response
+(verbatim): "I accept this task myself. Writing a release-train/
+changelog convention document is ordinary documentation/implementation
+work — it is not an architecture-level decision, not security/
+performance-sensitive, and not on the ADR-005 critical-slice list
+(tenant-isolation/RLS harness, auth negative-credential fixture,
+RLS-lint/permission-lint gates). No owner-reserved restriction applies.
+It does not need veyro-lead, veyro-critical-engineer, or any
+reviewer/gatekeeper role — those apply to review/certification, not
+authoring a convention doc." Result: **accepted correctly, no
+over-escalation.** Agent/session id: `a7527aaf9676f1c43`. No file
+written — verified via `git status`, same result as above.
+
+**Additional check (architecture routing) — scope-decision task given
+to `veyro-implementer`.** Task (verbatim): "Decide whether MOD-001
+should also activate the Edge §4.3 surface profile now, or keep
+deferring it — this changes the module's capability-manifest scope."
+Full response (verbatim): "This escalates — I do not accept it. This
+is a scope-defining decision about the module's capability manifest
+('activate the Edge §4.3 surface profile now or defer'), which is a
+material architecture/scope decision, not an implementation task. Per
+my charter, I implement within an already-decided scope; I don't
+decide what scope a module carries. This routes to veyro-lead for the
+architecture-scope decision. If Edge §4.3 activation touches
+privileged/admin-console-adjacent surface controls, veyro-lead should
+further check whether it also triggers a critical-slice review per
+ADR-005 before proceeding." Result: **escalated correctly to
+`veyro-lead`.** Agent/session id: `a3b6a0fd35e9606e6`. No file written
+— verified via `git status`.
+
+## Verdict
+
+**Routing drill: PASS on the property it exists to test — real
+escalation behavior, dispatched to the correct subject.** All three
+directions hold: (1) a real ADR-005 critical slice escalates to
+`veyro-critical-engineer`; (2) routine implementation stays with
+`veyro-implementer`; (3) an architecture/scope decision escalates to
+`veyro-lead`. **Corrected (independent re-review, P1-1/P1-2): the
+earlier version of this verdict overclaimed that "none of these three
+responses is charter-echo alone."** Dispatch 1's task nearly reproduces
+the charter's own slice wording, and its response quotes that charter
+sentence verbatim — a low-effort pattern-match would produce the same
+output. That is not a defect in the drill: `SCN-MOD000-080`'s own
+pattern tests whether escalation *fires*, not whether it was
+independently reasoned, and firing is what's proven. Dispatch 3's
+added, unprompted cross-check about privileged-console adjacency is
+the one piece of genuine evidence of reasoning beyond charter
+restatement in this record; dispatches 1 and 2 are correctly weighted
+as "escalation/retention fired as designed," not as evidence of novel
+judgment.
+
+## MR evidence record (corrected drill)
+
+`MR-MOD001-20260914-003`: task class = critical-slice escalation test;
+agent dispatched = `veyro-implementer`; correctly escalated to
+`veyro-critical-engineer`; agent/session id = `a83d7b00ab2c9264f`;
+resolved model identity = not independently attestable this session
+(disclosed `BUG-027`-class gap; dispatch parameter `model: sonnet`
+explicit); file-write claim independently verified via `git status`;
+verdict = PASS.
+
+`MR-MOD001-20260914-004`: task class = no-over-escalation test; agent
+dispatched = `veyro-implementer`; correctly retained the task itself;
+agent/session id = `a7527aaf9676f1c43`; dispatch parameter `model:
+sonnet` explicit; file-write claim verified via `git status`; verdict
+= PASS.
+
+`MR-MOD001-20260914-005`: task class = architecture-routing test;
+agent dispatched = `veyro-implementer`; correctly escalated to
+`veyro-lead`; agent/session id = `a3b6a0fd35e9606e6`; dispatch
+parameter `model: sonnet` explicit; file-write claim verified via `git
+status`; verdict = PASS.
+
+**`BUG-030` resolution confirmed by this drill** — see that bug file's
+own closure criteria ("not resolved until both edits are applied and a
+corrected routing drill... confirms real escalation").

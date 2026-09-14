@@ -1,9 +1,10 @@
 ---
 doc: BUG-030
-status: OPEN — OWNER ACTION NEEDED
+status: CLOSED
 module: MOD-001
-severity: P0 (no path from Sonnet tier actually escalates to veyro-critical-engineer; blocks Definition of Ready)
+severity: P0 (blocked all routing from Sonnet tier to veyro-critical-engineer; never blocked non-routing MOD-001 planning)
 opened: 2026-09-14
+closed: 2026-09-14
 ---
 
 # BUG-030 — Cannot edit *existing* `.claude/agents/*.md` files either (routing integration gap)
@@ -71,9 +72,30 @@ once a slice is registered for the active module)."
 
 ## Status
 
-**OPEN — OWNER ACTION NEEDED.** Not resolved until both edits are
-applied and a corrected routing drill (dispatched to `veyro-implementer`,
-not directly to `veyro-critical-engineer`) confirms real escalation.
+**CLOSED (2026-09-14).** Owner applied both edits directly to
+`.claude/agents/veyro-implementer.md` and `.claude/agents/veyro-lead.md`
+outside this guarded session (commit `9f5efd4`). This session
+independently verified, not merely trusted:
+
+1. Read both files back and confirmed byte-for-byte match against the
+   exact patch text handed to the owner.
+2. `git log`/`git status` confirm the commit exists and local HEAD ==
+   `origin/main`.
+3. Ran the corrected routing drill — three real dispatches, all to
+   `veyro-implementer` (the correct subject this time): a genuine
+   ADR-005 critical-slice task correctly escalated to
+   `veyro-critical-engineer`; a genuine routine task was correctly
+   retained by `veyro-implementer` itself; a genuine architecture/scope
+   task correctly escalated to `veyro-lead`. All three responses
+   required real task classification, not charter-echo alone — see
+   `knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s
+   "Corrected drill" section for full detail, including file-write
+   claims verified via `git status` rather than self-report (correcting
+   the first invalid attempt's own P1-3 finding).
+
+The role now exists (`BUG-029`) AND is genuinely reachable through
+normal routing (`BUG-030`). Both binding-condition gaps ADR-005's
+Decision 1 depended on are closed.
 
 ## Non-goals
 

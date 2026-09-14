@@ -3,28 +3,82 @@ status: PLANNING — NOT READY (see knowledge/03-Modules/MOD-001/STATUS.md)
 applicable_capability_profiles:
   - Infra/SRE/CI (ACTIVATED — ADR-005 Decision 2; agent: veyro-infra-sre-engineer)
   - Backend (ACTIVATED, bounded — ADR-005 Decision 2; agent: veyro-backend-engineer)
-  - Admin Web (DEFERRED — no real source code yet)
-  - General Web (DEFERRED)
-  - Front Desk/POS (DEFERRED)
-  - KMP Mobile (DEFERRED)
-  - iOS Host (DEFERRED)
-  - Android Host (DEFERRED)
-  - Edge (DEFERRED)
-  - Data/AI (DEFERRED)
+  - Admin Web (DEFERRED — marker at admin-web/.profile-pending)
+  - General Web (DEFERRED — marker at web/.profile-pending)
+  - Front Desk/POS (DEFERRED — markers at frontdesk-web/.profile-pending and frontdesk-edge-bridge/.profile-pending)
+  - KMP Mobile (DEFERRED — marker at mobile/shared/.profile-pending)
+  - iOS Host (DEFERRED — marker at mobile/iosApp/.profile-pending)
+  - Android Host (DEFERRED — marker at mobile/androidApp/.profile-pending)
+  - Edge (DEFERRED — marker at edge/.profile-pending)
+  - Data/AI (DEFERRED — marker at data-ai/.profile-pending)
+# Corrected (Scenario Review round 3, P1-5): the previous version of this
+# file listed only 4 of the 10 §4.3 paths (backend/**, one combined
+# mobile/** marker, admin-web/**, frontdesk-web/**), leaving General
+# Web, Edge, and Data/AI — none of which have a directory yet — with no
+# path entry for the surface_profile_activation gate to key on, and
+# collapsing KMP Mobile/iOS Host/Android Host into one marker that
+# cannot express three distinct deferred profiles. Fixed: every one of
+# the 10 §4.3 paths from MODEL_ROUTING.md's own table now has an entry
+# below, each carrying either an activated-profile record or a named
+# deferral marker — matching that table exactly, so this manifest and
+# the gate it's validated against can't independently drift again.
 repository_paths_surfaces:
-  - backend/**
-  - admin-web/** (deferred — marker only)
-  - frontdesk-web/** (deferred — marker only)
-  - mobile/** (deferred — marker only)
-  - contracts/**
-  - infra/**
-  - .github/workflows/**
-  - tools/**
+  - path: backend/**
+    profile: Backend
+    state: ACTIVATED
+  - path: infra/**
+    profile: Infra/SRE/CI
+    state: ACTIVATED
+  - path: .github/workflows/**
+    profile: Infra/SRE/CI
+    state: ACTIVATED
+  - path: admin-web/**
+    profile: Admin Web
+    state: DEFERRED
+    marker: admin-web/.profile-pending
+  - path: web/**
+    profile: General Web
+    state: DEFERRED
+    marker: web/.profile-pending
+  - path: frontdesk-web/**
+    profile: Front Desk/POS
+    state: DEFERRED
+    marker: frontdesk-web/.profile-pending
+  - path: frontdesk-edge-bridge/**
+    profile: Front Desk/POS
+    state: DEFERRED
+    marker: frontdesk-edge-bridge/.profile-pending
+  - path: mobile/shared/**
+    profile: KMP Mobile
+    state: DEFERRED
+    marker: mobile/shared/.profile-pending
+  - path: mobile/iosApp/**
+    profile: iOS Host
+    state: DEFERRED
+    marker: mobile/iosApp/.profile-pending
+  - path: mobile/androidApp/**
+    profile: Android Host
+    state: DEFERRED
+    marker: mobile/androidApp/.profile-pending
+  - path: edge/**
+    profile: Edge
+    state: DEFERRED
+    marker: edge/.profile-pending
+  - path: data-ai/**
+    profile: Data/AI
+    state: DEFERRED
+    marker: data-ai/.profile-pending
+  - path: contracts/**
+    profile: null  # cross-cutting, no single §4.3 surface owns this path
+    state: n/a
+  - path: tools/**
+    profile: null
+    state: n/a
 required_agent_roles:
   - role: veyro-critical-engineer
     scope: "Bounded to 3 slices per ADR-005 Decision 1: tenant-isolation/RLS harness, authn negative-credential fixture pattern, RLS+permission architecture gates (GOV-01-R02/R04)"
     model: opus
-    status: "FILE REGISTERED (BUG-029 closed) — ROUTING NOT YET FUNCTIONAL: veyro-implementer.md's escalation list doesn't name this role (BUG-030, owner action needed)"
+    status: "REGISTERED AND ROUTABLE (BUG-029 and BUG-030 both closed; corrected routing drill confirmed real escalation from veyro-implementer — see evidence/model-routing/ROUTING_DRILL_2026-09-14.md)"
   - role: veyro-infra-sre-engineer
     scope: "infra/**, CI workflows, observability"
     model: sonnet
@@ -47,14 +101,13 @@ required_cross_cutting_controls:
   - Security (RLS/permission architecture gates, secret scanning, SAST/dependency scanning)
   - Privacy (data-classification lint)
   - Tenant Isolation (GOV-01-R02 harness)
-  - Financial (added — P2 finding, was silently omitted; N/A-with-justification is not being asserted, so it is listed as active: MOD-001's release-evidence/artifact-signing work and RB-GOV-01's rollback runbook both touch financial-adjacent release integrity even though MOD-001 owns no real financial domain logic itself)
+  - Financial (MOD-001's release-evidence/artifact-signing work and RB-GOV-01's rollback runbook both touch financial-adjacent release integrity even though MOD-001 owns no real financial domain logic itself)
   - Access/Life-Safety (SCN-MOD001-060/067's framing)
   - Localization/RTL (RTL lint tooling)
   - Accessibility (a11y lint tooling)
   - Load (CI-runner/environment smoke-load, bounded per IMPLEMENTATION.md §5)
   - Observability (release-evidence, capability-manifest validation)
-missing_capability_blockers:
-  - "BUG-030: veyro-implementer.md's escalation list doesn't name veyro-critical-engineer, so nothing routes to it from the tier below. Editing existing .claude/agents/ files is Edit/Write-denied in guarded sessions. Owner action needed."
+missing_capability_blockers: []  # BUG-029 and BUG-030 both closed; none currently open
 capability_evidence_ids: []  # No CAP-<NNN>/SKL-<NNN>/RULE-<NNN> evidence IDs generated yet — planning stage, no capability qualification run performed
 notes: >-
   This manifest is a planning-stage draft, not a certified module-capabilities
@@ -62,4 +115,6 @@ notes: >-
   Review can PASS" requirement and to give MOD-001's own
   surface_profile_activation CI gate (IMPLEMENTATION.md §4) something real
   to validate against once implementation starts. See ADR-005 for the full
-  reasoning behind the profile-activation split.
+  reasoning behind the profile-activation split, and MODEL_ROUTING.md's
+  §4.3 surface-profile-agents table for the authoritative path-scope list
+  this file's repository_paths_surfaces section mirrors.

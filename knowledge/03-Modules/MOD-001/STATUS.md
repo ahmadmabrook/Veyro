@@ -77,55 +77,41 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       `IMPLEMENTATION.md` + `CAPABILITIES.md` + `LOAD_SECURITY.md` +
       `MODEL_ROUTE.md` + `TEST_PLAN.md` together constitute it, per this
       project's existing MOD-000 file-set convention.
-- [x] Scenario Catalog — `SCENARIOS.md`, 115 scenarios (001-115 plus
-      021b; 113 Required + 2 Optional/ALT, after two Scenario Review
-      rounds' remediation), full Appendix G category coverage (all 24
-      Required categories at ≥2 scenarios each, re-verified against
-      each scenario's own detail-block tag as of round 2), 33 named
-      scenario families covered (27 mission-named + 6 added across both
-      rounds), none marked PASS (implementation hasn't started).
-- [x] Independent fresh-context `veyro-scenario-reviewer` (Opus) pass —
-      **round 1: BLOCKED (P0=4, P1=9, P2=11, Editorial=4), remediated.
-      Round 2: BLOCKED (P0=3, P1=10, P2=8, Editorial=4), remediated
-      except the items depending on `BUG-030`.** See Review Log in
-      `SCENARIOS.md`. Round 3 not dispatched this session — would only
-      re-confirm the known `BUG-030` blocker; deferred until the owner
-      acts.
-- [x] **`ADR-005` (architecture decision, delegated to `veyro-lead`/Opus
-      per `OWN-003`, resolving round 1's P0-3 and P1-9) — DECIDED.**
-      Required 3 new agents (`veyro-critical-engineer` bounded to 3
-      critical slices; `veyro-infra-sre-engineer`; `veyro-backend-engineer`
-      bounded) and a new `surface_profile_activation` CI gate. Agent
-      files created (`BUG-029` closed) and independently reviewed
-      (BLOCKED — see `BUG-030`). All documentation consequences applied
-      across both remediation passes (`MODEL_ROUTING.md`, `MODEL_ROUTE.md`,
-      `REQUIREMENTS.md`, `CAPABILITIES.md`, `IMPLEMENTATION.md`,
-      `SCENARIOS.md`, `MANUAL_QA.md`, `TEST_PLAN.md`,
-      `evidence/module-capabilities.yaml`).
+- [x] Scenario Catalog — `SCENARIOS.md` (see that file's §0/§1/§2 for
+      the current scenario count, category coverage, and named-family
+      count — deliberately not restated here after three consecutive
+      rounds found a number duplicated across files going stale). Full
+      Appendix G category coverage confirmed at each round; none marked
+      PASS (implementation hasn't started).
 - [x] **`BUG-029` (capability gap: `.claude/agents/**` Edit/Write-denied,
       blocked agent-file creation) — CLOSED.** Owner created all 3 files
       outside this guarded session (commit `f3a1710`); byte-verified.
-- [ ] **`BUG-030` (new capability gap, found by the independent
-      critical-engineer review: `veyro-implementer.md`'s escalation list
-      doesn't name the new critical-slice role, and `.claude/agents/**`
-      is Edit/Write-denied for *existing* files too, not just new ones)
-      — OPEN, OWNER ACTION NEEDED.** This is now the sole remaining
-      blocker to Definition of Ready. The agent definition itself was
-      independently reviewed and found sound; the routing *integration*
-      around it is not yet real.
-- [ ] Routing-qualification drill — **round 1 (this session) invalid**
-      (dispatched directly to `veyro-critical-engineer` instead of
-      testing whether `veyro-implementer` escalates to it, per
-      independent review P0-2); corrected re-run blocked on `BUG-030`.
-- [ ] Scenario Review round 2 — **dispatched, returned BLOCKED** (P0=3,
-      P1=10, P2=8, Editorial=4 — see `SCENARIOS.md` §5); remediation for
-      everything except the `BUG-030`-dependent items applied this
-      session.
-- [ ] Definition of Ready — **blocked on `BUG-030`**, then a corrected
-      routing drill, then a round-3 Scenario Review once all of round
-      2's remediable findings are applied and the `BUG-030`-dependent
-      items (real escalation, MR evidence with the corrected drill)
-      are satisfied.
+- [x] **`BUG-030` (capability gap: `.claude/agents/**` Edit/Write-denied
+      for *existing* files; `veyro-implementer.md`'s escalation list
+      didn't name the new critical-slice role) — CLOSED.** Owner patched
+      both files (commit `9f5efd4`); byte-verified. A corrected 3-case
+      routing drill, dispatched to `veyro-implementer` (the correct
+      subject), proved real escalation to `veyro-critical-engineer` on
+      an in-scope task, correct retention on a routine task, and correct
+      escalation to `veyro-lead` on an architecture/scope task. See
+      `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`.
+- [x] Independent re-review of `veyro-critical-engineer`'s routing
+      (fresh-context `veyro-security-reviewer`, Opus) — **VEYRO-CRITICAL-ENGINEER
+      REGISTRATION APPROVED**, with P1/P2 findings requiring
+      remediation before Definition of Ready (documentation
+      propagation gaps this session's own remediation addresses below;
+      ADR-005 condition 4's model-identity gap remains a disclosed,
+      `BUG-027`-class residual, not closable this session).
+- [x] Independent fresh-context `veyro-scenario-reviewer` pass —
+      **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
+      Round 3: BLOCKED** (see `SCENARIOS.md` §5 for the current round's
+      exact P0/P1/P2/Editorial counts and findings — not restated here,
+      per the lesson every round of this remediation has now taught
+      about facts restated in more than one place going stale). All
+      three rounds' findings remediated in the same session they were
+      found, to the extent fixable without further owner action.
+- [ ] Definition of Ready — **not yet reached.** See `SCENARIOS.md` §5's
+      current round for what remains.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

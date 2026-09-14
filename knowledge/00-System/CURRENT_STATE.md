@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-13 (new session — MOD-000 verified APPROVED from durable state; MOD-001 ACTIVATED for planning/specification per EIP §8 unlock rule. MOD-001 implementation has NOT started. WIP=1 now points at MOD-001. MOD-002+ remain locked. A real capability gap was found and filed as `BUG-028`: this Bash-guarded session cannot extract text from the governing EIP/TSD `.docx` files — no `pandoc`/`unzip`/inline-`python3` on CAP-007's allowlist, confirmed by direct denied attempts — and no durable markdown mirror of the relevant sections existed in `knowledge/`. Owner chose "you extract, I continue": owner will run `pandoc` outside this guarded session to produce `knowledge/00-System/EIP_MIRROR.md` / `TSD_MIRROR.md`; deep GOV-01 requirement materialization, Scenario Catalog authoring, and the independent Scenario Review are paused pending those mirrors landing.)
+updated: 2026-09-14 (MOD-001 planning in progress across multiple sessions — MOD-000 remains APPROVED; MOD-001 ACTIVATED for planning/specification, implementation NOT started, WIP=1 on MOD-001, MOD-002+ locked. Three capability gaps found and closed via owner action (`BUG-028` docx read path, `BUG-029`/`BUG-030` `.claude/agents/**` write-protection for new/existing files respectively) — see the MOD-001 section below and `knowledge/03-Modules/MOD-001/STATUS.md` for current, non-duplicated detail. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
@@ -154,14 +154,52 @@ record: `knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase10/CERTIF
 
 **Every box above is now checked and the Module Approval Certificate exists at `knowledge/03-Modules/MOD-000/APPROVAL.md`.** MOD-001 is UNLOCKED for planning. Per explicit instruction, MOD-001 implementation does not begin in this session — the next legally allowed action is MOD-001 planning, in a later session.
 
-## MOD-001 — Active module (planning/specification stage, this session)
+## MOD-001 — Active module (planning/specification stage)
 
-**Activated:** 2026-09-13, this session, per EIP §8 unlock rule, prerequisite MOD-000 verified APPROVED above.
+**Corrected 2026-09-14 (this line replaces an entire stale section that
+still described the module as blocked on a capability gap closed two
+sessions ago — a fresh session reading only this file would have been
+misled; caught by Scenario Review round 3's P0-1 finding, the third
+consecutive round to find a documentation-propagation gap of this exact
+species):**
 
-**Scope (per mission brief + governing baseline precedence):** Repository, CI/CD, Environments & Quality Engineering — Foundation wave, TSD scope GOV-01. Not a product/domain module: no membership, billing, booking, POS, member/coach experience, access-control product logic, or CRM implementation. Establishes the repo skeleton, environments, CI/CD quality gates, contract/schema checks, deterministic test harnesses, and release controls that later domain modules build on.
+**Activated:** 2026-09-13, per EIP §8 unlock rule, prerequisite MOD-000
+verified APPROVED above.
 
-**Capability gap found and filed this session: `BUG-028`.** This Bash-guarded session cannot read the governing EIP/TSD `.docx` files directly — `.claude/security/bash_guard.py`'s allowlist has no `pandoc`, `unzip`, or inline-`python3` shape (confirmed by direct denied attempts: `pandoc -t markdown ...` → `UNKNOWN_COMMAND`; `unzip -l ...` → `UNKNOWN_COMMAND`; the Read tool refuses binary `.docx`). No durable markdown mirror of the EIP/TSD (unlike the design bundle's `blueprint.md`) existed in `knowledge/` to fall back on — `DEVELOPMENT_CONSTITUTION.md`'s own text confirms an earlier, pre-guard session read the EIP via a `/tmp/eip_full.md` extract that no longer exists (ephemeral `/tmp`). Asked the owner directly; **decision: "you extract, I continue"** — the owner will run `pandoc` in their own terminal (outside this guarded session) to produce `knowledge/00-System/EIP_MIRROR.md` and `TSD_MIRROR.md`, which this session will then read to complete GOV-01 requirement materialization, the module specification's architecture sections, the Scenario Catalog, and the independent Scenario Review. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`.
+**Scope:** Repository, CI/CD, Environments & Quality Engineering —
+Foundation wave, TSD scope GOV-01. Not a product/domain module.
 
-**What is done this session (does not require docx text):** MOD-001 activated in durable state (this file, `PROJECT_INDEX.md`, `CURRENT_HANDOFF.md`); `knowledge/03-Modules/MOD-001/` scaffolded with `STATUS.md`; `BUG-028` filed. **What is blocked pending the EIP/TSD mirrors:** GOV-01-R01..R08 full traceability in `REQUIREMENTS.md` (a first draft exists, sourced from the owner's own mission-brief text and cross-references to what MOD-000's vault already cites — NOT independently re-verified against the raw docx, flagged as such throughout), the TSD §24.1 six-architecture-gate negative-fixture plan, Appendix G/H category derivation, the full module specification, the Scenario Catalog, and the mandatory fresh-context `veyro-scenario-reviewer` pass. **Definition of Ready cannot be reached this session** — MOD-001 remains at ACTIVATED/PLANNING, not READY FOR IMPLEMENTATION, until the docx-sourced materialization is complete and independently reviewed.
+**Real capability gaps found and resolved across this module's planning
+sessions, all owner-actioned, same recurring pattern (a guarded session
+hits a `.claude/`-protection wall, routes the fix to the owner, verifies
+independently after):**
+- `BUG-028` (docx read path) — CLOSED. Owner produced
+  `knowledge/00-System/EIP_MIRROR.md`/`TSD_MIRROR.md`.
+- `BUG-029` (`.claude/agents/**` write-denied for new files) — CLOSED.
+  Owner created `veyro-critical-engineer.md`,
+  `veyro-infra-sre-engineer.md`, `veyro-backend-engineer.md`.
+- `BUG-030` (`.claude/agents/**` write-denied for existing files;
+  `veyro-implementer.md`'s escalation list didn't name the new
+  critical-slice role) — CLOSED. Owner patched
+  `veyro-implementer.md`/`veyro-lead.md`; a corrected 3-case routing
+  drill (dispatched to `veyro-implementer`, not the target role
+  directly) proved real escalation in both directions plus correct
+  architecture routing to `veyro-lead`.
 
-**MOD-002 and all later product modules remain LOCKED** (WIP=1; unaffected by this activation).
+**Current status:** REQUIREMENTS.md (GOV-01-R01..R08 fully traced),
+the full module specification, and a 115-scenario Scenario Catalog
+(`SCENARIOS.md`) are authored. `ADR-005` (delegated to `veyro-lead`)
+registered the critical-slice role and activated 2 of 10 §4.3 surface
+profiles for MOD-001's own real content. Three independent Scenario
+Review rounds have run (round 1 BLOCKED P0=4/P1=9; round 2 BLOCKED
+P0=3/P1=10; round 3 BLOCKED — see
+`knowledge/03-Modules/MOD-001/SCENARIOS.md` §5 for current-round detail,
+not restated here to avoid this exact file going stale again the same
+way). A separate independent review of the critical-engineer routing
+returned APPROVED. **Definition of Ready has not yet been reached** —
+see `knowledge/03-Modules/MOD-001/STATUS.md` for the live gate
+checklist, which is the file this one now points to rather than
+duplicates.
+
+**MOD-002 and all later product modules remain LOCKED** (WIP=1;
+unaffected by MOD-001's planning activity).

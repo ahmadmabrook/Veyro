@@ -41,14 +41,12 @@ engineering-infrastructure, not consumer product.
    stock-Apple-apps-only scope currently; MOD-001's own mobile toolchain
    matrix, once it exists, is a document/CI-convention check, not a real
    app build — MOD-006 owns the real mobile app).
-9. **Model-routing qualification drill (added, Scenario Review round 2,
-   P1-7)** — a real dispatch to `veyro-implementer` with a critical-slice
-   task and a routine task, confirming escalation to
-   `veyro-critical-engineer` fires correctly and doesn't over-fire (per
-   `SCN-MOD001-104`/`105`'s own detail blocks, corrected to target
-   `veyro-implementer` rather than the critical-slice agent directly —
-   see `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`). Blocked on
-   `BUG-030`.
+9. **Model-routing qualification drill** — a real dispatch to
+   `veyro-implementer` with a critical-slice task and a routine task,
+   confirming escalation to `veyro-critical-engineer` fires correctly
+   and doesn't over-fire. Executed — see
+   `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s "Corrected
+   drill" section for the real result.
 
 **None of this has been executed** — implementation has not started.
 This is the plan `veyro-manual-qa` (Opus, fresh context) will execute
@@ -60,7 +58,7 @@ QA, never the implementing session's own narrative).
 Every Required scenario in `SCENARIOS.md` — regardless of its own
 "Automation" field — needs at least one real, Claude-driven execution
 before MOD-001 approval, per Appendix G/§9.1/DC-05. This table maps
-each of the 8 manual-QA surfaces above to the scenario IDs it will
+each of the 9 manual-QA surfaces above to the scenario IDs it will
 actually execute, so no Required scenario is left with an implicit or
 absent manual-execution path:
 
@@ -70,10 +68,10 @@ absent manual-execution path:
 | 2. CI workflow behavior | 004-015, 020, 023, 024, 034, 084-096, 098, 102, 103, 110, 111, 112 |
 | 3. Environment setup (QA/staging) | 037, 038, 041, 049, 068, 069, 073, 074, 101 |
 | 4. Generated artifacts | 017, 018, 042, 057, 063, 091, 093, 098 |
-| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090, 106, 109 |
+| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090, 106, 109, 116 |
 | 6. Migration drill | 022, 059, 066, 070, 113, 114 |
 | 7. Release/rollback drill | 044-048, 058, 060, 067, 072, 107, 108 |
-| 8. Mobile build/toolchain bootstrap | 050-055, 099, 100, 115 |
+| 8. Mobile build/toolchain bootstrap | 050-055, 099, 100, 115, 117 |
 | 9. Model-routing qualification drill | 104, 105 |
 
 **Corrected (Scenario Review round 2, P1-7): SCN-102-105 were entirely

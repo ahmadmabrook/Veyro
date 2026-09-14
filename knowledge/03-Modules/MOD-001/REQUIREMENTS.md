@@ -43,13 +43,15 @@ convenience, not a governing artifact.
   Review round 1, P0-3/P1-9): this originally claimed "no new agent
   required" — false.** GOV-01-R02's tenant-isolation/RLS harness and
   authn negative-credential fixture pattern are a real EIP §4.1
-  critical slice with its named `veyro-critical-engineer` role still
-  unregistered, and two §4.3 surface profiles (Infra/SRE/CI, Backend)
-  genuinely activate for MOD-001's own scaffold/harness content. See
+  critical slice needing a dedicated role, and two §4.3 surface
+  profiles (Infra/SRE/CI, Backend) genuinely activate for MOD-001's own
+  scaffold/harness content. Three new agents were required
+  (`veyro-critical-engineer`, `veyro-infra-sre-engineer`,
+  `veyro-backend-engineer`) — all now registered and, for the critical
+  slice, independently confirmed routable. See
   `knowledge/04-Decisions/ADR-005-mod001-critical-slice-and-surface-profile-routing.md`
-  and `MODEL_ROUTE.md` for the full routing correction — three new
-  agents required, registration currently blocked by `BUG-029`.
-- **Screens: NONE.** See §7 below — this is a real finding, not an
+  and `MODEL_ROUTE.md` for the full routing detail.
+- **Screens: NONE.** See §4 below — this is a real finding, not an
   omission.
 - **External gates:** None (per the card, verbatim: "External gates —
   None").
@@ -280,11 +282,24 @@ enumeration.
   `bash_guard.py`), which round 1's own P1-3 finding already ruled the
   wrong threat model for a CI gate and corrected in `SCENARIOS.md`
   SCN-020/`IMPLEMENTATION.md` §3 — this file was not updated to match
-  at the time.** The real bypass classes a CI gate must resist:
-  branch-protection admin override, required-status-check name drift,
-  direct/force push bypassing the PR path, and `pull_request_target`
-  running base-branch workflow code with secrets (see SCN-020's own
-  detail block for the full, current list).
+  at the time.** **Further corrected (Scenario Review round 3, P1-4): the
+  original wording said the gate must "resist" all four real bypass
+  classes uniformly — that overstated the case for one of them.**
+  Required-status-check name drift, direct/force push bypassing the PR
+  path, and `pull_request_target` running base-branch workflow code
+  with secrets are genuine gaps the gate must resist and close.
+  Branch-protection admin override is different in kind: GitHub's
+  "include administrators" setting is an explicit, owner-level design
+  choice — if enabled, admin override doesn't exist; if disabled, it
+  remains possible but requires an actual admin account and produces
+  an audit trail. The acceptance criterion is therefore: the gate
+  resists (g) name drift, (h) force push, and (i) `pull_request_target`
+  outright, and for (f) admin override, the criterion is that the
+  escape hatch's existence and who holds it is explicitly recorded as
+  a disclosed, deliberate residual — not silently assumed away, and
+  not something the gate itself can or should "resist" (see SCN-020's
+  own detail block for the full, current test procedure and expected
+  results, corrected to match this distinction).
 - **Security implications:** direct and central — CI gates are a
   primary security control (secret scanning, SAST, dependency
   vulnerability, artifact signing/provenance).

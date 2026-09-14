@@ -36,8 +36,8 @@ Veyro/
 │   │                               #   bounded to 3 critical slices),
 │   │                               #   veyro-infra-sre-engineer (Sonnet),
 │   │                               #   veyro-backend-engineer (Sonnet,
-│   │                               #   bounded). Registration blocked by
-│   │                               #   BUG-029, routed to owner.
+│   │                               #   bounded). All 3 registered and
+│   │                               #   routable (BUG-029/BUG-030 closed).
 │   ├── rules/                      # already exists (4 files); MOD-001
 │   │                               #   scaffolds the 11 Appendix H.2 families
 │   │                               #   as directories, but **corrected (same
@@ -147,7 +147,7 @@ jobs (reusing the existing GitHub remote):
 | Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
 |---|---|---|---|---|---|---|---|
 | Format/lint/type checks | Every push/PR | Source tree | Pass/fail + lint report | Yes | Same linter run locally | CI log + lint report artifact | Runs via the pinned CI workflow file only; no `--no-verify`-equivalent flag exposed |
-| **6 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. **Corrected (Scenario Review round 1, P1-3):** bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content — a same-PR edit to the gate step, a `[skip ci]` token, `workflow_dispatch`, or a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge, since the required check is configured on the branch, not read from whatever the PR's own workflow file currently says |
+| **6 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. Bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content: a same-PR gate-step edit, `[skip ci]`, `workflow_dispatch`, and a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge. **Corrected (Scenario Review round 3, P1-4):** three further classes are resisted and must stay closed — required-check name drift, direct/force push, and `pull_request_target` running base-branch code with secrets; a fourth, branch-protection admin override, is a disclosed, deliberate GitHub-level escape hatch (owner-controlled via "include administrators"), not a gate defect — its existence and who holds it must be recorded, never silently assumed away |
 | Unit tests | Every push/PR | `backend/tests/unit/`, mobile/web unit suites | Pass/fail + coverage | Yes | `pytest`/platform-native runner locally | Test report artifact | N/A — no known bypass class yet; will be re-examined once real tests exist |
 | Domain contract / tenant-isolation / authorization / financial-invariant tests | Every push/PR (once a domain exists) | Fixture DB + RLS-enabled schema | Pass/fail | Yes, once applicable | Same suite locally against a local Postgres | Report artifact naming the failed invariant ID | RLS enforced at the database role level, not just application code — cannot be bypassed by application-layer changes alone |
 | SAST / dependency / secret / container / IaC scanning + SBOM/provenance | Every push/PR | Source tree, dependency manifest, container image, IaC files | Findings report + SBOM | Yes (secret/critical-vuln findings block; advisory findings do not, per tool default) | Same scanners run locally | Findings report artifact | Scanner runs from the pinned workflow; no scanner-skip flag committed |
@@ -185,28 +185,37 @@ never destructive tests against real project baselines.
 
 | Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
 |---|---|---|---|---|---|---|
-| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **or (added round 2, P1-6) a source file appearing under a §4.3 path prefix that has neither an activated-profile record NOR a deferral marker at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile (or, for the no-marker case, citing the absence of any marker) | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 10 named §4.3 globs at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
 
-**Corrected (Scenario Review round 2, P1-6): the original marker-only
-design was fail-open.** General Web (`web/**`), Edge (`edge/**`) and
-Data/AI have no directory in §1's topology and therefore no marker for
-a marker-only check to read — a module creating one of those paths with
-real code would trip nothing. And a single `mobile/.profile-pending`
-marker cannot express three distinct deferred profiles (KMP Mobile
+**Corrected (Scenario Review round 2, P1-6; further corrected round
+3): the original marker-only design was fail-open.** General Web
+(`web/**`), Edge (`edge/**`) and Data/AI (`data-ai/**`) had no
+directory in §1's topology and therefore no marker for a marker-only
+check to read — a module creating one of those paths with real code
+would trip nothing. And a single `mobile/.profile-pending` marker could
+not express three distinct deferred profiles (KMP Mobile
 `mobile/shared/**`, iOS Host `mobile/iosApp/**`, Android Host
-`mobile/androidApp/**`). Fixed: every §4.3 path prefix named in
-`MODEL_ROUTING.md`'s surface-profile table — including ones with no
-directory yet — must resolve to either an activated-profile record in
-`module-capabilities.yaml` or an explicit deferral marker; a path
-prefix with **neither** denies by default (`SCN-MOD001-112`), closing
-the fail-open hole. `mobile/` now carries three sub-markers:
-`mobile/shared/.profile-pending`, `mobile/iosApp/.profile-pending`,
-`mobile/androidApp/.profile-pending` (each naming its own distinct §4.3
-profile), instead of one marker at `mobile/.profile-pending`. Each
-deferred empty shell's marker file names the §4.3 profile that must
-activate before real code lands there; the check reads that marker
-(or, for not-yet-created path prefixes, the absence of both a marker
-and a directory triggers the same no-marker denial the moment matching
+`mobile/androidApp/**`). **Fixed:** all 10 §4.3 path prefixes named in
+`MODEL_ROUTING.md`'s surface-profile table now carry an explicit
+deferral marker (`evidence/module-capabilities.yaml`'s
+`repository_paths_surfaces` list), including the six with no directory
+yet — `mobile/` carries three sub-markers, one per distinct profile.
+With all 10 named paths now marked, the residual fail-open case is not
+among them: it's a *completely unlisted* top-level surface (`SCN-MOD001-112`)
+that matches none of the 10 globs — a marker-keyed check has no row to
+consult for such a path by construction, so gate 7 additionally
+requires the capability-governance validator to flag any new top-level
+directory that matches neither a known infrastructure path
+(`backend/**`, `infra/**`, `contracts/**`, `tools/**`,
+`.github/workflows/**`) nor a named §4.3 glob, as an explicit
+unknown-surface denial requiring a `module-capabilities.yaml` decision
+before merge — rather than silently allowing it through absence.
+
+Each deferred empty shell's marker file names the §4.3 profile that
+must activate before real code lands there; the check reads that
+marker (or, for not-yet-created path prefixes, the absence of a
+directory doesn't matter — the marker's *declaration* in
+`module-capabilities.yaml` is what the check consults) the moment matching
 source files appear) rather than an inferred mapping, so the deferral
 is a declared, checkable contract, not an absence a validator has to
 guess at.
@@ -242,10 +251,13 @@ IN/OUT boundary). Planned scope:
    (`SCN-MOD001-069`); proves the environment itself isn't the
    bottleneck, not that the (nonexistent) product can handle load.
 3. **Gate-bypass-under-load validation** (`SCN-MOD001-111`, added round
-   2 — this scope item had no scenario before) — confirm none of the 6
-   architecture gates or CI stages can be skipped by racing/concurrent
-   pipeline runs, timeout-induced partial execution, or a
-   resource-exhausted CI runner silently passing.
+   2 — this scope item had no scenario before) — confirm none of the 7
+   architecture gates (the 6 from TSD §24.1 plus the surface-profile-
+   activation gate added per `ADR-005` — **corrected, round 3: this
+   previously said "6," stale after gate 7 was added**) or CI stages
+   can be skipped by racing/concurrent pipeline runs, timeout-induced
+   partial execution, or a resource-exhausted CI runner silently
+   passing.
 
 ## 6. Security scope (bounded, per the EIP card's own field)
 

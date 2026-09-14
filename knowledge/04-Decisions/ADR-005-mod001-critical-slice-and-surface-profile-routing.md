@@ -511,6 +511,33 @@ two profiles' agents and rules authored).
    MODEL_ROUTING, not the CAP registry, while DC-21 speaks of
    "agent/rule/skill profile") is flagged, not fixed.
 
+## Addendum (2026-09-14, after both binding-condition gaps closed) — Decision 1 condition 4's disposition
+
+Binding condition 4 required "MR-linked evidence... carrying resolved
+model identity and agent/session id." The corrected routing drill
+(`knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`)
+supplies agent/session ids for all three dispatches but cannot supply
+resolved model identity — the same `BUG-027`-class gap MOD-000's own
+certification disclosed and accepted (a file-based transcript-isolation
+limitation of `mr_verify.py`-style tooling, not something a single
+dispatch can work around).
+
+**Formal disposition, recorded here rather than left as an open
+question in a status file:** this residual is **ACCEPTED AS A
+DISCLOSED, NON-BLOCKING LIMITATION**, on the same terms MOD-000's
+`BUG-027` set: the compensating controls are (a) the explicit
+non-default `model` parameter set on every dispatch (`opus` for
+`veyro-critical-engineer`, `sonnet` for the routing-drill dispatches to
+`veyro-implementer`), and (b) Opus-tier-depth behavioral evidence where
+the dispatch target was Opus — though per the independent review's own
+P1-1/P1-2 findings, that behavioral evidence must not be overstated as
+proof of *independent reasoning* beyond what the charter itself already
+states; its evidentiary weight is limited to confirming the dispatch
+executed and produced a charter-consistent result, not to attesting
+model tier on its own. Condition 4 is therefore satisfied to the same
+standard MOD-000 was certified under — not fully closed, but formally
+and honestly disposed of, not silently left ambiguous.
+
 ## Affected
 
 - `knowledge/00-System/MODEL_ROUTING.md` — critical-slice row (close the

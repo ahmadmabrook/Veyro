@@ -75,27 +75,25 @@ clarification — the same operating model MOD-000 already established.
 real `Agent` call with `model: opus` set explicitly, not self-decided.
 
 **ADR-005's binding pre-Definition-of-Ready conditions on model
-routing:**
-(1) **DONE** — the three new agent files exist (`BUG-029` CLOSED,
-byte-verified against ADR-005's spec);
-(2) **DONE, verdict BLOCKED** — independent fresh-context Opus review
-ran (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`);
-found the definition itself sound but found the routing integration
-around it broken (`BUG-030`);
-(3) **run, but invalid** — the drill dispatched directly to
-`veyro-critical-engineer` rather than to `veyro-implementer` as
-`SCN-MOD000-080/081`'s own pattern requires, so it could not have
-caught `BUG-030`; a corrected re-run is blocked on that bug
-(`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`);
-(4) **partially done** — MR evidence recorded with agent/session ids,
-but its own verdict is now "behaviorally sound, does not establish
-routing correctness," pending the corrected drill;
-(5) **done for existence, not yet for correctness** — `MODEL_ROUTING.md`
-now says REGISTERED, which is true of the files but not yet true of the
-escalation path (`BUG-030`).
+routing (status as of the most recent Scenario Review round — see
+`SCENARIOS.md` §5 for the authoritative, current account; not
+restated in full here to avoid the exact propagation-gap species that
+recurred across all three review rounds to date):**
+(1) the three new agent files exist and are registered;
+(2) independent review of the critical-engineer definition/routing has
+run — see `evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`
+for that review's own verdict;
+(3) a corrected routing drill (dispatched to `veyro-implementer`, the
+correct subject) has run — see
+`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s "Corrected
+drill" section for its own verdict;
+(4) MR evidence is recorded, with resolved model identity disclosed as
+a `BUG-027`-class residual, not yet formally accepted or closed;
+(5) `MODEL_ROUTING.md`'s critical-slice row reflects current
+registration state.
 
-**Current sole blocker: `BUG-030`** — `veyro-implementer.md`'s
-escalation list doesn't name `veyro-critical-engineer`, and fixing it
-requires an owner-applied edit to an *existing* `.claude/agents/` file
-(same Edit/Write-deny protection, confirmed to apply to existing files
-too, not just new ones).
+For which of these are fully satisfied vs. still open, see
+`knowledge/03-Modules/MOD-001/STATUS.md`'s gate checklist — that file,
+not this one, is the single place this project now tracks the
+condition-by-condition status, per the same de-duplication fix
+`CURRENT_STATE.md`/`STATUS.md`/`SCENARIOS.md` all adopted this round.

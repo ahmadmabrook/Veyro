@@ -71,12 +71,18 @@ but two profiles genuinely activate for MOD-001's own real content:
 | Backend | `backend/**` | `veyro-backend-engineer` | **ACTIVATED for MOD-001, bounded, REGISTERED (2026-09-14)** (excludes the critical-slice harness itself — see `veyro-critical-engineer`) — `BUG-029` closed |
 | Admin Web | `admin-web/**` | not yet registered | Deferred — no real admin-web source code exists yet |
 | General Web | `web/**` (non-admin) | not yet registered | Deferred |
-| Front Desk/POS | `frontdesk-web/**` (+ Edge Bridge) | not yet registered | Deferred |
+| Front Desk/POS | `frontdesk-web/**` and `frontdesk-edge-bridge/**` (the Edge Bridge integration point) | not yet registered | Deferred |
 | KMP Mobile | `mobile/shared/**` | not yet registered | Deferred |
 | iOS Host | `mobile/iosApp/**` | not yet registered | Deferred |
 | Android Host | `mobile/androidApp/**` | not yet registered | Deferred |
 | Edge | `edge/**` | not yet registered | Deferred — no `edge/` surface owned by any module yet |
-| Data/AI | data-ai-scoped paths | not yet registered | Deferred |
+| Data/AI | `data-ai/**` **(corrected, Scenario Review round 3 P1-5: previously the vague "data-ai-scoped paths," which a marker-based mechanical check cannot key on — a concrete glob is required precisely because no directory exists yet)** | not yet registered | Deferred |
+
+Every row above, including the six with no directory yet, names a
+concrete glob specifically so MOD-001's `surface_profile_activation`
+check (below) has something real to match against the moment a module
+creates that path — an unnamed or vague path scope is exactly the
+fail-open condition that check exists to prevent.
 
 Each deferred profile activates when the module that first adds real
 source code under its path scope registers the corresponding agent —
@@ -84,7 +90,10 @@ enforced mechanically, not left to interpretation, by MOD-001's own
 `surface_profile_activation` CI check (`knowledge/03-Modules/MOD-001/IMPLEMENTATION.md`
 §4), which fails closed if a surface path acquires source files of its
 own type without the owning module's `module-capabilities.yaml`
-recording the matching activated profile. Cross-cutting Security,
+recording the matching activated profile **— or without even a
+deferral marker for that path prefix, closing the fail-open case a
+marker-only design would otherwise leave for any of the six path
+scopes above with no directory yet.** Cross-cutting Security,
 Privacy, Tenant Isolation, Financial, Access/Life-Safety, Localization/
 RTL, Accessibility, Load, and Observability controls are additive and
 apply to MOD-001 now, independent of any surface-profile activation

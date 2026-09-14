@@ -43,10 +43,15 @@ real, ADR-005-decided position:
   first adds real source code under its path scope registers the
   corresponding agent.
 - **The deferral is mechanically enforced, not interpretive** — see
-  `IMPLEMENTATION.md` §4's `surface_profile_activation` CI check, which
-  fails closed if a surface path acquires real source files without the
-  owning module's `module-capabilities.yaml` recording the matching
-  activated profile.
+  `IMPLEMENTATION.md` §4's `surface_profile_activation` CI check.
+  **Corrected (Scenario Review round 2, P1-6): the check is not
+  marker-vs-reality alone** — a path prefix with *neither* an
+  activated-profile record *nor* a deferral marker also fails closed
+  (the fail-open hole a marker-only design left for any §4.3 path with
+  no directory yet). See `IMPLEMENTATION.md` §4 gate 7's own text for
+  the current, corrected design — not restated here to avoid this file
+  going stale relative to that one, exactly as happened with the
+  design's first version.
 - **Cross-cutting DC-21 controls (Security, Privacy, Tenant Isolation,
   Financial, Access/Life-Safety, Localization/RTL, Accessibility, Load,
   Observability) are additive and ACTIVE for MOD-001 now**, independent
@@ -59,13 +64,9 @@ real, ADR-005-decided position:
 the authn negative-credential fixture pattern, and the RLS+permission
 architecture gates) — see `MODEL_ROUTE.md`.
 
-**Registration: files exist (`BUG-029` CLOSED, byte-verified), but the
-routing integration around `veyro-critical-engineer` does not yet work**
-— `veyro-implementer.md`'s own escalation list doesn't name the new
-role, so nothing actually routes to it from the tier below (`BUG-030`,
-found by independent review, owner action needed — same
-Edit/Write-deny protection applies to existing `.claude/agents/` files
-too).
+**Registration:** files exist and the routing integration is live —
+see `knowledge/03-Modules/MOD-001/STATUS.md`'s gate checklist for
+current status (`BUG-029`/`BUG-030` both closed; not restated here).
 
 ## Capability-gap analysis, per MOD-001 workstream
 
