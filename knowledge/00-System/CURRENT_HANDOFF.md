@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-15 (chunk 32 — MOD-001 planning continued across several sessions since chunk 31: EIP/TSD mirrors landed, GOV-01-R01..R08 fully traced, module specification and a 118-entry Scenario Catalog authored, three independent Scenario Review rounds each returned BLOCKED and were remediated same session, `ADR-005` registered `veyro-critical-engineer`/`veyro-infra-sre-engineer`/`veyro-backend-engineer` and activated 2 of 10 §4.3 surface profiles, `BUG-029`/`BUG-030` (both `.claude/agents/**` write-protection gaps) found and closed via owner action, a corrected routing drill confirmed real escalation in all three directions, and the critical-engineer definition was independently APPROVED. MOD-001 remains ACTIVATED/PLANNING, NOT READY — a round-4 Scenario Review is this chunk's own subject, not yet run when this line was written. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md` and `SCENARIOS.md` §5 — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-15 (chunk 33 — MOD-001 Scenario Review round 4 ran, returned BLOCKED, all P0/P1 findings remediated same session; Definition of Ready explicitly NOT evaluated per the owner's own review-budget rule, since round 4 itself returned P0/P1. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-5 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md` and `SCENARIOS.md` §5 — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -53,8 +53,94 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-29-2026-09-13-phase10-readiness-package.md`.**
 **Fourteenth application (2026-09-15, chunk 32): chunk 30 compressed to
 a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-30-2026-09-13-certification-rounds-2-through-6-approved.md`**
-— chunks 32 and 31 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-30-2026-09-13-certification-rounds-2-through-6-approved.md`.**
+**Fifteenth application (2026-09-15, chunk 33): chunk 31 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-31-2026-09-13-mod001-activated-bug028-found.md`**
+— chunks 33 and 32 are now the 2 kept in full.
+
+## What happened chunk 33, 2026-09-15 — MOD-001 Scenario Review round 4 + Definition-of-Ready determination: round 4 returned BLOCKED (P0=2, P1=8, P2=9, Editorial=4), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 4 itself returned P0/P1
+
+Continuation of chunk 32's own pause point — round 4 had not yet run
+when chunk 32 was written. This chunk's mandate, stated verbatim by the
+owner: run a genuinely fresh-context `veyro-scenario-reviewer` (Opus)
+round that "must not inherit the previous review's conclusions," then
+apply an explicit review-budget rule: **if round 4 returns P0=0 and
+P1=0, proceed to Definition of Ready; if it returns any P0 or P1,
+remediate only the actual findings, update durable evidence, do NOT
+begin implementation, do NOT self-declare Ready, and report that
+another independent Scenario Review is required.**
+
+**Round 4 verdict: BLOCKED — P0=2, P1=8, P2=9, Editorial=4.** Full
+finding-by-finding detail lives in `SCENARIOS.md` §5 (Review Log), not
+restated here per this file's own repeated lesson about duplicated
+facts going stale. The two P0s: (1) the second (APPROVED) independent
+critical-engineer review had genuinely run via a real Agent dispatch
+earlier in this session's history, but its result was never persisted
+to a durable evidence file — only referenced in prose across
+`STATUS.md`/`SCENARIOS.md`/`CURRENT_STATE.md`/`CURRENT_HANDOFF.md`,
+leaving a Definition-of-Ready-blocking condition resting on no durable
+record; (2) after round 3's remediation had already changed
+`SCN-MOD001-104`/`105`'s status to `EXECUTED — PASS`, that fact was
+never propagated to `SCENARIOS.md` §0/§4's, `STATUS.md`'s, and
+`TEST_RESULTS.md`'s own blanket "no scenario marked PASS" claims — a
+direct, independently-caught contradiction. The 8 P1s spanned:
+category-matrix mistags (SCN-112/117), a model-tier misassignment
+(SCN-109/110 relabeled from `veyro-implementer`/Sonnet to
+`veyro-security-reviewer`/Opus), stale "registration blocked" language
+in `MODEL_ROUTE.md` and a stale scenario-count restatement in
+`CURRENT_STATE.md`, a substantive Ready-condition citation error (this
+session had been treating the generic EIP §21.2 card boilerplate as
+MOD-001's real Ready condition, when Appendix F's MOD-001-specific row
+actually overrides it with different text — the EIP's own changelog
+confirms the generic condition was removed for MOD-001/non-UI modules;
+caught by the reviewer directly grepping Appendix F rather than trusting
+the prior citation), two entirely un-authored Appendix I obligations
+(ADR-004/ADR-015 conformance, and the `RB-GOV-01` runbook), and
+incomplete coverage of two new obligations (an agent-definition/MR-
+evidence validator, and Appendix H.1's manifest-completeness fields).
+
+**All P0/P1 findings remediated the same session, per the mission's
+explicit "remediate only the actual findings" instruction — no P2/
+Editorial addressed this round, since the rule that unlocks that work
+requires P0=0/P1=0, which round 4 did not return.** P0-1 fixed by
+reconstructing and persisting
+`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`
+from what that dispatch had actually returned, and re-framing the
+original review file as round 1, superseded by round 2's APPROVED. P0-2
+fixed by adding explicit carve-outs in all four locations distinguishing
+the routing-drill's real executed evidence from MOD-001's own (still
+zero-PASS) product-implementation scenarios. The eight P1s fixed via:
+category-matrix/tier corrections in `SCENARIOS.md`; stale-text removal
+in `MODEL_ROUTE.md`/`CURRENT_STATE.md`; a substantial rewrite of
+`REQUIREMENTS.md` §4 plus new `IMPLEMENTATION.md` §10 (import/validation
+contract design) and §11 (documenting the already-satisfied half of the
+Appendix F precondition); two new files, `ADR_CONFORMANCE.md` and
+`RUNBOOK.md`, plus corresponding `REQUIREMENTS.md` §3 obligation rows;
+four new scenarios (`SCN-MOD001-118` through `121`, "Group N") covering
+the agent-definition/MR-evidence validator and Appendix H.1 manifest
+completeness, with `MANUAL_QA.md` §2 extended to map all four to a
+manual-QA surface; and `evidence/module-capabilities.yaml` extended with
+the four Appendix H.1 fields it was previously missing entirely
+(`capability_dependency_ids`, `resolution_attempt_budget_evidence`,
+`lifecycle_review_state`, `rollback_target`).
+
+**Definition of Ready was explicitly NOT evaluated this turn**, per the
+owner's own review-budget rule — round 4 itself returned P0/P1, so
+self-declaring Ready or proceeding to the DoR checklist would violate
+the instruction directly. All 4 governance validators re-run PASS
+(`verify_baselines.py` 4/4 hashes match; `validate_capabilities.py` PASS
+against MOD-000's manifest — no MOD-001-specific automated capability
+validator exists yet, consistent with MOD-001 being planning-stage with
+no implementation to validate against). All round-4 remediation changes
+committed (`d56576c`) and pushed; local HEAD and `origin/main` confirmed
+identical.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 5**,
+to confirm round 4's remediation actually held — not implementation, not
+MOD-002, not a self-granted Ready determination.
 
 ## What happened chunk 32, 2026-09-15 — MOD-001 planning: mirrors landed, GOV-01 traced, module spec + 118-scenario catalog authored, three independent Scenario Review rounds (each BLOCKED, each remediated), `ADR-005` registered 3 new agents, `BUG-029`/`BUG-030` found and closed, routing drill corrected and PASS, critical-engineer definition APPROVED
 
@@ -199,96 +285,7 @@ remains ACTIVATED/PLANNING, NOT READY.** Round 4 (this chunk's own
 subject) is next — see `SCENARIOS.md` §5 for its outcome, not restated
 here.
 
-## What happened chunk 31, 2026-09-13 — MOD-001 activated for planning/specification; BUG-028 (no guard-compliant docx read path for the EIP/TSD) found and routed to the owner
-
-New session, zero prior chat context. Bootstrap ran per
-`SESSION_BOOTSTRAP.md`: read this file, `CURRENT_STATE.md`,
-`PROJECT_INDEX.md`, `DEVELOPMENT_CONSTITUTION.md`, `MODEL_ROUTING.md`,
-MOD-000's `APPROVAL.md`, `BUG_REGISTRY.md` (correct path:
-`knowledge/05-QA/BUG_REGISTRY.md`, not `knowledge/00-System/` as an
-earlier assumption guessed), and `OWNER_APPROVALS.md`. **Did not trust
-the prior session's stated expected values merely because they appeared
-in the activation prompt** — independently re-derived each one:
-`verify_baselines.py` re-run this session, **PASS, 4/4 hashes match**;
-`MOD-000/APPROVAL.md` read directly, confirms `MOD-000 CERTIFICATION
-APPROVED`, P0=0/P1=0, sixth independent certification round; bug
-registry confirmed 0 open Blocker/P1, 1 open P2 (`BUG-010`,
-non-blocking); owner approvals confirmed `OWN-001/002/003` recorded, one
-prospective `OWN-004` open (non-blocking). **MOD-001 activated** in
-`CURRENT_STATE.md`, `PROJECT_INDEX.md` (whose "Active Module" section
-still said "MOD-000 (in progress)... MOD-001 locked" — corrected, a real
-staleness the moment MOD-000 was certified), and this file. WIP=1 now
-points at MOD-001; MOD-002+ remain locked.
-
-**Real capability gap found while attempting the mission's required
-step 4-6 ("independently read the governing EIP MOD-001 execution
-card"): `BUG-028`.** This session's Bash tool is gated by
-`.claude/security/bash_guard.py` (CAP-007, allow-by-construction — only
-an explicit command-family allowlist passes). Direct attempts confirmed
-it has no shape for reading the governing `.docx` files: `pandoc -t
-markdown ... -o ...` → `BLOCKED: UNKNOWN_COMMAND`; `unzip -l ...` →
-`BLOCKED: UNKNOWN_COMMAND`; the Claude Code `Read` tool separately
-refuses binary `.docx` outright. No durable markdown mirror of the
-EIP/TSD exists in `knowledge/` (unlike the design bundle's own
-`blueprint.md` mirror of the Blueprint) — `DEVELOPMENT_CONSTITUTION.md`'s
-own text cites a `/tmp/eip_full.md` extract a pre-CAP-007 session made
-(2026-09-05, before the guard activated 2026-09-08); confirmed gone this
-session (`/tmp` is not durable). This is not a MOD-000 regression —
-MOD-000's own Scenario Catalog/`REQUIREMENTS.md` were authored in chunk
-1 (2026-09-01), before the guard existed, so MOD-000 never needed fresh
-docx access under CAP-007. It is the first time *this* project's
-planning discipline has hit its own Bash guard as a wall rather than a
-protection.
-
-**Per this project's fail-closed rule and DC-16/DC-09 (no unilateral
-architecture/security change, no silent scope resolution), this was not
-worked around.** Four options were surfaced to the owner via
-`AskUserQuestion`: (1) proceed best-effort from the mission brief's own
-supplied GOV-01 text, flagged as not independently docx-verified,
-mirroring the existing `.claude/rules/admin-privileged-console-baseline.md`
-precedent; (2) owner extracts the EIP/TSD to markdown outside this
-guarded session and commits durable mirrors; (3) draft a narrow,
-read-only `bash_guard.py` allowlist addition for owner-authorized,
-independently-security-reviewed activation; (4) stop entirely. **Owner
-chose option 2** — commands to run in the owner's own terminal (not
-through this guarded session) were provided:
-
-```
-pandoc -t markdown "Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx" -o knowledge/00-System/EIP_MIRROR.md
-pandoc -t markdown "Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx" -o knowledge/00-System/TSD_MIRROR.md
-```
-
-Filed as `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capability-gap.md`,
-indexed in `knowledge/05-QA/BUG_REGISTRY.md`. **Status: OPEN — OWNER
-ACTION IN PROGRESS.**
-
-**What this session completed:** fresh-session bootstrap and
-prerequisite verification (section 1 of the mission); governing-baseline
-re-verification (section 2, PASS); MOD-001 activation in durable state
-(section 3); this capability-gap finding and owner referral (part of
-section 8, capability-gap analysis — the rest of that analysis depends
-on knowing the real GOV-01 workstream list, which depends on the
-mirrors); `knowledge/03-Modules/MOD-001/STATUS.md` scaffolded. **What
-did NOT happen this session, and why:** GOV-01-R01..R08 full
-requirement materialization with docx-sourced traceability (section 5),
-the additional MOD-001-owned EIP/TSD control-obligation traceability
-table (section 6), the architecture-gate negative-fixture plan
-(section 7), the full repository/environment/CI-CD plan derived from
-TSD architecture (sections 9-12), the module specification (section
-15), the Scenario Catalog (section 16), the independent fresh-context
-`veyro-scenario-reviewer` pass (section 20), and the Definition of Ready
-determination (section 21) — all explicitly depend on real EIP/TSD text
-this session could not obtain. **MOD-001 remains at ACTIVATED/PLANNING.
-No Definition-of-Ready verdict was reached. MOD-001 implementation has
-not started and is not authorized to start.**
-
-**Next legally allowed action:** once `knowledge/00-System/EIP_MIRROR.md`
-and `TSD_MIRROR.md` exist (owner-produced), a session (this one resumed,
-or a fresh one) reads them, completes GOV-01 materialization and the
-full module specification/Scenario Catalog, dispatches fresh-context
-`veyro-scenario-reviewer` (Opus) for independent review, and only then
-determines Definition of Ready. Not MOD-001 implementation — that stays
-locked until Definition of Ready is met and independently confirmed.
+## What happened chunk 31, 2026-09-13 (compressed 2026-09-15, fifteenth retention-rule application) — MOD-001 activated for planning/specification; `BUG-028` (no guard-compliant docx read path for the EIP/TSD) found and routed to the owner, resolved by owner-produced `EIP_MIRROR.md`/`TSD_MIRROR.md`; no Definition-of-Ready verdict reached, implementation not started. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-31-2026-09-13-mod001-activated-bug028-found.md`.
 
 ## What happened chunk 30, 2026-09-13 (compressed 2026-09-15, fourteenth retention-rule application) — certification rounds 2 through 6: rounds 2-5 each returned BLOCKED on the same recurring documentation-drift species, each remediated same day; round 6 returned `MOD-000 CERTIFICATION APPROVED`, P0=0/P1=0; Module Approval Certificate issued (`knowledge/03-Modules/MOD-000/APPROVAL.md`); MOD-001 UNLOCKED for planning, not started that chunk. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-30-2026-09-13-certification-rounds-2-through-6-approved.md`.
 

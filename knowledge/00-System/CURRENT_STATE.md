@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-14 (MOD-001 planning in progress across multiple sessions — MOD-000 remains APPROVED; MOD-001 ACTIVATED for planning/specification, implementation NOT started, WIP=1 on MOD-001, MOD-002+ locked. Three capability gaps found and closed via owner action (`BUG-028` docx read path, `BUG-029`/`BUG-030` `.claude/agents/**` write-protection for new/existing files respectively) — see the MOD-001 section below and `knowledge/03-Modules/MOD-001/STATUS.md` for current, non-duplicated detail. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-15 (Scenario Review round 4 ran and was remediated this session — see `SCENARIOS.md` §5 for round detail, not restated here. MOD-001 planning in progress across multiple sessions — MOD-000 remains APPROVED; MOD-001 ACTIVATED for planning/specification, implementation NOT started, WIP=1 on MOD-001, MOD-002+ locked. Three capability gaps found and closed via owner action (`BUG-028` docx read path, `BUG-029`/`BUG-030` `.claude/agents/**` write-protection for new/existing files respectively) — see the MOD-001 section below and `knowledge/03-Modules/MOD-001/STATUS.md` for current, non-duplicated detail. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
