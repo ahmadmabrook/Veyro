@@ -11,11 +11,17 @@ Authored per EIP §9.1 (Required Scenario Rule, `EIP_MIRROR.md` lines
 1852-1886), Appendix G (Per-Module Required Scenario Category Matrix,
 lines 19566-20069), the MOD-001 execution card's own manual-QA/scenario
 fields (lines 4183-4231), and the mission's explicit named scenario
-families. **No scenario below is marked PASS.** Implementation has not
-started; every scenario's status is `NOT EXECUTED` until real code
-exists to run it against. This catalog exists to be independently
-reviewed (`veyro-scenario-reviewer`, Opus, fresh context — see the
-Review Log at the end of this file) before Definition of Ready.
+families. **Corrected (Scenario Review round 4, P0-2): this line and §4
+below previously claimed "no scenario is marked PASS" / all scenarios
+"NOT EXECUTED" without qualification — false since round 3, when the
+model-routing-drill scenarios (104/105) were genuinely executed.**
+Implementation has not started; every scenario **except the model-
+routing drill (104/105, which tests this project's own routing
+configuration, not MOD-001's own implementation)** is `NOT EXECUTED`
+until real code exists to run it against. This catalog exists to be
+independently reviewed (`veyro-scenario-reviewer`, Opus, fresh context
+— see the Review Log at the end of this file) before Definition of
+Ready.
 
 ## 0. Category legend (Appendix G)
 
@@ -47,9 +53,11 @@ floor (GOV-01-R01..R08) remains true as an absolute minimum but was
 never the operative constraint. **This catalog's total count is stated
 once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
-that copy going stale within the same round.** Current total: **118
-detail blocks** (001-117 plus 021b) — 116 Required + 2 Optional (ALT)
-— comfortably above every applicable floor.
+that copy going stale within the same round (round 4 found exactly this
+had happened to `CURRENT_STATE.md`, which is now corrected to point
+here rather than restate a number).** Current total: **122 detail
+blocks** (001-121 plus 021b) — 120 Required + 2 Optional (ALT) —
+comfortably above every applicable floor.
 
 ## 1. Category coverage matrix
 
@@ -83,11 +91,11 @@ round 2's remediation, not merely re-asserted:
 | ALT | O | 071, 072 |
 | VAL | R | 002, 024, 037 |
 | NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109 |
-| BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 110, 112, 116 |
+| BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 110, 116, 118 |
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
 | TEN | R | 007, 014, 096 |
-| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -101,7 +109,7 @@ round 2's remediation, not merely re-asserted:
 | LOC | R | 039, 053 |
 | A11Y | R | 040, 054 |
 | PERF | R | 068, 069, 074, 101, 111 |
-| OBS | R | 021, 021b, 035, 061, 091, 093, 107 |
+| OBS | R | 021, 021b, 035, 061, 091, 093, 107, 117, 119, 121 |
 | MIG | R | 022, 070, 113 |
 | DR | R | 059, 066, 108 |
 
@@ -169,16 +177,22 @@ Group K.
 | Gate-bypass-under-load (added round 2, P1-5) | 111 |
 | Surface-profile activation, no-marker-at-all case (added round 2, P1-6) | 112 |
 | GOV-01-R06 rolling-deploy compatibility and migration-record template (added round 2, P1-9) | 113, 114 |
+| Appendix F import/validation contract (added round 4, P1-5) | 118 |
+| Appendix I ADR conformance, ADR-004/ADR-015 (added round 4, P1-6) | 119 |
+| Agent-definition/MR-evidence well-formedness validator (added round 4, P1-7) | 120 |
+| Appendix H.1 manifest completeness (added round 4, P1-8) | 121 |
 
-**Corrected (Scenario Review round 3, P2): this file, `STATUS.md`, and
-this section's own historical prose had disagreed with each other on
-the row count (29 vs 33) — both were wrong; the table above has 35
-rows** (27 mission-named + 8 added across rounds 2 and 3 for
-completeness: model-assurance forced-fallback, capability-governance/
-scenario-matrix/external-gate/Appendix-I drills as one grouped row, and
-6 further rows for GOV-01-R01/R06/R08 and the card-mandated/gate-bypass/
-surface-profile additions). All 35 rows have real, on-topic,
-independently-checkable coverage — this count is stated once, here; no
+**Corrected (Scenario Review round 3, P2, further corrected round 4):
+this file, `STATUS.md`, and this section's own historical prose had
+disagreed with each other on the row count (29 vs 33) — both were
+wrong; the table above now has 39 rows** (27 mission-named + 12 added
+across rounds 2, 3 and 4 for completeness: model-assurance forced-
+fallback, capability-governance/scenario-matrix/external-gate/
+Appendix-I drills as one grouped row, 6 rows for GOV-01-R01/R06/R08 and
+the card-mandated/gate-bypass/surface-profile additions, and 4 rows for
+the Appendix F/I/H.1 and agent-definition-validator additions). All 39
+rows have real, on-topic, independently-checkable coverage — this count
+is stated once, here; no
 other file restates it.
 
 ## 3. Scenario detail
@@ -1200,7 +1214,10 @@ skipping `deprecated` entirely) is denied, citing the skipped state —
 a real, executable check with no conditional escape clause. Evidence:
 the lint's pass/deny report citing the specific transition tested.
 
-**SCN-MOD001-109 · NEG · Blocker · Card-mandated drill: deliberately-failing test blocks the pipeline (P0-3) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-109 · NEG · Blocker · Card-mandated drill: deliberately-failing test blocks the pipeline (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Corrected (Scenario Review round 4, P1-2): routed to Sonnet despite
+Blocker severity, breaking the tier convention rounds 1-3 all enforced
+for SCN-013/062/115 — realigned to Opus.**
 Source: `EIP_MIRROR.md` lines 4188-4192 — "prove CI blocks each
 architecture gate: ... secret/migration/schema/**test failures**."
 Secret (029), migration (070), and schema (034) are covered; this
@@ -1210,7 +1227,9 @@ pipeline (`IMPLEMENTATION.md` §3). Expected: the pipeline halts at the
 unit-test stage, blocking every downstream stage — build, integration,
 deploy never run. Evidence: pipeline run log showing the halt point.
 
-**SCN-MOD001-110 · BND · Blocker · Card-mandated drill: screen-contract count mismatch (P0-3) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-110 · BND · Blocker · Card-mandated drill: screen-contract count mismatch (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Corrected (Scenario Review round 4, P1-2): same tier realignment as
+SCN-109 above.**
 Source: `EIP_MIRROR.md` lines 4189-4191 — "screen contract/**count**."
 Distinct from SCN-013 (an unmapped Screen ID) — this tests a *count*
 mismatch: the canonical screen registry reports N screens for a given
@@ -1332,18 +1351,74 @@ change applied but kill-switch block from 115 still holds; (c) denied,
 citing missing authorization. Evidence: three recorded outcomes.
 Negative/failure behavior IS part (c)'s own subject.
 
+### Group N — Scenario Review round 4 remediation: import/validation contract, ADR conformance, agent-definition/MR validator, manifest completeness (P1-5, P1-6, P1-7, P1-8)
+
+**SCN-MOD001-118 · BND · Blocker · Import/validation contract, Appendix F Ready precondition (P1-5) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 18033-18037 ("Ready requires access to
+the canonical approved UX registry and the import/validation
+contract"); the contract's own design is in `IMPLEMENTATION.md` §10.
+Preconditions: a synthetic copy of the registry's 8-field row format
+with deliberately introduced edge cases. Steps: run the import contract
+against (a) a normal V1 row with a single clear owning module —
+expected: resolves correctly; (b) a row whose `id` prefix matches no
+known surface — expected: validation failure naming the specific `id`
+and "unknown prefix" reason; (c) a multi-domain row — expected: resolves
+to the primary mutation/route contract's owning module, not the
+secondary reference. Evidence: three resolution/failure reports.
+Negative case is (b)/(c)'s own subject.
+
+**SCN-MOD001-119 · OBS · Major · Appendix I ADR conformance, ADR-004/ADR-015 (P1-6) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 21028-21033 (ADR-004), 21117-21122
+(ADR-015); `ADR_CONFORMANCE.md`'s own conformance record. Steps: (a)
+confirm no HTTP API surface exists in MOD-001's planned tooling
+(ADR-004 — expected: N/A-with-justification holds, re-checked against
+the actual `tools/` directory once built); (b) run the migration-safety
+harness (SCN-022/070) and confirm its expand/migrate/contract ordering
+matches ADR-015's "no destructive schema change in the same release
+that stops reading the old shape" rule exactly. Evidence: the
+conformance check's own pass/fail per ADR.
+
+**SCN-MOD001-120 · SEC · Blocker · CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness (P1-7) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 4121-4124 ("CI/control checks validate...
+Veyro project-agent definitions, model aliases/MR evidence..."). Steps:
+(a) a synthetic `.claude/agents/*.md` fixture whose escalation text
+names an agent that does not exist in the registered agent list —
+expected: denial citing the dangling reference (**this is exactly the
+`BUG-030` defect class — an agent whose routing text silently fails —
+made into a mechanical, CI-enforced check rather than something only an
+independent review happens to catch**); (b) a synthetic MR evidence
+record missing a required field (task class, agent, model, verdict) —
+expected: denial citing the missing field. Evidence: two denial
+reports. Companion positive: a well-formed agent definition and a
+complete MR record both pass.
+
+**SCN-MOD001-121 · OBS · Major · Appendix H.1 manifest completeness (P1-8) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 20597-20601 (the manifest "must also
+record capability dependency IDs, per-gap resolution-attempt counters/
+budget evidence, lifecycle review state and rollback target where
+applicable"). Steps: validate `evidence/module-capabilities.yaml`
+against H.1's full required-field list. Expected: every field is
+present, either populated or explicitly N/A with rationale (matching
+the file's own existing convention for `required_rule_ids` etc.) — not
+silently absent. Evidence: the field-presence check's own report.
+Negative case: a synthetic manifest missing one of the four fields
+entirely (no key at all, not even an N/A) is denied.
+
 ## 4. Status
 
-**Corrected (Scenario Review round 2, P0-1): this section previously
-contradicted the real evidence tree — fixed.** Of the (now expanded,
-see round 2's remediation below) scenario set: SCN-104/105 were
-dispatched and produced real, recorded behavioral evidence
-(`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`) — but that drill
-targeted the wrong subject (see round 2's own P0-2/addendum below) and
-does not establish routing correctness, so 104/105 remain correctly
-**NOT EXECUTED as valid drills** pending `BUG-030`'s resolution and a
-corrected re-run. Every other scenario: **NOT EXECUTED.** No scenario is
-marked PASS. Implementation has not started.
+**Corrected (Scenario Review round 4, P0-2 — this exact section was
+already flagged once, by round 2's own P0-1, and drifted stale again
+after round 3's remediation changed SCN-104/105's own status without
+updating this summary to match): SCN-104 and SCN-105 are genuinely
+`EXECUTED — PASS`** — the corrected routing drill (dispatched to
+`veyro-implementer`, the correct subject, after `BUG-030`'s fix) ran for
+real, with agent/session ids and verbatim response text preserved in
+`evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s "Corrected
+drill" section. This is real, valid evidence of MOD-001's own routing
+configuration working, not a claim about MOD-001's own product
+implementation (which has not started). **Every other scenario in this
+catalog: NOT EXECUTED.** No scenario testing MOD-001's own eventual
+implementation is marked PASS.
 
 ## 5. Review Log
 

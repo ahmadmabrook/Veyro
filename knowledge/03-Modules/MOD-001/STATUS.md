@@ -81,8 +81,12 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       the current scenario count, category coverage, and named-family
       count — deliberately not restated here after three consecutive
       rounds found a number duplicated across files going stale). Full
-      Appendix G category coverage confirmed at each round; none marked
-      PASS (implementation hasn't started).
+      Appendix G category coverage confirmed at each round. **Corrected
+      (round 4, P0-2): "none marked PASS" was stale — the model-routing
+      drill scenarios (104/105) are genuinely `EXECUTED — PASS` (real
+      MOD-001-routing-configuration evidence, not a claim about
+      MOD-001's own product implementation, which has not started and
+      has no scenario marked PASS).**
 - [x] **`BUG-029` (capability gap: `.claude/agents/**` Edit/Write-denied,
       blocked agent-file creation) — CLOSED.** Owner created all 3 files
       outside this guarded session (commit `f3a1710`); byte-verified.

@@ -545,6 +545,16 @@ own re-search this table invited turned up real gaps:**
 | **~14 additional deliberate-violation drills named in the card's own manual-QA field** | `EIP_MIRROR.md` lines 4188-4228 — malformed/conflicting-path Rule; manifest missing mandatory profile; unregistered third-party Skill/plugin/MCP/hook; altered approved Skill version without re-evaluation; circular capability dependency; exhausted capability-resolution budget; overdue ACTIVE capability; MOD-029 manifest missing admin/privileged-console; H.3 standard removed for an H.2 family; inverted Appendix-B completing/slice row; generic Security baseline on a Tier-1 module; 4 scenario-matrix-validator fail-closed cases (O on §9.1 category, N without G.4, forbidden LOC/A11Y=N, PERF/Load inconsistency both directions); external-gate-validator card/registry/§22 mismatch plus its 2 conditional-edge cases; Appendix-I mapping/evidence removal | Each is a real, separately-buildable validator check MOD-001's `tools/` must implement and prove fails closed | SCN-MOD001-076 through 093 |
 | **Dependency-vulnerability CI gate** | GOV-01-R04 itself (`EIP_MIRROR.md` lines 17556-17559: "CI gates for lint, test, **vulnerability**, schema compatibility, migration safety and artifact signing") — this is a Critical requirement's own text, not a secondary obligation, and the first draft of this table had no scenario for it | A real dependency-vulnerability scanner proven to block on a known-CVE fixture | SCN-MOD001-094 |
 
+**Added after Scenario Review round 4 (P1-5, P1-6, P1-7, P1-8):**
+
+| Obligation | Source | What MOD-001 must build | Ties to |
+|---|---|---|---|
+| **Import/validation contract (Appendix F Ready precondition)** | `EIP_MIRROR.md` lines 18033-18037 (verbatim: "Ready requires access to the canonical approved UX registry and the import/validation contract") | A documented schema/interface (not the generator itself — that is Implementation Complete work) defining how the eventual `screen-contracts.yaml` generator will consume the canonical registry: which registry fields it reads (`id, module, name, phase, status, roles, ar, note` per the registry's own 8-field format), how it resolves a multi-domain screen to its owning module, and what a validation failure looks like | `IMPLEMENTATION.md` §10 (new); SCN-MOD001-118 |
+| **Appendix I: ADR-004 (REST/JSON+OpenAPI with surface BFFs) and ADR-015 (expand/migrate/contract schema evolution)** | `EIP_MIRROR.md` lines 21028, 21117 — both map MOD-001, both require "Module spec + tests/QA + `ADR_CONFORMANCE.md` + §18 ADR conformance PASS" | An `ADR_CONFORMANCE.md` record stating MOD-001's conformance state against both ADRs (ADR-004: MOD-001's own API surfaces, if any, follow REST/JSON+OpenAPI; ADR-015: the migration-safety harness itself follows expand/migrate/contract) | REQUIREMENTS.md §3 (DOM-001/DOM-002/etc.); SCN-MOD001-119 |
+| **`RUNBOOK.md`** | EIP card's own Required-outputs text (`EIP_MIRROR.md` line 4180-4181: "the module RUNBOOK.md where a domain is owned") — MOD-001 owns GOV-01 (line 11817) and `RB-GOV-01` (line 22386) | A real runbook document for `RB-GOV-01` ("bad deployment/schema/config release rollback") with the evidence-contract fields TSD names | `knowledge/03-Modules/MOD-001/RUNBOOK.md` (new); ties to GOV-01-R05/R06 |
+| **CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness** | `EIP_MIRROR.md` lines 4121-4124: "CI/control checks validate all six TSD §24.1 architecture gates, **Veyro project-agent definitions, model aliases/MR evidence**, .claude/rules syntax/path scopes/conflicts..." | A validator distinct from SCN-075's runtime-substitution test: checks that every `.claude/agents/*.md` file is well-formed (frontmatter fields present, referenced agents in escalation text actually exist) and that MR evidence records are structurally complete — the exact class of defect `BUG-030` was (a registered agent whose escalation text silently failed to route) | New tool; SCN-MOD001-120 |
+| **Appendix H.1 manifest completeness** | `EIP_MIRROR.md` lines 20597-20601: manifest "must also record capability dependency IDs, per-gap resolution-attempt counters/budget evidence, lifecycle review state and rollback target where applicable" | `evidence/module-capabilities.yaml` must carry these four fields (explicit N/A with rationale where genuinely inapplicable, matching the file's own existing convention for `required_rule_ids` etc.) | `evidence/module-capabilities.yaml`; SCN-MOD001-121 |
+
 This table is not claimed exhaustive even now. A future session (or a
 further Scenario Review round) should re-search both mirrors for
 `MOD-001` before treating this list as final —
@@ -554,49 +564,80 @@ materialized by MOD-001" boilerplate repeated in every other module's
 own card (§4 below explains why that boilerplate does not create
 screen-content work for MOD-001 itself).
 
-## 4. Screen/UX applicability — MOD-001 is NOT UI-bearing
+## 4. Screen/UX applicability, and MOD-001's real Ready precondition (Appendix F)
 
-**Finding:** zero canonical V1 registry screens resolve to MOD-001.
-
-The EIP card's own "Screens" field (`EIP_MIRROR.md` lines 4273-4278)
-reads: "Canonical V1 registry Screen IDs for surfaces [Internal SaaS
-Console] whose owner domain/module resolves here. Exact IDs must be
-materialized by MOD-001 into Appendix F/screen-contracts.yaml before
-this module can be Ready." This exact sentence (with the bracketed
-surface name substituted) repeats in dozens of other module cards
+**Corrected (Scenario Review round 4, P1-5): the framing below was
+wrong about which EIP text actually governs MOD-001's Ready condition.**
+The original version of this section quoted the §21.2 card's own
+generic "Screens" field boilerplate ("...before this module can be
+Ready") — the same sentence, with only the surface name substituted,
+that repeats near-verbatim across dozens of other module cards
 (`EIP_MIRROR.md` lines 4553, 4641, 4860, 5164, 5273, 5365, 5449, 5539,
-5620, 5696, 5775, 5863, 5942, 6025, 6131, 6246, and many more) — it is
-the EIP's standard per-module boilerplate for "this module's owned
-screens must be registered," not MOD-001-specific screen content. The
-*mechanism* (importing the canonical screen registry and generating
-`screen-contracts.yaml`) is what MOD-001 builds, per the "Required
-outputs" field's own text: "It imports the canonical screen registry,
-generates screen-contracts.yaml, validates .claude/agents/.claude/rules/
-.claude/skills and module-capabilities.yaml." Building the tool is
-GOV-01-R04-adjacent CI-gate work; MOD-001 having zero *rows* of its own
-in that generated file is a separate, correct fact.
+5620, 5696, 5775, 5863, 5942, 6025, 6131, 6246, and many more). It is
+NOT the authoritative text for MOD-001's own Ready condition — Appendix
+F is, and Appendix F's own MOD-001-specific row explicitly overrides
+the boilerplate. The EIP's own changelog confirms this directly:
+"Canonical screen mapping retained; v1.2 removes **the circular Ready
+condition for MOD-001/non-UI modules**" (`EIP_MIRROR.md` lines
+177-178), and "Appendix F Ready condition is scoped to UI-bearing
+modules; **MOD-001 generates the manifest at Implementation Complete**;
+non-UI modules prove no [screen ownership]" (lines 197-199).
 
-Independently checked against the design bundle's own screen registry
-(`veyro-product-experience-design/project/veyro-registry-data.js`,
+**Appendix F's MOD-001 row, verbatim (`EIP_MIRROR.md` lines
+18033-18043):** "Ready requires access to the canonical approved UX
+registry and the import/validation contract. Generating
+screen-contracts.yaml plus count/route/contract lint is a MOD-001
+**Implementation Complete deliverable, not a Ready precondition**."
+
+This means MOD-001's real Ready precondition on this axis has two real
+parts, neither of which is "generate screen-contracts.yaml":
+
+1. **"Access to the canonical approved UX registry"** — verified
+   already satisfied: the canonical V1 design registry
+   (`veyro-product-experience-design/`) is one of the four governing
+   baselines, checked into this repository and hash-pinned in
+   `PROJECT_INDEX.md` (manifest hash `c96f77ab...`, re-verified this
+   session via `verify_baselines.py`, PASS). Appendix F's own
+   project-wide release-gate text (`EIP_MIRROR.md` lines 18006-18009)
+   makes this an explicit, separate requirement — "the canonical source
+   artifact must be checked into or deterministically referenced by the
+   Veyro repository before MOD-001 approval; screenshots, remembered
+   names, inferred routes or newly invented identifiers are not
+   acceptable substitutes" — and it already is, durably, not merely
+   asserted.
+2. **"The import/validation contract"** — NOT yet satisfied and NOT yet
+   a scenario: this is a real planning-stage deliverable (a documented
+   schema/interface defining how MOD-001's eventual
+   `screen-contracts.yaml` generator will consume the canonical
+   registry — what fields it reads, how it resolves multi-domain
+   screens, what a validation failure looks like) that must exist
+   *before* Ready, distinct from building the generator itself (which
+   is Implementation Complete work, per Appendix F's own explicit
+   carve-out). **This is a real gap this session found and has not yet
+   closed** — see the new obligation row in §3 and `SCN-MOD001-118`
+   (added this round) for the plan to close it.
+
+**Zero canonical V1 registry screens resolve to MOD-001 as an *owned
+surface*, independently confirmed** against the design bundle's own
+screen registry (`veyro-product-experience-design/project/veyro-registry-data.js`,
 170 screens across 6 surface sections: `ADMIN`, `FRONT DESK`, `COACH`,
-`MEMBER`, `CONSOLE`, `BACKEND-ONLY`): no surface or domain word in that
-registry corresponds to engineering/CI/CD/quality infrastructure.
-`CONSOLE` (`CON-01` through `CON-17`) is tenant support/ops/billing
-(impersonation, tenant provisioning, feature flags, system health,
-audit log) — real screens, but owned by a support/ops/admin module
-(most plausibly MOD-029, the admin/privileged-console module this
-project's own `.claude/rules/admin-privileged-console-baseline.md`
-already binds forward to), not MOD-001. `BACKEND-ONLY` (`SYS-01`
-through `SYS-08`, all `NO-UI`) are product business jobs (payment
-webhooks, JoFotara, access-controller sync, churn scoring, retention
-jobs) owned by their respective domain modules (MOD-015+ etc.), not
-MOD-001's engineering-infrastructure scope.
+`MEMBER`, `CONSOLE`, `BACKEND-ONLY`). `CONSOLE` (`CON-01` through
+`CON-17`) is tenant support/ops/billing, owned by a support/ops/admin
+module (most plausibly MOD-029, per
+`.claude/rules/admin-privileged-console-baseline.md`), not MOD-001.
+`BACKEND-ONLY` (`SYS-01` through `SYS-08`) are product business jobs
+owned by their respective domain modules (MOD-015+), not MOD-001's
+engineering-infrastructure scope. This "zero owned screens" finding is
+unaffected by the correction above — it was always correct; what was
+wrong was treating the *generic* boilerplate as MOD-001's Ready
+condition instead of Appendix F's real, MOD-001-specific one.
 
-**Conclusion:** MOD-001 generates the `screen-contracts.yaml` mechanism
-with zero MOD-001-owned rows in it. The non-UI proof/manifest the EIP
-requires at the lifecycle point it names is: `screen-contracts.yaml`
-exists, validates successfully, and contains a `MOD-001: []` (or
-equivalent explicit zero-rows) entry rather than an absent one — an
-absent entry would be indistinguishable from an oversight; an explicit
-empty one is the correct, honest non-UI proof. This is planned in
-`IMPLEMENTATION.md`, not yet built (implementation has not started).
+**Conclusion:** MOD-001 owns zero screen-registry rows (unaffected).
+Its real Ready precondition on this axis is the import/validation
+contract's *design* (not yet done — tracked as a new gap, §3/SCN-118),
+plus the already-satisfied canonical-registry-checked-in requirement.
+Generating `screen-contracts.yaml` itself, with an explicit empty
+`MOD-001: []` entry once built, remains correctly planned as
+Implementation Complete work in `IMPLEMENTATION.md`, not a Ready
+precondition — that part of the original conclusion was already
+right.

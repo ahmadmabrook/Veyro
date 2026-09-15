@@ -5,7 +5,18 @@ module: MOD-001
 date: 2026-09-14
 ---
 
-# Independent review of `.claude/agents/veyro-critical-engineer.md` (ADR-005 binding condition 2)
+# Independent review of `.claude/agents/veyro-critical-engineer.md` (ADR-005 binding condition 2) — ROUND 1
+
+**This is round 1, run before `BUG-030` was found and fixed — its
+verdict (BLOCKED) is what led directly to filing `BUG-030`.** Round 2
+(run immediately after the fix, verdict APPROVED) is a separate,
+distinct dispatch recorded in
+`CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md` — **added
+2026-09-15, Scenario Review round 4 P0-1: that second review genuinely
+happened but was never given its own durable evidence file until this
+correction, only referenced in prose elsewhere.** Do not read this
+file's BLOCKED verdict as MOD-001's current state — see the round-2
+file for that.
 
 Fresh-context `veyro-security-reviewer` (Opus), dispatched by the
 MOD-001 orchestrating session — the session that specified the file's
@@ -13,7 +24,7 @@ required content did not review it. Also reviewed the two §4.3 surface
 agents (`veyro-infra-sre-engineer.md`, `veyro-backend-engineer.md`) and
 `MODEL_ROUTING.md`'s registration updates in the same pass.
 
-## Verdict
+## Verdict (round 1 — superseded by round 2's APPROVED)
 
 **VEYRO-CRITICAL-ENGINEER REGISTRATION BLOCKED.**
 

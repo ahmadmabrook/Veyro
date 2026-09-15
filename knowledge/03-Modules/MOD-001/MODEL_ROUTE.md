@@ -35,12 +35,16 @@ MOD-001's real scaffold/harness content, contrary to `CAPABILITIES.md`'s
 original "none activated" claim. Both were delegated to `veyro-lead`
 (Opus) per `OWN-003` rather than decided on Sonnet — see
 `knowledge/04-Decisions/ADR-005-mod001-critical-slice-and-surface-profile-routing.md`
-for the full reasoning. Three new agents are now required:
+for the full reasoning. Three new agents were required:
 `veyro-critical-engineer` (Opus, bounded to 3 named slices),
 `veyro-infra-sre-engineer` (Sonnet), `veyro-backend-engineer` (Sonnet,
-bounded — excludes the critical-slice harness itself). Registration is
-blocked this session by a second capability gap (`BUG-029` —
-`.claude/agents/**` is Edit/Write-denied) and routed to the owner.**
+bounded — excludes the critical-slice harness itself). **Corrected
+(Scenario Review round 4, P1-3): this previously said "registration is
+blocked... routed to the owner" — stale.** All three are now
+**registered and routable** — `BUG-029` (creation) and `BUG-030`
+(routing integration) are both CLOSED, verified by a corrected routing
+drill dispatched to `veyro-implementer`. See
+`knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`.**
 
 **Planned routing for MOD-001 implementation (future turn, not this
 one):** matches `MODEL_ROUTING.md`'s existing role→agent table plus the
@@ -81,14 +85,20 @@ restated in full here to avoid the exact propagation-gap species that
 recurred across all three review rounds to date):**
 (1) the three new agent files exist and are registered;
 (2) independent review of the critical-engineer definition/routing has
-run — see `evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`
-for that review's own verdict;
+run — **two rounds**, round 1 (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`,
+BLOCKED, led to filing `BUG-030`) and round 2, after the fix
+(`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`,
+APPROVED — **corrected, Scenario Review round 4 P0-1: round 2's result
+was previously referenced only in prose, with no durable evidence file,
+until this correction**);
 (3) a corrected routing drill (dispatched to `veyro-implementer`, the
 correct subject) has run — see
 `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s "Corrected
 drill" section for its own verdict;
-(4) MR evidence is recorded, with resolved model identity disclosed as
-a `BUG-027`-class residual, not yet formally accepted or closed;
+(4) MR evidence is recorded, with resolved model identity formally
+**accepted as a disclosed, non-blocking `BUG-027`-class residual** — see
+`ADR-005`'s own addendum, not "not yet formally accepted" as this line
+previously (and incorrectly) said;
 (5) `MODEL_ROUTING.md`'s critical-slice row reflects current
 registration state.
 

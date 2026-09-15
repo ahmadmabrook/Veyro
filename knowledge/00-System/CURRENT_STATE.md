@@ -186,20 +186,22 @@ independently after):**
   directly) proved real escalation in both directions plus correct
   architecture routing to `veyro-lead`.
 
-**Current status:** REQUIREMENTS.md (GOV-01-R01..R08 fully traced),
-the full module specification, and a 115-scenario Scenario Catalog
-(`SCENARIOS.md`) are authored. `ADR-005` (delegated to `veyro-lead`)
-registered the critical-slice role and activated 2 of 10 §4.3 surface
-profiles for MOD-001's own real content. Three independent Scenario
-Review rounds have run (round 1 BLOCKED P0=4/P1=9; round 2 BLOCKED
-P0=3/P1=10; round 3 BLOCKED — see
-`knowledge/03-Modules/MOD-001/SCENARIOS.md` §5 for current-round detail,
-not restated here to avoid this exact file going stale again the same
-way). A separate independent review of the critical-engineer routing
-returned APPROVED. **Definition of Ready has not yet been reached** —
-see `knowledge/03-Modules/MOD-001/STATUS.md` for the live gate
-checklist, which is the file this one now points to rather than
-duplicates.
+**Current status:** REQUIREMENTS.md (GOV-01-R01..R08 fully traced), the
+full module specification, and a Scenario Catalog (`SCENARIOS.md` —
+current scenario count deliberately not restated here; **corrected,
+Scenario Review round 4 P1-4, after this line's own "115-scenario"
+figure went stale the same round it was written**, see that file's own
+§0) are authored. `ADR-005` (delegated to `veyro-lead`) registered the
+critical-slice role and activated 2 of 10 §4.3 surface profiles for
+MOD-001's own real content. Multiple independent Scenario Review rounds
+have run, each returning BLOCKED and remediated — see
+`knowledge/03-Modules/MOD-001/SCENARIOS.md` §5 for the current round's
+detail and count, not restated here to avoid this exact file going
+stale again the same way. A separate independent review of the
+critical-engineer routing returned APPROVED. **Definition of Ready has
+not yet been reached** — see `knowledge/03-Modules/MOD-001/STATUS.md`
+for the live gate checklist, which is the file this one now points to
+rather than duplicates.
 
 **MOD-002 and all later product modules remain LOCKED** (WIP=1;
 unaffected by MOD-001's planning activity).

@@ -309,3 +309,66 @@ commits) plus a QA/staging environment reset (§2's own reset policy) —
 no data-migration rollback is needed unless a synthetic migration drill
 was mid-flight, in which case `RB-GOV-01`'s own procedure applies to
 that drill's disposable fixture schema only.
+
+## 10. Import/validation contract (Appendix F Ready precondition, added Scenario Review round 4 P1-5)
+
+Appendix F's MOD-001 row (`EIP_MIRROR.md` lines 18033-18043) makes
+"access to the canonical approved UX registry and the import/
+validation contract" a **Ready precondition** — distinct from
+generating `screen-contracts.yaml` itself, which is explicitly
+Implementation Complete work. Access to the registry is already
+satisfied (§0 below); this section is the contract's actual design,
+closing the one part of that precondition that wasn't done yet.
+
+**Source registry format** (`veyro-product-experience-design/project/veyro-registry-data.js`
+line 4, verbatim): 8 fields per row — `[id, module, name, phase,
+status, roles, ar, note]`. `phase ∈ {V1, V1.5, V2, ENT}`; `status ∈
+{DONE, GAP, NO-UI, V1.5, V2, ENT}`; `ar ∈ {BUILT, CONTRACT, NEEDS,
+N/A}`. Per the registry's own header comment: "Surface and domain are
+derived from the id prefix — never stored" (e.g. `ADM-`, `CON-`, `SYS-`).
+
+**Import contract:**
+
+1. **Read:** parse `R` (the exported array) from `veyro-registry-data.js`
+   directly — never re-key or re-derive the data from a screenshot,
+   remembered name, or inferred route (Appendix F's own explicit
+   prohibition, `EIP_MIRROR.md` line 18008-18009).
+2. **Filter:** select only rows where `phase === 'V1'` — V1.5/V2/ENT
+   rows are out of scope for the current release gate's count.
+3. **Resolve surface:** derive the surface from the `id` prefix per
+   the registry's own mapping (`ADM-` → Admin, `CON-` → Console,
+   `SYS-` → Backend-only/no-UI, etc. — Appendix F's own surface
+   vocabulary, `EIP_MIRROR.md` line 17997).
+4. **Resolve owning module:** map each row's surface + `module` field
+   (a domain word like "Membership", "Payments") to its owning
+   implementation module via Appendix B's execution-slice mapping —
+   not MOD-001's own judgment call; MOD-001 imports Appendix B's
+   existing mapping, it does not invent one.
+5. **Multi-domain resolution:** where a screen's primary
+   mutation/route contract belongs to one module but a secondary
+   concern touches another (the card's own text, `EIP_MIRROR.md` lines
+   18043-18049), resolve to the module owning the **primary
+   mutation/route contract** — the secondary module is recorded as a
+   read-only reference, not ownership.
+6. **Validation failure shape:** a row that resolves to zero or
+   multiple owning modules, or whose `id` prefix matches no known
+   surface, is a validation failure — reported with the specific `id`
+   and the reason (no owner found / ambiguous owner / unknown prefix),
+   never silently dropped or defaulted.
+
+**What this contract does NOT do (Implementation Complete scope,
+correctly deferred):** actually running this import against the real
+registry and emitting `screen-contracts.yaml`; the count/route/contract
+lint (170-count equality check); wiring this into CI. Those happen once
+MOD-001 implementation starts.
+
+## 11. Already-satisfied half of the Appendix F Ready precondition
+
+"The canonical source artifact must be checked into or
+deterministically referenced by the Veyro repository before MOD-001
+approval" (`EIP_MIRROR.md` lines 18006-18009) — **already true**:
+`veyro-product-experience-design/` is checked into this repository and
+hash-pinned in `PROJECT_INDEX.md` (manifest hash `c96f77ab...`,
+re-verified via `verify_baselines.py` this session, PASS). No action
+needed on this half; recorded here so it isn't mistaken for an open
+item.
