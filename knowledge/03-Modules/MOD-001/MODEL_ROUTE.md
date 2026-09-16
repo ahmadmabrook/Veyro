@@ -2,7 +2,7 @@
 doc: MOD-001_MODEL_ROUTE
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 5 propagation-gap count corrected; no routing-state change this round)
+updated: 2026-09-16 (Scenario Review round 6 — BUG-031 caveat added to condition 1; propagation-gap count corrected)
 ---
 
 # MOD-001 — Model Route (per-module)
@@ -82,8 +82,16 @@ real `Agent` call with `model: opus` set explicitly, not self-decided.
 routing (status as of the most recent Scenario Review round — see
 `SCENARIOS.md` §5 for the authoritative, current account; not
 restated in full here to avoid the exact propagation-gap species that
-recurred across all five review rounds to date):**
-(1) the three new agent files exist and are registered;
+recurred across all six review rounds to date):**
+(1) the three new agent files exist and are registered — **caveat
+added, Scenario Review round 6, P1-4: "registered" means dispatchable
+by name, not necessarily reachable via automatic escalation.
+`veyro-critical-engineer` is both (proven by the routing drill below);
+`veyro-backend-engineer`/`veyro-infra-sre-engineer` are registered but
+currently unreachable from any `.claude/agents/*.md` escalation path —
+filed as `BUG-031`, non-blocking for Ready since neither has real
+implementation work to route yet, but must close before real
+`backend/**`/`infra/**` work begins**;
 (2) independent review of the critical-engineer definition/routing has
 run — **two rounds**, round 1 (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`,
 BLOCKED, led to filing `BUG-030`) and round 2, after the fix

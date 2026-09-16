@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 5 ran, BLOCKED, P0/P1 remediated — see §5)
+updated: 2026-09-16 (Scenario Review round 6 ran, BLOCKED, P0/P1 remediated — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -56,12 +56,18 @@ every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
 here rather than restate a number).** Current total: **124 detail
-blocks** (001-121 plus 021b, 122, 123) — 122 Required + 2 Optional
-(ALT) — comfortably above every applicable floor. **Round 5 (P0-2)
-added 122/123** to close a genuine coverage gap on the card's mandatory
+blocks** (001-121 plus 021b, 122, 123) — **124 Required + 0 Optional**
+— comfortably above every applicable floor. **Round 5 (P0-2) added
+122/123** to close a genuine coverage gap on the card's mandatory
 security baseline (sensitive logging, abuse-negative scenarios) that
 this section's own "every requirement... needs its own real scenario"
-claim had been false against until this round.
+claim had been false against until that round. **Round 6 (P1-3)
+reclassified 071/072 from Optional/ALT to Required** (HP and REC
+respectively) — both trace to a Critical GOV-01 requirement, which
+§9.1 makes Required regardless of ALT's category-level Optional
+default; 0 Optional scenarios currently exist, which is legitimate for
+an O-classified category (Optional means not mandated, not forbidden
+at zero), not a coverage gap.
 
 ## 1. Category coverage matrix
 
@@ -91,8 +97,8 @@ round 2's remediation, not merely re-asserted:
 
 | Category | R/O | Scenario IDs |
 |---|---|---|
-| HP | R | 001, 010, 023, 036, 041, 048, 055 |
-| ALT | O | 071, 072 |
+| HP | R | 001, 010, 023, 036, 041, 048, 055, 071 |
+| ALT | O | none — **corrected, Scenario Review round 6 P1-3: both 071/072 reclassified Required (see HP/REC rows) since each traces to a Critical GOV-01 requirement, which §9.1 makes Required regardless of category-level Optional status; 0 Optional scenarios is legitimate for an O-classified category, not a gap** |
 | VAL | R | 002, 024, 037 |
 | NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109, 123 |
 | BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 110, 116, 118 |
@@ -106,7 +112,7 @@ round 2's remediation, not merely re-asserted:
 | NET | R | 030, 046 |
 | PART | R | 031, 047 |
 | OFF | R | 032, 050 |
-| REC | R | 058, 066 |
+| REC | R | 058, 066, 072 |
 | LIFE | R | 060, 067 |
 | DATA | R | 017, 033, 051, 099, 114 |
 | INT | R | 018, 034, 052, 073, 100, 115 |
@@ -354,11 +360,34 @@ dependency-vulnerability coverage is SCN-094.**
 ### Group C — Gate-bypass attempts (mirrors this project's own Bash-guard discipline)
 
 **SCN-MOD001-016 · IDEM · Blocker · GOV-01-R02 (idempotency-contract lint) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
-Preconditions: a synthetic externally-retryable mutation endpoint.
-Steps: send the same request twice with the same Idempotency-Key.
-Expected: second request returns the stored result, not a duplicate
-side effect. Negative: a retry with the same key but a *different*
-payload returns a stable 409 `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`.
+**Corrected (Scenario Review round 6, P0-1): the original version tested
+only runtime dedup behavior against a single already-well-formed
+endpoint — it never ran the card's own required *lint* (`EIP_MIRROR.md`
+lines 4147-4156), so a command declaring none of the six required
+elements would still pass this scenario. Rewritten into two parts, the
+static lint (a) and the runtime behavior (b), so both halves of the
+card's own text are actually proven.**
+Preconditions: a synthetic externally-retryable mutation command
+declaration (the kind `tools/validate_idempotency_contract.py`, added
+this round, reads) plus a synthetic runtime endpoint built from it.
+Steps: (a) **lint** — run the static check against 6 synthetic command
+declarations, each missing exactly one of the card's 6 required
+elements in turn: no scoped Idempotency-Key tuple; a retention window
+under 24h (and, separately, under the longer payment/fiscal-path
+minimum for a command flagged financial); no stored-request-hash field;
+no reference to the stable 409
+`IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD` code; no `command_id`
+propagation field to outbox/provider dispatch; no deterministic
+provider-idempotency-derivative field. Expected: each of the 6 denied,
+citing the specific missing element by name. Companion positive: a
+declaration with all 6 elements present passes. (b) **runtime** — send
+the same request twice with the same Idempotency-Key against the
+synthetic endpoint built from the passing declaration. Expected: second
+request returns the stored result, not a duplicate side effect.
+Negative: a retry with the same key but a *different* payload returns
+the stable 409 `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD` the lint
+in (a) confirmed is declared. Evidence: 6 lint-denial reports, 1
+lint-pass report, and the runtime dedup/409 transcript.
 
 **SCN-MOD001-017 · DATA · Major · GOV-01-R04 (SBOM/provenance) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: build a synthetic artifact through the real pipeline; inspect the
@@ -767,7 +796,7 @@ that looks like it could be real member data rather than synthetic
 fixture data. Expected: 0 found; every data fixture used by MOD-001's
 own tests is clearly labeled synthetic.
 
-### Group J — Load/performance, migration negative, ALT (optional)
+### Group J — Load/performance, migration negative, alternate-path Required (see round 6 correction below)
 
 **SCN-MOD001-066 · REC+DR (explicit dual-category exception — see Editorial note below) · Blocker · GOV-01-R06 (large-backfill throttling and recovery) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 *Editorial note (Scenario Review round 1): every other scenario in this
@@ -833,12 +862,27 @@ migration attempted before its expand+backfill+switch predecessors have
 run. Expected: the migration-safety lint rejects it — companion
 negative to 022.
 
-**SCN-MOD001-071 · ALT · Minor · GOV-01-R01 (alternate bootstrap path) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-071 · HP · Minor · GOV-01-R01 (alternate bootstrap path) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Corrected (Scenario Review round 6, P1-3): was tagged ALT/Non-Required.
+§9.1 (`EIP_MIRROR.md` lines 1854-1860) makes Required rule-derived, never
+a discretionary reduction — "Required if... it traces to a Critical
+requirement" — and this scenario's own trace field is GOV-01-R01, a
+Critical requirement (`REQUIREMENTS.md` §2). The same reasoning round 1
+already applied to move SCN-073/074 out of ALT (P2-10) was never applied
+here. Recategorized HP (it duplicates SCN-001's own acceptance
+criterion via an alternate path) and marked Required.**
 Steps: bootstrap via a documented alternate path (e.g. a containerized
 dev environment instead of native tooling), where one exists. Expected:
 equivalent working result to 001.
 
-**SCN-MOD001-072 · ALT · Minor · GOV-01-R05 (alternate rollout shape) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-072 · REC · Minor · GOV-01-R05 (alternate rollout shape) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Corrected (Scenario Review round 6, P1-3): was tagged ALT/Non-Required.
+Same fix as SCN-071 — GOV-01-R05 is a Critical requirement, and this
+scenario's own "still promotes/rolls-back correctly" expected result is
+GOV-01-R05's own acceptance criterion (the identical shape round 1 found
+disqualifying for SCN-073/074's P2-10 move). Recategorized REC (the
+substantive behavior under test — promote/rollback correctness — matches
+SCN-058/066's own category) and marked Required.**
 Steps: a canary rollout using an alternate percentage-step schedule.
 Expected: still promotes/rolls-back correctly.
 
@@ -1986,6 +2030,82 @@ session they were found.** Per the owner's explicit review-budget rule,
 Definition of Ready was again NOT evaluated after this remediation —
 round 5 itself had returned P0/P1.
 
+**Round 6 (2026-09-16):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 124 scenarios
+plus round 5's remediation, explicitly instructed not to inherit round
+5's conclusions. Independently re-derived coverage from source and
+confirmed round 5's remediation substantively held (all 124 detail
+blocks present with no duplicates/gaps, the category matrix matches
+every detail-block tag in all 25 rows, SCN-118's tier fix and SCN-120's
+reachability rewrite both held, `MANUAL_QA.md` covers all 124, the
+`ADR-005` escalation text still matches, no file claims MOD-001 is
+Ready). **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=1, P1=4,
+P2=6, Editorial=5. Findings and disposition:
+
+- P0-1: the card-mandated idempotency-contract lint (`EIP_MIRROR.md`
+  lines 4147-4156 — six required elements: scoped Idempotency-Key
+  tuple, retention window, stored request hash, the stable 409 code,
+  `command_id` propagation, provider-idempotency derivatives) had no
+  scenario that actually ran a lint — `SCN-016`'s procedure tested only
+  runtime dedup behavior of an already-well-formed endpoint, and
+  `IMPLEMENTATION.md` had zero mentions of "idempot" anywhere (no tool,
+  no pipeline stage, no gate). **Fixed:** `SCN-016` split into a lint
+  half (a) testing all 6 required elements against 6 synthetic
+  declarations, each missing exactly one, plus a positive case, and a
+  runtime half (b) preserving the original dedup/409 check;
+  `tools/validate_idempotency_contract.py` added to `IMPLEMENTATION.md`
+  §1/§3; `REQUIREMENTS.md`'s obligation row pointed at both.
+- P1-1: round 5's own two new scenarios (`SCN-122`/`123`) had no
+  implementation mechanism — the identical defect round 5's own P1-4
+  had just fixed for `SCN-119`/`120` in the same session that created
+  122/123. **Fixed:** `tools/validate_sensitive_logging.py` and
+  `tools/abuse_negative_fixture_harness.py` added to `IMPLEMENTATION.md`
+  §1/§3; `REQUIREMENTS.md` §3 given obligation rows for both, previously
+  entirely absent.
+- P1-2: GOV-01-R07's (mobile release/version) and GOV-01-R08's
+  (release lifecycle) own "Implementation obligations" text in
+  `REQUIREMENTS.md` had never become a concrete file/CI-stage plan —
+  twelve scenarios depended on mechanisms `IMPLEMENTATION.md` never
+  named (toolchain matrix, release policy, CI runner assignment,
+  common-code path-filter rule, release-train/changelog convention,
+  lifecycle-stage field). **Fixed:** new `IMPLEMENTATION.md` §12 names
+  `mobile/TOOLCHAIN_MATRIX.md`, `mobile/RELEASE_POLICY.md`,
+  `RELEASE_TRAIN.md`, and 3 new §3 pipeline-stage rows (mobile CI
+  runner assignment, common-code dual-platform regression trigger,
+  release-lifecycle-stage lint); `REQUIREMENTS.md`'s R07/R08 obligation
+  text now points at §12.
+- P1-3: `SCN-071`/`072` were classified Optional/ALT in violation of
+  §9.1's own rule that Required is rule-derived from tracing to a
+  Critical requirement, never a discretionary reduction — both trace to
+  a Critical GOV-01 requirement (R01, R05), the same shape round 1
+  already found disqualifying for `SCN-073`/`074`'s ALT status (P2-10)
+  but never applied here. **Fixed:** both reclassified Required —
+  `SCN-071` to HP (duplicates `SCN-001`'s own acceptance criterion via
+  an alternate path), `SCN-072` to REC (its "still promotes/rolls-back
+  correctly" expected result is GOV-01-R05's own acceptance criterion,
+  matching `SCN-058`/`066`'s category); §0/§1 updated (124 Required + 0
+  Optional — 0 Optional is legitimate for an O-classified category, not
+  a gap).
+- P1-4: `BUG-030`'s exact defect class (an orphaned agent nothing
+  routes to) is independently confirmed still live today for
+  `veyro-backend-engineer`/
+  `veyro-infra-sre-engineer` (registered but named by zero escalation
+  paths in `.claude/agents/*.md`) — a disposition for this already
+  existed in `CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`'s
+  own P2-1 finding, but had never been propagated to `BUG_REGISTRY.md`
+  (which still claimed "0 open P1 bugs") or `STATUS.md`'s own gate
+  checklist. **Fixed:** filed as `BUG-031` (P1, OPEN, non-blocking for
+  Definition of Ready, must close before real `backend/**`/`infra/**`
+  implementation begins) in both files.
+- P2 (6) / Editorial (5): not addressed this round, per the mission's
+  own rule that P2/Editorial handling is gated on P0=0/P1=0, which
+  round 6 did not return. Carried forward, not hidden or downgraded.
+
+**All P0/P1 findings from round 6 were remediated within the same
+session they were found.** Per the owner's explicit review-budget rule,
+Definition of Ready was again NOT evaluated after this remediation —
+round 6 itself had returned a P0.
+
 **MOD-001 Definition of Ready: not yet reached.** Gated on an
 independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
-P0=0/P1=0 — not yet obtained as of round 5's close.
+P0=0/P1=0 — not yet obtained as of round 6's close.

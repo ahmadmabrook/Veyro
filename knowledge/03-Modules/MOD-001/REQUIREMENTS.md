@@ -2,7 +2,7 @@
 doc: MOD-001_REQUIREMENTS
 status: LIVE — DRAFT (planning stage, not yet independently reviewed)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 5 — §4's self-contradictory import/validation-contract status resolved; §3's agent-definition/MR-evidence and ADR-conformance obligation rows pointed at their now-concrete tool paths)
+updated: 2026-09-16 (Scenario Review round 6 — idempotency-contract lint, sensitive-logging lint, and abuse-negative harness obligation rows pointed at concrete tool paths; GOV-01-R07/R08 obligation text pointed at new IMPLEMENTATION.md §12)
 ---
 
 # MOD-001 — Requirements
@@ -432,7 +432,9 @@ suites.
   before real mobile code exists, so MOD-006 inherits a fixed target);
   CI runner assignment (Android→Linux, iOS→macOS/Xcode) as a pipeline
   convention; the common-code-change→both-platform-regression trigger
-  rule encoded as a CI path-filter rule.
+  rule encoded as a CI path-filter rule. **Concrete plan: `IMPLEMENTATION.md`
+  §12 (added Scenario Review round 6, P1-2 — this text had never been
+  turned into a named file/CI-stage plan until then).**
 - **Evidence obligations:** the toolchain matrix file exists and is
   referenced from CI config; the path-filter rule is testable with a
   synthetic "common-code" file change proving both platform regression
@@ -475,7 +477,10 @@ communication."
 - **Implementation obligations:** a release-train schedule/cadence
   document; a changelog file/tool convention wired to the release
   pipeline (GOV-01-R05); a lifecycle-stage field in the release-evidence
-  record (ties to `RB-GOV-01`'s evidence contract).
+  record (ties to `RB-GOV-01`'s evidence contract). **Concrete plan:
+  `IMPLEMENTATION.md` §12 (added Scenario Review round 6, P1-2 — this
+  text had never been turned into a named file/CI-stage plan until
+  then).**
 - **Evidence obligations:** a synthetic release cycle producing a
   changelog entry and a lifecycle-stage-tagged release-evidence record.
 - **Scenario coverage:** OBS, DR (deprecation as a controlled,
@@ -521,7 +526,7 @@ Scenario Review pass should re-search independently):
 | **Capability-governance validation gates** | EIP card, `EIP_MIRROR.md` lines 4122-4157, 4233-4256; Appendix H.1-H.3, lines 20590-20740 | Validate `.claude/agents`/`.claude/rules`/`.claude/skills`/`module-capabilities.yaml`; reject cyclic capability dependencies, overdue lifecycle reviews, manifests missing mandatory privileged-surface Rules; require every Appendix H.2 rule family to resolve to an Appendix H.3 content standard | Reuses MOD-000's `validate_capabilities.py`/`CAPABILITY_REGISTRY.md` pattern — extend, don't duplicate |
 | **Baseline-artifact binding schema validation** | `EIP_MIRROR.md` lines 4140-4143, 4253-4256, 4260-4263 | Require `PROJECT_INDEX.md` entries for all governing baselines with non-empty cryptographic hashes and `SESSION_BOOTSTRAP.md` enforcement metadata; reject use of an unapproved candidate EIP or a missing/ambiguous/mismatched identity+hash | Already substantively satisfied by MOD-000's `verify_baselines.py` — MOD-001 must fold this into the CI-gate layer (currently a manual per-session check, not yet a CI gate) |
 | **Appendix-B traceability validator** | `EIP_MIRROR.md` lines 4144-4147 | Reject any split requirement whose designated completing module executes before any of its execution-slice modules | New tool — no split requirements exist for MOD-001 itself (§0 above), but MOD-001 must build the *validator* future modules' Scenario Reviews will run |
-| **Idempotency-contract lint** | `EIP_MIRROR.md` lines 4148-4157 | For externally retryable mutations: scoped Idempotency-Key tuple, retention window (>=24h, longer for payment/fiscal), stored request hash/result, stable 409 `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`, `command_id` propagation to outbox/provider dispatch, deterministic provider idempotency derivatives | GOV-01-R02 (workflow-suite architecture); IDEM category |
+| **Idempotency-contract lint** | `EIP_MIRROR.md` lines 4148-4157 | For externally retryable mutations: scoped Idempotency-Key tuple, retention window (>=24h, longer for payment/fiscal), stored request hash/result, stable 409 `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`, `command_id` propagation to outbox/provider dispatch, deterministic provider idempotency derivatives | `IMPLEMENTATION.md` §1/§3 (`tools/validate_idempotency_contract.py`, added round 6 P0-1); `SCN-MOD001-016` part (a) — **corrected, Scenario Review round 6 P0-1: this row previously pointed at nothing but a requirement/category name, and the only linked scenario tested runtime dedup behavior, not the lint itself** |
 | **AsyncAPI/versioned JSON-Schema event-registry validation** | `EIP_MIRROR.md` line 4156-4157 | Blocking CI check that every event referenced by flow/code exists in the AsyncAPI/JSON-Schema registry | Same mechanism as the event contract lint gate above (EVT-001 invariant) |
 | **Scenario-matrix validator** | `EIP_MIRROR.md` lines 4158-4165 | Reject any O value for a §9.1-listed category; any N value without a G.4 per-module justification; any forbidden no-screen LOC/A11Y waiver on localization/shared-UI/mobile-qualification modules; any PERF/Load inconsistency in either direction | Reuses/extends MOD-000's `validate_catalog.py` — that tool already does an equivalent check for MOD-000's own catalog; MOD-001 must generalize it to validate *any* module's catalog, since this is the tool later modules' Scenario Reviews depend on |
 | **External-gate consistency validator** | `EIP_MIRROR.md` lines 4166-4172 | Assert §20 registry External == §21 card External gates == §22.0 binding set; validate Gate class/Gated-capability metadata; reject a SOFTWARE_ONLY edge lacking durable non-use proof, or whose dependent consumes an unresolved gate's named capability | New tool — MOD-000's own `STATUS.md` "Gated-capability non-use evidence" field is the manual precursor; MOD-001 must make this mechanical |
@@ -554,6 +559,8 @@ own re-search this table invited turned up real gaps:**
 | **`RUNBOOK.md`** | EIP card's own Required-outputs text (`EIP_MIRROR.md` line 4180-4181: "the module RUNBOOK.md where a domain is owned") — MOD-001 owns GOV-01 (line 11817) and `RB-GOV-01` (line 22386) | A real runbook document for `RB-GOV-01` ("bad deployment/schema/config release rollback") with the evidence-contract fields TSD names | `knowledge/03-Modules/MOD-001/RUNBOOK.md` (new); ties to GOV-01-R05/R06 |
 | **CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness** | `EIP_MIRROR.md` lines 4121-4124: "CI/control checks validate all six TSD §24.1 architecture gates, **Veyro project-agent definitions, model aliases/MR evidence**, .claude/rules syntax/path scopes/conflicts..." — MR-evidence field list per §4.1 (`EIP_MIRROR.md` lines 1095-1100): task class, lifecycle role, risk triggers, intended family alias, resolved model identity, agent/session ID, verdict (7 fields) | A validator distinct from SCN-075's runtime-substitution test: (1) **reachability** — every registered implementation agent is named by at least one escalation path in `.claude/agents/*.md` (the exact class of defect `BUG-030` was — an agent whose escalation text silently failed to name it, per `BUG_REGISTRY.md`'s own text, not a reference to a nonexistent agent); (2) dangling-reference — no escalation path names an agent that doesn't exist; (3) MR evidence records carry all 7 required fields, structurally complete — **corrected, Scenario Review round 5 P1-2/P1-3: the original description here conflated (1) with (2) and understated (3)'s field count as 4** | `IMPLEMENTATION.md` §3 (`tools/validate_agent_definitions.py`, added round 5 P1-4); SCN-MOD001-120 |
 | **Appendix H.1 manifest completeness** | `EIP_MIRROR.md` lines 20597-20601: manifest "must also record capability dependency IDs, per-gap resolution-attempt counters/budget evidence, lifecycle review state and rollback target where applicable" | `evidence/module-capabilities.yaml` must carry these four fields (explicit N/A with rationale where genuinely inapplicable, matching the file's own existing convention for `required_rule_ids` etc.) | `evidence/module-capabilities.yaml`; SCN-MOD001-121 |
+| **Sensitive-logging lint** (added, Scenario Review round 6, P1-1) | `EIP_MIRROR.md` lines 4267-4271 (card's mandatory Security-scope baseline: "sensitive logging"); `IMPLEMENTATION.md` §6 | No secret/PII-shaped pattern in log statements — a real, buildable static check, distinct from SCN-029's secret-scanning (which scans committed files, not log statements) | `IMPLEMENTATION.md` §1/§3 (`tools/validate_sensitive_logging.py`); SCN-MOD001-122 |
+| **Abuse-negative fixture harness** (added, Scenario Review round 6, P1-1) | `EIP_MIRROR.md` lines 4267-4271 (card's mandatory Security-scope baseline: "abuse-negative scenarios"); `IMPLEMENTATION.md` §6 | The fixture pattern/harness later domain modules will build real abuse scenarios on top of (MOD-001's own obligation is the harness, not business-flow-specific abuse content) | `IMPLEMENTATION.md` §1/§3 (`tools/abuse_negative_fixture_harness.py`); SCN-MOD001-123 |
 
 This table is not claimed exhaustive even now. A future session (or a
 further Scenario Review round) should re-search both mirrors for

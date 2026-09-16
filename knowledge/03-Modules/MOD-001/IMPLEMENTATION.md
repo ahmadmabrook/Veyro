@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 5 — added the agent-definition/MR-evidence validator and ADR-conformance check to §1's tools inventory and §3's pipeline-stage table)
+updated: 2026-09-16 (Scenario Review round 6 — added the idempotency-contract lint, sensitive-logging lint, and abuse-negative harness tools; added §12 for GOV-01-R07/R08's mobile-release/lifecycle mechanisms)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -79,7 +79,16 @@ Veyro/
 │   ├── shared/                     #   Multiplatform; commonMain holds
 │   │   └── src/commonMain/         #   shared logic/UI, iosMain/androidMain
 │   ├── iosApp/                     #   hold native adapters only
-│   └── androidApp/
+│   ├── androidApp/
+│   ├── TOOLCHAIN_MATRIX.md         # NEW, §12 (GOV-01-R07) — pinned
+│   │                               #   Kotlin/KMP/Compose/Gradle/Xcode/AGP
+│   │                               #   compatibility matrix
+│   └── RELEASE_POLICY.md           # NEW, §12 (GOV-01-R07) — min-supported-
+│                                   #   version/forced-update/kill-switch
+│                                   #   policy, crash-monitoring/remote-
+│                                   #   config integration points
+├── RELEASE_TRAIN.md                # NEW, §12 (GOV-01-R08) — release-train
+│                                   #   cadence + changelog convention
 ├── contracts/                      # NEW — cross-service shared schemas:
 │   ├── openapi/                    #   OpenAPI specs (permission lint,
 │   ├── events/                     #   screen contract lint inputs);
@@ -107,6 +116,21 @@ Veyro/
     ├── validate_baseline_binding.py     # generalizes verify_baselines.py
     ├── validate_external_gates.py       # new (§20/§21/§22.0 consistency)
     ├── validate_appendix_i.py           # new (invariant/runbook traceability)
+    ├── validate_sensitive_logging.py    # new, Scenario Review round 6 P1-1
+    │                                    #   (SCN-122: card security baseline)
+    ├── abuse_negative_fixture_harness.py # new, Scenario Review round 6 P1-1
+    │                                    #   (SCN-123: card security baseline)
+    ├── validate_idempotency_contract.py # new, Scenario Review round 6 P0-1
+    │                                    #   (SCN-016: the card's 6-element
+    │                                    #   idempotency-contract lint —
+    │                                    #   key-tuple scoping, retention
+    │                                    #   window, stored-hash field, 409
+    │                                    #   code reference, command_id
+    │                                    #   propagation, provider-derivative
+    │                                    #   field — distinct from SCN-016's
+    │                                    #   own runtime dedup/409 behavior
+    │                                    #   check, which needs no separate
+    │                                    #   tool)
     ├── validate_agent_definitions.py    # new, Scenario Review round 5 P1-4
     │                                    #   (SCN-120: reachability +
     │                                    #   dangling-reference check over
@@ -167,6 +191,9 @@ jobs (reusing the existing GitHub remote):
 | Canary/rollout with SLO/guardrail monitoring | After staging gates pass | Staging environment | Promote/rollback decision | Yes | N/A (needs staging) | Rollback-trigger log | Automated rollback trigger tied to real guardrail signals, not a manually-callable endpoint |
 | Promote or rollback; publish release metadata | End of pipeline | Canary result | Release-evidence record (`RB-GOV-01` field set) | Yes | N/A | Release-evidence artifact | N/A |
 | Domain contract uniqueness lint | Every push/PR, once >1 domain exists | All domains' contracts | Pass/fail + cross-domain conflict report | Yes, once applicable | `tools/validate_architecture_gates.py` locally | Named conflicting-domain-pair report | Runs against the full committed contract set, not a partial local view |
+| **Sensitive-logging lint (added, Scenario Review round 6, P1-1)** | Every push/PR | Source tree (log statements) | Pass/fail + named pattern-class report | Yes | `tools/validate_sensitive_logging.py` locally (SCN-MOD001-122) | Named file/line + secret- or PII-pattern-class report | Runs against the full committed source tree, not a partial local view |
+| **Abuse-negative fixture harness (added, Scenario Review round 6, P1-1)** | Once a later domain module builds real abuse-scenario content on top of it | Synthetic abusive/legitimate request-shape fixtures | Pass/fail classification | Yes, once applicable | `tools/abuse_negative_fixture_harness.py` locally (SCN-MOD001-123) | Classification report | The harness itself is MOD-001's obligation; fixture *content* for specific business flows is a later domain module's obligation, same split as the offline-fixture pattern above |
+| **Idempotency-contract lint (added, Scenario Review round 6, P0-1)** | Every push/PR touching a command declaration for an externally-retryable mutation | Command/endpoint declaration | Pass/fail + named-missing-element report | Yes | `tools/validate_idempotency_contract.py` locally (SCN-MOD001-016 part a) | Named missing-element report (key-tuple scoping, retention window, stored-hash field, 409-code reference, command_id propagation, or provider-derivative field) | Runs against the actual committed command declaration, not a developer's local, possibly-stale copy — same pattern as the API/event schema-compatibility row above |
 | **Agent-definition/model-alias/MR-evidence check (added, Scenario Review round 5, P1-4)** | Every push/PR touching `.claude/agents/**`, plus every CI run for MR-evidence content | `.claude/agents/*.md` escalation text; MR evidence records | Pass/fail + named-defect report | Yes | `tools/validate_agent_definitions.py` locally (SCN-MOD001-120) | Named unreachable-agent, dangling-reference, or missing-MR-field report | Runs against the full committed agent-definition set, not a partial local view — distinct from the TSD §24.1 architecture gates in §4 below, since this checks EIP §4.1's own routing-evidence requirement, not a data/schema architecture rule |
 | **ADR conformance check (added, Scenario Review round 5, P1-4)** | Every push/PR | `ADR_CONFORMANCE.md`, the module's own API surface and migration harness | Pass/fail per mapped ADR | Yes, once applicable | `tools/validate_adr_conformance.py` locally (SCN-MOD001-119) | Named ADR-nonconforming-change report | Runs against the actual committed API/migration code, not `ADR_CONFORMANCE.md`'s own prose claim |
 
@@ -383,3 +410,54 @@ hash-pinned in `PROJECT_INDEX.md` (manifest hash `c96f77ab...`,
 re-verified via `verify_baselines.py` this session, PASS). No action
 needed on this half; recorded here so it isn't mistaken for an open
 item.
+
+## 12. Mobile release/version and release-lifecycle foundations (GOV-01-R07/R08, added Scenario Review round 6 P1-2)
+
+**Corrected (Scenario Review round 6, P1-2): GOV-01-R07's and
+GOV-01-R08's own "Implementation obligations" text in `REQUIREMENTS.md`
+never became a concrete file/CI-stage plan here — twelve scenarios
+(SCN-050/051/052/055/074/099/100/101/107/108/115/117) depended on
+mechanisms this file never named.** Fixed:
+
+**GOV-01-R07 (mobile release/version foundations):**
+- `mobile/TOOLCHAIN_MATRIX.md` (new, §1 topology) — the pinned
+  Kotlin/KMP/Compose/Gradle/Xcode/AGP toolchain compatibility matrix,
+  authored before real mobile code exists so MOD-006 inherits a fixed
+  target; referenced from the CI workflow file, per
+  `REQUIREMENTS.md`'s own "Evidence obligations" text.
+- `mobile/RELEASE_POLICY.md` (new, §1 topology) — the documented
+  minimum-supported-version, forced-update, and kill-switch policy
+  (a policy document, not the enforcement code — MOD-006 owns the real
+  mobile app that enforces it).
+- **CI runner-assignment convention** (new row, §3 pipeline table
+  below): Android jobs pinned to Linux runners, iOS jobs pinned to
+  macOS/Xcode runners, per TSD §24.3.
+- **Common-code-change path-filter rule** (new row, §3 pipeline table
+  below): a CI path filter that triggers both platforms' regression
+  suites whenever a change touches serialization/local-schema/sync/
+  auth/routing/shared-Design-System paths — tested by SCN-100/101's
+  synthetic common-code-change fixture.
+- **Crash-monitoring/remote-config integration points**: `IMPLEMENTATION.md`
+  §2's environment-boundary table names the QA/staging environments
+  these integrate with; the integration *point* (a documented interface
+  MOD-006 will wire a real crash/remote-config SDK into) lives in
+  `mobile/RELEASE_POLICY.md` above — no crash-monitoring/remote-config
+  *product*, since none exists before MOD-006.
+
+**GOV-01-R08 (release lifecycle):**
+- `RELEASE_TRAIN.md` (new, §1 topology, repo root) — the release-train
+  cadence convention and the changelog generation/maintenance
+  convention, wired to the release pipeline (GOV-01-R05's own
+  `RB-GOV-01` evidence-contract fields already named in `RUNBOOK.md`).
+- **Lifecycle-stage field** (extends `RUNBOOK.md`'s existing
+  release-evidence field set): every release-evidence record carries a
+  `lifecycle_stage` field (`beta`/`GA`/`deprecated`), and a lint (new
+  row, §3 pipeline table below) rejects a release-evidence record with
+  no lifecycle-stage field or an out-of-order stage transition
+  (`GA`→`beta` without an explicit deprecation-then-rerelease path).
+
+| Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
+|---|---|---|---|---|---|---|---|
+| **Mobile CI runner assignment (GOV-01-R07)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux, iOS jobs on macOS/Xcode | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair | Runner assignment pinned in the committed workflow file, not a developer's local runner choice |
+| **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
+| **Release-lifecycle-stage lint (GOV-01-R08)** | Every release | Release-evidence record | Pass/fail + named-defect report | Yes | Same lint run locally against a synthetic record | Named missing-field or out-of-order-transition report | Runs against the actual committed release-evidence record, not a developer's local draft |

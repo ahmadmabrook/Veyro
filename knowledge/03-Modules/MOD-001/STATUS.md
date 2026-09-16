@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-16 (Scenario Review round 5 ran, BLOCKED, all P0/P1 remediated same session — round 6 independent confirmation still pending, see `SCENARIOS.md` §5)
+updated: 2026-09-16 (Scenario Review round 6 ran, BLOCKED, all P0/P1 remediated same session — round 7 independent confirmation still pending, see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -105,18 +105,25 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       remediation before Definition of Ready (documentation
       propagation gaps this session's own remediation addresses below;
       ADR-005 condition 4's model-identity gap remains a disclosed,
-      `BUG-027`-class residual, not closable this session).
+      `BUG-027`-class residual, not closable this session). **Corrected
+      (Scenario Review round 6, P1-4): that review's own P2-1 finding
+      (`veyro-backend-engineer`/`veyro-infra-sre-engineer` unreachable
+      from any escalation path) had never been named here or in
+      `BUG_REGISTRY.md` — filed as `BUG-031`, OPEN, non-blocking for
+      Definition of Ready (must close before real `backend/**`/
+      `infra/**` implementation begins).**
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
-      (P0=2, P1=4)** (see `SCENARIOS.md` §5 for the current round's
-      exact P0/P1/P2/Editorial counts and findings — not restated here,
-      per the lesson every round of this remediation has now taught
-      about facts restated in more than one place going stale). All
-      five rounds' findings remediated in the same session they were
-      found, to the extent fixable without further owner action.
-      **Round 5's own remediation has not yet been independently
-      confirmed — that confirmation is round 6's own subject.**
+      (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4)** (see `SCENARIOS.md`
+      §5 for the current round's exact P0/P1/P2/Editorial counts and
+      findings — not restated here, per the lesson every round of this
+      remediation has now taught about facts restated in more than one
+      place going stale). All six rounds' findings remediated in the
+      same session they were found, to the extent fixable without
+      further owner action. **Round 6's own remediation has not yet
+      been independently confirmed — that confirmation is round 7's
+      own subject.**
 - [ ] Definition of Ready — **not yet reached.** Explicitly gated on an
       independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
       with P0=0/P1=0 — see `SCENARIOS.md` §5's current round for what

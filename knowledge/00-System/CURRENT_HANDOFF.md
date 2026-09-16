@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-16 (chunk 34 — MOD-001 Scenario Review round 5 ran, returned BLOCKED, all P0/P1 findings remediated same session; Definition of Ready explicitly NOT evaluated per the owner's own review-budget rule, since round 5 itself returned P0/P1. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-6 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md` and `SCENARIOS.md` §5 — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-16 (chunk 35 — MOD-001 Scenario Review round 6 ran, returned BLOCKED, all P0/P1 findings remediated same session; Definition of Ready explicitly NOT evaluated per the owner's own review-budget rule, since round 6 itself returned a P0. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-7 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md` and `SCENARIOS.md` §5 — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -59,8 +59,75 @@ summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-31-2026-09-13-mod001-activated-bug028-found.md`.**
 **Sixteenth application (2026-09-16, chunk 34): chunk 32 compressed to a
 summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-32-2026-09-15-mirrors-gov01-catalog-rounds1-3.md`**
-— chunks 34 and 33 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-32-2026-09-15-mirrors-gov01-catalog-rounds1-3.md`.**
+**Seventeenth application (2026-09-16, chunk 35): chunk 33 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-33-2026-09-15-round4-remediation.md`**
+— chunks 35 and 34 are now the 2 kept in full.
+
+## What happened chunk 35, 2026-09-16 — MOD-001 Scenario Review round 6: round 6 returned BLOCKED (P0=1, P1=4, P2=6, Editorial=5), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 6 itself returned a P0
+
+Continuation of chunk 34's own pause point — round 6 had not yet run
+when chunk 34 was written. The mandated pre-review durable-state check
+found `MANUAL_QA.md`'s scenario-to-manual-surface mapping still stopped
+at `SCN-121`, missing the two scenarios round 5 added (`SCN-122`/`123`)
+— fixed before dispatch (committed `63dbcb5`).
+
+**Round 6** (fresh-context `veyro-scenario-reviewer`, Opus, explicitly
+instructed not to inherit round 5's conclusions): independently
+re-derived coverage from source and confirmed round 5's remediation
+substantively held on every point checked (all 124 detail blocks
+present with no duplicates/gaps, the category matrix matches every
+detail-block tag, `SCN-118`'s tier fix and `SCN-120`'s reachability
+rewrite both held, `MANUAL_QA.md` covers all 124, no file claims
+MOD-001 is Ready). **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.**
+P0=1, P1=4, P2=6, Editorial=5.
+
+The P0: the card's own mandatory idempotency-contract lint (six named
+elements — key-tuple scoping, retention window, stored-hash field, the
+stable 409 code, `command_id` propagation, provider-idempotency
+derivatives) had no scenario that actually ran a lint — the one linked
+scenario (`SCN-016`) tested only runtime dedup behavior of an
+already-well-formed endpoint, and `IMPLEMENTATION.md` had zero mentions
+of "idempot" anywhere. The four P1s: round 5's own two new scenarios
+(`SCN-122`/`123`) had no implementation mechanism, the identical defect
+round 5's own P1-4 had just fixed for a *different* pair of scenarios in
+the same session that created these two; GOV-01-R07's and GOV-01-R08's
+"Implementation obligations" text had never become a concrete
+file/CI-stage plan, leaving twelve scenarios with no named mechanism;
+two scenarios (`SCN-071`/`072`) were classified Optional/ALT in
+violation of §9.1's own rule that Required is rule-derived from tracing
+to a Critical requirement, the same shape round 1 already fixed for two
+sibling scenarios but never applied here; and `BUG-030`'s exact defect
+class (an orphaned agent nothing routes to) is independently confirmed
+still live today for `veyro-backend-engineer`/`veyro-infra-sre-engineer`
+— a disposition for this already existed in a prior review's own
+findings but had never been propagated to `BUG_REGISTRY.md` (which
+still claimed "0 open P1 bugs") or `STATUS.md`'s gate checklist. Full
+finding-by-finding detail and remediation: `SCENARIOS.md` §5's round-6
+entry, not restated here.
+
+**All P0/P1 findings remediated the same session**: `SCN-016` split into
+a lint half and a runtime half; `SCN-071`/`072` reclassified Required
+(HP and REC respectively — catalog total unchanged at 124, now 124
+Required + 0 Optional); five new tools added to `IMPLEMENTATION.md`'s
+inventory and pipeline table (idempotency-contract lint,
+sensitive-logging lint, abuse-negative fixture harness) plus a new §12
+naming GOV-01-R07/R08's mobile-release/lifecycle mechanisms
+(`mobile/TOOLCHAIN_MATRIX.md`, `mobile/RELEASE_POLICY.md`,
+`RELEASE_TRAIN.md`, 3 new CI stages); `BUG-031` filed (P1, OPEN,
+non-blocking for Definition of Ready, must close before real
+`backend/**`/`infra/**` implementation begins) in `BUG_REGISTRY.md` and
+cross-referenced in `STATUS.md`/`MODEL_ROUTE.md`. **Definition of Ready
+was again explicitly NOT evaluated** — round 6 itself returned a P0, so
+self-declaring Ready or proceeding to the DoR checklist would violate
+the owner's own review-budget rule directly.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 7**,
+to confirm round 6's remediation actually held — not implementation,
+not MOD-002, not a self-granted Ready determination.
 
 ## What happened chunk 34, 2026-09-16 — MOD-001 Scenario Review round 5: round 5 returned BLOCKED (P0=2, P1=4, P2=11, Editorial=4), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 5 itself returned P0/P1
 
@@ -131,88 +198,7 @@ Next legally allowed action: an independent Scenario Review round 6**,
 to confirm round 5's remediation actually held — not implementation,
 not MOD-002, not a self-granted Ready determination.
 
-## What happened chunk 33, 2026-09-15 — MOD-001 Scenario Review round 4 + Definition-of-Ready determination: round 4 returned BLOCKED (P0=2, P1=8, P2=9, Editorial=4), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 4 itself returned P0/P1
-
-Continuation of chunk 32's own pause point — round 4 had not yet run
-when chunk 32 was written. This chunk's mandate, stated verbatim by the
-owner: run a genuinely fresh-context `veyro-scenario-reviewer` (Opus)
-round that "must not inherit the previous review's conclusions," then
-apply an explicit review-budget rule: **if round 4 returns P0=0 and
-P1=0, proceed to Definition of Ready; if it returns any P0 or P1,
-remediate only the actual findings, update durable evidence, do NOT
-begin implementation, do NOT self-declare Ready, and report that
-another independent Scenario Review is required.**
-
-**Round 4 verdict: BLOCKED — P0=2, P1=8, P2=9, Editorial=4.** Full
-finding-by-finding detail lives in `SCENARIOS.md` §5 (Review Log), not
-restated here per this file's own repeated lesson about duplicated
-facts going stale. The two P0s: (1) the second (APPROVED) independent
-critical-engineer review had genuinely run via a real Agent dispatch
-earlier in this session's history, but its result was never persisted
-to a durable evidence file — only referenced in prose across
-`STATUS.md`/`SCENARIOS.md`/`CURRENT_STATE.md`/`CURRENT_HANDOFF.md`,
-leaving a Definition-of-Ready-blocking condition resting on no durable
-record; (2) after round 3's remediation had already changed
-`SCN-MOD001-104`/`105`'s status to `EXECUTED — PASS`, that fact was
-never propagated to `SCENARIOS.md` §0/§4's, `STATUS.md`'s, and
-`TEST_RESULTS.md`'s own blanket "no scenario marked PASS" claims — a
-direct, independently-caught contradiction. The 8 P1s spanned:
-category-matrix mistags (SCN-112/117), a model-tier misassignment
-(SCN-109/110 relabeled from `veyro-implementer`/Sonnet to
-`veyro-security-reviewer`/Opus), stale "registration blocked" language
-in `MODEL_ROUTE.md` and a stale scenario-count restatement in
-`CURRENT_STATE.md`, a substantive Ready-condition citation error (this
-session had been treating the generic EIP §21.2 card boilerplate as
-MOD-001's real Ready condition, when Appendix F's MOD-001-specific row
-actually overrides it with different text — the EIP's own changelog
-confirms the generic condition was removed for MOD-001/non-UI modules;
-caught by the reviewer directly grepping Appendix F rather than trusting
-the prior citation), two entirely un-authored Appendix I obligations
-(ADR-004/ADR-015 conformance, and the `RB-GOV-01` runbook), and
-incomplete coverage of two new obligations (an agent-definition/MR-
-evidence validator, and Appendix H.1's manifest-completeness fields).
-
-**All P0/P1 findings remediated the same session, per the mission's
-explicit "remediate only the actual findings" instruction — no P2/
-Editorial addressed this round, since the rule that unlocks that work
-requires P0=0/P1=0, which round 4 did not return.** P0-1 fixed by
-reconstructing and persisting
-`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`
-from what that dispatch had actually returned, and re-framing the
-original review file as round 1, superseded by round 2's APPROVED. P0-2
-fixed by adding explicit carve-outs in all four locations distinguishing
-the routing-drill's real executed evidence from MOD-001's own (still
-zero-PASS) product-implementation scenarios. The eight P1s fixed via:
-category-matrix/tier corrections in `SCENARIOS.md`; stale-text removal
-in `MODEL_ROUTE.md`/`CURRENT_STATE.md`; a substantial rewrite of
-`REQUIREMENTS.md` §4 plus new `IMPLEMENTATION.md` §10 (import/validation
-contract design) and §11 (documenting the already-satisfied half of the
-Appendix F precondition); two new files, `ADR_CONFORMANCE.md` and
-`RUNBOOK.md`, plus corresponding `REQUIREMENTS.md` §3 obligation rows;
-four new scenarios (`SCN-MOD001-118` through `121`, "Group N") covering
-the agent-definition/MR-evidence validator and Appendix H.1 manifest
-completeness, with `MANUAL_QA.md` §2 extended to map all four to a
-manual-QA surface; and `evidence/module-capabilities.yaml` extended with
-the four Appendix H.1 fields it was previously missing entirely
-(`capability_dependency_ids`, `resolution_attempt_budget_evidence`,
-`lifecycle_review_state`, `rollback_target`).
-
-**Definition of Ready was explicitly NOT evaluated this turn**, per the
-owner's own review-budget rule — round 4 itself returned P0/P1, so
-self-declaring Ready or proceeding to the DoR checklist would violate
-the instruction directly. All 4 governance validators re-run PASS
-(`verify_baselines.py` 4/4 hashes match; `validate_capabilities.py` PASS
-against MOD-000's manifest — no MOD-001-specific automated capability
-validator exists yet, consistent with MOD-001 being planning-stage with
-no implementation to validate against). All round-4 remediation changes
-committed (`d56576c`) and pushed; local HEAD and `origin/main` confirmed
-identical.
-
-**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
-Ready. Implementation has not started and is not authorized to start.
-Next legally allowed action: an independent Scenario Review round 5**,
-to confirm round 4's remediation actually held — not implementation, not
-MOD-002, not a self-granted Ready determination.
+## What happened chunk 33, 2026-09-15 (compressed 2026-09-16, seventeenth retention-rule application) — MOD-001 Scenario Review round 4 + Definition-of-Ready determination: round 4 returned BLOCKED (P0=2, P1=8, P2=9, Editorial=4), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 4 itself returned P0/P1. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-33-2026-09-15-round4-remediation.md`.
 
 ## What happened chunk 32, 2026-09-15 (compressed 2026-09-16, sixteenth retention-rule application) — MOD-001 planning: mirrors landed, GOV-01 traced, module spec + 118-scenario catalog authored, three independent Scenario Review rounds (each BLOCKED, each remediated), `ADR-005` registered 3 new agents, `BUG-029`/`BUG-030` found and closed, routing drill corrected and PASS, critical-engineer definition APPROVED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-32-2026-09-15-mirrors-gov01-catalog-rounds1-3.md`.
 
