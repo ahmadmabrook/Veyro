@@ -2,7 +2,7 @@
 doc: MOD-001_MODEL_ROUTE
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-15 (Scenario Review round 4 propagation-gap count corrected; no routing-state change this round)
+updated: 2026-09-16 (Scenario Review round 5 propagation-gap count corrected; no routing-state change this round)
 ---
 
 # MOD-001 — Model Route (per-module)
@@ -82,7 +82,7 @@ real `Agent` call with `model: opus` set explicitly, not self-decided.
 routing (status as of the most recent Scenario Review round — see
 `SCENARIOS.md` §5 for the authoritative, current account; not
 restated in full here to avoid the exact propagation-gap species that
-recurred across all four review rounds to date):**
+recurred across all five review rounds to date):**
 (1) the three new agent files exist and are registered;
 (2) independent review of the critical-engineer definition/routing has
 run — **two rounds**, round 1 (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`,

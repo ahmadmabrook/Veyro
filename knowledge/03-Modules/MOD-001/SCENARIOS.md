@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-15 (Scenario Review round 4 remediation, plus round 5 pre-review check found round 4's own Review Log entry had never been added — fixed, see §5)
+updated: 2026-09-16 (Scenario Review round 5 ran, BLOCKED, P0/P1 remediated — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -55,9 +55,13 @@ once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **122 detail
-blocks** (001-121 plus 021b) — 120 Required + 2 Optional (ALT) —
-comfortably above every applicable floor.
+here rather than restate a number).** Current total: **124 detail
+blocks** (001-121 plus 021b, 122, 123) — 122 Required + 2 Optional
+(ALT) — comfortably above every applicable floor. **Round 5 (P0-2)
+added 122/123** to close a genuine coverage gap on the card's mandatory
+security baseline (sensitive logging, abuse-negative scenarios) that
+this section's own "every requirement... needs its own real scenario"
+claim had been false against until this round.
 
 ## 1. Category coverage matrix
 
@@ -90,12 +94,12 @@ round 2's remediation, not merely re-asserted:
 | HP | R | 001, 010, 023, 036, 041, 048, 055 |
 | ALT | O | 071, 072 |
 | VAL | R | 002, 024, 037 |
-| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109 |
+| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109, 123 |
 | BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 110, 116, 118 |
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
 | TEN | R | 007, 014, 096 |
-| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -1353,7 +1357,14 @@ Negative/failure behavior IS part (c)'s own subject.
 
 ### Group N — Scenario Review round 4 remediation: import/validation contract, ADR conformance, agent-definition/MR validator, manifest completeness (P1-5, P1-6, P1-7, P1-8)
 
-**SCN-MOD001-118 · BND · Blocker · Import/validation contract, Appendix F Ready precondition (P1-5) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-118 · BND · Blocker · Import/validation contract, Appendix F Ready precondition (P1-5) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Corrected (Scenario Review round 5, P1-1): this scenario proves an
+actual Ready precondition (Appendix F) — Blocker-severity content
+routed to Sonnet with no dual-tier carve-out is the exact tier-
+convention violation round 4 itself fixed for SCN-109/110 in the same
+session it introduced this scenario. Retitled to
+`veyro-security-reviewer`/Opus, matching every other unqualified
+Blocker-severity scenario in this catalog.**
 Source: `EIP_MIRROR.md` lines 18033-18037 ("Ready requires access to
 the canonical approved UX registry and the import/validation
 contract"); the contract's own design is in `IMPLEMENTATION.md` §10.
@@ -1379,18 +1390,44 @@ that stops reading the old shape" rule exactly. Evidence: the
 conformance check's own pass/fail per ADR.
 
 **SCN-MOD001-120 · SEC · Blocker · CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness (P1-7) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Corrected (Scenario Review round 5, P1-2/P1-3): part (a) tested the
+wrong defect shape, and part (b)'s field list was under-derived from
+§4.1's own text — both fixed below.**
 Source: `EIP_MIRROR.md` lines 4121-4124 ("CI/control checks validate...
-Veyro project-agent definitions, model aliases/MR evidence..."). Steps:
-(a) a synthetic `.claude/agents/*.md` fixture whose escalation text
-names an agent that does not exist in the registered agent list —
-expected: denial citing the dangling reference (**this is exactly the
-`BUG-030` defect class — an agent whose routing text silently fails —
-made into a mechanical, CI-enforced check rather than something only an
-independent review happens to catch**); (b) a synthetic MR evidence
-record missing a required field (task class, agent, model, verdict) —
-expected: denial citing the missing field. Evidence: two denial
-reports. Companion positive: a well-formed agent definition and a
-complete MR record both pass.
+Veyro project-agent definitions, model aliases/MR evidence...") and
+§4.1's own MR-evidence field list (`EIP_MIRROR.md` lines 1095-1100:
+task class, lifecycle role, risk triggers, intended family alias,
+resolved model identity/tier runtime evidence, agent/session ID,
+verdict — 7 fields, not 4). Steps: (a) **reachability, not dangling-
+reference** — walk every registered implementation agent
+(`veyro-implementer`, `veyro-backend-engineer`, `veyro-infra-sre-engineer`,
+`veyro-critical-engineer`) against the full set of `.claude/agents/*.md`
+escalation text, and confirm each is named by at least one escalation
+path from somewhere. Expected on a synthetic fixture where one
+registered agent is named by zero escalation paths (an *orphaned*
+agent, not a reference to a nonexistent one — **this is the actual
+`BUG-030` defect class per `BUG_REGISTRY.md`'s own text: `veyro-implementer.md`'s
+escalation list omitted `veyro-critical-engineer`, an omission, not a
+dangling pointer**): denial citing the unreachable agent by name. A
+dangling-reference check (an escalation path naming an agent that
+doesn't exist) is evaluated as a distinct, second condition on the same
+fixture set, since both are real defect classes worth catching, but
+reachability is the one that actually matches `BUG-030` and the one
+this scenario's own commentary claimed to test. (b) a synthetic MR
+evidence record missing one of the full 7 required fields (in turn:
+task class, lifecycle role, risk triggers, intended family alias,
+resolved model identity, agent/session ID, verdict) — expected: denial
+citing the specific missing field, for each of the 7. Evidence: the
+reachability report, the dangling-reference report, and 7 per-field
+denial reports. Companion positive: a well-formed agent-definition set
+(every registered agent reachable, no dangling references) and a
+complete 7-field MR record both pass. **Note for implementation:**
+`ROUTING_DRILL_2026-09-14.md`'s existing `MR-MOD001-*` records
+(003/004/005) predate this scenario and currently carry only 4 of the 7
+required fields (task class, agent, session id, verdict) — closing this
+gap for real MR evidence going forward, not just for this scenario's
+own synthetic fixtures, is tracked as part of this scenario's own
+Implementation Complete work, not a separate obligation.
 
 **SCN-MOD001-121 · OBS · Major · Appendix H.1 manifest completeness (P1-8) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Source: `EIP_MIRROR.md` lines 20597-20601 (the manifest "must also
@@ -1403,6 +1440,48 @@ the file's own existing convention for `required_rule_ids` etc.) — not
 silently absent. Evidence: the field-presence check's own report.
 Negative case: a synthetic manifest missing one of the four fields
 entirely (no key at all, not even an N/A) is denied.
+
+**Group O (added, Scenario Review round 5, P0-2): the card's mandatory
+Security-scope baseline (`EIP_MIRROR.md` lines 4267-4271) names
+"sensitive logging" and "abuse-negative scenarios" as controls, both of
+which `IMPLEMENTATION.md` §6 commits MOD-001 to building, and neither
+of which had a scenario — a false coverage claim in this file's own §0
+("every requirement, gate, and validator this module owns needs its
+own real scenario"). Fixed with two new scenarios:**
+
+**SCN-MOD001-122 · SEC · Blocker · Sensitive-logging lint (card
+security baseline, `IMPLEMENTATION.md` §6) · Automated ·
+veyro-security-reviewer/Opus · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 4267-4271 ("sensitive logging" is one of
+the card's mandatory security-baseline controls); `IMPLEMENTATION.md`
+§6 names the sensitive-logging lint as a real MOD-001 implementation
+obligation ("no secret/PII patterns in log statements — a real,
+buildable static check"), distinct from SCN-029's secret-scanning
+(which scans committed files, not log statements). Steps: run the lint
+against a synthetic log statement containing a secret-shaped pattern
+(an API-key-shaped string) and a PII-shaped pattern (an email address)
+interpolated directly into log text. Expected: both denied, citing the
+exact file/line and pattern class. Companion positive: a log statement
+using only a pre-redacted placeholder passes. Evidence: the lint's own
+denial/pass reports.
+
+**SCN-MOD001-123 · NEG · Major · Abuse-negative fixture pattern (card
+security baseline, `IMPLEMENTATION.md` §6) · Automated ·
+veyro-implementer/Sonnet · NOT EXECUTED**
+Source: `EIP_MIRROR.md` lines 4267-4271 ("abuse-negative scenarios" is
+one of the card's mandatory security-baseline controls);
+`IMPLEMENTATION.md` §6 distinguishes MOD-001's real obligation (build
+the fixture pattern/harness) from later domain modules' obligation
+(the actual abuse-scenario *content* for specific business flows) —
+the same split SCN-032 already established for the offline-fixture
+pattern. Steps: exercise the abuse-negative fixture harness itself (the
+thing later domain modules will build real abuse scenarios on top of —
+e.g. a rate-limit-shaped request-flood fixture, a parameter-tampering
+fixture) against a synthetic abusive-request-shape fixture and a
+synthetic legitimate one. Expected: the harness correctly distinguishes
+the abusive shape from the legitimate one, and a request-shape with no
+matching fixture rule fails closed (denied, not silently allowed).
+Evidence: the harness's own classification report.
 
 ## 4. Status
 
@@ -1821,6 +1900,92 @@ the DoR checklist would have violated that rule directly. The
 remediation's own internal consistency has not yet been independently
 confirmed — that confirmation is round 5's own subject.
 
+**Round 5 (2026-09-16):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 122 scenarios
+plus round 4's remediation, explicitly instructed not to inherit round
+4's conclusions. Independently re-derived coverage from source rather
+than trusting round 4's own "fixed" claims — confirmed round 4's
+remediation substantively held on every point it checked (all 122
+detail blocks exist with no duplicates/gaps, the category matrix
+matches every detail-block tag in all 25 rows for the first time, the
+Appendix H.1 fields are substantively populated not empty stubs,
+`MANUAL_QA.md` covers all 122 scenarios, the ADR-005 routing text in
+`veyro-implementer.md` matches the routing drill's verbatim quote,
+no file claims MOD-001 is Ready). **Verdict: `MOD-001 SCENARIO REVIEW
+BLOCKED`.** P0=2, P1=4, P2=11, Editorial=4. Findings and disposition:
+
+- P0-1: `REQUIREMENTS.md` §4 and `IMPLEMENTATION.md` §10 — both written
+  in round 4's own remediation — stated opposite things about whether
+  the Appendix F import/validation-contract design was done: §4 said
+  "NOT yet satisfied... has not yet closed" and "not yet a scenario"
+  in the same sentence that cited `SCN-118`, while §10 *is* that design,
+  already authored. **Fixed:** §4 rewritten to state plainly that the
+  design is closed (`IMPLEMENTATION.md` §10 documents it; `SCN-118`
+  tests it once a generator exists to run it against — the design
+  being done and the generator/scenario execution being future
+  Implementation Complete work are not the same claim, and the text now
+  says which is which); the Conclusion paragraph corrected to match.
+- P0-2: three controls in the card's mandatory Security-scope baseline
+  ("sensitive logging", "abuse-negative scenarios") — both explicit
+  MOD-001 implementation obligations per `IMPLEMENTATION.md` §6 — had
+  zero scenarios, directly contradicting §0's own "every requirement,
+  gate, and validator this module owns needs its own real scenario"
+  claim. **Fixed:** `SCN-MOD001-122` (sensitive-logging lint, SEC,
+  Blocker, Opus) and `SCN-MOD001-123` (abuse-negative fixture pattern,
+  NEG, Major, Sonnet — matching SCN-032's existing harness-pattern
+  precedent) added; §0's count and §1's category matrix updated.
+- P1-1: `SCN-118` (Blocker severity, an actual Appendix F Ready
+  precondition) was routed to `veyro-implementer`/Sonnet with no
+  dual-tier carve-out — the same tier-convention violation round 4
+  itself fixed for SCN-109/110 in the same session it introduced this
+  scenario. **Fixed:** retitled to `veyro-security-reviewer`/Opus.
+- P1-2: `SCN-120`'s part (a) tested a dangling-reference defect
+  (escalation text naming a nonexistent agent) while its own commentary
+  claimed to test "exactly the `BUG-030` defect class" — `BUG-030`'s
+  real defect was the inverse: an *orphaned* agent (`veyro-critical-engineer`)
+  that nothing routed to, an omission, not a dangling pointer. The same
+  omission-class defect is currently live for `veyro-backend-engineer`
+  and `veyro-infra-sre-engineer` (confirmed: neither is named anywhere
+  in `veyro-implementer.md`, per
+  `CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`'s own P2-1),
+  which the scenario as written would not catch. **Fixed:** part (a)
+  rewritten to test reachability (every registered implementation agent
+  named by at least one escalation path) as its own condition, with the
+  dangling-reference check kept as a distinct second condition rather
+  than conflated with it.
+- P1-3: `SCN-120`'s part (b) tested MR evidence against a 4-field list
+  (task class, agent, model, verdict) that does not match EIP §4.1's
+  own real 7-field requirement (task class, lifecycle role, risk
+  triggers, intended family alias, resolved model identity, agent/
+  session ID, verdict) — under which the drill's own existing
+  `MR-MOD001-*` evidence records are themselves incomplete. **Fixed:**
+  part (b) rewritten against the real 7-field list; a note added
+  flagging the existing MR-evidence records' own 4/7 gap as
+  Implementation Complete work this scenario's own execution will
+  close, not a separate, newly-discovered bug (no product code exists
+  yet for those records to test).
+- P1-4: round 4 added two new obligations (the agent-definition/MR-
+  evidence validator, the ADR-conformance check) and their scenarios,
+  but never added either to `IMPLEMENTATION.md`'s tools inventory (§1)
+  or CI pipeline-stage table (§3) — a scenario whose mechanism appears
+  in no implementation plan cannot be executed at Implementation
+  Complete. **Fixed:** `tools/validate_agent_definitions.py` and
+  `tools/validate_adr_conformance.py` added to §1's inventory and as new
+  rows in §3's pipeline-stage table (deliberately NOT added to §4's
+  seven-gate table, since neither is one of TSD §24.1's architecture
+  gates — they are EIP §4.1's own separate CI/control-check
+  requirement); `REQUIREMENTS.md`'s corresponding obligation rows
+  updated to point at the concrete tool paths instead of "New tool."
+- P2 (11) / Editorial (4): not addressed this round, per the mission's
+  own rule that P2/Editorial handling is gated on P0=0/P1=0, which
+  round 5 did not return. Carried forward, not hidden or downgraded —
+  full list in the round-5 dispatch's own findings, not restated here.
+
+**All P0/P1 findings from round 5 were remediated within the same
+session they were found.** Per the owner's explicit review-budget rule,
+Definition of Ready was again NOT evaluated after this remediation —
+round 5 itself had returned P0/P1.
+
 **MOD-001 Definition of Ready: not yet reached.** Gated on an
 independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
-P0=0/P1=0 — not yet obtained as of round 4's close.
+P0=0/P1=0 — not yet obtained as of round 5's close.

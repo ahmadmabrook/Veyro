@@ -2,7 +2,7 @@
 doc: MOD-001_REQUIREMENTS
 status: LIVE — DRAFT (planning stage, not yet independently reviewed)
 module: MOD-001
-updated: 2026-09-15 (Scenario Review round 4 — §4 rewritten to cite Appendix F's real MOD-001-specific Ready condition; §3 extended with ADR conformance/runbook/agent-definition-validator/Appendix H.1 obligation rows)
+updated: 2026-09-16 (Scenario Review round 5 — §4's self-contradictory import/validation-contract status resolved; §3's agent-definition/MR-evidence and ADR-conformance obligation rows pointed at their now-concrete tool paths)
 ---
 
 # MOD-001 — Requirements
@@ -550,9 +550,9 @@ own re-search this table invited turned up real gaps:**
 | Obligation | Source | What MOD-001 must build | Ties to |
 |---|---|---|---|
 | **Import/validation contract (Appendix F Ready precondition)** | `EIP_MIRROR.md` lines 18033-18037 (verbatim: "Ready requires access to the canonical approved UX registry and the import/validation contract") | A documented schema/interface (not the generator itself — that is Implementation Complete work) defining how the eventual `screen-contracts.yaml` generator will consume the canonical registry: which registry fields it reads (`id, module, name, phase, status, roles, ar, note` per the registry's own 8-field format), how it resolves a multi-domain screen to its owning module, and what a validation failure looks like | `IMPLEMENTATION.md` §10 (new); SCN-MOD001-118 |
-| **Appendix I: ADR-004 (REST/JSON+OpenAPI with surface BFFs) and ADR-015 (expand/migrate/contract schema evolution)** | `EIP_MIRROR.md` lines 21028, 21117 — both map MOD-001, both require "Module spec + tests/QA + `ADR_CONFORMANCE.md` + §18 ADR conformance PASS" | An `ADR_CONFORMANCE.md` record stating MOD-001's conformance state against both ADRs (ADR-004: MOD-001's own API surfaces, if any, follow REST/JSON+OpenAPI; ADR-015: the migration-safety harness itself follows expand/migrate/contract) | REQUIREMENTS.md §3 (DOM-001/DOM-002/etc.); SCN-MOD001-119 |
+| **Appendix I: ADR-004 (REST/JSON+OpenAPI with surface BFFs) and ADR-015 (expand/migrate/contract schema evolution)** | `EIP_MIRROR.md` lines 21028, 21117 — both map MOD-001, both require "Module spec + tests/QA + `ADR_CONFORMANCE.md` + §18 ADR conformance PASS" | An `ADR_CONFORMANCE.md` record stating MOD-001's conformance state against both ADRs (ADR-004: MOD-001's own API surfaces, if any, follow REST/JSON+OpenAPI; ADR-015: the migration-safety harness itself follows expand/migrate/contract) | `ADR_CONFORMANCE.md`; `IMPLEMENTATION.md` §3 (`tools/validate_adr_conformance.py`, added round 5 P1-4); SCN-MOD001-119 |
 | **`RUNBOOK.md`** | EIP card's own Required-outputs text (`EIP_MIRROR.md` line 4180-4181: "the module RUNBOOK.md where a domain is owned") — MOD-001 owns GOV-01 (line 11817) and `RB-GOV-01` (line 22386) | A real runbook document for `RB-GOV-01` ("bad deployment/schema/config release rollback") with the evidence-contract fields TSD names | `knowledge/03-Modules/MOD-001/RUNBOOK.md` (new); ties to GOV-01-R05/R06 |
-| **CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness** | `EIP_MIRROR.md` lines 4121-4124: "CI/control checks validate all six TSD §24.1 architecture gates, **Veyro project-agent definitions, model aliases/MR evidence**, .claude/rules syntax/path scopes/conflicts..." | A validator distinct from SCN-075's runtime-substitution test: checks that every `.claude/agents/*.md` file is well-formed (frontmatter fields present, referenced agents in escalation text actually exist) and that MR evidence records are structurally complete — the exact class of defect `BUG-030` was (a registered agent whose escalation text silently failed to route) | New tool; SCN-MOD001-120 |
+| **CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness** | `EIP_MIRROR.md` lines 4121-4124: "CI/control checks validate all six TSD §24.1 architecture gates, **Veyro project-agent definitions, model aliases/MR evidence**, .claude/rules syntax/path scopes/conflicts..." — MR-evidence field list per §4.1 (`EIP_MIRROR.md` lines 1095-1100): task class, lifecycle role, risk triggers, intended family alias, resolved model identity, agent/session ID, verdict (7 fields) | A validator distinct from SCN-075's runtime-substitution test: (1) **reachability** — every registered implementation agent is named by at least one escalation path in `.claude/agents/*.md` (the exact class of defect `BUG-030` was — an agent whose escalation text silently failed to name it, per `BUG_REGISTRY.md`'s own text, not a reference to a nonexistent agent); (2) dangling-reference — no escalation path names an agent that doesn't exist; (3) MR evidence records carry all 7 required fields, structurally complete — **corrected, Scenario Review round 5 P1-2/P1-3: the original description here conflated (1) with (2) and understated (3)'s field count as 4** | `IMPLEMENTATION.md` §3 (`tools/validate_agent_definitions.py`, added round 5 P1-4); SCN-MOD001-120 |
 | **Appendix H.1 manifest completeness** | `EIP_MIRROR.md` lines 20597-20601: manifest "must also record capability dependency IDs, per-gap resolution-attempt counters/budget evidence, lifecycle review state and rollback target where applicable" | `evidence/module-capabilities.yaml` must carry these four fields (explicit N/A with rationale where genuinely inapplicable, matching the file's own existing convention for `required_rule_ids` etc.) | `evidence/module-capabilities.yaml`; SCN-MOD001-121 |
 
 This table is not claimed exhaustive even now. A future session (or a
@@ -605,17 +605,27 @@ parts, neither of which is "generate screen-contracts.yaml":
    names, inferred routes or newly invented identifiers are not
    acceptable substitutes" — and it already is, durably, not merely
    asserted.
-2. **"The import/validation contract"** — NOT yet satisfied and NOT yet
-   a scenario: this is a real planning-stage deliverable (a documented
+2. **"The import/validation contract"** — **CLOSED this round (Scenario
+   Review round 4).** This is a planning-stage deliverable (a documented
    schema/interface defining how MOD-001's eventual
    `screen-contracts.yaml` generator will consume the canonical
    registry — what fields it reads, how it resolves multi-domain
-   screens, what a validation failure looks like) that must exist
-   *before* Ready, distinct from building the generator itself (which
-   is Implementation Complete work, per Appendix F's own explicit
-   carve-out). **This is a real gap this session found and has not yet
-   closed** — see the new obligation row in §3 and `SCN-MOD001-118`
-   (added this round) for the plan to close it.
+   screens, what a validation failure looks like), distinct from
+   building the generator itself (which is Implementation Complete
+   work, per Appendix F's own explicit carve-out). **Round 4 found the
+   contract's design missing and closed the gap by authoring it in
+   full: `IMPLEMENTATION.md` §10 documents the source registry's 8-field
+   format, the 6-step import procedure (read, filter to `phase ===
+   'V1'`, resolve surface, resolve owning module, multi-domain
+   resolution, validation-failure shape), and `SCN-MOD001-118` (added
+   round 4, `NOT EXECUTED` — it tests the generator that consumes this
+   design, which does not exist until implementation begins) specifies
+   the test that will prove the design against representative input
+   once that generator exists.**
+   The precondition is on the contract's *design* existing, per Appendix
+   F's own carve-out that the generator/lint itself is Implementation
+   Complete work — the design exists now; building and running the
+   generator against it remains correctly out of scope for Ready.
 
 **Zero canonical V1 registry screens resolve to MOD-001 as an *owned
 surface*, independently confirmed** against the design bundle's own
@@ -633,11 +643,11 @@ wrong was treating the *generic* boilerplate as MOD-001's Ready
 condition instead of Appendix F's real, MOD-001-specific one.
 
 **Conclusion:** MOD-001 owns zero screen-registry rows (unaffected).
-Its real Ready precondition on this axis is the import/validation
-contract's *design* (not yet done — tracked as a new gap, §3/SCN-118),
-plus the already-satisfied canonical-registry-checked-in requirement.
-Generating `screen-contracts.yaml` itself, with an explicit empty
-`MOD-001: []` entry once built, remains correctly planned as
-Implementation Complete work in `IMPLEMENTATION.md`, not a Ready
-precondition — that part of the original conclusion was already
-right.
+Its real Ready precondition on this axis — the import/validation
+contract's *design* (`IMPLEMENTATION.md` §10) plus the already-
+satisfied canonical-registry-checked-in requirement — is now
+**satisfied in full**, as of round 4's remediation. Generating
+`screen-contracts.yaml` itself, with an explicit empty `MOD-001: []`
+entry once built, remains correctly planned as Implementation Complete
+work in `IMPLEMENTATION.md`, not a Ready precondition — that part of
+the original conclusion was already right.

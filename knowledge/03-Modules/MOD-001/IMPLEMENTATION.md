@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-15 (Scenario Review round 4 — added §10 import/validation-contract design and §11 documenting the already-satisfied half of Appendix F's Ready precondition)
+updated: 2026-09-16 (Scenario Review round 5 — added the agent-definition/MR-evidence validator and ADR-conformance check to §1's tools inventory and §3's pipeline-stage table)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -107,6 +107,15 @@ Veyro/
     ├── validate_baseline_binding.py     # generalizes verify_baselines.py
     ├── validate_external_gates.py       # new (§20/§21/§22.0 consistency)
     ├── validate_appendix_i.py           # new (invariant/runbook traceability)
+    ├── validate_agent_definitions.py    # new, Scenario Review round 5 P1-4
+    │                                    #   (SCN-120: reachability +
+    │                                    #   dangling-reference check over
+    │                                    #   .claude/agents/*.md, plus the
+    │                                    #   7-field MR-evidence check per
+    │                                    #   EIP §4.1)
+    ├── validate_adr_conformance.py      # new, Scenario Review round 5 P1-4
+    │                                    #   (SCN-119: ADR-004/ADR-015
+    │                                    #   conformance per ADR_CONFORMANCE.md)
     └── generate_screen_contracts.py     # imports the canonical registry
 ```
 
@@ -158,6 +167,8 @@ jobs (reusing the existing GitHub remote):
 | Canary/rollout with SLO/guardrail monitoring | After staging gates pass | Staging environment | Promote/rollback decision | Yes | N/A (needs staging) | Rollback-trigger log | Automated rollback trigger tied to real guardrail signals, not a manually-callable endpoint |
 | Promote or rollback; publish release metadata | End of pipeline | Canary result | Release-evidence record (`RB-GOV-01` field set) | Yes | N/A | Release-evidence artifact | N/A |
 | Domain contract uniqueness lint | Every push/PR, once >1 domain exists | All domains' contracts | Pass/fail + cross-domain conflict report | Yes, once applicable | `tools/validate_architecture_gates.py` locally | Named conflicting-domain-pair report | Runs against the full committed contract set, not a partial local view |
+| **Agent-definition/model-alias/MR-evidence check (added, Scenario Review round 5, P1-4)** | Every push/PR touching `.claude/agents/**`, plus every CI run for MR-evidence content | `.claude/agents/*.md` escalation text; MR evidence records | Pass/fail + named-defect report | Yes | `tools/validate_agent_definitions.py` locally (SCN-MOD001-120) | Named unreachable-agent, dangling-reference, or missing-MR-field report | Runs against the full committed agent-definition set, not a partial local view — distinct from the TSD §24.1 architecture gates in §4 below, since this checks EIP §4.1's own routing-evidence requirement, not a data/schema architecture rule |
+| **ADR conformance check (added, Scenario Review round 5, P1-4)** | Every push/PR | `ADR_CONFORMANCE.md`, the module's own API surface and migration harness | Pass/fail per mapped ADR | Yes, once applicable | `tools/validate_adr_conformance.py` locally (SCN-MOD001-119) | Named ADR-nonconforming-change report | Runs against the actual committed API/migration code, not `ADR_CONFORMANCE.md`'s own prose claim |
 
 **No gate is certification theater** — every row above has a concrete
 input, output, and failure-evidence artifact. Several rows are correctly

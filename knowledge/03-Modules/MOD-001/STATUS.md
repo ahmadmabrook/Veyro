@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-15 (Scenario Review round 4 ran, BLOCKED, all P0/P1 remediated same session — round 5 independent confirmation still pending, see `SCENARIOS.md` §5)
+updated: 2026-09-16 (Scenario Review round 5 ran, BLOCKED, all P0/P1 remediated same session — round 6 independent confirmation still pending, see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -108,15 +108,15 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       `BUG-027`-class residual, not closable this session).
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
-      Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8)** (see
-      `SCENARIOS.md` §5 for the current round's exact P0/P1/P2/Editorial
-      counts and findings — not restated here, per the lesson every
-      round of this remediation has now taught about facts restated in
-      more than one place going stale). All four rounds' findings
-      remediated in the same session they were found, to the extent
-      fixable without further owner action. **Round 4's remediation has
-      not yet been independently confirmed — that confirmation is
-      round 5's own subject.**
+      Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
+      (P0=2, P1=4)** (see `SCENARIOS.md` §5 for the current round's
+      exact P0/P1/P2/Editorial counts and findings — not restated here,
+      per the lesson every round of this remediation has now taught
+      about facts restated in more than one place going stale). All
+      five rounds' findings remediated in the same session they were
+      found, to the extent fixable without further owner action.
+      **Round 5's own remediation has not yet been independently
+      confirmed — that confirmation is round 6's own subject.**
 - [ ] Definition of Ready — **not yet reached.** Explicitly gated on an
       independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
       with P0=0/P1=0 — see `SCENARIOS.md` §5's current round for what
