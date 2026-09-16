@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-15 (Scenario Review round 4, P1-7/P1-8 mapping added)
+updated: 2026-09-16 (Scenario Review round 6 pre-review check — SCN-122/123 mapping added, missing since round 5)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -95,3 +95,10 @@ mapping at all — fixed:**
 | SCN-119 (ADR-004/ADR-015 conformance) | 2. CI workflow behavior | §18 ADR-conformance check is a gate/lint, same class as surface 2's other CI checks |
 | SCN-120 (agent-definition/MR-evidence validator) | 9. Model-routing qualification drill | tests agent-definition files and routing-evidence integrity, the same subject matter as surface 9 |
 | SCN-121 (Appendix H.1 manifest completeness) | 4. Generated artifacts | `evidence/module-capabilities.yaml` is itself a generated artifact being checked for required-field completeness, same class as surface 4's other artifact inspections |
+
+**Added (Scenario Review round 5, P0-2): SCN-122/123 were new this
+round (closing the card's sensitive-logging/abuse-negative security-
+baseline gap) and had no manual-surface mapping — fixed:**
+
+| SCN-122 (sensitive-logging lint) | 2. CI workflow behavior | a static CI lint, same class as the other gate/lint checks in surface 2 (e.g. SCN-029's secret-leak detection) |
+| SCN-123 (abuse-negative fixture pattern) | 2. CI workflow behavior | a harness-pattern scenario, same class as SCN-032's offline-fixture pattern, which this table's own catch-all already routes to surface 2 by default |
