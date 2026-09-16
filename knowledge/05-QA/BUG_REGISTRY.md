@@ -1,7 +1,7 @@
 ---
 doc: BUG_REGISTRY
 status: LIVE
-updated: 2026-09-14 (MOD-001 planning continuation: BUG-028, BUG-029, BUG-030 all filed and CLOSED this module's planning sessions — see this table's own rows and the "Corrected" notes below for detail, not restated here)
+updated: 2026-09-15 (front-matter date resynced with table content, Scenario Review round 4/5 pre-review check — no bug-state change: BUG-028, BUG-029, BUG-030 all filed and CLOSED this module's planning sessions — see this table's own rows and the "Corrected" notes below for detail, not restated here)
 ---
 
 # Cross-Module Bug Registry

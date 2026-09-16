@@ -1,7 +1,7 @@
 ---
 doc: MODEL_ROUTING
 status: LIVE
-updated: 2026-09-06 (Phase 7, BUG-012/ADR-004/OWN-003 — added the orchestrating-session-tier section below; this front matter date had gone stale, still saying 2026-09-01, caught by Phase 9's second Gatekeeper pass, Editorial)
+updated: 2026-09-14 (ADR-005 — added the critical-slice row and the §4.3 surface-profile-agents table for MOD-001's veyro-critical-engineer/veyro-infra-sre-engineer/veyro-backend-engineer; this front-matter date had gone stale at 2026-09-06 despite that material change, caught by MOD-001 Scenario Review round 5's pre-review staleness check)
 ---
 
 # Model Routing — Veyro

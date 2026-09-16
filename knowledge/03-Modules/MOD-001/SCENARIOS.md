@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-14
+updated: 2026-09-15 (Scenario Review round 4 remediation, plus round 5 pre-review check found round 4's own Review Log entry had never been added — fixed, see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -1748,9 +1748,79 @@ P0=2, P1=7, P2=8, Editorial=4. Findings and disposition:
   suffix rather than a number) — flagged, not renumbered, since
   renumbering an already-cited ID has its own drift risk.
 
-**MOD-001 Definition of Ready: not yet reached.** All P0/P1 findings
-from all three rounds are now remediated within this session's own
-scope. What remains before a round-4 dispatch would be worth running:
-a final self-check sweep (this session's own, not yet independently
-confirmed) that the fixes above are internally consistent with each
-other — recommended before, not instead of, an actual round 4.
+**Round 4 (2026-09-15):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 118 scenarios
+plus round 3's remediation, explicitly instructed not to inherit round
+3's conclusions. **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2,
+P1=8, P2=9, Editorial=4. Findings and disposition:
+
+- P0-1: the second (post-`BUG-030`-fix) independent critical-engineer
+  definition review had genuinely run via a real Agent dispatch and
+  returned APPROVED, but its result was never persisted to a durable
+  evidence file — only referenced in prose across `STATUS.md`, this
+  file, `CURRENT_STATE.md`, and `CURRENT_HANDOFF.md`, leaving a
+  Definition-of-Ready-blocking condition resting on no durable record.
+  **Fixed:** `evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_ROUND2_2026-09-14.md`
+  authored, reconstructing the real dispatch's actual findings; the
+  original review file re-framed as round 1, explicitly superseded by
+  round 2's APPROVED.
+- P0-2: round 3's own remediation had changed SCN-104/105's status to
+  `EXECUTED — PASS`, but that fact was never propagated to this file's
+  own §0/§4, `STATUS.md`, and `TEST_RESULTS.md`'s blanket "no scenario
+  marked PASS"/"NOT EXECUTED" claims — a direct, self-contradicting
+  staleness the same species as round 3's own P0-1, one round later.
+  **Fixed:** explicit carve-outs added in all four locations
+  distinguishing the routing-drill's real executed evidence from
+  MOD-001's own (still zero-PASS) product-implementation scenarios.
+- P1-1/P1-2: category-matrix mistags (SCN-112 needed the SEC row, not
+  its prior placement; SCN-117 missing from the OBS row). **Fixed.**
+- P1-3: SCN-109/110 were routed to `veyro-implementer`/Sonnet despite
+  testing security-assurance-tier content. **Fixed:** retitled to
+  `veyro-security-reviewer`/Opus.
+- P1-4: `MODEL_ROUTE.md` still carried a stale "registration blocked by
+  a second capability gap (BUG-029)" paragraph, and `CURRENT_STATE.md`
+  restated a scenario count ("115-scenario catalog") that had already
+  gone stale the same round it was written. **Fixed:** stale paragraph
+  removed; `CURRENT_STATE.md` corrected to point at this file's §0
+  rather than restate a number.
+- P1-5: `REQUIREMENTS.md` §4 had been treating the generic EIP §21.2
+  card "Screens" boilerplate as MOD-001's real Ready condition, when
+  Appendix F's MOD-001-specific row actually overrides it with
+  different text — the EIP's own v1.2 changelog confirms the generic
+  condition was removed for MOD-001/non-UI modules. Caught by the
+  reviewer directly grepping Appendix F rather than trusting the prior
+  citation. **Fixed:** `REQUIREMENTS.md` §4 rewritten to quote Appendix
+  F's real MOD-001 row verbatim; new `IMPLEMENTATION.md` §10
+  (import/validation-contract design) and §11 (documenting the
+  already-satisfied half of the precondition) added.
+- P1-6: Appendix I maps `ADR-004`/`ADR-015` and `RB-GOV-01` to MOD-001,
+  none of which had a conformance record or runbook. **Fixed:** new
+  `ADR_CONFORMANCE.md` and `RUNBOOK.md` authored; corresponding
+  obligation rows added to `REQUIREMENTS.md` §3.
+- P1-7/P1-8: no scenario tested the agent-definition/MR-evidence
+  validator or Appendix H.1's manifest-completeness requirement, and
+  `evidence/module-capabilities.yaml` was missing 4 of Appendix H.1's
+  required fields entirely (not even as explicit N/A) — capability
+  dependency IDs, per-gap resolution-attempt budget evidence, lifecycle
+  review state, rollback target. **Fixed:** `SCN-MOD001-118` through
+  `121` ("Group N") added, with `MANUAL_QA.md` §2 extended to map all
+  four to a manual-QA surface; `module-capabilities.yaml` extended with
+  the 4 missing fields, following the file's own explicit-N/A
+  convention.
+- P2/Editorial (9+4): not addressed this round, per the mission's own
+  rule that P2/Editorial handling is gated on P0=0/P1=0, which round 4
+  did not return. Carried forward, not hidden or downgraded.
+
+**All P0/P1 findings from round 4 were remediated within the same
+session they were found** (commit `d56576c`), followed by a durable
+closeout commit (`845e033`) correcting `CURRENT_HANDOFF.md`/
+`CURRENT_STATE.md`. **Per the owner's explicit review-budget rule,
+Definition of Ready was NOT evaluated after this remediation** — round
+4 itself had returned P0/P1, so self-declaring Ready or proceeding to
+the DoR checklist would have violated that rule directly. The
+remediation's own internal consistency has not yet been independently
+confirmed — that confirmation is round 5's own subject.
+
+**MOD-001 Definition of Ready: not yet reached.** Gated on an
+independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
+P0=0/P1=0 — not yet obtained as of round 4's close.

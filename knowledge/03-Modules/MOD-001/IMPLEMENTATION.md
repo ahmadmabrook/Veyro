@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-14
+updated: 2026-09-15 (Scenario Review round 4 — added §10 import/validation-contract design and §11 documenting the already-satisfied half of Appendix F's Ready precondition)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)

@@ -2,7 +2,7 @@
 doc: MOD-001_REQUIREMENTS
 status: LIVE — DRAFT (planning stage, not yet independently reviewed)
 module: MOD-001
-updated: 2026-09-14
+updated: 2026-09-15 (Scenario Review round 4 — §4 rewritten to cite Appendix F's real MOD-001-specific Ready condition; §3 extended with ADR conformance/runbook/agent-definition-validator/Appendix H.1 obligation rows)
 ---
 
 # MOD-001 — Requirements
