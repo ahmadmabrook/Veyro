@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 6 — added the idempotency-contract lint, sensitive-logging lint, and abuse-negative harness tools; added §12 for GOV-01-R07/R08's mobile-release/lifecycle mechanisms)
+updated: 2026-09-16 (Scenario Review round 7 — false "routable" claim at line 40 corrected; §12 extended with real backend-side version-negotiation/crash-remote-config mechanisms, toolchain-consistency checker, isolated-PR qualification gate, changelog tool, and white-label/KMP-versioning fields, closing round 7's P0-2/P1-2/P1-5)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -36,8 +36,17 @@ Veyro/
 │   │                               #   bounded to 3 critical slices),
 │   │                               #   veyro-infra-sre-engineer (Sonnet),
 │   │                               #   veyro-backend-engineer (Sonnet,
-│   │                               #   bounded). All 3 registered and
-│   │                               #   routable (BUG-029/BUG-030 closed).
+│   │                               #   bounded). All 3 registered
+│   │                               #   (BUG-029 closed); only
+│   │                               #   veyro-critical-engineer is actually
+│   │                               #   routable (BUG-030 closed, drill
+│   │                               #   PASS) — **corrected, Scenario
+│   │                               #   Review round 7 (BUG-031 escalated
+│   │                               #   to P0, disposition A — BLOCKING):
+│   │                               #   this line previously claimed all 3
+│   │                               #   were "routable," false for the
+│   │                               #   other two, which nothing escalates
+│   │                               #   to.**
 │   ├── rules/                      # already exists (4 files); MOD-001
 │   │                               #   scaffolds the 11 Appendix H.2 families
 │   │                               #   as directories, but **corrected (same
@@ -417,18 +426,49 @@ item.
 GOV-01-R08's own "Implementation obligations" text in `REQUIREMENTS.md`
 never became a concrete file/CI-stage plan here — twelve scenarios
 (SCN-050/051/052/055/074/099/100/101/107/108/115/117) depended on
-mechanisms this file never named.** Fixed:
+mechanisms this file never named.** **Corrected again (Scenario Review
+round 7): that fix did not hold end-to-end for 5 of the 12 (SCN-115,
+117, 050, 051/099, 107) — deferring backend-side obligations to MOD-006
+mis-assigned them (TSD §24.3's version-negotiation rule is a *backend*
+rule: "Backend APIs preserve compatibility... server can expose
+capability/version negotiation"), and three named TSD §24.3 rules
+(white-label metadata, isolated-PR toolchain qualification, KMP
+shared-module versioning) were never traced at all (round 7's P0-2).
+Both fixed below.** Fixed:
 
 **GOV-01-R07 (mobile release/version foundations):**
 - `mobile/TOOLCHAIN_MATRIX.md` (new, §1 topology) — the pinned
   Kotlin/KMP/Compose/Gradle/Xcode/AGP toolchain compatibility matrix,
   authored before real mobile code exists so MOD-006 inherits a fixed
   target; referenced from the CI workflow file, per
-  `REQUIREMENTS.md`'s own "Evidence obligations" text.
+  `REQUIREMENTS.md`'s own "Evidence obligations" text. Carries a
+  `shared_module_version` field per KMP module (TSD §24.3: "shared KMP
+  modules are versioned in source/build provenance") and a
+  `whitelabel_release_metadata` section, one row per branded app/store
+  (TSD §24.3's white-label rule) — **both added round 7, P0-2**.
 - `mobile/RELEASE_POLICY.md` (new, §1 topology) — the documented
-  minimum-supported-version, forced-update, and kill-switch policy
-  (a policy document, not the enforcement code — MOD-006 owns the real
-  mobile app that enforces it).
+  minimum-supported-version, forced-update, and kill-switch **policy**.
+- **`backend/app/version_negotiation.py` (new, §1 topology — added
+  round 7, P1-2)** — the real backend-side enforcement code TSD §24.3
+  actually assigns to the backend, not to the mobile app: minimum-
+  supported-version check, optional-vs-forced-update decision, and the
+  kill-switch's own authorization check (only an authorized release
+  decision — a signed release-evidence record — may activate it, per
+  `REQUIREMENTS.md`'s security-implication text). `mobile/RELEASE_POLICY.md`
+  above is the policy *document*; this is the policy's *enforcement*,
+  correctly scoped to MOD-001 (backend) rather than deferred to MOD-006
+  (which owns only the client-side prompt/block UI, not the
+  negotiation decision itself). Proven by `SCN-MOD001-115`.
+- **`backend/app/crash_remote_config_intake.py` (new, §1 topology —
+  added round 7, P1-2)** — synthetic backend-side intake endpoints for
+  (a) crash-report ingestion (recorded/surfaced, not silently dropped)
+  and (b) remote-config fetch (rollout-percentage changes only — TSD
+  §24.3: remote config controls rollout, not contract repair, so this
+  endpoint cannot itself bypass `version_negotiation.py`'s kill-switch
+  block). Both are real, executable synthetic endpoints proving the
+  integration *pattern* MOD-006 will point a real crash/remote-config
+  SDK at — not a markdown interface description, and not deferred
+  product functionality. Proven by `SCN-MOD001-117`.
 - **CI runner-assignment convention** (new row, §3 pipeline table
   below): Android jobs pinned to Linux runners, iOS jobs pinned to
   macOS/Xcode runners, per TSD §24.3.
@@ -437,27 +477,55 @@ mechanisms this file never named.** Fixed:
   suites whenever a change touches serialization/local-schema/sync/
   auth/routing/shared-Design-System paths — tested by SCN-100/101's
   synthetic common-code-change fixture.
-- **Crash-monitoring/remote-config integration points**: `IMPLEMENTATION.md`
-  §2's environment-boundary table names the QA/staging environments
-  these integrate with; the integration *point* (a documented interface
-  MOD-006 will wire a real crash/remote-config SDK into) lives in
-  `mobile/RELEASE_POLICY.md` above — no crash-monitoring/remote-config
-  *product*, since none exists before MOD-006.
+- **Real-device smoke-test CI convention, capability-adapter half
+  (new row, §3 pipeline table below — added round 7, P1-2)**: TSD
+  §24.3's real-device smoke-test requirement names two subjects —
+  "platform-capability adapters" and "critical offline flows." SCN-050
+  covers offline flows only; this row is the capability-adapter half
+  (a synthetic native-adapter-boundary fixture, e.g. camera/biometric/
+  push-token stub, smoke-tested on both real-device-equivalent CI
+  runners).
+- **Toolchain-matrix consistency checker (new tool, §1 tools inventory
+  — added round 7, P1-2)**: `tools/validate_toolchain_matrix.py` checks
+  `mobile/TOOLCHAIN_MATRIX.md`'s pinned versions against the actual
+  committed Gradle/Xcode/CI-runner config, rejecting drift (SCN-051/099
+  test *internal* matrix consistency; this tool is the mechanism that
+  makes the matrix authoritative against real config, not just
+  internally self-consistent).
+- **Isolated-PR toolchain-upgrade qualification gate (new row, §3
+  pipeline table below — added round 7, P0-2)**: TSD §24.3's rule that
+  "toolchain upgrades are isolated pull requests with Android+iOS
+  build, UI, accessibility and performance qualification before merge"
+  — a CI stage that runs the full dual-platform qualification suite
+  specifically when a PR touches `mobile/TOOLCHAIN_MATRIX.md`, blocking
+  merge until all four qualification dimensions pass.
 
 **GOV-01-R08 (release lifecycle):**
 - `RELEASE_TRAIN.md` (new, §1 topology, repo root) — the release-train
-  cadence convention and the changelog generation/maintenance
-  convention, wired to the release pipeline (GOV-01-R05's own
-  `RB-GOV-01` evidence-contract fields already named in `RUNBOOK.md`).
+  cadence convention, the "maintenance" policy (how long each release
+  train line receives fixes — **added round 7, P1-5**, previously
+  named nowhere despite being explicit Appendix B text), and a
+  customer-communication template hook (**added round 7, P1-5**; per
+  `REQUIREMENTS.md`'s own IN-scope text, a template only, since no real
+  customer channel exists before a later module — DC-16).
+- **Changelog tool (new, §1 tools inventory — added round 7, P1-2)**:
+  `tools/generate_changelog.py`, wired to the release pipeline (new row,
+  §3 pipeline table below) — SCN-107 tests "a changelog entry via the
+  changelog tool," which previously named a convention document, not a
+  tool.
 - **Lifecycle-stage field** (extends `RUNBOOK.md`'s existing
   release-evidence field set): every release-evidence record carries a
   `lifecycle_stage` field (`beta`/`GA`/`deprecated`), and a lint (new
   row, §3 pipeline table below) rejects a release-evidence record with
   no lifecycle-stage field or an out-of-order stage transition
-  (`GA`→`beta` without an explicit deprecation-then-rerelease path).
+  (`deprecated`→`beta` without an explicit re-release path).
 
 | Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
 |---|---|---|---|---|---|---|---|
 | **Mobile CI runner assignment (GOV-01-R07)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux, iOS jobs on macOS/Xcode | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair | Runner assignment pinned in the committed workflow file, not a developer's local runner choice |
 | **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
+| **Real-device smoke test, offline-flow half (GOV-01-R07, added round 7 — SCN-050 tests this row)** | Every push/PR touching an offline-flow path | Changed-file path list | The fixture is flagged as requiring the offline-smoke-test job | Yes | Same path-filter/flagging rule run locally | CI log naming the triggering path and the flagged job | Flagging rule reads the actual committed diff, not a developer's local claim about which paths changed |
+| **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture | Pass/fail per adapter | Yes | Cannot fully replicate locally (needs real-device-equivalent CI runners) | Evidence bundle artifact | Runs only from CI's real-device-equivalent runners, never a developer's local simulator claim |
+| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android+iOS build/UI/a11y/perf qualification suites | Pass/fail, all 4 dimensions | Yes | Same suites run locally against the proposed toolchain bump | Named failing-dimension report | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated" |
+| **Changelog generation (GOV-01-R08, added round 7, P1-2)** | Every release | Merged PR list since last release | Changelog entry | Yes | `tools/generate_changelog.py` run locally | Missing/malformed changelog-entry report | Runs against the actual committed PR/commit history, not a developer's hand-written draft |
 | **Release-lifecycle-stage lint (GOV-01-R08)** | Every release | Release-evidence record | Pass/fail + named-defect report | Yes | Same lint run locally against a synthetic record | Named missing-field or out-of-order-transition report | Runs against the actual committed release-evidence record, not a developer's local draft |

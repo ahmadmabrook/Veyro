@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 6 ran, BLOCKED, P0/P1 remediated — see §5)
+updated: 2026-09-16 (Scenario Review round 7 ran, BLOCKED, P0/P1 remediated; BUG-031 escalated to P0/BLOCKING — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -55,14 +55,18 @@ once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **124 detail
-blocks** (001-121 plus 021b, 122, 123) — **124 Required + 0 Optional**
-— comfortably above every applicable floor. **Round 5 (P0-2) added
-122/123** to close a genuine coverage gap on the card's mandatory
+here rather than restate a number).** Current total: **126 detail
+blocks** (001-121 plus 021b, 122, 123, 124, 125) — **126 Required + 0
+Optional** — comfortably above every applicable floor. **Round 5 (P0-2)
+added 122/123** to close a genuine coverage gap on the card's mandatory
 security baseline (sensitive logging, abuse-negative scenarios) that
 this section's own "every requirement... needs its own real scenario"
-claim had been false against until that round. **Round 6 (P1-3)
-reclassified 071/072 from Optional/ALT to Required** (HP and REC
+claim had been false against until that round. **Round 7 (P0-1/P1-5)
+added 124/125** to close the baseline-artifact-binding validator's
+remaining 4 fail-closed conditions and GOV-01-R08's
+maintenance/customer-communication gap, the same species of coverage
+gap. **Round 6 (P1-3) reclassified 071/072 from Optional/ALT to
+Required** (HP and REC
 respectively) — both trace to a Critical GOV-01 requirement, which
 §9.1 makes Required regardless of ALT's category-level Optional
 default; 0 Optional scenarios currently exist, which is legitimate for
@@ -100,7 +104,7 @@ round 2's remediation, not merely re-asserted:
 | HP | R | 001, 010, 023, 036, 041, 048, 055, 071 |
 | ALT | O | none — **corrected, Scenario Review round 6 P1-3: both 071/072 reclassified Required (see HP/REC rows) since each traces to a Critical GOV-01 requirement, which §9.1 makes Required regardless of category-level Optional status; 0 Optional scenarios is legitimate for an O-classified category, not a gap** |
 | VAL | R | 002, 024, 037 |
-| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109, 123 |
+| NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109, 123, 124 |
 | BND | R | 004, 012, 026, 085, 087, 088, 089, 090, 110, 116, 118 |
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
@@ -119,7 +123,7 @@ round 2's remediation, not merely re-asserted:
 | LOC | R | 039, 053 |
 | A11Y | R | 040, 054 |
 | PERF | R | 068, 069, 074, 101, 111 |
-| OBS | R | 021, 021b, 035, 061, 091, 093, 107, 117, 119, 121 |
+| OBS | R | 021, 021b, 035, 061, 091, 093, 107, 117, 119, 121, 125 |
 | MIG | R | 022, 070, 113 |
 | DR | R | 059, 066, 108 |
 
@@ -134,12 +138,18 @@ the table two paragraphs above it. Removed. `042` is correctly listed
 under SEC above, and also under "Artifact integrity/signing" in §2,
 alongside its real negative companion 063 — a scenario legitimately
 appearing in two places (its own category row and a named-family row)
-is normal, not a contradiction.** No `O` category (ALT) is missing real
-coverage: 071 and
-072 remain genuine alternate-flow variants that do not themselves assert
-gate/acceptance-contract behavior (§9.1's own test for what may stay
-Non-Required) — 073 and 074 were moved out precisely because they
-*did* assert such behavior.
+is normal, not a contradiction.** **Corrected (Scenario Review round 7,
+P1-1): the sentence that used to stand here ("071 and 072 remain
+genuine alternate-flow variants that do not themselves assert
+gate/acceptance-contract behavior") flatly contradicted round 6's own
+P1-3 fix three lines above, which reclassified both Required precisely
+because they DO assert such behavior (072's own detail block: "its
+'still promotes/rolls-back correctly' expected result IS GOV-01-R05's
+own acceptance criterion") — the identical stale-paragraph-above-the-
+table species round 3's P0-2 removed for SEC, reintroduced here by
+round 6's own remediation never touching this paragraph.** The `O`
+category (ALT) currently has 0 scenarios, which is legitimate for an
+O-classified category — see the ALT row above and §0's own correction.
 
 ## 2. Named-family coverage (mission section 16, cross-checked)
 
@@ -508,6 +518,54 @@ Steps: run the same validator against the real, unmodified
 proving the negative fixture in 025 is a genuine detector, not a tool
 that always fails).
 
+**SCN-MOD001-124 · NEG · Blocker · Baseline-artifact binding validation, remaining fail-closed conditions (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 7, P0-1): the card mandates 5 distinct
+fail-closed conditions for the baseline-binding validator
+(`EIP_MIRROR.md` lines 4140-4143, 4253-4263, verbatim: "Baseline-binding
+validator rejects use of an unapproved candidate EIP, missing/ambiguous
+artifact identity, missing content hash or identity/hash mismatch,"
+plus "PROJECT_INDEX.md entries for all governing baselines with
+non-empty cryptographic hashes and SESSION_BOOTSTRAP.md enforcement
+metadata") — SCN-025/026 covered only the mismatch case and its
+positive twin. The other 4 had no scenario at all, falsifying §0's own
+"every requirement, gate, and validator this module owns needs its own
+real scenario" claim.**
+Steps, four parts, each against a throwaway copy of `PROJECT_INDEX.md`
+(never the real file): (a) an entry whose EIP artifact is flagged
+`candidate`/`unapproved` rather than the approved governing baseline —
+expected: `UNAPPROVED_CANDIDATE_EIP` denial citing the artifact; (b) a
+baseline entry with no `PROJECT_INDEX.md` row at all, or a row with an
+ambiguous identity field (e.g. two baselines sharing one identity
+string) — expected: `MISSING_OR_AMBIGUOUS_ARTIFACT_IDENTITY` denial
+citing the artifact; (c) a baseline entry present with an identity but
+an empty/absent hash field — expected: `MISSING_CONTENT_HASH` denial
+citing the artifact (distinct from 025's *mismatched*-hash case); (d) a
+`PROJECT_INDEX.md` with all 4 baselines correctly hashed but
+`SESSION_BOOTSTRAP.md`'s own enforcement-metadata reference removed (no
+pointer requiring a fresh session to read it before acting) — expected:
+`BOOTSTRAP_ENFORCEMENT_METADATA_MISSING` denial, proving the
+bootstrap/control validator fails closed before any code change is
+accepted, not just before a hash mismatch. Expected overall: each of
+the 4 conditions denied with its own named error citing the specific
+defect. Companion positive: a `PROJECT_INDEX.md` correctly satisfying
+all 5 conditions (this scenario's 4 plus SCN-025/026's mismatch case)
+passes in full. Evidence: 4 denial reports plus the full-pass report.
+
+**SCN-MOD001-125 · OBS · Major · GOV-01-R08, maintenance policy and customer-communication template (P1-5) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Added (Scenario Review round 7, P1-5): Appendix B's own GOV-01-R08
+text names "maintenance" and "customer communication" as distinct
+obligations alongside changelog/lifecycle, but neither had a mechanism,
+an IN/OUT disposition, or a scenario until this round.**
+Steps: validate `RELEASE_TRAIN.md` (`IMPLEMENTATION.md` §12) against
+two required sections: (a) a maintenance policy stating how long each
+release-train line receives fixes before end-of-support; (b) a
+customer-communication template (a placeholder/internal-synthetic
+template, since MOD-001 precedes any real customer-facing module).
+Expected: both sections present and non-empty. Negative case: a
+synthetic `RELEASE_TRAIN.md` missing either section is denied, citing
+the missing section by name. Evidence: the validator's pass/deny
+report.
+
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
 **SCN-MOD001-027 · AUTHN · Blocker · GOV-01-R02 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
@@ -574,12 +632,19 @@ documentation to bring up a running local environment. Expected: it
 comes up; no undocumented manual step was required. Evidence: a real
 transcript of the attempt, including any friction found and fixed.
 
-**SCN-MOD001-037 · VAL · Major · QA environment bootstrap · Automated (CI-triggered) · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-037 · VAL · Major · QA environment bootstrap · Automated (CI-triggered) · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+**Corrected (Scenario Review round 7, BUG-031 escalation): was routed to
+`veyro-implementer` — `infra/environments/qa/` is the activated
+Infra/SRE/CI surface's own path, and `ADR-005` explicitly rejects
+letting `veyro-implementer` stand in for the named surface engineer.
+Retitled to `veyro-infra-sre-engineer`.**
 Steps: the QA environment config (`infra/environments/qa/`) is applied
 by CI on a real PR. Expected: environment boots, health-check endpoint
 responds.
 
-**SCN-MOD001-038 · NEG · Major · QA environment bootstrap, negative · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-038 · NEG · Major · QA environment bootstrap, negative · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+**Corrected (Scenario Review round 7, BUG-031 escalation): same fix as
+SCN-037 — retitled to `veyro-infra-sre-engineer`.**
 Steps: a deliberately invalid QA environment config (a malformed
 setting). Expected: CI fails closed before attempting to boot, with a
 named config-validation error, not a partial/hung boot.
@@ -1248,18 +1313,26 @@ no changelog-worthy change produces no spurious entry.
 **SCN-MOD001-108 · DR · Major · GOV-01-R08, beta→GA→deprecation lifecycle-stage lint (P0-2) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
 **Corrected (Scenario Review round 3, P2): the negative case's
 condition was unfalsifiable as written ("if the policy requires one").**
-Preconditions: the release-train cadence document (GOV-01-R08) defines
-a concrete, fixed state machine: `beta -> GA -> deprecated -> removed`,
-with `deprecated` requiring a minimum notice period before `removed`
-(the exact period is an implementation-time policy value, not invented
-here — the state machine's *shape* is fixed, only the numeric notice
-duration is deferred). Steps: a synthetic release declares a lifecycle
+**Corrected again (Scenario Review round 7, P1-3): the state machine
+this scenario declared (`beta -> GA -> deprecated -> removed`, 4
+values) did not match the card's own text — `EIP_MIRROR.md`'s Appendix
+B GOV-01-R08 text names exactly 3 stages, "beta/GA/deprecation
+lifecycle," no `removed` state — nor `IMPLEMENTATION.md` §12's own
+`lifecycle_stage` field (added round 6), which correctly used the
+card's 3 values. Rewritten to test the real 3-value machine.**
+Preconditions: `IMPLEMENTATION.md` §12's `lifecycle_stage` field
+(`beta`/`GA`/`deprecated`) on the release-evidence record, per
+GOV-01-R08's own card text — a fixed 3-value machine, `beta -> GA ->
+deprecated`, with no state beyond `deprecated` (a real release's
+eventual removal/archival is out of this lint's scope, since the card
+names no such stage). Steps: a synthetic release declares a lifecycle
 stage in its release-evidence record; the lint confirms the declared
-stage is one of the 4 valid values and that a transition follows the
-fixed state machine. Expected: PASS on a valid transition (e.g.
-beta→GA). Negative: an invalid transition (`GA` directly to `removed`,
-skipping `deprecated` entirely) is denied, citing the skipped state —
-a real, executable check with no conditional escape clause. Evidence:
+stage is one of the 3 valid values and that a transition follows the
+fixed order. Expected: PASS on a valid transition (e.g. beta→GA).
+Negative: an invalid transition (`deprecated` directly to `beta`,
+skipping backward with no re-release path — the exact out-of-order
+case §12 itself names) is denied, citing the invalid transition — a
+real, executable check with no conditional escape clause. Evidence:
 the lint's pass/deny report citing the specific transition tested.
 
 **SCN-MOD001-109 · NEG · Blocker · Card-mandated drill: deliberately-failing test blocks the pipeline (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
@@ -1436,33 +1509,49 @@ conformance check's own pass/fail per ADR.
 **SCN-MOD001-120 · SEC · Blocker · CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness (P1-7) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Corrected (Scenario Review round 5, P1-2/P1-3): part (a) tested the
 wrong defect shape, and part (b)'s field list was under-derived from
-§4.1's own text — both fixed below.**
+§4.1's own text — both fixed below. Corrected again (Scenario Review
+round 7, P1-4): part (a)'s hardcoded 4-agent list missed a real third
+orphan (`veyro-test-author` — named by zero escalation paths, same
+class as `BUG-031`, filed separately as `BUG-032`) because the check as
+written enumerates a fixed name list rather than deriving it from the
+project's own routing design. Fixed by deriving the checked set from a
+rule instead of a hardcoded list.**
 Source: `EIP_MIRROR.md` lines 4121-4124 ("CI/control checks validate...
 Veyro project-agent definitions, model aliases/MR evidence...") and
 §4.1's own MR-evidence field list (`EIP_MIRROR.md` lines 1095-1100:
 task class, lifecycle role, risk triggers, intended family alias,
 resolved model identity/tier runtime evidence, agent/session ID,
 verdict — 7 fields, not 4). Steps: (a) **reachability, not dangling-
-reference** — walk every registered implementation agent
-(`veyro-implementer`, `veyro-backend-engineer`, `veyro-infra-sre-engineer`,
-`veyro-critical-engineer`) against the full set of `.claude/agents/*.md`
-escalation text, and confirm each is named by at least one escalation
-path from somewhere. Expected on a synthetic fixture where one
-registered agent is named by zero escalation paths (an *orphaned*
-agent, not a reference to a nonexistent one — **this is the actual
-`BUG-030` defect class per `BUG_REGISTRY.md`'s own text: `veyro-implementer.md`'s
-escalation list omitted `veyro-critical-engineer`, an omission, not a
-dangling pointer**): denial citing the unreachable agent by name. A
-dangling-reference check (an escalation path naming an agent that
-doesn't exist) is evaluated as a distinct, second condition on the same
-fixture set, since both are real defect classes worth catching, but
-reachability is the one that actually matches `BUG-030` and the one
-this scenario's own commentary claimed to test. (b) a synthetic MR
-evidence record missing one of the full 7 required fields (in turn:
-task class, lifecycle role, risk triggers, intended family alias,
-resolved model identity, agent/session ID, verdict) — expected: denial
-citing the specific missing field, for each of the 7. Evidence: the
-reachability report, the dangling-reference report, and 7 per-field
+reference** — the checked set is every registered agent that
+`MODEL_ROUTING.md`'s own routing table designates as a target for
+*routine-execution escalation* (an agent a session already executing
+routine work is meant to hand off to when it hits that agent's trigger
+condition), as opposed to a role only ever dispatched directly by the
+orchestrating session itself for review/certification/architecture work
+(`veyro-lead`, `veyro-scenario-reviewer`, `veyro-code-reviewer`,
+`veyro-manual-qa`, `veyro-security-reviewer`, `veyro-performance-reviewer`,
+`veyro-gatekeeper` — none of these are meant to be peer-escalation
+targets, so their absence from another agent's escalation text is not a
+defect). As of this catalog: `veyro-critical-engineer`,
+`veyro-backend-engineer`, `veyro-infra-sre-engineer`, and
+`veyro-test-author`. Walk that set against the full set of
+`.claude/agents/*.md` escalation text, and confirm each is named by at
+least one escalation path from somewhere. Expected on a synthetic
+fixture where one checked agent is named by zero escalation paths (an
+*orphaned* agent, not a reference to a nonexistent one — **this is the
+actual `BUG-030` defect class per `BUG_REGISTRY.md`'s own text:
+`veyro-implementer.md`'s escalation list omitted
+`veyro-critical-engineer`, an omission, not a dangling pointer**):
+denial citing the unreachable agent by name. A dangling-reference check
+(an escalation path naming an agent that doesn't exist) is evaluated as
+a distinct, second condition on the same fixture set, since both are
+real defect classes worth catching, but reachability is the one that
+actually matches `BUG-030` and the one this scenario's own commentary
+claimed to test. (b) a synthetic MR evidence record missing one of the
+full 7 required fields (in turn: task class, lifecycle role, risk
+triggers, intended family alias, resolved model identity, agent/session
+ID, verdict) — expected: denial citing the specific missing field, for
+each of the 7. Evidence: the reachability report, the dangling-reference report, and 7 per-field
 denial reports. Companion positive: a well-formed agent-definition set
 (every registered agent reachable, no dangling references) and a
 complete 7-field MR record both pass. **Note for implementation:**
@@ -2106,6 +2195,99 @@ session they were found.** Per the owner's explicit review-budget rule,
 Definition of Ready was again NOT evaluated after this remediation —
 round 6 itself had returned a P0.
 
-**MOD-001 Definition of Ready: not yet reached.** Gated on an
-independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
-P0=0/P1=0 — not yet obtained as of round 6's close.
+**Round 7 (2026-09-16):** two independent Opus dispatches ran this
+round, per the mission's own explicit instruction not to trust round
+6's "non-blocking" classification of `BUG-031` merely because it was
+stated: (1) a fresh-context `veyro-scenario-reviewer` Scenario Review,
+and (2) a separate, dedicated `veyro-security-reviewer` review whose
+sole subject was BUG-031's actual Ready-gate impact.
+
+**Scenario Review verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2,
+P1=5, P2=9, Editorial=6. Findings and disposition:
+
+- P0-1: the baseline-artifact-binding validator's card text
+  (`EIP_MIRROR.md` lines 4140-4143, 4253-4263) mandates 5 distinct
+  fail-closed conditions; only the identity/hash-mismatch case had a
+  scenario (`SCN-025`/`026`). **Fixed:** `SCN-MOD001-124` added,
+  covering the other 4 (unapproved candidate EIP, missing/ambiguous
+  artifact identity, missing content hash, missing
+  `SESSION_BOOTSTRAP.md` enforcement metadata).
+- P0-2: three TSD §24.3 rules (white-label release metadata, isolated-
+  PR toolchain-upgrade qualification, KMP shared-module versioning/
+  independent release trains) were named nowhere in MOD-001's files
+  despite `REQUIREMENTS.md` claiming "full text folded into GOV-01-R07."
+  **Fixed:** `mobile/TOOLCHAIN_MATRIX.md` extended with
+  `shared_module_version`/`whitelabel_release_metadata` fields; a new
+  isolated-PR qualification-gate CI stage added to `IMPLEMENTATION.md`
+  §12/§3.
+- P1-1: `SCENARIOS.md` §1's own closing prose still asserted SCN-071/072
+  "do not themselves assert gate/acceptance-contract behavior" —
+  directly contradicting round 6's own P1-3 fix three lines above it.
+  **Fixed:** stale paragraph corrected.
+- P1-2: round 6's §12 fix did not hold end-to-end for 5 of the 12
+  scenarios it named (SCN-115, 117, 050, 051/099, 107) — deferring
+  backend-side obligations (version negotiation, crash/remote-config
+  intake) to MOD-006 mis-assigned them, since TSD §24.3 makes them
+  backend rules. **Fixed:** `backend/app/version_negotiation.py` and
+  `backend/app/crash_remote_config_intake.py` added as real MOD-001
+  backend mechanisms; `tools/validate_toolchain_matrix.py` and
+  `tools/generate_changelog.py` added; new CI stages for the offline-
+  flow/capability-adapter smoke-test halves.
+- P1-3: `SCN-108`'s declared state machine (`beta→GA→deprecated→removed`,
+  4 values) didn't match the card's own 3-value text or
+  `IMPLEMENTATION.md` §12's `lifecycle_stage` field. **Fixed:** rewritten
+  to the real 3-value machine.
+- P1-4: `SCN-120(a)`'s hardcoded 4-agent reachability list missed a real
+  third orphaned agent, `veyro-test-author` (named by zero escalation
+  paths, same class as `BUG-031`, different root cause — role-boundary
+  overlap with `veyro-implementer`, not a clean unclaimed surface).
+  **Fixed:** the check's checked-set is now derived from a rule
+  (every agent `MODEL_ROUTING.md` designates a routine-execution
+  escalation target) rather than a fixed list; filed as `BUG-032`
+  (P1, non-blocking).
+- P1-5: GOV-01-R08's "maintenance" and "customer communication" text
+  had no mechanism, disposition, or scenario. **Fixed:**
+  `RELEASE_TRAIN.md` extended with a maintenance policy and a
+  customer-communication template; `SCN-MOD001-125` added.
+- P2 (9) / Editorial (6): not addressed this round, per the mission's
+  own rule that P2/Editorial handling is gated on P0=0/P1=0, which
+  round 7 did not return. Carried forward, not hidden or downgraded —
+  one Editorial (a header-less `MANUAL_QA.md` table fragment) was fixed
+  incidentally while editing that same table for an unrelated required
+  fix, not as a deliberate P2/Editorial pass.
+
+**BUG-031 Ready-gate impact review verdict: disposition A — BLOCKING
+for Definition of Ready.** The dedicated review found round 6's
+"non-blocking" classification false: MOD-001's own planning set already
+routed activated-Infra-profile work (`SCN-037`/`038`) to
+`veyro-implementer` instead of `veyro-infra-sre-engineer`, exactly the
+substitution `ADR-005` itself rejects; the plan's own first
+implementation act (`GOV-01-R01`'s repository topology) touches both
+`infra/**` and `backend/**` on day one, so there is no real sequencing
+gap to defer into; nothing fails closed against the defect today
+(`tools/validate_agent_definitions.py`, the one mechanical catcher,
+doesn't exist yet); and `STATUS.md`'s own Definition-of-Ready gate
+(P0=0/P1=0) is internally inconsistent with calling an open P1
+non-blocking. **`BUG-031` escalated P1→P0 this round, matching
+`BUG-030`'s own precedent for the identical defect class.** Fixed the
+concrete routing inconsistency the review cited (`SCN-037`/`038`
+retitled to `veyro-infra-sre-engineer`) and corrected the false
+"registered and routable" claims in `IMPLEMENTATION.md`/`MODEL_ROUTE.md`.
+**The core fix — an escalation clause in `veyro-implementer.md` naming
+both surface agents — is owner-gated** (the same `.claude/agents/**`
+protection class as `BUG-029`/`BUG-030`) **and remains open.** The
+drafted patch text is provided to the owner in this turn's own reply,
+per the `BUG-030` precedent.
+
+**All P0/P1 findings from round 7's Scenario Review were remediated
+within the same session they were found.** Per the owner's explicit
+review-budget rule, Definition of Ready was again NOT evaluated —
+round 7 itself returned P0s, and `BUG-031` independently remains open
+and BLOCKING regardless of the Scenario Review's own outcome.
+
+**MOD-001 Definition of Ready: not yet reached, and cannot be reached
+while `BUG-031` remains open** (see `BUG_REGISTRY.md` and
+`evidence/bugs/BUG-031-orphaned-agent-veyro-backend-infra-sre.md`).
+Gated on BOTH an independent round returning `MOD-001 SCENARIO REVIEW
+APPROVED` with P0=0/P1=0 AND `BUG-031`'s closure (owner action) with
+independent re-verification — neither obtained as of round 7's close.

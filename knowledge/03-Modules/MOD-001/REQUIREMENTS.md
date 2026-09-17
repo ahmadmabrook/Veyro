@@ -2,7 +2,7 @@
 doc: MOD-001_REQUIREMENTS
 status: LIVE — DRAFT (planning stage, not yet independently reviewed)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 6 — idempotency-contract lint, sensitive-logging lint, and abuse-negative harness obligation rows pointed at concrete tool paths; GOV-01-R07/R08 obligation text pointed at new IMPLEMENTATION.md §12)
+updated: 2026-09-16 (Scenario Review round 7 — baseline-artifact-binding validator's remaining 4 fail-closed conditions traced to new SCN-124; GOV-01-R08's maintenance/customer-communication text given a real disposition and SCN-125)
 ---
 
 # MOD-001 — Requirements
@@ -467,27 +467,43 @@ changelog, maintenance, beta/GA/deprecation lifecycle and customer
 communication."
 
 - **IN scope:** a release-train cadence convention; a changelog
-  generation/maintenance convention; a beta→GA→deprecation lifecycle
+  generation convention; **a maintenance policy — how long each release
+  train line receives fixes (added Scenario Review round 7, P1-5: the
+  card's own text lists "maintenance" as a distinct item from
+  changelog, but this section previously conflated the two with no
+  independent disposition)**; a beta→GA→deprecation lifecycle
   state machine (as a documented policy + a lint that a release
   declares its own lifecycle stage); a customer-communication template
   hook (even if the "customer" is internal/synthetic at this stage, since
   MOD-001 precedes any real customer-facing module).
 - **OUT of scope:** actual customer communications content/copy for
-  product features that don't exist yet.
+  product features that don't exist yet; real per-release-line
+  maintenance-window decisions for domain modules that don't exist yet
+  (the *policy document* is MOD-001's obligation, not applying it to
+  real releases).
 - **Implementation obligations:** a release-train schedule/cadence
-  document; a changelog file/tool convention wired to the release
-  pipeline (GOV-01-R05); a lifecycle-stage field in the release-evidence
-  record (ties to `RB-GOV-01`'s evidence contract). **Concrete plan:
-  `IMPLEMENTATION.md` §12 (added Scenario Review round 6, P1-2 — this
-  text had never been turned into a named file/CI-stage plan until
+  document; a maintenance-window policy document (added round 7, P1-5);
+  a changelog file/tool convention wired to the release pipeline
+  (GOV-01-R05); a customer-communication template hook (added round 7,
+  P1-5 — previously IN scope but absent from this list entirely); a
+  lifecycle-stage field in the release-evidence record (ties to
+  `RB-GOV-01`'s evidence contract). **Concrete plan: `IMPLEMENTATION.md`
+  §12 (added Scenario Review round 6, P1-2, extended round 7, P1-5 —
+  this text had never been turned into a named file/CI-stage plan until
   then).**
 - **Evidence obligations:** a synthetic release cycle producing a
-  changelog entry and a lifecycle-stage-tagged release-evidence record.
+  changelog entry and a lifecycle-stage-tagged release-evidence record;
+  `RELEASE_TRAIN.md` itself containing both the maintenance policy and
+  the customer-communication template (added round 7, P1-5).
 - **Scenario coverage:** OBS, DR (deprecation as a controlled,
-  reversible-until-committed process).
+  reversible-until-committed process). **`SCN-MOD001-125` (added round
+  7, P1-5) covers maintenance-policy/customer-communication-template
+  presence, previously untested.**
 - **Dependencies:** GOV-01-R05 (release evidence format).
 - **Acceptance criteria:** a synthetic release produces a changelog
-  entry and a correctly-tagged lifecycle stage.
+  entry and a correctly-tagged lifecycle stage; `RELEASE_TRAIN.md`
+  contains a maintenance policy and a customer-communication template
+  (added round 7, P1-5).
 - **Security implications:** none direct.
 - **Performance/load implications:** none direct.
 - **Owner/external gates:** any real customer communication channel
@@ -524,7 +540,7 @@ Scenario Review pass should re-search independently):
 |---|---|---|---|
 | **Six TSD §24.1 architecture gates** | `TSD_MIRROR.md` lines 11597-11653; EIP card "Special rule", `EIP_MIRROR.md` line 4233-4234 ("MOD-001 implements all six TSD §24.1 architecture gates") | (1) RLS lint; (2) module dependency/SQL lint; (3) event contract lint; (4) permission lint; (5) screen contract lint; (6) domain contract uniqueness lint — each as a real CI-blocking check, each with a deliberate-violation fixture proving fail-closed | GOV-01-R04 |
 | **Capability-governance validation gates** | EIP card, `EIP_MIRROR.md` lines 4122-4157, 4233-4256; Appendix H.1-H.3, lines 20590-20740 | Validate `.claude/agents`/`.claude/rules`/`.claude/skills`/`module-capabilities.yaml`; reject cyclic capability dependencies, overdue lifecycle reviews, manifests missing mandatory privileged-surface Rules; require every Appendix H.2 rule family to resolve to an Appendix H.3 content standard | Reuses MOD-000's `validate_capabilities.py`/`CAPABILITY_REGISTRY.md` pattern — extend, don't duplicate |
-| **Baseline-artifact binding schema validation** | `EIP_MIRROR.md` lines 4140-4143, 4253-4256, 4260-4263 | Require `PROJECT_INDEX.md` entries for all governing baselines with non-empty cryptographic hashes and `SESSION_BOOTSTRAP.md` enforcement metadata; reject use of an unapproved candidate EIP or a missing/ambiguous/mismatched identity+hash | Already substantively satisfied by MOD-000's `verify_baselines.py` — MOD-001 must fold this into the CI-gate layer (currently a manual per-session check, not yet a CI gate) |
+| **Baseline-artifact binding schema validation** | `EIP_MIRROR.md` lines 4140-4143, 4253-4256, 4260-4263 | Require `PROJECT_INDEX.md` entries for all governing baselines with non-empty cryptographic hashes and `SESSION_BOOTSTRAP.md` enforcement metadata; reject use of an unapproved candidate EIP or a missing/ambiguous/mismatched identity+hash | Already substantively satisfied by MOD-000's `verify_baselines.py` — MOD-001 must fold this into the CI-gate layer (currently a manual per-session check, not yet a CI gate); `SCN-MOD001-025`/`026` (mismatch case) + `SCN-MOD001-124` (the other 4 fail-closed conditions — **added round 7, P0-1**, since only the mismatch case had a scenario until then) |
 | **Appendix-B traceability validator** | `EIP_MIRROR.md` lines 4144-4147 | Reject any split requirement whose designated completing module executes before any of its execution-slice modules | New tool — no split requirements exist for MOD-001 itself (§0 above), but MOD-001 must build the *validator* future modules' Scenario Reviews will run |
 | **Idempotency-contract lint** | `EIP_MIRROR.md` lines 4148-4157 | For externally retryable mutations: scoped Idempotency-Key tuple, retention window (>=24h, longer for payment/fiscal), stored request hash/result, stable 409 `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`, `command_id` propagation to outbox/provider dispatch, deterministic provider idempotency derivatives | `IMPLEMENTATION.md` §1/§3 (`tools/validate_idempotency_contract.py`, added round 6 P0-1); `SCN-MOD001-016` part (a) — **corrected, Scenario Review round 6 P0-1: this row previously pointed at nothing but a requirement/category name, and the only linked scenario tested runtime dedup behavior, not the lint itself** |
 | **AsyncAPI/versioned JSON-Schema event-registry validation** | `EIP_MIRROR.md` line 4156-4157 | Blocking CI check that every event referenced by flow/code exists in the AsyncAPI/JSON-Schema registry | Same mechanism as the event contract lint gate above (EVT-001 invariant) |

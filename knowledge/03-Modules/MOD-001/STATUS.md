@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-16 (Scenario Review round 6 ran, BLOCKED, all P0/P1 remediated same session — round 7 independent confirmation still pending, see `SCENARIOS.md` §5)
+updated: 2026-09-16 (Scenario Review round 7 ran, BLOCKED, all P0/P1 remediated same session; BUG-031 escalated to P0/BLOCKING — round 8 independent confirmation still pending, see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -109,25 +109,31 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       (Scenario Review round 6, P1-4): that review's own P2-1 finding
       (`veyro-backend-engineer`/`veyro-infra-sre-engineer` unreachable
       from any escalation path) had never been named here or in
-      `BUG_REGISTRY.md` — filed as `BUG-031`, OPEN, non-blocking for
-      Definition of Ready (must close before real `backend/**`/
-      `infra/**` implementation begins).**
+      `BUG_REGISTRY.md` — filed as `BUG-031`.** **Escalated (Scenario
+      Review round 7): a dedicated independent Opus review found
+      round 6's "non-blocking" disposition false — `BUG-031` is
+      **BLOCKING for Definition of Ready**, escalated P1→P0, and
+      remains OPEN, owner-gated. A related third orphaned agent
+      (`veyro-test-author`) was also found and filed as `BUG-032` (P1,
+      non-blocking).**
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
-      (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4)** (see `SCENARIOS.md`
-      §5 for the current round's exact P0/P1/P2/Editorial counts and
-      findings — not restated here, per the lesson every round of this
-      remediation has now taught about facts restated in more than one
-      place going stale). All six rounds' findings remediated in the
-      same session they were found, to the extent fixable without
-      further owner action. **Round 6's own remediation has not yet
-      been independently confirmed — that confirmation is round 7's
-      own subject.**
-- [ ] Definition of Ready — **not yet reached.** Explicitly gated on an
+      (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4). Round 7: BLOCKED
+      (P0=2, P1=5)** (see `SCENARIOS.md` §5 for the current round's
+      exact P0/P1/P2/Editorial counts and findings — not restated here,
+      per the lesson every round of this remediation has now taught
+      about facts restated in more than one place going stale). All
+      seven rounds' findings remediated in the same session they were
+      found, to the extent fixable without further owner action.
+      **Round 7's own remediation has not yet been independently
+      confirmed — that confirmation is round 8's own subject.**
+- [ ] Definition of Ready — **not yet reached, and cannot be reached
+      while `BUG-031` remains open** (escalated round 7 to BLOCKING —
+      see the bug-review checklist item above). Explicitly gated on an
       independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
-      with P0=0/P1=0 — see `SCENARIOS.md` §5's current round for what
-      remains.
+      with P0=0/P1=0 AND `BUG-031` CLOSED — see `SCENARIOS.md` §5's
+      current round for what remains.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

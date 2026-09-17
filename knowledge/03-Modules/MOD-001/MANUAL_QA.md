@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 6 pre-review check — SCN-122/123 mapping added, missing since round 5)
+updated: 2026-09-16 (Scenario Review round 7 — SCN-124/125 mapping added; round-5 fragment given proper table headers)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -68,7 +68,7 @@ absent manual-execution path:
 | 2. CI workflow behavior | 004-015, 020, 023, 024, 034, 084-096, 098, 102, 103, 110, 111, 112 |
 | 3. Environment setup (QA/staging) | 037, 038, 041, 049, 068, 069, 073, 074, 101 |
 | 4. Generated artifacts | 017, 018, 042, 057, 063, 091, 093, 098 |
-| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090, 106, 109, 116 |
+| 5. Failure diagnostics | 003, 011, 013, 019, 025, 038, 085-090, 106, 109, 116, 124 |
 | 6. Migration drill | 022, 059, 066, 070, 113, 114 |
 | 7. Release/rollback drill | 044-048, 058, 060, 067, 072, 107, 108 |
 | 8. Mobile build/toolchain bootstrap | 050-055, 099, 100, 115, 117 |
@@ -98,7 +98,19 @@ mapping at all — fixed:**
 
 **Added (Scenario Review round 5, P0-2): SCN-122/123 were new this
 round (closing the card's sensitive-logging/abuse-negative security-
-baseline gap) and had no manual-surface mapping — fixed:**
+baseline gap) and had no manual-surface mapping — fixed (headers added
+round 7, Editorial — this fragment previously had none and would not
+render as a table):**
 
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
 | SCN-122 (sensitive-logging lint) | 2. CI workflow behavior | a static CI lint, same class as the other gate/lint checks in surface 2 (e.g. SCN-029's secret-leak detection) |
 | SCN-123 (abuse-negative fixture pattern) | 2. CI workflow behavior | a harness-pattern scenario, same class as SCN-032's offline-fixture pattern, which this table's own catch-all already routes to surface 2 by default |
+
+**Added (Scenario Review round 7, P0-1/P1-5): SCN-124/125 were new this
+round and had no manual-surface mapping — fixed:**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-124 (baseline-artifact-binding validator, remaining 4 conditions) | 5. Failure diagnostics | same validator/family as SCN-025, already mapped there |
+| SCN-125 (GOV-01-R08 maintenance/customer-communication template) | 4. Generated artifacts | `RELEASE_TRAIN.md` is a generated/authored artifact checked for required-section completeness, same class as SCN-121's Appendix H.1 check |
