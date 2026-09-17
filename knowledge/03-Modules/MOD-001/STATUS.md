@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-17 (BUG-031/BUG-032 CLOSED via owner patch + independent routing-drill verification; Scenario Review round 8 still pending, see `SCENARIOS.md` §5)
+updated: 2026-09-17 (Scenario Review round 8 ran, BLOCKED, remediated same session; BUG-031 CLOSED, BUG-032 re-opened on its description-field half, second owner patch drafted — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -118,27 +118,34 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       owner applied the drafted patch to `veyro-implementer.md`
       (commit `0afa609`); this session independently verified it
       byte-for-byte and ran a 6-case routing drill proving real
-      escalation in all required directions. Both `BUG-031` and
-      `BUG-032` are CLOSED.** See
-      `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+      escalation in all required directions. `BUG-031` CLOSED.** **Corrected
+      (Scenario Review round 8, P1-1): `BUG-032`'s closure claim held
+      only for its escalation-text half — the `description`-field
+      contradiction its own finding named was never actually fixed.
+      RE-OPENED on that half; a second, small owner-gated patch is
+      drafted and provided this turn.** See
+      `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`
+      and `evidence/bugs/BUG-032-orphaned-agent-veyro-test-author.md`.
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
       (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4). Round 7: BLOCKED
-      (P0=2, P1=5)** (see `SCENARIOS.md` §5 for the current round's
-      exact P0/P1/P2/Editorial counts and findings — not restated here,
-      per the lesson every round of this remediation has now taught
-      about facts restated in more than one place going stale). All
-      seven rounds' findings remediated in the same session they were
-      found, to the extent fixable without further owner action.
-      **Round 7's own remediation has not yet been independently
-      confirmed — that confirmation is round 8's own subject.**
-- [ ] Definition of Ready — **not yet reached.** `BUG-031`'s own
-      blocking condition is now satisfied (CLOSED, independently
-      verified — see the bug-review checklist item above). Still
-      gated on an independent round returning `MOD-001 SCENARIO REVIEW
+      (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3)** (see `SCENARIOS.md`
+      §5 for the current round's exact P0/P1/P2/Editorial counts and
+      findings — not restated here, per the lesson every round of this
+      remediation has now taught about facts restated in more than one
+      place going stale). All eight rounds' findings remediated in the
+      same session they were found, except one owner-gated half of a
+      P1 (`BUG-032`'s description-field fix, drafted this turn).
+      **Round 8's own remediation has not yet been independently
+      confirmed — that confirmation is round 9's own subject.**
+- [ ] Definition of Ready — **not yet reached.** `BUG-031` is CLOSED
+      (satisfied, independently verified — see the bug-review checklist
+      item above). `BUG-032` remains RE-OPENED on its description-field
+      half pending a second owner patch. Still gated on an independent
+      round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 8's own subject.
+      for what remains; that confirmation is round 9's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

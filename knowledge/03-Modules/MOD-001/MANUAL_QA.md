@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 7 — SCN-124/125 mapping added; round-5 fragment given proper table headers)
+updated: 2026-09-17 (Scenario Review round 8 — SCN-126 mapping added)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -114,3 +114,10 @@ round and had no manual-surface mapping — fixed:**
 |---|---|---|
 | SCN-124 (baseline-artifact-binding validator, remaining 4 conditions) | 5. Failure diagnostics | same validator/family as SCN-025, already mapped there |
 | SCN-125 (GOV-01-R08 maintenance/customer-communication template) | 4. Generated artifacts | `RELEASE_TRAIN.md` is a generated/authored artifact checked for required-section completeness, same class as SCN-121's Appendix H.1 check |
+
+**Added (Scenario Review round 8, P0-1): SCN-126 was new this round and
+had no manual-surface mapping — fixed:**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-126 (input/output data-exposure lint) | 2. CI workflow behavior | a static CI lint against the committed OpenAPI contract, same class as the other gate/lint checks in surface 2 |

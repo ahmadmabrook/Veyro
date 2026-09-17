@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-17 (BUG-031/BUG-032 CLOSED — "registered and routable" claim now true for all 3 agents, independently verified; §12 still carries round 7's real backend-side mechanisms)
+updated: 2026-09-17 (Scenario Review round 8 — added the input/output data-exposure lint to §6/§1/§3; fixed 5 false §12 assertions of edits never made to §1/RUNBOOK.md)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -67,8 +67,21 @@ Veyro/
 │   │   ├── modules/                #   monolith: one sub-package per
 │   │   │   └── _shared/            #   owned domain (empty until MOD-002+
 │   │   ├── contracts/               #   claims a domain); _shared/ holds
-│   │   └── main.py                 #   cross-cutting (auth middleware
-│   ├── alembic/                    #   scaffold, tenant-context resolver)
+│   │   ├── main.py                 #   cross-cutting (auth middleware
+│   │   ├── version_negotiation.py  #   scaffold, tenant-context resolver)
+│   │   │                           #   NEW, §12 (GOV-01-R07, round 7,
+│   │   │                           #   corrected round 8 P1-3 — this
+│   │   │                           #   file was named in §12's prose but
+│   │   │                           #   never added here) — real backend
+│   │   │                           #   min-version/optional-vs-forced-
+│   │   │                           #   update/kill-switch enforcement,
+│   │   │                           #   proven by SCN-MOD001-115
+│   │   └── crash_remote_config_intake.py # NEW, §12 (GOV-01-R07, round
+│   │                                #   7, corrected round 8 P1-3) —
+│   │                                #   synthetic crash-report/remote-
+│   │                                #   config intake endpoints,
+│   │                                #   proven by SCN-MOD001-117
+│   ├── alembic/
 │   ├── tests/
 │   │   ├── unit/
 │   │   ├── component/
@@ -124,6 +137,11 @@ Veyro/
     ├── validate_baseline_binding.py     # generalizes verify_baselines.py
     ├── validate_external_gates.py       # new (§20/§21/§22.0 consistency)
     ├── validate_appendix_i.py           # new (invariant/runbook traceability)
+    ├── validate_data_exposure.py        # new, Scenario Review round 8 P0-1
+    │                                    #   (SCN-126: card security baseline
+    │                                    #   "input/output data exposure" —
+    │                                    #   OpenAPI response/request
+    │                                    #   schema-field allowlist)
     ├── validate_sensitive_logging.py    # new, Scenario Review round 6 P1-1
     │                                    #   (SCN-122: card security baseline)
     ├── abuse_negative_fixture_harness.py # new, Scenario Review round 6 P1-1
@@ -148,6 +166,19 @@ Veyro/
     ├── validate_adr_conformance.py      # new, Scenario Review round 5 P1-4
     │                                    #   (SCN-119: ADR-004/ADR-015
     │                                    #   conformance per ADR_CONFORMANCE.md)
+    ├── validate_toolchain_matrix.py     # new, §12 (GOV-01-R07, round 7,
+    │                                    #   corrected round 8 P1-3 — §12's
+    │                                    #   own prose named this tool but
+    │                                    #   never added it here) — checks
+    │                                    #   mobile/TOOLCHAIN_MATRIX.md's
+    │                                    #   pinned versions against real
+    │                                    #   committed Gradle/Xcode/CI-
+    │                                    #   runner config, distinct from
+    │                                    #   SCN-051/099's internal-
+    │                                    #   consistency-only checks
+    ├── generate_changelog.py           # new, §12 (GOV-01-R08, round 7,
+    │                                    #   corrected round 8 P1-3) —
+    │                                    #   proven by SCN-MOD001-107
     └── generate_screen_contracts.py     # imports the canonical registry
 ```
 
@@ -199,6 +230,7 @@ jobs (reusing the existing GitHub remote):
 | Canary/rollout with SLO/guardrail monitoring | After staging gates pass | Staging environment | Promote/rollback decision | Yes | N/A (needs staging) | Rollback-trigger log | Automated rollback trigger tied to real guardrail signals, not a manually-callable endpoint |
 | Promote or rollback; publish release metadata | End of pipeline | Canary result | Release-evidence record (`RB-GOV-01` field set) | Yes | N/A | Release-evidence artifact | N/A |
 | Domain contract uniqueness lint | Every push/PR, once >1 domain exists | All domains' contracts | Pass/fail + cross-domain conflict report | Yes, once applicable | `tools/validate_architecture_gates.py` locally | Named conflicting-domain-pair report | Runs against the full committed contract set, not a partial local view |
+| **Input/output data-exposure lint (added, Scenario Review round 8, P0-1)** | Every push/PR touching `contracts/openapi/` | OpenAPI response/request schemas | Pass/fail + named field-shape report | Yes | `tools/validate_data_exposure.py` locally (SCN-MOD001-126) | Named undeclared-response-field or extra-request-field report | Runs against the actual committed OpenAPI contract, not a developer's local, possibly-stale copy |
 | **Sensitive-logging lint (added, Scenario Review round 6, P1-1)** | Every push/PR | Source tree (log statements) | Pass/fail + named pattern-class report | Yes | `tools/validate_sensitive_logging.py` locally (SCN-MOD001-122) | Named file/line + secret- or PII-pattern-class report | Runs against the full committed source tree, not a partial local view |
 | **Abuse-negative fixture harness (added, Scenario Review round 6, P1-1)** | Once a later domain module builds real abuse-scenario content on top of it | Synthetic abusive/legitimate request-shape fixtures | Pass/fail classification | Yes, once applicable | `tools/abuse_negative_fixture_harness.py` locally (SCN-MOD001-123) | Classification report | The harness itself is MOD-001's obligation; fixture *content* for specific business flows is a later domain module's obligation, same split as the offline-fixture pattern above |
 | **Idempotency-contract lint (added, Scenario Review round 6, P0-1)** | Every push/PR touching a command declaration for an externally-retryable mutation | Command/endpoint declaration | Pass/fail + named-missing-element report | Yes | `tools/validate_idempotency_contract.py` locally (SCN-MOD001-016 part a) | Named missing-element report (key-tuple scoping, retention window, stored-hash field, 409-code reference, command_id propagation, or provider-derivative field) | Runs against the actual committed command declaration, not a developer's local, possibly-stale copy — same pattern as the API/event schema-compatibility row above |
@@ -311,15 +343,31 @@ Verbatim from the card (`EIP_MIRROR.md` lines 4267-4271): "Mandatory
 baseline: authentication/authorization as applicable, tenant isolation,
 input/output data exposure, secrets/dependency hygiene, sensitive
 logging, privacy classification and abuse-negative scenarios."
-Distinguishing actual MOD-001 implementation obligations from harnesses
-for future modules:
+**Corrected (Scenario Review round 8, P0-1): "input/output data
+exposure" — one of the card's 7 mandatory baseline items — had no
+disposition anywhere in this section (round 5's own P0-2 finding
+miscounted this baseline as having 3 uncovered items when it actually
+named 2, and never caught the third; rounds 6/7 inherited the
+arithmetic error unchallenged).** Distinguishing actual MOD-001
+implementation obligations from harnesses for future modules:
 
 - **MOD-001 implementation obligations:** the RLS/permission lint gates
   themselves (they ARE the tenant-isolation/authz enforcement mechanism,
   not just a test of one); secret-scanning in CI (secrets/dependency
   hygiene); a sensitive-logging lint (no secret/PII patterns in log
   statements — a real, buildable static check); dependency-vulnerability
-  scanning.
+  scanning; **an input/output data-exposure lint (added round 8,
+  P0-1)** — a schema-level allowlist check, distinct from the
+  permission lint (which checks *action* declarations, not *field*
+  shape): every OpenAPI response schema field must be explicitly
+  declared (no undeclared/wildcard serialization that could leak an
+  internal column), and every request schema rejects extra/undeclared
+  fields (no hidden-field injection past validation). A real, buildable
+  static check against the committed OpenAPI contract, distinct from
+  RLS (row-level tenant isolation), sensitive-logging (log statements),
+  privacy classification (data tagging), secret scanning (committed
+  files), and abuse-negative (fixture harness) — none of which cover
+  field-level response/request shape.
 - **Harnesses for future modules, not MOD-001 implementation itself:**
   the actual authentication mechanism (MOD-007/008's scope); real
   privacy classification of real data fields (no real fields exist yet
@@ -512,12 +560,21 @@ Both fixed below.** Fixed:
   §3 pipeline table below) — SCN-107 tests "a changelog entry via the
   changelog tool," which previously named a convention document, not a
   tool.
-- **Lifecycle-stage field** (extends `RUNBOOK.md`'s existing
-  release-evidence field set): every release-evidence record carries a
-  `lifecycle_stage` field (`beta`/`GA`/`deprecated`), and a lint (new
-  row, §3 pipeline table below) rejects a release-evidence record with
-  no lifecycle-stage field or an out-of-order stage transition
-  (`deprecated`→`beta` without an explicit re-release path).
+- **Lifecycle-stage field** — **corrected (Scenario Review round 8,
+  P1-3): this previously claimed to "extend `RUNBOOK.md`'s existing
+  release-evidence field set," which is false; `RUNBOOK.md`'s 7-field
+  evidence contract is `RB-GOV-01`'s own card-mandated rollback-
+  incident record (`EIP_MIRROR.md` lines 22386-22394) and is a
+  distinct artifact from the one this bullet describes.** GOV-01-R08's
+  release-lifecycle record is a separate, per-release artifact (not a
+  per-incident one) carrying a `lifecycle_stage` field
+  (`beta`/`GA`/`deprecated`); a lint (new row, §3 pipeline table below)
+  rejects a record with no lifecycle-stage field or an out-of-order
+  stage transition (`deprecated`→`beta` without an explicit re-release
+  path). `SCN-108` tests this record; `SCN-048`/`058` continue to test
+  `RUNBOOK.md`'s own, unrelated 7-field rollback-evidence contract —
+  the two are not the same record and this section no longer implies
+  they are.
 
 | Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
 |---|---|---|---|---|---|---|---|

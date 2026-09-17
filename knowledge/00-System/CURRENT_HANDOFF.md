@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-17 (chunk 36 — MOD-001 Scenario Review round 7 ran, returned BLOCKED, all P0/P1 findings remediated same session; a separate independent review escalated BUG-031 to P0/BLOCKING for Definition of Ready (overturning round 6's own non-blocking classification), owner action drafted and pending. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is the owner applying the drafted BUG-031 patch, followed by independent round-8 confirmation. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-17 (chunk 37 — owner applied the BUG-031/BUG-032 routing patch (commit 0afa609); independently verified byte-for-byte and by a 6-case routing drill; BUG-031 CLOSED, BUG-032 partially closed (escalation-text half closed, description-field root-cause half re-opened by round 8). Scenario Review round 8 then ran, returned BLOCKED, all P0/P1 remediated same session. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is the owner applying a second small patch (BUG-032's description-field fix, drafted this turn), followed by independent round-9 confirmation. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -65,8 +65,109 @@ a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-33-2026-09-15-round4-remediation.md`.**
 **Eighteenth application (2026-09-17, chunk 36): chunk 34 compressed to
 a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-34-2026-09-16-round5-remediation.md`**
-— chunks 36 and 35 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-34-2026-09-16-round5-remediation.md`.**
+**Nineteenth application (2026-09-17, chunk 37): chunk 35 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-35-2026-09-16-round6-remediation.md`**
+— chunks 37 and 36 are now the 2 kept in full.
+
+## What happened chunk 37, 2026-09-17 — BUG-031/BUG-032 owner patch verified and closed (BUG-032 partially), 6-case routing drill PASS, MOD-001 Scenario Review round 8: round 8 returned BLOCKED (P0=3, P1=3, P2=6, Editorial=4), all P0/P1 remediated same session; BUG-032 re-opened on its root-cause half by round 8's own finding; a second small owner patch drafted; Definition of Ready explicitly NOT evaluated
+
+Continuation of chunk 36's own pause point. The owner applied the
+drafted `BUG-031`/`BUG-032` patch to `.claude/agents/veyro-implementer.md`
+(commit `0afa609`, "fix: route activated surface profiles and test
+authoring") and reported it. Per this turn's own mandate, that claim
+was independently verified rather than trusted: direct `Read` of the
+file confirmed a byte-for-byte match to the drafted text, and
+`git show --stat 0afa609` confirmed exactly 1 file changed with an
+insertion/deletion count consistent with a clean two-paragraph
+addition.
+
+**A real 6-case routing qualification drill followed** — 6 fresh
+dispatches to `veyro-implementer`, each instructed not to write/edit/
+create anything, proving: `infra/**`/`.github/workflows/**` work
+(Infra profile ACTIVATED) escalates to `veyro-infra-sre-engineer`;
+`backend/**` work (Backend profile ACTIVATED, non-critical-slice)
+escalates to `veyro-backend-engineer`; the registered critical slice
+still escalates to `veyro-critical-engineer`; deterministic test
+authoring escalates to `veyro-test-author`; routine, non-specialized
+implementation has no specialist carve-out and remains
+`veyro-implementer`'s own routing-tier responsibility; architecture/ADR
+decisions still escalate to `veyro-lead`. `git status` confirmed clean
+after all 6 dispatches — nothing written. **`BUG-031` (P0) CLOSED.
+`BUG-032` (P1) closed on its escalation-text half.** Evidence:
+`evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+Committed and pushed (`177413f`).
+
+**Round 8** (fresh-context `veyro-scenario-reviewer`, Opus, explicitly
+instructed not to inherit round 7's conclusions, and specifically
+tasked with independently verifying the BUG-031/032 closure claims
+rather than trusting them): confirmed round 7's remediation
+substantively held (126 detail blocks, category matrix, SCN-124/125,
+the real 3-value SCN-108 machine, SCN-120(a)'s rule-derived reachability
+check, SCN-037/038's retitling, and — read directly rather than
+trusted — that the two new escalation paragraphs in
+`veyro-implementer.md` are genuinely present, substantively correct,
+and introduce no new conflict with `MODEL_ROUTING.md`/`MODEL_ROUTE.md`/
+`ADR-005`). **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=3,
+P1=3, P2=6, Editorial=4.
+
+The three P0s: (1) the card's mandatory Security-scope baseline names 7
+controls; "input/output data exposure" — the third of three round 5's
+own P0-2 finding said were uncovered while naming only two — had no
+disposition, mechanism, or scenario anywhere, inherited unchallenged
+through rounds 6 and 7; (2) five obligations round 7's own remediation
+created (white-label metadata, KMP shared-module versioning, the
+isolated-PR toolchain-qualification gate, the capability-adapter
+smoke-test half, and the toolchain-consistency checker) had mechanisms
+in `IMPLEMENTATION.md` §12 but no scenario at all — the exact inverse
+of the defect rounds 5/6 found, created by round 7 while fixing that
+inverse; (3) the `BUG-031`/`BUG-032` closure was never propagated to
+`CURRENT_STATE.md`/`CURRENT_HANDOFF.md` — the two files a fresh session
+is required to read at bootstrap both still asserted BUG-031 OPEN and
+owner action pending, directly contradicting `STATUS.md`/
+`BUG_REGISTRY.md`/`MODEL_ROUTE.md` — the eighth consecutive round in
+which this exact propagation species recurred (this session's own
+miss: the closure commit earlier this chunk should have touched these
+two files and didn't).
+
+The three P1s: (1) `BUG-032`'s closure fixed the escalation text but
+not the root cause its own finding named — `veyro-implementer.md`'s
+`description` field still claims "deterministic test authoring,"
+contradicting the new body paragraph, and since Claude Code uses
+subagent descriptions for automatic *selection* (not just post-dispatch
+behavior), this half is unfixed and the 6-case drill (which dispatched
+by name every time) could not have caught it; (2) the catalog's own
+lifecycle-role field was never reconciled against the newly-live
+test-authoring rule — 0 of 126 scenarios name `veyro-test-author`,
+which could read as a residual inconsistency; (3) round 7's own §12
+text asserted 5 edits to `IMPLEMENTATION.md` §1/`RUNBOOK.md` that were
+never actually made (two backend source files, two tools, and a false
+claim that a GOV-01-R08 field "extends" `RUNBOOK.md`'s distinct
+`RB-GOV-01` evidence contract).
+
+**All P0/P1 findings remediated the same session**: `SCN-MOD001-126`
+added (the input/output data-exposure lint) with a new
+`tools/validate_data_exposure.py`; `tools/validate_toolchain_matrix.py`
+and `tools/generate_changelog.py` added to §1's inventory,
+`backend/app/version_negotiation.py`/`crash_remote_config_intake.py`
+added to §1's topology, and the false RUNBOOK.md-extension claim
+corrected to describe a distinct release-lifecycle record; `BUG-031`
+closure propagated to `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` (this
+entry); `BUG-032` re-opened on its description-field half with a
+second, small owner patch drafted; `SCENARIOS.md` §0 given an explicit
+clarifying note on what "Lifecycle role" means (the check's executor,
+not necessarily the fixture's author) rather than mass-reassigning
+scenarios. **Definition of Ready was again explicitly NOT evaluated**
+— round 8 itself returned P0s.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: the owner applies the second, small
+drafted patch (BUG-032's `description`-field fix); this session then
+re-verifies it and dispatches an independent Scenario Review round 9**
+— not implementation, not MOD-002, not a self-granted Ready
+determination.
 
 ## What happened chunk 36, 2026-09-16/17 — MOD-001 Scenario Review round 7 + independent BUG-031 Ready-gate determination: Scenario Review returned BLOCKED (P0=2, P1=5, P2=9, Editorial=6), all P0/P1 remediated same session; a separate dedicated review found BUG-031 genuinely BLOCKING for Definition of Ready (disposition A, not the prior "non-blocking" classification), escalated it P1→P0; a related third orphaned agent (veyro-test-author) found and filed as BUG-032; Definition of Ready explicitly NOT evaluated
 
@@ -153,69 +254,7 @@ routing drill, and an independent Scenario Review round 8 confirms
 round 7's remediation** — not implementation, not MOD-002, not a
 self-granted Ready determination.
 
-## What happened chunk 35, 2026-09-16 — MOD-001 Scenario Review round 6: round 6 returned BLOCKED (P0=1, P1=4, P2=6, Editorial=5), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 6 itself returned a P0
-
-Continuation of chunk 34's own pause point — round 6 had not yet run
-when chunk 34 was written. The mandated pre-review durable-state check
-found `MANUAL_QA.md`'s scenario-to-manual-surface mapping still stopped
-at `SCN-121`, missing the two scenarios round 5 added (`SCN-122`/`123`)
-— fixed before dispatch (committed `63dbcb5`).
-
-**Round 6** (fresh-context `veyro-scenario-reviewer`, Opus, explicitly
-instructed not to inherit round 5's conclusions): independently
-re-derived coverage from source and confirmed round 5's remediation
-substantively held on every point checked (all 124 detail blocks
-present with no duplicates/gaps, the category matrix matches every
-detail-block tag, `SCN-118`'s tier fix and `SCN-120`'s reachability
-rewrite both held, `MANUAL_QA.md` covers all 124, no file claims
-MOD-001 is Ready). **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.**
-P0=1, P1=4, P2=6, Editorial=5.
-
-The P0: the card's own mandatory idempotency-contract lint (six named
-elements — key-tuple scoping, retention window, stored-hash field, the
-stable 409 code, `command_id` propagation, provider-idempotency
-derivatives) had no scenario that actually ran a lint — the one linked
-scenario (`SCN-016`) tested only runtime dedup behavior of an
-already-well-formed endpoint, and `IMPLEMENTATION.md` had zero mentions
-of "idempot" anywhere. The four P1s: round 5's own two new scenarios
-(`SCN-122`/`123`) had no implementation mechanism, the identical defect
-round 5's own P1-4 had just fixed for a *different* pair of scenarios in
-the same session that created these two; GOV-01-R07's and GOV-01-R08's
-"Implementation obligations" text had never become a concrete
-file/CI-stage plan, leaving twelve scenarios with no named mechanism;
-two scenarios (`SCN-071`/`072`) were classified Optional/ALT in
-violation of §9.1's own rule that Required is rule-derived from tracing
-to a Critical requirement, the same shape round 1 already fixed for two
-sibling scenarios but never applied here; and `BUG-030`'s exact defect
-class (an orphaned agent nothing routes to) is independently confirmed
-still live today for `veyro-backend-engineer`/`veyro-infra-sre-engineer`
-— a disposition for this already existed in a prior review's own
-findings but had never been propagated to `BUG_REGISTRY.md` (which
-still claimed "0 open P1 bugs") or `STATUS.md`'s gate checklist. Full
-finding-by-finding detail and remediation: `SCENARIOS.md` §5's round-6
-entry, not restated here.
-
-**All P0/P1 findings remediated the same session**: `SCN-016` split into
-a lint half and a runtime half; `SCN-071`/`072` reclassified Required
-(HP and REC respectively — catalog total unchanged at 124, now 124
-Required + 0 Optional); five new tools added to `IMPLEMENTATION.md`'s
-inventory and pipeline table (idempotency-contract lint,
-sensitive-logging lint, abuse-negative fixture harness) plus a new §12
-naming GOV-01-R07/R08's mobile-release/lifecycle mechanisms
-(`mobile/TOOLCHAIN_MATRIX.md`, `mobile/RELEASE_POLICY.md`,
-`RELEASE_TRAIN.md`, 3 new CI stages); `BUG-031` filed (P1, OPEN,
-non-blocking for Definition of Ready, must close before real
-`backend/**`/`infra/**` implementation begins) in `BUG_REGISTRY.md` and
-cross-referenced in `STATUS.md`/`MODEL_ROUTE.md`. **Definition of Ready
-was again explicitly NOT evaluated** — round 6 itself returned a P0, so
-self-declaring Ready or proceeding to the DoR checklist would violate
-the owner's own review-budget rule directly.
-
-**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
-Ready. Implementation has not started and is not authorized to start.
-Next legally allowed action: an independent Scenario Review round 7**,
-to confirm round 6's remediation actually held — not implementation,
-not MOD-002, not a self-granted Ready determination.
+## What happened chunk 35, 2026-09-16 (compressed 2026-09-17, nineteenth retention-rule application) — MOD-001 Scenario Review round 6: round 6 returned BLOCKED (P0=1, P1=4, P2=6, Editorial=5), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 6 itself returned a P0. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-35-2026-09-16-round6-remediation.md`.
 
 ## What happened chunk 34, 2026-09-16 (compressed 2026-09-17, eighteenth retention-rule application) — MOD-001 Scenario Review round 5: round 5 returned BLOCKED (P0=2, P1=4, P2=11, Editorial=4), all P0/P1 remediated same session, Definition of Ready explicitly NOT evaluated per the review-budget rule since round 5 itself returned P0/P1. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-34-2026-09-16-round5-remediation.md`.
 

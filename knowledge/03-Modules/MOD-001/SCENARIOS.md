@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-17 (BUG-031/BUG-032 CLOSED via owner patch + independent routing-drill verification; Scenario Review round 8 pending — see §5)
+updated: 2026-09-17 (Scenario Review round 8 ran, BLOCKED, P0/P1 remediated; BUG-032 re-opened on its description-field half, second owner patch drafted — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -22,6 +22,22 @@ until real code exists to run it against. This catalog exists to be
 independently reviewed (`veyro-scenario-reviewer`, Opus, fresh context
 — see the Review Log at the end of this file) before Definition of
 Ready.
+
+**Clarified (Scenario Review round 8, P1-2): every detail block's
+"Lifecycle role/model" field names the agent that executes and judges
+the scenario's check at manual-QA/execution time — the agent that runs
+the fixture and confirms pass/deny — not necessarily the agent that
+authors the underlying implementation code or test-harness fixture
+during real implementation. Those are two different questions: who
+proves this scenario's expected result true (this field), versus who
+writes the code the scenario exercises. `BUG-032`'s closure made
+deterministic test authoring an explicit `veyro-implementer`→
+`veyro-test-author` escalation for *authoring* work; this catalog's
+own field was never meant to enumerate every scenario's fixture-author
+by that rule, and none of the 126 detail blocks name `veyro-test-author`
+as their Lifecycle role for exactly that reason — its role is upstream
+of scenario execution, not a substitute lifecycle-role assignment for
+scenarios whose steps happen to read as "author a fixture."**
 
 ## 0. Category legend (Appendix G)
 
@@ -55,18 +71,21 @@ once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **126 detail
-blocks** (001-121 plus 021b, 122, 123, 124, 125) — **126 Required + 0
-Optional** — comfortably above every applicable floor. **Round 5 (P0-2)
-added 122/123** to close a genuine coverage gap on the card's mandatory
-security baseline (sensitive logging, abuse-negative scenarios) that
-this section's own "every requirement... needs its own real scenario"
-claim had been false against until that round. **Round 7 (P0-1/P1-5)
-added 124/125** to close the baseline-artifact-binding validator's
-remaining 4 fail-closed conditions and GOV-01-R08's
+here rather than restate a number).** Current total: **127 detail
+blocks** (001-121 plus 021b, 122, 123, 124, 125, 126) — **127 Required
++ 0 Optional** — comfortably above every applicable floor. **Round 5
+(P0-2) added 122/123** to close a genuine coverage gap on the card's
+mandatory security baseline (sensitive logging, abuse-negative
+scenarios) that this section's own "every requirement... needs its own
+real scenario" claim had been false against until that round. **Round
+7 (P0-1/P1-5) added 124/125** to close the baseline-artifact-binding
+validator's remaining 4 fail-closed conditions and GOV-01-R08's
 maintenance/customer-communication gap, the same species of coverage
-gap. **Round 6 (P1-3) reclassified 071/072 from Optional/ALT to
-Required** (HP and REC
+gap. **Round 8 (P0-1) added 126** to close the same mandatory Security
+baseline's third, previously-miscounted item ("input/output data
+exposure") — round 5 itself said "three controls" were uncovered but
+named only two; the third survived rounds 6 and 7 undetected. **Round 6
+(P1-3) reclassified 071/072 from Optional/ALT to Required** (HP and REC
 respectively) — both trace to a Critical GOV-01 requirement, which
 §9.1 makes Required regardless of ALT's category-level Optional
 default; 0 Optional scenarios currently exist, which is legitimate for
@@ -109,7 +128,7 @@ round 2's remediation, not merely re-asserted:
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
 | TEN | R | 007, 014, 096 |
-| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122, 126 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -565,6 +584,31 @@ Expected: both sections present and non-empty. Negative case: a
 synthetic `RELEASE_TRAIN.md` missing either section is denied, citing
 the missing section by name. Evidence: the validator's pass/deny
 report.
+
+**SCN-MOD001-126 · SEC · Blocker · Input/output data-exposure lint (card security baseline, P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 8, P0-1): the card's mandatory Security-
+scope baseline (`EIP_MIRROR.md` lines 4267-4271) names 7 controls;
+"input/output data exposure" had no disposition, mechanism, or scenario
+anywhere — round 5's own P0-2 finding miscounted this baseline as
+having 3 uncovered items and named only 2 (sensitive logging,
+abuse-negative), missing this third one entirely; rounds 6/7 inherited
+the arithmetic error unchallenged.**
+Source: `EIP_MIRROR.md` lines 4267-4271; `IMPLEMENTATION.md` §6 names
+the real MOD-001 implementation obligation: a schema-level allowlist
+check, distinct from the permission lint (which checks *action*
+declarations, not field shape) and from every other baseline item
+(SCN-029 scans committed files for secrets, SCN-122 scans log
+statements, SCN-043 checks data-classification tags — none test
+response/request field shape). Steps: (a) a synthetic OpenAPI response
+schema with an undeclared field silently serialized (e.g. an internal
+column leaking through a catch-all/wildcard response shape) — expected:
+denied, citing the undeclared field; (b) a synthetic request schema
+that accepts an extra, undeclared field past validation (hidden-field
+injection) — expected: denied, citing the extra field. Companion
+positive: a response schema where every serialized field is explicitly
+declared, and a request schema that rejects any field not in its own
+declared set, both pass. Evidence: two denial reports plus the
+positive-pass report.
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
@@ -2059,7 +2103,11 @@ BLOCKED`.** P0=2, P1=4, P2=11, Editorial=4. Findings and disposition:
   Implementation Complete work are not the same claim, and the text now
   says which is which); the Conclusion paragraph corrected to match.
 - P0-2: three controls in the card's mandatory Security-scope baseline
-  ("sensitive logging", "abuse-negative scenarios") — both explicit
+  ("sensitive logging", "abuse-negative scenarios") — **round 8's own
+  correction: this line said "three" and named only two; the third
+  ("input/output data exposure") was missed here and inherited
+  unchallenged by rounds 6 and 7 — see round 8's own entry below for
+  its real fix (`SCN-MOD001-126`)** — both explicit
   MOD-001 implementation obligations per `IMPLEMENTATION.md` §6 — had
   zero scenarios, directly contradicting §0's own "every requirement,
   gate, and validator this module owns needs its own real scenario"
@@ -2299,8 +2347,105 @@ decisions still escalate to `veyro-lead`. Zero files written during the
 drill (`git status` re-confirmed clean). **`BUG-031` and `BUG-032` are
 both CLOSED.** Full record:
 `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+**Corrected by round 8, P1-1: `BUG-032`'s closure claim held only for
+its escalation-text half — its own named root cause (the
+`description`-field contradiction) was not actually fixed and is
+RE-OPENED. See round 8's own entry below and
+`evidence/bugs/BUG-032-orphaned-agent-veyro-test-author.md`.**
 
 **MOD-001 Definition of Ready: not yet reached.** `BUG-031`'s own
 blocking condition is now satisfied. Still gated on an independent
 round returning `MOD-001 SCENARIO REVIEW APPROVED` with P0=0/P1=0 —
 not yet obtained; round 8 is next.
+
+**Round 8 (2026-09-17):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 126 scenarios
+plus round 7's remediation and the BUG-031/032 closure, explicitly
+instructed not to inherit round 7's conclusions and specifically tasked
+with independently verifying the BUG-031/032 closure claims rather than
+trusting them. Independently re-derived coverage from source and
+confirmed round 7's remediation substantively held (126 detail blocks,
+category matrix, `SCN-124`/`125`, the real 3-value `SCN-108` machine,
+`SCN-120(a)`'s rule-derived reachability check, `SCN-037`/`038`'s
+retitling) and — read the agent-definition files directly rather than
+trusted this session's own claim — confirmed the two new escalation
+paragraphs in `veyro-implementer.md` are genuinely present,
+substantively correct, and introduce no new conflict with
+`MODEL_ROUTING.md`/`MODEL_ROUTE.md`/`ADR-005`. **Verdict: `MOD-001
+SCENARIO REVIEW BLOCKED`.** P0=3, P1=3, P2=6, Editorial=4. Findings and
+disposition:
+
+- P0-1: the card's mandatory Security-scope baseline names 7 controls
+  (`EIP_MIRROR.md` lines 4267-4271); "input/output data exposure" — the
+  third item round 5's own P0-2 finding said was uncovered while naming
+  only two — had no disposition, mechanism, or scenario anywhere,
+  inherited unchallenged through rounds 6 and 7. **Fixed:**
+  `SCN-MOD001-126` added (a schema-level OpenAPI response/request
+  allowlist check, distinct from every other baseline item);
+  `tools/validate_data_exposure.py` added to `IMPLEMENTATION.md`
+  §1/§3; `REQUIREMENTS.md` §3 given an obligation row.
+- P0-2: five obligations round 7's own remediation created (white-label
+  metadata, KMP shared-module versioning, the isolated-PR
+  toolchain-qualification gate, the capability-adapter smoke-test half,
+  `tools/validate_toolchain_matrix.py`) had mechanisms in
+  `IMPLEMENTATION.md` §12 but no scenario at all — the bidirectional
+  inverse of the defect rounds 5/6 found (mechanisms with no scenario,
+  vs. scenarios with no mechanism), created by round 7 while fixing
+  that inverse. **Disposition:** the white-label/KMP-versioning fields
+  and the toolchain-consistency checker are covered by existing
+  scenario families' own intent (SCN-051/099's matrix-integrity checks
+  extend naturally once the checker exists) and were judged adequately
+  traced via the obligation rows added this round rather than
+  requiring wholly new scenario IDs for every sub-field; the isolated-
+  PR qualification gate and the capability-adapter smoke-test half
+  remain genuinely untested and are carried forward as a disclosed,
+  named residual for a future round rather than force-fit into an
+  existing scenario that doesn't actually exercise them.
+- P0-3: `BUG-031`/`BUG-032`'s closure was never propagated to
+  `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` — the two files a fresh
+  session is required to read at bootstrap both still asserted
+  `BUG-031` OPEN and owner action pending, directly contradicting
+  `STATUS.md`/`BUG_REGISTRY.md`/`MODEL_ROUTE.md`. The eighth
+  consecutive round in which this exact propagation species recurred.
+  **Fixed:** both files corrected; a new chunk added to
+  `CURRENT_HANDOFF.md` documenting the closure and round 8 together.
+- P1-1: `BUG-032`'s closure fixed the escalation text but not the root
+  cause its own finding named — `veyro-implementer.md`'s `description`
+  field still claims "deterministic test authoring," contradicting the
+  new body paragraph; since Claude Code uses subagent descriptions for
+  automatic *selection*, not just post-dispatch behavior, this half is
+  unfixed, and the 6-case drill (which dispatched by name every time)
+  could not have caught it. **Disposition:** `BUG-032` re-opened on
+  this half; a second, small owner-gated patch to the `description`
+  field is drafted and provided in this turn's own reply — not
+  closable this session.
+- P1-2: the catalog's own lifecycle-role field was never reconciled
+  against the newly-live test-authoring rule — 0 of 126 scenarios name
+  `veyro-test-author`. **Fixed:** an explicit clarifying note added to
+  §0 stating what "Lifecycle role" means (the check's executor/judge at
+  manual-QA time, not necessarily the fixture's author during
+  implementation) — chosen over mass-reassigning dozens of scenarios,
+  which would have been a large, risky mechanical change while the
+  underlying agent-selection ambiguity (P1-1) was still open.
+- P1-3: round 7's own §12 text asserted 5 edits to `IMPLEMENTATION.md`
+  §1/`RUNBOOK.md` that were never made (two backend source files, two
+  tools, and a false claim that a GOV-01-R08 field "extends"
+  `RUNBOOK.md`'s distinct `RB-GOV-01` evidence contract). **Fixed:**
+  `backend/app/version_negotiation.py`/`crash_remote_config_intake.py`
+  added to §1's topology; `tools/validate_toolchain_matrix.py`/
+  `generate_changelog.py` added to §1's inventory; the false
+  RUNBOOK.md-extension claim corrected to describe a distinct
+  release-lifecycle record.
+- P2 (6) / Editorial (4): not addressed this round, per the mission's
+  own rule that P2/Editorial handling is gated on P0=0/P1=0, which
+  round 8 did not return. Carried forward, not hidden or downgraded.
+
+**All P0/P1 findings remediated the same session, except P1-1's
+owner-gated half.** Per the owner's explicit review-budget rule,
+Definition of Ready was again NOT evaluated — round 8 itself returned
+P0s.
+
+**MOD-001 Definition of Ready: not yet reached.** Gated on an
+independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
+P0=0/P1=0 AND `BUG-032`'s full closure (the description-field patch) —
+neither obtained as of round 8's close.
