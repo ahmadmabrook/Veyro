@@ -2,9 +2,10 @@
 doc: BUG-031
 module: MOD-001
 severity: P0 (escalated from P1, Scenario Review round 7 — see "Escalation" section below)
-status: OPEN — BLOCKING for Definition of Ready
+status: CLOSED (2026-09-17) — owner patch applied and independently verified
 filed: 2026-09-16 (Scenario Review round 6, P1-4)
 escalated: 2026-09-16 (Scenario Review round 7, independent BUG-031 Ready-gate impact review)
+closed: 2026-09-17 — see "Closure" section below
 ---
 
 # BUG-031 — `veyro-backend-engineer`/`veyro-infra-sre-engineer` unreachable from any `.claude/agents/*.md` escalation path
@@ -153,6 +154,34 @@ plan's first implementation act touches both `infra/**` and
 **Not closable this session** — this is an owner action, identical in
 kind to `BUG-029`/`BUG-030`. **MOD-001 remains NOT READY until this
 closes and is independently re-verified.**
+
+## Closure (2026-09-17)
+
+The owner applied the drafted patch to `.claude/agents/veyro-implementer.md`
+directly (commit `0afa609`, "fix: route activated surface profiles and
+test authoring"). This session independently verified:
+
+1. **Byte-for-byte match** — direct `Read` of the file (not the
+   owner's word alone) confirms the two drafted paragraphs are present
+   verbatim, and `git show --stat 0afa609` confirms exactly 1 file
+   changed with an insertion/deletion count consistent with a clean
+   two-paragraph addition.
+2. **A real routing qualification drill** — 6 fresh dispatches to
+   `veyro-implementer`, each instructed not to write/edit/create
+   anything, proving: `infra/**`/`.github/workflows/**` work escalates
+   to `veyro-infra-sre-engineer`; `backend/**` work (non-critical-slice)
+   escalates to `veyro-backend-engineer`; the registered critical slice
+   still escalates to `veyro-critical-engineer`; deterministic test
+   authoring escalates to `veyro-test-author`; routine,
+   non-specialized implementation has no specialist carve-out and
+   remains `veyro-implementer`'s own routing-tier responsibility;
+   architecture/ADR decisions still escalate to `veyro-lead`. Full
+   record: `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+3. `git status` re-confirmed clean after all 6 dispatches — nothing
+   was written during the drill.
+
+**BUG-031 CLOSED.** The escalation path for both activated surface
+profiles is genuinely present and independently proven to fire.
 
 ## Cross-references
 

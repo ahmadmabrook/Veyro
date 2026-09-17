@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-16 (Scenario Review round 7 ran, BLOCKED, all P0/P1 remediated same session; BUG-031 escalated to P0/BLOCKING — round 8 independent confirmation still pending, see `SCENARIOS.md` §5)
+updated: 2026-09-17 (BUG-031/BUG-032 CLOSED via owner patch + independent routing-drill verification; Scenario Review round 8 still pending, see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -111,11 +111,16 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       from any escalation path) had never been named here or in
       `BUG_REGISTRY.md` — filed as `BUG-031`.** **Escalated (Scenario
       Review round 7): a dedicated independent Opus review found
-      round 6's "non-blocking" disposition false — `BUG-031` is
-      **BLOCKING for Definition of Ready**, escalated P1→P0, and
-      remains OPEN, owner-gated. A related third orphaned agent
-      (`veyro-test-author`) was also found and filed as `BUG-032` (P1,
-      non-blocking).**
+      round 6's "non-blocking" disposition false — `BUG-031` was
+      **BLOCKING for Definition of Ready**, escalated P1→P0. A related
+      third orphaned agent (`veyro-test-author`) was also found and
+      filed as `BUG-032` (P1, non-blocking).** **Closed (2026-09-17):
+      owner applied the drafted patch to `veyro-implementer.md`
+      (commit `0afa609`); this session independently verified it
+      byte-for-byte and ran a 6-case routing drill proving real
+      escalation in all required directions. Both `BUG-031` and
+      `BUG-032` are CLOSED.** See
+      `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
@@ -128,12 +133,12 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       found, to the extent fixable without further owner action.
       **Round 7's own remediation has not yet been independently
       confirmed — that confirmation is round 8's own subject.**
-- [ ] Definition of Ready — **not yet reached, and cannot be reached
-      while `BUG-031` remains open** (escalated round 7 to BLOCKING —
-      see the bug-review checklist item above). Explicitly gated on an
-      independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
-      with P0=0/P1=0 AND `BUG-031` CLOSED — see `SCENARIOS.md` §5's
-      current round for what remains.
+- [ ] Definition of Ready — **not yet reached.** `BUG-031`'s own
+      blocking condition is now satisfied (CLOSED, independently
+      verified — see the bug-review checklist item above). Still
+      gated on an independent round returning `MOD-001 SCENARIO REVIEW
+      APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
+      for what remains; that confirmation is round 8's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

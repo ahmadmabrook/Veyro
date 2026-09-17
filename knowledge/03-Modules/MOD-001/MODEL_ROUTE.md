@@ -2,7 +2,7 @@
 doc: MOD-001_MODEL_ROUTE
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 7 — BUG-031 escalated to P0, disposition A BLOCKING; false "registered and routable" claims corrected; the CI-config/CI-workflows routing overlap ADR-005 rejects flagged and fixed)
+updated: 2026-09-17 (BUG-031/BUG-032 CLOSED — owner-applied escalation patch independently verified byte-for-byte, 6-case routing drill PASS; all three agents now genuinely registered and routable)
 ---
 
 # MOD-001 — Model Route (per-module)
@@ -41,20 +41,25 @@ for the full reasoning. Three new agents were required:
 bounded — excludes the critical-slice harness itself). **Corrected
 (Scenario Review round 4, P1-3): this previously said "registration is
 blocked... routed to the owner" — stale.** All three are now
-**registered** — `BUG-029` (creation) is CLOSED for all three, and
-`BUG-030` (routing integration) is CLOSED **for `veyro-critical-engineer`
-only**, verified by a corrected routing drill dispatched to
-`veyro-implementer`. **Corrected (Scenario Review round 7 — this line
-previously said "registered and routable" for all three, which was
-false): `veyro-backend-engineer`/`veyro-infra-sre-engineer` are
-registered but not routable — nothing escalates to them. Filed as
-`BUG-031`, escalated to P0 this round (disposition A — BLOCKING for
-Definition of Ready) after an independent review found the planning set
-itself already routes activated-profile work (`SCN-037`/`038`) to
-`veyro-implementer` instead of the correct surface agent, contradicting
-`ADR-005`'s own explicit rejection of exactly that substitution.** See
-`knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`
-and `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-031-orphaned-agent-veyro-backend-infra-sre.md`.
+**registered and routable** — `BUG-029` (creation) is CLOSED for all
+three, and `BUG-030`/`BUG-031` (routing integration) are CLOSED for all
+three, verified by corrected routing drills dispatched to
+`veyro-implementer`. **Historical note (Scenario Review round 7):
+`veyro-backend-engineer`/`veyro-infra-sre-engineer` were briefly
+registered-but-not-routable, escalated `BUG-031` to P0 (disposition A —
+BLOCKING for Definition of Ready) after an independent review found the
+planning set itself routed activated-profile work (`SCN-037`/`038`) to
+`veyro-implementer` instead, contradicting `ADR-005`'s own explicit
+rejection of exactly that substitution. Closed 2026-09-17 — owner
+applied the drafted escalation patch (commit `0afa609`); this session
+independently verified it byte-for-byte and re-ran the routing drill,
+proving real escalation to both agents.** `veyro-test-author`'s
+identical unreachability gap (`BUG-032`) was closed by the same patch
+and the same drill. See
+`knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`,
+`knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`,
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-031-orphaned-agent-veyro-backend-infra-sre.md`,
+and `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-032-orphaned-agent-veyro-test-author.md`.
 
 **Planned routing for MOD-001 implementation (future turn, not this
 one):** matches `MODEL_ROUTING.md`'s existing role→agent table plus the
@@ -93,22 +98,21 @@ routing (status as of the most recent Scenario Review round — see
 `SCENARIOS.md` §5 for the authoritative, current account; not
 restated in full here to avoid the exact propagation-gap species that
 recurred across all six review rounds to date):**
-(1) the three new agent files exist and are registered — **caveat
-added, Scenario Review round 6, P1-4, escalated round 7: "registered"
-means dispatchable by name, not necessarily reachable via automatic
-escalation. `veyro-critical-engineer` is both (proven by the routing
-drill below); `veyro-backend-engineer`/`veyro-infra-sre-engineer` are
-registered but currently unreachable from any `.claude/agents/*.md`
-escalation path — filed as `BUG-031`. An independent Scenario Review
-round 7 assurance determination found this condition genuinely
-**BLOCKING for Definition of Ready** (disposition A, not the prior
-session's non-blocking classification): MOD-001's own planning set
-already routes activated-Infra-profile work (`SCN-037`/`038`) to
-`veyro-implementer` instead of `veyro-infra-sre-engineer`, which is
-exactly the substitution `ADR-005` itself rejects, and `STATUS.md`'s
-own Definition-of-Ready gate is defined as P0=0/P1=0 — an open P1
-against that gate cannot be simultaneously "non-blocking." BUG-031 is
-escalated to P0 this round and remains OPEN**;
+(1) the three new agent files exist, are registered, AND are
+routable — **caveat added, Scenario Review round 6, P1-4, escalated
+round 7, CLOSED 2026-09-17: `veyro-critical-engineer` was always both
+(proven by the routing drill below); `veyro-backend-engineer`/
+`veyro-infra-sre-engineer` were registered but unreachable from any
+`.claude/agents/*.md` escalation path for a time — filed as `BUG-031`,
+escalated to P0 (an independent review found MOD-001's own planning
+set had already routed activated-Infra-profile work to
+`veyro-implementer` instead, exactly the substitution `ADR-005`
+rejects). Closed 2026-09-17: the owner applied the drafted escalation
+patch, independently verified byte-for-byte, and a 6-case routing
+drill proved real escalation to both agents (plus `veyro-test-author`,
+closing the related `BUG-032`) — see
+`evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+All three agents are now genuinely registered and routable**;
 (2) independent review of the critical-engineer definition/routing has
 run — **two rounds**, round 1 (`evidence/model-routing/CRITICAL_ENGINEER_DEFINITION_REVIEW_2026-09-14.md`,
 BLOCKED, led to filing `BUG-030`) and round 2, after the fix

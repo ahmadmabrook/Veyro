@@ -82,11 +82,11 @@ required_agent_roles:
   - role: veyro-infra-sre-engineer
     scope: "infra/**, CI workflows, observability"
     model: sonnet
-    status: "REGISTERED, NOT YET REACHABLE (BUG-029 closed; BUG-031 open, Scenario Review round 6, P1-4 — named by zero escalation paths in .claude/agents/*.md, same defect class BUG-030 was; must close before real infra/** implementation begins, non-blocking for Definition of Ready since no such implementation has started)"
+    status: "REGISTERED AND ROUTABLE (BUG-029 closed; BUG-031 CLOSED 2026-09-17 — owner-applied escalation patch to veyro-implementer.md, commit 0afa609, independently verified byte-for-byte and by a 6-case routing drill proving real escalation — see evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md)"
   - role: veyro-backend-engineer
     scope: "backend/**, bounded — excludes the critical-slice harness itself"
     model: sonnet
-    status: "REGISTERED, NOT YET REACHABLE (BUG-029 closed; BUG-031 open, Scenario Review round 6, P1-4 — named by zero escalation paths in .claude/agents/*.md, same defect class BUG-030 was; must close before real backend/** implementation begins, non-blocking for Definition of Ready since no such implementation has started)"
+    status: "REGISTERED AND ROUTABLE (BUG-029 closed; BUG-031 CLOSED 2026-09-17 — owner-applied escalation patch to veyro-implementer.md, commit 0afa609, independently verified byte-for-byte and by a 6-case routing drill proving real escalation — see evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md)"
   - role: veyro-implementer
     scope: "Routine implementation outside the above"
     model: sonnet

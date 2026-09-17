@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 7 ran, BLOCKED, P0/P1 remediated; BUG-031 escalated to P0/BLOCKING — see §5)
+updated: 2026-09-17 (BUG-031/BUG-032 CLOSED via owner patch + independent routing-drill verification; Scenario Review round 8 pending — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -2285,9 +2285,22 @@ review-budget rule, Definition of Ready was again NOT evaluated —
 round 7 itself returned P0s, and `BUG-031` independently remains open
 and BLOCKING regardless of the Scenario Review's own outcome.
 
-**MOD-001 Definition of Ready: not yet reached, and cannot be reached
-while `BUG-031` remains open** (see `BUG_REGISTRY.md` and
-`evidence/bugs/BUG-031-orphaned-agent-veyro-backend-infra-sre.md`).
-Gated on BOTH an independent round returning `MOD-001 SCENARIO REVIEW
-APPROVED` with P0=0/P1=0 AND `BUG-031`'s closure (owner action) with
-independent re-verification — neither obtained as of round 7's close.
+**`BUG-031`/`BUG-032` closure (2026-09-17):** the owner applied the
+drafted escalation patch to `.claude/agents/veyro-implementer.md`
+(commit `0afa609`). Independently verified byte-for-byte (direct
+`Read`, not the owner's word), and re-proven by a 6-case routing
+qualification drill: activated Infra/Backend-profile work now escalates
+to `veyro-infra-sre-engineer`/`veyro-backend-engineer` respectively; the
+registered critical slice still escalates to `veyro-critical-engineer`;
+deterministic test authoring now escalates to `veyro-test-author`;
+routine implementation remains `veyro-implementer`'s own routing-tier
+responsibility (no specialist carve-out fires); architecture/ADR
+decisions still escalate to `veyro-lead`. Zero files written during the
+drill (`git status` re-confirmed clean). **`BUG-031` and `BUG-032` are
+both CLOSED.** Full record:
+`evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+
+**MOD-001 Definition of Ready: not yet reached.** `BUG-031`'s own
+blocking condition is now satisfied. Still gated on an independent
+round returning `MOD-001 SCENARIO REVIEW APPROVED` with P0=0/P1=0 —
+not yet obtained; round 8 is next.

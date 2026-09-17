@@ -2,8 +2,9 @@
 doc: BUG-032
 module: MOD-001
 severity: P1
-status: OPEN — disposition recorded, non-blocking for Definition of Ready
+status: CLOSED (2026-09-17) — owner patch applied and independently verified
 filed: 2026-09-16 (Scenario Review round 7, P1-4)
+closed: 2026-09-17 — see "Closure" section below
 ---
 
 # BUG-032 — `veyro-test-author` unreachable from any `.claude/agents/*.md` escalation path
@@ -70,6 +71,23 @@ reasoning `BUG-031` was filed non-blocking initially, but see
 this bug's disposition has not been independently re-tested against
 that same bar and should not be assumed settled merely because this
 file states it.
+
+## Closure (2026-09-17)
+
+The owner applied the same patch that closed `BUG-031` — the same
+`veyro-implementer.md` edit added a fourth paragraph routing
+deterministic test authoring to `veyro-test-author` alongside the
+surface-profile paragraphs. This session independently verified the
+paragraph's exact text via direct `Read`, and a dedicated routing-drill
+dispatch (test-authoring task, part of the same 6-case drill that
+closed `BUG-031`) confirmed real escalation: the dispatched
+`veyro-implementer` agent quoted the new paragraph verbatim, correctly
+distinguished it from `veyro-scenario-reviewer`'s catalog-design-
+judgment scope, and declined to author the test cases itself. Full
+record: `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`.
+
+**BUG-032 CLOSED.** The escalation path for deterministic test
+authoring is genuinely present and independently proven to fire.
 
 ## Cross-references
 

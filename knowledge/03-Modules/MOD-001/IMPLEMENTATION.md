@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-16 (Scenario Review round 7 — false "routable" claim at line 40 corrected; §12 extended with real backend-side version-negotiation/crash-remote-config mechanisms, toolchain-consistency checker, isolated-PR qualification gate, changelog tool, and white-label/KMP-versioning fields, closing round 7's P0-2/P1-2/P1-5)
+updated: 2026-09-17 (BUG-031/BUG-032 CLOSED — "registered and routable" claim now true for all 3 agents, independently verified; §12 still carries round 7's real backend-side mechanisms)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -36,17 +36,16 @@ Veyro/
 │   │                               #   bounded to 3 critical slices),
 │   │                               #   veyro-infra-sre-engineer (Sonnet),
 │   │                               #   veyro-backend-engineer (Sonnet,
-│   │                               #   bounded). All 3 registered
-│   │                               #   (BUG-029 closed); only
-│   │                               #   veyro-critical-engineer is actually
-│   │                               #   routable (BUG-030 closed, drill
-│   │                               #   PASS) — **corrected, Scenario
-│   │                               #   Review round 7 (BUG-031 escalated
-│   │                               #   to P0, disposition A — BLOCKING):
-│   │                               #   this line previously claimed all 3
-│   │                               #   were "routable," false for the
-│   │                               #   other two, which nothing escalates
-│   │                               #   to.**
+│   │                               #   bounded). All 3 registered and
+│   │                               #   routable (BUG-029/030 closed;
+│   │                               #   BUG-031 CLOSED 2026-09-17 — owner
+│   │                               #   applied the escalation patch to
+│   │                               #   veyro-implementer.md, commit
+│   │                               #   0afa609, independently verified
+│   │                               #   byte-for-byte and by a 6-case
+│   │                               #   routing drill proving real
+│   │                               #   escalation to all 3, plus
+│   │                               #   veyro-test-author for BUG-032).
 │   ├── rules/                      # already exists (4 files); MOD-001
 │   │                               #   scaffolds the 11 Appendix H.2 families
 │   │                               #   as directories, but **corrected (same
