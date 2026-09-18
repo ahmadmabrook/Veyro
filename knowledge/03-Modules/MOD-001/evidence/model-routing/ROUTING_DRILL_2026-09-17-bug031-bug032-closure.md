@@ -137,3 +137,11 @@ zero files written, zero repository-modifying commands run:
 
 **`BUG-031` (P0, activated-surface-profile reachability): CLOSED.**
 **`BUG-032` (P1, `veyro-test-author` reachability): CLOSED.**
+
+**Disclosed gap (Scenario Review round 10, P1-4): none of this file's
+six dispatches recorded an `MR-MOD001-<date>-<NNN>` evidence record or
+an agent/session identity, though `EIP_MIRROR.md` lines 1095-1100 and
+`ADR-005`'s binding condition 4 require that evidence. Not retroactively
+edited here — a fresh dispatch with full MR-format evidence, re-proving
+this same routing behavior, is recorded instead in
+`ROUTING_DRILL_2026-09-18-mr-evidence-backfill.md`.**

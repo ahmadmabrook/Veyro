@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-18 (Scenario Review round 9 ran, BLOCKED, remediated same session — round 8's own disclosed P0-2 residual actually closed this time; Scenario Review round 10 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-18 (Scenario Review round 10 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 9's own remediation found only partially holding and corrected for real; Scenario Review round 11 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -70,9 +70,12 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       `CAPABILITIES.md`. No blocker found; tool/vendor selection
       correctly deferred to implementation time per DC-18/DC-19.
 - [x] Repository/environment/CI-CD plan, architecture-gate
-      negative-fixture plan — `IMPLEMENTATION.md` §1-9, grounded in TSD's
-      own reference-stack table (not invented) and TSD §24.1's real
-      pipeline-stage ordering.
+      negative-fixture plan — `IMPLEMENTATION.md` §1-12 (**corrected,
+      Scenario Review round 10, P2-3: this citation had gone stale at
+      "§1-9" after the file grew to §12** — GOV-01-R07/R08's own
+      mechanisms in §12 are what nine of this catalog's scenarios
+      trace to), grounded in TSD's own reference-stack table (not
+      invented) and TSD §24.1's real pipeline-stage ordering.
 - [x] Module specification (full) — this file + `REQUIREMENTS.md` +
       `IMPLEMENTATION.md` + `CAPABILITIES.md` + `LOAD_SECURITY.md` +
       `MODEL_ROUTE.md` + `TEST_PLAN.md` together constitute it, per this
@@ -136,7 +139,8 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
       (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4). Round 7: BLOCKED
       (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3). Round 9: BLOCKED
-      (P0=1, P1=2)** (see `SCENARIOS.md` §5 for the current round's
+      (P0=1, P1=2). Round 10: BLOCKED (P0=3, P1=5, P2=5, Editorial=4)**
+      (see `SCENARIOS.md` §5 for the current round's
       exact P0/P1/P2/Editorial counts and findings — not restated here,
       per the lesson every round of this remediation has now taught
       about facts restated in more than one place going stale).
@@ -147,10 +151,24 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       obligations claimed "covered" on a basis `IMPLEMENTATION.md`'s
       own text contradicts) was not actually remediated. Fixed for
       real this round: `SCN-MOD001-127`/`128`/`129` added, closing all
-      five items.** All nine rounds' findings are now genuinely
-      remediated. **Round 9's own remediation has not yet been
-      independently confirmed — that confirmation is round 10's own
-      subject.**
+      five items.** All ten rounds' P0/P1 findings are now genuinely
+      remediated (round 10's own P0/P1/P2/Editorial findings fixed the
+      same session they were found — see below); each round's own
+      disclosed P2/Editorial residuals
+      (see `SCENARIOS.md` §5's per-round entries) remain carried
+      forward by design, not silently fixed — restating "all findings"
+      without that distinction is exactly the overclaim round 10 itself
+      found false one round later (round 10, P1-3). **Round 10
+      independently re-checked round 9's remediation: mechanically
+      present but substantively incomplete on two of its three new
+      scenarios — `SCN-128`/`129` were unexecutable inside MOD-001's
+      own declared scope (round 10, P1-1) and `SCN-127`(a) validated
+      against a Gradle config the plan never created (round 10, P1-2),
+      both fixed this session — plus three further genuine gaps round
+      10 found on its own fresh review (P0-1 two TSD §24.1 gate
+      sub-clauses, P0-2 six named critical-workflow scaffolds, P0-3
+      three named scanners), also fixed this session; see
+      `SCENARIOS.md` §5's round 10 entry.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
       see the bug-review checklist item above). Still gated on an

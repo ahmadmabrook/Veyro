@@ -60,6 +60,12 @@ repository_paths_surfaces:
     profile: Android Host
     state: DEFERRED
     marker: mobile/androidApp/.profile-pending
+  - path: mobile/*.md
+    profile: null  # cross-cutting mobile-wide policy docs (TOOLCHAIN_MATRIX.md, RELEASE_POLICY.md) — not owned by a single KMP/iOS/Android sub-profile; added Scenario Review round 10, P2-2, this direct-child-of-mobile/ path matched none of the three mobile/** sub-globs above
+    state: n/a
+  - path: RELEASE_TRAIN.md
+    profile: null  # cross-cutting, repo-root release-train doc — no single §4.3 surface owns this path; added Scenario Review round 10, P2-2
+    state: n/a
   - path: edge/**
     profile: Edge
     state: DEFERRED
@@ -95,6 +101,10 @@ required_agent_roles:
     scope: "Architecture/ADR decisions (this module's ADR-005)"
     model: opus
     status: ACTIVE (already registered, MOD-000)
+  - role: veyro-test-author
+    scope: "Deterministic test/TestSprite/synthetic-fixture authoring, escalated to from veyro-implementer (BUG-032)"
+    model: sonnet
+    status: "REGISTERED AND ROUTABLE (added Scenario Review round 10, P1-5 — this manifest omitted the role BUG-032 was filed and closed about; MODEL_ROUTE.md's own routing table already named it. See evidence/model-routing/ for closure drills.)"
 required_rule_ids: []  # No RULE-<NNN> IDs materialized yet — planning stage; backend/ and infra/ rule families need real content before implementation per ADR-005, not yet authored
 required_skill_ids: []  # None identified as missing this session — see knowledge/03-Modules/MOD-001/CAPABILITIES.md's gap analysis
 # Added (Scenario Review round 4, P1-8): Appendix H.1 (EIP_MIRROR.md lines

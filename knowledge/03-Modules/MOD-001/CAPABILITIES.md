@@ -66,7 +66,10 @@ architecture gates) — see `MODEL_ROUTE.md`.
 
 **Registration:** files exist and the routing integration is live —
 see `knowledge/03-Modules/MOD-001/STATUS.md`'s gate checklist for
-current status (`BUG-029`/`BUG-030` both closed; not restated here).
+current status (**corrected, Scenario Review round 10, Editorial-4:
+this parenthetical named only `BUG-029`/`BUG-030`, written before
+`BUG-031`/`BUG-032` existed; all four are closed — see `STATUS.md`,
+not restated here**).
 
 ## Capability-gap analysis, per MOD-001 workstream
 

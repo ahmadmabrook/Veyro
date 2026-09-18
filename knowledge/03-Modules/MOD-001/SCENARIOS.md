@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, INDEPENDENTLY REVIEWED (multiple rounds to date, each BLOCKED and remediated — current round count lives in §5 only, not restated here; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 9 ran, BLOCKED, P0/P1 remediated — round 8's own disclosed P0-2 residual actually closed this time; see §5)
+updated: 2026-09-18 (Scenario Review round 10 ran, BLOCKED, P0/P1 remediated — round 9's own remediation found only partially holding and corrected for real; see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -34,8 +34,9 @@ writes the code the scenario exercises. `BUG-032`'s closure made
 deterministic test authoring an explicit `veyro-implementer`→
 `veyro-test-author` escalation for *authoring* work; this catalog's
 own field was never meant to enumerate every scenario's fixture-author
-by that rule, and none of the 126 detail blocks name `veyro-test-author`
-as their Lifecycle role for exactly that reason — its role is upstream
+by that rule, and none of this catalog's detail blocks name
+`veyro-test-author` as their Lifecycle role for exactly that reason —
+its role is upstream
 of scenario execution, not a substitute lifecycle-role assignment for
 scenarios whose steps happen to read as "author a fixture."**
 
@@ -58,10 +59,17 @@ directly" and using 8 as the operative floor. §9.1 (`EIP_MIRROR.md`
 lines 1874-1880) actually names risk-based floors including
 "concurrency/security-critical ≥ 24" and, most directly, "**release/
 system gates use the complete included critical-journey catalog**" —
-MOD-001 is both the release/system-gate module (it owns GOV-01-R05's
-release train and RB-GOV-01's rollback runbook) and is treated as
-security-critical throughout this catalog (16 Blocker-severity
-scenarios touch SEC/AUTHZ/TEN/AUTHN directly). The correct floor is
+MOD-001 sits in Appendix G's Foundation/Control risk class
+(`EIP_MIRROR.md` line 19585) but is treated as security-critical
+throughout this catalog — Blocker-severity scenarios touching
+SEC/AUTHZ/TEN/AUTHN run throughout it, not concentrated in one place
+(**corrected, Scenario Review round 10, P2-1/Editorial-3: this line
+previously miscited MOD-001 as "the release/system-gate module,"
+Appendix G's own risk-class column reserves that term for a different
+module tier, and previously pinned a Blocker-scenario count ("16") that
+had already gone stale — deliberately not replaced with a fresher
+pinned number, per this same paragraph's own lesson two sentences
+below**). The correct floor is
 therefore "the complete included critical-journey catalog," not a fixed
 number — every requirement, gate, and validator this module owns needs
 its own real scenario, which is what §3 below now provides. The 8-Critical-requirements
@@ -71,10 +79,20 @@ once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **130 detail
-blocks** (001-121 plus 021b, 122, 123, 124, 125, 126, 127, 128, 129) —
-**130 Required + 0 Optional** — comfortably above every applicable
-floor. **Round 5
+here rather than restate a number).** Current total: **137 detail
+blocks** (001-121 plus 021b, 122, 123, 124, 125, 126, 127, 128, 129,
+130, 131, 132, 133, 134, 135, 136) — **137 Required + 0 Optional** —
+comfortably above every applicable floor. **Round 10 (P0-1/P0-2/P0-3)
+added 130-136** to close three genuine gaps its own fresh review found:
+TSD §24.1 gates 3 and 6's normative owner-approval/shared-contract-
+exception sub-clauses, disclosed unfixtured since round 1 and carried
+nine rounds (130/131); GOV-01-R02's six named critical-workflow suite
+scaffolds and its financial-invariant test harness, both committed to
+in `REQUIREMENTS.md`'s own text but never built into the topology or
+tested (132/133); and the scanning stage's SAST/container/IaC thirds,
+which had no positive scenario at all — the only related scenario is an
+owner-reserved denial drill proving the opposite (134/135/136). **Round
+5
 (P0-2) added 122/123** to close a genuine coverage gap on the card's
 mandatory security baseline (sensitive logging, abuse-negative
 scenarios) that this section's own "every requirement... needs its own
@@ -139,7 +157,7 @@ round 2's remediation, not merely re-asserted:
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
 | TEN | R | 007, 014, 096 |
-| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122, 126 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122, 126, 130, 131, 133, 134, 135, 136 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -148,7 +166,7 @@ round 2's remediation, not merely re-asserted:
 | OFF | R | 032, 050 |
 | REC | R | 058, 066, 072 |
 | LIFE | R | 060, 067 |
-| DATA | R | 017, 033, 051, 099, 114, 127 |
+| DATA | R | 017, 033, 051, 099, 114, 127, 132 |
 | INT | R | 018, 034, 052, 073, 100, 115 |
 | LOC | R | 039, 053 |
 | A11Y | R | 040, 054 |
@@ -211,7 +229,7 @@ Group K.
 | Staging environment bootstrap without production activation | 041, 049 |
 | Rollback behavior | 058, 059, 060 |
 | Feature-flag/release controls | 044, 045 |
-| Mobile-version/release policy | 115 (the actual version-support/kill-switch policy, corrected round 2 P1-10 — was 052-054/099-101, which test dual-platform-trigger/RTL/a11y/runner-assignment, not this policy) |
+| Mobile-version/release policy | 115 (the actual version-support/kill-switch policy, corrected round 2 P1-10 — was 052-054/099-101, which test dual-platform-trigger/RTL/a11y/runner-assignment, not this policy), 117, 127, 128, 129 (**row extended round 10, P2-4 — this row had stopped being extended after round 4 while 117/127/128/129 were added to the same named family across rounds 7 and 9**) |
 | Deterministic regression | 061 |
 | TestSprite integration scope | 062 |
 | CI runner smoke-load | 068 |
@@ -231,18 +249,20 @@ Group K.
 | Appendix I ADR conformance, ADR-004/ADR-015 (added round 4, P1-6) | 119 |
 | Agent-definition/MR-evidence well-formedness validator (added round 4, P1-7) | 120 |
 | Appendix H.1 manifest completeness (added round 4, P1-8) | 121 |
+| Card-mandated Security baseline: sensitive logging, abuse-negative, input/output data exposure (added round 5 P0-2, round 6 P1-1, round 8 P0-1 — **row added round 10, P2-4**, this table had stopped being extended after round 4 even as these three scenarios joined the catalog) | 122, 123, 126 |
+| TSD §24.3 toolchain-matrix real-config/white-label/KMP-versioning, isolated-PR qualification gate, capability-adapter smoke (added round 9 P0-1 — **row added round 10, P2-4**) | 127, 128, 129 |
+| TSD §24.1 gates 3/6 owner-approval and shared-contract-exception sub-clauses (added round 10, P0-1) | 130, 131 |
+| GOV-01-R02 six named domain suite scaffolds and financial-invariant test harness (added round 10, P0-2) | 132, 133 |
+| Scanning-stage SAST/container/IaC (added round 10, P0-3) | 134, 135, 136 |
 
-**Corrected (Scenario Review round 3, P2, further corrected round 4):
-this file, `STATUS.md`, and this section's own historical prose had
-disagreed with each other on the row count (29 vs 33) — both were
-wrong; the table above now has 39 rows** (27 mission-named + 12 added
-across rounds 2, 3 and 4 for completeness: model-assurance forced-
-fallback, capability-governance/scenario-matrix/external-gate/
-Appendix-I drills as one grouped row, 6 rows for GOV-01-R01/R06/R08 and
-the card-mandated/gate-bypass/surface-profile additions, and 4 rows for
-the Appendix F/I/H.1 and agent-definition-validator additions). All 39
-rows have real, on-topic, independently-checkable coverage — this count
-is stated once, here; no
+**Corrected (Scenario Review round 3, P2, further corrected round 4,
+round 10): this file, `STATUS.md`, and this section's own historical
+prose had disagreed with each other on the row count (29 vs 33) — both
+were wrong; the table above had 39 rows through round 4, then stopped
+being extended even as 15 more scenarios (122-136) joined the catalog
+across rounds 5-10 — round 10 (P2-4) added the 5 rows above, bringing
+the table to 44 rows.** All 44 rows have real, on-topic,
+independently-checkable coverage — this count is stated once, here; no
 other file restates it.
 
 ## 3. Scenario detail
@@ -630,13 +650,19 @@ own text says `SCN-051`/`099` test only *internal* consistency,
 explicitly distinct from `tools/validate_toolchain_matrix.py`'s real
 job (matrix vs. actual committed config), and no scenario tested the
 matrix's own `whitelabel_release_metadata`/`shared_module_version`
-fields at all.**
+fields at all. Corrected (round 10, P1-2): part (a) as originally
+written had no real target to diverge from — `IMPLEMENTATION.md`'s
+`mobile/` topology contained no Gradle/Xcode config file at all. Fixed
+by adding real pinned-version stub files (`mobile/shared/build.gradle.kts`,
+`mobile/androidApp/build.gradle.kts`) to the topology this round, so
+this check has an actual committed config to run against.**
 Source: `TSD_MIRROR.md` lines 11682-11691 ("White-label fleet release
 metadata is tracked per branded app and store"; "shared KMP modules are
 versioned in source/build provenance"). Steps: (a) run
 `tools/validate_toolchain_matrix.py` against a synthetic
 `mobile/TOOLCHAIN_MATRIX.md` whose pinned Gradle version deliberately
-diverges from the real committed Gradle config — expected: denied,
+diverges from the real committed `mobile/shared/build.gradle.kts`/
+`mobile/androidApp/build.gradle.kts` version stubs — expected: denied,
 citing the drift (distinct from `SCN-051`'s internal-only check, which
 this fixture would still pass); (b) the same matrix missing its
 `whitelabel_release_metadata` section for one of several declared
@@ -648,42 +674,198 @@ complete `whitelabel_release_metadata` section, and every KMP module
 versioned, passes all three checks. Evidence: three denial reports plus
 the positive-pass report.
 
-**SCN-MOD001-128 · PERF · Blocker · GOV-01-R07, isolated-PR toolchain-upgrade qualification gate (P0-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-128 · PERF · Blocker · GOV-01-R07, isolated-PR toolchain-upgrade qualification gate (P0-1, corrected round 10 P1-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 9, P0-1): this CI gate
 (`IMPLEMENTATION.md` §3, `Blocking? Yes`) had a real mechanism and no
 scenario at all — round 8 disclosed it as a residual, which §9.1
 (`EIP_MIRROR.md` lines 1861-1867: "Required is rule-derived, never a
 discretionary reduction by Claude"; "no scenario may remain untested or
 silently ignored") does not permit for a Blocking gate tracing to a
-Critical requirement.**
+Critical requirement. Corrected (round 10, P1-1): the original steps
+required real Android+iOS builds on real-device-equivalent runners,
+which conflicts with `REQUIREMENTS.md`'s own out-of-scope line (mobile
+application code is MOD-006), `MANUAL_QA.md`'s own framing of MOD-001's
+mobile surface as "a document/CI-convention check, not a real app
+build," and `SCN-MOD001-056` (Blocker) itself, which requires no paid
+macOS CI runner tier be referenced anywhere in MOD-001's committed
+configuration — an iOS build job is not schedulable without one. Fixed
+by scoping this scenario to the CI workflow-definition layer, matching
+`SCN-055`'s own established pattern ("checked via job metadata, not
+real device builds, since no mobile code exists yet").**
 Source: `TSD_MIRROR.md` lines 11684-11687 ("Toolchain upgrades are
 isolated pull requests with Android+iOS build, UI, accessibility and
 performance qualification before merge"). Steps: a synthetic PR touches
 only `mobile/TOOLCHAIN_MATRIX.md` (an isolated toolchain-upgrade PR).
-Expected: all 4 qualification dimensions run and must pass before merge
-— Android build, iOS build, UI, accessibility, and performance
-(TSD names 4 dimensions; Android+iOS build counted as the one
-"build" dimension across both platforms). Negative case: the same PR
-with one dimension (e.g. accessibility) deliberately failing is denied
-merge, citing the specific failed dimension — a real, executable check,
-not a rubber-stamp gate. Evidence: the 4-dimension pass/fail report.
+Expected: the CI workflow definition wires TSD's 4 named qualification
+dimensions — build (with separate Android and iOS jobs under it),
+UI, accessibility, and performance (**rephrased, Scenario Review
+round 10, Editorial-1: the prior "all 4... (Android build, iOS build,
+UI, accessibility, performance..." wording listed 5 items before its
+own parenthetical reconciled it to 4, reading as self-contradictory on
+first pass**) — as required jobs on the toolchain-upgrade
+trigger path, verified via workflow-graph/job-metadata inspection
+(`tools/validate_architecture_gates.py --gate toolchain-qualification`)
+against the Android build/UI/accessibility jobs' real execution on
+standard (non-macOS) runners — the iOS build job's real execution is
+deferred to real implementation time, consistent with `SCN-056`, but
+its presence and required-status-check wiring on the toolchain-upgrade
+path is checked now. Negative case: the same PR with the iOS-build job
+absent from, or not marked required on, the toolchain-upgrade trigger
+path is denied by the workflow-graph check, citing the missing
+dimension — a real, executable check of the gate's wiring, not a
+rubber-stamp. Evidence: the workflow-graph inspection report plus the
+Android/UI/accessibility jobs' real pass/fail report.
 
-**SCN-MOD001-129 · PERF · Major · GOV-01-R07, real-device smoke test, capability-adapter half (P0-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-129 · PERF · Major · GOV-01-R07, real-device smoke test, capability-adapter half (P0-1, corrected round 10 P1-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 9, P0-1): `IMPLEMENTATION.md` §12 itself
 states TSD §24.3 names two smoke-test subjects (capability adapters and
 critical offline flows); `SCN-050` covers only the offline-flow half.
 This scenario closes the other half, which round 8 disclosed as a
-residual rather than closing.**
+residual rather than closing. Corrected (round 10, P1-1): "real-
+device-equivalent CI runners for both Android and iOS" has the same
+paid-macOS-runner conflict as `SCN-128`'s original text. Fixed by
+scoping the iOS half to job-wiring proof, same split as `SCN-128`.**
 Source: `TSD_MIRROR.md` lines 11694-11695 ("Release candidates require
 real-device smoke tests for platform capability adapters and the
 critical offline flows"). Steps: a synthetic native-adapter-boundary
-fixture (e.g. a camera/biometric/push-token stub) is smoke-tested on
-real-device-equivalent CI runners for both Android and iOS. Expected:
-the fixture's adapter boundary responds correctly on both platforms'
-runners. Negative case: a deliberately broken adapter stub (e.g. a
-push-token stub returning a malformed token) is flagged by the smoke
-test, not silently passed. Evidence: the smoke-test report for both
-platforms.
+fixture (e.g. a camera/biometric/push-token stub) is smoke-tested for
+real on a standard (non-macOS) Android CI runner. Expected: the
+fixture's adapter boundary responds correctly. The equivalent iOS smoke
+test is proven present and required-status-checked on the release-
+candidate trigger path via workflow-graph inspection (its real
+execution on a macOS runner is deferred to real implementation, per
+`SCN-056`). Negative case: a deliberately broken Android adapter stub
+(e.g. a push-token stub returning a malformed token) is flagged by the
+real smoke test, not silently passed; a synthetic PR with the iOS smoke
+job absent from the release-candidate trigger path is denied by the
+workflow-graph check. Evidence: the Android smoke-test report plus the
+iOS workflow-graph inspection report.
+
+**SCN-MOD001-130 · SEC · Blocker · TSD §24.1 gate 3, event-contract owner-approval sub-clause (P0-1) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-1): TSD §24.1's event contract
+lint (`TSD_MIRROR.md` lines 11610-11612) has two normative halves —
+"every event... exists in the registry" and "compatibility and
+classification changes require owner approval." `IMPLEMENTATION.md`
+§4's gate-3 row and `SCN-008`/`019` tested only the first half; the
+second was disclosed as a residual at round 1 (`SCENARIOS.md`'s own
+round-1 log) and carried unfixtured for nine rounds — a disclosed
+residual on a Blocking gate tracing to a Critical requirement is not a
+permitted discretionary reduction under §9.1 (`EIP_MIRROR.md` lines
+1861-1867), the same rule round 9's own P0-1 applied one round later.**
+Source: `TSD_MIRROR.md` lines 11610-11612. Steps: a registered event's
+schema undergoes a synthetic compatibility-affecting change (e.g. a
+required field added) or classification change, committed with no
+corresponding `OWNER_APPROVALS.md` reference. Expected:
+`tools/validate_architecture_gates.py --gate event-contract` denies
+with `EVENT_CHANGE_UNAPPROVED`, citing the event and the unapproved
+diff. Companion positive: the identical diff, this time with a real
+`OWNER_APPROVALS.md` row ID attached, passes. Evidence: the denial
+report plus the positive-pass report.
+
+**SCN-MOD001-131 · SEC · Blocker · TSD §24.1 gate 6, domain-uniqueness shared-contract-exception sub-clause (P0-1) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-1): TSD §24.1's domain contract
+uniqueness lint (`TSD_MIRROR.md` lines 11646-11648) fails a reused
+`RB-<DOMAIN>` ID or command inventory "unless an explicit shared-
+contract exception is approved." `IMPLEMENTATION.md` §4's gate-6 row
+and `SCN-014`/`015` tested only the failure half; without the exception
+half, the gate as specified would false-positive on a legitimately
+approved shared contract — the same disclosed-residual pattern as
+`SCN-130`, same origin round, same nine-round carry.**
+Source: `TSD_MIRROR.md` lines 11646-11648. Steps: two synthetic domains
+declare an identical `RB-<DOMAIN>` ID with no matching entry in the new
+`contracts/SHARED_CONTRACT_EXCEPTIONS.md` register. Expected:
+`tools/validate_architecture_gates.py --gate domain-uniqueness` denies
+with `DOMAIN_CONTRACT_COLLISION`, citing both domains. Companion
+positive: the identical collision, this time with a matching exception
+entry recorded for that specific domain pair, passes, citing the
+exception ID in its output (proving the gate reads the exception, not
+merely skips the check). Evidence: the denial report plus the
+exception-resolved pass report.
+
+**SCN-MOD001-132 · DATA · Blocker · GOV-01-R02, six named domain suite scaffolds wired (P0-2) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-2): `REQUIREMENTS.md`'s own
+GOV-01-R02 implementation obligation and acceptance criteria commit
+MOD-001 to "documented, empty-but-wired suite scaffolds for membership/
+booking/payment/ledger/POS/access, each with a placeholder fixture
+proving the harness itself is live" — no scenario tested this, and
+`IMPLEMENTATION.md`'s own topology had no such scaffolds until this
+round.**
+Source: `REQUIREMENTS.md` GOV-01-R02 (implementation obligations,
+acceptance criteria); `EIP_MIRROR.md` lines 17545-17549. Steps: for
+each of the six named domains (`backend/app/modules/{membership,
+booking,payment,ledger,pos,access}/`), run that domain's
+`tests/test_scaffold_live.py` placeholder fixture. Expected: all six
+pass, proving the harness (test discovery, fixture DB connection,
+tenant-context resolver from `_shared/`) is live for that domain path —
+none asserts real product behavior, since none exists. Negative case: a
+seventh, undeclared domain path with no scaffold is correctly absent
+from the six-domain inventory check (`tools/validate_architecture_gates.py
+--gate module-deps` treats it as not-yet-existing, not a false pass).
+Evidence: the six placeholder-fixture pass reports.
+
+**SCN-MOD001-133 · SEC · Blocker · GOV-01-R02, financial-invariant test harness (P0-2) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-2): `IMPLEMENTATION.md` §3's own
+CI stage table names a Blocking "financial-invariant tests" check
+alongside domain-contract/tenant-isolation/authorization tests; no
+scenario exercised it, and no fixture existed until this round.**
+Source: `IMPLEMENTATION.md` §3 (Domain contract / tenant-isolation /
+authorization / financial-invariant tests row); `REQUIREMENTS.md`
+GOV-01-R02. Steps: run `backend/tests/contract/
+test_financial_invariant_scaffold.py` against a synthetic set of
+double-entry ledger rows. Expected: the harness asserts debits equal
+credits and passes on a balanced synthetic set. Negative case: the same
+harness run against a deliberately unbalanced synthetic set (a debit
+with no matching credit) fails, citing the specific invariant
+violated — proving the harness itself detects a real violation, not a
+rubber-stamp pass. Evidence: the pass report plus the denial report.
+
+**SCN-MOD001-134 · SEC · Blocker · TSD §24.1 scanning stage, SAST (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-3): `TSD_MIRROR.md`'s scanning
+stage names SAST, dependency, secret, container and IaC scanning as one
+Blocking group (`IMPLEMENTATION.md` §3); dependency (`SCN-094`) and
+secret (`SCN-029`) each have a real positive+negative scenario, but SAST
+had none — the only related scenario, `SCN-064`, is an owner-reserved
+denial drill proving no *paid* SAST SaaS credential is configured,
+which proves the opposite of a working scanner.**
+Source: `TSD_MIRROR.md` lines 11625-11626; `REQUIREMENTS.md` GOV-01-R03
+acceptance criteria ("every named tool... runs successfully in CI").
+Steps: run the CI-wired static-analysis (SAST) scanning stage against
+this repo's own current source tree (tool selection deferred to
+implementation per DC-18/DC-19, free/open-source only per DC-16).
+Expected: the scanner runs to completion and produces a real findings
+report (even "0 findings" — the tool executing is the evidence).
+Negative case: a synthetic fixture file containing a deliberately
+insecure pattern the chosen scanner's default ruleset flags (e.g. a
+hardcoded SQL string concatenation shaped for injection) is committed
+to a disposable branch; the scanner flags it before merge, and a
+companion run with the pattern removed passes cleanly. Evidence: the
+baseline report plus the flagged/cleaned pair.
+
+**SCN-MOD001-135 · SEC · Blocker · TSD §24.1 scanning stage, container image (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-3): same gap class as `SCN-134`,
+for the scanning stage's container-image half.**
+Source: `TSD_MIRROR.md` lines 11625-11626; `REQUIREMENTS.md` GOV-01-R03.
+Steps: run the CI-wired container-image scanning stage against a
+synthetic disposable image built from this repo's own (near-empty)
+Dockerfile scaffold. Expected: the scanner runs to completion, real
+report produced. Negative case: the same image built with one
+deliberately outdated/vulnerable base-image tag pinned is flagged
+before the build-signed-artifact stage proceeds; a companion image
+using the current pinned base tag passes cleanly. Evidence: the
+baseline report plus the flagged/cleaned pair.
+
+**SCN-MOD001-136 · SEC · Blocker · TSD §24.1 scanning stage, IaC (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 10, P0-3): same gap class as `SCN-134`/
+`SCN-135`, for the scanning stage's IaC half.**
+Source: `TSD_MIRROR.md` lines 11625-11626; `REQUIREMENTS.md` GOV-01-R03.
+Steps: run the CI-wired IaC scanning stage against `infra/environments/`'s
+own committed configuration. Expected: the scanner runs to completion,
+real report produced. Negative case: a synthetic IaC fixture with a
+deliberately insecure setting the chosen scanner's default ruleset
+flags (e.g. an unencrypted-at-rest storage declaration) is committed to
+a disposable branch; the scanner flags it, and a companion fixture with
+the setting corrected passes cleanly. Evidence: the baseline report
+plus the flagged/cleaned pair.
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
@@ -1691,7 +1873,16 @@ present, either populated or explicitly N/A with rationale (matching
 the file's own existing convention for `required_rule_ids` etc.) — not
 silently absent. Evidence: the field-presence check's own report.
 Negative case: a synthetic manifest missing one of the four fields
-entirely (no key at all, not even an N/A) is denied.
+entirely (no key at all, not even an N/A) is denied. **Second negative
+case (added, Scenario Review round 10, P1-5): a synthetic manifest
+whose `required_agent_roles` key is present and populated, but omits a
+role that `MODEL_ROUTE.md`'s own planned-routing table names for this
+module — expected: denied, citing the specific missing role by name.**
+This closes the exact gap class round 10 found live in this module's
+own manifest (`veyro-test-author` present in `MODEL_ROUTE.md` but
+absent from `required_agent_roles`) — key-presence alone cannot catch
+a populated-but-incomplete list, which is why the original negative
+case here passed against that real defect.
 
 **Group O (added, Scenario Review round 5, P0-2): the card's mandatory
 Security-scope baseline (`EIP_MIRROR.md` lines 4267-4271) names
@@ -2077,7 +2268,13 @@ P0=2, P1=7, P2=8, Editorial=4. Findings and disposition:
   judgment call round 2 made for the same residual; `SCN-MOD001-021b`'s
   ID still violates the `SCN-<MOD>-<NNN>` stable-ID format (a letter
   suffix rather than a number) — flagged, not renumbered, since
-  renumbering an already-cited ID has its own drift risk.
+  renumbering an already-cited ID has its own drift risk. **Formally
+  accepted as a permanent, non-blocking deviation (Scenario Review
+  round 10, P2-5): this residual survived seven rounds with no
+  explicit acceptance record distinct from the "flagged, not
+  renumbered" note above. This line is that record — the deviation is
+  accepted for the life of this catalog; `SCN-MOD001-021b` will never
+  be renumbered, and no future round needs to re-flag it.**
 
 **Round 4 (2026-09-15):** fresh-context `veyro-scenario-reviewer`
 (Opus), dispatched against the catalog as it stood at 118 scenarios
@@ -2594,3 +2791,132 @@ a P0.
 **MOD-001 Definition of Ready: not yet reached.** Gated on an
 independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
 P0=0/P1=0 — not yet obtained as of round 9's close.
+
+**Round 10 (2026-09-18):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 130 scenarios
+plus round 9's remediation, explicitly instructed not to inherit any
+prior round's conclusions and to independently re-derive the scenario
+count, category matrix, and whether round 9's own remediation actually
+held (not just whether it existed). Independently re-verified: 130
+detail blocks, no duplicates, category matrix clean against every
+detail block's own tag for the first time in this catalog's history.
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=3, P1=5, P2=5,
+Editorial=4. Findings and disposition:
+
+- P0-1: two of TSD §24.1's six architecture gates were implemented and
+  tested only in half — gate 3 (event-contract lint)'s "compatibility
+  and classification changes require owner approval" clause and gate 6
+  (domain-contract-uniqueness lint)'s "unless an explicit shared-
+  contract exception is approved" clause both had no mechanism and no
+  scenario, disclosed as residuals at round 1 and carried unfixtured
+  for nine rounds — the same "disclosed residual on a Blocking gate
+  tracing to a Critical requirement" violation of §9.1 that round 9's
+  own P0-1 applied one round later, applying here to an older, longer-
+  carried gap. **Fixed:** `IMPLEMENTATION.md` §4's gate 3/6 rows
+  extended with the owner-approval and shared-contract-exception
+  halves; a new `contracts/SHARED_CONTRACT_EXCEPTIONS.md` register
+  added to the topology; `SCN-MOD001-130`/`131` added.
+- P0-2: six of the nine critical workflows GOV-01-R02 names by name
+  (membership, booking, payment, ledger, POS, access) had no scaffold
+  in `IMPLEMENTATION.md`'s topology and no scenario, despite
+  `REQUIREMENTS.md`'s own implementation obligations and acceptance
+  criteria committing MOD-001 to "documented, empty-but-wired suite
+  scaffolds... each with a placeholder fixture proving the harness
+  itself is live." The requirement's own third acceptance criterion was
+  entirely untested. Separately, `IMPLEMENTATION.md` §3's own Blocking
+  "financial-invariant tests" CI stage had no fixture and no scenario.
+  **Fixed:** six named domain sub-packages added under
+  `backend/app/modules/`, each with a placeholder
+  `test_scaffold_live.py`; a `test_financial_invariant_scaffold.py`
+  placeholder added under `backend/tests/contract/`;
+  `SCN-MOD001-132`/`133` added.
+- P0-3: three of the five scanners TSD §24.1's Blocking scanning stage
+  names (SAST, container, IaC) had no scenario, positive or negative —
+  dependency (`SCN-094`) and secret (`SCN-029`) were covered, but the
+  only SAST-adjacent scenario (`SCN-064`) is an owner-reserved denial
+  drill proving no *paid* SAST SaaS is configured, the opposite of
+  proving a scanner works, and `SCN-023`'s "passes or correctly reports
+  not yet applicable" companion cannot distinguish a working gate from
+  an absent one. **Fixed:** `SCN-MOD001-134`/`135`/`136` added, one per
+  scanner, each with a real positive run against this repo's own tree
+  plus a deliberate-violation negative case.
+- P1-1: round 9's own new `SCN-128`/`129` required real Android+iOS
+  builds on real-device-equivalent CI runners, which conflicts with
+  `REQUIREMENTS.md`'s mobile-out-of-scope line, `MANUAL_QA.md`'s own
+  "document/CI-convention check, not a real app build" framing, and
+  `SCN-MOD001-056` (Blocker) itself, which requires no paid macOS CI
+  runner tier be referenced anywhere in MOD-001's committed
+  configuration — unexecutable as written. **Fixed:** both rescoped to
+  the CI workflow-definition/job-wiring layer for the iOS half
+  (execution deferred to real implementation, per `SCN-056`), keeping
+  real execution for the Android/UI/accessibility halves on standard
+  runners — the same split `SCN-055` already established.
+- P1-2: round 9's own new `SCN-127`(a) validated the toolchain matrix
+  against "the real committed Gradle config," but no such file existed
+  anywhere in `IMPLEMENTATION.md`'s `mobile/` topology — the half of the
+  scenario meant to distinguish it from `SCN-051`/`099`'s internal-only
+  checks had no real target. **Fixed:** real pinned-version stub files
+  (`mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`)
+  added to the topology; `SCN-127`(a) updated to name them.
+- P1-3: `STATUS.md`'s gate checklist asserted "all nine rounds'
+  findings are now genuinely remediated," which this catalog's own §5
+  entries for rounds 1, 3, 4, 5, 6, 7, and 8 directly contradict (each
+  records disclosed P2/Editorial residuals explicitly carried forward,
+  not fixed) — the identical overclaim species round 9's own P1-1 fixed
+  one round earlier, re-created one word wider. **Fixed:** corrected to
+  "all nine rounds' P0/P1 findings," with the P2/Editorial-carry-forward
+  distinction stated explicitly.
+- P1-4: the two most recent routing drills closing `BUG-031`/`BUG-032`
+  (`ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`,
+  `ROUTING_DRILL_2026-09-18-bug032-description-field-closure.md`)
+  recorded zero `MR-MOD001-<date>-<NNN>` evidence and zero agent/session
+  identity across their seven combined dispatches, though
+  `EIP_MIRROR.md` lines 1095-1100 and `ADR-005`'s binding condition 4
+  require that evidence as a pre-Definition-of-Ready condition. **Fixed:**
+  both files annotated with the disclosed gap (not retroactively
+  altered); a fresh dispatch with complete MR-format evidence, including
+  a task-description-only test of the exact `BUG-032` closure, recorded
+  in `ROUTING_DRILL_2026-09-18-mr-evidence-backfill.md`.
+- P1-5: `evidence/module-capabilities.yaml`'s `required_agent_roles`
+  omitted `veyro-test-author` (present in `MODEL_ROUTE.md`'s own routing
+  table, and the subject of `BUG-032`), and `SCN-MOD001-121`'s negative
+  case checked only key presence, so it could not have caught this
+  populated-but-incomplete-list gap. **Fixed:** the role added to the
+  manifest; `SCN-121` given a second negative case testing exactly this
+  gap class.
+- P2 (5): stale restated counts in §0 (a "126 detail blocks" claim, a
+  "16 Blocker-severity scenarios" claim, both already stale) and a
+  misclassification of MOD-001 as "the release/system-gate module"
+  (Appendix G's own risk-class column reserves that term for a
+  different tier) — fixed, deliberately not replaced with fresh pinned
+  numbers; a gate-7 path gap for `mobile/*.md`/`RELEASE_TRAIN.md`
+  top-level files matching none of the declared surface globs — fixed
+  in `module-capabilities.yaml`; a stale `STATUS.md` citation
+  ("`IMPLEMENTATION.md` §1-9," now §1-12) — fixed; §2's named-family
+  table left unextended since round 4 while 15 more scenarios (122-136)
+  joined the catalog — fixed, 5 rows added, Mobile-version/release-
+  policy row extended; `SCN-MOD001-021b`'s stable-ID-format deviation,
+  disclosed but never formally accepted across seven rounds — fixed
+  with an explicit acceptance record.
+- Editorial (4): a self-contradictory "all 4... (5 items listed)"
+  sentence in `SCN-128` — reworded; `MODEL_ROUTE.md`'s own stale "six
+  review rounds" claim — fixed, not replaced with a fresh pinned
+  number; the MOD-001 risk-class miscitation (folded into the P2-1 fix
+  above); `CAPABILITIES.md`'s registration parenthetical naming only
+  `BUG-029`/`BUG-030` where four bugs are now the relevant set — fixed.
+
+**All P0/P1/P2/Editorial findings from round 10 were remediated within
+the same session they were found** — round 10 returned no P0/P1-free
+verdict, so per the mission's own rule this was not the "P2/Editorial
+only" case, but every finding was genuine and cheap enough to fix
+outright rather than defer. Catalog total is now **137 detail blocks**
+(137 Required, 0 Optional), independently re-counted after this
+round's own additions (130-136), not merely computed from the prior
+total plus 7.
+
+**MOD-001 Definition of Ready: still not yet reached.** Gated on an
+independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
+P0=0/P1=0 — not yet obtained as of round 10's close. The next legally
+allowed action is an independent Scenario Review round 11, to confirm
+round 10's remediation actually holds — the exact discipline round 10
+itself applied to round 9.

@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-18 (chunk 39 — MOD-001 Scenario Review round 9 ran, returned BLOCKED, all P0/P1 findings remediated same session — round 8's own disclosed-residual gap actually closed this time. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-10 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-18 (chunk 40 — MOD-001 Scenario Review round 10 ran, returned BLOCKED, all P0/P1/P2/Editorial findings remediated same session — round 9's own remediation found only partially holding and corrected for real, plus 3 further genuine gaps round 10 found fresh. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-11 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -74,8 +74,11 @@ a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-36-2026-09-16-round7-bug031-gate-determination.md`.**
 **Twenty-first application (2026-09-18, chunk 39): chunk 37 compressed
 to a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-37-2026-09-17-round8-bug031-closure.md`**
-— chunks 39 and 38 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-37-2026-09-17-round8-bug031-closure.md`.**
+**Twenty-second application (2026-09-18, chunk 40): chunk 38 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-38-2026-09-18-bug032-second-closure-fresh-dispatch.md`**
+— chunks 40 and 39 are now the 2 kept in full.
 
 ## What happened chunk 39, 2026-09-18 — BUG-032 full closure verified by round 9's own independent check; MOD-001 Scenario Review round 9: round 9 returned BLOCKED (P0=1, P1=2, P2=3, Editorial=3), all P0/P1 remediated same session, closing round 8's own disclosed-residual gap for real; Definition of Ready explicitly NOT evaluated
 
@@ -129,47 +132,88 @@ Next legally allowed action: an independent Scenario Review round 10**,
 to confirm round 9's remediation actually held — not implementation,
 not MOD-002, not a self-granted Ready determination.
 
-## What happened chunk 38, 2026-09-18 — BUG-032 closed for real via a second small owner patch to the description field, independently verified byte-for-byte plus a fresh dispatch; MOD-001 Scenario Review round 9 not yet run this chunk
+## What happened chunk 40, 2026-09-18 — MOD-001 Scenario Review round 10: round 10 returned BLOCKED (P0=3, P1=5, P2=5, Editorial=4), all findings remediated same session — round 9's own remediation found only partially holding (2 of its 3 new scenarios unexecutable/untargeted) plus 3 further genuine gaps round 10 found fresh; Definition of Ready explicitly NOT evaluated
 
-Continuation of chunk 37's own pause point. The owner applied the
-second, small drafted patch to `.claude/agents/veyro-implementer.md`'s
-`description` frontmatter field (commit `740ac75`, "fix: align
-implementer description with test-author routing") and reported it.
-Per this turn's own mandate, that claim was independently verified
-rather than trusted: direct `Read` of the file confirmed the
-`description` field now reads exactly as drafted (no other line
-changed), and `git show --stat 740ac75` confirmed exactly 1 file
-changed with 2 insertions/2 deletions, consistent with a single-field
-replacement.
+Continuation of chunk 39's own pause point. Round 10 (fresh-context
+`veyro-scenario-reviewer`, Opus, explicitly instructed not to inherit
+any prior round's conclusions) independently re-derived the scenario
+count (130 detail blocks at the time, no duplicates), re-verified the
+category coverage matrix clean against every detail block's own tag
+for the first time in this catalog's history, and specifically checked
+whether round 9's own remediation substantively held, not merely
+existed.
 
-**A fresh re-verification dispatch to `veyro-implementer`** was
-instructed to quote its own `description` field verbatim and then
-determine routing for a deterministic test-authoring task. It quoted
-the field back exactly matching the drafted patch, correctly escalated
-to `veyro-test-author`, and explicitly confirmed no remaining
-contradiction between the `description` field and the body text — the
-two now agree, closing the selection-layer gap round 8 found. `git
-status` re-confirmed clean afterward — nothing written.
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=3, P1=5, P2=5,
+Editorial=4. The three P0s: two of TSD §24.1's six architecture gates
+(event-contract lint, domain-contract-uniqueness lint) had normative
+sub-clauses — an owner-approval requirement and a shared-contract-
+exception carve-out, respectively — disclosed as unfixtured residuals
+at round 1 and carried nine rounds without a mechanism or scenario;
+six of the nine critical workflows GOV-01-R02 names by name
+(membership, booking, payment, ledger, POS, access) had no scaffold in
+the implementation plan and no scenario, despite `REQUIREMENTS.md`'s
+own text committing MOD-001 to building them, and the module's
+Blocking financial-invariant test stage had no fixture at all; three of
+the five scanners the Blocking scanning stage names (SAST, container,
+IaC) had no positive scenario, with the only related scenario being an
+owner-reserved drill that proves the opposite (no paid scanner
+configured). The five P1s: round 9's own `SCN-128`/`129` required real
+Android+iOS device builds that conflict with MOD-001's own declared
+mobile-out-of-scope boundary and a Blocker scenario banning paid macOS
+CI runners; round 9's own `SCN-127`(a) validated the toolchain matrix
+against a Gradle config the implementation plan never actually created;
+`STATUS.md`'s own checklist re-created the "all findings remediated"
+overclaim round 9 itself had just fixed one round earlier, this time
+one round wider; the two most recent routing drills closing
+`BUG-031`/`BUG-032` recorded zero MR-evidence records or agent/session
+identity across seven combined dispatches, despite that evidence being
+a binding pre-Definition-of-Ready condition; and the capability
+manifest's `required_agent_roles` list omitted `veyro-test-author` —
+the exact role `BUG-032` was about — with the manifest's own
+completeness scenario unable to catch a populated-but-incomplete list.
 
-**`BUG-032` is now CLOSED on both halves** (escalation text, closed
-round 7/verified round 8's drill; `description`-field selection layer,
-closed and verified this chunk). `BUG-031` remains CLOSED (unchanged
-this chunk). Both `BUG_REGISTRY.md` and `BUG-032`'s own evidence file
-updated with the full closure record; `STATUS.md`/`MODEL_ROUTE.md`
-corrected to stop describing `BUG-032` as re-opened.
-`CURRENT_STATE.md` updated in the same commit as this chunk — the
-exact propagation step round 8 itself found missing for the *previous*
-closure, not repeated this time.
+**All P0/P1/P2/Editorial findings remediated the same session**: TSD
+§24.1 gates 3/6 extended with their missing sub-clauses plus a new
+`contracts/SHARED_CONTRACT_EXCEPTIONS.md` register (`SCN-MOD001-130`/
+`131` added); six named domain scaffolds added under
+`backend/app/modules/` plus a financial-invariant placeholder fixture
+(`SCN-132`/`133` added); SAST/container/IaC each given a real
+positive+negative scenario (`SCN-134`/`135`/`136` added); `SCN-128`/
+`129` rescoped to the CI workflow-definition/job-wiring layer for the
+iOS half, keeping real execution for Android/UI/accessibility, matching
+the split `SCN-055` already established; real pinned-version Gradle
+stub files added to the `mobile/` topology so `SCN-127`(a) has a real
+target; `STATUS.md`'s overclaim corrected with the P2/Editorial-carry-
+forward distinction stated explicitly; a fresh routing dispatch run
+this session, capturing complete `MR-MOD001-20260918-001` through
+`-004` evidence records (task class, agent, escalation outcome, real
+agent/session id, self-reported resolved model identity, verdict) for
+all four routing classes including a task-description-only test of the
+exact `BUG-032` closure — recorded in
+`ROUTING_DRILL_2026-09-18-mr-evidence-backfill.md`, with the two gap-
+carrying prior drill files annotated (not retroactively altered);
+`veyro-test-author` added to the capability manifest, and the
+manifest's own completeness scenario given a second negative case that
+catches this exact gap class. Five P2s and four Editorial findings
+(stale restated counts, a risk-class miscitation, a gate-7 path gap for
+top-level `mobile/*.md` files, a stale section citation, an unextended
+named-family table, a seven-round-unaccepted ID-format deviation now
+formally accepted, a self-contradictory sentence, another stale
+restated round-count) were all fixed in the same pass, since each was
+genuine and cheap. Catalog total independently re-counted at **137
+detail blocks** (137 Required, 0 Optional) — verified by direct count
+of real detail-block headers, not computed from the prior total plus 7.
 
-**No new Scenario Review round ran this chunk** — round 9 is the next
-step, to independently confirm this closure and re-verify round 8's
-own remediation held. Committed and pushed alongside this chunk.
+**Definition of Ready was again explicitly NOT evaluated** — round 10
+itself returned a P0.
 
 **MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
 Ready. Implementation has not started and is not authorized to start.
-Next legally allowed action: an independent Scenario Review round 9**
-— not implementation, not MOD-002, not a self-granted Ready
-determination.
+Next legally allowed action: an independent Scenario Review round 11**,
+to confirm round 10's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.
+
+## What happened chunk 38, 2026-09-18 (compressed 2026-09-18, twenty-second retention-rule application) — BUG-032 closed for real via a second small owner patch to the description field, independently verified byte-for-byte plus a fresh dispatch; MOD-001 Scenario Review round 9 not yet run this chunk. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-38-2026-09-18-bug032-second-closure-fresh-dispatch.md`.
 
 ## What happened chunk 37, 2026-09-17 (compressed 2026-09-18, twenty-first retention-rule application) — BUG-031/BUG-032 owner patch verified and closed (BUG-032 partially), 6-case routing drill PASS, MOD-001 Scenario Review round 8: round 8 returned BLOCKED (P0=3, P1=3, P2=6, Editorial=4), all P0/P1 remediated same session; BUG-032 re-opened on its root-cause half by round 8's own finding; a second small owner patch drafted; Definition of Ready explicitly NOT evaluated. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-37-2026-09-17-round8-bug031-closure.md`.
 

@@ -105,7 +105,11 @@ real `Agent` call with `model: opus` set explicitly, not self-decided.
 routing (status as of the most recent Scenario Review round — see
 `SCENARIOS.md` §5 for the authoritative, current account; not
 restated in full here to avoid the exact propagation-gap species that
-recurred across all six review rounds to date):**
+has recurred across this catalog's review rounds — **corrected,
+Scenario Review round 10, Editorial-2: this line previously pinned
+"six" review rounds, itself stale by three rounds, the identical
+species this line's own point warns about; deliberately not replaced
+with a fresher pinned number**):**
 (1) the three new agent files exist, are registered, AND are
 routable — **caveat added, Scenario Review round 6, P1-4, escalated
 round 7, CLOSED 2026-09-17: `veyro-critical-engineer` was always both

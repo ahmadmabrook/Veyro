@@ -67,3 +67,12 @@ Result:
 | Consistency | The two layers agree with each other | PASS, confirmed by the dispatched agent's own explicit statement |
 
 **`BUG-032` (P1) is now CLOSED on both halves.**
+
+**Disclosed gap (Scenario Review round 10, P1-4): this file's single
+dispatch recorded no `MR-MOD001-<date>-<NNN>` evidence record or agent/
+session identity, though `EIP_MIRROR.md` lines 1095-1100 and `ADR-005`'s
+binding condition 4 require that evidence. Not retroactively edited
+here — a fresh dispatch with full MR-format evidence, including a
+task-description-only (not by-name) test of exactly this closure, is
+recorded instead in
+`ROUTING_DRILL_2026-09-18-mr-evidence-backfill.md`.**
