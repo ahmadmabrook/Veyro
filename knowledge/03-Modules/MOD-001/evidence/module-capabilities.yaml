@@ -14,7 +14,10 @@ applicable_capability_profiles:
 # Corrected (Scenario Review round 3, P1-5): the previous version of this
 # file listed only 4 of the 10 §4.3 paths (backend/**, one combined
 # mobile/** marker, admin-web/**, frontdesk-web/**), leaving General
-# Web, Edge, and Data/AI — none of which have a directory yet — with no
+# Web, Front Desk/POS's edge-bridge glob, Edge, and Data/AI — none of
+# which have a directory yet (corrected, Scenario Review round 15,
+# P2-3: this comment previously named only 3 of these 4 no-directory
+# surfaces, omitting frontdesk-edge-bridge/**) — with no
 # path entry for the surface_profile_activation gate to key on, and
 # collapsing KMP Mobile/iOS Host/Android Host into one marker that
 # cannot express three distinct deferred profiles. Fixed: every one of

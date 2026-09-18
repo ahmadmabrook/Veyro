@@ -2,7 +2,7 @@
 doc: MOD-001_CAPABILITIES
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 12, P1-5 — branch protection / required status checks added to the capability-gap table; this repo's own private-plan availability had never been checked, despite IMPLEMENTATION.md §3 naming it as the entire bypass-protection mechanism underneath a Blocker scenario, SCN-020)
+updated: 2026-09-19 (Scenario Review round 15, P2-2 — front-matter corrected: this line previously said round 12/2026-09-18 despite carrying a round-14 P2-4 correction in its own body at the Infra/SRE/CI glob line below; no substantive change this round, structural findings landed in IMPLEMENTATION.md/SCENARIOS.md/ADR_CONFORMANCE.md instead)
 ---
 
 # MOD-001 — Capabilities (per-module manifest, capability-gap analysis)

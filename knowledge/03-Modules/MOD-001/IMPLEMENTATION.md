@@ -51,7 +51,9 @@ Veyro/
 │   │                               #   routing drill proving real
 │   │                               #   escalation to all 3, plus
 │   │                               #   veyro-test-author for BUG-032).
-│   ├── rules/                      # already exists (4 files); MOD-001
+│   ├── rules/                      # already exists (4 files, all at
+│   │                               #   .claude/rules/*.md — no family
+│   │                               #   directory); MOD-001
 │   │                               #   scaffolds the 11 Appendix H.2 families
 │   │                               #   as directories, but **corrected (same
 │   │                               #   ADR-005 finding): the backend/ and
@@ -60,7 +62,22 @@ Veyro/
 │   │                               #   profiles), not empty scaffolds — the
 │   │                               #   other 9 stay empty/ready-to-populate**
 │   │                               #   until their own owning module claims
-│   │                               #   them
+│   │                               #   them. **Disposed (Scenario Review
+│   │                               #   round 15, P1-6): H.2 defines a rule
+│   │                               #   family as "one top-level
+│   │                               #   .claude/rules/<family>/ directory";
+│   │                               #   the 4 existing loose files
+│   │                               #   (admin-privileged-console-baseline.md,
+│   │                               #   notion-mcp-scope-discipline.md,
+│   │                               #   owner-reserved-restrictions.md,
+│   │                               #   knowledge-vault-durability.md) are
+│   │                               #   all project-wide governance rules,
+│   │                               #   not scoped to any one surface — they
+│   │                               #   move into the new global/ family
+│   │                               #   directory (.claude/rules/global/*.md)
+│   │                               #   when the 11 families are scaffolded,
+│   │                               #   git-mv'd, not duplicated or left at
+│   │                               #   the root.**
 │   └── skills/                     # does not exist yet (BUG-004, MOD-000);
 │                                   #   MOD-001 creates it only if a real
 │                                   #   need is found during implementation,
@@ -303,6 +320,8 @@ jobs (reusing the existing GitHub remote):
 | **6 of the 7 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint — **corrected, Scenario Review round 12, P2-1: this row's title and enumeration still said "6," uncorrected since round 1 P1-9 added the 7th (surface-profile-activation) gate; §4, §5.3, `SCN-111`, and `TEST_PLAN.md` were all fixed to "7" starting round 2/3, this row alone was missed**) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. Bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content: a same-PR gate-step edit, `[skip ci]`, `workflow_dispatch`, and a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge. **Corrected (Scenario Review round 3, P1-4):** three further classes are resisted and must stay closed — required-check name drift, direct/force push, and `pull_request_target` running base-branch code with secrets; a fourth, branch-protection admin override, is a disclosed, deliberate GitHub-level escape hatch (owner-controlled via "include administrators"), not a gate defect — its existence and who holds it must be recorded, never silently assumed away. **Corrected (Scenario Review round 14, P0-1): required-check name drift is resisted by GitHub's own fail-closed-on-absence branch-protection behavior — a required status-check context that stops being reported (because the gate job was renamed) leaves the PR permanently non-mergeable, not mergeable; no job-ID-based naming convention is needed to close this, and `SCN-MOD001-020`(g)'s expected result no longer states a conditional pass path** |
 | **7th architecture gate: surface-profile activation (added, Scenario Review round 12, P2-1 — this gate has existed since round 1 P1-9 but never had its own §3 pipeline row; §4's gate-7 row pointed back at "the new 7th check" inside this very row, which never named it)** | Every push/PR | Source tree + `module-capabilities.yaml` | Pass/fail + violation report | Yes | Same validator run locally (`tools/validate_architecture_gates.py --gate surface-profile`) | Named `SURFACE_PROFILE_NOT_ACTIVATED`/unknown-surface violation + offending path | Deliberate-violation and carve-out-boundary fixtures proven denied/allowed — see §4 gate 7 below (`SCN-MOD001-102`/`103`/`112`/`138`/`139`) |
 | Unit tests | Every push/PR | `backend/tests/unit/`, mobile/web unit suites | Pass/fail + coverage | Yes | `pytest`/platform-native runner locally | Test report artifact | N/A — no known bypass class yet; will be re-examined once real tests exist |
+| Component tests (added, Scenario Review round 15, P2-4 — `TEST_PLAN.md` line 22 names this layer "Required per surface" and GOV-01-R01 requires each layer's own CI stage, but this table had no row for it) | Every push/PR (once a UI-bearing surface exists) | `backend/tests/component/`, platform-native component suites | Pass/fail + coverage | Yes, once applicable | Same runner locally | Test report artifact | N/A yet — no UI-bearing surface exists in MOD-001 itself |
+| Mobile UI tests (added, Scenario Review round 15, P2-4, same reason as the row above) | Every push/PR touching `mobile/**` | Android: Compose UI test runner (real, standard Linux runner); iOS: XCUITest-equivalent (job wiring only, real execution deferred per `SCN-MOD001-056`/`SCN-MOD001-139` — no paid macOS CI runner referenced, and no application/screen source exists yet under the still-DEFERRED mobile profiles) | Pass/fail (Android); required-status-check wiring only (iOS) | Yes | Android: `pytest`/Compose-test runner locally; iOS: workflow-graph inspection locally | Test report artifact (Android); workflow-graph inspection report (iOS) | Android runs only from CI's pinned workflow; iOS real execution deferred to real implementation per `SCN-MOD001-056` |
 | Domain contract / tenant-isolation / authorization / financial-invariant tests | Every push/PR (once a domain exists) | Fixture DB + RLS-enabled schema | Pass/fail | Yes, once applicable | Same suite locally against a local Postgres | Report artifact naming the failed invariant ID | RLS enforced at the database role level, not just application code — cannot be bypassed by application-layer changes alone |
 | SAST / dependency / secret / container / IaC scanning + SBOM/provenance | Every push/PR | Source tree, dependency manifest, container image, IaC files | Findings report + SBOM | Yes (secret/critical-vuln findings block; advisory findings do not, per tool default) | Same scanners run locally | Findings report artifact | Scanner runs from the pinned workflow; no scanner-skip flag committed |
 | Build signed immutable artifact/image | On merge to main | Source tree | Signed artifact + provenance record | Yes | A dev-only self-signed build locally | Signature verification log | Signing key held in CI secrets, not the repo; a locally-built artifact cannot carry a valid CI signature |
@@ -387,7 +406,7 @@ genuinely unfixtured dimensions.
 
 | Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
 |---|---|---|---|---|---|---|
-| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile; **or a file under a known-infrastructure path (`.claude/**`, `knowledge/**`, `veyro-product-experience-design/**`, `contracts/**`, `tools/**` — added, Scenario Review round 14, P1-3; proven by `SCN-MOD001-102`'s extended positive case)**; **or a build/toolchain/CI configuration file under a surface's path scope (e.g. `mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`, added round 10 P1-2) — carved out under ADR-005's own dividing line: "build, toolchain, and CI configuration for a surface is Infra/SRE/CI-profile work; the surface's own profile activates when the surface's own source code appears" (added, Scenario Review round 11, P2-1 — this carve-out existed only as ADR prose until now, and without it the gate as specified would deny MOD-001's own committed Gradle stubs against their still-DEFERRED KMP Mobile/Android Host profiles); the carve-out's recognized extension/filename set is closed, not open-ended — **corrected, Scenario Review round 12, P0-1: the previous "etc." made this an unfalsifiable pass condition, the same species round 3 had already removed from the gate-8/`SCN-108` lifecycle-lint** — exactly: `.gradle.kts`, `.gradle`, `.xcconfig`, `Package.swift`, `Podfile`, `package.json`, `package-lock.json`, `gradle.properties`, `settings.gradle.kts`, `gradle-wrapper.properties`. Proven by `SCN-MOD001-138` (positive: a listed extension under a deferred surface passes) and `SCN-MOD001-139` (negative: the carve-out's own boundary — a `.kt` application file under the same deferred `mobile/shared/src/` path still denies, proving the carve-out is extension-scoped, not surface-wide)** | A source file of a deferred surface's own *application* file type (e.g. a `.tsx` file under `admin-web/`, a `.kt` application-logic file under `mobile/shared/src/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 12 named §4.3 globs (across 10 profiles) and NONE of the 5 known-infrastructure paths at all (glob/path counts corrected, Scenario Review round 14, P1-3)** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob; passes for a recognized build/toolchain/CI file matching the closed extension/filename set above under a deferred surface, citing the Infra/SRE/CI carve-out | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile; **or a file under a known-infrastructure path (`.claude/**`, `knowledge/**`, `veyro-product-experience-design/**`, `contracts/**`, `tools/**`, `mobile/*.md`, `RELEASE_TRAIN.md` — 7 paths, corrected Scenario Review round 15, P1-1: the prior 5-path list here omitted the two cross-cutting doc paths `evidence/module-capabilities.yaml` already carries as `profile: null`; proven by `SCN-MOD001-102`'s extended positive case)**; **or a build/toolchain/CI configuration file under a surface's path scope (e.g. `mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`, added round 10 P1-2) — carved out under ADR-005's own dividing line: "build, toolchain, and CI configuration for a surface is Infra/SRE/CI-profile work; the surface's own profile activates when the surface's own source code appears" (added, Scenario Review round 11, P2-1 — this carve-out existed only as ADR prose until now, and without it the gate as specified would deny MOD-001's own committed Gradle stubs against their still-DEFERRED KMP Mobile/Android Host profiles); the carve-out's recognized extension/filename set is closed, not open-ended — **corrected, Scenario Review round 12, P0-1: the previous "etc." made this an unfalsifiable pass condition, the same species round 3 had already removed from the gate-8/`SCN-108` lifecycle-lint** — exactly: `.gradle.kts`, `.gradle`, `.xcconfig`, `Package.swift`, `Podfile`, `package.json`, `package-lock.json`, `gradle.properties`, `settings.gradle.kts`, `gradle-wrapper.properties`. Proven by `SCN-MOD001-138` (positive: a listed extension under a deferred surface passes) and `SCN-MOD001-139` (negative: the carve-out's own boundary — a `.kt` application file under the same deferred `mobile/shared/src/` path still denies, proving the carve-out is extension-scoped, not surface-wide)** | A source file of a deferred surface's own *application* file type (e.g. a `.tsx` file under `admin-web/`, a `.kt` application-logic file under `mobile/shared/src/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 12 named §4.3 globs (across 10 profiles) and NONE of the 7 known-infrastructure paths at all (glob/path counts corrected, Scenario Review round 14 P1-3 and round 15 P1-1)** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob; passes for a recognized build/toolchain/CI file matching the closed extension/filename set above under a deferred surface, citing the Infra/SRE/CI carve-out | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
 
 **Corrected (Scenario Review round 2, P1-6; further corrected round
 3): the original marker-only design was fail-open.** General Web
@@ -400,18 +419,33 @@ not express three distinct deferred profiles (KMP Mobile
 `mobile/androidApp/**`). **Fixed:** all 10 §4.3 path prefixes named in
 `MODEL_ROUTING.md`'s surface-profile table now carry an explicit
 deferral marker (`evidence/module-capabilities.yaml`'s
-`repository_paths_surfaces` list), including the six with no directory
-yet — `mobile/` carries three sub-markers, one per distinct profile.
+`repository_paths_surfaces` list), including the four with no directory
+yet (`web/**`, `frontdesk-edge-bridge/**`, `edge/**`, `data-ai/**` —
+**corrected, Scenario Review round 15, P2-3: "six" here, in
+`MODEL_ROUTING.md`, and in `SCENARIOS.md` was wrong; §1's own topology
+above scaffolds real directories for `admin-web/**`, `frontdesk-web/**`,
+and all three `mobile/**` sub-paths, leaving only these 4 without one**)
+— `mobile/` carries three sub-markers, one per distinct profile.
 With all 10 named profiles now marked, the residual fail-open case is not
 among them: it's a *completely unlisted* top-level surface (`SCN-MOD001-112`)
 that matches none of the 12 §4.3 globs — a marker-keyed check has no row to
 consult for such a path by construction, so gate 7 additionally
 requires the capability-governance validator to flag any new top-level
 directory that matches neither a known infrastructure path
-(`backend/**`, `infra/**`, `contracts/**`, `tools/**`,
-`.github/workflows/**`, `.claude/**`, `knowledge/**`,
-`veyro-product-experience-design/**` — see the round-14 correction
-immediately below) nor a named §4.3 glob, as an explicit
+(`contracts/**`, `tools/**`, `.claude/**`, `knowledge/**`,
+`veyro-product-experience-design/**`, `mobile/*.md`, `RELEASE_TRAIN.md`
+— **corrected, Scenario Review round 15, P1-1: this list previously
+also named `backend/**`, `infra/**`, and `.github/workflows/**` — but
+those three are the two currently-ACTIVATED §4.3 surface globs
+themselves (Backend, and Infra/SRE/CI's two globs), not exempt
+known-infrastructure scaffolding. Listing them here, combined with the
+round-14-added precedence rule below, would have let any file under
+`backend/**`/`infra/**` short-circuit through the known-infrastructure
+branch instead of actually exercising the activated-profile check —
+the exact branch `SCN-MOD001-102`'s positive fixture is meant to prove
+runs. The 7-path list here now matches `evidence/module-capabilities.yaml`'s
+own `profile: null` rows exactly, no more and no less** — see the
+round-14 correction immediately below) nor a named §4.3 glob, as an explicit
 unknown-surface denial requiring a `module-capabilities.yaml` decision
 before merge — rather than silently allowing it through absence.
 
@@ -436,11 +470,30 @@ in `SCN-MOD001-112` is also corrected here: `MODEL_ROUTING.md`'s table
 names **10 §4.3 profiles across 12 path globs** (Infra/SRE/CI and Front
 Desk/POS each cover 2 globs under one profile), not 10 globs — the
 profile count and the glob count are different numbers and neither
-document should conflate them. Where a path matches both a known-
-infrastructure entry and a §4.3 glob (`.github/workflows/**` is both a
-known-infrastructure path and the Infra/SRE/CI profile's own glob), the
-known-infrastructure classification takes precedence, since that path
-is already activated and needs no separate profile-activation check.
+document should conflate them.
+
+**Corrected (Scenario Review round 15, P1-1): the two remaining
+`evidence/module-capabilities.yaml` `profile: null` rows —
+`mobile/*.md` and `RELEASE_TRAIN.md` (added round 10, P2-2, as
+cross-cutting docs no single §4.3 surface owns) — belong in this same
+exempt-from-activation-check set for gate 7's purposes, bringing the
+total to 7 known/exempt paths, not the 3 named directly above.
+Separately, and more substantively: the precedence sentence this
+paragraph previously carried was wrong on its own example.
+`backend/**` and `infra/**` were, at the time, *also* listed in the
+"known infrastructure path" catch-all above — but they are the two
+currently-ACTIVATED §4.3 surface globs themselves, not known
+infrastructure, and giving them precedence there would have let any
+file under either path skip the activated-profile check entirely
+(defeating the check `SCN-MOD001-102`'s positive fixture exists to
+prove). They have been removed from that list.** In the current
+manifest, the 7 known-infrastructure/cross-cutting paths and the 12
+named §4.3 globs are disjoint by construction — no path matches both,
+so no precedence rule is presently exercised. If a future path were
+ever added to both sets, the known-infrastructure/cross-cutting
+classification should take precedence, since such a path needs no
+profile-activation check by definition; this is recorded as a rule for
+that future case, not a description of any current overlap.
 
 Each deferred empty shell's marker file names the §4.3 profile that
 must activate before real code lands there; the check reads that
@@ -674,6 +727,22 @@ Both fixed below.** Fixed:
   integration *pattern* MOD-006 will point a real crash/remote-config
   SDK at — not a markdown interface description, and not deferred
   product functionality. Proven by `SCN-MOD001-117`.
+- **ADR-004 conformance obligation on both endpoints above (added,
+  Scenario Review round 15, P1-4 — `ADR_CONFORMANCE.md`'s round-14
+  rewrite stated this obligation but it was never propagated to the
+  actual endpoint specification here):** both
+  `version_negotiation.py` and `crash_remote_config_intake.py` are
+  versioned (a path- or header-based API version, consistent with
+  `IMPLEMENTATION.md`'s own versioning convention for KMP modules
+  above) and return RFC 7807 (`application/problem+json`) error bodies
+  on failure — not ad hoc error shapes. Neither exposes a list/
+  collection endpoint, so cursor pagination and "surface-specific
+  composed read endpoints" are not applicable to these two (each is a
+  single-resource check/intake endpoint); OpenAPI-schema generation for
+  the REST surface as a whole is the existing backward-compatible-
+  change convention `SCN-MOD001-018`/`034` already test, not a
+  separate obligation these two endpoints introduce. Proven by
+  `SCN-MOD001-119`(a).
 - **CI runner-assignment convention** (new row, §12 pipeline table
   below — **corrected, Scenario Review round 13, E-1: was mis-cited
   "§3," this row and the five below it all live in §12's own second
@@ -770,6 +839,6 @@ Both fixed below.** Fixed:
 | **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, offline-flow half (GOV-01-R07, added round 7 — SCN-050 tests this row)** | Every push/PR touching an offline-flow path | Changed-file path list | The fixture is flagged as requiring the offline-smoke-test job | Yes | Same path-filter/flagging rule run locally | CI log naming the triggering path and the flagged job | Flagging rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-129`)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture (Android); iOS job wiring on the release-candidate trigger path | Pass/fail per adapter (Android, real); presence + required-status-check (iOS, workflow-graph) | Yes | Android: cannot fully replicate locally (needs a real Android CI runner); iOS: workflow-graph inspection can be run locally against the workflow file | Evidence bundle artifact (Android); workflow-graph inspection report (iOS) | Android smoke test runs only from CI's real Android runner, never a developer's local simulator claim; iOS real execution is deferred to real implementation per `SCN-MOD001-056` (no paid macOS CI runner tier referenced in MOD-001's committed configuration) |
-| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-128`)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android build/UI/a11y/perf qualification suites (real); iOS build job wiring (workflow-graph) | Pass/fail, all 4 dimensions wired, runnable ones (Android/UI/a11y) pass for real | Yes | Android/UI/a11y suites run locally against the proposed toolchain bump; iOS job-wiring checked locally via workflow-graph inspection | Named failing-dimension report; iOS reports missing/non-required-status wiring, not a failed build | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated"; iOS build's real execution deferred to real implementation per `SCN-MOD001-056` |
+| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-128`; further rescoped Scenario Review round 15, P1-2 — UI/a11y/perf require real screen content that does not exist under the still-DEFERRED Android Host profile, so only the build dimension stays real)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android build (real); Android UI/a11y/perf and iOS build job wiring (workflow-graph) | Pass/fail, all 4 dimensions wired, the runnable one (Android build) passes for real | Yes | Android build runs locally against the proposed toolchain bump; iOS build and Android UI/a11y/perf job-wiring checked locally via workflow-graph inspection | Named failing-dimension report; non-build dimensions report missing/non-required-status wiring, not a failed build | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated"; iOS build's and Android UI/a11y/perf's real execution deferred to real implementation per `SCN-MOD001-056`/`SCN-MOD001-139` |
 | **Changelog generation (GOV-01-R08, added round 7, P1-2)** | Every release | Merged PR list since last release | Changelog entry | Yes | `tools/generate_changelog.py` run locally | Missing/malformed changelog-entry report | Runs against the actual committed PR/commit history, not a developer's hand-written draft |
 | **Release-lifecycle-stage lint (GOV-01-R08)** | Every release | Release-evidence record | Pass/fail + named-defect report | Yes | Same lint run locally against a synthetic record | Named missing-field or out-of-order-transition report | Runs against the actual committed release-evidence record, not a developer's local draft |

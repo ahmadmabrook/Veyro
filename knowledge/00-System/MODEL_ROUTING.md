@@ -80,7 +80,12 @@ but two profiles genuinely activate for MOD-001's own real content:
 | Edge | `edge/**` | not yet registered | Deferred — no `edge/` surface owned by any module yet |
 | Data/AI | `data-ai/**` **(corrected, Scenario Review round 3 P1-5: previously the vague "data-ai-scoped paths," which a marker-based mechanical check cannot key on — a concrete glob is required precisely because no directory exists yet)** | not yet registered | Deferred |
 
-Every row above, including the six with no directory yet, names a
+Every row above, including the four with no directory yet (`web/**`,
+`frontdesk-edge-bridge/**`, `edge/**`, `data-ai/**` — **corrected,
+MOD-001 Scenario Review round 15, P2-3: "six" here was wrong;
+`admin-web/**`, `frontdesk-web/**`, and all three `mobile/**` sub-paths
+already have real scaffolded directories per `IMPLEMENTATION.md` §1**),
+names a
 concrete glob specifically so MOD-001's `surface_profile_activation`
 check (below) has something real to match against the moment a module
 creates that path — an unnamed or vague path scope is exactly the

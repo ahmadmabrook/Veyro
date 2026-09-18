@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (Scenario Review round 14 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 13's own remediation held on most of what it framed itself around, but its own SCN-055 rescope left SCN-074 unconstructible, its own SCN-101 fixture collided with Blocker SCN-056, and gate 7's known-infrastructure allowlist omitted .claude/**, knowledge/**, and veyro-product-experience-design/**; Scenario Review round 15 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-19 (Scenario Review round 15 ran, BLOCKED, P0=0/P1=6/P2=7/Editorial=3 all remediated same session — round 14's remediation held on everything it framed itself around, but its own gate-7 fix produced a three-way-inconsistent known-infrastructure count, the Android half of mobile UI was still claimed to run for real against a still-DEFERRED profile with no application source, and round 15 found further genuine P1/P2/Editorial gaps of its own; independent evidence-integrity adjudication confirmed all 14 evidence_integrity_check.py findings have a durable, source-backed, non-Ready-blocking disposition (9 ADR-005-deferred, 5 checker false positives now tracked as BUG-033); Scenario Review round 16 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -146,45 +146,51 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       Round 11: BLOCKED (P0=1, P1=6, P2=4, Editorial=2). Round 12:
       BLOCKED (P0=2, P1=5, P2=4, Editorial=2). Round 13: BLOCKED
       (P0=2, P1=5, P2=7, Editorial=5). Round 14: BLOCKED (P0=2, P1=3,
-      P2=6, Editorial=2)**
+      P2=6, Editorial=2). Round 15: BLOCKED (P0=0, P1=6, P2=7,
+      Editorial=3)**
       (see `SCENARIOS.md` §5 for the current round's
       exact P0/P1/P2/Editorial counts and findings — not restated here,
       per the lesson every round of this remediation has now taught
       about facts restated in more than one place going stale).
-      All fourteen rounds' P0/P1 findings are now genuinely remediated
-      (round 14's own P0/P1/P2/Editorial findings fixed the same
+      All fifteen rounds' P0/P1 findings are now genuinely remediated
+      (round 15's own P1/P2/Editorial findings fixed the same
       session they were found — see below); each round's own disclosed
       P2/Editorial residuals (see `SCENARIOS.md` §5's per-round
       entries) remain carried forward by design, not silently fixed —
       restating "all findings" without that distinction is exactly the
       overclaim round 9 and round 10 each found false one round later.
-      **Round 14 independently re-checked round 13's remediation: held
-      genuinely on everything it framed itself around (`SCN-004`/`005`
-      gate-1, `SCN-014`/`015` gate-6, `SCN-138`/`139`'s manual mapping,
-      the gate-7 requirement row, the macOS-runner owner-reserved line,
-      surface 10, the carve-out note, the Infra/SRE/CI globs, the
-      namespace note), but the pattern rounds 10-13 each documented
-      recurred a fifth time: `SCN-MOD001-020`(g)'s expected result was
-      conditioned on a job-ID-naming convention this plan never
-      mandated, contradicting `REQUIREMENTS.md`'s own "resists...
-      outright" criterion (P0-1); `ADR_CONFORMANCE.md` falsely declared
-      ADR-004 N/A against a module that commits two real backend HTTP
-      endpoints (P0-2); round 13's own `SCN-055` rescope was never
-      propagated to `SCN-074`, leaving it unconstructible (P1-1);
-      round 13's own standard for what counts as an owner-reserved
-      macOS-runner reference was violated by `SCN-101`'s own fixture
-      (P1-2); and gate 7's known-infrastructure allowlist omitted
-      `.claude/**`/`knowledge/**`/`veyro-product-experience-design/**`,
-      three real top-level paths, with no positive scenario proving the
-      known-infrastructure branch and a wrong "10 globs" count
-      (P1-3). All fixed this session; see `SCENARIOS.md` §5's round 14
-      entry.**
+      **Round 15 independently re-checked round 14's remediation: held
+      genuinely on everything it framed itself around (the ADR-004
+      rewrite, `SCN-119`(a)'s repoint, `SCN-074`'s rescope, `SCN-102`'s
+      second known-infrastructure fixture, "six"→"seven", `SCN-014`'s
+      disclosure, the carve-out cleanup), but the pattern rounds 10-14
+      each documented recurred a sixth time, entirely at P1/P2/Editorial
+      severity (no P0): round 14's own gate-7 known-infrastructure fix
+      produced a three-way-inconsistent count across `IMPLEMENTATION.md`
+      (which would have let the two ACTIVATED profiles skip their own
+      activation check, P1-1); `SCN-106`/`137`/`128` still claimed the
+      Android half of mobile UI ran for real against a still-DEFERRED
+      profile with no application source, contradicting `SCN-139`'s own
+      Blocker denial requirement (P1-2); `SCN-116`'s companion-positive
+      citation was false (P1-3); round 14's own ADR-004 fix was never
+      propagated to `IMPLEMENTATION.md`'s endpoint specs (P1-4); its
+      `SCN-020`(g) fix left a contradicting clause standing one
+      paragraph above the corrected text (P1-5); and the `.claude/rules`
+      card obligation had no scenario checking the real tree against
+      Appendix H.2 (P1-6). Plus 7 P2s (row-count arithmetic, front-matter
+      staleness, path-count figures, a missing CI-pipeline-table pair of
+      rows, an under-justified runner-tier rationale, an untracked
+      checker-scope defect now filed as `BUG-033`, and a false
+      attestation-gap-closure claim in routing-drill evidence) and 2
+      Editorial findings (a wrong line citation; a third, informational-
+      only note on ADR-015 confirming no defect exists there). All fixed
+      this session; see `SCENARIOS.md` §5's round 15 entry.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
       see the bug-review checklist item above). Still gated on an
       independent round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 15's own subject.
+      for what remains; that confirmation is round 16's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

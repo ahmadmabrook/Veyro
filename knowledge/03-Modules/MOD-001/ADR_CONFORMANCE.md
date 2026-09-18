@@ -53,7 +53,22 @@ each must be versioned, use RFC 7807 error bodies, and — since neither
 exposes a list endpoint (both are single-resource check/intake
 endpoints, not collection endpoints) — cursor pagination is disclosed
 as not applicable to this module's own two endpoints, not silently
-omitted. `tools/validate_architecture_gates.py` and this module's other
+omitted. **Corrected (Scenario Review round 15, P1-4): this section's
+two other named accepted-position elements — "surface-specific
+composed read endpoints" and OpenAPI — got no disposition at all here,
+an omission distinct from cursor pagination's explicit "N/A" above.
+Disposed now: neither endpoint is a composed read endpoint (both are
+single-resource check/intake endpoints, the same reason cursor
+pagination doesn't apply), so "surface-specific composed read
+endpoints" is likewise N/A to this module's own two endpoints, not
+silently dropped; OpenAPI-schema generation for the REST surface as a
+whole is not a separate obligation these two endpoints introduce — it
+is the existing backward-compatible-API-change convention
+`SCN-MOD001-018`/`034` already test. The propagation gap
+`IMPLEMENTATION.md` §1 had — this section's versioning/RFC-7807
+obligation was never written into the two endpoints' own spec text —
+is also fixed, at `IMPLEMENTATION.md`'s endpoint bullets themselves.**
+`tools/validate_architecture_gates.py` and this module's other
 CLI tools remain out of ADR-004's scope, as originally stated; the
 correction is that the module is not endpoint-free. **Conformance
 state: PLANNED, not yet proven** — same disposition as ADR-015 below,

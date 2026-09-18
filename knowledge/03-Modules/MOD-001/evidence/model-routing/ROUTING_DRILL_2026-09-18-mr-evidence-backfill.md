@@ -47,9 +47,17 @@ citing its own definition's ADR-005 activated-surface-profile paragraph
 rather than absorbing it as "routine"; agent/session id =
 `a79bfaa62f612390b`; resolved model identity = `claude-sonnet-5`,
 self-reported directly by the dispatched agent (not inferred from the
-`model: sonnet` dispatch parameter alone — this closes the same
-attestation gap the 2026-09-14 drill disclosed as `BUG-027`-class for
-that round); verdict = PASS.
+`model: sonnet` dispatch parameter alone — a stronger signal than the
+dispatch parameter, but **corrected, Scenario Review round 15, P2-7:
+self-report does not close the `BUG-027`-class attestation gap; that
+gap is specifically about the absence of transcript-level runtime
+attestation (`mr_verify.py`'s `message.model` read), which exists
+precisely because a dispatched agent's own self-report is not the
+independent evidence DC-17 requires. `ADR-005`/`MODEL_ROUTE.md` are
+correct that this residual stays open and unclosable this session; this
+entry previously claimed closure and is retracted here, not
+elsewhere, since the false claim originated in this file**);
+verdict = PASS.
 
 `MR-MOD001-20260918-002`: task class = activated Backend-surface task,
 explicitly bounded to exclude the critical-slice harness ("implement

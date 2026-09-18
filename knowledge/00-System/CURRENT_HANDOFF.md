@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-19 (chunk 44 — MOD-001 Scenario Review round 14 ran, returned BLOCKED, all P0/P1/P2/Editorial findings remediated same session — round 13's own remediation held on everything it framed itself around, but its own SCN-055 rescope left SCN-074 unconstructible, its own standard for owner-reserved macOS-runner references was violated by its own SCN-101 fixture, gate 7's known-infrastructure allowlist omitted three real repo paths (.claude/**, knowledge/**, veyro-product-experience-design/**), and two false/unfalsifiable claims (SCN-020(g)'s conditional pass path, ADR_CONFORMANCE.md's false ADR-004 N/A claim) were found and fixed. MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-15 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-19 (chunk 45 — MOD-001 Scenario Review round 15 ran, returned BLOCKED (P0=0, P1=6, P2=7, Editorial=3), all findings remediated same session, plus an independent evidence-integrity adjudication of all 14 `evidence_integrity_check.py` findings (9 real-but-ADR-005-deferred, 5 checker false positives filed as new `BUG-033`, none Ready-blocking). MOD-001 remains ACTIVATED/PLANNING, NOT READY — next legally allowed action is an independent round-16 Scenario Review. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, and `knowledge/05-QA/BUG_REGISTRY.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -89,8 +89,120 @@ to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-41-2026-09-18-round11-remediation.md`.**
 **Twenty-sixth application (2026-09-19, chunk 44): chunk 42 compressed
 to a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-42-2026-09-18-round12-remediation.md`**
-— chunks 43 and 44 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-42-2026-09-18-round12-remediation.md`.**
+**Twenty-seventh application (2026-09-19, chunk 45): chunk 43 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-43-2026-09-19-round13-remediation.md`**
+— chunks 44 and 45 are now the 2 kept in full.
+
+## What happened chunk 45, 2026-09-19 — MOD-001 Scenario Review round 15 + independent evidence-integrity adjudication: round 15 returned BLOCKED (P0=0, P1=6, P2=7, Editorial=3), all findings remediated same session — round 14's remediation held on everything it framed itself around, but its own gate-7 fix produced a three-way-inconsistent known-infrastructure count and its P1-2 mobile-UI fix left the Android half still claimed real against a still-DEFERRED profile, plus round 15 found further genuine P1/P2/Editorial gaps of its own; all 14 evidence_integrity_check.py findings independently adjudicated as non-Ready-blocking (9 ADR-005-deferred, 5 checker false positives, now tracked as BUG-033); Definition of Ready explicitly NOT evaluated
+
+Fresh session bootstrap per `SESSION_BOOTSTRAP.md`: all 4 governing
+baselines re-verified PASS via `verify_baselines.py`; local HEAD ==
+`origin/main` at `7cfa6cf7bc4c2a5ae716524250aca87275e6fc81` both before
+and after this chunk's own commit. `evidence_integrity_check.py` run
+fresh before dispatching the reviewer: exit code 1, 14 findings,
+unchanged from round 14's own count. Each finding independently
+re-classified from source rather than inherited from round 14's
+narrative: the 9 `.claude/rules/backend/**`/`infra/**` broken
+references confirmed genuinely deferred to pre-implementation by
+`ADR-005`'s own "Status" section (a binding split between a
+Definition-of-Ready condition — profile selection recorded +
+enforcement check specified, both confirmed satisfied in
+`CAPABILITIES.md`/`module-capabilities.yaml`/`IMPLEMENTATION.md` — and
+a separate pre-implementation condition for the rule files' own real
+content); the 5 `BUG LINKAGE MISSING` findings for `BUG-028`..`032`
+confirmed checker false positives by reading `check_bug_refs()`'s
+source directly (hardcoded to
+`knowledge/03-Modules/MOD-000/evidence/bugs/`) and confirming all 5
+files physically exist at MOD-001's own `evidence/bugs/`. That checker
+limitation had never itself been filed as a tracked bug — filed this
+chunk as `BUG-033` (OPEN, P2, non-blocking).
+
+Round 15 (fresh-context `veyro-scenario-reviewer`, Opus, dispatched via
+the Agent tool, explicitly instructed not to inherit round 14's or any
+prior round's conclusions, and given the orchestrating session's
+evidence-integrity adjudication above to independently re-verify)
+independently re-derived the scenario count (140 detail blocks, no
+duplicates), re-verified the category matrix, confirmed all 24
+Appendix G Required categories covered, confirmed GOV-01-R01..R08
+fully traced, and specifically re-checked every one of round 14's own
+headline remediation claims against actual current file content.
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=0, P1=6, P2=7,
+Editorial=3 (one purely informational — confirming ADR-015 is a real
+EIP/TSD Appendix I identifier, not a missing local artifact or a typo,
+no defect). Round 14's remediation held on everything it framed itself
+around, but the pattern rounds 10-14 each documented recurred a sixth
+time, this time entirely at P1/P2/Editorial (no P0). The six P1s:
+round 14's own gate-7 known-infrastructure fix produced a
+three-way-inconsistent count across `IMPLEMENTATION.md`'s table cell
+(5), its own paragraph (8, wrongly including the two ACTIVATED §4.3
+globs `backend/**`/`infra/**` as if they were known infrastructure),
+and the real manifest (7) — which, combined with the same paragraph's
+new precedence rule, would have let files under the two activated
+profiles skip their own activation check entirely; `SCN-106`/`137`/`128`
+still required running the Android half of mobile UI "for real"
+against the still-DEFERRED Android Host profile with no application
+source in `IMPLEMENTATION.md`'s own topology, directly contradicting
+`SCN-139`'s own Blocker denial requirement — the identical
+missing-infra/DEFERRED-profile conflict already governing the iOS
+half, never applied to Android; `SCN-116`'s companion-positive citation
+("covered by 001/002") was false, the identical false-citation species
+round 11 already fixed once for `SCN-106`; round 14's own ADR-004 fix
+was never propagated from `ADR_CONFORMANCE.md` into
+`IMPLEMENTATION.md`'s own endpoint specs; round 14's own `SCN-020`(g)
+fix corrected the Expected-result text but left a directly
+contradicting clause standing one paragraph above, in the step text a
+tester actually executes; and the module card's `.claude/rules`
+validation obligation had no scenario checking the real tree (4 loose
+files, no family directory) against Appendix H.2's own family
+definition. Full detail on all six P1s, all seven P2s (row-count
+arithmetic, front-matter staleness, path-count figures, two missing
+CI-pipeline rows, an under-justified runner-tier rationale, the
+untracked checker-scope defect, a false attestation-gap-closure claim),
+and both real Editorial findings: `SCENARIOS.md` §5's round 15 entry.
+
+**All P1/P2/Editorial findings remediated the same session** (no P0
+existed to remediate): gate 7's known-infrastructure list corrected
+everywhere to the real 7-path set exactly matching
+`evidence/module-capabilities.yaml`, with the two ACTIVATED globs
+removed from it; `SCN-106`/`116`/`137`/`128` and `IMPLEMENTATION.md`'s
+isolated-PR toolchain row all corrected to defer the Android mobile-UI/
+UI-qualification dimension alongside iOS (Android **build** alone
+stays real); `SCN-116`'s companion-positive citation corrected to
+`SCN-137`'s own unit-layer leg; `ADR_CONFORMANCE.md` and
+`IMPLEMENTATION.md`'s endpoint specs both given complete, consistent
+ADR-004 dispositions (all four accepted-position elements, not two);
+`SCN-020`(g)'s contradicting step-text clause removed; `IMPLEMENTATION.md`
+§1 given an explicit disposition for the 4 existing loose rule files
+(move to a new `global/` family), and `SCN-035` extended to check the
+real tree structure; the §2 row count corrected to 45 (was
+arithmetically wrong at 46, in both live prose and round 14's own log);
+`SCENARIOS.md`/`CAPABILITIES.md` front-matter corrected; the
+"six"/"three" no-directory-yet figures corrected to the real four in
+`IMPLEMENTATION.md`/`MODEL_ROUTING.md`/`module-capabilities.yaml`;
+`IMPLEMENTATION.md` §3 given two new CI pipeline-table rows (Component,
+Mobile UI); `SCN-101`'s rationale narrowed to `LOAD_SECURITY.md`'s
+actual macOS-only ban; `BUG-033` filed for the checker's own scope
+defect; the routing-drill evidence file's false self-report-closes-the-
+gap claim retracted in place; `SCN-106`'s wrong `REQUIREMENTS.md` line
+citation corrected. No new scenario detail blocks were added — every
+finding was a fixture/citation/propagation/false-claim defect inside
+documents that already existed. Catalog total unchanged at **140 detail
+blocks** (140 Required, 0 Optional).
+
+**Definition of Ready was again explicitly NOT evaluated** — round 15
+itself returned P1 findings, and the evidence-integrity adjudication,
+while concluding non-Ready-blocking, does not on its own satisfy the
+Round-15 Gate Rule's requirement of a clean `P0=0`/`P1=0`
+`MOD-001 SCENARIO REVIEW APPROVED` verdict.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 16**,
+to confirm round 15's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.
 
 ## What happened chunk 44, 2026-09-19 — MOD-001 Scenario Review round 14: round 14 returned BLOCKED (P0=2, P1=3, P2=6, Editorial=2), all findings remediated same session — round 13's own remediation held on everything it framed itself around, but its own SCN-055 rescope left SCN-074 unconstructible, its own standard for owner-reserved macOS-runner references was violated by its own SCN-101 fixture, gate 7's known-infrastructure allowlist omitted three real repo paths, and two false/unfalsifiable claims (SCN-020(g), ADR_CONFORMANCE.md's ADR-004 N/A claim) were found; Definition of Ready explicitly NOT evaluated
 
@@ -219,98 +331,7 @@ not MOD-002, not a self-granted Ready determination.
 
 ## What happened chunk 41, 2026-09-18 (compressed 2026-09-19, twenty-fifth retention-rule application) — MOD-001 Scenario Review round 11: round 11 returned BLOCKED (P0=1, P1=6, P2=4, Editorial=2), all findings remediated same session — round 10's remediation held on its core subject but 3 of its own 7 new scenarios carried defects of the same classes it was created to fix, plus round 11 found further genuine gaps of its own; Definition of Ready explicitly NOT evaluated. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-41-2026-09-18-round11-remediation.md`.
 
-## What happened chunk 43, 2026-09-19 — MOD-001 Scenario Review round 13: round 13 returned BLOCKED (P0=2, P1=5, P2=7, Editorial=5), all findings remediated same session — round 12's own remediation held on most of what it framed itself around, but its own gate-1 fix left an unconstructible fixture pair and its own gate-6 residual miscounted its own arithmetic, plus round 13 found further genuine gaps of its own; Definition of Ready explicitly NOT evaluated
-
-Continuation of chunk 42's own pause point (the orchestrating session
-hit its usage limit mid-turn and was resumed after reset, per the
-user's own message). Round 13 (fresh-context `veyro-scenario-reviewer`,
-Opus, dispatched via the Agent tool, explicitly instructed not to
-inherit round 12's conclusions) independently re-derived the scenario
-count (140 detail blocks at the time, no duplicates), re-verified the
-category matrix clean against every detail block's own tag, confirmed
-all 24 Appendix G Required categories covered, and specifically
-re-checked every one of round 12's own headline remediation claims
-against actual current file content rather than the narrative
-describing it.
-
-**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2, P1=5, P2=7,
-Editorial=5. Round 12's remediation held on most of what it framed
-itself around (the six review-tier roles in `module-capabilities.yaml`,
-the `validate_toolchain_matrix.py` CI-stage row, the branch-protection
-disclosure in `CAPABILITIES.md`, surface 10's existence, the §2
-named-family row for `SCN-137`, the `SCN-132`→`SCN-004` citation fix,
-the gate-7 allow-list enumeration), but the pattern rounds 10-12 each
-documented — a round's own new fixes carrying defects of the same
-classes they were created to fix — recurred a fourth time. The two
-P0s: round 12's own gate-1 fix (`SCN-005`'s new elevated-role/`BYPASSRLS`-
-owner violation case) mutated "the 004 fixture" for an ownership
-property `SCN-004` itself never specified, leaving the new case
-unconstructible and `SCN-004` as written satisfiable by a fixture
-gate 1 must deny; and round 12's own gate-6 disclosed residual
-miscounted its own arithmetic — it fixtured three of the six TSD
-comparison dimensions but disclosed only two as remaining, leaving a
-third (published-event-set collision) uncounted and unfixtured
-anywhere, the identical species round 8's own P0-1 finding described
-several rounds earlier. The five P1s: round 12's
-own two new scenarios (`SCN-138`/`139`) had no manual-surface mapping
-at all, the exact gap class round 11 found for round 10's new
-scenarios one round earlier; round 12's `SCN-137` rescope was never
-propagated to its explicit negative twin `SCN-106`, touched in the
-same edit for its exploratory clause but left unchanged for its
-automated legs; a Blocking mobile-CI-runner-assignment row and
-`SCN-055` both still committed to a real macOS-runner reference,
-contradicting Blocker `SCN-056`, a conflict already fixed for four
-other scenarios across four rounds but missed on the scenario that row
-is proven by; round 12's own four-to-six-dimension gate-6 fix was
-never propagated to `SCN-014`, the scenario that actually executes the
-positive case; and gate 7 traced to no requirement row in
-`REQUIREMENTS.md` at all, with `SCN-138`/`139` themselves mis-citing
-their own gate as "TSD §24.1 gate 7" when it is ADR-005-added. The
-seven P2s and five Editorial findings were mostly residual "6→7"
-propagation gaps (tool inventory, `MODEL_ROUTE.md`, `MANUAL_QA.md`'s
-surface count), a carve-out enumeration that never reached
-`module-capabilities.yaml`, a vacuous surface-10 negative proof, an
-unflagged `ADR-004` namespace collision, and six mis-cited section
-references.
-
-**All P0/P1/P2/Editorial findings remediated the same session**:
-`SCN-004` extended with the ownership condition `IMPLEMENTATION.md`
-already specified; `SCN-015` extended with a fourth violation
-condition (published-event-set collision), the gate-6 residual
-corrected to genuinely name what remains; `SCN-138`/`139` added to
-`MANUAL_QA.md`'s mapping; `SCN-106` given the identical
-Android-real/iOS-and-E2E-wiring-only split as its twin `SCN-137`;
-`IMPLEMENTATION.md`'s Blocking mobile-CI-runner row and `SCN-055` both
-rescoped to the same split; `SCN-014` extended to all six gate-6
-dimensions; a gate-7 row added to `REQUIREMENTS.md` §3, its evidence/
-acceptance-criteria text corrected to "7," and `SCN-138`/`139`'s
-citations corrected; the remaining "6 gates" residue fixed in
-`IMPLEMENTATION.md`'s tool inventory (also closing the
-toolchain-qualification-mode gap) and `MODEL_ROUTE.md`'s escalation
-paragraph; `MANUAL_QA.md`'s surface count corrected to 10;
-`module-capabilities.yaml`'s carve-out generalized into one
-surface-agnostic note covering every deferred surface;
-`MODEL_ROUTING.md`'s Infra/SRE/CI row given a concrete glob pair;
-surface 10's negative proof replaced with a real mechanical
-completeness check; `ADR_CONFORMANCE.md` given an explicit
-namespace-disambiguation note; six mis-cited "§3" references in
-`IMPLEMENTATION.md` corrected to "§12"; `SCN-137`'s header/Evidence
-arithmetic clarified; `REQUIREMENTS.md`'s "(§5)" corrected to "(§4)";
-`LOAD_SECURITY.md`'s owner-reserved list extended with paid macOS CI
-runners; `SCN-137`'s E2E-deferral citation corrected to its real,
-distinguishing reason. No new scenario detail blocks were added —
-every finding was a fixture/citation/propagation defect inside
-existing documents. Catalog total unchanged at **140 detail blocks**
-(140 Required, 0 Optional).
-
-**Definition of Ready was again explicitly NOT evaluated** — round 13
-itself returned P0/P1.
-
-**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
-Ready. Implementation has not started and is not authorized to start.
-Next legally allowed action: an independent Scenario Review round 14**,
-to confirm round 13's remediation actually holds — not implementation,
-not MOD-002, not a self-granted Ready determination.
+## What happened chunk 43, 2026-09-19 (compressed 2026-09-19, twenty-seventh retention-rule application) — MOD-001 Scenario Review round 13: round 13 returned BLOCKED (P0=2, P1=5, P2=7, Editorial=5), all findings remediated same session — round 12's own remediation held on most of what it framed itself around, but its own gate-1 fix left an unconstructible fixture pair and its own gate-6 residual miscounted its own arithmetic, plus round 13 found further genuine gaps of its own; Definition of Ready explicitly NOT evaluated. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-43-2026-09-19-round13-remediation.md`.
 
 ## What happened chunk 39, 2026-09-18 (compressed 2026-09-18, twenty-third retention-rule application) — BUG-032 full closure verified by round 9's own independent check; MOD-001 Scenario Review round 9: round 9 returned BLOCKED (P0=1, P1=2, P2=3, Editorial=3), all P0/P1 remediated same session, closing round 8's own disclosed-residual gap for real; Definition of Ready explicitly NOT evaluated. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-39-2026-09-18-bug032-verified-round9-remediation.md`.
 
