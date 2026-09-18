@@ -55,11 +55,22 @@ engineering-infrastructure, not consumer product.
     and checking the report). `veyro-manual-qa` (Opus, fresh context)
     performs one real, undirected exploratory pass over the running
     MOD-001 surfaces (no pre-scripted steps, Claude's own judgment
-    about what to probe) and records what it found in a QA record.
-    Positive proof: the exploratory pass runs and produces a record.
-    Negative proof: a deliberately shallow/rubber-stamped pass (no real
-    probing) is distinguishable from a genuine one because the record
-    itself names concrete things checked, not a generic "looks fine."
+    about what to probe) and records what it found in a QA record
+    that names each surface probed and what was checked on it.
+    Positive proof (`SCN-MOD001-137`'s exploratory half): the
+    exploratory pass runs and produces such a record. Negative proof
+    (`SCN-MOD001-106`'s exploratory half — **corrected, Scenario
+    Review round 13, P2-6: this previously described an informal "the
+    record names concrete things" heuristic with no actual denial
+    mechanism, unlike every other negative case in this catalog**):
+    `veyro-manual-qa` is deliberately asked to probe a named list of
+    surfaces but the resulting QA record omits one of them; a
+    mechanical completeness check (the same class of presence check
+    `SCN-MOD001-121`'s Appendix H.1 field-presence check already uses
+    elsewhere in this catalog) diffs the record's named-surfaces list
+    against the requested list and flags the missing surface by name
+    — a real, checkable denial, not a judgment call about whether the
+    record "looks" thorough.
 
 **None of this has been executed** — implementation has not started.
 This is the plan `veyro-manual-qa` (Opus, fresh context) will execute
@@ -71,7 +82,9 @@ QA, never the implementing session's own narrative).
 Every Required scenario in `SCENARIOS.md` — regardless of its own
 "Automation" field — needs at least one real, Claude-driven execution
 before MOD-001 approval, per Appendix G/§9.1/DC-05. This table maps
-each of the 9 manual-QA surfaces above to the scenario IDs it will
+each of the 10 manual-QA surfaces above (**corrected, Scenario Review
+round 13, P2-2: was "9," stale since round 12 added surface 10 in the
+same edit**) to the scenario IDs it will
 actually execute, so no Required scenario is left with an implicit or
 absent manual-execution path:
 
@@ -166,3 +179,13 @@ was itself a round-11 defect, fixed at the source in round 12, E-2):**
 | Scenario | Manual-QA surface | Why |
 |---|---|---|
 | SCN-137 (GOV-01-R01 per-layer harness positive execution) | 2. CI workflow behavior (6 automated layers); 10. Exploratory-testing procedure (7th layer, corrected round 12 P1-1 — surface 5 is failure diagnostics, not exploratory testing) | same class as SCN-106/116 for the automated half, already mapped there; the exploratory half is surface 10's own subject |
+
+**Added (Scenario Review round 13, P1-1): SCN-138/139 were new in
+round 12 and had no manual-surface mapping at all — the exact gap
+class round 11's own P1-1 found for SCN-130-136 one round earlier,
+reproduced by round 12 for its own new scenarios — fixed:**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-138 (gate 7, deferred-surface build/toolchain carve-out — positive) | 2. CI workflow behavior | an architecture-gates CI step, same class as SCN-102/103/112, already mapped there |
+| SCN-139 (gate 7, deferred-surface build/toolchain carve-out — negative/boundary) | 2. CI workflow behavior | same class as SCN-138 above |

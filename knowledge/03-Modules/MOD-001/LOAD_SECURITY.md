@@ -43,6 +43,9 @@ session itself (DC-06/DC-07, no self-approval).
 ## Owner-reserved items
 
 No paid scanning SaaS, no real production signing certificate, no real
-Apple/Google developer account activation, no Production environment —
+Apple/Google developer account activation, no paid macOS CI runner
+tier (added, Scenario Review round 13, E-4 — `CAPABILITIES.md`'s own
+gap table and Blocker `SCN-MOD001-056` both name this; this list had
+not), no Production environment —
 all explicitly deferred, none decided or activated by this planning
 turn. See `OWNER_APPROVALS.md`.

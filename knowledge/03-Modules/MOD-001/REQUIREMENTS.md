@@ -265,7 +265,11 @@ enumeration.
 - **Evidence obligations:** a full pipeline dry-run against the current
   (near-empty) repo, every stage passing or correctly skipping
   (not-yet-applicable) rather than silently omitted; a deliberate-
-  violation proof for each of the 6 architecture gates (§5) plus for
+  violation proof for each of the 6 TSD-defined architecture gates plus
+  the 7th, ADR-005-added surface-profile-activation gate (`IMPLEMENTATION.md`
+  §4 — **corrected, Scenario Review round 13, P1-5/E-3: this previously
+  said "6... (§5)," both wrong — gate 7 has existed since round 1 and
+  the table itself is §4, not §5**) plus for
   vulnerability/schema-compatibility/migration-safety/artifact-signing.
 - **Scenario coverage:** every category this module is Required for
   touches a CI gate somewhere; specifically BND, NEG, SEC, MIG, DATA,
@@ -273,7 +277,9 @@ enumeration.
 - **Dependencies:** GOV-01-R01 (test pyramid), GOV-01-R02 (workflow
   suite harnesses), GOV-01-R06 (migration-safety detail).
 - **Acceptance criteria:** every TSD §24.1 stage runs; every one of the
-  6 architecture gates has a passing valid-fixture proof AND a
+  7 architecture gates (the 6 TSD §24.1 gates plus the ADR-005-added
+  surface-profile-activation gate — **corrected, Scenario Review round
+  13, P1-5: was "6"**) has a passing valid-fixture proof AND a
   deliberate-violation fail-closed proof (`IMPLEMENTATION.md` §4's
   table); no gate is bypassable at the **CI-workflow-configuration
   layer** — **corrected (Scenario Review round 2, P1-2): this
@@ -569,6 +575,7 @@ Scenario Review pass should re-search independently):
 | Obligation | Source | What MOD-001 must build | Ties to |
 |---|---|---|---|
 | **Six TSD §24.1 architecture gates** | `TSD_MIRROR.md` lines 11597-11653; EIP card "Special rule", `EIP_MIRROR.md` line 4233-4234 ("MOD-001 implements all six TSD §24.1 architecture gates") | (1) RLS lint; (2) module dependency/SQL lint; (3) event contract lint; (4) permission lint; (5) screen contract lint; (6) domain contract uniqueness lint — each as a real CI-blocking check, each with a deliberate-violation fixture proving fail-closed | GOV-01-R04 |
+| **7th architecture gate: surface-profile activation (added, Scenario Review round 13, P1-5 — this gate has existed since round 1 P0-3/P1-9 but had no row in this table at all, and GOV-01-R04's own evidence/acceptance-criteria text above still said "6" until this round)** | `knowledge/04-Decisions/ADR-005-mod001-critical-slice-and-surface-profile-routing.md` Decision 2 Part 3 — not itself a TSD §24.1 gate, an EIP §4.3/ADR-005-derived control | Deny any source file under an unactivated §4.3 surface's path scope, with a bounded build/toolchain/CI-file carve-out for still-deferred surfaces; a real CI-blocking check with a deliberate-violation fixture proving fail-closed, same as the six above | GOV-01-R04 (by the same "every architecture gate is CI-blocking" acceptance criterion, extended to this ADR-005-added gate) |
 | **Capability-governance validation gates** | EIP card, `EIP_MIRROR.md` lines 4122-4157, 4233-4256; Appendix H.1-H.3, lines 20590-20740 | Validate `.claude/agents`/`.claude/rules`/`.claude/skills`/`module-capabilities.yaml`; reject cyclic capability dependencies, overdue lifecycle reviews, manifests missing mandatory privileged-surface Rules; require every Appendix H.2 rule family to resolve to an Appendix H.3 content standard | Reuses MOD-000's `validate_capabilities.py`/`CAPABILITY_REGISTRY.md` pattern — extend, don't duplicate |
 | **Baseline-artifact binding schema validation** | `EIP_MIRROR.md` lines 4140-4143, 4253-4256, 4260-4263 | Require `PROJECT_INDEX.md` entries for all governing baselines with non-empty cryptographic hashes and `SESSION_BOOTSTRAP.md` enforcement metadata; reject use of an unapproved candidate EIP or a missing/ambiguous/mismatched identity+hash | Already substantively satisfied by MOD-000's `verify_baselines.py` — MOD-001 must fold this into the CI-gate layer (currently a manual per-session check, not yet a CI gate); `SCN-MOD001-025`/`026` (mismatch case) + `SCN-MOD001-124` (the other 4 fail-closed conditions — **added round 7, P0-1**, since only the mismatch case had a scenario until then) |
 | **Appendix-B traceability validator** | `EIP_MIRROR.md` lines 4144-4147 | Reject any split requirement whose designated completing module executes before any of its execution-slice modules | New tool — no split requirements exist for MOD-001 itself (§0 above), but MOD-001 must build the *validator* future modules' Scenario Reviews will run |

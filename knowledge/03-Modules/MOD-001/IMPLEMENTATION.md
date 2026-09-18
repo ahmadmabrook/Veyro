@@ -179,7 +179,21 @@ Veyro/
 │                                   #   remote; GitHub Actions, no new
 │                                   #   vendor — see CAPABILITIES.md)
 └── tools/                          # NEW — MOD-001's own validators:
-    ├── validate_architecture_gates.py   # the 6 TSD §24.1 gates
+    ├── validate_architecture_gates.py   # the 6 TSD §24.1 gates plus the
+    │                                    #   ADR-005-added surface-profile-
+    │                                    #   activation gate (--gate
+    │                                    #   surface-profile) and the
+    │                                    #   toolchain-qualification mode
+    │                                    #   (--gate toolchain-qualification,
+    │                                    #   SCN-MOD001-128 — corrected,
+    │                                    #   Scenario Review round 13,
+    │                                    #   P2-1/P2-4: this comment
+    │                                    #   previously said "6", and the
+    │                                    #   toolchain-qualification mode
+    │                                    #   was named nowhere in this
+    │                                    #   inventory despite SCN-128
+    │                                    #   invoking it as its entire
+    │                                    #   mechanism)
     ├── validate_capability_manifest.py  # extends MOD-000's pattern to
     │                                    #   any module, not just MOD-000
     ├── validate_scenario_matrix.py      # generalizes validate_catalog.py
@@ -329,24 +343,27 @@ never destructive tests against real project baselines.
 | **3. Event contract lint** | An event referenced in code that exists in the AsyncAPI/JSON-Schema registry; **a registered event's compatibility/classification change carrying a recorded owner-approval reference** (`TSD_MIRROR.md` lines 11610-11612: "compatibility and classification changes require owner approval" — **added, Scenario Review round 10, P0-1**, the normative second half of this gate, disclosed unfixtured since round 1 and carried nine rounds) | An event referenced in code with no matching registry entry; **or a registered event's schema/classification diff with no owner-approval reference attached** (`OWNER_APPROVALS.md` row ID or equivalent) | CI fails with `UNREGISTERED_EVENT_CONTRACT` citing the event name, or `EVENT_CHANGE_UNAPPROVED` citing the event and the unapproved diff | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate event-contract` | Same directory; owner-approval reference resolved against `OWNER_APPROVALS.md` |
 | **4. Permission lint** | An API command/query declaring `action`/`resource`/`scope` | A command/query with an undeclared or unregistered permission name | CI fails with `UNREGISTERED_PERMISSION` citing the endpoint | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate permission` | Same directory |
 | **5. Screen contract lint** | A V1 Screen ID mapped to a BFF/read-model or typed command manifest row | A Screen ID with no mapped BFF/command row before feature release | CI fails with `UNMAPPED_SCREEN_CONTRACT` citing the Screen ID | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate screen-contract` | Same directory |
-| **6. Domain contract uniqueness lint** | Two domains with disjoint authoritative-entity sets, command inventories, published-event sets, runbook IDs, SLI/SLO signal names, and failure-vocabulary (`REQUIREMENTS.md` line 260-264 names all six comparison dimensions — **corrected, Scenario Review round 12, P0-2: this row previously named only four of the six**); **or two domains sharing an identical `RB-<DOMAIN>` ID / command inventory where an explicit shared-contract exception is on record** (`TSD_MIRROR.md` lines 11646-11648: "fail unless an explicit shared-contract exception is approved" — **added, Scenario Review round 10, P0-1**, the normative escape clause of this gate, disclosed unfixtured since round 1 and carried nine rounds; without this half the gate as specified would false-positive on a legitimately approved shared contract) | Two domains reusing an identical `RB-<DOMAIN>` ID, **or reusing an identical command inventory** (added, Scenario Review round 12, P0-2 — TSD `TSD_MIRROR.md` lines 11643-11653 names identical command inventories and reused RB-IDs as two independent fail conditions in one sentence; round 10 fixtured only the RB-ID half, leaving the command-inventory half as a valid-fixture exception case with no violation fixture of its own), or a domain's SLO naming a foreign domain's signal (e.g. booking-capacity in a billing SLO), **with no recorded shared-contract exception for that specific pair** | CI fails with `DOMAIN_CONTRACT_COLLISION` citing both domains and the colliding artifact (command-inventory or RB-ID collision, or cross-domain SLO-signal reuse), unless a matching shared-contract-exception record resolves it, in which case CI passes citing the exception ID | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate domain-uniqueness` | Same directory; shared-contract exceptions resolved against a `contracts/SHARED_CONTRACT_EXCEPTIONS.md` register (new, this round) |
+| **6. Domain contract uniqueness lint** | Two domains with disjoint authoritative-entity sets, command inventories, published-event sets, runbook IDs, SLI/SLO signal names, and failure-vocabulary (`REQUIREMENTS.md` line 260-264 names all six comparison dimensions — **corrected, Scenario Review round 12, P0-2: this row previously named only four of the six**); **or two domains sharing an identical `RB-<DOMAIN>` ID / command inventory where an explicit shared-contract exception is on record** (`TSD_MIRROR.md` lines 11646-11648: "fail unless an explicit shared-contract exception is approved" — **added, Scenario Review round 10, P0-1**, the normative escape clause of this gate, disclosed unfixtured since round 1 and carried nine rounds; without this half the gate as specified would false-positive on a legitimately approved shared contract) | Two domains reusing an identical `RB-<DOMAIN>` ID, **or reusing an identical command inventory** (added, Scenario Review round 12, P0-2 — TSD `TSD_MIRROR.md` lines 11643-11653 names identical command inventories and reused RB-IDs as two independent fail conditions in one sentence; round 10 fixtured only the RB-ID half, leaving the command-inventory half as a valid-fixture exception case with no violation fixture of its own), **or publishing an identical event ID/name in their event registries** (added, Scenario Review round 13, P0-2 — round 12's own residual note miscounted the remaining gap as two dimensions when a third, the published-event-set collision, had no fixture and was named in no residual either), or a domain's SLO naming a foreign domain's signal (e.g. booking-capacity in a billing SLO), **with no recorded shared-contract exception for that specific pair** | CI fails with `DOMAIN_CONTRACT_COLLISION` citing both domains and the colliding artifact (command-inventory, RB-ID, or published-event-set collision, or cross-domain SLO-signal reuse), unless a matching shared-contract-exception record resolves it, in which case CI passes citing the exception ID | Architecture-gates CI step | `tools/validate_architecture_gates.py --gate domain-uniqueness` | Same directory; shared-contract exceptions resolved against a `contracts/SHARED_CONTRACT_EXCEPTIONS.md` register (new, this round) |
 
-**Disclosed residual (Scenario Review round 12, P0-2, closing the
-Blocker-severity gap for real on the two conditions named above; the
-remaining two of the six comparison dimensions are lower-severity and
-left disclosed rather than fixtured this round):** an
+**Disclosed residual (Scenario Review round 12, P0-2, corrected round
+13, P0-2 — round 12's own arithmetic was wrong: it disclosed "the
+remaining two" dimensions while actually fixturing only three of the
+six, leaving a third, published-event-set collision, uncounted and
+unfixtured; round 13 fixtured that third dimension for real, so the
+genuinely remaining count is now correctly two):** an
 authoritative-entity-set collision and a failure-vocabulary collision
 (the sixth dimension) have no violation fixture of their own yet —
 both compare free-form prose/naming rather than a structured ID space
-like `RB-<DOMAIN>` or a command inventory, so a synthetic fixture for
-either needs a real normalization rule (e.g. what counts as the "same"
-failure-vocabulary term across two domains' independently-written
-docs) that does not yet exist and would be invented, not derived, if
-written this round. Tracked as an Implementation Complete obligation
-for `tools/validate_architecture_gates.py --gate domain-uniqueness`,
-not a Definition-of-Ready blocker — the RB-ID and command-inventory
-conditions above are the two the TSD states as an explicit,
-structured, machine-checkable pair in one sentence, which is why they
+like `RB-<DOMAIN>`, a command inventory, or an event registry, so a
+synthetic fixture for either needs a real normalization rule (e.g. what
+counts as the "same" failure-vocabulary term across two domains'
+independently-written docs) that does not yet exist and would be
+invented, not derived, if written this round. Tracked as an
+Implementation Complete obligation for
+`tools/validate_architecture_gates.py --gate domain-uniqueness`, not a
+Definition-of-Ready blocker — the RB-ID, command-inventory, and
+published-event-set conditions above are the three the TSD states as
+explicit, structured, machine-checkable pairs, which is why they
 were prioritized for real fixtures this round.
 
 **Added (Scenario Review round 1, P1-9 → `ADR-005` Decision 2, Part
@@ -612,16 +629,18 @@ Both fixed below.** Fixed:
   integration *pattern* MOD-006 will point a real crash/remote-config
   SDK at — not a markdown interface description, and not deferred
   product functionality. Proven by `SCN-MOD001-117`.
-- **CI runner-assignment convention** (new row, §3 pipeline table
-  below): Android jobs pinned to Linux runners, iOS jobs pinned to
-  macOS/Xcode runners, per TSD §24.3.
-- **Common-code-change path-filter rule** (new row, §3 pipeline table
+- **CI runner-assignment convention** (new row, §12 pipeline table
+  below — **corrected, Scenario Review round 13, E-1: was mis-cited
+  "§3," this row and the five below it all live in §12's own second
+  pipeline table**): Android jobs pinned to Linux runners; the iOS
+  half deferred per `SCN-MOD001-055`'s own round-13 correction above.
+- **Common-code-change path-filter rule** (new row, §12 pipeline table
   below): a CI path filter that triggers both platforms' regression
   suites whenever a change touches serialization/local-schema/sync/
   auth/routing/shared-Design-System paths — tested by SCN-100/101's
   synthetic common-code-change fixture.
 - **Real-device smoke-test CI convention, capability-adapter half
-  (new row, §3 pipeline table below — added round 7, P1-2; proven
+  (new row, §12 pipeline table below — added round 7, P1-2; proven
   round 9, P0-1; rescoped round 10, P1-1; propagated round 11, P1-2)**:
   TSD §24.3's real-device smoke-test requirement names two subjects —
   "platform-capability adapters" and "critical offline flows." SCN-050
@@ -650,8 +669,9 @@ Both fixed below.** Fixed:
   disposition that these were "covered by existing scenario families'
   own intent" was independently found false, since this very paragraph
   says the opposite).
-- **Isolated-PR toolchain-upgrade qualification gate (new row, §3
-  pipeline table below — added round 7, P0-2; rescoped round 10, P1-1;
+- **Isolated-PR toolchain-upgrade qualification gate (new row, §12
+  pipeline table below — corrected, Scenario Review round 13, E-1, was
+  mis-cited "§3" — added round 7, P0-2; rescoped round 10, P1-1;
   propagated round 11, P1-2)**: TSD §24.3's rule that "toolchain
   upgrades are isolated pull requests with Android+iOS build, UI,
   accessibility and performance qualification before merge" — a CI
@@ -677,7 +697,8 @@ Both fixed below.** Fixed:
   customer channel exists before a later module — DC-16).
 - **Changelog tool (new, §1 tools inventory — added round 7, P1-2)**:
   `tools/generate_changelog.py`, wired to the release pipeline (new row,
-  §3 pipeline table below) — SCN-107 tests "a changelog entry via the
+  §12 pipeline table below — corrected, Scenario Review round 13, E-1,
+  was mis-cited "§3") — SCN-107 tests "a changelog entry via the
   changelog tool," which previously named a convention document, not a
   tool.
 - **Lifecycle-stage field** — **corrected (Scenario Review round 8,
@@ -698,7 +719,7 @@ Both fixed below.** Fixed:
 
 | Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
 |---|---|---|---|---|---|---|---|
-| **Mobile CI runner assignment (GOV-01-R07)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux, iOS jobs on macOS/Xcode | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair | Runner assignment pinned in the committed workflow file, not a developer's local runner choice |
+| **Mobile CI runner assignment (GOV-01-R07 — corrected, Scenario Review round 13, P1-3: this row's own "iOS jobs on macOS/Xcode" Output committed to referencing a paid macOS runner tier, the exact thing `SCN-MOD001-056`'s own Blocker denial bans; rescoped to the same Android-real/iOS-wiring-only split rows 707-708 below already use)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux (real, committed now); a distinct iOS build job present and required-status-checked on the same trigger path, its runner-class assignment left unspecified in committed configuration until real implementation | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair (Android); workflow-graph inspection report naming the iOS job's presence/required-status state (iOS) | Android runner assignment pinned in the committed workflow file, not a developer's local runner choice; iOS runner-class commitment deferred to real implementation per `SCN-MOD001-056` (no paid macOS CI runner tier referenced in MOD-001's committed configuration) |
 | **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, offline-flow half (GOV-01-R07, added round 7 — SCN-050 tests this row)** | Every push/PR touching an offline-flow path | Changed-file path list | The fixture is flagged as requiring the offline-smoke-test job | Yes | Same path-filter/flagging rule run locally | CI log naming the triggering path and the flagged job | Flagging rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-129`)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture (Android); iOS job wiring on the release-candidate trigger path | Pass/fail per adapter (Android, real); presence + required-status-check (iOS, workflow-graph) | Yes | Android: cannot fully replicate locally (needs a real Android CI runner); iOS: workflow-graph inspection can be run locally against the workflow file | Evidence bundle artifact (Android); workflow-graph inspection report (iOS) | Android smoke test runs only from CI's real Android runner, never a developer's local simulator claim; iOS real execution is deferred to real implementation per `SCN-MOD001-056` (no paid macOS CI runner tier referenced in MOD-001's committed configuration) |

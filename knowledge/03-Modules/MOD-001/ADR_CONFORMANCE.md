@@ -14,6 +14,19 @@ is that record.
 
 ## ADR-004 — REST/JSON + OpenAPI with surface BFFs
 
+**Namespace disambiguation (added, Scenario Review round 13, P2-7):**
+this "ADR-004" is the EIP/TSD Appendix I's own architecture-decision
+identifier (`EIP_MIRROR.md` lines 21028-21033), a numbering space
+internal to the governing baseline documents. It is a different
+identifier from this project's own `knowledge/04-Decisions/ADR-004-orchestrating-session-model-tier.md`
+(a local project decision about MOD-000's orchestrating-session model
+tier), which shares the number by coincidence of two independent
+numbering schemes, not by relation. `tools/validate_adr_conformance.py`
+must key on the EIP/Appendix-I identifier when checking this file's
+conformance claims, never the local `knowledge/04-Decisions/` file of
+the same number — flagged here so a future implementation session
+doesn't conflate the two.
+
 **Accepted position** (`EIP_MIRROR.md` lines 21028-21033): "Versioned
 REST command/query APIs, cursor pagination, RFC 7807 errors and
 surface-specific composed read endpoints."

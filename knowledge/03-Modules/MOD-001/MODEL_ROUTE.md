@@ -88,8 +88,12 @@ three additions above:
 | Module certification | `veyro-gatekeeper` | Opus, fresh context |
 
 **Escalation triggers relevant to MOD-001 specifically:** the
-tenant-isolation/RLS harness (GOV-01-R02) and the six architecture gates
-(§24.1) are security-sensitive surfaces per `MODEL_ROUTING.md`'s
+tenant-isolation/RLS harness (GOV-01-R02) and all seven architecture
+gates (the six TSD §24.1 gates plus the ADR-005-added surface-profile-
+activation gate — **corrected, Scenario Review round 13, P2-1: was
+"the six architecture gates (§24.1)," leaving gate 7's five Blocker/
+Opus scenarios with no stated escalation trigger in this document**)
+are security-sensitive surfaces per `MODEL_ROUTING.md`'s
 standing escalation list — any judgment call about whether those gates'
 implementation is correct/sufficient routes to Opus (`veyro-security-reviewer`
 or `veyro-lead`), never decided by Sonnet alone. Mechanical execution

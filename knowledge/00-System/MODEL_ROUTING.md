@@ -67,7 +67,7 @@ but two profiles genuinely activate for MOD-001's own real content:
 
 | §4.3 profile | Path scope | Registered agent | Status |
 |---|---|---|---|
-| Infra/SRE/CI | `infra/**`, CI, observability | `veyro-infra-sre-engineer` | **ACTIVATED for MOD-001, REGISTERED (2026-09-14)** — `BUG-029` closed |
+| Infra/SRE/CI | `infra/**`, `.github/workflows/**` (**corrected, Scenario Review round 13, P2-5: was "`infra/**`, CI, observability" — "CI, observability" are not concrete globs, contradicting line 81's own claim that every row names one; `module-capabilities.yaml` had already silently resolved "CI" to `.github/workflows/**` on its own, with no observability-specific path since observability is implemented as logging/metrics code within the two named paths, not a separate directory**) | `veyro-infra-sre-engineer` | **ACTIVATED for MOD-001, REGISTERED (2026-09-14)** — `BUG-029` closed |
 | Backend | `backend/**` | `veyro-backend-engineer` | **ACTIVATED for MOD-001, bounded, REGISTERED (2026-09-14)** (excludes the critical-slice harness itself — see `veyro-critical-engineer`) — `BUG-029` closed |
 | Admin Web | `admin-web/**` | not yet registered | Deferred — no real admin-web source code exists yet |
 | General Web | `web/**` (non-admin) | not yet registered | Deferred |

@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, INDEPENDENTLY REVIEWED (multiple rounds to date, each BLOCKED and remediated — current round count lives in §5 only, not restated here; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 12 ran, BLOCKED, P0/P1/P2/Editorial remediated — round 11's own remediation held on most of what it framed itself around, but its own P2-1 gate-7 carve-out fix opened an untested pass-path through a Blocking gate, its own new SCN-137 shipped with two legs with no real target, and its own P1-4 validator sweep missed a sixth validator; see §5)
+updated: 2026-09-19 (Scenario Review round 13 ran, BLOCKED, P0/P1/P2/Editorial remediated — round 12's own remediation held on most of what it framed itself around, but its own gate-1 fix left an unconstructible fixture pair, its own gate-6 residual miscounted its own arithmetic, and its own two new scenarios (SCN-138/139) shipped with no manual-surface mapping; see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -346,7 +346,15 @@ named violation-type report (or clean pass) written to
 
 **SCN-MOD001-004 · BND · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · NOT EXECUTED**
 Steps: create a synthetic tenant table with `tenant_id NOT NULL`, RLS
-policy, `FORCE ROW LEVEL SECURITY`; run `validate_architecture_gates.py --gate rls`.
+policy, `FORCE ROW LEVEL SECURITY`, **owned by a role distinct from the
+production-equivalent runtime role, with the runtime role granted
+neither ownership nor `BYPASSRLS`** (added, Scenario Review round 13,
+P0-1 — round 12's own P0-2 fix added an elevated-role violation case to
+005 that mutates "the 004 fixture," but 004 as written specified no
+ownership/role-attribute condition at all, leaving 005(i) unconstructible
+and 004 itself satisfiable by a fixture gate 1 must deny; this line
+closes that for real, matching `IMPLEMENTATION.md` §4 gate 1's own
+valid-fixture cell); run `validate_architecture_gates.py --gate rls`.
 Expected: PASS. Negative failure behavior: covered by 005.
 
 **SCN-MOD001-005 · AUTHN · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment) · NOT EXECUTED**
@@ -429,8 +437,15 @@ Steps: a synthetic Screen ID with no mapped BFF/command row. Expected:
 `UNMAPPED_SCREEN_CONTRACT` denial.
 
 **SCN-MOD001-014 · TEN · Major · GOV-01-R04, TSD §24.1 gate 6 (domain contract uniqueness) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
-Steps: two synthetic domains with disjoint command inventories/event
-sets/runbook IDs/SLO signal names. Expected: PASS.
+Steps: two synthetic domains with disjoint authoritative-entity sets,
+command inventories, published-event sets, runbook IDs, SLI/SLO signal
+names, **and failure-vocabulary** (**corrected, Scenario Review round
+13, P1-4: this previously named only 4 of the 6 dimensions —
+`IMPLEMENTATION.md` §4's gate-6 valid-fixture cell was corrected to all
+6 in round 12, P0-2, but that fix was never propagated to this
+scenario, the one that actually executes the positive case; passing
+this scenario as originally written would not prove what the plan's
+own gate-6 row now claims**). Expected: PASS.
 
 **SCN-MOD001-015 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 6 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: two synthetic domains reusing an identical `RB-<DOMAIN>` ID, and
@@ -440,10 +455,18 @@ booking-capacity in a billing SLO); **and (added, Scenario Review round
 command inventory as a fail condition independent of the RB-ID case,
 and no fixture had ever tested it; only the RB-ID case was fixtured
 across eleven rounds) two synthetic domains declaring byte-identical
-command inventories, with no shared-contract exception on record**.
-Expected: `DOMAIN_CONTRACT_COLLISION` denial for all three cases
-independently (RB-ID reuse, identical command inventory, foreign-signal
-SLO). **Corrected (Scenario Review round 1, P0-4): this scenario
+command inventories, with no shared-contract exception on record**;
+**and (added, Scenario Review round 13, P0-2 — round 12's own residual
+note claimed only two of the six comparison dimensions were left
+unfixtured after its fix, but that count itself was wrong: a
+published-event-set collision, the third structured-ID dimension named
+alongside command inventories and RB-IDs, had no fixture and was named
+in no disclosed residual either) two synthetic domains publishing an
+identical event ID/name in their AsyncAPI/JSON-Schema registry
+entries, with no shared-contract exception on record**. Expected:
+`DOMAIN_CONTRACT_COLLISION` denial for all four cases independently
+(RB-ID reuse, identical command inventory, identical published-event
+set, foreign-signal SLO). **Corrected (Scenario Review round 1, P0-4): this scenario
 previously claimed to also stand in for "dependency vulnerability" gate
 coverage — a domain-contract collision is not a vulnerable dependency,
 and that claim is withdrawn. Real dependency-vulnerability coverage is
@@ -1177,10 +1200,26 @@ Negative/failure behavior: a correctly-labeled fixture under the same
 path passes.
 
 **SCN-MOD001-055 · HP · Major · GOV-01-R07 · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
-Steps: CI correctly assigns an Android build job to a Linux runner and
-an iOS build job to a macOS/Xcode runner, per TSD §24.3's own text.
-Expected: both jobs run on the correct runner class (checked via job
-metadata, not real device builds, since no mobile code exists yet).
+**Corrected (Scenario Review round 13, P1-3): the original text
+checked that an iOS build job's runner metadata names a real
+macOS/Xcode runner class — but a committed workflow file naming a
+macOS runner label is itself a reference to a paid macOS CI runner
+tier, the exact thing `SCN-056` (Blocker) bans anywhere in MOD-001's
+committed configuration. Fixed to the same split `SCN-128`/`129`/`137`
+already established: Android's runner assignment is real and
+committed now; iOS's is proven present and required-status-checked as
+a job on the mobile-build trigger path, with the runner-class label
+itself deferred to real implementation time (per `SCN-056`), not
+committed this round.** Steps: CI correctly assigns an Android build
+job to a Linux runner, per TSD §24.3's own text; a distinct iOS build
+job is present and required-status-checked on the same trigger path,
+with its runner-class assignment left unspecified in committed
+configuration until real implementation. Expected: the Android job
+runs on the correct runner class (checked via job metadata, not real
+device builds, since no mobile code exists yet); the iOS job's
+presence and required-status-check wiring is confirmed via
+workflow-graph inspection, without asserting or committing to any
+specific runner class.
 
 **SCN-MOD001-056 · NEG · Blocker · Owner-reserved denial: no real store/spend activation · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: attempt to reference a real Apple/Google developer account
@@ -1682,7 +1721,7 @@ distinct requirement.
 
 ### Group M — Scenario Review round 2 remediation: GOV-01-R01/R06/R08 coverage gaps, missed card drills, load-bypass, surface-profile fail-open fix (P0-2, P0-3, P1-5, P1-6, P1-9, P1-10)
 
-**SCN-MOD001-106 · NEG · Major · GOV-01-R01, per-layer deliberate-failure proof (P0-2) · Automated (6 of 7 layers) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-106 · NEG · Major · GOV-01-R01, per-layer deliberate-failure proof (P0-2) · Automated (5 of 6 automated layers real, 1 job-wiring-only) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
 **Corrected (Scenario Review round 3, P1-2): this was mistagged BND —
 its actual steps are GOV-01-R01's declared NEG obligation ("harness
 correctly fails/blocks on a broken fixture"), not the declared BND
@@ -1691,11 +1730,24 @@ The real BND case had no scenario; added as SCN-116 below. Also
 corrected: "exploratory" is Claude manual QA with no automated harness
 (`REQUIREMENTS.md` line 102, `TEST_PLAN.md` line 27) — the original
 "7 failure reports" claim was not executable as written for that
-layer.** Steps: for each of the 6 *automated* test-pyramid layers
-(unit, component, integration, contract, E2E, mobile UI), introduce one
-deliberately broken fixture and run that layer's harness. Expected:
-each layer's harness fails and reports which layer/fixture failed — no
-layer silently passes a broken fixture. For the 7th layer
+layer.** **Corrected (Scenario Review round 13, P1-2): round 12
+rescoped this scenario's own companion positive, `SCN-137`, away from
+running a real "mobile UI"/"E2E" harness — neither test directory
+exists in `IMPLEMENTATION.md`, and a real XCUITest run conflicts with
+`SCN-056`'s paid-macOS-runner ban — but left this scenario's own text
+unchanged, still claiming to break and run both for real. Fixed by
+applying the identical split to this, its negative twin.** Steps: for
+5 of the 6 *automated* test-pyramid layers (unit, component,
+integration, contract, and the Android half of mobile UI), introduce
+one deliberately broken fixture and run that layer's harness for real.
+Expected: each layer's harness fails and reports which layer/fixture
+failed — no layer silently passes a broken fixture. For the iOS half
+of mobile UI and for E2E, the negative proof is that the CI workflow
+definition wires a required job for each on the relevant trigger path
+(workflow-graph/job-metadata inspection, same mechanism as
+`SCN-128`/`129`'s iOS half — a missing/non-required job is itself the
+denied case); real deliberate-failure execution for both is deferred,
+disclosed, not claimed. For the 7th layer
 (exploratory), the equivalent proof is manual: `veyro-manual-qa`
 deliberately misses/mis-executes an exploratory pass and confirms the
 QA record itself flags the gap (a human/Claude-judgment check, not a
@@ -1706,7 +1758,8 @@ the failure message is actionable" — a different thing from the
 exploratory-testing procedure this scenario actually needs; surface 5
 didn't describe an exploratory pass at all, and no surface did until
 round 12 added one**), not claimed as
-an automated failure report. Evidence: 6 automated failure reports + 1
+an automated failure report. Evidence: 5 real per-layer failure
+reports + 2 job-wiring inspection reports (iOS mobile-UI, E2E) + 1
 manual QA record. Negative case IS the scenario's own subject; the
 companion positive (harness passes a correct fixture) is
 `SCN-MOD001-137` (**corrected, Scenario Review round 11, P1-5: this
@@ -1729,7 +1782,17 @@ Evidence: the classification/violation report. Negative case IS the
 scenario's own subject; the companion positive is a correctly-classified
 unit test with no I/O, covered by 001/002.
 
-**SCN-MOD001-137 · HP · Major · GOV-01-R01, per-layer harness positive execution (P1-5) · Automated (5 of 6 automated layers real, 1 job-wiring-only) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-137 · HP · Major · GOV-01-R01, per-layer harness positive execution (P1-5) · Automated (4 of 6 automated layers fully real [unit/component/integration/contract]; mobile UI split real-Android/wiring-only-iOS; E2E wiring-only) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
+**Corrected (Scenario Review round 13, E-2): the header/Evidence line
+previously said "5 of 6 automated layers real, 1 job-wiring-only,"
+which double-counts mobile UI (its Android half sits inside the "5
+real," its iOS half sits inside the "1 wiring-only") and undercounts
+E2E, which is wiring-only in full, not a fraction of the "1." The
+Evidence line's own "5 real + 2 job-wiring = 7 artifacts for 6 layers"
+arithmetic was actually correct (mobile UI legitimately produces 2
+artifacts, one per platform half) but unexplained, reading as an error
+on first pass — the corrected header above states the split
+explicitly rather than leaving the reader to reconcile it.**
 **Added (Scenario Review round 11, P1-5): `SCN-106` claimed its
 companion positive was "001/002," but neither tests this —
 `REQUIREMENTS.md` GOV-01-R01's own acceptance criteria require "all
@@ -1751,11 +1814,16 @@ in committed configuration, the identical paid-macOS-runner conflict
 round 10's P1-1 fixed for `SCN-128`/`129` one round earlier. Fixed by
 applying the same split those two scenarios already established: the
 Android/standard-runner half of mobile UI runs for real; the iOS half
-and the E2E layer (whose concrete tool is itself deferred to
-implementation time per `CAPABILITIES.md`'s own test-runner-stack
-disposition) are proven present and required-status-checked via
-workflow-graph/job-metadata inspection now, with real execution
-deferred.** Steps: for 5 of the 6 *automated* test-pyramid layers
+is deferred for the paid-macOS-runner reason above, and E2E is
+deferred because no E2E test-layer directory exists in
+`IMPLEMENTATION.md` at all — **corrected, Scenario Review round 13,
+E-5: this previously cited `CAPABILITIES.md`'s test-runner-stack
+disposition (line 79) as E2E's reason, but that row defers tool
+selection for all six layers equally and does not itself distinguish
+E2E; the real, distinguishing reason is the missing directory, stated
+here directly instead** — both are proven present and
+required-status-checked via workflow-graph/job-metadata inspection
+now, with real execution deferred.** Steps: for 5 of the 6 *automated* test-pyramid layers
 (unit, component, integration, contract, and the Android half of
 mobile UI), add one trivial synthetic passing fixture (e.g. `assert
 True`-shaped for unit/component/integration/contract, a no-op
@@ -1778,7 +1846,7 @@ manual/automated split for this requirement's negative case. Evidence:
 5 real per-layer pass reports + 2 job-wiring inspection reports (iOS
 mobile-UI, E2E) + the exploratory procedure record.
 
-**SCN-MOD001-138 · SEC · Blocker · TSD §24.1 gate 7, deferred-surface build/toolchain carve-out — positive (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-138 · SEC · Blocker · ADR-005 Decision 2 Part 3, gate 7 (surface-profile activation), deferred-surface build/toolchain carve-out — positive (P0-1, corrected round 13 P1-5: was mis-cited "TSD §24.1 gate 7" — TSD §24.1 defines six gates; gate 7 is ADR-005-added, matching SCN-102/103/112's own citation convention) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 12, P0-1): `IMPLEMENTATION.md` §4 gate
 7's own carve-out (added round 11, P2-1, letting a build/toolchain/CI
 file pass under a still-DEFERRED surface) was a new pass-path through a
@@ -1794,7 +1862,7 @@ deferred profile's own `.profile-pending` marker is not treated as a
 denial for this recognized file type. Evidence: the gate's own pass
 report naming the carve-out.
 
-**SCN-MOD001-139 · SEC · Blocker · TSD §24.1 gate 7, deferred-surface build/toolchain carve-out — negative/boundary (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-139 · SEC · Blocker · ADR-005 Decision 2 Part 3, gate 7 (surface-profile activation), deferred-surface build/toolchain carve-out — negative/boundary (P0-1, corrected round 13 P1-5: same citation fix as SCN-138) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 12, P0-1), companion to 138:** proves
 the carve-out is scoped to the closed extension list, not to the
 surface's whole directory. Steps: same still-DEFERRED
@@ -3354,4 +3422,146 @@ itself returned P0/P1.
 Ready. Implementation has not started and is not authorized to start.
 Next legally allowed action: an independent Scenario Review round 13**,
 to confirm round 12's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.
+
+### Round 13 (2026-09-19) — `veyro-scenario-reviewer`, Opus, fresh context, dispatched via the Agent tool, no inheritance of round 12's conclusions
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2, P1=5, P2=7,
+Editorial=5. Independently re-derived catalog facts confirmed as
+holding: 140 detail blocks at review time, no duplicate IDs, all 24
+Appendix G Required categories covered ≥2 each. Round 12's genuinely
+holding claims: the six review-tier roles in `module-capabilities.yaml`
+(complete against `MODEL_ROUTE.md`'s 12-role table); the
+`validate_toolchain_matrix.py` CI-stage row; the branch-protection row
+in `CAPABILITIES.md` (honestly disclosed as unconfirmed rather than
+assumed); surface 10's existence; the §2 named-family row for
+`SCN-137`; the `SCN-132`→`SCN-004` citation fix; the gate-7 allow-list
+enumeration replacing "etc."
+
+The two P0s: **(1)** round 12's own P0-2 fix (extending `SCN-005` with
+an elevated-role/`BYPASSRLS`-owner violation case) mutated "the 004
+fixture" for a property `SCN-004` itself never specified — `SCN-004`'s
+steps named no ownership/role condition at all, so `SCN-005`(i) was
+not constructible as written, and `SCN-004` as written was satisfiable
+by a fixture gate 1 must deny; `IMPLEMENTATION.md` §4's own gate-1 row
+had the ownership condition, but it was never propagated to the
+scenario that actually runs the positive case. **(2)** round 12's own
+gate-6 disclosed residual miscounted its own arithmetic: it fixtured
+three of the six TSD comparison dimensions (command inventories,
+RB-IDs, SLO signals) but disclosed only two as remaining
+(authoritative-entity-set, failure-vocabulary), leaving a third —
+published-event-set collision — uncounted and unfixtured, named
+nowhere in the catalog. The same species round 8's own P0-1 finding
+described (round 5 said "three controls," named two, third survived
+undetected) reproduced by round 12 in the very text disclosing a
+residual.
+
+The five P1s: `SCN-138`/`139` — round 12's own two new Blocker
+scenarios — had no manual-surface mapping at all in `MANUAL_QA.md`,
+the exact defect class round 11's own P1-1 found for `SCN-130`-`136`
+one round earlier, reproduced by round 12 for its own new scenarios;
+round 12's `SCN-137` rescope (away from a real "mobile UI"/"E2E"
+harness with no target) was never propagated to `SCN-106`, its
+explicit negative twin, repointed by round 12 in the very same edit for
+its exploratory clause but left untouched for its automated legs;
+`IMPLEMENTATION.md` §12's own Blocking "Mobile CI runner assignment"
+row and `SCN-055` both still committed to "iOS jobs on macOS/Xcode" in
+committed configuration — a real reference to a paid macOS CI runner
+tier, directly contradicting Blocker `SCN-056`'s blanket ban, the same
+conflict already fixed for `SCN-128`/`129`/`137`/`106` across four
+rounds but never applied to the scenario the mobile CI-runner-
+assignment row itself is proven by; round 12 corrected
+`IMPLEMENTATION.md`'s gate-6 valid-fixture cell from four to six
+comparison dimensions but never propagated that fix to `SCN-014`, the
+scenario that actually executes the positive case, so passing `SCN-014`
+as written would not prove what the plan's own gate-6 row now claims;
+and gate 7 (surface-profile activation) traced to no requirement row
+in `REQUIREMENTS.md` at all, whose GOV-01-R04 evidence/acceptance-
+criteria text still said "6" architecture gates, while `SCN-138`/`139`
+themselves mis-cited their own gate as "TSD §24.1 gate 7" — TSD §24.1
+defines six gates; gate 7 is ADR-005-added, breaking the citation
+convention `SCN-102`/`103`/`112` already established.
+
+The seven P2s: residual "6 gates" phrasing survived in `IMPLEMENTATION.md`'s
+tool-inventory comment and `MODEL_ROUTE.md`'s escalation-trigger
+paragraph after round 12's own P2-1 sweep; `MANUAL_QA.md`'s own "9
+manual-QA surfaces" line was stale against the 10-row table introduced
+in the same round-12 edit that added surface 10; the gate-7 carve-out's
+enumeration never propagated into `module-capabilities.yaml`, which
+still annotated only 2 of 8 deferred surfaces with the carve-out and
+implied (falsely) the other 6 weren't covered; `SCN-128`'s own
+`--gate toolchain-qualification` validator mode appeared in no tool
+inventory or gate table; `MODEL_ROUTING.md`'s Infra/SRE/CI row named
+"CI, observability" instead of a concrete glob, contradicting the same
+document's own "every row names a concrete glob" claim two lines
+below, with `module-capabilities.yaml` having silently resolved the
+ambiguity on its own; `MANUAL_QA.md` surface 10's negative proof was
+vacuous — no real denial mechanism, unlike every other negative case in
+this catalog; and this project's own local `ADR-004` (orchestrating-
+session model tier) shares its identifier with the EIP Appendix I's
+unrelated `ADR-004` (REST/JSON+OpenAPI), an unflagged namespace
+collision `ADR_CONFORMANCE.md` never disambiguated.
+
+The five Editorial findings: six `IMPLEMENTATION.md` bullets cited
+"§3 pipeline table below" for rows that actually live in §12's own
+second pipeline table; `SCN-137`'s header/Evidence-line arithmetic
+double-counted mobile UI across its "5 real"/"1 wiring-only" split
+without explaining the legitimate 7-artifacts-for-6-layers count;
+`REQUIREMENTS.md` pointed at "(§5)" for the architecture-gate table
+that is actually `IMPLEMENTATION.md` §4; `LOAD_SECURITY.md`'s
+owner-reserved list omitted paid macOS CI runners, which
+`CAPABILITIES.md` and Blocker `SCN-056` both name; and `SCN-137` cited
+`CAPABILITIES.md`'s test-runner-stack disposition to justify deferring
+E2E specifically, when that row defers tool selection for all six
+layers equally and only the missing-directory reason actually
+distinguishes E2E.
+
+**All P0/P1/P2/Editorial findings remediated the same session**:
+`SCN-004` extended with the same ownership/role condition
+`IMPLEMENTATION.md` §4's gate-1 row already specified; `SCN-015`
+extended with a fourth violation condition (published-event-set
+collision), and the gate-6 disclosed residual corrected to genuinely
+name the two dimensions still remaining; `SCN-138`/`139` added to
+`MANUAL_QA.md`'s mapping table; `SCN-106` given the identical
+Android-real/iOS-and-E2E-wiring-only split already applied to its twin
+`SCN-137`; `IMPLEMENTATION.md` §12's Blocking mobile-CI-runner-
+assignment row and `SCN-055` both rescoped to the same split, so no
+scenario or plan row commits to a real macOS runner reference anymore;
+`SCN-014` extended to all six gate-6 comparison dimensions, matching
+`IMPLEMENTATION.md`'s own corrected cell; a new gate-7 row added to
+`REQUIREMENTS.md` §3, GOV-01-R04's evidence/acceptance-criteria text
+corrected to "7," and `SCN-138`/`139`'s citations corrected from "TSD
+§24.1 gate 7" to "ADR-005 Decision 2 Part 3, gate 7"; the remaining "6
+gates" residue fixed in `IMPLEMENTATION.md`'s tool inventory and
+`MODEL_ROUTE.md`'s escalation-trigger paragraph (the latter also
+closing the toolchain-qualification-mode gap, P2-4, in the same edit);
+`MANUAL_QA.md`'s surface count corrected to 10; `module-capabilities.yaml`'s
+gate-7 carve-out generalized into one surface-agnostic note covering
+every deferred surface, replacing the two narrower per-path comments;
+`MODEL_ROUTING.md`'s Infra/SRE/CI row given the concrete glob pair
+`module-capabilities.yaml` already used; `MANUAL_QA.md` surface 10's
+negative proof replaced with a real mechanical completeness check,
+mirroring `SCN-121`'s own field-presence-check pattern;
+`ADR_CONFORMANCE.md` given an explicit namespace-disambiguation note
+for the two unrelated `ADR-004`s; the six mis-cited "§3" references in
+`IMPLEMENTATION.md` corrected to "§12"; `SCN-137`'s header/Evidence
+arithmetic clarified with the real split stated explicitly;
+`REQUIREMENTS.md`'s "(§5)" corrected to "(§4)"; `LOAD_SECURITY.md`'s
+owner-reserved list extended with paid macOS CI runners; and `SCN-137`'s
+E2E-deferral citation corrected from `CAPABILITIES.md`'s
+generic tool-stack disposition to the real, distinguishing
+missing-directory reason.
+
+No new scenario detail blocks were added this round — every finding
+was a fixture/citation/propagation defect inside scenarios and plan
+documents that already existed. Catalog total unchanged at **140
+detail blocks** (140 Required, 0 Optional).
+
+**Definition of Ready was again explicitly NOT evaluated** — round 13
+itself returned P0/P1.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 14**,
+to confirm round 13's remediation actually holds — not implementation,
 not MOD-002, not a self-granted Ready determination.

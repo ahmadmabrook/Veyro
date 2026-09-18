@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-18 (Scenario Review round 12 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 11's own remediation held on most of what it framed itself around, but its own P2-1 gate-7 carve-out fix opened an untested pass-path through a Blocking gate; Scenario Review round 13 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-19 (Scenario Review round 13 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 12's own remediation held on most of what it framed itself around, but its own gate-1 fix left an unconstructible fixture pair and its own gate-6 residual miscounted its own arithmetic; Scenario Review round 14 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -141,44 +141,50 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3). Round 9: BLOCKED
       (P0=1, P1=2). Round 10: BLOCKED (P0=3, P1=5, P2=5, Editorial=4).
       Round 11: BLOCKED (P0=1, P1=6, P2=4, Editorial=2). Round 12:
-      BLOCKED (P0=2, P1=5, P2=4, Editorial=2)**
+      BLOCKED (P0=2, P1=5, P2=4, Editorial=2). Round 13: BLOCKED
+      (P0=2, P1=5, P2=7, Editorial=5)**
       (see `SCENARIOS.md` §5 for the current round's
       exact P0/P1/P2/Editorial counts and findings — not restated here,
       per the lesson every round of this remediation has now taught
       about facts restated in more than one place going stale).
-      All twelve rounds' P0/P1 findings are now genuinely remediated
-      (round 12's own P0/P1/P2/Editorial findings fixed the same
+      All thirteen rounds' P0/P1 findings are now genuinely remediated
+      (round 13's own P0/P1/P2/Editorial findings fixed the same
       session they were found — see below); each round's own disclosed
       P2/Editorial residuals (see `SCENARIOS.md` §5's per-round
       entries) remain carried forward by design, not silently fixed —
       restating "all findings" without that distinction is exactly the
       overclaim round 9 and round 10 each found false one round later.
-      **Round 12 independently re-checked round 11's remediation: held
-      genuinely on most of what it framed itself around (the
-      SCN-130/131/133 retitle, the MANUAL_QA.md 130-137 mapping, the
-      `backend/Dockerfile` plan entry, the six validator CI rows plus
-      Appendix-B validator, the MR-evidence backfill, BUG-028 through
-      BUG-032 all genuinely CLOSED), but the pattern rounds 10 and 11
-      each documented recurred again: round 11's own P2-1 fix (the
-      gate-7 deferred-surface carve-out) opened an untested pass-path
-      through a Blocking gate with an unfalsifiable open-ended
-      allow-list (P0-1); TSD §24.1 gates 1/6's normative sub-clauses
-      were still only partially fixtured after round 10's own fix
-      (P0-2); round 11's own new `SCN-137` shipped with a mobile-UI/E2E
-      leg with no real target and a manual-surface mis-citation
-      (P1-1/P1-2); round 11's own validator-CI-row sweep enumerated five
-      validators instead of deriving the set, missing a sixth (P1-3);
-      the capability manifest omitted six review-tier roles
-      `MODEL_ROUTE.md`'s own table names (P1-4); branch protection —
-      §3's own named bypass-protection mechanism — was absent from the
-      capability-gap table entirely (P1-5). All fixed this session; see
-      `SCENARIOS.md` §5's round 12 entry.**
+      **Round 13 independently re-checked round 12's remediation: held
+      genuinely on most of what it framed itself around (the six
+      review-tier roles in `module-capabilities.yaml`, the
+      `validate_toolchain_matrix.py` CI row, the branch-protection
+      disclosure, surface 10's existence, the gate-7 allow-list
+      enumeration), but the pattern rounds 10-12 each documented
+      recurred a fourth time: round 12's own gate-1 fix (`SCN-005`'s
+      new elevated-role case) mutated a property `SCN-004` never
+      specified, leaving an unconstructible fixture pair (P0-1); round
+      12's own gate-6 disclosed residual miscounted its own arithmetic,
+      leaving a third comparison dimension (published-event-set
+      collision) uncounted and unfixtured (P0-2); round 12's own two
+      new scenarios (`SCN-138`/`139`) shipped with no manual-surface
+      mapping, the exact defect class round 11 found for round 10's new
+      scenarios one round earlier (P1-1); round 12's own `SCN-137`
+      rescope was never propagated to its negative twin `SCN-106`
+      (P1-2); a Blocking mobile-CI-runner-assignment row and `SCN-055`
+      still committed to a real macOS-runner reference, contradicting
+      Blocker `SCN-056`, a conflict already fixed elsewhere but missed
+      here across four rounds (P1-3); round 12's own gate-6
+      four-to-six-dimension fix was never propagated to `SCN-014`, the
+      scenario that executes the positive case (P1-4); and gate 7 traced
+      to no requirement row, with its own two new scenarios mis-citing
+      it as a TSD gate when it is ADR-005-added (P1-5). All fixed this
+      session; see `SCENARIOS.md` §5's round 13 entry.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
       see the bug-review checklist item above). Still gated on an
       independent round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 13's own subject.
+      for what remains; that confirmation is round 14's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning
