@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-18 (Scenario Review round 11 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 10's own remediation held on its core subject but three of its seven new scenarios carried defects of the same classes it was created to fix; Scenario Review round 12 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-18 (Scenario Review round 12 ran, BLOCKED, P0/P1/P2/Editorial all remediated same session — round 11's own remediation held on most of what it framed itself around, but its own P2-1 gate-7 carve-out fix opened an untested pass-path through a Blocking gate; Scenario Review round 13 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -140,42 +140,45 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4). Round 7: BLOCKED
       (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3). Round 9: BLOCKED
       (P0=1, P1=2). Round 10: BLOCKED (P0=3, P1=5, P2=5, Editorial=4).
-      Round 11: BLOCKED (P0=1, P1=6, P2=4, Editorial=2)**
+      Round 11: BLOCKED (P0=1, P1=6, P2=4, Editorial=2). Round 12:
+      BLOCKED (P0=2, P1=5, P2=4, Editorial=2)**
       (see `SCENARIOS.md` §5 for the current round's
       exact P0/P1/P2/Editorial counts and findings — not restated here,
       per the lesson every round of this remediation has now taught
       about facts restated in more than one place going stale).
-      All eleven rounds' P0/P1 findings are now genuinely remediated
-      (round 11's own P0/P1/P2/Editorial findings fixed the same
+      All twelve rounds' P0/P1 findings are now genuinely remediated
+      (round 12's own P0/P1/P2/Editorial findings fixed the same
       session they were found — see below); each round's own disclosed
       P2/Editorial residuals (see `SCENARIOS.md` §5's per-round
       entries) remain carried forward by design, not silently fixed —
       restating "all findings" without that distinction is exactly the
       overclaim round 9 and round 10 each found false one round later.
-      **Round 11 independently re-checked round 10's remediation: held
-      genuinely on its core subject (TSD §24.1 gates 3/6's sub-clauses,
-      the six domain scaffolds, the financial-invariant fixture, the
-      category matrix, the 137→now-138 count), but three of round 10's
-      own seven new scenarios carried defects of the same classes it
-      was created to fix — `SCN-130`/`131`/`133` routed to
-      `veyro-critical-engineer` for task classes ADR-005 places outside
-      its charter (P0-1); `SCN-132`'s negative case was vacuous and
-      named an undefined mechanism (P1-6); `SCN-135` had no real
-      Dockerfile target (P1-3) — plus round 10's own `SCN-128`/`129`
-      rescope was never propagated to `IMPLEMENTATION.md` §12 (P1-2),
-      five governance validators (plus a sixth, never-built one) had no
-      CI-stage row (P1-4), `MANUAL_QA.md`'s mapping table was never
-      extended for round 10's seven new scenarios (P1-1), and
-      GOV-01-R01's own acceptance criterion had no real positive proof
-      for 5 of 7 test-pyramid layers, a gap round 10 didn't touch and
-      `SCN-106` itself had been misrepresenting since round 3 (P1-5).
-      All fixed this session; see `SCENARIOS.md` §5's round 11 entry.**
+      **Round 12 independently re-checked round 11's remediation: held
+      genuinely on most of what it framed itself around (the
+      SCN-130/131/133 retitle, the MANUAL_QA.md 130-137 mapping, the
+      `backend/Dockerfile` plan entry, the six validator CI rows plus
+      Appendix-B validator, the MR-evidence backfill, BUG-028 through
+      BUG-032 all genuinely CLOSED), but the pattern rounds 10 and 11
+      each documented recurred again: round 11's own P2-1 fix (the
+      gate-7 deferred-surface carve-out) opened an untested pass-path
+      through a Blocking gate with an unfalsifiable open-ended
+      allow-list (P0-1); TSD §24.1 gates 1/6's normative sub-clauses
+      were still only partially fixtured after round 10's own fix
+      (P0-2); round 11's own new `SCN-137` shipped with a mobile-UI/E2E
+      leg with no real target and a manual-surface mis-citation
+      (P1-1/P1-2); round 11's own validator-CI-row sweep enumerated five
+      validators instead of deriving the set, missing a sixth (P1-3);
+      the capability manifest omitted six review-tier roles
+      `MODEL_ROUTE.md`'s own table names (P1-4); branch protection —
+      §3's own named bypass-protection mechanism — was absent from the
+      capability-gap table entirely (P1-5). All fixed this session; see
+      `SCENARIOS.md` §5's round 12 entry.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
       see the bug-review checklist item above). Still gated on an
       independent round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 12's own subject.
+      for what remains; that confirmation is round 13's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

@@ -113,6 +113,30 @@ required_agent_roles:
     scope: "Deterministic test/TestSprite/synthetic-fixture authoring, escalated to from veyro-implementer (BUG-032)"
     model: sonnet
     status: "REGISTERED AND ROUTABLE (added Scenario Review round 10, P1-5 — this manifest omitted the role BUG-032 was filed and closed about; MODEL_ROUTE.md's own routing table already named it. See evidence/model-routing/ for closure drills.)"
+  - role: veyro-scenario-reviewer
+    scope: "Independent Scenario Review, fresh context, orchestrator-dispatched only (not a peer-escalation target — see SCN-MOD001-120(a)'s own carve-out)"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4: MODEL_ROUTE.md's own 12-role planned-routing table named this role for MOD-001, but this manifest's required_agent_roles list omitted it and 5 other review-tier roles, the exact gap class SCN-MOD001-121's own round-10 second negative case (P1-5) was written to catch"
+  - role: veyro-code-reviewer
+    scope: "Independent code/config review, fresh context, orchestrator-dispatched only (not a peer-escalation target)"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
+  - role: veyro-manual-qa
+    scope: "Actual manual QA execution, fresh context, orchestrator-dispatched only (not a peer-escalation target)"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
+  - role: veyro-security-reviewer
+    scope: "Security/assurance review, orchestrator-dispatched only (not a peer-escalation target)"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
+  - role: veyro-performance-reviewer
+    scope: "Performance/resilience assurance review, orchestrator-dispatched only (not a peer-escalation target)"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
+  - role: veyro-gatekeeper
+    scope: "Module certification verdict, fresh context, orchestrator-dispatched only (not a peer-escalation target); never self-certifies"
+    model: opus
+    status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
 required_rule_ids: []  # No RULE-<NNN> IDs materialized yet — planning stage; backend/ and infra/ rule families need real content before implementation per ADR-005, not yet authored
 required_skill_ids: []  # None identified as missing this session — see knowledge/03-Modules/MOD-001/CAPABILITIES.md's gap analysis
 # Added (Scenario Review round 4, P1-8): Appendix H.1 (EIP_MIRROR.md lines

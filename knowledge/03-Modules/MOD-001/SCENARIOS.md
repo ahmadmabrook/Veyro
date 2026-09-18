@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, INDEPENDENTLY REVIEWED (multiple rounds to date, each BLOCKED and remediated — current round count lives in §5 only, not restated here; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 11 ran, BLOCKED, P0/P1/P2/Editorial remediated — round 10's own remediation found genuine on its core subject but three of its seven new scenarios carried defects of the same classes it was created to fix; see §5)
+updated: 2026-09-18 (Scenario Review round 12 ran, BLOCKED, P0/P1/P2/Editorial remediated — round 11's own remediation held on most of what it framed itself around, but its own P2-1 gate-7 carve-out fix opened an untested pass-path through a Blocking gate, its own new SCN-137 shipped with two legs with no real target, and its own P1-4 validator sweep missed a sixth validator; see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -84,10 +84,15 @@ corrected to point here rather than restate a number). Corrected
 wording was inaccurate against `CURRENT_HANDOFF.md`'s own append-only
 chunk log, which legitimately records the count a given round found as
 dated history, not a live restatement — narrowed to say what is
-actually meant.** Current total: **138 detail
+actually meant.** Current total: **140 detail
 blocks** (001-121 plus 021b, 122, 123, 124, 125, 126, 127, 128, 129,
-130, 131, 132, 133, 134, 135, 136, 137) — **138 Required + 0 Optional** —
-comfortably above every applicable floor. **Round 11 (P1-5) added 137**
+130, 131, 132, 133, 134, 135, 136, 137, 138, 139) — **140 Required + 0 Optional** —
+comfortably above every applicable floor. **Round 12 (P0-1) added
+138/139** to close a genuine gap its own fresh review found: round 11's
+own new gate-7 build/toolchain carve-out (added round 11, P2-1) was an
+untested pass-path through a Blocking gate — no scenario exercised
+either the carve-out itself or its own boundary against application
+code sharing the same deferred surface. **Round 11 (P1-5) added 137**
 to close a genuine false-coverage claim its own fresh review found:
 `SCN-106` named `001`/`002` as GOV-01-R01's per-layer harness positive
 companion, but neither scenario runs any of the 6 automated
@@ -166,7 +171,7 @@ round 2's remediation, not merely re-asserted:
 | AUTHN | R | 005, 027, 097 |
 | AUTHZ | R | 006, 013, 028, 092, 095 |
 | TEN | R | 007, 014, 096 |
-| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122, 126, 130, 131, 133, 134, 135, 136 |
+| SEC | R | 008, 015, 020, 029, 042, 057, 063, 064, 075, 076-083, 084, 086, 094, 098, 102-105, 112, 120, 122, 126, 130, 131, 133, 134, 135, 136, 138, 139 |
 | PRIV | R | 043, 065 |
 | CONC | R | 009, 044 |
 | IDEM | R | 016, 045 |
@@ -248,11 +253,11 @@ Group K.
 | Owner-reserved production/spend/data denial | 056, 060, 064, 065 |
 | Model-assurance forced-fallback (not separately named in the mission's list but mandatory per EIP_MIRROR.md lines 1109-1111) | 075 |
 | Additional capability-governance/scenario-matrix/external-gate/Appendix-I fail-closed drills (P0-2, not separately named but required by the module card's own manual-QA field) | 076-093 |
-| GOV-01-R01 per-layer deliberate-failure proof (NEG) and mis-tagged-boundary case (BND) (added round 2 P0-2, corrected/split round 3 P1-2) | 106, 116 |
+| GOV-01-R01 per-layer deliberate-failure proof (NEG), mis-tagged-boundary case (BND), and per-layer positive execution (HP) (added round 2 P0-2, corrected/split round 3 P1-2, extended round 11 with 137 — **row updated round 12, P2-3: 137 had joined the catalog in round 11 but never joined this row**) | 106, 116, 137 |
 | GOV-01-R08 release-train/changelog/lifecycle-stage lint (added round 2, P0-2) | 107, 108 |
 | Card-mandated test-failure and screen-count drills (added round 2, P0-3) | 109, 110 |
 | Gate-bypass-under-load (added round 2, P1-5) | 111 |
-| Surface-profile activation, no-marker-at-all case (added round 2, P1-6) | 112 |
+| Surface-profile activation, no-marker-at-all case (added round 2, P1-6); deferred-surface build/toolchain carve-out, positive and boundary (added round 12, P0-1) | 112, 138, 139 |
 | GOV-01-R06 rolling-deploy compatibility and migration-record template (added round 2, P1-9) | 113, 114 |
 | Appendix F import/validation contract (added round 4, P1-5) | 118 |
 | Appendix I ADR conformance, ADR-004/ADR-015 (added round 4, P1-6) | 119 |
@@ -365,7 +370,18 @@ own `bash_guard.py` history already established a pattern for
 (alongside its original SEC framing — a role-based access denial is
 both) so AUTHN has genuine, non-single-scenario coverage; see 097 for a
 distinct AUTHN scenario testing successful authentication rather than a
-denial.
+denial. **Extended (Scenario Review round 12, P0-2): the same TSD
+sentence's other two clauses — "runtime role cannot own/bypass" and a
+nullable `tenant_id` — had no fixture of their own, disclosed as an
+untested Blocker-tier gap eleven rounds after round 1 first corrected
+this scenario's role attribute. Two further fixtures added: (i) the
+004 fixture, `FORCE ROW LEVEL SECURITY` present, but owned by the
+runtime role itself (or the runtime role granted `BYPASSRLS`) — expected
+`RLS_RUNTIME_ROLE_ELEVATED` denial citing the role/table pair, distinct
+from the missing-FORCE case above; (ii) the 004 fixture with
+`tenant_id` declared nullable — expected `RLS_TENANT_ID_NULLABLE`
+denial citing the column. Evidence for both: the gate's own denial
+report, same mechanism as the missing-FORCE case.**
 
 **SCN-MOD001-006 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2 (module dependency/SQL) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: a synthetic module importing only its own owned table
@@ -419,12 +435,19 @@ sets/runbook IDs/SLO signal names. Expected: PASS.
 **SCN-MOD001-015 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 6 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: two synthetic domains reusing an identical `RB-<DOMAIN>` ID, and
 separately, a domain SLO naming a foreign domain's signal (e.g.
-booking-capacity in a billing SLO). Expected: `DOMAIN_CONTRACT_COLLISION`
-denial for both cases independently. **Corrected (Scenario Review round
-1, P0-4): this scenario previously claimed to also stand in for
-"dependency vulnerability" gate coverage — a domain-contract collision
-is not a vulnerable dependency, and that claim is withdrawn. Real
-dependency-vulnerability coverage is SCN-094.**
+booking-capacity in a billing SLO); **and (added, Scenario Review round
+12, P0-2 — `TSD_MIRROR.md` lines 11643-11653 names an identical
+command inventory as a fail condition independent of the RB-ID case,
+and no fixture had ever tested it; only the RB-ID case was fixtured
+across eleven rounds) two synthetic domains declaring byte-identical
+command inventories, with no shared-contract exception on record**.
+Expected: `DOMAIN_CONTRACT_COLLISION` denial for all three cases
+independently (RB-ID reuse, identical command inventory, foreign-signal
+SLO). **Corrected (Scenario Review round 1, P0-4): this scenario
+previously claimed to also stand in for "dependency vulnerability" gate
+coverage — a domain-contract collision is not a vulnerable dependency,
+and that claim is withdrawn. Real dependency-vulnerability coverage is
+SCN-094.**
 
 ### Group C — Gate-bypass attempts (mirrors this project's own Bash-guard discipline)
 
@@ -833,9 +856,13 @@ nothing, not a fail-closed proof, and named a
 cross-domain import/SQL detection only). Fixed with a real
 deliberate-violation fixture, and retagged Blocker/dual-tier matching
 `SCN-004`'s own convention (this scenario carries an SEC-adjacent
-tenant/domain-boundary judgment call, the same species `SCN-118`
-already establishes needs the carve-out when tagged Blocker on
-Sonnet alone).**
+tenant/domain-boundary judgment call, the same species `SCN-004` itself
+already establishes needs the dual-tier split — Opus judgment,
+Sonnet mechanical run — when tagged Blocker; **corrected, Scenario
+Review round 12, E-1: this previously cited `SCN-118` for that
+precedent, but `SCN-118` carries no carve-out at all — it was retitled
+outright to `veyro-security-reviewer`/Opus by round 5's P1-1, per that
+scenario's own block**).**
 Source: `REQUIREMENTS.md` GOV-01-R02 (implementation obligations,
 acceptance criteria); `EIP_MIRROR.md` lines 17545-17549. Steps: for
 each of the six named domains (`backend/app/modules/{membership,
@@ -941,6 +968,20 @@ default ruleset flags (e.g. an unencrypted-at-rest storage declaration)
 is committed to a disposable branch; the scanner flags it, and a
 companion fixture with the setting corrected passes cleanly. Evidence:
 the baseline report plus the flagged/cleaned pair.
+**Disclosed residual (Scenario Review round 12, P2-4):**
+`REQUIREMENTS.md` GOV-01-R03's own acceptance criterion reads "every
+named tool ... runs successfully in CI against the **current repo
+state**." This scenario's fixture is authored by the scenario's own
+execution, not the current repo state — a materially weaker proof than
+`SCN-135`'s real `backend/Dockerfile` target, disclosed rather than
+silently equated with it. Picking an IaC vendor now to close this for
+real would be exactly the premature, undemonstrated tool decision
+DC-18/DC-19 forbid at planning time (no `infra/` content exists to
+justify one yet). Tracked as an Implementation Complete obligation, not
+a Definition-of-Ready blocker: the first real `infra/environments/**`
+IaC file committed during MOD-001 implementation becomes this
+scenario's real target, same as `SCN-127`(a)'s Gradle stubs and
+`SCN-135`'s Dockerfile became theirs.
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
@@ -1658,7 +1699,13 @@ layer silently passes a broken fixture. For the 7th layer
 (exploratory), the equivalent proof is manual: `veyro-manual-qa`
 deliberately misses/mis-executes an exploratory pass and confirms the
 QA record itself flags the gap (a human/Claude-judgment check, not a
-harness one) — tracked under `MANUAL_QA.md` surface 5, not claimed as
+harness one) — tracked under `MANUAL_QA.md` surface 10 (**corrected,
+Scenario Review round 12, P1-1: this previously pointed at surface 5,
+which is failure diagnostics — "deliberately break a gate and confirm
+the failure message is actionable" — a different thing from the
+exploratory-testing procedure this scenario actually needs; surface 5
+didn't describe an exploratory pass at all, and no surface did until
+round 12 added one**), not claimed as
 an automated failure report. Evidence: 6 automated failure reports + 1
 manual QA record. Negative case IS the scenario's own subject; the
 companion positive (harness passes a correct fixture) is
@@ -1682,7 +1729,7 @@ Evidence: the classification/violation report. Negative case IS the
 scenario's own subject; the companion positive is a correctly-classified
 unit test with no I/O, covered by 001/002.
 
-**SCN-MOD001-137 · HP · Major · GOV-01-R01, per-layer harness positive execution (P1-5) · Automated (6 of 7 layers) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-137 · HP · Major · GOV-01-R01, per-layer harness positive execution (P1-5) · Automated (5 of 6 automated layers real, 1 job-wiring-only) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
 **Added (Scenario Review round 11, P1-5): `SCN-106` claimed its
 companion positive was "001/002," but neither tests this —
 `REQUIREMENTS.md` GOV-01-R01's own acceptance criteria require "all
@@ -1693,21 +1740,74 @@ integration, contract, E2E, or mobile-UI harness against anything.
 `SCN-023`'s "passes or correctly reports not yet applicable" cannot
 substitute, by the same reasoning round 10's own P0-3 applied to the
 SAST scanner: it cannot distinguish a working harness from an absent
-one.** Steps: for each of the 6 *automated* test-pyramid layers (unit,
-component, integration, contract, E2E, mobile UI), add one trivial
-synthetic passing fixture (e.g. `assert True`-shaped for unit/
-component/integration/contract, a no-op page-load assertion for E2E, a
-no-op screen-render assertion for mobile UI) and run that layer's
-harness. Expected: each layer's harness executes to completion and
-reports a real pass (not "0 tests collected" silently reported as
-green) — the harness *running* is the evidence, distinct from `SCN-001`
-(directory structure only) and `SCN-002` (lint stage only), neither of
-which invokes a test-pyramid layer runner at all. For the 7th layer
-(exploratory), the equivalent positive proof is the documented
-exploratory-testing procedure itself existing and being followed once
-(`MANUAL_QA.md` surface 5), mirroring `SCN-106`'s own manual/automated
-split for this requirement's negative case. Evidence: 6 real per-layer
-pass reports + the exploratory procedure record.
+one.** **Corrected (Scenario Review round 12, P1-2): the original text
+ran a real "mobile UI" harness and a real "E2E" harness against
+nothing — `IMPLEMENTATION.md` names no mobile-UI test directory and no
+E2E test-layer directory at all (E2E exists only as a staging-deploy CI
+gate placeholder), and `TEST_PLAN.md` line 26 names the mobile-UI
+harness as "Compose UI test / XCUITest-equivalent" — a real XCUITest
+run needs a macOS runner, which `SCN-056` (Blocker) forbids referencing
+in committed configuration, the identical paid-macOS-runner conflict
+round 10's P1-1 fixed for `SCN-128`/`129` one round earlier. Fixed by
+applying the same split those two scenarios already established: the
+Android/standard-runner half of mobile UI runs for real; the iOS half
+and the E2E layer (whose concrete tool is itself deferred to
+implementation time per `CAPABILITIES.md`'s own test-runner-stack
+disposition) are proven present and required-status-checked via
+workflow-graph/job-metadata inspection now, with real execution
+deferred.** Steps: for 5 of the 6 *automated* test-pyramid layers
+(unit, component, integration, contract, and the Android half of
+mobile UI), add one trivial synthetic passing fixture (e.g. `assert
+True`-shaped for unit/component/integration/contract, a no-op
+screen-render assertion for the Android/Compose UI test runner) and run
+that layer's harness for real. Expected: each layer's harness executes
+to completion and reports a real pass (not "0 tests collected"
+silently reported as green) — the harness *running* is the evidence,
+distinct from `SCN-001` (directory structure only) and `SCN-002` (lint
+stage only), neither of which invokes a test-pyramid layer runner at
+all. For the iOS half of mobile UI and for E2E, the positive proof is
+that the CI workflow definition wires a required job for each on the
+relevant trigger path (workflow-graph/job-metadata inspection, same
+mechanism as `SCN-128`/`129`'s iOS half) — real execution deferred,
+disclosed, not claimed. For the 7th layer (exploratory), the equivalent
+positive proof is the documented exploratory-testing procedure itself
+existing and being followed once (`MANUAL_QA.md` surface 10 —
+**corrected, round 12, P1-1: was surface 5, which is failure
+diagnostics, a different thing**), mirroring `SCN-106`'s own
+manual/automated split for this requirement's negative case. Evidence:
+5 real per-layer pass reports + 2 job-wiring inspection reports (iOS
+mobile-UI, E2E) + the exploratory procedure record.
+
+**SCN-MOD001-138 · SEC · Blocker · TSD §24.1 gate 7, deferred-surface build/toolchain carve-out — positive (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 12, P0-1): `IMPLEMENTATION.md` §4 gate
+7's own carve-out (added round 11, P2-1, letting a build/toolchain/CI
+file pass under a still-DEFERRED surface) was a new pass-path through a
+Blocking gate with no scenario at all — `SCN-102` tests an activated
+profile passing, `SCN-103` tests a deferred *application*-file denial,
+neither tests the carve-out itself.** Steps: a synthetic
+`mobile/androidApp/build.gradle.kts`-shaped fixture (a file matching
+the gate's closed recognized-extension list, `.gradle.kts`) is added
+under the still-DEFERRED Android Host §4.3 profile's path scope; run
+`tools/validate_architecture_gates.py --gate surface-profile`.
+Expected: PASS, citing the Infra/SRE/CI carve-out by name — the
+deferred profile's own `.profile-pending` marker is not treated as a
+denial for this recognized file type. Evidence: the gate's own pass
+report naming the carve-out.
+
+**SCN-MOD001-139 · SEC · Blocker · TSD §24.1 gate 7, deferred-surface build/toolchain carve-out — negative/boundary (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 12, P0-1), companion to 138:** proves
+the carve-out is scoped to the closed extension list, not to the
+surface's whole directory. Steps: same still-DEFERRED
+`mobile/androidApp/` fixture as 138, but this time a `.kt`
+*application*-logic file is added under `mobile/shared/src/` (the same
+deferred surface family) alongside the passing `build.gradle.kts` from
+138. Expected: the `.kt` file is denied with `SURFACE_PROFILE_NOT_ACTIVATED`
+citing the path and the missing profile, in the same CI run where the
+`.gradle.kts` file passes — proving the carve-out does not silently
+widen to cover application code merely because it shares a directory
+with a recognized build file. Evidence: one pass report (the
+`.gradle.kts` file, per 138) and one denial report (the `.kt` file) from
+the same run.
 
 **SCN-MOD001-107 · OBS · Major · GOV-01-R08, release-train/changelog generation (P0-2) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
 Source: GOV-01-R08 (`EIP_MIRROR.md` lines 17577-17580). Steps: a
@@ -3145,3 +3245,113 @@ was not evaluated this round. The next legally allowed action is an
 independent Scenario Review round 12, to confirm round 11's remediation
 actually holds — the same discipline every round from 4 onward has
 applied to the round before it.
+
+### Round 12 (2026-09-18) — `veyro-scenario-reviewer`, Opus, fresh context, dispatched via the Agent tool, no inheritance of round 11's conclusions
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2, P1=5, P2=4,
+Editorial=2. Independently re-derived catalog facts confirmed as
+holding: 138 detail blocks at review time, no duplicate IDs, all 24
+Appendix G Required categories covered ≥2 each, and every one of round
+11's own headline remediation claims (the SCN-130/131/133 retitle, the
+MANUAL_QA.md 130-137 mapping, the `backend/Dockerfile` plan entry, the
+six validator CI rows plus Appendix-B validator, the MR-evidence risk
+triggers/family-alias backfill, BUG-028 through BUG-032 all genuinely
+CLOSED).
+
+The two P0s: **(1)** round 11's own P2-1 fix — the gate-7 deferred-
+surface build/toolchain carve-out — created a brand-new *pass* path
+through a Blocking gate with no scenario exercising it at all, and its
+allow-list was stated with an open-ended "etc.," an unfalsifiable
+condition round 3 had already removed from a different gate. **(2)**
+TSD §24.1's gate 1 and gate 6 normative sub-clauses were still only
+partially fixtured after round 10's own P0-1 fix: gate 6's "identical
+command inventories **or** reused RB-IDs" sentence names two
+independent fail conditions, and only the RB-ID half had a violation
+fixture; gate 1's "runtime role cannot own/bypass" plus a nullable
+`tenant_id` had no fixture at all, only the missing-FORCE case.
+
+The five P1s: `SCN-106`/`137` both cited `MANUAL_QA.md` surface 5 (which
+is failure diagnostics) as the exploratory-testing procedure's proof,
+and no surface documenting an actual exploratory pass existed anywhere
+(P1-1); `SCN-137`'s own mobile-UI and E2E legs ran a real harness
+against a target that doesn't exist in `IMPLEMENTATION.md` — no mobile-
+UI test directory, no E2E test-layer directory, and a real XCUITest run
+would conflict with `SCN-056`'s paid-macOS-runner ban, the identical
+conflict round 10 had already fixed for `SCN-128`/`129` one round
+earlier (P1-2); `validate_toolchain_matrix.py` was in §1's tool
+inventory and is `SCN-127`'s entire mechanism, but had no CI-stage row
+in §3 or §12, making it unexecutable as planned (P1-3); the capability
+manifest's `required_agent_roles` omitted six of the twelve roles
+`MODEL_ROUTE.md`'s own planned-routing table names for this module —
+the review-tier roles (`veyro-scenario-reviewer`, `veyro-code-reviewer`,
+`veyro-manual-qa`, `veyro-security-reviewer`, `veyro-performance-reviewer`,
+`veyro-gatekeeper`) — the same gap class `SCN-121`'s own round-10
+negative case exists to catch, round 10 having fixed only the single
+instance (`veyro-test-author`) it happened to notice rather than
+deriving the full set (P1-4); and branch protection / required status
+checks — `IMPLEMENTATION.md` §3's own named bypass-protection mechanism
+underneath Blocker `SCN-020` — was absent from `CAPABILITIES.md`'s
+capability-gap table entirely, with no disposition on this repo's
+actual plan-level availability (P1-5).
+
+The four P2s: the §3 pipeline row was still titled "6 architecture
+gates," uncorrected since round 1 added the 7th, and had no dedicated
+row for gate 7 at all (P2-1); `IMPLEMENTATION.md`'s and `CAPABILITIES.md`'s
+front-matter `updated` lines misstated which round last touched each
+file's body (P2-2); §2's named-family table was never extended for
+round 11's own new `SCN-137` (P2-3); `SCN-136`'s round-11 reframe (the
+scenario authoring its own IaC target) was never dispositioned against
+`REQUIREMENTS.md` GOV-01-R03's own "against the current repo state"
+acceptance criterion (P2-4). The two Editorial findings: `SCN-132`'s
+round-11 correction note cited `SCN-118` for a dual-tier precedent that
+scenario doesn't carry (`SCN-118` was retitled outright, not given a
+carve-out — the real precedent is `SCN-004`); `MANUAL_QA.md`'s round-11
+table header named only "SCN-130 through SCN-136" while its own rows
+included `SCN-137`, a round-11 scenario, not one of the round-10 batch
+the header described.
+
+**All P0/P1/P2/Editorial findings remediated the same session:**
+gate 7's carve-out allow-list enumerated exactly (`.gradle.kts`,
+`.gradle`, `.xcconfig`, `Package.swift`, `Podfile`, `package.json`,
+`package-lock.json`, `gradle.properties`, `settings.gradle.kts`,
+`gradle-wrapper.properties`), with `SCN-MOD001-138`/`139` added to
+prove the carve-out's own positive case and its extension-scoped
+boundary; gate 1's row extended with the elevated-role/`BYPASSRLS`-
+owner and nullable-`tenant_id` conditions, fixtured by an extension to
+`SCN-005`; gate 6's row extended with the identical-command-inventory
+condition, fixtured by an extension to `SCN-015`, with the two lower-
+severity remaining dimensions (authoritative-entity-set and failure-
+vocabulary collision) disclosed as a residual rather than invented;
+`SCN-106`/`137` repointed to a new `MANUAL_QA.md` surface 10
+(exploratory-testing procedure), added specifically to close this gap
+rather than mis-citing an existing surface again; `SCN-137`'s mobile-UI
+leg split Android-real/iOS-job-wiring-only and its E2E leg reframed to
+job-wiring-only, mirroring `SCN-128`/`129`'s own established split, with
+its "Automated" field corrected to reflect the split; a new §3 pipeline
+row added for `validate_toolchain_matrix.py`; the six missing review-
+tier roles added to `module-capabilities.yaml`'s `required_agent_roles`
+with `ACTIVE (already registered, MOD-000)` status, matching
+`veyro-implementer`'s/`veyro-lead`'s existing entries; a new
+branch-protection/required-status-check row added to `CAPABILITIES.md`'s
+capability-gap table, disclosing plan-level availability as unconfirmed
+by this session rather than assumed; the §3 pipeline-table gate-count
+row corrected to "6 of the 7," and a dedicated 7th-gate row added;
+`IMPLEMENTATION.md`'s and `CAPABILITIES.md`'s front-matter `updated`
+lines corrected; §2's named-family table extended for `SCN-137`;
+`SCN-136` given an explicit disclosed-residual note against its
+acceptance criterion; `SCN-132`'s citation corrected to `SCN-004`;
+`MANUAL_QA.md`'s round-11 table split so `SCN-137` has its own,
+accurately-labeled header.
+
+Catalog total independently re-derived at **140 detail blocks** (140
+Required, 0 Optional) — 138 carried forward from round 11 plus
+`SCN-MOD001-138`/`139`, this round's own addition.
+
+**Definition of Ready was again explicitly NOT evaluated** — round 12
+itself returned P0/P1.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 13**,
+to confirm round 12's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.

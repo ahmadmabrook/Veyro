@@ -2,7 +2,7 @@
 doc: MOD-001_CAPABILITIES
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-14
+updated: 2026-09-18 (Scenario Review round 12, P1-5 — branch protection / required status checks added to the capability-gap table; this repo's own private-plan availability had never been checked, despite IMPLEMENTATION.md §3 naming it as the entire bypass-protection mechanism underneath a Blocker scenario, SCN-020)
 ---
 
 # MOD-001 — Capabilities (per-module manifest, capability-gap analysis)
@@ -82,6 +82,7 @@ not restated here**).
 | Artifact signing (GOV-01-R04) | Code-signing mechanism | No | A signing key/process | A dev-only/self-signed key is in scope without owner involvement; a real production signing certificate is DC-16 owner-reserved | DC-19 for the signing tool itself | Standard | Dev-only: none. Production: owner-reserved |
 | Mobile toolchain (GOV-01-R07) | Kotlin/KMP/Compose/Gradle/Xcode/AGP pinned versions | No — no mobile code exists yet (MOD-006's scope) | A pinned compatibility matrix (document, not infrastructure) | MOD-001 documents the matrix; does not provision Apple/Google developer accounts | N/A for the document itself | N/A | Real store accounts/macOS CI runners are DC-16 owner-reserved spend — explicitly deferred, not decided here |
 | Progressive delivery / canary (GOV-01-R05) | Feature-flag consumption + canary rollout mechanism | No | A minimal scripted mechanism (no cloud infra exists yet) | Build minimal/local — do not acquire a commercial feature-flag SaaS (e.g. LaunchDarkly) without a demonstrated gap review, per DC-19 | Required if any third-party service is later proposed | Standard | None if built minimal/local |
+| Branch protection / required status checks (GOV-01-R04, the bypass-protection mechanism `IMPLEMENTATION.md` §3 names as primary, underneath Blocker `SCN-MOD001-020`) — added, Scenario Review round 12, P1-5, this workstream was absent from this table entirely | GitHub branch-protection rules with required status checks, on the existing private repo (`ahmadmabrook/Veyro`) | Not yet configured; plan availability on this repo's current GitHub tier not yet confirmed by this session | Confirming the repo's plan permits required-status-check branch protection on a private repo, then configuring it | Reuse the existing GitHub remote — no new vendor. GitHub has offered branch protection (including required status checks) on free private repos since well before this project's founding, but this session has not verified this specific repo's current settings/plan, so treats it as unconfirmed rather than assumed | If confirmation finds it plan-gated, flag as a DC-16 owner-reserved spend dependency before relying on it further | DC-19 does not apply (a GitHub platform feature, not a third-party tool); DC-16 applies only if plan-gated | Expected $0 on the current plan; flag before it isn't — same convention as the CI-runner-minutes row above |
 
 **Missing capability blockers this session found:** none that block
 MOD-001 *planning*. `BUG-028` (docx read path) blocked *requirement

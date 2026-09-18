@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 11 — SCN-130 through SCN-136 mapping added, closing a gap round 10's own new scenarios left)
+updated: 2026-09-18 (Scenario Review round 12 — surface 10, exploratory-testing procedure, added; SCN-106/137's mispointing to surface 5 fixed; the round-11 table header corrected to name SCN-137 separately from the round-10 batch it was wrongly grouped under)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -47,6 +47,19 @@ engineering-infrastructure, not consumer product.
    and doesn't over-fire. Executed — see
    `evidence/model-routing/ROUTING_DRILL_2026-09-14.md`'s "Corrected
    drill" section for the real result.
+10. **Exploratory-testing procedure (added, Scenario Review round 12,
+    P1-1)** — GOV-01-R01's 7th test-pyramid layer per
+    `REQUIREMENTS.md`/`TEST_PLAN.md` line 27 ("Exploratory | Claude
+    manual QA (`MANUAL_QA.md`) | Always mandatory"), distinct from
+    surface 5 (failure-diagnostics, i.e. deliberately breaking a gate
+    and checking the report). `veyro-manual-qa` (Opus, fresh context)
+    performs one real, undirected exploratory pass over the running
+    MOD-001 surfaces (no pre-scripted steps, Claude's own judgment
+    about what to probe) and records what it found in a QA record.
+    Positive proof: the exploratory pass runs and produces a record.
+    Negative proof: a deliberately shallow/rubber-stamped pass (no real
+    probing) is distinguishable from a genuine one because the record
+    itself names concrete things checked, not a generic "looks fine."
 
 **None of this has been executed** — implementation has not started.
 This is the plan `veyro-manual-qa` (Opus, fresh context) will execute
@@ -73,6 +86,7 @@ absent manual-execution path:
 | 7. Release/rollback drill | 044-048, 058, 060, 067, 072, 107, 108 |
 | 8. Mobile build/toolchain bootstrap | 050-055, 099, 100, 115, 117 |
 | 9. Model-routing qualification drill | 104, 105 |
+| 10. Exploratory-testing procedure | 106 (negative/manual half), 137 (positive/manual half) |
 
 **Corrected (Scenario Review round 2, P1-7): SCN-102-105 were entirely
 absent from this mapping — fixed above (102/103 → surface 2; 104/105 →
@@ -143,4 +157,12 @@ new in round 10 and had no manual-surface mapping at all — fixed:**
 | SCN-134 (SAST scanning) | 2. CI workflow behavior | a CI scanning-stage check, same class as SCN-094's dependency scanning, already mapped there |
 | SCN-135 (container-image scanning) | 2. CI workflow behavior | same scanning-stage class as SCN-134 |
 | SCN-136 (IaC scanning) | 2. CI workflow behavior | same scanning-stage class as SCN-134 |
-| SCN-137 (GOV-01-R01 per-layer harness positive execution) | 2. CI workflow behavior | same class as SCN-106/116, already mapped there |
+
+**Added (Scenario Review round 11, P1-1, separately from the round-10
+batch above — SCN-137 is round 11's own new scenario, not one of the
+seven inherited from round 10; grouping it under that batch's header
+was itself a round-11 defect, fixed at the source in round 12, E-2):**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-137 (GOV-01-R01 per-layer harness positive execution) | 2. CI workflow behavior (6 automated layers); 10. Exploratory-testing procedure (7th layer, corrected round 12 P1-1 — surface 5 is failure diagnostics, not exploratory testing) | same class as SCN-106/116 for the automated half, already mapped there; the exploratory half is surface 10's own subject |
