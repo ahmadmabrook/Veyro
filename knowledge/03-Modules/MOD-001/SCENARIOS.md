@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, INDEPENDENTLY REVIEWED (multiple rounds to date, each BLOCKED and remediated — current round count lives in §5 only, not restated here; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 10 ran, BLOCKED, P0/P1 remediated — round 9's own remediation found only partially holding and corrected for real; see §5)
+updated: 2026-09-18 (Scenario Review round 11 ran, BLOCKED, P0/P1/P2/Editorial remediated — round 10's own remediation found genuine on its core subject but three of its seven new scenarios carried defects of the same classes it was created to fix; see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -75,14 +75,23 @@ number — every requirement, gate, and validator this module owns needs
 its own real scenario, which is what §3 below now provides. The 8-Critical-requirements
 floor (GOV-01-R01..R08) remains true as an absolute minimum but was
 never the operative constraint. **This catalog's total count is stated
-once, here, and deliberately not restated in `STATUS.md` or elsewhere —
-every prior round that duplicated this number in a second file found
-that copy going stale within the same round (round 4 found exactly this
-had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **137 detail
+once, here, and deliberately not restated in any other LIVE-status
+document — every prior round that duplicated this number in a second
+LIVE document found that copy going stale within the same round (round
+4 found exactly this had happened to `CURRENT_STATE.md`, which is now
+corrected to point here rather than restate a number). Corrected
+(Scenario Review round 11, Editorial-2): the prior "or elsewhere"
+wording was inaccurate against `CURRENT_HANDOFF.md`'s own append-only
+chunk log, which legitimately records the count a given round found as
+dated history, not a live restatement — narrowed to say what is
+actually meant.** Current total: **138 detail
 blocks** (001-121 plus 021b, 122, 123, 124, 125, 126, 127, 128, 129,
-130, 131, 132, 133, 134, 135, 136) — **137 Required + 0 Optional** —
-comfortably above every applicable floor. **Round 10 (P0-1/P0-2/P0-3)
+130, 131, 132, 133, 134, 135, 136, 137) — **138 Required + 0 Optional** —
+comfortably above every applicable floor. **Round 11 (P1-5) added 137**
+to close a genuine false-coverage claim its own fresh review found:
+`SCN-106` named `001`/`002` as GOV-01-R01's per-layer harness positive
+companion, but neither scenario runs any of the 6 automated
+test-pyramid layers against a passing fixture at all. **Round 10 (P0-1/P0-2/P0-3)
 added 130-136** to close three genuine gaps its own fresh review found:
 TSD §24.1 gates 3 and 6's normative owner-approval/shared-contract-
 exception sub-clauses, disclosed unfixtured since round 1 and carried
@@ -149,7 +158,7 @@ round 2's remediation, not merely re-asserted:
 
 | Category | R/O | Scenario IDs |
 |---|---|---|
-| HP | R | 001, 010, 023, 036, 041, 048, 055, 071 |
+| HP | R | 001, 010, 023, 036, 041, 048, 055, 071, 137 |
 | ALT | O | none — **corrected, Scenario Review round 6 P1-3: both 071/072 reclassified Required (see HP/REC rows) since each traces to a Critical GOV-01 requirement, which §9.1 makes Required regardless of category-level Optional status; 0 Optional scenarios is legitimate for an O-classified category, not a gap** |
 | VAL | R | 002, 024, 037 |
 | NEG | R | 003, 011, 019, 025, 038, 049, 056, 062, 106, 109, 123, 124 |
@@ -741,7 +750,7 @@ job absent from the release-candidate trigger path is denied by the
 workflow-graph check. Evidence: the Android smoke-test report plus the
 iOS workflow-graph inspection report.
 
-**SCN-MOD001-130 · SEC · Blocker · TSD §24.1 gate 3, event-contract owner-approval sub-clause (P0-1) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**SCN-MOD001-130 · SEC · Blocker · TSD §24.1 gate 3, event-contract owner-approval sub-clause (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-1): TSD §24.1's event contract
 lint (`TSD_MIRROR.md` lines 11610-11612) has two normative halves —
 "every event... exists in the registry" and "compatibility and
@@ -751,18 +760,36 @@ second was disclosed as a residual at round 1 (`SCENARIOS.md`'s own
 round-1 log) and carried unfixtured for nine rounds — a disclosed
 residual on a Blocking gate tracing to a Critical requirement is not a
 permitted discretionary reduction under §9.1 (`EIP_MIRROR.md` lines
-1861-1867), the same rule round 9's own P0-1 applied one round later.**
+1861-1867), the same rule round 9's own P0-1 applied one round later.
+**Corrected (Scenario Review round 11, P0-1): originally routed to
+`veyro-critical-engineer`, but ADR-005 bounds that agent to exactly
+three named slices (tenant-isolation/RLS harness, authn
+negative-credential fixture, RLS+permission gates) and explicitly
+excludes "the other four §24.1 gates" — gate 3 is one of them.
+Retitled to `veyro-security-reviewer/Opus`, matching every other
+gate-violation scenario in this catalog (e.g. `SCN-134`/`135`/`136`),
+rather than silently broadening `veyro-critical-engineer`'s scope
+without the ADR amendment DC-17 would require. Also fixed (Scenario
+Review round 11, P2-2): the positive companion originally required "a
+real `OWNER_APPROVALS.md` row ID," with no synthetic-fixture guard —
+every comparable scenario in this catalog is explicit that fixtures
+are disposable/synthetic (e.g. `SCN-025`'s "a throwaway copy... never
+the real file," `SCN-124`, `SCN-084`'s "in a synthetic copy"). This one
+had none, so as written it either implied an owner-gated real approval
+`REQUIREMENTS.md` names no gate for, or writing a synthetic approval
+into the live governance file. Fixed below.**
 Source: `TSD_MIRROR.md` lines 11610-11612. Steps: a registered event's
 schema undergoes a synthetic compatibility-affecting change (e.g. a
 required field added) or classification change, committed with no
-corresponding `OWNER_APPROVALS.md` reference. Expected:
+corresponding approval reference. Expected:
 `tools/validate_architecture_gates.py --gate event-contract` denies
 with `EVENT_CHANGE_UNAPPROVED`, citing the event and the unapproved
-diff. Companion positive: the identical diff, this time with a real
-`OWNER_APPROVALS.md` row ID attached, passes. Evidence: the denial
-report plus the positive-pass report.
+diff. Companion positive: the identical diff, this time run against a
+disposable synthetic copy of `OWNER_APPROVALS.md` carrying a matching
+row ID (never a real row written to the live file), passes. Evidence:
+the denial report plus the positive-pass report.
 
-**SCN-MOD001-131 · SEC · Blocker · TSD §24.1 gate 6, domain-uniqueness shared-contract-exception sub-clause (P0-1) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**SCN-MOD001-131 · SEC · Blocker · TSD §24.1 gate 6, domain-uniqueness shared-contract-exception sub-clause (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-1): TSD §24.1's domain contract
 uniqueness lint (`TSD_MIRROR.md` lines 11646-11648) fails a reused
 `RB-<DOMAIN>` ID or command inventory "unless an explicit shared-
@@ -770,26 +797,45 @@ contract exception is approved." `IMPLEMENTATION.md` §4's gate-6 row
 and `SCN-014`/`015` tested only the failure half; without the exception
 half, the gate as specified would false-positive on a legitimately
 approved shared contract — the same disclosed-residual pattern as
-`SCN-130`, same origin round, same nine-round carry.**
+`SCN-130`, same origin round, same nine-round carry.
+**Corrected (Scenario Review round 11, P0-1): same out-of-charter
+routing defect as `SCN-130` — gate 6 is not one of `veyro-critical-
+engineer`'s three ADR-005 slices. Retitled to
+`veyro-security-reviewer/Opus`. Also fixed (P2-2): the positive
+companion required "a matching exception entry recorded," with the
+same missing synthetic-fixture guard as `SCN-130` — fixed below.**
 Source: `TSD_MIRROR.md` lines 11646-11648. Steps: two synthetic domains
-declare an identical `RB-<DOMAIN>` ID with no matching entry in the new
-`contracts/SHARED_CONTRACT_EXCEPTIONS.md` register. Expected:
+declare an identical `RB-<DOMAIN>` ID with no matching entry in a
+disposable synthetic copy of `contracts/SHARED_CONTRACT_EXCEPTIONS.md`
+(never the live register). Expected:
 `tools/validate_architecture_gates.py --gate domain-uniqueness` denies
 with `DOMAIN_CONTRACT_COLLISION`, citing both domains. Companion
 positive: the identical collision, this time with a matching exception
-entry recorded for that specific domain pair, passes, citing the
+entry recorded in that same synthetic copy for that specific domain
+pair, passes, citing the
 exception ID in its output (proving the gate reads the exception, not
 merely skips the check). Evidence: the denial report plus the
 exception-resolved pass report.
 
-**SCN-MOD001-132 · DATA · Blocker · GOV-01-R02, six named domain suite scaffolds wired (P0-2) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-132 · DATA · Blocker · GOV-01-R02, six named domain suite scaffolds wired (P0-2) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-2): `REQUIREMENTS.md`'s own
 GOV-01-R02 implementation obligation and acceptance criteria commit
 MOD-001 to "documented, empty-but-wired suite scaffolds for membership/
 booking/payment/ledger/POS/access, each with a placeholder fixture
 proving the harness itself is live" — no scenario tested this, and
 `IMPLEMENTATION.md`'s own topology had no such scaffolds until this
-round.**
+round.** **Corrected (Scenario Review round 11, P1-6): the original
+negative case ("a seventh, undeclared domain path... is correctly
+absent from the six-domain inventory check") asserted the check does
+nothing, not a fail-closed proof, and named a
+`--gate module-deps` "six-domain inventory check" that
+`IMPLEMENTATION.md` §4's gate-2 row does not define (that gate is
+cross-domain import/SQL detection only). Fixed with a real
+deliberate-violation fixture, and retagged Blocker/dual-tier matching
+`SCN-004`'s own convention (this scenario carries an SEC-adjacent
+tenant/domain-boundary judgment call, the same species `SCN-118`
+already establishes needs the carve-out when tagged Blocker on
+Sonnet alone).**
 Source: `REQUIREMENTS.md` GOV-01-R02 (implementation obligations,
 acceptance criteria); `EIP_MIRROR.md` lines 17545-17549. Steps: for
 each of the six named domains (`backend/app/modules/{membership,
@@ -797,17 +843,27 @@ booking,payment,ledger,pos,access}/`), run that domain's
 `tests/test_scaffold_live.py` placeholder fixture. Expected: all six
 pass, proving the harness (test discovery, fixture DB connection,
 tenant-context resolver from `_shared/`) is live for that domain path —
-none asserts real product behavior, since none exists. Negative case: a
-seventh, undeclared domain path with no scaffold is correctly absent
-from the six-domain inventory check (`tools/validate_architecture_gates.py
---gate module-deps` treats it as not-yet-existing, not a false pass).
-Evidence: the six placeholder-fixture pass reports.
+none asserts real product behavior, since none exists. Negative case:
+one of the six domains' `test_scaffold_live.py` fixtures is deleted or
+deliberately broken (e.g. an assertion changed to always fail); the CI
+test-run step reports a non-zero exit naming that specific domain's
+missing/failing scaffold, rather than silently reporting the suite
+green with five domains actually collected. Evidence: the six
+placeholder-fixture pass reports plus the broken-domain failure
+report.
 
-**SCN-MOD001-133 · SEC · Blocker · GOV-01-R02, financial-invariant test harness (P0-2) · Automated · veyro-critical-engineer/Opus · NOT EXECUTED**
+**SCN-MOD001-133 · SEC · Blocker · GOV-01-R02, financial-invariant test harness (P0-2) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-2): `IMPLEMENTATION.md` §3's own
 CI stage table names a Blocking "financial-invariant tests" check
 alongside domain-contract/tenant-isolation/authorization tests; no
 scenario exercised it, and no fixture existed until this round.**
+**Corrected (Scenario Review round 11, P0-1): originally routed to
+`veyro-critical-engineer`, but a placeholder double-entry-invariant
+scaffold fixture is not one of that agent's three ADR-005 slices (the
+real ledger critical-slice work belongs to the future domain module
+that claims `backend/app/modules/ledger/`, per this scenario's own
+scaffold-not-product framing). Retitled to
+`veyro-security-reviewer/Opus`.**
 Source: `IMPLEMENTATION.md` §3 (Domain contract / tenant-isolation /
 authorization / financial-invariant tests row); `REQUIREMENTS.md`
 GOV-01-R02. Steps: run `backend/tests/contract/
@@ -843,29 +899,48 @@ baseline report plus the flagged/cleaned pair.
 
 **SCN-MOD001-135 · SEC · Blocker · TSD §24.1 scanning stage, container image (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-3): same gap class as `SCN-134`,
-for the scanning stage's container-image half.**
+for the scanning stage's container-image half. Corrected (Scenario
+Review round 11, P1-3): as originally written this had no real target
+— `IMPLEMENTATION.md` contained no Dockerfile anywhere. Fixed by
+adding a real minimal `backend/Dockerfile` scaffold to the topology
+this round, the same fix shape as round 10's own Gradle-stub fix for
+`SCN-127(a)`.**
 Source: `TSD_MIRROR.md` lines 11625-11626; `REQUIREMENTS.md` GOV-01-R03.
-Steps: run the CI-wired container-image scanning stage against a
-synthetic disposable image built from this repo's own (near-empty)
-Dockerfile scaffold. Expected: the scanner runs to completion, real
-report produced. Negative case: the same image built with one
-deliberately outdated/vulnerable base-image tag pinned is flagged
-before the build-signed-artifact stage proceeds; a companion image
-using the current pinned base tag passes cleanly. Evidence: the
+Steps: run the CI-wired container-image scanning stage (scanner
+selection deferred to implementation per DC-18/DC-19, free/open-source
+only per DC-16, same convention as `SCN-134`) against a synthetic
+disposable image built from the real committed `backend/Dockerfile`
+scaffold. Expected: the scanner runs to completion, real report
+produced. Negative case: the same image built with one deliberately
+outdated/vulnerable base-image tag pinned is flagged before the
+build-signed-artifact stage proceeds; a companion image using the
+scaffold's own pinned placeholder tag passes cleanly. Evidence: the
 baseline report plus the flagged/cleaned pair.
 
 **SCN-MOD001-136 · SEC · Blocker · TSD §24.1 scanning stage, IaC (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-3): same gap class as `SCN-134`/
-`SCN-135`, for the scanning stage's IaC half.**
+`SCN-135`, for the scanning stage's IaC half. Corrected (Scenario
+Review round 11, P1-3): unlike `SCN-135`, no committed IaC config file
+target exists yet, and `IMPLEMENTATION.md` §1 leaves the IaC vendor
+itself genuinely undecided ("exact tool TBD at implementation time —
+TSD names no specific IaC vendor read so far"), unlike the Dockerfile
+case above where `docker compose` was already this plan's assumed
+mechanism. Rather than invent a vendor choice this round, this
+scenario's own execution creates its target: a synthetic
+implementation-time IaC config fixture, in whichever format the
+eventually-chosen tool reads, added specifically for this scenario's
+run — same tool-agnostic framing `SCN-134` already uses for SAST.**
 Source: `TSD_MIRROR.md` lines 11625-11626; `REQUIREMENTS.md` GOV-01-R03.
-Steps: run the CI-wired IaC scanning stage against `infra/environments/`'s
-own committed configuration. Expected: the scanner runs to completion,
-real report produced. Negative case: a synthetic IaC fixture with a
-deliberately insecure setting the chosen scanner's default ruleset
-flags (e.g. an unencrypted-at-rest storage declaration) is committed to
-a disposable branch; the scanner flags it, and a companion fixture with
-the setting corrected passes cleanly. Evidence: the baseline report
-plus the flagged/cleaned pair.
+Steps: run the CI-wired IaC scanning stage (tool selection deferred to
+implementation per DC-18/DC-19, free/open-source only per DC-16) against
+a synthetic IaC configuration fixture representative of
+`infra/environments/`'s eventual real content. Expected: the scanner
+runs to completion, real report produced. Negative case: the same
+fixture with a deliberately insecure setting the chosen scanner's
+default ruleset flags (e.g. an unencrypted-at-rest storage declaration)
+is committed to a disposable branch; the scanner flags it, and a
+companion fixture with the setting corrected passes cleanly. Evidence:
+the baseline report plus the flagged/cleaned pair.
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
@@ -1586,7 +1661,12 @@ QA record itself flags the gap (a human/Claude-judgment check, not a
 harness one) — tracked under `MANUAL_QA.md` surface 5, not claimed as
 an automated failure report. Evidence: 6 automated failure reports + 1
 manual QA record. Negative case IS the scenario's own subject; the
-companion positive (harness passes a correct fixture) is 001/002.
+companion positive (harness passes a correct fixture) is
+`SCN-MOD001-137` (**corrected, Scenario Review round 11, P1-5: this
+previously pointed at 001/002, which is false — 001 tests fresh-clone
+directory structure and 002 tests the format/lint/type-check stage;
+neither runs the unit, component, integration, contract, E2E, or
+mobile-UI harness against a passing fixture at all**).
 
 **SCN-MOD001-116 · BND · Major · GOV-01-R01, mis-tagged-test boundary case (P1-2) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Source: `REQUIREMENTS.md` GOV-01-R01's own declared BND coverage —
@@ -1601,6 +1681,33 @@ silently running it as a "unit" test with a real DB dependency.
 Evidence: the classification/violation report. Negative case IS the
 scenario's own subject; the companion positive is a correctly-classified
 unit test with no I/O, covered by 001/002.
+
+**SCN-MOD001-137 · HP · Major · GOV-01-R01, per-layer harness positive execution (P1-5) · Automated (6 of 7 layers) + Manual (exploratory) · veyro-implementer/Sonnet · NOT EXECUTED**
+**Added (Scenario Review round 11, P1-5): `SCN-106` claimed its
+companion positive was "001/002," but neither tests this —
+`REQUIREMENTS.md` GOV-01-R01's own acceptance criteria require "all
+seven layers have a runnable harness" and evidence obligations require
+"a passing run of each layer's harness against a trivial/synthetic
+fixture," and no scenario in the catalog actually ran the component,
+integration, contract, E2E, or mobile-UI harness against anything.
+`SCN-023`'s "passes or correctly reports not yet applicable" cannot
+substitute, by the same reasoning round 10's own P0-3 applied to the
+SAST scanner: it cannot distinguish a working harness from an absent
+one.** Steps: for each of the 6 *automated* test-pyramid layers (unit,
+component, integration, contract, E2E, mobile UI), add one trivial
+synthetic passing fixture (e.g. `assert True`-shaped for unit/
+component/integration/contract, a no-op page-load assertion for E2E, a
+no-op screen-render assertion for mobile UI) and run that layer's
+harness. Expected: each layer's harness executes to completion and
+reports a real pass (not "0 tests collected" silently reported as
+green) — the harness *running* is the evidence, distinct from `SCN-001`
+(directory structure only) and `SCN-002` (lint stage only), neither of
+which invokes a test-pyramid layer runner at all. For the 7th layer
+(exploratory), the equivalent positive proof is the documented
+exploratory-testing procedure itself existing and being followed once
+(`MANUAL_QA.md` surface 5), mirroring `SCN-106`'s own manual/automated
+split for this requirement's negative case. Evidence: 6 real per-layer
+pass reports + the exploratory procedure record.
 
 **SCN-MOD001-107 · OBS · Major · GOV-01-R08, release-train/changelog generation (P0-2) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
 Source: GOV-01-R08 (`EIP_MIRROR.md` lines 17577-17580). Steps: a
@@ -2920,3 +3027,121 @@ P0=0/P1=0 — not yet obtained as of round 10's close. The next legally
 allowed action is an independent Scenario Review round 11, to confirm
 round 10's remediation actually holds — the exact discipline round 10
 itself applied to round 9.
+
+**Round 11 (2026-09-18):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 137 scenarios
+plus round 10's remediation, explicitly instructed not to inherit any
+prior round's conclusions. Independently re-derived: 137 detail blocks,
+no duplicates (`021b` correctly distinct from `021`); the category
+matrix tallies to 138 entries with `SCN-066` deliberately dual-counted
+(REC+DR) = 137 distinct, every row matching its detail block's own tag;
+all five `.claude/agents/veyro-*.md` files named in the brief have
+`description` frontmatter agreeing with their body text, so the
+BUG-031/032 defect class has not recurred elsewhere; GOV-01-R02's nine
+named critical workflows all now have scenarios.
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=1, P1=6, P2=4,
+Editorial=2. Findings and disposition:
+
+- P0-1: `SCN-130`/`131`/`133`, all added round 10, routed to
+  `veyro-critical-engineer/Opus` — but `ADR-005` bounds that agent to
+  exactly three named slices (tenant-isolation/RLS harness, authn
+  negative-credential fixture, RLS+permission gates) and explicitly
+  excludes "the other four §24.1 gates" (SCN-130/131 are gates 3/6) and
+  GOV-01-R02's financial-invariant harness is not one of the three
+  slices either (SCN-133). The agent's own `description`/body both say
+  to stop and redirect out-of-charter work rather than absorb it — as
+  written, all three scenarios were unexecutable by their own named
+  executor. **Fixed:** all three retitled to `veyro-security-reviewer/
+  Opus`, matching every other gate-violation scenario in this catalog,
+  rather than broadening `veyro-critical-engineer`'s scope without the
+  ADR amendment DC-17 would require.
+- P1-1: `MANUAL_QA.md`'s scenario→manual-surface mapping table ended at
+  `SCN-129`; round 10 added seven scenarios (130-136), five of them
+  Blocker, with no mapping rows added. **Fixed:** rows added for
+  130-136 (and this round's own 137).
+- P1-2: round 10's own P1-1 rescoped `SCN-128`/`129` away from real
+  Android+iOS dual-platform builds (paid-macOS-runner conflict with
+  `SCN-056`), but `IMPLEMENTATION.md` §12's prose and §3's pipeline-
+  table rows for both were never updated to match — they still
+  specified "real-device-equivalent CI runners" for both platforms and
+  a "full dual-platform qualification suite." **Fixed:** both
+  propagated to match the scenarios' own rescoped text (Android/UI/
+  accessibility real, iOS workflow-wiring-only until real
+  implementation).
+- P1-3: `SCN-135`'s positive/negative steps assumed a "near-empty
+  Dockerfile scaffold" that did not exist anywhere in
+  `IMPLEMENTATION.md`'s topology — the same no-real-target defect round
+  10's own P1-2 found and fixed for `SCN-127`(a), re-created the same
+  session. `SCN-136` had the softer version: `infra/`'s IaC tool/format
+  is genuinely undecided. **Fixed:** a real minimal `backend/Dockerfile`
+  scaffold added to the topology (consistent with `docker compose`
+  already being this plan's assumed local deployment mechanism, so not
+  a new vendor decision); `SCN-136` reframed to build its own synthetic
+  implementation-time fixture, matching `SCN-134`'s existing
+  tool-agnostic convention rather than presupposing an undecided vendor.
+- P1-4: five governance validators in §1's tool inventory
+  (`validate_capability_manifest.py`, `validate_scenario_matrix.py`,
+  `validate_baseline_binding.py`, `validate_external_gates.py`,
+  `validate_appendix_i.py`) had no CI-stage row in §3's table, and the
+  Appendix-B traceability validator `REQUIREMENTS.md` §3 names as a
+  tool "MOD-001 must build" (proven by `SCN-085`) was never added to
+  §1's inventory at all. **Fixed:** the tool added to §1; six new CI-
+  stage rows added to §3, one per validator.
+- P1-5: `SCN-106` claimed its GOV-01-R01 companion positive was
+  "001/002," but `SCN-001` tests fresh-clone directory structure and
+  `SCN-002` tests the format/lint/type-check stage — neither runs the
+  unit, component, integration, contract, E2E, or mobile-UI harness
+  against a passing fixture, leaving `REQUIREMENTS.md`'s own acceptance
+  criterion ("all seven layers have a runnable harness") with no real
+  positive proof for 5 of 7 layers. **Fixed:** `SCN-MOD001-137` added
+  (real per-layer positive execution for the 6 automated layers plus
+  the exploratory procedure's own existence for the 7th); `SCN-106`'s
+  own pointer corrected to name it instead of 001/002.
+- P1-6: `SCN-132`'s negative case ("a seventh, undeclared domain path
+  is correctly absent from the six-domain inventory check") asserted
+  the check does nothing rather than proving a fail-closed denial, and
+  named a `--gate module-deps` "six-domain inventory check"
+  `IMPLEMENTATION.md` §4's actual gate-2 row does not define (that gate
+  is cross-domain import/SQL detection only). **Fixed:** replaced with
+  a real deliberate-violation fixture (delete/break one domain's
+  `test_scaffold_live.py`, prove the CI test-run reports it by name);
+  also retagged dual-tier (`veyro-security-reviewer/Opus` judgment,
+  `veyro-implementer/Sonnet` mechanical run) matching `SCN-004`'s own
+  convention for an unqualified Blocker-on-Sonnet-alone scenario
+  (folds in P2-3 below).
+- P2 (4): ADR-005's build/toolchain-vs-source-code carve-out for gate 7
+  existed only as ADR prose, so the gate as specified would deny
+  MOD-001's own committed Gradle stubs against their still-DEFERRED
+  mobile profiles — fixed, carve-out added to the gate-7 row and to
+  `module-capabilities.yaml`'s two affected entries; `SCN-130`/`131`'s
+  positive companions required "a real `OWNER_APPROVALS.md` row ID"/
+  "a matching exception entry" with no synthetic-fixture guard, unlike
+  every comparable scenario in this catalog — fixed, both now run
+  against disposable synthetic copies; `SCN-132`'s Blocker/Sonnet-alone
+  tier mismatch — fixed above (P1-6); the round-10 MR-evidence backfill
+  file claimed "complete MR evidence" while carrying 5 of
+  `SCN-MOD001-120`'s own required 7 fields (risk triggers per-record
+  and per-record intended family alias were both missing) — fixed, both
+  fields added to all four records.
+- Editorial (2): the nine `.profile-pending` marker paths
+  `module-capabilities.yaml` names don't appear in §1's topology
+  diagram — mostly already covered by §4's own "the marker's
+  declaration is what the check consults" text, so fixed with one
+  clarifying sentence rather than a structural change; §0's "stated
+  once, here... or elsewhere" claim about the scenario count read as
+  categorically false against `CURRENT_HANDOFF.md`'s own append-only
+  chunk log (which legitimately records a dated historical count, not a
+  live restatement) — fixed, narrowed to say what was actually meant.
+
+**All P0/P1/P2/Editorial findings from round 11 were remediated within
+the same session they were found.** Catalog total is now **138 detail
+blocks** (138 Required, 0 Optional) — 137 carried forward from round 10
+plus `SCN-MOD001-137`, this round's own addition.
+
+**MOD-001 Definition of Ready: still not yet reached.** Round 11 itself
+returned P0/P1, so per the mission's own gate rule, Definition of Ready
+was not evaluated this round. The next legally allowed action is an
+independent Scenario Review round 12, to confirm round 11's remediation
+actually holds — the same discipline every round from 4 onward has
+applied to the round before it.

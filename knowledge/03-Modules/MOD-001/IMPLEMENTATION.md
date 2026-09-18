@@ -109,7 +109,19 @@ Veyro/
 │   │           #   debits==credits) proving the financial-invariant
 │   │           #   test harness itself is live; no real payment/ledger
 │   │           #   logic, per GOV-01-R02's own scaffold-not-product rule
-│   └── pyproject.toml
+│   ├── pyproject.toml
+│   └── Dockerfile                  # NEW, Scenario Review round 11, P1-3 —
+│                                    #   minimal disposable build scaffold
+│                                    #   (no application logic, no base-
+│                                    #   image pin beyond a placeholder tag)
+│                                    #   so `SCN-MOD001-135`'s container-
+│                                    #   image scan has a real committed
+│                                    #   target, same precedent as round
+│                                    #   10's Gradle stubs for SCN-127(a);
+│                                    #   `docker compose`/an equivalent was
+│                                    #   already this plan's assumed local
+│                                    #   deployment mechanism (§2 above), so
+│                                    #   this is not a new tool decision
 ├── admin-web/                      # NEW — TypeScript/React/Next.js,
 │   ├── app/                        #   empty shell; real screens arrive
 │   ├── components/                 #   with the module that owns them
@@ -174,6 +186,19 @@ Veyro/
     ├── validate_baseline_binding.py     # generalizes verify_baselines.py
     ├── validate_external_gates.py       # new (§20/§21/§22.0 consistency)
     ├── validate_appendix_i.py           # new (invariant/runbook traceability)
+    ├── validate_appendix_b_traceability.py # new, Scenario Review round
+    │                                    #   11 P1-4 — REQUIREMENTS.md §3's
+    │                                    #   own text named this as a tool
+    │                                    #   MOD-001 "must build" (no split
+    │                                    #   requirement exists for MOD-001
+    │                                    #   itself; future modules' Scenario
+    │                                    #   Reviews run it), but it was
+    │                                    #   never added to this inventory —
+    │                                    #   rejects a split requirement
+    │                                    #   whose designated completing
+    │                                    #   module executes before any of
+    │                                    #   its execution-slice modules;
+    │                                    #   proven by SCN-085
     ├── validate_data_exposure.py        # new, Scenario Review round 8 P0-1
     │                                    #   (SCN-126: card security baseline
     │                                    #   "input/output data exposure" —
@@ -273,6 +298,12 @@ jobs (reusing the existing GitHub remote):
 | **Idempotency-contract lint (added, Scenario Review round 6, P0-1)** | Every push/PR touching a command declaration for an externally-retryable mutation | Command/endpoint declaration | Pass/fail + named-missing-element report | Yes | `tools/validate_idempotency_contract.py` locally (SCN-MOD001-016 part a) | Named missing-element report (key-tuple scoping, retention window, stored-hash field, 409-code reference, command_id propagation, or provider-derivative field) | Runs against the actual committed command declaration, not a developer's local, possibly-stale copy — same pattern as the API/event schema-compatibility row above |
 | **Agent-definition/model-alias/MR-evidence check (added, Scenario Review round 5, P1-4)** | Every push/PR touching `.claude/agents/**`, plus every CI run for MR-evidence content | `.claude/agents/*.md` escalation text; MR evidence records | Pass/fail + named-defect report | Yes | `tools/validate_agent_definitions.py` locally (SCN-MOD001-120) | Named unreachable-agent, dangling-reference, or missing-MR-field report | Runs against the full committed agent-definition set, not a partial local view — distinct from the TSD §24.1 architecture gates in §4 below, since this checks EIP §4.1's own routing-evidence requirement, not a data/schema architecture rule |
 | **ADR conformance check (added, Scenario Review round 5, P1-4)** | Every push/PR | `ADR_CONFORMANCE.md`, the module's own API surface and migration harness | Pass/fail per mapped ADR | Yes, once applicable | `tools/validate_adr_conformance.py` locally (SCN-MOD001-119) | Named ADR-nonconforming-change report | Runs against the actual committed API/migration code, not `ADR_CONFORMANCE.md`'s own prose claim |
+| **Capability-manifest/governance validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching `.claude/agents/**`, `.claude/rules/**`, `.claude/skills/**`, or `module-capabilities.yaml` | Those files | Pass/fail + named-defect report | Yes | `tools/validate_capability_manifest.py` locally | Named cyclic-dependency, overdue-lifecycle-review, or missing-mandatory-Rule report | Runs against the actual committed capability set, extending MOD-000's `validate_capabilities.py` pattern to any module |
+| **Scenario-matrix validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching any module's `SCENARIOS.md` | The touched Scenario Catalog | Pass/fail + named-defect report | Yes | `tools/validate_scenario_matrix.py` locally (generalizes `validate_catalog.py`) | Named O-on-Required-category, missing-G.4-justification, or PERF/Load-inconsistency report | Runs against the actual committed catalog, not a cached prior count |
+| **Baseline-binding validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching `PROJECT_INDEX.md` or `SESSION_BOOTSTRAP.md` | Those files + the 4 governing baseline artifacts | Pass/fail + named-defect report | Yes | `tools/validate_baseline_binding.py` locally (generalizes `verify_baselines.py`) | Named missing/ambiguous/mismatched identity-hash report | Runs against the actual committed baseline hashes, folding `REQUIREMENTS.md` §3's manual-per-session check into the CI-gate layer |
+| **External-gate consistency validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching `EXTERNAL_GATES.md` or a module's execution card | Those files | Pass/fail + named-defect report | Yes | `tools/validate_external_gates.py` locally | Named §20/§21/§22.0-mismatch or unresolved-gated-capability report | Runs against the actual committed registry/card/binding set |
+| **Appendix-I traceability validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching an `INV-<DOMAIN>`/`RB-<DOMAIN>` entry or a mapped ADR | Those entries | Pass/fail + named-defect report | Yes | `tools/validate_appendix_i.py` locally | Named unmapped-invariant or unconformed-ADR report | Runs against MOD-001's own `DOM-001`/`DOM-002`/`EVT-001`/`IAM-002`/`INV-GOV-01`/`RB-GOV-01` entries first, per `REQUIREMENTS.md` §3 |
+| **Appendix-B traceability validation (added, Scenario Review round 11, P1-4)** | Every push/PR touching a split-requirement's designated completing or execution-slice module | Split-requirement module-ownership metadata | Pass/fail + named-defect report | Yes, once a split requirement exists | `tools/validate_appendix_b_traceability.py` locally (SCN-MOD001-085) | Named ordering-violation report (completing module executing before an execution-slice module) | New tool this round — no split requirement exists for MOD-001 itself, so this gate is currently a no-op pass; it is the mechanism future modules' Scenario Reviews will run |
 
 **No gate is certification theater** — every row above has a concrete
 input, output, and failure-evidence artifact. Several rows are correctly
@@ -300,7 +331,7 @@ never destructive tests against real project baselines.
 
 | Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
 |---|---|---|---|---|---|---|
-| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile | A source file of a deferred surface's own file type (e.g. a `.tsx` file under `admin-web/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 10 named §4.3 globs at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile; **or a build/toolchain/CI configuration file under a surface's path scope (e.g. `mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`, added round 10 P1-2) — carved out under ADR-005's own dividing line: "build, toolchain, and CI configuration for a surface is Infra/SRE/CI-profile work; the surface's own profile activates when the surface's own source code appears" (added, Scenario Review round 11, P2-1 — this carve-out existed only as ADR prose until now, and without it the gate as specified would deny MOD-001's own committed Gradle stubs against their still-DEFERRED KMP Mobile/Android Host profiles)** | A source file of a deferred surface's own *application* file type (e.g. a `.tsx` file under `admin-web/`, a `.kt` application-logic file under `mobile/shared/src/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 10 named §4.3 globs at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob; passes for a recognized build/toolchain/CI file extension (`.gradle.kts`, `.xcconfig`, `package.json`, etc.) under a deferred surface, citing the Infra/SRE/CI carve-out | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
 
 **Corrected (Scenario Review round 2, P1-6; further corrected round
 3): the original marker-only design was fail-open.** General Web
@@ -333,7 +364,12 @@ directory doesn't matter — the marker's *declaration* in
 `module-capabilities.yaml` is what the check consults) the moment matching
 source files appear) rather than an inferred mapping, so the deferral
 is a declared, checkable contract, not an absence a validator has to
-guess at.
+guess at. **Clarified (Scenario Review round 11, Editorial-1):** the
+nine `.profile-pending` marker file paths `module-capabilities.yaml`
+names are exactly this — declared entries the check consults — not
+filesystem artifacts §1's topology above is expected to list; none of
+them exist as real files until the module that first touches that
+surface creates both the directory and the marker together.
 
 Each gate's fixtures are synthetic tables/files created and destroyed
 within the test harness's own throwaway schema/fixture directory — never
@@ -563,15 +599,22 @@ Both fixed below.** Fixed:
   synthetic common-code-change fixture.
 - **Real-device smoke-test CI convention, capability-adapter half
   (new row, §3 pipeline table below — added round 7, P1-2; proven
-  round 9, P0-1)**: TSD §24.3's real-device smoke-test requirement
-  names two subjects — "platform-capability adapters" and "critical
-  offline flows." SCN-050 covers offline flows only; this row is the
-  capability-adapter half (a synthetic native-adapter-boundary fixture,
-  e.g. camera/biometric/push-token stub, smoke-tested on both
-  real-device-equivalent CI runners), proven by `SCN-MOD001-129`
-  (added round 9 — round 8 had disclosed this half as an untested
-  residual rather than closing it, which §9.1's own rule-derived
-  Required standard does not permit).
+  round 9, P0-1; rescoped round 10, P1-1; propagated round 11, P1-2)**:
+  TSD §24.3's real-device smoke-test requirement names two subjects —
+  "platform-capability adapters" and "critical offline flows." SCN-050
+  covers offline flows only; this row is the capability-adapter half
+  (a synthetic native-adapter-boundary fixture, e.g. camera/biometric/
+  push-token stub). Real execution runs on a standard (non-macOS)
+  Android CI runner; the iOS half is proven present and required-
+  status-checked on the release-candidate trigger path via workflow-
+  graph inspection, with its own real execution deferred to real
+  implementation time — a real-device-equivalent macOS iOS runner
+  would conflict with `SCN-MOD001-056` (Blocker: no paid macOS CI
+  runner tier referenced anywhere in MOD-001's committed
+  configuration). Proven by `SCN-MOD001-129` (added round 9; rescoped
+  round 10, P1-1, after its original "both real-device-equivalent CI
+  runners" text was found to conflict with `SCN-056` and MOD-001's own
+  mobile-out-of-scope boundary).
 - **Toolchain-matrix consistency checker (new tool, §1 tools inventory
   — added round 7, P1-2; proven round 9, P0-1)**: `tools/validate_toolchain_matrix.py`
   checks `mobile/TOOLCHAIN_MATRIX.md`'s pinned versions against the
@@ -585,12 +628,21 @@ Both fixed below.** Fixed:
   own intent" was independently found false, since this very paragraph
   says the opposite).
 - **Isolated-PR toolchain-upgrade qualification gate (new row, §3
-  pipeline table below — added round 7, P0-2)**: TSD §24.3's rule that
-  "toolchain upgrades are isolated pull requests with Android+iOS
-  build, UI, accessibility and performance qualification before merge"
-  — a CI stage that runs the full dual-platform qualification suite
-  specifically when a PR touches `mobile/TOOLCHAIN_MATRIX.md`, blocking
-  merge until all four qualification dimensions pass.
+  pipeline table below — added round 7, P0-2; rescoped round 10, P1-1;
+  propagated round 11, P1-2)**: TSD §24.3's rule that "toolchain
+  upgrades are isolated pull requests with Android+iOS build, UI,
+  accessibility and performance qualification before merge" — a CI
+  stage, specifically triggered when a PR touches
+  `mobile/TOOLCHAIN_MATRIX.md`, that wires all 4 qualification
+  dimensions (build — with separate Android and iOS jobs under it —
+  UI, accessibility, performance) as required jobs on the
+  toolchain-upgrade trigger path. Real execution runs for the Android
+  build/UI/accessibility jobs on standard (non-macOS) runners; the iOS
+  build job's real execution is deferred to real implementation time
+  (same `SCN-056` paid-macOS-runner constraint as the row above), but
+  its presence and required-status-check wiring is checked now via
+  workflow-graph/job-metadata inspection, blocking merge until all 4
+  dimensions are wired and the runnable ones pass.
 
 **GOV-01-R08 (release lifecycle):**
 - `RELEASE_TRAIN.md` (new, §1 topology, repo root) — the release-train
@@ -626,7 +678,7 @@ Both fixed below.** Fixed:
 | **Mobile CI runner assignment (GOV-01-R07)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux, iOS jobs on macOS/Xcode | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair | Runner assignment pinned in the committed workflow file, not a developer's local runner choice |
 | **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, offline-flow half (GOV-01-R07, added round 7 — SCN-050 tests this row)** | Every push/PR touching an offline-flow path | Changed-file path list | The fixture is flagged as requiring the offline-smoke-test job | Yes | Same path-filter/flagging rule run locally | CI log naming the triggering path and the flagged job | Flagging rule reads the actual committed diff, not a developer's local claim about which paths changed |
-| **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7, proven round 9 — `SCN-MOD001-129`)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture | Pass/fail per adapter | Yes | Cannot fully replicate locally (needs real-device-equivalent CI runners) | Evidence bundle artifact | Runs only from CI's real-device-equivalent runners, never a developer's local simulator claim |
-| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2, proven round 9 — `SCN-MOD001-128`)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android+iOS build/UI/a11y/perf qualification suites | Pass/fail, all 4 dimensions | Yes | Same suites run locally against the proposed toolchain bump | Named failing-dimension report | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated" |
+| **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-129`)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture (Android); iOS job wiring on the release-candidate trigger path | Pass/fail per adapter (Android, real); presence + required-status-check (iOS, workflow-graph) | Yes | Android: cannot fully replicate locally (needs a real Android CI runner); iOS: workflow-graph inspection can be run locally against the workflow file | Evidence bundle artifact (Android); workflow-graph inspection report (iOS) | Android smoke test runs only from CI's real Android runner, never a developer's local simulator claim; iOS real execution is deferred to real implementation per `SCN-MOD001-056` (no paid macOS CI runner tier referenced in MOD-001's committed configuration) |
+| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2, proven round 9, rescoped round 10 P1-1 — `SCN-MOD001-128`)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android build/UI/a11y/perf qualification suites (real); iOS build job wiring (workflow-graph) | Pass/fail, all 4 dimensions wired, runnable ones (Android/UI/a11y) pass for real | Yes | Android/UI/a11y suites run locally against the proposed toolchain bump; iOS job-wiring checked locally via workflow-graph inspection | Named failing-dimension report; iOS reports missing/non-required-status wiring, not a failed build | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated"; iOS build's real execution deferred to real implementation per `SCN-MOD001-056` |
 | **Changelog generation (GOV-01-R08, added round 7, P1-2)** | Every release | Merged PR list since last release | Changelog entry | Yes | `tools/generate_changelog.py` run locally | Missing/malformed changelog-entry report | Runs against the actual committed PR/commit history, not a developer's hand-written draft |
 | **Release-lifecycle-stage lint (GOV-01-R08)** | Every release | Release-evidence record | Pass/fail + named-defect report | Yes | Same lint run locally against a synthetic record | Named missing-field or out-of-order-transition report | Runs against the actual committed release-evidence record, not a developer's local draft |

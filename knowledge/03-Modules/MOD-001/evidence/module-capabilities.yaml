@@ -52,6 +52,11 @@ repository_paths_surfaces:
     profile: KMP Mobile
     state: DEFERRED
     marker: mobile/shared/.profile-pending
+    # Added Scenario Review round 11, P2-1: build.gradle.kts under this
+    # path is Infra/SRE/CI-profile work (ADR-005's build/toolchain
+    # dividing line), not KMP Mobile application source — it does not
+    # itself trigger this profile's activation. See IMPLEMENTATION.md
+    # §4 gate 7's own carve-out.
   - path: mobile/iosApp/**
     profile: iOS Host
     state: DEFERRED
@@ -60,6 +65,9 @@ repository_paths_surfaces:
     profile: Android Host
     state: DEFERRED
     marker: mobile/androidApp/.profile-pending
+    # Added Scenario Review round 11, P2-1: same carve-out as
+    # mobile/shared/** above — build.gradle.kts here is Infra/SRE/CI
+    # work, not Android Host application source.
   - path: mobile/*.md
     profile: null  # cross-cutting mobile-wide policy docs (TOOLCHAIN_MATRIX.md, RELEASE_POLICY.md) — not owned by a single KMP/iOS/Android sub-profile; added Scenario Review round 10, P2-2, this direct-child-of-mobile/ path matched none of the three mobile/** sub-globs above
     state: n/a

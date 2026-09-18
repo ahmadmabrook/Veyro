@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 9 — SCN-127/128/129 mapping added)
+updated: 2026-09-18 (Scenario Review round 11 — SCN-130 through SCN-136 mapping added, closing a gap round 10's own new scenarios left)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -130,3 +130,17 @@ round and had no manual-surface mapping — fixed:**
 | SCN-127 (toolchain-matrix real-config validation, white-label/KMP fields) | 8. Mobile build/toolchain bootstrap | same surface as SCN-051's own toolchain-matrix check |
 | SCN-128 (isolated-PR toolchain-upgrade qualification gate) | 2. CI workflow behavior | a CI gate check, same class as the other gate checks in surface 2 |
 | SCN-129 (real-device smoke test, capability-adapter half) | 8. Mobile build/toolchain bootstrap | same surface as SCN-050's own offline-flow smoke-test half |
+
+**Added (Scenario Review round 11, P1-1): SCN-130 through SCN-136 were
+new in round 10 and had no manual-surface mapping at all — fixed:**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-130 (gate 3, event-contract owner-approval sub-clause) | 2. CI workflow behavior | an architecture-gates CI step, same class as SCN-008/019, already mapped there |
+| SCN-131 (gate 6, domain-uniqueness shared-contract-exception sub-clause) | 2. CI workflow behavior | an architecture-gates CI step, same class as SCN-014/015, already mapped there |
+| SCN-132 (six named domain suite scaffolds wired) | 2. CI workflow behavior | a CI-run pytest scaffold check, same class as the other CI-gate/harness checks in surface 2 |
+| SCN-133 (financial-invariant test harness) | 2. CI workflow behavior | a CI-run pytest fixture check, same class as SCN-132 above |
+| SCN-134 (SAST scanning) | 2. CI workflow behavior | a CI scanning-stage check, same class as SCN-094's dependency scanning, already mapped there |
+| SCN-135 (container-image scanning) | 2. CI workflow behavior | same scanning-stage class as SCN-134 |
+| SCN-136 (IaC scanning) | 2. CI workflow behavior | same scanning-stage class as SCN-134 |
+| SCN-137 (GOV-01-R01 per-layer harness positive execution) | 2. CI workflow behavior | same class as SCN-106/116, already mapped there |

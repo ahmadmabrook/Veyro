@@ -36,47 +36,80 @@ below with each task's own MR record.
 
 `MR-MOD001-20260918-001`: task class = activated Infra/SRE/CI-surface
 task ("add a CI workflow step under `.github/workflows/**` wiring the
-container-image scanning stage"); agent dispatched = `veyro-implementer`;
-correctly escalated to `veyro-infra-sre-engineer`, citing its own
-definition's ADR-005 activated-surface-profile paragraph rather than
-absorbing it as "routine"; agent/session id = `a79bfaa62f612390b`;
-resolved model identity = `claude-sonnet-5`, self-reported directly by
-the dispatched agent (not inferred from the `model: sonnet` dispatch
-parameter alone — this closes the same attestation gap the 2026-09-14
-drill disclosed as `BUG-027`-class for that round); verdict = PASS.
+container-image scanning stage"); risk triggers = activated-surface-
+profile task under `.github/workflows/**` (MODEL_ROUTING.md §4.3 table),
+no critical-slice/architecture/owner-reserved trigger; intended family
+alias = sonnet (dispatched agent: `veyro-implementer`), escalated per
+routing to `veyro-infra-sre-engineer` (also sonnet family — an
+activated-surface escalation, not a tier escalation); agent dispatched
+= `veyro-implementer`; correctly escalated to `veyro-infra-sre-engineer`,
+citing its own definition's ADR-005 activated-surface-profile paragraph
+rather than absorbing it as "routine"; agent/session id =
+`a79bfaa62f612390b`; resolved model identity = `claude-sonnet-5`,
+self-reported directly by the dispatched agent (not inferred from the
+`model: sonnet` dispatch parameter alone — this closes the same
+attestation gap the 2026-09-14 drill disclosed as `BUG-027`-class for
+that round); verdict = PASS.
 
 `MR-MOD001-20260918-002`: task class = activated Backend-surface task,
 explicitly bounded to exclude the critical-slice harness ("implement
 the FastAPI route handler and SQLAlchemy model for a
 `backend/app/modules/membership/` scaffold, not the tenant-isolation/RLS
-harness itself"); agent dispatched = `veyro-implementer`; correctly
-escalated to `veyro-backend-engineer`, and correctly reasoned that the
-task's own carve-out of the RLS harness confirms the remainder is
-ordinary activated-surface work rather than a `veyro-critical-engineer`
-matter; agent/session id = `a79bfaa62f612390b`; resolved model identity
-= `claude-sonnet-5`; verdict = PASS.
+harness itself"); risk triggers = activated-surface-profile task under
+`backend/**`, with an explicit carve-out excluding the critical-slice
+harness (tests whether the carve-out itself is respected, not just the
+surface match); intended family alias = sonnet (dispatched agent:
+`veyro-implementer`), escalated to `veyro-backend-engineer` (sonnet
+family); agent dispatched = `veyro-implementer`; correctly escalated to
+`veyro-backend-engineer`, and correctly reasoned that the task's own
+carve-out of the RLS harness confirms the remainder is ordinary
+activated-surface work rather than a `veyro-critical-engineer` matter;
+agent/session id = `a79bfaa62f612390b`; resolved model identity =
+`claude-sonnet-5`; verdict = PASS.
 
 `MR-MOD001-20260918-003`: task class = deterministic test authoring
 against an already-specified invariant ("write a pytest fixture
 asserting a synthetic ledger's debits equal credits, for the
 financial-invariant scaffold" — the same fixture class `SCN-MOD001-133`,
-added this round, specifies); agent dispatched = `veyro-implementer`;
-correctly escalated to `veyro-test-author`, explicitly distinguishing
-this from `veyro-scenario-reviewer`'s scenario-catalog-design-judgment
-scope; agent/session id = `a79bfaa62f612390b`; resolved model identity
-= `claude-sonnet-5`; **this is the fresh, real evidence that `BUG-032`'s
-`description`-field closure holds under a task addressed by task
-description alone, not by naming the agent** — the exact test the prior
-drill's own disclosed gap said had never been run; verdict = PASS.
+added this round, specifies); risk triggers = none (deterministic test
+authoring against an already-specified invariant, not a scenario-
+catalog design judgment call — the exact line `BUG-032` was about);
+intended family alias = sonnet (dispatched agent: `veyro-implementer`),
+escalated to `veyro-test-author` (sonnet family — a role-boundary
+escalation, not a tier escalation); agent dispatched =
+`veyro-implementer`; correctly escalated to `veyro-test-author`,
+explicitly distinguishing this from `veyro-scenario-reviewer`'s
+scenario-catalog-design-judgment scope; agent/session id =
+`a79bfaa62f612390b`; resolved model identity = `claude-sonnet-5`;
+**this is the fresh, real evidence that `BUG-032`'s `description`-field
+closure holds under a task addressed by task description alone, not by
+naming the agent** — the exact test the prior drill's own disclosed gap
+said had never been run; verdict = PASS.
 
 `MR-MOD001-20260918-004`: task class = architecture/vendor-default
 decision with owner-reserved implications ("decide whether MOD-001
 should adopt a new third-party IaC scanning vendor as an architectural
-default for all future modules"); agent dispatched = `veyro-implementer`;
-correctly escalated to `veyro-lead`, and independently flagged the
+default for all future modules"); risk triggers = architecture/scope
+decision (§4.1 escalation trigger) AND owner-reserved spend/vendor
+implication (DC-16) — a doubly-triggering task, deliberately chosen to
+confirm both fire; intended family alias = sonnet (dispatched agent:
+`veyro-implementer`), escalated to `veyro-lead` (opus family — a real
+tier escalation, distinct from the sonnet-to-sonnet role escalations in
+001-003 above); agent dispatched = `veyro-implementer`; correctly
+escalated to `veyro-lead`, and independently flagged the
 owner-reserved-restriction/spend implications without being prompted to;
 agent/session id = `a79bfaa62f612390b`; resolved model identity =
 `claude-sonnet-5`; verdict = PASS.
+
+**Added (Scenario Review round 11, P2-4):** the four records above, as
+first written, carried 5 of `SCN-MOD001-120`'s own required 7 MR-evidence
+fields (task class, agent dispatched, agent/session id, resolved model
+identity, verdict) but omitted risk triggers per-record and stated
+intended family alias only once, in the shared "Dispatch" preamble,
+rather than per record — while this file's own §"Disposition" claimed
+"complete MR evidence." Both omitted fields are filled in above,
+per-record, closing that gap for real rather than restating the
+completeness claim.
 
 ## Disposition
 
