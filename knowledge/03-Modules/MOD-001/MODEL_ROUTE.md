@@ -2,7 +2,7 @@
 doc: MOD-001_MODEL_ROUTE
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-17 (BUG-031/BUG-032 CLOSED — owner-applied escalation patch independently verified byte-for-byte, 6-case routing drill PASS; all three agents now genuinely registered and routable)
+updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner-applied description-field patch, independently verified; BUG-031 remains CLOSED — all agents and routing layers now genuinely consistent)
 ---
 
 # MOD-001 — Model Route (per-module)
@@ -54,8 +54,16 @@ rejection of exactly that substitution. Closed 2026-09-17 — owner
 applied the drafted escalation patch (commit `0afa609`); this session
 independently verified it byte-for-byte and re-ran the routing drill,
 proving real escalation to both agents.** `veyro-test-author`'s
-identical unreachability gap (`BUG-032`) was closed by the same patch
-and the same drill. See
+identical unreachability gap (`BUG-032`) had a second, distinct
+half — the `veyro-implementer.md` `description` frontmatter field
+still claimed test authoring for itself even after the escalation-text
+patch, since Claude Code uses that field for automatic *selection*, a
+different layer than the body text's post-dispatch escalation rule.
+Round 8 (2026-09-17) caught this and re-opened `BUG-032` on that half;
+a second owner patch (commit `740ac75`, 2026-09-18) fixed the
+`description` field itself, independently verified byte-for-byte plus
+a fresh dispatch confirming the field and body now agree. **`BUG-032`
+CLOSED (2026-09-18), both halves.** See
 `knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-14.md`,
 `knowledge/03-Modules/MOD-001/evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`,
 `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-031-orphaned-agent-veyro-backend-infra-sre.md`,

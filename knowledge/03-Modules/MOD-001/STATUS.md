@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-17 (Scenario Review round 8 ran, BLOCKED, remediated same session; BUG-031 CLOSED, BUG-032 re-opened on its description-field half, second owner patch drafted — see `SCENARIOS.md` §5)
+updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner patch, independently verified; BUG-031 remains CLOSED; Scenario Review round 9 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -122,8 +122,13 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       (Scenario Review round 8, P1-1): `BUG-032`'s closure claim held
       only for its escalation-text half — the `description`-field
       contradiction its own finding named was never actually fixed.
-      RE-OPENED on that half; a second, small owner-gated patch is
-      drafted and provided this turn.** See
+      RE-OPENED on that half.** **Closed for real (2026-09-18): owner
+      applied a second, small patch to `veyro-implementer.md`'s
+      `description` field (commit `740ac75`); independently verified
+      byte-for-byte, plus a fresh dispatch confirming the field and
+      body now agree with no remaining contradiction and that
+      deterministic test authoring correctly escalates. `BUG-032`
+      CLOSED.** See
       `evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md`
       and `evidence/bugs/BUG-032-orphaned-agent-veyro-test-author.md`.
 - [x] Independent fresh-context `veyro-scenario-reviewer` pass —
@@ -134,16 +139,15 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       §5 for the current round's exact P0/P1/P2/Editorial counts and
       findings — not restated here, per the lesson every round of this
       remediation has now taught about facts restated in more than one
-      place going stale). All eight rounds' findings remediated in the
-      same session they were found, except one owner-gated half of a
-      P1 (`BUG-032`'s description-field fix, drafted this turn).
+      place going stale). All eight rounds' findings remediated,
+      including the owner-gated half of round 8's P1-1 (`BUG-032`'s
+      `description`-field fix, applied and verified 2026-09-18).
       **Round 8's own remediation has not yet been independently
       confirmed — that confirmation is round 9's own subject.**
-- [ ] Definition of Ready — **not yet reached.** `BUG-031` is CLOSED
-      (satisfied, independently verified — see the bug-review checklist
-      item above). `BUG-032` remains RE-OPENED on its description-field
-      half pending a second owner patch. Still gated on an independent
-      round returning `MOD-001 SCENARIO REVIEW
+- [ ] Definition of Ready — **not yet reached.** `BUG-031` and
+      `BUG-032` are both CLOSED (satisfied, independently verified —
+      see the bug-review checklist item above). Still gated on an
+      independent round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
       for what remains; that confirmation is round 9's own subject.
 

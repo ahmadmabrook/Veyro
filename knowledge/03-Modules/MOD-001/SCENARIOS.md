@@ -2,7 +2,7 @@
 doc: MOD-001_SCENARIOS
 status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
 module: MOD-001
-updated: 2026-09-17 (Scenario Review round 8 ran, BLOCKED, P0/P1 remediated; BUG-032 re-opened on its description-field half, second owner patch drafted — see §5)
+updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner patch, independently verified; Scenario Review round 9 pending — see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -2445,7 +2445,16 @@ owner-gated half.** Per the owner's explicit review-budget rule,
 Definition of Ready was again NOT evaluated — round 8 itself returned
 P0s.
 
-**MOD-001 Definition of Ready: not yet reached.** Gated on an
-independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
-P0=0/P1=0 AND `BUG-032`'s full closure (the description-field patch) —
-neither obtained as of round 8's close.
+**`BUG-032` full closure (2026-09-18):** the owner applied a second,
+small patch to `veyro-implementer.md`'s `description` field (commit
+`740ac75`). Independently verified byte-for-byte, plus a fresh
+`veyro-implementer` dispatch that quoted its own `description` field
+verbatim, correctly escalated a deterministic test-authoring task to
+`veyro-test-author`, and explicitly confirmed no remaining
+contradiction between the field and the body text. `git status`
+re-confirmed clean afterward. **`BUG-032` CLOSED, both halves.**
+
+**MOD-001 Definition of Ready: not yet reached.** `BUG-032`'s own
+blocking condition is now satisfied. Still gated on an independent
+round returning `MOD-001 SCENARIO REVIEW APPROVED` with P0=0/P1=0 —
+not yet obtained; round 9 is next.

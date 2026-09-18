@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-17 (BUG-031 CLOSED, BUG-032 partially closed — owner-applied routing patch independently verified byte-for-byte and by a 6-case drill; Scenario Review round 8 ran, BLOCKED, remediated this session — see `SCENARIOS.md` §5 and `knowledge/05-QA/BUG_REGISTRY.md` for detail, not restated here. MOD-001 planning in progress across multiple sessions — MOD-000 remains APPROVED; MOD-001 ACTIVATED for planning/specification, implementation NOT started, WIP=1 on MOD-001, MOD-002+ locked. Three capability gaps found and closed via owner action (`BUG-028` docx read path, `BUG-029`/`BUG-030` `.claude/agents/**` write-protection for new/existing files respectively) — see the MOD-001 section below and `knowledge/03-Modules/MOD-001/STATUS.md` for current, non-duplicated detail. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-18 (BUG-031 and BUG-032 both CLOSED — owner-applied routing patches (two, for BUG-032) independently verified byte-for-byte and by routing drills; Scenario Review round 9 pending — see `SCENARIOS.md` §5 and `knowledge/05-QA/BUG_REGISTRY.md` for detail, not restated here. MOD-001 planning in progress across multiple sessions — MOD-000 remains APPROVED; MOD-001 ACTIVATED for planning/specification, implementation NOT started, WIP=1 on MOD-001, MOD-002+ locked. Three capability gaps found and closed via owner action (`BUG-028` docx read path, `BUG-029`/`BUG-030` `.claude/agents/**` write-protection for new/existing files respectively) — see the MOD-001 section below and `knowledge/03-Modules/MOD-001/STATUS.md` for current, non-duplicated detail. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
@@ -187,11 +187,15 @@ independently after):**
   architecture routing to `veyro-lead`.
 - `BUG-031` (activated Infra/SRE/CI and Backend surface-profile agents
   unreachable from any escalation path; escalated P1→P0, BLOCKING for
-  Definition of Ready) and `BUG-032` (`veyro-test-author` unreachable) —
-  BUG-031 CLOSED, BUG-032 partially closed (its escalation-text half
-  CLOSED; a description-field root-cause half was RE-OPENED by
-  Scenario Review round 8, P1-1 — see `BUG_REGISTRY.md`). Owner patched
-  `veyro-implementer.md` (commit `0afa609`); a 6-case routing drill
+  Definition of Ready) and `BUG-032` (`veyro-test-author` unreachable,
+  in two distinct halves — escalation text, then a `description`-field
+  selection-layer contradiction Scenario Review round 8 caught after
+  the first patch) — **both CLOSED (2026-09-18)**, `BUG-032` via a
+  second small owner patch (commit `740ac75`) to the `description`
+  field, independently verified byte-for-byte plus a fresh dispatch
+  confirming no remaining contradiction. Owner patched
+  `veyro-implementer.md` (commits `0afa609` and `740ac75`); a 6-case
+  routing drill
   proved real escalation to both surface agents, the critical slice,
   and `veyro-test-author`.
 

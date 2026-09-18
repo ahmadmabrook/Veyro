@@ -2,10 +2,11 @@
 doc: BUG-032
 module: MOD-001
 severity: P1
-status: RE-OPENED (2026-09-17, Scenario Review round 8, P1-1) — the escalation-text half is closed; the root-cause half is not
+status: CLOSED (2026-09-18) — both halves independently verified
 filed: 2026-09-16 (Scenario Review round 7, P1-4)
 partially-closed: 2026-09-17 — see "Closure" section below
 reopened: 2026-09-17 — see "Round 8 re-opening" section below
+closed: 2026-09-18 — see "Full closure" section below
 ---
 
 # BUG-032 — `veyro-test-author` unreachable from any `.claude/agents/*.md` escalation path
@@ -124,6 +125,35 @@ test authoring to its explicit "Do NOT use for" list (naming
 architecture/security/code-review/certification in the same field. The
 drafted patch is provided to the owner in this turn's own reply, per
 the `BUG-030`/`BUG-031` precedent.
+
+## Full closure (2026-09-18)
+
+The owner applied a second, small patch to `.claude/agents/veyro-implementer.md`'s
+`description` frontmatter field (commit `740ac75`, "fix: align
+implementer description with test-author routing"). This session
+independently verified:
+
+1. **Byte-for-byte match** — direct `Read` of the file confirms the
+   `description` field now reads exactly as drafted: "Routine
+   implementation for Veyro modules... Do NOT use for... deterministic
+   test authoring (route to veyro-test-author)..." — no other line in
+   the file changed. `git show --stat 740ac75` confirms exactly 1 file
+   changed, 2 insertions/2 deletions, consistent with a single-field
+   replacement.
+2. **A fresh re-verification dispatch** (full record:
+   `evidence/model-routing/ROUTING_DRILL_2026-09-18-bug032-description-field-closure.md`)
+   — a new `veyro-implementer` dispatch, instructed to quote its own
+   `description` field verbatim and then determine routing for a
+   deterministic test-authoring task, confirmed: the quoted field
+   matches exactly, the agent correctly escalates to
+   `veyro-test-author`, and the agent explicitly confirmed no
+   remaining contradiction between the `description` field and the
+   body text — both now agree. `git status` re-confirmed clean
+   afterward.
+
+**Both halves of `BUG-032` are now independently verified closed**: the
+escalation-text half (round 7's patch, re-confirmed) and the
+description-field/selection half (this patch). `BUG-032` CLOSED.
 
 ## Cross-references
 
