@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner patch, independently verified; BUG-031 remains CLOSED; Scenario Review round 9 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-18 (Scenario Review round 9 ran, BLOCKED, remediated same session — round 8's own disclosed P0-2 residual actually closed this time; Scenario Review round 10 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status
@@ -135,21 +135,28 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       **round 1: BLOCKED (P0=4, P1=9). Round 2: BLOCKED (P0=3, P1=10).
       Round 3: BLOCKED. Round 4: BLOCKED (P0=2, P1=8). Round 5: BLOCKED
       (P0=2, P1=4). Round 6: BLOCKED (P0=1, P1=4). Round 7: BLOCKED
-      (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3)** (see `SCENARIOS.md`
-      §5 for the current round's exact P0/P1/P2/Editorial counts and
-      findings — not restated here, per the lesson every round of this
-      remediation has now taught about facts restated in more than one
-      place going stale). All eight rounds' findings remediated,
-      including the owner-gated half of round 8's P1-1 (`BUG-032`'s
-      `description`-field fix, applied and verified 2026-09-18).
-      **Round 8's own remediation has not yet been independently
-      confirmed — that confirmation is round 9's own subject.**
+      (P0=2, P1=5). Round 8: BLOCKED (P0=3, P1=3). Round 9: BLOCKED
+      (P0=1, P1=2)** (see `SCENARIOS.md` §5 for the current round's
+      exact P0/P1/P2/Editorial counts and findings — not restated here,
+      per the lesson every round of this remediation has now taught
+      about facts restated in more than one place going stale).
+      **Corrected (round 9, P1-1): this checklist item previously
+      claimed "all eight rounds' findings remediated," which round 9
+      itself found false — round 8's own P0-2 disposition (two Blocking
+      CI gates disclosed as untested residuals, three further
+      obligations claimed "covered" on a basis `IMPLEMENTATION.md`'s
+      own text contradicts) was not actually remediated. Fixed for
+      real this round: `SCN-MOD001-127`/`128`/`129` added, closing all
+      five items.** All nine rounds' findings are now genuinely
+      remediated. **Round 9's own remediation has not yet been
+      independently confirmed — that confirmation is round 10's own
+      subject.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
       see the bug-review checklist item above). Still gated on an
       independent round returning `MOD-001 SCENARIO REVIEW
       APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 9's own subject.
+      for what remains; that confirmation is round 10's own subject.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning

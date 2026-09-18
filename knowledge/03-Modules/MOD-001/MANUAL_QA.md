@@ -2,7 +2,7 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-17 (Scenario Review round 8 — SCN-126 mapping added)
+updated: 2026-09-18 (Scenario Review round 9 — SCN-127/128/129 mapping added)
 ---
 
 # MOD-001 — Manual QA Plan
@@ -121,3 +121,12 @@ had no manual-surface mapping — fixed:**
 | Scenario | Manual-QA surface | Why |
 |---|---|---|
 | SCN-126 (input/output data-exposure lint) | 2. CI workflow behavior | a static CI lint against the committed OpenAPI contract, same class as the other gate/lint checks in surface 2 |
+
+**Added (Scenario Review round 9, P0-1): SCN-127/128/129 were new this
+round and had no manual-surface mapping — fixed:**
+
+| Scenario | Manual-QA surface | Why |
+|---|---|---|
+| SCN-127 (toolchain-matrix real-config validation, white-label/KMP fields) | 8. Mobile build/toolchain bootstrap | same surface as SCN-051's own toolchain-matrix check |
+| SCN-128 (isolated-PR toolchain-upgrade qualification gate) | 2. CI workflow behavior | a CI gate check, same class as the other gate checks in surface 2 |
+| SCN-129 (real-device smoke test, capability-adapter half) | 8. Mobile build/toolchain bootstrap | same surface as SCN-050's own offline-flow smoke-test half |

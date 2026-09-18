@@ -1,8 +1,8 @@
 ---
 doc: MOD-001_REQUIREMENTS
-status: LIVE — DRAFT (planning stage, not yet independently reviewed)
+status: LIVE — DRAFT (planning stage; independently reviewed as part of MOD-001's Scenario Review rounds — see `SCENARIOS.md` §5 for the current round; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-17 (Scenario Review round 8 — the card's mandatory Security-baseline's third uncovered item, "input/output data exposure", finally traced to new SCN-126, closing round 5's own miscounted P0-2 finding)
+updated: 2026-09-18 (Scenario Review round 9 — GOV-01-R07's white-label/KMP-versioning/isolated-PR-gate/capability-adapter obligations finally brought into IN-scope/obligations/acceptance-criteria text, not just the Source quote; front-matter status line corrected to stop falsely claiming never independently reviewed)
 ---
 
 # MOD-001 — Requirements
@@ -421,30 +421,60 @@ suites.
 - **IN scope:** the version-support/kill-switch *policy document and
   its enforcement contract* (not the mobile app itself — MOD-006 owns
   KMP+Compose mobile implementation per Appendix B); the pinned
-  toolchain compatibility matrix; crash-monitoring integration point;
-  remote-config integration point; the cross-platform regression-trigger
-  rule for common-code changes.
+  toolchain compatibility matrix, **including its `whitelabel_release_metadata`
+  and `shared_module_version` fields** (added Scenario Review round 9,
+  P0-1 — these two TSD §24.3 rules were named only in this section's
+  Source quote, never actually brought IN scope until now); crash-
+  monitoring integration point; remote-config integration point; the
+  cross-platform regression-trigger rule for common-code changes;
+  **the isolated-PR toolchain-upgrade qualification gate itself, and
+  the real-device smoke-test CI stage's capability-adapter half**
+  (added round 9, P0-1 — both had a mechanism in `IMPLEMENTATION.md`
+  §3/§12 but were never brought IN scope here, and round 8's own
+  "covered by existing scenario families" disposition for the other
+  three items was independently found false by round 9: `SCN-051`/`099`
+  test only internal matrix consistency, `IMPLEMENTATION.md`'s own text
+  says so explicitly, and no obligation row existed for the other two).
 - **OUT of scope:** the actual mobile application code (MOD-006);
   Android/iOS store account provisioning (may be owner-reserved spend —
   DC-16).
 - **Implementation obligations:** a documented minimum-supported-version
   and forced-update policy; a pinned toolchain versions file (even
-  before real mobile code exists, so MOD-006 inherits a fixed target);
-  CI runner assignment (Android→Linux, iOS→macOS/Xcode) as a pipeline
-  convention; the common-code-change→both-platform-regression trigger
-  rule encoded as a CI path-filter rule. **Concrete plan: `IMPLEMENTATION.md`
-  §12 (added Scenario Review round 6, P1-2 — this text had never been
-  turned into a named file/CI-stage plan until then).**
-- **Evidence obligations:** the toolchain matrix file exists and is
-  referenced from CI config; the path-filter rule is testable with a
+  before real mobile code exists, so MOD-006 inherits a fixed target)
+  carrying real `whitelabel_release_metadata`/`shared_module_version`
+  content, not just a placeholder; a real toolchain-consistency checker
+  (`tools/validate_toolchain_matrix.py`) proving the matrix against
+  actual committed config, distinct from internal-consistency-only
+  checks; a real isolated-PR qualification CI gate (Android+iOS build,
+  UI, accessibility, performance — all 4 dimensions) triggered on any
+  change to the toolchain matrix file; a real capability-adapter
+  smoke-test CI stage; CI runner assignment (Android→Linux,
+  iOS→macOS/Xcode) as a pipeline convention; the common-code-change→
+  both-platform-regression trigger rule encoded as a CI path-filter
+  rule. **Concrete plan: `IMPLEMENTATION.md` §12 (added Scenario Review
+  round 6, P1-2; extended round 7; mechanisms added round 8; this
+  section's own IN-scope/obligations text corrected round 9, P0-1, to
+  actually name what §12 already built).**
+- **Evidence obligations:** the toolchain matrix file exists, is
+  referenced from CI config, and its white-label/KMP-versioning fields
+  validate against real config; the path-filter rule is testable with a
   synthetic "common-code" file change proving both platform regression
-  jobs get triggered.
+  jobs get triggered; the isolated-PR gate and capability-adapter
+  smoke-test stage each have a real positive and negative fixture.
 - **Scenario coverage:** MIG, INT, PERF (build/toolchain qualification),
-  OBS (crash monitoring).
+  OBS (crash monitoring). **`SCN-MOD001-127` (toolchain-matrix real-
+  config validation, white-label metadata, KMP shared-module
+  versioning), `SCN-MOD001-128` (isolated-PR qualification gate), and
+  `SCN-MOD001-129` (capability-adapter smoke-test half) — all added
+  round 9, P0-1, closing the exact gap round 8 disclosed as a residual
+  in violation of §9.1's own "Required is rule-derived, never a
+  discretionary reduction" rule.**
 - **Dependencies:** GOV-01-R01 (test pyramid's "mobile UI" layer).
-- **Acceptance criteria:** toolchain matrix file exists; policy document
-  exists; synthetic common-code-change test proves the dual-platform
-  regression trigger fires.
+- **Acceptance criteria:** toolchain matrix file exists with valid
+  white-label/KMP-versioning content; policy document exists; synthetic
+  common-code-change test proves the dual-platform regression trigger
+  fires; the isolated-PR qualification gate and capability-adapter
+  smoke-test stage both have proven positive and negative fixtures.
 - **Security implications:** forced-update/kill-switch is itself a
   security control (reserved for security/critical incompatibility per
   §24.3) — must not be triggerable without the equivalent of an

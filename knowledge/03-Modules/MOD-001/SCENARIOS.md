@@ -1,8 +1,8 @@
 ---
 doc: MOD-001_SCENARIOS
-status: LIVE — DRAFT, AUTHORED, NOT YET INDEPENDENTLY REVIEWED
+status: LIVE — DRAFT, AUTHORED, INDEPENDENTLY REVIEWED (multiple rounds to date, each BLOCKED and remediated — current round count lives in §5 only, not restated here; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner patch, independently verified; Scenario Review round 9 pending — see §5)
+updated: 2026-09-18 (Scenario Review round 9 ran, BLOCKED, P0/P1 remediated — round 8's own disclosed P0-2 residual actually closed this time; see §5)
 ---
 
 # MOD-001 — Scenario Catalog
@@ -71,9 +71,10 @@ once, here, and deliberately not restated in `STATUS.md` or elsewhere —
 every prior round that duplicated this number in a second file found
 that copy going stale within the same round (round 4 found exactly this
 had happened to `CURRENT_STATE.md`, which is now corrected to point
-here rather than restate a number).** Current total: **127 detail
-blocks** (001-121 plus 021b, 122, 123, 124, 125, 126) — **127 Required
-+ 0 Optional** — comfortably above every applicable floor. **Round 5
+here rather than restate a number).** Current total: **130 detail
+blocks** (001-121 plus 021b, 122, 123, 124, 125, 126, 127, 128, 129) —
+**130 Required + 0 Optional** — comfortably above every applicable
+floor. **Round 5
 (P0-2) added 122/123** to close a genuine coverage gap on the card's
 mandatory security baseline (sensitive logging, abuse-negative
 scenarios) that this section's own "every requirement... needs its own
@@ -84,7 +85,17 @@ maintenance/customer-communication gap, the same species of coverage
 gap. **Round 8 (P0-1) added 126** to close the same mandatory Security
 baseline's third, previously-miscounted item ("input/output data
 exposure") — round 5 itself said "three controls" were uncovered but
-named only two; the third survived rounds 6 and 7 undetected. **Round 6
+named only two; the third survived rounds 6 and 7 undetected. **Round 9
+(P0-1) added 127/128/129** to close a genuine gap round 8 itself
+disclosed but did not close: three TSD §24.3 rules (white-label
+metadata, KMP shared-module versioning, toolchain-consistency-against-
+real-config) that round 8's own "covered by existing scenario
+families" disposition was independently found false against
+(`IMPLEMENTATION.md`'s own text says the opposite), plus two Blocking
+CI gates (the isolated-PR toolchain-qualification gate, the
+capability-adapter smoke-test half) that round 8 disclosed as a
+residual in violation of §9.1's own "Required is rule-derived, never a
+discretionary reduction" rule. **Round 6
 (P1-3) reclassified 071/072 from Optional/ALT to Required** (HP and REC
 respectively) — both trace to a Critical GOV-01 requirement, which
 §9.1 makes Required regardless of ALT's category-level Optional
@@ -137,11 +148,11 @@ round 2's remediation, not merely re-asserted:
 | OFF | R | 032, 050 |
 | REC | R | 058, 066, 072 |
 | LIFE | R | 060, 067 |
-| DATA | R | 017, 033, 051, 099, 114 |
+| DATA | R | 017, 033, 051, 099, 114, 127 |
 | INT | R | 018, 034, 052, 073, 100, 115 |
 | LOC | R | 039, 053 |
 | A11Y | R | 040, 054 |
-| PERF | R | 068, 069, 074, 101, 111 |
+| PERF | R | 068, 069, 074, 101, 111, 128, 129 |
 | OBS | R | 021, 021b, 035, 061, 091, 093, 107, 117, 119, 121, 125 |
 | MIG | R | 022, 070, 113 |
 | DR | R | 059, 066, 108 |
@@ -609,6 +620,70 @@ positive: a response schema where every serialized field is explicitly
 declared, and a request schema that rejects any field not in its own
 declared set, both pass. Evidence: two denial reports plus the
 positive-pass report.
+
+**SCN-MOD001-127 · DATA · Major · GOV-01-R07, toolchain-matrix real-config validation, white-label metadata, KMP shared-module versioning (P0-1) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**Added (Scenario Review round 9, P0-1): round 8 disposed of these
+three TSD §24.3 rules as "covered by existing scenario families' own
+intent (SCN-051/099's matrix-integrity checks extend naturally once
+the checker exists)" — independently found false: `IMPLEMENTATION.md`'s
+own text says `SCN-051`/`099` test only *internal* consistency,
+explicitly distinct from `tools/validate_toolchain_matrix.py`'s real
+job (matrix vs. actual committed config), and no scenario tested the
+matrix's own `whitelabel_release_metadata`/`shared_module_version`
+fields at all.**
+Source: `TSD_MIRROR.md` lines 11682-11691 ("White-label fleet release
+metadata is tracked per branded app and store"; "shared KMP modules are
+versioned in source/build provenance"). Steps: (a) run
+`tools/validate_toolchain_matrix.py` against a synthetic
+`mobile/TOOLCHAIN_MATRIX.md` whose pinned Gradle version deliberately
+diverges from the real committed Gradle config — expected: denied,
+citing the drift (distinct from `SCN-051`'s internal-only check, which
+this fixture would still pass); (b) the same matrix missing its
+`whitelabel_release_metadata` section for one of several declared
+branded apps — expected: denied, citing the missing brand entry; (c)
+the same matrix missing a `shared_module_version` field for one KMP
+module — expected: denied, citing the missing module. Companion
+positive: a matrix with all pinned versions matching real config, a
+complete `whitelabel_release_metadata` section, and every KMP module
+versioned, passes all three checks. Evidence: three denial reports plus
+the positive-pass report.
+
+**SCN-MOD001-128 · PERF · Blocker · GOV-01-R07, isolated-PR toolchain-upgrade qualification gate (P0-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 9, P0-1): this CI gate
+(`IMPLEMENTATION.md` §3, `Blocking? Yes`) had a real mechanism and no
+scenario at all — round 8 disclosed it as a residual, which §9.1
+(`EIP_MIRROR.md` lines 1861-1867: "Required is rule-derived, never a
+discretionary reduction by Claude"; "no scenario may remain untested or
+silently ignored") does not permit for a Blocking gate tracing to a
+Critical requirement.**
+Source: `TSD_MIRROR.md` lines 11684-11687 ("Toolchain upgrades are
+isolated pull requests with Android+iOS build, UI, accessibility and
+performance qualification before merge"). Steps: a synthetic PR touches
+only `mobile/TOOLCHAIN_MATRIX.md` (an isolated toolchain-upgrade PR).
+Expected: all 4 qualification dimensions run and must pass before merge
+— Android build, iOS build, UI, accessibility, and performance
+(TSD names 4 dimensions; Android+iOS build counted as the one
+"build" dimension across both platforms). Negative case: the same PR
+with one dimension (e.g. accessibility) deliberately failing is denied
+merge, citing the specific failed dimension — a real, executable check,
+not a rubber-stamp gate. Evidence: the 4-dimension pass/fail report.
+
+**SCN-MOD001-129 · PERF · Major · GOV-01-R07, real-device smoke test, capability-adapter half (P0-1) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
+**Added (Scenario Review round 9, P0-1): `IMPLEMENTATION.md` §12 itself
+states TSD §24.3 names two smoke-test subjects (capability adapters and
+critical offline flows); `SCN-050` covers only the offline-flow half.
+This scenario closes the other half, which round 8 disclosed as a
+residual rather than closing.**
+Source: `TSD_MIRROR.md` lines 11694-11695 ("Release candidates require
+real-device smoke tests for platform capability adapters and the
+critical offline flows"). Steps: a synthetic native-adapter-boundary
+fixture (e.g. a camera/biometric/push-token stub) is smoke-tested on
+real-device-equivalent CI runners for both Android and iOS. Expected:
+the fixture's adapter boundary responds correctly on both platforms'
+runners. Negative case: a deliberately broken adapter stub (e.g. a
+push-token stub returning a malformed token) is flagged by the smoke
+test, not silently passed. Evidence: the smoke-test report for both
+platforms.
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
@@ -2458,3 +2533,64 @@ re-confirmed clean afterward. **`BUG-032` CLOSED, both halves.**
 blocking condition is now satisfied. Still gated on an independent
 round returning `MOD-001 SCENARIO REVIEW APPROVED` with P0=0/P1=0 —
 not yet obtained; round 9 is next.
+
+**Round 9 (2026-09-18):** fresh-context `veyro-scenario-reviewer`
+(Opus), dispatched against the catalog as it stood at 127 scenarios
+plus round 8's remediation and the `BUG-032` full closure, explicitly
+instructed not to inherit round 8's conclusions and specifically
+tasked with (a) independently verifying `BUG-032`'s full-closure claim
+rather than trusting it, and (b) checking whether round 8's own P0-3
+propagation-gap finding had recurred for this newest closure. Both
+checked out clean: `veyro-implementer.md`'s `description` field and
+body text were independently confirmed to agree, and `CURRENT_STATE.md`/
+`CURRENT_HANDOFF.md` were independently confirmed to correctly state
+both bugs CLOSED. **Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=1,
+P1=2, P2=3, Editorial=3. Findings and disposition:
+
+- P0-1: round 8's own P0-2 disposition for five obligations (white-
+  label metadata, KMP shared-module versioning, the isolated-PR
+  toolchain-qualification gate, the capability-adapter smoke-test half,
+  the toolchain-consistency checker) was independently found false or
+  non-compliant. Two — the isolated-PR gate and the capability-adapter
+  smoke-test half — are Blocking CI gates tracing to Critical
+  GOV-01-R07; round 8 disclosed them as untested residuals, which §9.1's
+  own "Required is rule-derived, never a discretionary reduction"
+  rule does not permit for a Blocking gate on a Critical requirement.
+  The other three were marked "covered by existing scenario families'
+  own intent" — independently found false: `IMPLEMENTATION.md`'s own
+  text says `SCN-051`/`099` test only *internal* matrix consistency,
+  explicitly distinct from what these three items need, and no
+  `REQUIREMENTS.md` obligation row existed for any of them. **Fixed:**
+  `SCN-MOD001-127` (toolchain-matrix real-config validation plus
+  white-label/KMP-versioning field checks), `SCN-MOD001-128` (isolated-
+  PR qualification gate), and `SCN-MOD001-129` (capability-adapter
+  smoke-test half) all added; `REQUIREMENTS.md`'s GOV-01-R07 section
+  rewritten to actually bring these four items IN scope (previously
+  named only in the Source quote paragraph, never in IN-scope/
+  obligations/acceptance-criteria text).
+- P1-1: `STATUS.md`'s own Definition-of-Ready gate checklist asserted
+  "all eight rounds' findings remediated," which round 8's own text
+  in `SCENARIOS.md` directly contradicted (it named the P0-2 items as
+  disclosed residuals, not remediated) — the same species that drove
+  `BUG-031`'s P1→P0 escalation, here calling an unremediated P0
+  remediated. **Fixed:** corrected to reflect the real state, then
+  made genuinely true by P0-1's remediation above.
+- P1-2: `SCENARIOS.md` and `REQUIREMENTS.md`'s own front-matter
+  `status:` lines both asserted "NOT YET INDEPENDENTLY REVIEWED" /
+  "not yet independently reviewed," directly contradicted by their own
+  bodies recording nine review rounds. **Fixed:** both corrected to
+  state they have been independently reviewed (without hardcoding a
+  round count, to avoid recreating the exact restated-number staleness
+  vector this catalog has repeatedly been burned by).
+- P2 (3) / Editorial (3): not addressed this round, per the mission's
+  own rule that P2/Editorial handling is gated on P0=0/P1=0, which
+  round 9 did not return. Carried forward, not hidden or downgraded.
+
+**All P0/P1 findings from round 9 were remediated within the same
+session they were found.** Per the owner's explicit review-budget rule,
+Definition of Ready was again NOT evaluated — round 9 itself returned
+a P0.
+
+**MOD-001 Definition of Ready: not yet reached.** Gated on an
+independent round returning `MOD-001 SCENARIO REVIEW APPROVED` with
+P0=0/P1=0 — not yet obtained as of round 9's close.

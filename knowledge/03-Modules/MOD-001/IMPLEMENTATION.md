@@ -2,7 +2,7 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-17 (Scenario Review round 8 — added the input/output data-exposure lint to §6/§1/§3; fixed 5 false §12 assertions of edits never made to §1/RUNBOOK.md)
+updated: 2026-09-18 (Scenario Review round 9 — the two Blocking CI gates round 8 disclosed as untested residuals, plus three obligations round 8 falsely claimed were covered, all closed for real via new scenario references)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -525,20 +525,28 @@ Both fixed below.** Fixed:
   auth/routing/shared-Design-System paths — tested by SCN-100/101's
   synthetic common-code-change fixture.
 - **Real-device smoke-test CI convention, capability-adapter half
-  (new row, §3 pipeline table below — added round 7, P1-2)**: TSD
-  §24.3's real-device smoke-test requirement names two subjects —
-  "platform-capability adapters" and "critical offline flows." SCN-050
-  covers offline flows only; this row is the capability-adapter half
-  (a synthetic native-adapter-boundary fixture, e.g. camera/biometric/
-  push-token stub, smoke-tested on both real-device-equivalent CI
-  runners).
+  (new row, §3 pipeline table below — added round 7, P1-2; proven
+  round 9, P0-1)**: TSD §24.3's real-device smoke-test requirement
+  names two subjects — "platform-capability adapters" and "critical
+  offline flows." SCN-050 covers offline flows only; this row is the
+  capability-adapter half (a synthetic native-adapter-boundary fixture,
+  e.g. camera/biometric/push-token stub, smoke-tested on both
+  real-device-equivalent CI runners), proven by `SCN-MOD001-129`
+  (added round 9 — round 8 had disclosed this half as an untested
+  residual rather than closing it, which §9.1's own rule-derived
+  Required standard does not permit).
 - **Toolchain-matrix consistency checker (new tool, §1 tools inventory
-  — added round 7, P1-2)**: `tools/validate_toolchain_matrix.py` checks
-  `mobile/TOOLCHAIN_MATRIX.md`'s pinned versions against the actual
-  committed Gradle/Xcode/CI-runner config, rejecting drift (SCN-051/099
-  test *internal* matrix consistency; this tool is the mechanism that
-  makes the matrix authoritative against real config, not just
-  internally self-consistent).
+  — added round 7, P1-2; proven round 9, P0-1)**: `tools/validate_toolchain_matrix.py`
+  checks `mobile/TOOLCHAIN_MATRIX.md`'s pinned versions against the
+  actual committed Gradle/Xcode/CI-runner config, rejecting drift
+  (SCN-051/099 test *internal* matrix consistency; this tool is the
+  mechanism that makes the matrix authoritative against real config,
+  not just internally self-consistent) — proven, along with the
+  matrix's `whitelabel_release_metadata`/`shared_module_version`
+  fields, by `SCN-MOD001-127` (added round 9 — round 8's own
+  disposition that these were "covered by existing scenario families'
+  own intent" was independently found false, since this very paragraph
+  says the opposite).
 - **Isolated-PR toolchain-upgrade qualification gate (new row, §3
   pipeline table below — added round 7, P0-2)**: TSD §24.3's rule that
   "toolchain upgrades are isolated pull requests with Android+iOS
@@ -581,7 +589,7 @@ Both fixed below.** Fixed:
 | **Mobile CI runner assignment (GOV-01-R07)** | Every push/PR touching `mobile/**` | Workflow job definitions | Android jobs on Linux, iOS jobs on macOS/Xcode | Yes | Same convention checked locally against the workflow file | CI log naming the runner/job pair | Runner assignment pinned in the committed workflow file, not a developer's local runner choice |
 | **Common-code-change dual-platform regression trigger (GOV-01-R07)** | Every push/PR touching a common-code path (serialization/local-schema/sync/auth/routing/shared-Design-System) | Changed-file path list | Both platforms' regression suites triggered | Yes | Same path-filter rule run locally | CI log naming the triggering path and both triggered jobs | Path-filter rule reads the actual committed diff, not a developer's local claim about which paths changed |
 | **Real-device smoke test, offline-flow half (GOV-01-R07, added round 7 — SCN-050 tests this row)** | Every push/PR touching an offline-flow path | Changed-file path list | The fixture is flagged as requiring the offline-smoke-test job | Yes | Same path-filter/flagging rule run locally | CI log naming the triggering path and the flagged job | Flagging rule reads the actual committed diff, not a developer's local claim about which paths changed |
-| **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture | Pass/fail per adapter | Yes | Cannot fully replicate locally (needs real-device-equivalent CI runners) | Evidence bundle artifact | Runs only from CI's real-device-equivalent runners, never a developer's local simulator claim |
-| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android+iOS build/UI/a11y/perf qualification suites | Pass/fail, all 4 dimensions | Yes | Same suites run locally against the proposed toolchain bump | Named failing-dimension report | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated" |
+| **Real-device smoke test, capability-adapter half (GOV-01-R07, added round 7, proven round 9 — `SCN-MOD001-129`)** | On merge to main, alongside the offline-flow half above | Synthetic native-adapter-boundary fixture | Pass/fail per adapter | Yes | Cannot fully replicate locally (needs real-device-equivalent CI runners) | Evidence bundle artifact | Runs only from CI's real-device-equivalent runners, never a developer's local simulator claim |
+| **Isolated-PR toolchain-upgrade qualification gate (GOV-01-R07, added round 7, P0-2, proven round 9 — `SCN-MOD001-128`)** | Every PR touching `mobile/TOOLCHAIN_MATRIX.md` | Android+iOS build/UI/a11y/perf qualification suites | Pass/fail, all 4 dimensions | Yes | Same suites run locally against the proposed toolchain bump | Named failing-dimension report | Gate keys on the actual changed file path, not a developer's self-report that "this PR is isolated" |
 | **Changelog generation (GOV-01-R08, added round 7, P1-2)** | Every release | Merged PR list since last release | Changelog entry | Yes | `tools/generate_changelog.py` run locally | Missing/malformed changelog-entry report | Runs against the actual committed PR/commit history, not a developer's hand-written draft |
 | **Release-lifecycle-stage lint (GOV-01-R08)** | Every release | Release-evidence record | Pass/fail + named-defect report | Yes | Same lint run locally against a synthetic record | Named missing-field or out-of-order-transition report | Runs against the actual committed release-evidence record, not a developer's local draft |
