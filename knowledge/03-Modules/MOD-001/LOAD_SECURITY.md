@@ -2,7 +2,9 @@
 doc: MOD-001_LOAD_SECURITY
 status: LIVE — PLAN ONLY (no implementation exists to test yet)
 module: MOD-001
-updated: 2026-09-14
+updated: 2026-09-19 (Scenario Review round 14 — corrected, P2-5: this
+line had gone stale at round 13's own body edit to the paid-macOS-CI-
+runner owner-reserved line)
 ---
 
 # MOD-001 — Load, Performance, Security (module-card fields)

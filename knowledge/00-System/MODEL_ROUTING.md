@@ -1,7 +1,9 @@
 ---
 doc: MODEL_ROUTING
 status: LIVE
-updated: 2026-09-14 (ADR-005 — added the critical-slice row and the §4.3 surface-profile-agents table for MOD-001's veyro-critical-engineer/veyro-infra-sre-engineer/veyro-backend-engineer; this front-matter date had gone stale at 2026-09-06 despite that material change, caught by MOD-001 Scenario Review round 5's pre-review staleness check)
+updated: 2026-09-19 (Scenario Review round 14, P2-5 — corrected: this
+line had gone stale at round 13's own P2-5 fix to the Infra/SRE/CI
+row's path-scope glob)
 ---
 
 # Model Routing — Veyro

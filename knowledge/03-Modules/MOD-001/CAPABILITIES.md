@@ -23,8 +23,11 @@ real, ADR-005-decided position:
 - **Infra/SRE/CI — ACTIVATES. MOD-001 *is* this profile's module.**
   `infra/environments/{local,qa,staging}/`, `.github/workflows/`, the
   canary/rollback mechanism, and the release-evidence record are real
-  content at this profile's own path scope (`infra/**`, CI,
-  observability), matching its named behaviors (IaC review, least
+  content at this profile's own path scope (`infra/**`,
+  `.github/workflows/**` — **corrected, Scenario Review round 14, P2-4:
+  was the non-glob "CI, observability," stale since round 13's P2-5 fix
+  to `MODEL_ROUTING.md` corrected the same fact and this file was
+  missed**), matching its named behaviors (IaC review, least
   privilege, reproducible environments, rollback/canary, SLOs, DR) —
   GOV-01-R03/R04/R05 almost verbatim. Agent: `veyro-infra-sre-engineer`
   (Sonnet).

@@ -2,7 +2,12 @@
 doc: MOD-001_IMPLEMENTATION
 status: LIVE — PLAN ONLY, NOT YET IMPLEMENTED
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 12 — gate 7's carve-out enumerated (was open-ended "etc."); gate 1's elevated-role/nullable-tenant_id and gate 6's identical-command-inventory sub-clauses fixtured; the pipeline-table gate count fixed from "6" to "7" with gate 7's own missing row added; validate_toolchain_matrix.py given a CI-stage row; this line's own provenance corrected, having gone stale at "round 9" through rounds 10 and 11's real edits to this file)
+updated: 2026-09-19 (Scenario Review round 14 — corrected, P2-5: this
+line had gone stale at round 13's own gate-6/gate-7 fixes; round 14
+itself fixed SCN-020(g)'s bypass-protection cell, added the known-
+infrastructure-path correction and glob-count fix to gate 7, and
+corrected the gate-6 residual's own miscounted supporting sentence and
+the last mis-cited "§3" pipeline-table reference)
 ---
 
 # MOD-001 — Implementation Plan (repository, environments, CI/CD, architecture gates)
@@ -295,7 +300,7 @@ jobs (reusing the existing GitHub remote):
 | Stage (TSD §24.1 order) | Trigger | Input | Output | Blocking? | Local equivalent | Failure evidence | Bypass protection |
 |---|---|---|---|---|---|---|---|
 | Format/lint/type checks | Every push/PR | Source tree | Pass/fail + lint report | Yes | Same linter run locally | CI log + lint report artifact | Runs via the pinned CI workflow file only; no `--no-verify`-equivalent flag exposed |
-| **6 of the 7 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint — **corrected, Scenario Review round 12, P2-1: this row's title and enumeration still said "6," uncorrected since round 1 P1-9 added the 7th (surface-profile-activation) gate; §4, §5.3, `SCN-111`, and `TEST_PLAN.md` were all fixed to "7" starting round 2/3, this row alone was missed**) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. Bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content: a same-PR gate-step edit, `[skip ci]`, `workflow_dispatch`, and a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge. **Corrected (Scenario Review round 3, P1-4):** three further classes are resisted and must stay closed — required-check name drift, direct/force push, and `pull_request_target` running base-branch code with secrets; a fourth, branch-protection admin override, is a disclosed, deliberate GitHub-level escape hatch (owner-controlled via "include administrators"), not a gate defect — its existence and who holds it must be recorded, never silently assumed away |
+| **6 of the 7 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint — **corrected, Scenario Review round 12, P2-1: this row's title and enumeration still said "6," uncorrected since round 1 P1-9 added the 7th (surface-profile-activation) gate; §4, §5.3, `SCN-111`, and `TEST_PLAN.md` were all fixed to "7" starting round 2/3, this row alone was missed**) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. Bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content: a same-PR gate-step edit, `[skip ci]`, `workflow_dispatch`, and a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge. **Corrected (Scenario Review round 3, P1-4):** three further classes are resisted and must stay closed — required-check name drift, direct/force push, and `pull_request_target` running base-branch code with secrets; a fourth, branch-protection admin override, is a disclosed, deliberate GitHub-level escape hatch (owner-controlled via "include administrators"), not a gate defect — its existence and who holds it must be recorded, never silently assumed away. **Corrected (Scenario Review round 14, P0-1): required-check name drift is resisted by GitHub's own fail-closed-on-absence branch-protection behavior — a required status-check context that stops being reported (because the gate job was renamed) leaves the PR permanently non-mergeable, not mergeable; no job-ID-based naming convention is needed to close this, and `SCN-MOD001-020`(g)'s expected result no longer states a conditional pass path** |
 | **7th architecture gate: surface-profile activation (added, Scenario Review round 12, P2-1 — this gate has existed since round 1 P1-9 but never had its own §3 pipeline row; §4's gate-7 row pointed back at "the new 7th check" inside this very row, which never named it)** | Every push/PR | Source tree + `module-capabilities.yaml` | Pass/fail + violation report | Yes | Same validator run locally (`tools/validate_architecture_gates.py --gate surface-profile`) | Named `SURFACE_PROFILE_NOT_ACTIVATED`/unknown-surface violation + offending path | Deliberate-violation and carve-out-boundary fixtures proven denied/allowed — see §4 gate 7 below (`SCN-MOD001-102`/`103`/`112`/`138`/`139`) |
 | Unit tests | Every push/PR | `backend/tests/unit/`, mobile/web unit suites | Pass/fail + coverage | Yes | `pytest`/platform-native runner locally | Test report artifact | N/A — no known bypass class yet; will be re-examined once real tests exist |
 | Domain contract / tenant-isolation / authorization / financial-invariant tests | Every push/PR (once a domain exists) | Fixture DB + RLS-enabled schema | Pass/fail | Yes, once applicable | Same suite locally against a local Postgres | Report artifact naming the failed invariant ID | RLS enforced at the database role level, not just application code — cannot be bypassed by application-layer changes alone |
@@ -361,17 +366,28 @@ independently-written docs) that does not yet exist and would be
 invented, not derived, if written this round. Tracked as an
 Implementation Complete obligation for
 `tools/validate_architecture_gates.py --gate domain-uniqueness`, not a
-Definition-of-Ready blocker — the RB-ID, command-inventory, and
-published-event-set conditions above are the three the TSD states as
-explicit, structured, machine-checkable pairs, which is why they
-were prioritized for real fixtures this round.
+Definition-of-Ready blocker. **Corrected (Scenario Review round 14,
+Editorial-2): this sentence previously undercounted its own fixtured
+set as "the RB-ID, command-inventory, and published-event-set
+conditions... the three" — a fourth dimension, cross-domain SLO-signal
+reuse, has carried a real violation fixture since round 1 (`SCN-MOD001-015`'s
+original text), making four of six dimensions fixtured, not three.**
+The RB-ID, command-inventory, and published-event-set conditions were
+prioritized this round specifically because they compare a structured
+ID space (a domain identifier, an inventory list, a registry entry)
+rather than free-form prose — the same property that makes them
+mechanically checkable without inventing a normalization rule, which is
+also why the SLO-signal case (a direct named-signal string match, not
+free-form prose) was fixturable from round 1, while entity-set and
+failure-vocabulary — both free-form prose comparisons — remain the two
+genuinely unfixtured dimensions.
 
 **Added (Scenario Review round 1, P1-9 → `ADR-005` Decision 2, Part
 3):**
 
 | Gate | Valid fixture | Deliberate violation fixture | Expected fail-closed output | CI location | Local invocation | Evidence artifact |
 |---|---|---|---|---|---|---|
-| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile; **or a build/toolchain/CI configuration file under a surface's path scope (e.g. `mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`, added round 10 P1-2) — carved out under ADR-005's own dividing line: "build, toolchain, and CI configuration for a surface is Infra/SRE/CI-profile work; the surface's own profile activates when the surface's own source code appears" (added, Scenario Review round 11, P2-1 — this carve-out existed only as ADR prose until now, and without it the gate as specified would deny MOD-001's own committed Gradle stubs against their still-DEFERRED KMP Mobile/Android Host profiles); the carve-out's recognized extension/filename set is closed, not open-ended — **corrected, Scenario Review round 12, P0-1: the previous "etc." made this an unfalsifiable pass condition, the same species round 3 had already removed from the gate-8/`SCN-108` lifecycle-lint** — exactly: `.gradle.kts`, `.gradle`, `.xcconfig`, `Package.swift`, `Podfile`, `package.json`, `package-lock.json`, `gradle.properties`, `settings.gradle.kts`, `gradle-wrapper.properties`. Proven by `SCN-MOD001-138` (positive: a listed extension under a deferred surface passes) and `SCN-MOD001-139` (negative: the carve-out's own boundary — a `.kt` application file under the same deferred `mobile/shared/src/` path still denies, proving the carve-out is extension-scoped, not surface-wide)** | A source file of a deferred surface's own *application* file type (e.g. a `.tsx` file under `admin-web/`, a `.kt` application-logic file under `mobile/shared/src/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 10 named §4.3 globs at all** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob; passes for a recognized build/toolchain/CI file matching the closed extension/filename set above under a deferred surface, citing the Infra/SRE/CI carve-out | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
+| **7. Surface-profile activation** | A source file under a surface's path scope (e.g. `backend/app/main.py`) whose owning module's `module-capabilities.yaml` correctly records the matching activated §4.3 profile; **or a file under a known-infrastructure path (`.claude/**`, `knowledge/**`, `veyro-product-experience-design/**`, `contracts/**`, `tools/**` — added, Scenario Review round 14, P1-3; proven by `SCN-MOD001-102`'s extended positive case)**; **or a build/toolchain/CI configuration file under a surface's path scope (e.g. `mobile/shared/build.gradle.kts`, `mobile/androidApp/build.gradle.kts`, added round 10 P1-2) — carved out under ADR-005's own dividing line: "build, toolchain, and CI configuration for a surface is Infra/SRE/CI-profile work; the surface's own profile activates when the surface's own source code appears" (added, Scenario Review round 11, P2-1 — this carve-out existed only as ADR prose until now, and without it the gate as specified would deny MOD-001's own committed Gradle stubs against their still-DEFERRED KMP Mobile/Android Host profiles); the carve-out's recognized extension/filename set is closed, not open-ended — **corrected, Scenario Review round 12, P0-1: the previous "etc." made this an unfalsifiable pass condition, the same species round 3 had already removed from the gate-8/`SCN-108` lifecycle-lint** — exactly: `.gradle.kts`, `.gradle`, `.xcconfig`, `Package.swift`, `Podfile`, `package.json`, `package-lock.json`, `gradle.properties`, `settings.gradle.kts`, `gradle-wrapper.properties`. Proven by `SCN-MOD001-138` (positive: a listed extension under a deferred surface passes) and `SCN-MOD001-139` (negative: the carve-out's own boundary — a `.kt` application file under the same deferred `mobile/shared/src/` path still denies, proving the carve-out is extension-scoped, not surface-wide)** | A source file of a deferred surface's own *application* file type (e.g. a `.tsx` file under `admin-web/`, a `.kt` application-logic file under `mobile/shared/src/`) added while `module-capabilities.yaml` still shows that profile deferred/unmarked; **and (added round 3, P1-6) a source file appearing under a top-level path matching NONE of the 12 named §4.3 globs (across 10 profiles) and NONE of the 5 known-infrastructure paths at all (glob/path counts corrected, Scenario Review round 14, P1-3)** | CI fails with `SURFACE_PROFILE_NOT_ACTIVATED` citing the path and the missing profile for a named-but-unactivated surface, or a catch-all unknown-surface denial for a path matching no named glob; passes for a recognized build/toolchain/CI file matching the closed extension/filename set above under a deferred surface, citing the Infra/SRE/CI carve-out | Architecture-gates CI step (new 7th check) | `tools/validate_architecture_gates.py --gate surface-profile` | `evidence/security/SURFACE_PROFILE_GATE_FIXTURE_<date>.md` |
 
 **Corrected (Scenario Review round 2, P1-6; further corrected round
 3): the original marker-only design was fail-open.** General Web
@@ -386,16 +402,45 @@ not express three distinct deferred profiles (KMP Mobile
 deferral marker (`evidence/module-capabilities.yaml`'s
 `repository_paths_surfaces` list), including the six with no directory
 yet — `mobile/` carries three sub-markers, one per distinct profile.
-With all 10 named paths now marked, the residual fail-open case is not
+With all 10 named profiles now marked, the residual fail-open case is not
 among them: it's a *completely unlisted* top-level surface (`SCN-MOD001-112`)
-that matches none of the 10 globs — a marker-keyed check has no row to
+that matches none of the 12 §4.3 globs — a marker-keyed check has no row to
 consult for such a path by construction, so gate 7 additionally
 requires the capability-governance validator to flag any new top-level
 directory that matches neither a known infrastructure path
 (`backend/**`, `infra/**`, `contracts/**`, `tools/**`,
-`.github/workflows/**`) nor a named §4.3 glob, as an explicit
+`.github/workflows/**`, `.claude/**`, `knowledge/**`,
+`veyro-product-experience-design/**` — see the round-14 correction
+immediately below) nor a named §4.3 glob, as an explicit
 unknown-surface denial requiring a `module-capabilities.yaml` decision
 before merge — rather than silently allowing it through absence.
+
+**Corrected (Scenario Review round 14, P1-3): the "known infrastructure
+path" list above omitted `.claude/**`, `knowledge/**`, and
+`veyro-product-experience-design/**` — three real, already-existing
+top-level paths in this repository (the agent/rule/skill config tree,
+the durable knowledge vault every planning session writes to, and the
+frozen design-bundle governing baseline). As specified, gate 7's own
+catch-all would deny the first commit touching any of them as an
+`UNKNOWN_SURFACE` — which, for `knowledge/**`, is every ordinary
+governance edit this project makes, including this one. All three are
+now known-infrastructure paths (profile: null, state: n/a, matching
+`contracts/**`/`tools/**`'s existing treatment), added to
+`evidence/module-capabilities.yaml`'s `repository_paths_surfaces` list
+below. `veyro-product-experience-design/**` carries the additional note
+that it is the frozen, read-only design-bundle governing baseline
+(`PROJECT_INDEX.md`) — gate 7 classifying it as a known path does not
+create any write permission the baseline-integrity rule doesn't already
+forbid.** The "10 §4.3 globs" figure used elsewhere in this section and
+in `SCN-MOD001-112` is also corrected here: `MODEL_ROUTING.md`'s table
+names **10 §4.3 profiles across 12 path globs** (Infra/SRE/CI and Front
+Desk/POS each cover 2 globs under one profile), not 10 globs — the
+profile count and the glob count are different numbers and neither
+document should conflate them. Where a path matches both a known-
+infrastructure entry and a §4.3 glob (`.github/workflows/**` is both a
+known-infrastructure path and the Infra/SRE/CI profile's own glob), the
+known-infrastructure classification takes precedence, since that path
+is already activated and needs no separate profile-activation check.
 
 Each deferred empty shell's marker file names the §4.3 profile that
 must activate before real code lands there; the check reads that
@@ -709,8 +754,10 @@ Both fixed below.** Fixed:
   distinct artifact from the one this bullet describes.** GOV-01-R08's
   release-lifecycle record is a separate, per-release artifact (not a
   per-incident one) carrying a `lifecycle_stage` field
-  (`beta`/`GA`/`deprecated`); a lint (new row, §3 pipeline table below)
-  rejects a record with no lifecycle-stage field or an out-of-order
+  (`beta`/`GA`/`deprecated`); a lint (new row, §12 pipeline table below
+  — **corrected, Scenario Review round 14, Editorial-1: was mis-cited
+  "§3," the one bullet round 13's own E-1 sweep of this same defect
+  class missed**) rejects a record with no lifecycle-stage field or an out-of-order
   stage transition (`deprecated`→`beta` without an explicit re-release
   path). `SCN-108` tests this record; `SCN-048`/`058` continue to test
   `RUNBOOK.md`'s own, unrelated 7-field rollback-evidence contract —

@@ -36,6 +36,12 @@ applicable_capability_profiles:
 # `gradle-wrapper.properties` — under ANY still-DEFERRED surface path
 # below, a file matching this list passes gate 7 citing the carve-out;
 # an application-source file of that surface's own type does not.
+# Corrected (Scenario Review round 14, P2-6): the two per-path carve-out
+# comments this note itself says round 13 intended to generalize were
+# still present on mobile/shared/** and mobile/androidApp/** below,
+# preserving the asymmetric-emphasis reading round 13 meant to remove
+# (2 of 8 deferred surfaces visibly annotated, 6 not). Both removed —
+# this general note is now the carve-out's only annotation, uniformly.
 repository_paths_surfaces:
   - path: backend/**
     profile: Backend
@@ -66,7 +72,6 @@ repository_paths_surfaces:
     profile: KMP Mobile
     state: DEFERRED
     marker: mobile/shared/.profile-pending
-    # Gate-7 carve-out applies here (see the general note above this list).
   - path: mobile/iosApp/**
     profile: iOS Host
     state: DEFERRED
@@ -75,7 +80,6 @@ repository_paths_surfaces:
     profile: Android Host
     state: DEFERRED
     marker: mobile/androidApp/.profile-pending
-    # Gate-7 carve-out applies here (see the general note above this list).
   - path: mobile/*.md
     profile: null  # cross-cutting mobile-wide policy docs (TOOLCHAIN_MATRIX.md, RELEASE_POLICY.md) — not owned by a single KMP/iOS/Android sub-profile; added Scenario Review round 10, P2-2, this direct-child-of-mobile/ path matched none of the three mobile/** sub-globs above
     state: n/a
@@ -96,13 +100,22 @@ repository_paths_surfaces:
   - path: tools/**
     profile: null
     state: n/a
+  - path: .claude/**
+    profile: null  # known-infrastructure, not a §4.3 surface — added Scenario Review round 14, P1-3 (this path had no entry at all; gate 7's own catch-all would have denied the first commit touching it as UNKNOWN_SURFACE)
+    state: n/a
+  - path: knowledge/**
+    profile: null  # known-infrastructure, not a §4.3 surface — added Scenario Review round 14, P1-3 (same gap; this is the durable knowledge vault every planning session writes to, including this one)
+    state: n/a
+  - path: veyro-product-experience-design/**
+    profile: null  # known-infrastructure, not a §4.3 surface — added Scenario Review round 14, P1-3; this is the frozen, read-only design-bundle governing baseline (PROJECT_INDEX.md) — a known-path classification here grants no write permission beyond what already exists
+    state: n/a
 required_agent_roles:
   - role: veyro-critical-engineer
     scope: "Bounded to 3 slices per ADR-005 Decision 1: tenant-isolation/RLS harness, authn negative-credential fixture pattern, RLS+permission architecture gates (GOV-01-R02/R04)"
     model: opus
     status: "REGISTERED AND ROUTABLE (BUG-029 and BUG-030 both closed; corrected routing drill confirmed real escalation from veyro-implementer — see evidence/model-routing/ROUTING_DRILL_2026-09-14.md)"
   - role: veyro-infra-sre-engineer
-    scope: "infra/**, CI workflows, observability"
+    scope: "infra/**, .github/workflows/** — corrected Scenario Review round 14, P2-4, was the non-glob 'CI workflows, observability,' stale since round 13's P2-5 fix to MODEL_ROUTING.md"
     model: sonnet
     status: "REGISTERED AND ROUTABLE (BUG-029 closed; BUG-031 CLOSED 2026-09-17 — owner-applied escalation patch to veyro-implementer.md, commit 0afa609, independently verified byte-for-byte and by a 6-case routing drill proving real escalation — see evidence/model-routing/ROUTING_DRILL_2026-09-17-bug031-bug032-closure.md)"
   - role: veyro-backend-engineer

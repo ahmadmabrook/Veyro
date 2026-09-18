@@ -2,7 +2,9 @@
 doc: MOD-001_REQUIREMENTS
 status: LIVE — DRAFT (planning stage; independently reviewed as part of MOD-001's Scenario Review rounds — see `SCENARIOS.md` §5 for the current round; not yet APPROVED)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 9 — GOV-01-R07's white-label/KMP-versioning/isolated-PR-gate/capability-adapter obligations finally brought into IN-scope/obligations/acceptance-criteria text, not just the Source quote; front-matter status line corrected to stop falsely claiming never independently reviewed)
+updated: 2026-09-19 (Scenario Review round 14 — corrected, P2-5: this
+line had gone stale at round 13's own §3 gate-7-row addition and
+GOV-01-R04 "6→7"/"(§5)→(§4)" text corrections)
 ---
 
 # MOD-001 — Requirements

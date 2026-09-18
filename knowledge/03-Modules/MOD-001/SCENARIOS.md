@@ -229,7 +229,7 @@ Group K.
 | CI gate success | 001, 023 |
 | CI gate deliberate failure | 011, 019, 025, 038 |
 | Gate-bypass attempts | 020 (corrected to the CI-workflow-configuration threat model — see its own detail block) |
-| Baseline mismatch | 025, 026 |
+| Baseline mismatch | 025, 026, 124 (**row extended, Scenario Review round 14, P2-3 — 124 joined the catalog in round 7 but never joined this row**) |
 | Schema compatibility | 034 |
 | Migration safety | 022, 070 |
 | Contract compatibility | 018, 034 |
@@ -255,6 +255,7 @@ Group K.
 | Additional capability-governance/scenario-matrix/external-gate/Appendix-I fail-closed drills (P0-2, not separately named but required by the module card's own manual-QA field) | 076-093 |
 | GOV-01-R01 per-layer deliberate-failure proof (NEG), mis-tagged-boundary case (BND), and per-layer positive execution (HP) (added round 2 P0-2, corrected/split round 3 P1-2, extended round 11 with 137 — **row updated round 12, P2-3: 137 had joined the catalog in round 11 but never joined this row**) | 106, 116, 137 |
 | GOV-01-R08 release-train/changelog/lifecycle-stage lint (added round 2, P0-2) | 107, 108 |
+| GOV-01-R08 maintenance policy and customer-communication template (added round 7, P1-5 — **row added, Scenario Review round 14, P2-3, this table had never gained a row for it**) | 125 |
 | Card-mandated test-failure and screen-count drills (added round 2, P0-3) | 109, 110 |
 | Gate-bypass-under-load (added round 2, P1-5) | 111 |
 | Surface-profile activation, no-marker-at-all case (added round 2, P1-6); deferred-surface build/toolchain carve-out, positive and boundary (added round 12, P0-1) | 112, 138, 139 |
@@ -270,12 +271,14 @@ Group K.
 | Scanning-stage SAST/container/IaC (added round 10, P0-3) | 134, 135, 136 |
 
 **Corrected (Scenario Review round 3, P2, further corrected round 4,
-round 10): this file, `STATUS.md`, and this section's own historical
+round 10, round 14): this file, `STATUS.md`, and this section's own historical
 prose had disagreed with each other on the row count (29 vs 33) — both
 were wrong; the table above had 39 rows through round 4, then stopped
 being extended even as 15 more scenarios (122-136) joined the catalog
 across rounds 5-10 — round 10 (P2-4) added the 5 rows above, bringing
-the table to 44 rows.** All 44 rows have real, on-topic,
+the table to 44 rows. Round 14 (P2-3) found `SCN-124`/`125` (added round
+7) had never joined any row, bringing the table to 46 rows.** All 46
+rows have real, on-topic,
 independently-checkable coverage — this count is stated once, here; no
 other file restates it.
 
@@ -445,7 +448,16 @@ names, **and failure-vocabulary** (**corrected, Scenario Review round
 6 in round 12, P0-2, but that fix was never propagated to this
 scenario, the one that actually executes the positive case; passing
 this scenario as originally written would not prove what the plan's
-own gate-6 row now claims**). Expected: PASS.
+own gate-6 row now claims**). Expected: PASS. **Disclosed (Scenario
+Review round 14, P2-2): a positive-only fixture cannot by itself
+distinguish a validator comparing 4 dimensions from one comparing 6 —
+both pass identically on a fully-disjoint fixture. This scenario proves
+the validator does not false-positive on genuinely disjoint domains;
+per-dimension enforcement is proven by the violation fixtures instead
+(`SCN-MOD001-015`, plus `IMPLEMENTATION.md` §4's own disclosed residual
+for the 2 dimensions still lacking a violation fixture) — "six
+dimensions" here describes the fixture's shape, not independent proof
+of six-way enforcement.**
 
 **SCN-MOD001-015 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 6 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: two synthetic domains reusing an identical `RB-<DOMAIN>` ID, and
@@ -556,9 +568,20 @@ inspected branch-protection configuration; (f) is expected to succeed
 unless "include administrators" is enabled — if it succeeds, that is
 the correct, disclosed residual (admin override is a deliberate escape
 hatch, not a defect, but its existence and who holds it must be
-recorded, not silently assumed away); (g) is expected to succeed
-(demonstrating a real gap) unless the required-check name is generated
-from the job's stable ID rather than its display name; (h) and (i) are
+recorded, not silently assumed away); **(g) is expected to be denied —
+corrected, Scenario Review round 14, P0-1: the previous text made this
+conditional on the required-check name being job-ID-derived, an
+unfalsifiable pass condition never mandated anywhere in this plan, and
+contradicting `REQUIREMENTS.md`'s own "resists (g) name drift...
+outright" acceptance criterion. GitHub's branch-protection required-
+status-checks feature is fail-closed on absence by design: a required
+check context that never reports for a PR (because the job producing it
+was renamed) leaves that PR permanently non-mergeable, not silently
+mergeable — renaming the gate job does not make the check "pass," it
+makes the PR stay blocked waiting on a check that will never report.
+This is the documented GitHub behavior this project relies on, not an
+invented mitigation, and needs no job-ID-naming convention to hold.**
+(h) and (i) are
 expected to be denied/inert given the branch-protection and workflow
 trigger-permission configuration this project would adopt. Evidence:
 the branch-protection configuration snapshot plus all 9 attempt
@@ -1428,10 +1451,18 @@ regardless of composition style).
 cosmetic variant. Moved to `PERF` (runner-class assignment is a
 cost/performance concern — a misassigned job either wastes a scarcer
 runner class or silently runs on the wrong platform), Required, Major.
-Steps: confirm the Android/iOS runner-assignment convention (055) still
-resolves correctly if a job is manually re-triggered rather than
-triggered by the original event. Expected: same runner-class assignment.
-Negative case: 101 (a deliberately misassigned job is flagged).
+Steps: **(rescoped, Scenario Review round 14, P1-1, matching 055's own
+round-13 split — 055's iOS runner-class assignment was left
+unspecified in committed configuration, so there is no committed iOS
+runner class for a re-trigger to re-resolve)** confirm the Android
+runner-class assignment (055) still resolves to the same runner class
+if the job is manually re-triggered rather than triggered by the
+original event; separately, confirm the iOS build job's presence and
+required-status-check wiring on the mobile-build trigger path also
+persists unchanged across a manual re-trigger, without asserting any
+runner class for it. Expected: same Android runner-class assignment;
+iOS job presence/wiring unchanged. Negative case: 101 (a deliberately
+misassigned job is flagged).
 
 ### Group K — Scenario Review round 1 remediation: model-assurance forced-fallback, capability-governance fail-closed drills, dependency vulnerability, gate-2 reverse edge, AUTHN companion, negative companions (P0-1, P0-2, P0-4, P1-1, P1-2, P1-5, P2-7)
 
@@ -1654,19 +1685,38 @@ path-filter pattern against the real common-code directory list, proving
 the pattern isn't silently stale.
 
 **SCN-MOD001-101 · PERF · Major · CI runner misassignment, negative companion to 055 (P2-7) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
-Steps: a synthetic Android build job is deliberately configured to
-target a macOS runner (the wrong class). Expected: the runner-assignment
-convention check (055's own mechanism, run in reverse) flags the
-mismatch rather than silently allowing it.
+**Corrected (Scenario Review round 14, P1-2): the original fixture
+deliberately configured a job to target a macOS runner — but a
+committed fixture naming a macOS runner label is itself the exact
+reference `SCN-MOD001-056` (Blocker) bans anywhere in MOD-001's
+committed configuration, and round 13's own P1-3 already established
+that standard for `SCN-055`/`IMPLEMENTATION.md` §12. Changed to a wrong
+class that isn't an owner-reserved-spend reference.** Steps: a synthetic
+Android build job is deliberately configured to target a Windows
+runner (the wrong class — Android's committed convention is Linux, per
+055; Windows is a standard GitHub-hosted runner class, not an
+owner-reserved paid tier, so this fixture doesn't collide with 056).
+Expected: the runner-assignment convention check (055's own Android
+mechanism, run in reverse) flags the mismatch rather than silently
+allowing it.
 
 ### Group L — ADR-005 remediation: surface-profile activation gate, critical-engineer routing drill (added after ADR-005)
 
 **SCN-MOD001-102 · SEC · Blocker · Surface-profile activation gate — positive (ADR-005 Decision 2 Part 3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Preconditions: a synthetic `backend/app/main.py`-shaped fixture file and
 a `module-capabilities.yaml` row correctly recording the Backend profile
-as activated for the owning module. Steps: run
-`tools/validate_architecture_gates.py --gate surface-profile`. Expected:
-PASS.
+as activated for the owning module; **(extended, Scenario Review round
+14, P1-3 — no scenario previously proved the known-infrastructure-path
+branch of the gate, as distinct from the marker-keyed activated-profile
+branch this case already covers)** separately, a synthetic fixture file
+under `knowledge/00-System/` (a known-infrastructure path per
+`IMPLEMENTATION.md` §4's gate-7 cell, carrying no §4.3 profile at all).
+Steps: run
+`tools/validate_architecture_gates.py --gate surface-profile` against
+each fixture independently. Expected: PASS for both — the activated-
+profile fixture via its `module-capabilities.yaml` record, the
+known-infrastructure fixture via the gate's known-path allowlist,
+neither requiring the other's mechanism.
 
 **SCN-MOD001-103 · SEC · Blocker · Surface-profile activation gate — negative · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Steps: a synthetic `.tsx` file added under a fixture `admin-web/` path
@@ -1963,13 +2013,24 @@ named in `MODEL_ROUTING.md`'s table now carry either an
 activated-profile record or an explicit deferral marker — including
 the six with no real directory yet. **Because all 10 named profiles
 now have a marker, this scenario's real test is a path matching
-*none* of the 10 named globs at all** (an entirely new, unlisted
+*none* of the 12 §4.3 globs and none of the known-infrastructure paths
+at all** (an entirely new, unlisted
 surface a future module might introduce, e.g. a hypothetical
 `analytics/` directory) — the case a marker-keyed check cannot address
-by construction, since there is no row to check against. Steps: a
-synthetic new top-level directory not matching `backend/**`,
-`infra/**`, `contracts/**`, `tools/**`, `.github/workflows/**`, or any
-of the 10 §4.3 globs is created with real source files. Expected: the
+by construction, since there is no row to check against. **Corrected
+(Scenario Review round 14, P1-3): the known-infrastructure list below
+previously omitted `.claude/**`, `knowledge/**`, and
+`veyro-product-experience-design/**` — three real top-level paths this
+repository already has — which would have made this scenario's own
+fixture indistinguishable from an ordinary governance-vault edit had it
+been drawn from one of those paths; the fixture below is deliberately
+chosen outside all 8 known-infrastructure paths and all 12 §4.3 globs
+so it remains a genuine unlisted-surface case.** Steps: a
+synthetic new top-level directory (e.g. `analytics/`) not matching
+`backend/**`, `infra/**`, `contracts/**`, `tools/**`,
+`.github/workflows/**`, `.claude/**`, `knowledge/**`,
+`veyro-product-experience-design/**`, or any
+of the 12 §4.3 globs is created with real source files. Expected: the
 capability-governance validator (not the per-profile marker check,
 which has nothing to key on) flags an unrecognized top-level surface
 requiring an explicit `module-capabilities.yaml` decision before it can
@@ -2073,14 +2134,18 @@ Negative case is (b)/(c)'s own subject.
 
 **SCN-MOD001-119 · OBS · Major · Appendix I ADR conformance, ADR-004/ADR-015 (P1-6) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Source: `EIP_MIRROR.md` lines 21028-21033 (ADR-004), 21117-21122
-(ADR-015); `ADR_CONFORMANCE.md`'s own conformance record. Steps: (a)
-confirm no HTTP API surface exists in MOD-001's planned tooling
-(ADR-004 — expected: N/A-with-justification holds, re-checked against
-the actual `tools/` directory once built); (b) run the migration-safety
-harness (SCN-022/070) and confirm its expand/migrate/contract ordering
-matches ADR-015's "no destructive schema change in the same release
-that stops reading the old shape" rule exactly. Evidence: the
-conformance check's own pass/fail per ADR.
+(ADR-015); `ADR_CONFORMANCE.md`'s own conformance record. Steps:
+**(a) (corrected, Scenario Review round 14, P0-2: previously checked
+`tools/` for the absence of an HTTP surface, but MOD-001's real HTTP
+surface lives in `backend/app/`, not `tools/`)** inspect
+`backend/app/version_negotiation.py` and
+`backend/app/crash_remote_config_intake.py` once built and confirm each
+is versioned, returns RFC 7807-shaped error bodies, and — since neither
+is a list/collection endpoint — has no cursor-pagination gap to check;
+(b) run the migration-safety harness (SCN-022/070) and confirm its
+expand/migrate/contract ordering matches ADR-015's "no destructive
+schema change in the same release that stops reading the old shape"
+rule exactly. Evidence: the conformance check's own pass/fail per ADR.
 
 **SCN-MOD001-120 · SEC · Blocker · CI/control check over `.claude/agents/` definitions and model-alias/MR-evidence well-formedness (P1-7) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Corrected (Scenario Review round 5, P1-2/P1-3): part (a) tested the
@@ -3564,4 +3629,156 @@ itself returned P0/P1.
 Ready. Implementation has not started and is not authorized to start.
 Next legally allowed action: an independent Scenario Review round 14**,
 to confirm round 13's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.
+
+### Round 14 (2026-09-19) — `veyro-scenario-reviewer`, Opus, fresh context, dispatched via the Agent tool, no inheritance of round 13's conclusions
+
+The orchestrating session ran a pre-review durable-state spot-check
+before dispatch (baselines PASS 4/4, local HEAD == origin/main,
+independently re-counted 140 unique scenario headers via
+`grep -o '^\*\*SCN-MOD001-[0-9]*[a-z]*'` with no duplicates, and
+targeted verification of round 13's named remediation claims — all
+held under that spot-check). Round 14 then independently re-derived the
+scenario count (140 detail blocks, no duplicates), re-verified the
+category matrix, confirmed all 24 Appendix G Required categories
+covered, confirmed GOV-01-R01..R08 fully traced, and specifically
+re-checked round 13's own headline remediation claims against actual
+current file content.
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=2, P1=3, P2=6,
+Editorial=2. Round 13's remediation held on everything it framed itself
+around (`SCN-004`/`005` gate-1 ownership condition, `SCN-014`/`015`
+gate-6 fourth dimension and corrected residual arithmetic,
+`SCN-138`/`139`'s `MANUAL_QA.md` mapping, `REQUIREMENTS.md`'s gate-7
+row and "7 gates... (§4)" text, `LOAD_SECURITY.md`'s macOS-runner line,
+`MANUAL_QA.md` surface 10, `module-capabilities.yaml`'s carve-out note,
+`MODEL_ROUTING.md`'s Infra/SRE/CI globs, `ADR_CONFORMANCE.md`'s
+namespace note, `SCN-055`/§12's mobile-CI-runner rescope), but the
+pattern rounds 10-13 each documented — a round's own new fixes carrying
+defects of the same classes they were created to fix — recurred a
+fifth time. The two P0s: `SCN-MOD001-020`(g)'s expected result was
+unfalsifiable — conditioned on a job-ID-based required-check-naming
+convention this plan never mandated anywhere, directly contradicting
+`REQUIREMENTS.md`'s own "resists (g)... outright" acceptance criterion
+(P0-1); `ADR_CONFORMANCE.md` falsely declared ADR-004 "N/A — no API
+surface exists or is planned," contradicted by this module's own
+`IMPLEMENTATION.md` §1/§12, which commits two real backend HTTP
+endpoints (`version_negotiation.py`, `crash_remote_config_intake.py`),
+with `SCN-MOD001-119`(a) checking the wrong directory (`tools/`) for
+the false claim (P0-2). The three P1s: round 13's own `SCN-055` rescope
+(iOS runner-class left unspecified) was never propagated to
+`SCN-MOD001-074`, leaving its iOS re-trigger check unconstructible —
+the identical "rescope not propagated to a dependent scenario" defect
+class round 13's own P1-2 was written to fix, reproduced by round 13 on
+its own fix (P1-1); `SCN-MOD001-101`'s fixture deliberately configured
+a macOS-runner reference, which by round 13's own P1-3 standard is
+exactly the paid-macOS-CI-runner-tier reference Blocker `SCN-056` bans
+anywhere in committed configuration (P1-2); gate 7's "known
+infrastructure path" allowlist omitted `.claude/**`, `knowledge/**`,
+and `veyro-product-experience-design/**` — three real, already-existing
+top-level paths this repository has — meaning gate 7 as specified would
+deny the first ordinary commit touching any of them as
+`UNKNOWN_SURFACE` (for `knowledge/**`, that is nearly every governance
+edit this project makes); no positive scenario proved the
+known-infrastructure branch of the gate as distinct from the
+marker-keyed activated-profile branch; and the "10 §4.3 globs" figure
+used in `IMPLEMENTATION.md` and `SCN-112` undercounted — the true
+figure is 10 profiles across 12 globs, since Infra/SRE/CI and Front
+Desk/POS each cover 2 globs under one profile (P1-3). The six P2s and
+two Editorial findings were `STATUS.md`'s stale "six architecture
+gates" line; `SCN-014`'s six-dimension fixture being proof-neutral on
+its own (a positive-only fixture can't distinguish 4-dimension from
+6-dimension enforcement — that proof lives in the violation fixtures);
+`SCN-124`/`125` (added round 7) never joining any §2 named-family row;
+`CAPABILITIES.md`/`MODEL_ROUTE.md`/`module-capabilities.yaml` still
+carrying the non-glob "CI, observability" wording round 13's own P2-5
+fix corrected only in `MODEL_ROUTING.md`; seven files' front-matter
+`updated` lines misstating which round last touched their bodies (round
+13 reproduced the exact defect class round 12 was graded P2 for, across
+every file it touched); `module-capabilities.yaml` still annotating 2
+of 8 deferred surfaces with a per-path carve-out comment after round
+13's own P2-3 fix claimed to replace both with the general note; one
+remaining mis-cited "§3 pipeline table below" bullet round 13's own E-1
+sweep missed; and the corrected gate-6 residual's own supporting
+sentence miscounting its fixtured-dimension count ("the three" when
+four dimensions — RB-ID, command-inventory, published-event-set, and
+cross-domain SLO-signal reuse — actually carry violation fixtures).
+
+**All P0/P1/P2/Editorial findings remediated the same session:**
+`SCN-MOD001-020`(g)'s expected result corrected to an unconditional
+denial, citing GitHub's documented fail-closed-on-absence behavior for
+required status checks (a renamed gate job leaves its required check
+permanently unreported, which blocks merge rather than permitting it —
+no job-ID-naming convention needed), with `IMPLEMENTATION.md`'s gate
+cell updated to match; `ADR_CONFORMANCE.md`'s ADR-004 section rewritten
+to state the real obligation (both backend endpoints must be versioned,
+RFC-7807-shaped, with cursor pagination disclosed not-applicable since
+neither is a list endpoint), conformance state changed from a false
+"N/A" to "PLANNED, not yet proven" matching ADR-015's own already-honest
+pattern, and its §18 PASS-state text corrected to match;
+`SCN-MOD001-119`(a) repointed from `tools/` to the real
+`backend/app/` endpoints; `SCN-MOD001-074` rescoped to the same
+Android-real/iOS-presence-only split as `SCN-055`/`SCN-106`/`SCN-137`;
+`SCN-MOD001-101`'s fixture changed from a macOS-runner reference to a
+Windows-runner reference (still the wrong class for Android's
+Linux-committed convention, without colliding with `SCN-056`'s
+owner-reserved-spend ban); gate 7's known-infrastructure list extended
+with `.claude/**`, `knowledge/**`, and `veyro-product-experience-design/**`
+in `IMPLEMENTATION.md` §4's gate table, its explanatory paragraph, and
+`SCN-MOD001-112`'s steps, with matching new entries added to
+`evidence/module-capabilities.yaml`'s `repository_paths_surfaces` list;
+`SCN-MOD001-102`'s positive proof extended with a second, independent
+fixture under `knowledge/00-System/` proving the known-infrastructure
+branch specifically; the "10 globs" figure corrected to "10 profiles
+across 12 globs" everywhere it appeared; `STATUS.md`'s "six" corrected
+to "seven"; `SCN-MOD001-014` given a disclosure clarifying its
+six-dimension fixture proves non-false-positive behavior, not
+independent six-way enforcement (which the violation fixtures provide);
+two new §2 rows added for `SCN-124`/`125`, bringing the table to 46
+rows (from 44); `CAPABILITIES.md`, `MODEL_ROUTE.md`, and
+`module-capabilities.yaml`'s `veyro-infra-sre-engineer` scope field all
+corrected to the concrete glob pair; seven files' (`LOAD_SECURITY.md`,
+`MANUAL_QA.md`, `MODEL_ROUTE.md`, `REQUIREMENTS.md`, `IMPLEMENTATION.md`,
+`ADR_CONFORMANCE.md`, and `knowledge/00-System/MODEL_ROUTING.md`)
+front-matter `updated` lines corrected to 2026-09-19 with a note on what
+round 14 (or the round-13 edit it was catching) actually changed;
+`module-capabilities.yaml`'s last two per-path carve-out comments
+removed, leaving the general note as the carve-out's sole, uniform
+annotation; `IMPLEMENTATION.md`'s last mis-cited "§3 pipeline table
+below" bullet (the release-lifecycle-stage lint row) corrected to
+"§12"; and the gate-6 residual's supporting sentence corrected to
+name four fixtured dimensions, not three, distinguishing the
+structured-ID-space dimensions (RB-ID, command-inventory,
+published-event-set) from the free-form-prose dimensions genuinely
+still unfixtured (authoritative-entity-set, failure-vocabulary).
+
+No new scenario detail blocks were added this round — every finding
+was a fixture/citation/propagation/false-claim defect inside scenarios
+and plan documents that already existed. Catalog total unchanged at
+**140 detail blocks** (140 Required, 0 Optional).
+
+A planning-phase validation pass was run alongside remediation:
+`verify_baselines.py` PASS (4/4); `validate_capabilities.py` PASS (7
+capabilities, all APPROVED); `evidence_integrity_check.py` FAILs with
+14 findings, all independently confirmed pre-existing and untouched by
+this round's edits (`git status` before remediation showed none of the
+flagged files among this session's changes) — 9 are `ADR-005`'s
+disclosed, not-yet-authored `.claude/rules/backend/**`/`infra/**` file
+references (per `IMPLEMENTATION.md`'s own text, these await real
+content at implementation time, not planning), and 5 are
+`evidence_integrity_check.py` false positives: the tool is scoped to
+`knowledge/03-Modules/MOD-000/evidence/bugs/`, so it cannot find
+`BUG-028` through `BUG-032`'s real files, all confirmed present at
+`knowledge/03-Modules/MOD-001/evidence/bugs/`. Flagged honestly here as
+a pre-existing, out-of-round-14-scope gap for a future session — not
+silently fixed under this round's remediation, since neither class is a
+Scenario Review finding this round located.
+
+**Definition of Ready was again explicitly NOT evaluated** — round 14
+itself returned P0/P1.
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 15**,
+to confirm round 14's remediation actually holds — not implementation,
 not MOD-002, not a self-granted Ready determination.

@@ -2,7 +2,10 @@
 doc: MOD-001_MANUAL_QA
 status: LIVE — PLAN ONLY (no implementation exists to QA yet)
 module: MOD-001
-updated: 2026-09-18 (Scenario Review round 12 — surface 10, exploratory-testing procedure, added; SCN-106/137's mispointing to surface 5 fixed; the round-11 table header corrected to name SCN-137 separately from the round-10 batch it was wrongly grouped under)
+updated: 2026-09-19 (Scenario Review round 14 — corrected, P2-5: this
+line had gone stale at round 13's own body edits — SCN-138/139 mapping
+rows added, surface count corrected to 10, surface 10's negative proof
+replaced with a real mechanical completeness check)
 ---
 
 # MOD-001 — Manual QA Plan

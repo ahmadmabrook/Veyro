@@ -2,7 +2,13 @@
 doc: MOD-001_MODEL_ROUTE
 status: LIVE — DRAFT (planning stage)
 module: MOD-001
-updated: 2026-09-18 (BUG-032 CLOSED for real via a second owner-applied description-field patch, independently verified; BUG-031 remains CLOSED — all agents and routing layers now genuinely consistent)
+updated: 2026-09-19 (Scenario Review round 14, P2-4 — the Infra/SRE/CI
+row's path scope corrected from non-glob "CI workflows, observability"
+to concrete globs, propagating round 13's own `MODEL_ROUTING.md` fix
+here for the first time; BUG-032 CLOSED for real via a second
+owner-applied description-field patch, independently verified;
+BUG-031 remains CLOSED — all agents and routing layers now genuinely
+consistent)
 ---
 
 # MOD-001 — Model Route (per-module)
@@ -76,7 +82,7 @@ three additions above:
 | Task class | Agent | Model |
 |---|---|---|
 | Routine implementation outside the two activated surfaces below (top-level scaffolding not scoped to `backend/**`/`infra/**`, validators, `contracts/**`, `tools/**`) | `veyro-implementer` | Sonnet |
-| Infra/SRE/CI surface work (`infra/**`, CI workflows, observability) — **corrected, Scenario Review round 7: previously overlapped with the row above's "CI config," an ambiguity `ADR-005` itself rejects (lines 448-452: "Letting `veyro-implementer` stand in for the two named surface engineers is rejected")** | `veyro-infra-sre-engineer` | Sonnet |
+| Infra/SRE/CI surface work (`infra/**`, `.github/workflows/**` — **corrected, Scenario Review round 14, P2-4: was the non-glob "CI workflows, observability," stale since round 13's P2-5 fix to `MODEL_ROUTING.md`**) — **corrected, Scenario Review round 7: previously overlapped with the row above's "CI config," an ambiguity `ADR-005` itself rejects (lines 448-452: "Letting `veyro-implementer` stand in for the two named surface engineers is rejected")** | `veyro-infra-sre-engineer` | Sonnet |
 | Backend surface work (`backend/**`, bounded — excludes the critical-slice harness) | `veyro-backend-engineer` | Sonnet |
 | **Critical-slice work: tenant-isolation/RLS harness, authn negative-credential fixture, RLS+permission architecture gates only** | `veyro-critical-engineer` | **Opus** |
 | Deterministic test authoring | `veyro-test-author` | Sonnet |
