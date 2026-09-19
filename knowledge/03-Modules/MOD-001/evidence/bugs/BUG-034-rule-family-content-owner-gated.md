@@ -1,9 +1,10 @@
 ---
 doc: BUG-034
-status: OPEN — OWNER ACTION NEEDED
+status: CLOSED
 module: MOD-001
-severity: P1 (blocks touching `backend/**`, `infra/**`, or CI per ADR-005 Decision 2's binding pre-implementation condition; does not block non-backend/infra/CI implementation work, which is why MOD-001 implementation could still start this session)
+severity: P1 (blocked touching `backend/**`, `infra/**`, or CI per ADR-005 Decision 2's binding pre-implementation condition; did not block non-backend/infra/CI implementation work, which is why MOD-001 implementation slice 1 could still start the same session this bug was filed)
 opened: 2026-09-19
+closed: 2026-09-19
 ---
 
 # BUG-034 — No guard-compliant path to author `.claude/rules/backend/**`/`infra/**` content (ADR-005 pre-implementation condition)
@@ -119,3 +120,40 @@ Per its own severity note: MOD-001 implementation work outside
 known-infrastructure paths per `module-capabilities.yaml`) is unaffected
 and proceeded this same session — see
 `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`.
+
+## Closure (2026-09-19)
+
+**CLOSED.** The owner applied the patch outside this guarded session
+(commit `3632764e44522376277d96441bee847d148843fa`). This session
+independently verified, not merely trusted:
+
+- `git log -1 --stat` on the owner's commit confirms all 4 `git mv`
+  moves as pure renames (0 insertions/0 deletions each) — the migration
+  introduced no unreviewed content changes to the 4 existing files.
+- All 9 new files read back from their applied `.claude/rules/{backend,infra}/`
+  locations and compared against this session's own
+  `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-patch/` drafts —
+  byte-identical. Independently re-confirmed a second way by a
+  fresh-context `veyro-security-reviewer` (Opus) dispatch, which
+  SHA-256-hashed both copies of all 9 files and found every pair
+  byte-identical.
+- Rule-family directory structure matches the migration plan exactly:
+  `global/` (3 files), `admin/` (1 file), `backend/` (5 files),
+  `infra/` (4 files); the other 7 Appendix H.2 families correctly remain
+  absent.
+- Local HEAD == `origin/main` == `3632764e44522376277d96441bee847d148843fa`
+  confirmed at the start of this verification.
+
+**This closes BUG-034's own narrow, originally-filed scope: the
+capability gap (no guard-compliant write path to `.claude/rules/backend/**`/
+`infra/**`) is genuinely resolved.** A separate, newly-discovered defect
+class — the applied content itself has P1-severity qualification
+findings (transaction/idempotency coverage missing from the backend
+family, an unauthorized security-relaxing carve-out in one infra file, no
+third-party CI-Action supply-chain control) — is **not** folded into this
+bug's closure. It is filed separately as `BUG-035`
+(`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`),
+following this project's own established pattern of not conflating a
+newly-found, distinct defect with an already-closed bug's scope (the
+`BUG-030`→`BUG-031`→`BUG-032` precedent). Full qualification-review
+record: `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`.

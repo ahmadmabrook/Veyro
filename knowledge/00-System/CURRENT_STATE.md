@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-19 (MOD-001 implementation started this session — see `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section and `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md` for full detail, not restated here. MOD-001 lifecycle state transitions to IMPLEMENTATION IN PROGRESS. A real pre-implementation capability gap found and routed to the owner, not bypassed (`BUG-034`, `.claude/rules/backend/**`/`infra/**` owner-gated). MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-19 (MOD-001 implementation continued this session — owner applied `BUG-034`'s patch, independently verified and CLOSED; the applied rule content's own qualification review returned BLOCKED, filed as `BUG-035`; `RULE-001`..`009` registered at `BLOCKED`; slice 2 (`tools/validate_capability_manifest.py`) implemented. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State

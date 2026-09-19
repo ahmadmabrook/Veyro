@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (MOD-001 IMPLEMENTATION STARTED this session, per Convergence Gate #1's own "next legally allowed action" determination. Lifecycle state transitions to IMPLEMENTATION IN PROGRESS. Slice 1 (`tools/validate_baseline_binding.py`, GOV-01-R04) implemented; a real pre-implementation capability gap found and routed to the owner rather than bypassed — `.claude/rules/backend/**`/`infra/**` are owner-gated (`BUG-034`, same class as `BUG-029`/`BUG-030`), blocking further `backend/**`/`infra/**`/CI implementation specifically, not the rest of MOD-001. Full record: `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.)
+updated: 2026-09-19 (implementation continuation session — `BUG-034` CLOSED (owner applied the rule-family patch, independently verified twice); independent qualification review of the applied content returned BLOCKED (P0=0/P1=4/P2=8/Editorial=7), filed as `BUG-035`; `RULE-001` through `RULE-009` registered in `CAPABILITY_REGISTRY.md` at `BLOCKED`, not `APPROVED` — the first `RULE-<NNN>` IDs ever assigned on this project. Slice 2 (`tools/validate_capability_manifest.py`, `REQUIREMENTS.md` §3) implemented. `backend/**`/`infra/**`/CI implementation continues to not proceed, now gated on `BUG-035` rather than `BUG-034`. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -228,18 +228,47 @@ text named as the next legally allowed action.
       execution disclosed BLOCKED (CAP-007 allowlist gap, same
       precedented class as `BUG-025`) — not fabricated as PASS. See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`.
-- [ ] **`BUG-034` found and routed to owner, not bypassed:**
-      `.claude/rules/backend/**`/`infra/**` need real content before
-      `backend/**`/`infra/**`/CI implementation begins (`ADR-005`
-      Decision 2's binding pre-implementation condition), but that path
-      is owner-gated (same class as `BUG-029`/`BUG-030`). Exact 9-file
-      patch (4 `infra/`, 5 `backend/`, each H.3-conforming, drafted by
-      the exact chartered agents ADR-005 names) + 4-file `git mv`
-      migration plan prepared in full and routed to the owner. See
+- [x] **`BUG-034` found, routed to owner, applied, and independently
+      verified — CLOSED:** `.claude/rules/backend/**`/`infra/**` needed
+      real content before `backend/**`/`infra/**`/CI implementation
+      could begin (`ADR-005` Decision 2's binding pre-implementation
+      condition), but that path was owner-gated (same class as
+      `BUG-029`/`BUG-030`). Owner applied the 4-`git-mv`+9-file patch
+      (commit `3632764e44522376277d96441bee847d148843fa`); independently
+      verified twice (byte-for-byte read-back + a distinct
+      `veyro-security-reviewer` SHA-256 check). See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.
+- [ ] **`BUG-035` found, OPEN — the applied rule content's own
+      qualification review returned BLOCKED:** a fresh-context
+      `veyro-security-reviewer` (Opus) independently reviewed the 9
+      applied files (citation accuracy, H.3 falsifiability, internal
+      consistency, style conformance) and returned **P0=0, P1=4, P2=8,
+      Editorial=7 — BLOCKED**. `RULE-001` through `RULE-009` registered
+      in `knowledge/00-System/CAPABILITY_REGISTRY.md` at
+      `review_status: BLOCKED`, not `APPROVED` — the first `RULE-<NNN>`
+      IDs ever assigned on this project. `backend/**`/`infra/**`/CI
+      implementation continues to not rely on this content until
+      re-authored (by the chartered surface agents) and re-reviewed
+      to `APPROVED`. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`,
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`.
+- [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
+      (`REQUIREMENTS.md` §3's capability-governance validation gate
+      obligation, generalizing `validate_capabilities.py` to any
+      module — solves a real schema-divergence problem between
+      MOD-000's and MOD-001's manifest shapes). Routed to
+      `veyro-implementer` (Sonnet). Independently re-traced by the
+      orchestrating session against MOD-000's real manifest (expected
+      PASS), MOD-001's real manifest citing all 9 `BUG-035`-blocked
+      RULE IDs (expected FAIL), and a synthetic cycle fixture — one
+      real, disclosed precision gap found (a sentinel-value quirk in
+      the `approved_by` check that doesn't change either manifest's
+      overall verdict). Live execution disclosed BLOCKED (same CAP-007
+      allowlist gap as slice 1). See
+      `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.
 - [ ] Remaining GOV-01-R01/R02/R03/R05/R06/R07/R08 implementation slices
-      — not started. `backend/**`/`infra/**`/CI-touching slices are
-      blocked on `BUG-034`; other slices (`contracts/**` scaffolding,
+      — not started. `backend/**`/`infra/**`/CI-touching slices remain
+      blocked on `BUG-035`; other slices (`contracts/**` scaffolding,
       further `tools/**` validators) remain legally startable in a
       future session.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
