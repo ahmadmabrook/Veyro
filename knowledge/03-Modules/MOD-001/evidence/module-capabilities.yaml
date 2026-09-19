@@ -1,5 +1,5 @@
 module_id: MOD-001
-status: PLANNING — NOT READY (see knowledge/03-Modules/MOD-001/STATUS.md)
+status: IMPLEMENTATION IN PROGRESS (see knowledge/03-Modules/MOD-001/STATUS.md) — implementation slice 1 (tools/validate_baseline_binding.py) complete; backend/**/infra/**/CI implementation blocked pending BUG-034 owner action
 applicable_capability_profiles:
   - Infra/SRE/CI (ACTIVATED — ADR-005 Decision 2; agent: veyro-infra-sre-engineer)
   - Backend (ACTIVATED, bounded — ADR-005 Decision 2; agent: veyro-backend-engineer)
@@ -161,7 +161,7 @@ required_agent_roles:
     scope: "Module certification verdict, fresh context, orchestrator-dispatched only (not a peer-escalation target); never self-certifies"
     model: opus
     status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
-required_rule_ids: []  # No RULE-<NNN> IDs materialized yet — planning stage; backend/ and infra/ rule families need real content before implementation per ADR-005, not yet authored
+required_rule_ids: []  # No RULE-<NNN> IDs assigned yet (this project has not needed RULE-ID assignment before now). Content for all 9 backend/+infra/ files is DRAFTED (knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-patch/) but not yet applied — .claude/rules/** is owner-gated (BUG-034), same class as BUG-029/030. IDs to be assigned when the owner applies the patch.
 required_skill_ids: []  # None identified as missing this session — see knowledge/03-Modules/MOD-001/CAPABILITIES.md's gap analysis
 # Added (Scenario Review round 4, P1-8): Appendix H.1 (EIP_MIRROR.md lines
 # 20597-20601) requires the manifest to "also record capability dependency
@@ -184,6 +184,10 @@ resolution_attempt_budget_evidence:
     attempts: 1
     resolved: true
     evidence: "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-030-existing-agent-file-edit-capability-gap.md"
+  - gap: "BUG-034 (.claude/rules/backend/**+infra/** create/edit-denied — ADR-005 pre-implementation condition)"
+    attempts: 1
+    resolved: false
+    evidence: "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md — exact 9-file patch + 4-file migration plan drafted, routed to owner, awaiting owner action"
 lifecycle_review_state: "PLANNING — not yet subject to a lifecycle review cycle; applicable once this manifest is a certified (not draft) module-capabilities row per this file's own notes field below"
 rollback_target: "Git-level only — no production state exists to roll back (DC-16, no Production promotion ever occurred); see IMPLEMENTATION.md §9 for the full module-level rollback strategy"
 required_cross_cutting_controls:
@@ -196,7 +200,8 @@ required_cross_cutting_controls:
   - Accessibility (a11y lint tooling)
   - Load (CI-runner/environment smoke-load, bounded per IMPLEMENTATION.md §5)
   - Observability (release-evidence, capability-manifest validation)
-missing_capability_blockers: []  # BUG-029 and BUG-030 both closed; none currently open
+missing_capability_blockers:
+  - "BUG-034 (.claude/rules/backend/**+infra/** owner-gated) — blocks backend/**/infra/**/CI implementation specifically; does not block tools/**/contracts/** implementation, which proceeded this session"
 capability_evidence_ids: []  # No CAP-<NNN>/SKL-<NNN>/RULE-<NNN> evidence IDs generated yet — planning stage, no capability qualification run performed
 notes: >-
   This manifest is a planning-stage draft, not a certified module-capabilities

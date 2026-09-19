@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS. `ADR006_AUTHORITY`=PASS, `ROUND16_REMEDIATION`=PASS, current Ready-blocking P0=0/P1=0, critical DoR invariants PASS, evidence-integrity raw FAIL/14 findings but Ready-blocker=NO (all independently re-adjudicated as ADR-005-deferred or checker false positives), owner/external gates PASS, baselines PASS, local HEAD==origin/main. Full record: `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`. **Lifecycle state transitions to READY FOR IMPLEMENTATION. Implementation has NOT started this session** — next legally allowed action is implementation, in a new fresh session, per the gate's own governing instructions.)
+updated: 2026-09-19 (MOD-001 IMPLEMENTATION STARTED this session, per Convergence Gate #1's own "next legally allowed action" determination. Lifecycle state transitions to IMPLEMENTATION IN PROGRESS. Slice 1 (`tools/validate_baseline_binding.py`, GOV-01-R04) implemented; a real pre-implementation capability gap found and routed to the owner rather than bypassed — `.claude/rules/backend/**`/`infra/**` are owner-gated (`BUG-034`, same class as `BUG-029`/`BUG-030`), blocking further `backend/**`/`infra/**`/CI implementation specifically, not the rest of MOD-001. Full record: `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -11,9 +11,15 @@ approval status. For every prerequisite edge record dependency state,
 SOFTWARE_ONLY boolean/justification, gated-capability non-use evidence and
 proof reference."
 
-**Lifecycle state: READY FOR IMPLEMENTATION** (transitioned 2026-09-19,
-Convergence Gate #1 — `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`).
-Not Approved; implementation itself has not started. Activated this session
+**Lifecycle state: IMPLEMENTATION IN PROGRESS** (transitioned 2026-09-19,
+same session as Convergence Gate #1 —
+`knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`
+for the Ready determination; this implementation-start session is the
+"new fresh session" that gate's own text named as the next legally
+allowed action). Not Approved — certification follows real
+implementation plus Code Review, Manual QA, Security Review,
+Performance/Load Review, cumulative regression, and Gatekeeper
+certification, none of which this session runs prematurely. Activated this session
 per the EIP §8 unlock rule, after independently re-verifying (not merely
 trusting the activation prompt) that MOD-000 holds a genuine Module
 Approval Certificate (`knowledge/03-Modules/MOD-000/APPROVAL.md`,
@@ -202,13 +208,40 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       Convergence Gate evidence file above for this determination's own
       full trace.
 
-**Approval status: READY FOR IMPLEMENTATION. NOT YET APPROVED.** No
+**Approval status: IMPLEMENTATION IN PROGRESS. NOT YET APPROVED.** No
 Module Approval Certificate exists or is expected at this stage —
 certification follows real implementation plus Code Review, Manual QA,
 Security Review, Performance/Load Review, cumulative regression, and
-Gatekeeper certification (`ADR-006` rule 5), none of which this gate
-replaces. MOD-001 implementation has **not started** and was **not**
-started by this gate, per this project's WIP=1 / no-self-certification
-discipline. The stopping rule for the planning-review cycle was the
-bounded Convergence Gate (`ADR-006`, `OWN-005`); it has now been
-exercised once, returning PASS.
+Gatekeeper certification (`ADR-006` rule 5), none of which this session
+runs. The stopping rule for the planning-review cycle was the
+bounded Convergence Gate (`ADR-006`, `OWN-005`); it was exercised once,
+returning PASS, and this session is the "new fresh session" its own
+text named as the next legally allowed action.
+
+## Implementation progress (this session, 2026-09-19)
+
+- [x] **Slice 1 complete:** `tools/validate_baseline_binding.py`
+      (GOV-01-R04, `REQUIREMENTS.md` §3's baseline-artifact binding
+      schema validation obligation) — routed to `veyro-implementer`
+      (Sonnet), independently re-traced by the orchestrating session
+      against the real `PROJECT_INDEX.md`, no discrepancy found. Live
+      execution disclosed BLOCKED (CAP-007 allowlist gap, same
+      precedented class as `BUG-025`) — not fabricated as PASS. See
+      `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`.
+- [ ] **`BUG-034` found and routed to owner, not bypassed:**
+      `.claude/rules/backend/**`/`infra/**` need real content before
+      `backend/**`/`infra/**`/CI implementation begins (`ADR-005`
+      Decision 2's binding pre-implementation condition), but that path
+      is owner-gated (same class as `BUG-029`/`BUG-030`). Exact 9-file
+      patch (4 `infra/`, 5 `backend/`, each H.3-conforming, drafted by
+      the exact chartered agents ADR-005 names) + 4-file `git mv`
+      migration plan prepared in full and routed to the owner. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.
+- [ ] Remaining GOV-01-R01/R02/R03/R05/R06/R07/R08 implementation slices
+      — not started. `backend/**`/`infra/**`/CI-touching slices are
+      blocked on `BUG-034`; other slices (`contracts/**` scaffolding,
+      further `tools/**` validators) remain legally startable in a
+      future session.
+- [ ] Code Review / Manual QA / Security Review / Performance Review /
+      Gatekeeper certification — none run this session, per the
+      mission's own explicit instruction not to run these prematurely.

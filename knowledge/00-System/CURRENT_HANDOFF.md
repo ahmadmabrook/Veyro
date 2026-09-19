@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-19 (chunk 48 — Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS (ADR006_AUTHORITY/ROUND16_REMEDIATION/CRITICAL_DOR_INVARIANTS/OWNER_EXTERNAL_GATE all PASS, current Ready-blocking P0=0/P1=0, evidence-integrity raw FAIL/14 findings but 0 Ready-blocking). MOD-001 lifecycle state transitions to READY FOR IMPLEMENTATION. Implementation has NOT started this session — next legally allowed action is MOD-001 implementation, in a new fresh session. No Scenario Review Round 17 was run. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`, `SCENARIOS.md` §5, `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-19 (chunk 49 — MOD-001 IMPLEMENTATION STARTED. Slice 1 (`tools/validate_baseline_binding.py`, GOV-01-R04) implemented, independently re-traced, live execution honestly disclosed BLOCKED (CAP-007 allowlist gap, precedented `BUG-025` class). `BUG-034` found and routed to owner: `.claude/rules/backend/**`/`infra/**` are owner-gated, same class as `BUG-029`/`BUG-030` — exact 9-file patch + 4-file migration plan prepared and sent to the owner, not bypassed. MOD-001 lifecycle state transitions to IMPLEMENTATION IN PROGRESS. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -101,8 +101,95 @@ to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-45-2026-09-19-round15-remediation.md`.**
 **Thirtieth application (2026-09-19, chunk 48): chunk 46 compressed to
 a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-46-2026-09-19-round16-remediation.md`**
-— chunks 47 and 48 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-46-2026-09-19-round16-remediation.md`.**
+**Thirty-first application (2026-09-19, chunk 49): chunk 47 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-47-2026-09-19-convergence-gate-rule-adopted.md`**
+— chunks 48 and 49 are now the 2 kept in full.
+
+## What happened chunk 49, 2026-09-19 — MOD-001 implementation started: slice 1 (`tools/validate_baseline_binding.py`) complete; `BUG-034` (`.claude/rules/backend/**`/`infra/**` owner-gated) found and routed to owner, not bypassed
+
+This is the first MOD-001 implementation session, following chunk 48's
+Convergence Gate #1 (Definition of Ready = PASS) and per that gate's own
+"next legally allowed action: MOD-001 implementation, in a new fresh
+session" determination.
+
+**Bootstrap re-verified fresh, not trusted from the prompt:** local
+HEAD == `origin/main` == the governed Ready commit
+(`1e178ce18831fb0c4f672aaa5836004c5e04c845`) confirmed before any action;
+`STATUS.md`, `REQUIREMENTS.md`, `IMPLEMENTATION.md`, `SCENARIOS.md`,
+`CAPABILITIES.md`, `MODEL_ROUTE.md`, `ADR-005`, `ADR-006`,
+`evidence/module-capabilities.yaml` all read in full.
+
+**First implementation slice selected and completed:**
+`tools/validate_baseline_binding.py` (GOV-01-R04, `REQUIREMENTS.md` §3's
+baseline-artifact binding schema validation obligation) — the CI-gate
+generalization of MOD-000's `verify_baselines.py`, covering all 5
+EIP-mandated fail-closed conditions (mismatch, unapproved-candidate-EIP,
+missing/ambiguous identity, missing hash, missing bootstrap-enforcement-
+metadata), per `SCENARIOS.md` SCN-MOD001-025/026/124. Chosen specifically
+because it lives under `tools/**`, a known-infrastructure path unaffected
+by the rule-family gap found below. Dispatched to `veyro-implementer`
+(Sonnet) per `MODEL_ROUTE.md`'s existing routing table — not a critical
+slice, not Backend/Infra surface work. The dispatch was interrupted once
+by this session's own rate limit and resumed cleanly after reset.
+Independently re-traced by this orchestrating session against the real
+`PROJECT_INDEX.md` content (not merely trusting the authoring agent's own
+report) — no discrepancy found. **Live execution honestly disclosed
+BLOCKED**: `.claude/security/bash_guard.py`'s `python3` family only
+executes 7 pre-existing, hash-pinned scripts; this new script is not on
+that list, and the guard file itself is owner-gated, so no session can
+add itself to the allowlist. This is not a novel blocker — `BUG-025`
+already discloses the identical residual for a different tool, unresolved
+since 2026-09-13. No test-pass claim was fabricated; the script's logic
+was hand-traced by two independent readers (the authoring agent, then this
+session separately) against all 6 SCN-025/026/124 cases, with the trace
+itself recorded as evidence, not "PASS." Full record:
+`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`.
+
+**Pre-implementation capability gap found and routed to the owner, not
+bypassed:** `ADR-005` Decision 2's binding pre-implementation condition
+("Before implementation work begins at `infra/**`, CI, or `backend/**`:
+the two profiles' agents and rule families must exist with real
+content") is unmet — `.claude/rules/` is confirmed still flat (4 loose
+files, no family subdirectories), matching chunk 48's own confirmation.
+Confirmed directly: `.claude/rules/**` is `Edit`/`Write`-denied
+(`.claude/settings.json` lines 135-136) and Bash-mutation-denied
+(`bash_guard.py`'s `.claude` protected-path fragment) — the identical
+protection class `BUG-029`/`BUG-030` found for `.claude/agents/**`. Filed
+as **`BUG-034`**, OPEN, P1, scoped (blocks `backend/**`/`infra/**`/CI
+implementation specifically, not the rest of MOD-001 — which is why
+slice 1 above still completed this session). Per the `BUG-028`/`029`/`030`
+precedent, this was not worked around: the exact patch — 4 `git mv`
+commands relocating the existing loose files into `global/`/`admin/`
+family directories, plus 9 new H.3-conforming rule files (4 `infra/`, 5
+`backend/`) — was drafted by the exact chartered agents `ADR-005` names
+for this content (`veyro-infra-sre-engineer`, `veyro-backend-engineer`,
+dispatched in parallel with the slice-1 build; the backend-rules dispatch
+was also interrupted by the rate limit and resumed cleanly), each
+independently reviewed by this orchestrating session against its cited
+EIP/TSD mirror sources and MOD-001's own planning documents before
+inclusion. Full patch content:
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-patch/` (10 files);
+bug record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.
+
+**Durable state updated this chunk:** `STATUS.md` (lifecycle →
+IMPLEMENTATION IN PROGRESS, new "Implementation progress" section),
+`CURRENT_STATE.md`, `PROJECT_INDEX.md`'s Active Module section,
+`BUG_REGISTRY.md` (`BUG-034` row + corrected summary),
+`evidence/module-capabilities.yaml` (`required_rule_ids`,
+`missing_capability_blockers`, `resolution_attempt_budget_evidence`,
+`status`). No Code Review, Manual QA, Security Review, Performance
+Review, or Gatekeeper certification was run this session, per the
+mission's own explicit instruction not to run these prematurely.
+
+**Next legally allowed action:** either (a) the owner applies `BUG-034`'s
+patch, closing the `backend/**`/`infra/**`/CI blocker, after which a
+future session can proceed with the tenant-isolation/RLS harness or other
+backend/infra slices; or (b) a future session picks up a further
+non-backend/infra/CI slice (e.g. `contracts/**` scaffolding, another
+`tools/**` validator) while `BUG-034` remains open. Not Code Review, not
+Manual QA, not Gatekeeper certification, not MOD-002.
 
 ## What happened chunk 48, 2026-09-19 — Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS, lifecycle state transitions to READY FOR IMPLEMENTATION; implementation NOT started this session
 
@@ -202,76 +289,7 @@ local HEAD == `origin/main` re-verified after the push.
 session** — not in this session, not MOD-002, not a further review
 round.
 
-## What happened chunk 47, 2026-09-19 — governance adjudication + owner decision: MOD-001's repeated-full-Scenario-Review stopping rule superseded by a bounded Convergence Gate (`OWN-005`, `ADR-006`); no Round 17 run, no Ready declared, no implementation started
-
-A governance adjudication was run on the round-16-propagated stopping
-rule ("Ready is gated on an independent round returning `MOD-001
-SCENARIO REVIEW APPROVED` with P0=0/P1=0," cited since round 4 as "the
-owner's explicit review-budget rule," `SCENARIOS.md:2839`). Traced
-against the governing baselines directly: `EIP_MIRROR.md` §8's own gate
-table and lifecycle sequence (`Backlog → Locked → Ready → Scenario
-Review → In Development → ...`, `EIP_MIRROR.md:1407-1413`) treat Ready
-and Scenario Review as distinct, sequential gates — Ready's own minimum
-evidence (`EIP_MIRROR.md:1627-1633`) is dependencies/scope/module-spec/
-environment, not a clean Scenario Review; Scenario Review's own minimum
-evidence (`EIP_MIRROR.md:1665-1668`) requires independent-QA-context
-review and Required-behavior mapping, not a specific round-count or
-P0/P1-recount mechanic. `DEVELOPMENT_CONSTITUTION.md` DC-02/03/05/06/07
-require independence and full execution but not a from-scratch
-full-catalog re-audit after every remediation; DC-08's zero-known-defect
-bar applies at module certification, not this intermediate gate. TSD is
-silent on this process question. `OWNER_APPROVALS.md` was checked
-directly and carries no durable row for "the owner's explicit
-review-budget rule" this stopping condition was attributed to since
-round 4 — the citation was never backfilled, unlike every other real
-owner decision on this project. **Conclusion: Round 17, as an
-unbounded full-catalog re-audit automatically triggered by round 16
-having returned P1 findings, was not required by higher-precedence
-governance** — the rule enforcing it was a locally-observed operating
-convention, attributed to the owner but never durably recorded.
-
-Per this project's owner-reserved-change discipline (`DC-16`, `DC-09`),
-this was not self-authorized. A bounded Convergence Gate rule was
-proposed and put to the owner directly, together with the exact
-governance trace above. **The owner chose option (a):** confirmed the
-original rule was never intended to create an unbounded review loop,
-and authorized replacing it with the bounded Convergence Gate rule —
-recorded as **`OWN-005`** in `knowledge/00-System/OWNER_APPROVALS.md`.
-Decision detail, full governance trace, and the bounded rule's five
-points (fresh-context Convergence Gate re-verifies prior P0/P1
-remediation + directly affected critical invariants + current
-Ready-blocking P0/P1 + baseline/capability/routing state + owner/
-external gates; a new blocker must be source-backed/present/material/
-not an EIP-governed deferred obligation; P2/Editorial/cleanup/
-documentation items never trigger a new cycle unless a governing source
-makes them a Ready condition; `P0=0`/`P1=0` plus critical DoR
-invariants `PASS` ends the planning-review cycle; does not replace Code
-Review/Manual QA/Security/Performance/Gatekeeper/regression/
-certification) are recorded in **`ADR-006`**
-(`knowledge/04-Decisions/ADR-006-mod001-scenario-review-bounded-convergence-gate.md`).
-The owner was explicit this does not lower any technical acceptance
-criterion.
-
-`knowledge/03-Modules/MOD-001/STATUS.md`'s Definition-of-Ready checklist
-item and its closing "Approval status" paragraph were corrected to cite
-the new rule (old text preserved via dated correction annotation, not
-silently rewritten). `SCENARIOS.md` §5 got a new "Governance correction
-(2026-09-19) — Round-16 Gate Rule superseded" subsection appended after
-the round 16 entry, superseding (not deleting) that entry's own "Next
-legally allowed action: an independent Scenario Review round 17" line —
-per this project's established policy of not rewriting historical
-review-log rows. `CURRENT_STATE.md` and this file's own front matter
-were updated to point at the corrected state rather than restate it.
-
-**No Scenario Review Round 17 was run this session. No Convergence Gate
-has been run yet either — this session recorded the rule change only,
-per the owner's own instruction not to declare Ready or run the gate in
-the same turn.** MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN
-PROGRESS, NOT READY, NOT APPROVED; implementation has not started and
-was not started this session. **Next legally allowed action: a
-fresh-context Convergence Gate against round 16's remediation, per
-`ADR-006`'s bounded rule** — not Round 17, not implementation, not a
-self-granted Ready determination.
+## What happened chunk 47, 2026-09-19 (compressed 2026-09-19, thirty-first retention-rule application) — governance adjudication + owner decision: MOD-001's repeated-full-Scenario-Review stopping rule superseded by a bounded Convergence Gate (`OWN-005`, `ADR-006`); no Round 17 run, no Ready declared, no implementation started. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-47-2026-09-19-convergence-gate-rule-adopted.md`.
 
 ## What happened chunk 46, 2026-09-19 (compressed 2026-09-19, thirtieth retention-rule application) — MOD-001 Scenario Review round 16 + independent evidence-integrity re-validation: round 16 returned BLOCKED (P0=0, P1=4, P2=6, Editorial=4), all findings remediated same session — round 15's remediation held on 7 of its own 11 named claims but left a real Android-pass/fail mobile-UI residual, a DEFERRED-profile fixture requirement, a rule-family misassignment, and an under-triggered Component-tests row; evidence-integrity re-run fresh found 15 findings (9 ADR-005-deferred, 6 checker false positives); Definition of Ready explicitly NOT evaluated. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-46-2026-09-19-round16-remediation.md`.
 

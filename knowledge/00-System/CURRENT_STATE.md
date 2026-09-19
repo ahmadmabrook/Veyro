@@ -1,14 +1,14 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-19 (Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS — see `knowledge/03-Modules/MOD-001/STATUS.md` and `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md` for full detail, not restated here. MOD-001 lifecycle state transitions to READY FOR IMPLEMENTATION; implementation has NOT started this session. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-19 (MOD-001 implementation started this session — see `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section and `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md` for full detail, not restated here. MOD-001 lifecycle state transitions to IMPLEMENTATION IN PROGRESS. A real pre-implementation capability gap found and routed to the owner, not bypassed (`BUG-034`, `.claude/rules/backend/**`/`infra/**` owner-gated). MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
 
 **Active module:** MOD-001 — Repository, CI/CD, Environments & Quality Engineering (Foundation wave, TSD scope GOV-01)
-**WIP:** 1 (MOD-001 READY FOR IMPLEMENTATION, per Convergence Gate #1 — implementation has NOT started; MOD-002+ remain LOCKED)
-**Module status: READY FOR IMPLEMENTATION.** Not yet Approved (certification follows real implementation + assurance gates). See `knowledge/03-Modules/MOD-001/STATUS.md`.
+**WIP:** 1 (MOD-001 IMPLEMENTATION IN PROGRESS — MOD-002+ remain LOCKED)
+**Module status: IMPLEMENTATION IN PROGRESS.** Not yet Approved (certification follows real implementation + assurance gates). See `knowledge/03-Modules/MOD-001/STATUS.md`.
 
 **Prerequisite (MOD-000) verified from durable evidence, not merely trusted from this prompt:** Module Approval Certificate exists (`knowledge/03-Modules/MOD-000/APPROVAL.md`, verdict `MOD-000 CERTIFICATION APPROVED`, sixth independent certification-scope `veyro-gatekeeper` round, 2026-09-13, P0=0/P1=0). `verify_baselines.py` re-run this session: **PASS, 4/4 governing baseline hashes match** `PROJECT_INDEX.md` exactly. `knowledge/05-QA/BUG_REGISTRY.md` re-read this session: 0 open Blocker, 0 open P1; BUG-010 (P2, Notion connector scope, owner-decision-pending) is the sole pre-existing open item and is non-blocking for MOD-001 activation. `OWNER_APPROVALS.md` re-read: OWN-001/002/003 recorded, one prospective OWN-004 item open (design-bundle demo-data, non-blocking). No P0/P1 from MOD-000 invalidates this transition. `PROJECT_INDEX.md`'s "Active Module" section (which still said "MOD-000 (in progress)... MOD-001 locked") has been corrected below to match this file, since that line had gone stale the moment MOD-000 was certified.
 
