@@ -4309,3 +4309,31 @@ The actual next legally allowed action is a fresh-context
 unbounded 17th full independent Scenario Review. That Convergence Gate
 has not been run as of this correction. MOD-001 remains ACTIVATED,
 NOT READY, NOT APPROVED; implementation has not started.
+
+### Convergence Gate #1 (2026-09-19) — MOD-001 Definition of Ready = PASS
+
+The Convergence Gate named immediately above as not-yet-run was
+executed this session. Full trace:
+`knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`.
+Independently re-verified: `ADR-006` authority (PASS, re-checked against
+`EIP_MIRROR.md`/`DEVELOPMENT_CONSTITUTION.md` primary text directly, not
+taken from the ADR's own prose); round 16's remediation (PASS, each of
+its claims re-checked against current file content); current
+Ready-blocking defects (P0=0, P1=0 — `BUG-031`/`BUG-032` CLOSED,
+`BUG-010`/`BUG-033` both open-P2-non-blocking, unchanged); critical DoR
+invariants (PASS); `evidence_integrity_check.py` (raw FAIL, 14 findings
+this run — one fewer than round 16's 15, because `CURRENT_STATE.md` no
+longer contains a literal `BUG-033` reference after chunk 47's own
+front-matter edit, confirmed by direct search; all 14 independently
+re-adjudicated as either `ADR-005`-governed pre-implementation
+deferrals or the already-filed `BUG-033` checker-tooling defect — 0
+Ready-blocking); owner/external gates (PASS). Local HEAD ==
+`origin/main` throughout.
+
+**MOD-001 Definition of Ready = PASS. Lifecycle state transitions to
+READY FOR IMPLEMENTATION.** Implementation has **not** started and is
+not started by this gate. Per `ADR-006` rule 5, Code Review, Manual QA,
+Security Review, Performance/Load Review, cumulative regression, and
+Gatekeeper certification all remain outstanding and are not replaced by
+this determination. No Scenario Review Round 17 was run. Next legally
+allowed action: MOD-001 implementation, in a new fresh session.

@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (Governance adjudication + owner decision `OWN-005`: the repeated-full-Scenario-Review stopping rule is superseded by a bounded Convergence Gate, `ADR-006`. Round 16 (P0=0/P1=4/P2=6/Editorial=4, all remediated same session) and its independent evidence-integrity adjudication (0 Ready-blocking findings) stand as before — see `SCENARIOS.md` §5. Next step is a fresh-context Convergence Gate, not Scenario Review round 17; not yet run. MOD-001 remains NOT READY, NOT APPROVED, implementation not started.)
+updated: 2026-09-19 (Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS. `ADR006_AUTHORITY`=PASS, `ROUND16_REMEDIATION`=PASS, current Ready-blocking P0=0/P1=0, critical DoR invariants PASS, evidence-integrity raw FAIL/14 findings but Ready-blocker=NO (all independently re-adjudicated as ADR-005-deferred or checker false positives), owner/external gates PASS, baselines PASS, local HEAD==origin/main. Full record: `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`. **Lifecycle state transitions to READY FOR IMPLEMENTATION. Implementation has NOT started this session** — next legally allowed action is implementation, in a new fresh session, per the gate's own governing instructions.)
 ---
 
 # MOD-001 — Module Status
@@ -11,8 +11,9 @@ approval status. For every prerequisite edge record dependency state,
 SOFTWARE_ONLY boolean/justification, gated-capability non-use evidence and
 proof reference."
 
-**Lifecycle state: ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS.** Not
-Ready, not Approved, implementation not started. Activated this session
+**Lifecycle state: READY FOR IMPLEMENTATION** (transitioned 2026-09-19,
+Convergence Gate #1 — `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`).
+Not Approved; implementation itself has not started. Activated this session
 per the EIP §8 unlock rule, after independently re-verifying (not merely
 trusting the activation prompt) that MOD-000 holds a genuine Module
 Approval Certificate (`knowledge/03-Modules/MOD-000/APPROVAL.md`,
@@ -185,29 +186,29 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       Editorial findings (a wrong line citation; a third, informational-
       only note on ADR-015 confirming no defect exists there). All fixed
       this session; see `SCENARIOS.md` §5's round 15 entry.**
-- [ ] Definition of Ready — **not yet reached.** `BUG-031` and
-      `BUG-032` are both CLOSED (satisfied, independently verified —
-      see the bug-review checklist item above). **Corrected 2026-09-19
-      (`OWN-005`, `ADR-006`): the prior rule gating this on "an
-      independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
-      with P0=0/P1=0" (i.e. a from-scratch full re-audit after every
-      remediation) is superseded.** Round 16 (2026-09-19) returned
-      P0=0/P1=4/P2=6/Editorial=4, all remediated same session; a
-      separate independent evidence-integrity adjudication found 0
-      Ready-blocking defects. Per the bounded Convergence Gate rule now
-      in force (`ADR-006`), the next step is a fresh-context
-      Convergence Gate re-verifying round 16's remediation and the
-      current Ready-blocking P0/P1 state — not an unbounded Scenario
-      Review round 17. That Convergence Gate has **not yet been run**
-      as of this correction; Definition of Ready is still not reached.
-      See `SCENARIOS.md` §5 for the round 16 detail and the governance
-      correction appended after it.
+- [x] Definition of Ready — **PASS (2026-09-19, Convergence Gate #1,**
+      `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`**).**
+      `BUG-031` and `BUG-032` both CLOSED (independently re-verified).
+      Per the bounded Convergence Gate rule (`ADR-006`, `OWN-005`), a
+      fresh-context gate re-verified round 16's remediation (PASS),
+      current Ready-blocking P0/P1 (0/0), critical DoR invariants
+      (PASS), evidence-integrity (raw FAIL, 14 findings, all
+      independently re-adjudicated non-Ready-blocking — 9 ADR-005-deferred
+      pre-implementation rule-file references, 5 checker false
+      positives), and owner/external gates (PASS, `BUG-010`/`BUG-033`
+      both open-but-non-blocking, unchanged). No Scenario Review Round
+      17 was run or required. See `SCENARIOS.md` §5 for the round 16
+      detail and the governance correction appended after it, and the
+      Convergence Gate evidence file above for this determination's own
+      full trace.
 
-**Approval status: NOT READY. NOT APPROVED.** No Module Approval
-Certificate exists or is expected at this stage — this is a planning
-turn. MOD-001 implementation has not started and will not start until
-Definition of Ready is met and independently confirmed, per this
-project's WIP=1 / no-self-certification discipline. The stopping rule
-for the planning-review cycle itself is now the bounded Convergence
-Gate (`ADR-006`, `OWN-005`), not the repeated-full-round rule this file
-previously stated.
+**Approval status: READY FOR IMPLEMENTATION. NOT YET APPROVED.** No
+Module Approval Certificate exists or is expected at this stage —
+certification follows real implementation plus Code Review, Manual QA,
+Security Review, Performance/Load Review, cumulative regression, and
+Gatekeeper certification (`ADR-006` rule 5), none of which this gate
+replaces. MOD-001 implementation has **not started** and was **not**
+started by this gate, per this project's WIP=1 / no-self-certification
+discipline. The stopping rule for the planning-review cycle was the
+bounded Convergence Gate (`ADR-006`, `OWN-005`); it has now been
+exercised once, returning PASS.

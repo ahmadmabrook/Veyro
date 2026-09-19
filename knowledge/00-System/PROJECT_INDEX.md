@@ -45,7 +45,7 @@ The task instructions contained two orderings for artifact #3 vs #4 (numbered li
 ## Active Module
 
 - **MOD-000** — Engineering execution control plane bootstrap. **APPROVED** (2026-09-13, Module Approval Certificate: [`knowledge/03-Modules/MOD-000/APPROVAL.md`](../03-Modules/MOD-000/APPROVAL.md)). No longer the active implementation module.
-- **MOD-001** — Repository, CI/CD, Environments & Quality Engineering (Foundation wave, TSD scope GOV-01). **ACTIVE — planning/specification stage** (activated 2026-09-13, this is the current WIP=1 module). See [`knowledge/03-Modules/MOD-001/`](../03-Modules/MOD-001/). Implementation has not started.
+- **MOD-001** — Repository, CI/CD, Environments & Quality Engineering (Foundation wave, TSD scope GOV-01). **READY FOR IMPLEMENTATION** (activated 2026-09-13; Definition of Ready PASS 2026-09-19, Convergence Gate #1; this is the current WIP=1 module). See [`knowledge/03-Modules/MOD-001/`](../03-Modules/MOD-001/). Implementation has not started.
 - MOD-002 and all later product/domain modules: **locked** (WIP=1).
 
 ## Durable Authority Rule
