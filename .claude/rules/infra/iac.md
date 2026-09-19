@@ -74,10 +74,42 @@ stopping it short of this file.
    `knowledge/00-System/OWNER_APPROVALS.md` naming the specific
    production action, made *before* the directory/config/workflow is
    created — not backfilled after the fact.
+5. **Every GitHub Action referenced in `.github/workflows/**` is pinned
+   to an exact commit SHA — never a floating tag or branch name — and
+   any action from outside a short trusted-publisher list is BLOCKED
+   until it clears independent capability review.** Grounded in the same
+   "reviewable infrastructure-as-code" standard quoted in this file's
+   header: a `uses:` reference pinned to a mutable tag or branch (e.g.
+   `@main`, `@v1`, `@latest`) is not reviewable, since the code that
+   actually executes can change after the workflow was reviewed and
+   merged, with no corresponding new commit to catch the change. Every
+   `uses:` line in every `.github/workflows/**` file resolves to a
+   40-character commit SHA (a trailing version comment, e.g. `# v4.1.1`,
+   is fine for readability; the executable reference itself must be the
+   SHA). Separately: an action published by `actions/*`, `github/*`, or
+   another publisher an `OWN-<NNN>` entry in `OWNER_APPROVALS.md` has
+   explicitly named as trusted may be adopted once SHA-pinned, matching
+   Appendix H.4's "Bundled/official approved capability" row ("Qualify
+   in project before relying on it for a gate," not a full independent
+   review). Any action from a publisher outside that trusted list —
+   third-party, community, or unknown — is treated exactly as any other
+   third-party executable capability under `CAPABILITY_POLICY.md`'s
+   9-stage lifecycle, matching Appendix H.4's own "Third-party/
+   community/unknown → BLOCKED until independent approval" row applied
+   to this surface directly, the same way it already applies to Skills/
+   plugins/MCPs: the action is BLOCKED until an Opus assurance role has
+   independently evaluated it (stage 4), it has passed positive/negative
+   qualification (stage 5), and it carries an `APPROVED` `CAP-<NNN>` row
+   in `CAPABILITY_REGISTRY.md` (stage 7) — no workflow referencing it may
+   merge before that. This is mechanically checkable: for every `uses:`
+   line in every workflow file, does the reference resolve to a
+   40-character SHA, and — if the publisher is not on the trusted list —
+   does a corresponding `APPROVED` `CAP-<NNN>` row exist; a `false` on
+   either check fails this control.
 
 ## Fail-closed rule
 
-An `infra/**` or CI-workflow change that cannot satisfy all four
+An `infra/**` or CI-workflow change that cannot satisfy all five
 controls above does not merge. A session that reaches a point where a
 production directory, secret scope, or deployment workflow appears to be
 required reports `BLOCKED: OWNER_APPROVAL_REQUIRED` naming DC-16, rather

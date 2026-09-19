@@ -29,15 +29,18 @@ not yet state as a standing rule anywhere.
    security-implications text, an arbitrarily-triggerable rollback is a
    denial-of-service vector: an attacker (or a mistaken caller) could
    force repeated rollbacks against a healthy release. The rollback
-   mechanism's only trigger paths are: (a) the pipeline's own
-   SLO/guardrail evaluation crossing a pre-declared threshold, or (b) an
-   explicit, authenticated, audited manual override reserved for a
-   human operator — never an unauthenticated or convenience HTTP
-   endpoint, CLI flag, or webhook callable by an external system. This
-   is the same security constraint as observability's SLO-guardrail
-   requirement (`observability.md` control 2), stated here as a release-
-   control boundary specifically: the rollback surface's attack profile,
-   not just its evidence quality.
+   mechanism's only trigger path is the pipeline's own SLO/guardrail
+   evaluation crossing a pre-declared threshold — never an
+   unauthenticated or convenience HTTP endpoint, CLI flag, webhook, or
+   manual override callable by a human operator or external system. This
+   matches `IMPLEMENTATION.md` §3's Canary row exactly: "Automated
+   rollback trigger tied to real guardrail signals, not a
+   manually-callable endpoint" — no carve-out of any kind, including an
+   audited one, since no cited source authorizes one. This is the same
+   security constraint as observability's SLO-guardrail requirement
+   (`observability.md` control 2), stated here as a release-control
+   boundary specifically: the rollback surface's attack profile, not
+   just its evidence quality.
 2. **Canary/rollout mechanics stay inside LOCAL/QA/staging — never real
    production traffic.** Per `IMPLEMENTATION.md` §2's own environment
    table and GOV-01-R05's "Owner/external gates" text: "any real

@@ -91,6 +91,45 @@ satisfied by MOD-001 itself.
    `.claude/rules/backend/api.md` for the API-boundary half of this
    constraint.
 
+7. **Every domain application-service method that mutates state executes
+   within one explicit transaction boundary, and a domain-event publish
+   commits atomically with its triggering mutation via the transactional
+   outbox.** EIP §4.3's Backend/API profile row names both requirements
+   directly — quoted here in full, not elided as in this file's opening
+   citation above: "backend/**/*.py — FastAPI/Pydantic boundaries;
+   modular-monolith/domain ownership; business logic outside routers;
+   **explicit transaction boundaries**; idempotent externally retryable
+   mutations; RLS/tenant context; typed errors; observability; migration
+   safety; clean, testable layers without pattern cargo-cult"
+   (`EIP_MIRROR.md` lines 1270-1277). A domain application-service method
+   that performs more than one state-mutating statement (an aggregate
+   write plus a related write, a status transition plus its own audit
+   row, etc.) executes those statements inside a single database
+   transaction that commits or rolls back as one unit — never split
+   across separate, independently-committed transactions where a partial
+   failure could leave the domain's own tables in a state its own
+   invariants forbid. Where that mutation is required to emit a domain
+   event, `EVT-001` ("Every material state transition emits a durable
+   versioned domain event through the transactional outbox,"
+   `EIP_MIRROR.md` lines 20926-20933 — MOD-001 is one of `EVT-001`'s two
+   directly-mapped modules, alongside MOD-010, not merely a future
+   inheritor of the invariant) requires the outbox row to be written in
+   the *same* database transaction as the triggering mutation; a design
+   that publishes the event only after the mutating transaction has
+   already committed, as a separate non-atomic step, does not satisfy
+   this control. **Reconciliation is a named, testable obligation for
+   any domain publishing externally-visible events or dispatching to an
+   external provider, not an implicit assumption**: such a domain must
+   define and test a process that detects a state where the
+   outbox/inbox/provider-dispatch record and the domain's own
+   authoritative state have diverged (an outbox row still `PENDING` long
+   after its own transaction committed; a provider dispatch the provider
+   acknowledges but the domain's own record never marks delivered) and
+   repairs it back to a consistent state. A domain with no defined
+   reconciliation process — or one that exists only as an assumed side
+   effect of retries rather than a tested procedure — does not satisfy
+   this control.
+
 ## Fail-closed rule
 
 A pull request introducing a cross-domain table/ORM import outside the
