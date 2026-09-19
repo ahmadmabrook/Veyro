@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (Scenario Review round 15 ran, BLOCKED, P0=0/P1=6/P2=7/Editorial=3 all remediated same session — round 14's remediation held on everything it framed itself around, but its own gate-7 fix produced a three-way-inconsistent known-infrastructure count, the Android half of mobile UI was still claimed to run for real against a still-DEFERRED profile with no application source, and round 15 found further genuine P1/P2/Editorial gaps of its own; independent evidence-integrity adjudication confirmed all 14 evidence_integrity_check.py findings have a durable, source-backed, non-Ready-blocking disposition (9 ADR-005-deferred, 5 checker false positives now tracked as BUG-033); Scenario Review round 16 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-19 (Scenario Review round 16 ran, BLOCKED, P0=0/P1=4/P2=6/Editorial=4, all remediated same session — round 15's remediation held on 7 of its own 11 named claims, but its own Mobile UI CI-row fix still claimed a real Android pass/fail in the one location it introduced, its LOC/A11Y mobile-parity scenarios required a fixture under a still-DEFERRED profile that gate 7 must deny, its rule-family disposition misassigned one surface-scoped file to `global/`, and its new Component-tests row gated a currently-real surface behind a future condition; independent evidence-integrity adjudication confirmed all 15 (not 14 — self-referential growth from `BUG-033`'s own filing) evidence_integrity_check.py findings have a durable, source-backed, non-Ready-blocking disposition (9 ADR-005-deferred, 6 checker false positives tracked as `BUG-033`); Scenario Review round 17 pending — see `SCENARIOS.md` §5)
 ---
 
 # MOD-001 — Module Status

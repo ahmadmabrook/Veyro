@@ -36,6 +36,17 @@ implementation per `ADR-005`'s own "Status" section)
 14 findings total, `evidence_integrity_check.py` returning exit code 1
 (FAIL) on every run since MOD-001 planning began.
 
+**Corrected (Scenario Review round 16, P2-2): this count is now stale
+and self-referential.** The moment this file (`BUG-033`) was filed and
+referenced in `CURRENT_STATE.md`, it became subject to the exact defect
+it describes: `BUG-033` also lives at MOD-001's own `evidence/bugs/`
+directory, not MOD-000's, so the checker now flags `BUG-033` itself as
+a sixth `BUG LINKAGE MISSING` finding. A fresh run this session confirms
+**15 findings total (9 genuine `.claude/rules/` deferrals + 6 `BUG
+LINKAGE MISSING`: `BUG-028` through `BUG-033` inclusive)**, not 14/5.
+The closure criterion below is unaffected (15 − 6 = 9 remains the
+correct post-fix figure).
+
 ## Why this is a checker defect, not a real evidence gap
 
 This project's `BUG_REGISTRY.md` already records the bug's owning
@@ -75,6 +86,10 @@ pre-implementation time per `ADR-005`.
 - Checker source read directly, line 163, this session.
 - `find`/directory listing confirming all 5 `BUG-028`..`032` files exist
   at `knowledge/03-Modules/MOD-001/evidence/bugs/`.
-- Fresh run of `evidence_integrity_check.py` this session: exit code 1,
-  14 findings, 5 of which are the `BUG LINKAGE MISSING` class this bug
-  describes.
+- Fresh run of `evidence_integrity_check.py` at filing time (round 15):
+  exit code 1, 14 findings, 5 of which were the `BUG LINKAGE MISSING`
+  class this bug describes.
+- Fresh re-run of `evidence_integrity_check.py` this session (round 16):
+  exit code 1, **15 findings, 6 of which are `BUG LINKAGE MISSING`**
+  (`BUG-028` through `BUG-033` inclusive — this file's own filing made it
+  self-referential; see the correction above).

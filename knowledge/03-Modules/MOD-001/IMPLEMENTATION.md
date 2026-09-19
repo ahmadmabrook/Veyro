@@ -63,21 +63,37 @@ Veyro/
 │   │                               #   other 9 stay empty/ready-to-populate**
 │   │                               #   until their own owning module claims
 │   │                               #   them. **Disposed (Scenario Review
-│   │                               #   round 15, P1-6): H.2 defines a rule
+│   │                               #   round 15, P1-6; corrected round 16,
+│   │                               #   P1-3 — round 15's "all 4 are
+│   │                               #   project-wide, none surface-scoped"
+│   │                               #   claim was false for one of the four,
+│   │                               #   contradicted by that file's own first
+│   │                               #   paragraph and by Appendix H.2's own
+│   │                               #   family list): H.2 defines a rule
 │   │                               #   family as "one top-level
-│   │                               #   .claude/rules/<family>/ directory";
-│   │                               #   the 4 existing loose files
-│   │                               #   (admin-privileged-console-baseline.md,
-│   │                               #   notion-mcp-scope-discipline.md,
+│   │                               #   .claude/rules/<family>/ directory". Of
+│   │                               #   the 4 existing loose files, 3 are
+│   │                               #   genuinely project-wide governance not
+│   │                               #   scoped to any one surface
+│   │                               #   (notion-mcp-scope-discipline.md,
 │   │                               #   owner-reserved-restrictions.md,
-│   │                               #   knowledge-vault-durability.md) are
-│   │                               #   all project-wide governance rules,
-│   │                               #   not scoped to any one surface — they
+│   │                               #   knowledge-vault-durability.md) and
 │   │                               #   move into the new global/ family
-│   │                               #   directory (.claude/rules/global/*.md)
-│   │                               #   when the 11 families are scaffolded,
-│   │                               #   git-mv'd, not duplicated or left at
-│   │                               #   the root.**
+│   │                               #   directory (.claude/rules/global/*.md).
+│   │                               #   The 4th, admin-privileged-console-
+│   │                               #   baseline.md, is surface-scoped by its
+│   │                               #   own text ("governs any future internal
+│   │                               #   admin/support-console surface... binds
+│   │                               #   forward to MOD-029") and Appendix
+│   │                               #   H.2's own family table places its
+│   │                               #   subject under admin/{components,
+│   │                               #   forms-tables,permissions,privileged-
+│   │                               #   console,rtl-a11y}.md — it moves into
+│   │                               #   the admin/ family directory instead
+│   │                               #   (.claude/rules/admin/*.md). All 4
+│   │                               #   moves are git-mv'd, not duplicated or
+│   │                               #   left at the root, when the 11
+│   │                               #   families are scaffolded.**
 │   └── skills/                     # does not exist yet (BUG-004, MOD-000);
 │                                   #   MOD-001 creates it only if a real
 │                                   #   need is found during implementation,
@@ -320,8 +336,9 @@ jobs (reusing the existing GitHub remote):
 | **6 of the 7 architecture gates** (RLS, module-dependency/SQL, event-contract, permission, screen-contract, domain-contract-uniqueness lint — **corrected, Scenario Review round 12, P2-1: this row's title and enumeration still said "6," uncorrected since round 1 P1-9 added the 7th (surface-profile-activation) gate; §4, §5.3, `SCN-111`, and `TEST_PLAN.md` were all fixed to "7" starting round 2/3, this row alone was missed**) | Every push/PR | Source tree + `contracts/` | Pass/fail per gate + violation report | Yes, each independently | Same validators run locally (`tools/validate_architecture_gates.py`) | Named violation type + offending file/line | Deliberate-violation fixtures proven denied — see §4 below. Bypass protection is enforced at the branch-protection required-status-check layer, not the workflow file's own content: a same-PR gate-step edit, `[skip ci]`, `workflow_dispatch`, and a fork-PR origin are all proven (SCN-MOD001-020) not to un-gate the merge. **Corrected (Scenario Review round 3, P1-4):** three further classes are resisted and must stay closed — required-check name drift, direct/force push, and `pull_request_target` running base-branch code with secrets; a fourth, branch-protection admin override, is a disclosed, deliberate GitHub-level escape hatch (owner-controlled via "include administrators"), not a gate defect — its existence and who holds it must be recorded, never silently assumed away. **Corrected (Scenario Review round 14, P0-1): required-check name drift is resisted by GitHub's own fail-closed-on-absence branch-protection behavior — a required status-check context that stops being reported (because the gate job was renamed) leaves the PR permanently non-mergeable, not mergeable; no job-ID-based naming convention is needed to close this, and `SCN-MOD001-020`(g)'s expected result no longer states a conditional pass path** |
 | **7th architecture gate: surface-profile activation (added, Scenario Review round 12, P2-1 — this gate has existed since round 1 P1-9 but never had its own §3 pipeline row; §4's gate-7 row pointed back at "the new 7th check" inside this very row, which never named it)** | Every push/PR | Source tree + `module-capabilities.yaml` | Pass/fail + violation report | Yes | Same validator run locally (`tools/validate_architecture_gates.py --gate surface-profile`) | Named `SURFACE_PROFILE_NOT_ACTIVATED`/unknown-surface violation + offending path | Deliberate-violation and carve-out-boundary fixtures proven denied/allowed — see §4 gate 7 below (`SCN-MOD001-102`/`103`/`112`/`138`/`139`) |
 | Unit tests | Every push/PR | `backend/tests/unit/`, mobile/web unit suites | Pass/fail + coverage | Yes | `pytest`/platform-native runner locally | Test report artifact | N/A — no known bypass class yet; will be re-examined once real tests exist |
-| Component tests (added, Scenario Review round 15, P2-4 — `TEST_PLAN.md` line 22 names this layer "Required per surface" and GOV-01-R01 requires each layer's own CI stage, but this table had no row for it) | Every push/PR (once a UI-bearing surface exists) | `backend/tests/component/`, platform-native component suites | Pass/fail + coverage | Yes, once applicable | Same runner locally | Test report artifact | N/A yet — no UI-bearing surface exists in MOD-001 itself |
-| Mobile UI tests (added, Scenario Review round 15, P2-4, same reason as the row above) | Every push/PR touching `mobile/**` | Android: Compose UI test runner (real, standard Linux runner); iOS: XCUITest-equivalent (job wiring only, real execution deferred per `SCN-MOD001-056`/`SCN-MOD001-139` — no paid macOS CI runner referenced, and no application/screen source exists yet under the still-DEFERRED mobile profiles) | Pass/fail (Android); required-status-check wiring only (iOS) | Yes | Android: `pytest`/Compose-test runner locally; iOS: workflow-graph inspection locally | Test report artifact (Android); workflow-graph inspection report (iOS) | Android runs only from CI's pinned workflow; iOS real execution deferred to real implementation per `SCN-MOD001-056` |
+| Component tests (added, Scenario Review round 15, P2-4 — `TEST_PLAN.md` line 22 names this layer "Required per surface" and GOV-01-R01 requires each layer's own CI stage, but this table had no row for it; trigger corrected, Scenario Review round 16, P1-4 — this row's own Trigger/Blocking/Bypass-protection columns were contingent on "once a UI-bearing surface exists" even though its own Input column names `backend/tests/component/`, a surface that already exists per §1's topology) | Every push/PR (backend component suite runs now against the real `backend/tests/component/` surface; platform-native UI component suites remain deferred until a UI-bearing surface exists) | `backend/tests/component/`, platform-native component suites (deferred) | Pass/fail + coverage | Yes, for the backend component suite now; platform-native suites once applicable | Same runner locally | Test report artifact | Backend component suite runs from CI's pinned workflow now; platform-native suites N/A yet — no UI-bearing surface exists in MOD-001 itself |
+| Mobile UI tests (added, Scenario Review round 15, P2-4, same reason as the row above; Android execution-claim corrected, Scenario Review round 16, P1-1 — round 15 deferred the Android UI-test layer in `SCN-MOD001-106`/`116`/`137`/`128` (no application/screen source exists yet under the still-DEFERRED Android Host profile), but this row's own Android column still claimed a real pass/fail and a `pytest` local runner, the identical contradiction round 15 fixed everywhere else) | Every push/PR touching `mobile/**` | Android: Compose UI test runner (job wiring only, real execution deferred — no application/screen source exists yet under the still-DEFERRED Android Host profile); iOS: XCUITest-equivalent (job wiring only, real execution deferred per `SCN-MOD001-056`/`SCN-MOD001-139` — no paid macOS CI runner referenced, and no application/screen source exists yet under the still-DEFERRED mobile profiles) | Required-status-check wiring only (Android and iOS) — real pass/fail deferred to real implementation, both platforms, per `SCN-MOD001-056` | Yes | Workflow-graph inspection locally (both platforms — no local Compose/XCUITest run is possible without real application source) | Workflow-graph inspection report (both platforms) | Android and iOS both run only from CI's pinned workflow; both platforms' real execution deferred to real implementation per `SCN-MOD001-056` |
+| **Full deterministic regression suite (added, Scenario Review round 16, P2-5 — `TEST_PLAN.md` line 30 marks this layer "Always blocking before approval" and `SCN-MOD001-061` makes it a real, non-trivial obligation from MOD-001's first CI run onward, but this table had no row for it, the same GOV-01-R01 gap round 15's Component/Mobile UI rows were added to close)** | Every push/PR | Full accumulated deterministic test suite (all prior layers, cumulative) | Pass/fail | Yes | Same suite run locally | Test report artifact (cumulative) | Runs against the full committed suite as of that commit, not a cached prior-run result — `SCN-MOD001-061` |
 | Domain contract / tenant-isolation / authorization / financial-invariant tests | Every push/PR (once a domain exists) | Fixture DB + RLS-enabled schema | Pass/fail | Yes, once applicable | Same suite locally against a local Postgres | Report artifact naming the failed invariant ID | RLS enforced at the database role level, not just application code — cannot be bypassed by application-layer changes alone |
 | SAST / dependency / secret / container / IaC scanning + SBOM/provenance | Every push/PR | Source tree, dependency manifest, container image, IaC files | Findings report + SBOM | Yes (secret/critical-vuln findings block; advisory findings do not, per tool default) | Same scanners run locally | Findings report artifact | Scanner runs from the pinned workflow; no scanner-skip flag committed |
 | Build signed immutable artifact/image | On merge to main | Source tree | Signed artifact + provenance record | Yes | A dev-only self-signed build locally | Signature verification log | Signing key held in CI secrets, not the repo; a locally-built artifact cannot carry a valid CI signature |
@@ -416,10 +433,15 @@ check to read — a module creating one of those paths with real code
 would trip nothing. And a single `mobile/.profile-pending` marker could
 not express three distinct deferred profiles (KMP Mobile
 `mobile/shared/**`, iOS Host `mobile/iosApp/**`, Android Host
-`mobile/androidApp/**`). **Fixed:** all 10 §4.3 path prefixes named in
+`mobile/androidApp/**`). **Fixed:** all 10 §4.3 profiles named in
 `MODEL_ROUTING.md`'s surface-profile table now carry an explicit
-deferral marker (`evidence/module-capabilities.yaml`'s
-`repository_paths_surfaces` list), including the four with no directory
+profile-status marker — activated or deferred
+(`evidence/module-capabilities.yaml`'s `repository_paths_surfaces`
+list) **(corrected, Scenario Review round 16, P2-1: previously said
+"an explicit deferral marker" for all 10, which is imprecise for the 2
+of the 10 that are ACTIVATED — Backend and Infra/SRE/CI — since those
+carry an activated-profile record, not a deferral marker)**, including
+the four with no directory
 yet (`web/**`, `frontdesk-edge-bridge/**`, `edge/**`, `data-ai/**` —
 **corrected, Scenario Review round 15, P2-3: "six" here, in
 `MODEL_ROUTING.md`, and in `SCENARIOS.md` was wrong; §1's own topology
@@ -645,10 +667,18 @@ derived from the id prefix — never stored" (e.g. `ADM-`, `CON-`, `SYS-`).
    `SYS-` → Backend-only/no-UI, etc. — Appendix F's own surface
    vocabulary, `EIP_MIRROR.md` line 17997).
 4. **Resolve owning module:** map each row's surface + `module` field
-   (a domain word like "Membership", "Payments") to its owning
-   implementation module via Appendix B's execution-slice mapping —
-   not MOD-001's own judgment call; MOD-001 imports Appendix B's
-   existing mapping, it does not invent one.
+   to its owning implementation module via Appendix B's execution-slice
+   mapping — not MOD-001's own judgment call; MOD-001 imports Appendix
+   B's existing mapping, it does not invent one. The `module` field is
+   usually a domain word ("Membership", "Payments"), **but not always
+   — corrected, Scenario Review round 16, Editorial-3: all 17 `CON-*`
+   rows carry `module: 'Console'` and all 8 `SYS-*` rows carry
+   `module: 'System'`, a surface-shaped value, not a domain word (see
+   `veyro-product-experience-design/project/veyro-registry-data.js`
+   directly) — those rows resolve via step 3's surface mapping, not this
+   step's domain-word mapping, and this is exactly the row set
+   `REQUIREMENTS.md`'s "zero owned screens" conclusion (the `CONSOLE`/
+   `BACKEND-ONLY` sections) turns on.**
 5. **Multi-domain resolution:** where a screen's primary
    mutation/route contract belongs to one module but a secondary
    concern touches another (the card's own text, `EIP_MIRROR.md` lines

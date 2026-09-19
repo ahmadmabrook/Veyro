@@ -81,7 +81,7 @@ three additions above:
 
 | Task class | Agent | Model |
 |---|---|---|
-| Routine implementation outside the two activated surfaces below (top-level scaffolding not scoped to `backend/**`/`infra/**`, validators, `contracts/**`, `tools/**`) | `veyro-implementer` | Sonnet |
+| Routine implementation outside the two activated surfaces below (top-level scaffolding not scoped to `backend/**`/`infra/**`/`.github/workflows/**`, validators, `contracts/**`, `tools/**` — **corrected, Scenario Review round 16, P2-4: this row omitted `.github/workflows/**` from its own exclusion list while the row below correctly claims it for `veyro-infra-sre-engineer`, the identical `veyro-implementer`-substitution-at-an-activated-surface pattern `ADR-005` rejects and `BUG-031` was escalated to P0 over**) | `veyro-implementer` | Sonnet |
 | Infra/SRE/CI surface work (`infra/**`, `.github/workflows/**` — **corrected, Scenario Review round 14, P2-4: was the non-glob "CI workflows, observability," stale since round 13's P2-5 fix to `MODEL_ROUTING.md`**) — **corrected, Scenario Review round 7: previously overlapped with the row above's "CI config," an ambiguity `ADR-005` itself rejects (lines 448-452: "Letting `veyro-implementer` stand in for the two named surface engineers is rejected")** | `veyro-infra-sre-engineer` | Sonnet |
 | Backend surface work (`backend/**`, bounded — excludes the critical-slice harness) | `veyro-backend-engineer` | Sonnet |
 | **Critical-slice work: tenant-isolation/RLS harness, authn negative-credential fixture, RLS+permission architecture gates only** | `veyro-critical-engineer` | **Opus** |

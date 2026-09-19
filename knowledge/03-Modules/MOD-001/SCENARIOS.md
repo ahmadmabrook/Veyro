@@ -1110,17 +1110,25 @@ android, edge, data-ai, infra) resolves to at least one Appendix H.3
 content standard. Expected: PASS against the real Appendix H.2/H.3 text
 in `EIP_MIRROR.md` (already cross-checked this session — H.3 explicitly
 resolves admin+web together, and names each other family by name).
-**Extended (Scenario Review round 15, P1-6): this scenario previously
-compared only H.2 text against H.3 text — it never checked the actual
-`.claude/rules/` tree, which currently has no family directories at
-all (4 loose files at `.claude/rules/*.md`), a real structural gap H.2's
-own family definition ("one top-level `.claude/rules/<family>/`
-directory") makes checkable. The validator now also confirms, once the
-11 family directories are scaffolded (`IMPLEMENTATION.md` §1), that (a)
-every rule file lives under exactly one family directory, none at
-`.claude/rules/` root, and (b) the 4 pre-existing files were moved into
-`global/`, not duplicated. Evidence: the tree-structure report alongside
-the existing H.2/H.3 cross-check report.**
+**Extended (Scenario Review round 15, P1-6; corrected round 16, P1-3 —
+round 15's own check would have ratified an incorrect assignment): this
+scenario previously compared only H.2 text against H.3 text — it never
+checked the actual `.claude/rules/` tree, which currently has no family
+directories at all (4 loose files at `.claude/rules/*.md`), a real
+structural gap H.2's own family definition ("one top-level
+`.claude/rules/<family>/` directory") makes checkable. The validator now
+also confirms, once the 11 family directories are scaffolded
+(`IMPLEMENTATION.md` §1), that (a) every rule file lives under exactly
+one family directory, none at `.claude/rules/` root, and (b) each of the
+4 pre-existing files landed in the *correct* family per its own scope,
+not merely *a* family: `notion-mcp-scope-discipline.md`,
+`owner-reserved-restrictions.md`, and `knowledge-vault-durability.md`
+into `global/` (genuinely project-wide, not surface-scoped), and
+`admin-privileged-console-baseline.md` into `admin/` (surface-scoped by
+its own first paragraph and by Appendix H.2's own family table, which
+places its subject under `admin/`) — none duplicated, none left
+misassigned. Evidence: the tree-structure report alongside the existing
+H.2/H.3 cross-check report.**
 
 ### Group F — Local/QA/staging environment bootstrap (IMPLEMENTATION.md §2)
 
@@ -1237,27 +1245,58 @@ the change is nominally platform-agnostic.
 
 **SCN-MOD001-053 · LOC · Major · GOV-01-R07 (mobile localization parity) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 **Corrected (Scenario Review round 1, P2-6):** the original draft had no
-stated Expected result, only an assertion. Steps: run the RTL lint (039)
-against a synthetic fixture placed under the mobile toolchain's shared
-Compose module path (`mobile/shared/src/commonMain/`), not just
-web/admin. Expected: the lint tool runs successfully against that path
-and correctly flags the same class of incorrect-bidi fixture it flags
-under `admin-web/` — proving the tool is genuinely wired to the mobile
-path, not merely assumed to cover it. Evidence: lint report from the
-mobile-path run. Negative/failure behavior: a correctly-handled bidi
-fixture under the same mobile path passes.
+stated Expected result, only an assertion. **Rescoped (Scenario Review
+round 16, P1-2): the original Steps required committing a Compose
+fixture file under `mobile/shared/src/commonMain/`, but that path is the
+still-DEFERRED KMP Mobile §4.3 profile — a committed Compose-shaped file
+there is exactly the application-source class `SCN-MOD001-139`
+(Blocker) requires gate 7 to deny, the identical missing-source/
+DEFERRED-profile conflict `SCN-MOD001-106`/`116`/`137`/`128` already
+apply to mobile UI test execution. It was also routed to
+`veyro-implementer`/Sonnet for work directly inside a §4.3 surface path
+with no registered profile agent, the substitution ADR-005 rejects.**
+Steps: instead of committing a fixture under the deferred path, confirm
+— against the lint tool's own committed configuration (its include-glob
+list, in `tools/`, not under any §4.3 surface profile) — that
+`mobile/shared/src/commonMain/**` is already registered as a scanned
+path, the same way `admin-web/**` is. Expected: the configuration
+includes the mobile path with the same rule set applied to `admin-web/`,
+proving the tool is genuinely wired to cover the mobile path once real
+source exists there, not merely assumed to. Evidence: the tool's
+resolved include-path list. **Full fixture-based execution against a
+real mobile-path file remains deferred to real implementation, once the
+KMP Mobile profile is ACTIVATED — same disclosed split as
+`SCN-MOD001-106`'s Android half.** Negative/failure behavior (once
+real): a correctly-handled bidi fixture under the same mobile path
+passes.
 
 **SCN-MOD001-054 · A11Y · Major · GOV-01-R07 (mobile accessibility parity) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
-**Corrected (Scenario Review round 1, P2-6):** same fix as 053. Steps:
-run the a11y lint (040) against a synthetic fixture under
-`mobile/shared/src/commonMain/`. Expected: the lint tool runs
-successfully against that path and correctly flags a missing
-accessibility label on the mobile-path fixture, same as it does under
-`admin-web/`. Evidence: lint report from the mobile-path run.
+**Corrected (Scenario Review round 1, P2-6):** same fix as 053.
+**Rescoped (Scenario Review round 16, P1-2): identical fix as 053 —
+`mobile/shared/src/commonMain/` is the still-DEFERRED KMP Mobile
+profile, so a committed a11y-fixture component there is exactly what
+`SCN-MOD001-139` (Blocker) requires gate 7 to deny.** Steps: confirm —
+against the a11y lint tool's own committed configuration — that
+`mobile/shared/src/commonMain/**` is already registered as a scanned
+path with the same rule set applied to `admin-web/`. Expected: the
+configuration includes the mobile path, proving the tool is genuinely
+wired to cover it once real source exists there. Evidence: the tool's
+resolved include-path list. **Full fixture-based execution against a
+real mobile-path file remains deferred to real implementation, once the
+KMP Mobile profile is ACTIVATED — same disclosed split as 053.**
 Negative/failure behavior: a correctly-labeled fixture under the same
 path passes.
 
-**SCN-MOD001-055 · HP · Major · GOV-01-R07 · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-055 · HP · Major · GOV-01-R07 · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+**Re-routed (Scenario Review round 16, P2-4): was `veyro-implementer`/
+Sonnet — this scenario's own steps author/verify `.github/workflows/**`
+CI runner-assignment content (Android build-job `runs-on:` targeting,
+iOS build-job presence/required-status-check wiring), which is
+Infra/SRE/CI-profile work under `.github/workflows/**` per `ADR-005`'s
+own carve-out text (`IMPLEMENTATION.md` §4 gate 7: "build, toolchain,
+and CI configuration for a surface is Infra/SRE/CI-profile work"), the
+same substitution pattern `ADR-005` rejects and `BUG-031` was escalated
+to P0 over.**
 **Corrected (Scenario Review round 13, P1-3): the original text
 checked that an iOS build job's runner metadata names a real
 macOS/Xcode runner class — but a committed workflow file naming a
@@ -1346,6 +1385,21 @@ non-trivial regression obligation from MOD-001's very first CI run
 onward, not a placeholder that becomes meaningful later. Evidence: a
 timestamped pass record extending MOD-000's own `run_regression.py`
 precedent to cover MOD-001's own suite alongside MOD-000's.
+**Disclosed dependency (Scenario Review round 16, P2-6): this
+scenario's pass condition currently cannot be met, and that gap was
+previously undisclosed here.** `evidence_integrity_check.py` — one of
+the 5 named checks — currently exits 1 (FAIL) and will continue to
+until (a) `.claude/rules/backend/**`/`infra/**` carry real content
+(pre-implementation condition, `ADR-005`) and (b) `BUG-033`'s checker
+defect is fixed (currently OPEN, non-blocking for Ready but not for
+this scenario's own literal "all still pass" condition). This does not
+change SCN-061's Required/OBS status or its non-Ready-blocking
+disposition — `BUG-033`'s own Disposition section already establishes
+that the FAIL is source-backed and expected, not a real regression —
+but a first real MOD-001 CI run executing this scenario as written will
+correctly report `evidence_integrity_check.py` as failing, and that
+failure should be interpreted against this disclosed, pre-existing
+dependency, not treated as a new MOD-001 regression.
 
 **SCN-MOD001-062 · NEG · Major · TestSprite integration scope · Manual/CLI (Claude-driven, offline only) · veyro-security-reviewer/Opus (judgment on the owner-reserved denial) · NOT EXECUTED**
 **Corrected (Scenario Review round 1, tier-consistency note): this is an
@@ -1719,7 +1773,10 @@ trigger event) catches the misconfiguration — a self-test of the
 path-filter pattern against the real common-code directory list, proving
 the pattern isn't silently stale.
 
-**SCN-MOD001-101 · PERF · Major · CI runner misassignment, negative companion to 055 (P2-7) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-101 · PERF · Major · CI runner misassignment, negative companion to 055 (P2-7) · Automated · veyro-infra-sre-engineer/Sonnet · NOT EXECUTED**
+**Re-routed (Scenario Review round 16, P2-4): was `veyro-implementer`/
+Sonnet — same `.github/workflows/**` Infra/SRE/CI-profile reasoning as
+its positive companion `SCN-MOD001-055`'s round-16 re-routing.**
 **Corrected (Scenario Review round 14, P1-2): the original fixture
 deliberately configured a job to target a macOS runner — but a
 committed fixture naming a macOS runner label is itself the exact
@@ -1728,20 +1785,27 @@ committed configuration, and round 13's own P1-3 already established
 that standard for `SCN-055`/`IMPLEMENTATION.md` §12. Changed to a wrong
 class that isn't an owner-reserved-spend reference.** **Narrowed
 (Scenario Review round 15, P2-5): the "standard vs. paid tier"
-framing above wasn't a standard this plan actually defines — GitHub-
-hosted Windows runners do bill at a real per-minute multiplier on a
-private repo, `CAPABILITIES.md:88`'s own assumption, just a smaller one
-than macOS's. The correct, narrower justification is that
-`LOAD_SECURITY.md`'s owner-reserved list names exactly one banned
-runner class — "paid macOS CI runner tier" — not a general
-standard/paid distinction; a Windows runner reference is outside that
-named ban on the letter of the actual governing text, whatever its own
-billing tier.** Steps: a synthetic
-Android build job is deliberately configured to target a Windows
-runner (the wrong class — Android's committed convention is Linux, per
-055; a Windows runner reference is outside `LOAD_SECURITY.md`'s
-specific "paid macOS CI runner tier" ban, so this fixture doesn't
-collide with 056, which is scoped to that one named class).
+framing above wasn't a standard this plan actually defines.** **Replaced
+(Scenario Review round 16, P2-3): round 15's own narrowing cited
+`CAPABILITIES.md:88` for a Windows-runner billing claim that line does
+not make (line 88 is the branch-protection/required-status-checks row,
+not a runner-cost row), and its underlying reasoning — arguing from a
+module-level spend-summary list to permit a billed runner class in
+committed configuration — is the self-serving-interpretation pattern
+`.claude/rules/owner-reserved-restrictions.md` #1 ("no paid services or
+spend of any kind... a hard stop, not a judgment call") warns against.
+Replaced with a fixture that makes the identical point — the wrong
+runner class, distinct from `SCN-MOD001-056`'s one specifically-named
+ban — without resting on any billing-tier argument at all: a
+self-hosted runner label carries no GitHub-Actions per-minute charge on
+any tier, so it cannot collide with any paid-runner restriction by
+construction, named or implied.** Steps: a synthetic
+Android build job is deliberately configured to target a self-hosted
+runner label (`runs-on: [self-hosted, linux, arm64]`) instead of a
+GitHub-hosted one (the wrong class — Android's committed convention is
+a GitHub-hosted Linux runner, per 055; a self-hosted label carries no
+per-minute billing on any tier, so this fixture cannot collide with 056,
+which is scoped to a specifically-named paid runner class).
 Expected: the runner-assignment convention check (055's own Android
 mechanism, run in reverse) flags the mismatch rather than silently
 allowing it.
@@ -1954,7 +2018,13 @@ to completion and reports a real pass (not "0 tests collected"
 silently reported as green) — the harness *running* is the evidence,
 distinct from `SCN-001` (directory structure only) and `SCN-002` (lint
 stage only), neither of which invokes a test-pyramid layer runner at
-all. For mobile UI (both platform halves) and for E2E, the positive proof is
+all. **For the unit layer specifically (round 16, Editorial-2 — the
+positive mirror `SCN-MOD001-116`'s round-15 fix cites was implicit
+here, not stated): the layer-classification check that flags a
+mis-tagged test (the same mechanism `SCN-MOD001-116` runs in negative
+form) also runs against this scenario's own trivial unit fixture and
+accepts it as correctly layer-tagged — closing the loop between the two
+scenarios explicitly rather than leaving it to be inferred.** For mobile UI (both platform halves) and for E2E, the positive proof is
 that the CI workflow definition wires a required job for each on the
 relevant trigger path (workflow-graph/job-metadata inspection, same
 mechanism as `SCN-128`/`129`'s iOS half) — real execution deferred,
@@ -2080,10 +2150,15 @@ itself was originally fail-open** — General Web/Edge/Data-AI had no
 directory yet and thus no marker for a marker-only check to read, and
 one `mobile/.profile-pending` marker couldn't express three distinct
 deferred mobile sub-profiles. Fixed in `IMPLEMENTATION.md` §4 gate 7
-and `evidence/module-capabilities.yaml`: all 10 §4.3 path prefixes
-named in `MODEL_ROUTING.md`'s table now carry either an
-activated-profile record or an explicit deferral marker — including
-the six with no real directory yet. **Because all 10 named profiles
+and `evidence/module-capabilities.yaml`: all 10 §4.3 profiles (12 globs
+— see `IMPLEMENTATION.md` §4's corrected figure) named in
+`MODEL_ROUTING.md`'s table now carry either an activated-profile record
+or an explicit deferral marker — including the four with no real
+directory yet (**corrected, Scenario Review round 16, P2-1: was "the
+six," stale since round 14 — `admin-web/`, `frontdesk-web/`, and the 3
+`mobile/` sub-paths all have scaffolded directories in §1's topology;
+only `web/**`, `frontdesk-edge-bridge/**`, `edge/**`, and `data-ai/**`
+genuinely have none yet**). **Because all 10 named profiles
 now have a marker, this scenario's real test is a path matching
 *none* of the 12 §4.3 globs and none of the known-infrastructure paths
 at all** (an entirely new, unlisted
@@ -4066,4 +4141,147 @@ independent Scenario Review is required).
 Ready. Implementation has not started and is not authorized to start.
 Next legally allowed action: an independent Scenario Review round 16**,
 to confirm round 15's remediation actually holds — not implementation,
+not MOD-002, not a self-granted Ready determination.
+
+### Round 16 (2026-09-19)
+
+Fresh session bootstrap per `SESSION_BOOTSTRAP.md`: all 4 governing
+baselines re-verified PASS via `verify_baselines.py`; local HEAD ==
+`origin/main` at `28d76bea9423f4df0ac70306fd2d6c53e33c481e` before this
+round's own commit. `evidence_integrity_check.py` run fresh ahead of
+dispatching the reviewer: exit code 1, **15 findings** (not 14 — the
+self-referential `BUG-033` growth round 15 itself predicted). Each
+finding independently re-classified from source, not inherited from
+round 15's narrative: the 9 `.claude/rules/backend/**`/`infra/**`
+broken references re-confirmed genuinely deferred to pre-implementation
+by `ADR-005`'s own "Status" section (read directly this round); the 6
+`BUG LINKAGE MISSING` findings for `BUG-028` through `BUG-033`
+re-confirmed checker false positives by reading `check_bug_refs()`'s
+source directly (still hardcoded to
+`knowledge/03-Modules/MOD-000/evidence/bugs/`) and confirming all 6
+files physically exist at MOD-001's own `evidence/bugs/`. `BUG-033`'s
+own record was found stale (still claiming 14/5) and corrected in
+place this round — see its P2-2 finding below.
+
+Fresh-context `veyro-scenario-reviewer` (Opus) dispatched via the Agent
+tool, explicitly instructed not to inherit round 15's or any prior
+round's conclusions, and given a full list of round 15's own named
+remediation claims to independently re-verify against actual current
+file content rather than trust. Independently re-derived the scenario
+count (140 detail blocks, 0 duplicates, 140 Required/0 Optional),
+re-verified the §1 category matrix against the detail-block tags with
+zero drift, confirmed all 24 Appendix G Required categories covered
+(read directly from `EIP_MIRROR.md`'s Appendix G tables, not from
+`REQUIREMENTS.md`'s own cross-verification claim), and confirmed
+GOV-01-R01..R08 fully traced with a full per-requirement scenario-ID
+map.
+
+**Verdict: `MOD-001 SCENARIO REVIEW BLOCKED`.** P0=0, P1=4, P2=6,
+Editorial=4. Round 15's remediation held on 7 of its 11 own named
+claims (gate-7 known-infrastructure consistency; `SCN-116`'s companion
+citation; ADR-004 propagation; `SCN-020`(g) step/result consistency;
+`SCN-035`'s tree-structure check existing as a scenario; the §2
+row-count arithmetic; `SCN-101`'s narrowing against `LOAD_SECURITY.md`'s
+real macOS-only ban) — but the pattern rounds 10-15 each documented
+recurred a seventh time, this time again entirely at P1/P2/Editorial
+(no P0, the second consecutive P0=0 round). The four P1s: the very
+Mobile UI CI-pipeline row round 15 added to fix GOV-01-R01's coverage
+gap still claimed a real Android pass/fail and a `pytest` local runner,
+the identical Android-real-against-DEFERRED-profile contradiction round
+15 fixed in four other locations in the same session and missed in the
+fifth it introduced; `SCN-053`/`054` (mobile LOC/A11Y parity) required
+committing a Compose/a11y fixture under the still-DEFERRED KMP Mobile
+profile, exactly the application-source class `SCN-139` (Blocker)
+requires gate 7 to deny, and were routed to `veyro-implementer` for
+work inside a §4.3 surface path with no registered agent — the
+substitution `ADR-005` rejects; round 15's own disposition that all 4
+pre-existing loose rule files are "project-wide, not surface-scoped"
+was false for `admin-privileged-console-baseline.md`, contradicted by
+that file's own first paragraph and by Appendix H.2's own family table,
+and `SCN-035`'s round-15 extension would have certified the
+misassignment as correct; and the Component-tests row round 15 added
+gated its own trigger on "once a UI-bearing surface exists" despite its
+own Input column naming `backend/tests/component/`, a surface that
+already exists, leaving that layer's real GOV-01-R01 evidence
+obligation untriggered. The six P2s: `SCN-112`'s "six" paths with no
+real directory (stale since round 14's actual fix, which said "four");
+`BUG-033`'s own record still claiming 14/5 after its own filing made it
+self-referential; `SCN-101`'s round-15 narrowing citing
+`CAPABILITIES.md:88` for a runner-billing claim that line does not
+make, reasoning from a summary spend-list in a way
+`owner-reserved-restrictions.md` #1 warns against; `MODEL_ROUTE.md`'s
+`veyro-implementer` scope row omitting `.github/workflows/**` from its
+own exclusion list while `SCN-055`/`101` (which actually author CI
+runner-assignment content) stayed routed to `veyro-implementer` instead
+of `veyro-infra-sre-engineer`; the §3 CI table having no row for the
+full deterministic regression suite despite `TEST_PLAN.md` marking it
+"Always blocking before approval" from MOD-001's first CI run; and
+`SCN-061`'s "all still pass" condition being currently unmeetable
+(`evidence_integrity_check.py` exits 1) with no disclosed dependency on
+the rule-file/`BUG-033` gaps. Four Editorial findings: a leftover
+`pytest` reference for Android UI tests (folded into the P1-1 fix);
+`SCN-137`'s expected result leaving the unit-layer positive mirror for
+`SCN-116` implicit rather than stated; `IMPLEMENTATION.md` §10's
+registry-import contract describing the `module` field as always "a
+domain word," when all 17 `CON-*` and 8 `SYS-*` rows carry a
+surface-shaped value instead; and inconsistent `###`-vs-bold heading
+levels across this Review Log.
+
+**All P1/P2/Editorial findings remediated the same session** (no P0
+existed to remediate): `IMPLEMENTATION.md` §3's Mobile UI row corrected
+so both Android and iOS report required-status-check wiring only, real
+pass/fail deferred to real implementation for both, and the Android
+`pytest` reference removed; `SCN-053`/`054` rescoped to check the lint
+tools' own committed include-path configuration (a non-surface path)
+rather than committing a fixture under the DEFERRED KMP Mobile profile,
+full fixture execution explicitly deferred to real implementation
+alongside the mobile UI test layer; `IMPLEMENTATION.md` §1 and `SCN-035`
+both corrected so 3 of the 4 pre-existing loose rule files move to
+`global/` and the 4th, `admin-privileged-console-baseline.md`, moves to
+`admin/` per its own scope and Appendix H.2's own family table;
+`IMPLEMENTATION.md` §3's Component-tests row corrected so the backend
+component suite triggers now (unconditionally) while only the
+platform-native UI component suites stay contingent; `SCN-112` and
+`IMPLEMENTATION.md` §4's "10 §4.3 path prefixes... carry an explicit
+deferral marker" line both corrected (four real path-count, and
+"deferral marker" → "profile-status marker" since 2 of the 10 profiles
+are ACTIVATED, not deferred); `BUG-033`'s own record corrected to state
+the current true 15/6 count, with its filing-time 14/5 figure preserved
+as a historical fact under its own dated label; `SCN-101` rescoped away
+from the false `CAPABILITIES.md:88` citation and the Windows-runner
+billing-tier argument entirely, to a self-hosted-runner fixture that
+cannot collide with any paid-runner restriction by construction;
+`MODEL_ROUTE.md`'s `veyro-implementer` row given the missing
+`.github/workflows/**` exclusion, and `SCN-055`/`101` re-routed to
+`veyro-infra-sre-engineer`/Sonnet to match; a new "Full deterministic
+regression suite" row added to `IMPLEMENTATION.md` §3; `SCN-061` given
+an explicit disclosed-dependency note naming both the rule-file and
+`BUG-033` gaps and clarifying this does not change its
+non-Ready-blocking disposition; `SCN-137`'s expected result extended to
+state explicitly that the unit-layer positive mirror for `SCN-116` runs
+and is accepted; and `IMPLEMENTATION.md` §10 step 4 corrected to
+disclose the `CON-*`/`SYS-*` surface-shaped `module`-field exception
+(with this round's own first-draft citation for that exception —
+initially mis-pointed at a nonexistent "IMPLEMENTATION.md §4" —
+independently caught and corrected in place to the real source,
+`REQUIREMENTS.md`'s "zero owned screens" finding, before being
+committed as a durable claim). The heading-level Editorial finding was
+deliberately not swept across all 15 prior rounds' entries, consistent
+with this project's established policy of not mass-editing historical
+review-log rows; this round's own entry uses `###`, matching rounds
+12-14. No new scenario detail blocks were added — every finding was a
+fixture/citation/propagation/false-claim/routing defect inside
+documents that already existed. Catalog total unchanged at **140 detail
+blocks** (140 Required, 0 Optional), 0 duplicate IDs, all 24 Appendix G
+Required categories covered, GOV-01-R01..R08 fully traced.
+
+**Definition of Ready was again explicitly NOT evaluated** — round 16
+itself returned P1 findings (Round-16 Gate Rule: any P0 or P1 means
+remediate, keep NOT READY, do not evaluate Definition of Ready, another
+independent Scenario Review is required).
+
+**MOD-001 remains ACTIVATED — PLANNING/SPECIFICATION IN PROGRESS. Not
+Ready. Implementation has not started and is not authorized to start.
+Next legally allowed action: an independent Scenario Review round 17**,
+to confirm round 16's remediation actually holds — not implementation,
 not MOD-002, not a self-granted Ready determination.
