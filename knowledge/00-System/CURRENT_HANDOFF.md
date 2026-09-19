@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-19 (chunk 50 — owner applied `BUG-034`'s patch (commit `3632764e44522376277d96441bee847d148843fa`); independently verified twice (byte-for-byte + a distinct Opus SHA-256 check) and CLOSED. Independent qualification review of the applied rule content returned BLOCKED (P0=0/P1=4/P2=8/Editorial=7), filed as `BUG-035`; `RULE-001` through `RULE-009` registered in `CAPABILITY_REGISTRY.md` at `BLOCKED`, not `APPROVED` — first `RULE-<NNN>` IDs ever assigned on this project. Slice 2 (`tools/validate_capability_manifest.py`, generalizing `validate_capabilities.py` to any module) implemented, independently re-traced, live execution honestly disclosed BLOCKED (same CAP-007 allowlist gap as slice 1). `backend/**`/`infra/**`/CI implementation continues to not proceed, now gated on `BUG-035`. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-19 (chunk 51 — fresh independent BUG-035 re-review session. Verified local HEAD == `origin/main` (`f74f4fba7720dfb60e1cfe5947e477611392d84e`, the owner's round-2 remediation commit) before any action. A second, independent, fresh-context `veyro-security-reviewer` (no memory of round 1 or of drafting the remediation) found the manual-rollback-override P1 and the backend transaction/idempotency/reconciliation P1 genuinely CLOSED, but the CI-Action-supply-chain remediation (`iac.md` control 5) introduced a NEW P1 (P1-A — an unauthorized `actions/*`/`github/*` trust carve-out with no `OWN-<NNN>` entry). **Verdict: P0=0, P1=1 — still BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`; `BUG-035` remains OPEN. No rule file re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -107,8 +107,101 @@ to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-47-2026-09-19-convergence-gate-rule-adopted.md`.**
 **Thirty-second application (2026-09-19, chunk 50): chunk 48 compressed
 to a summary line, full narrative archived to
-`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-48-2026-09-19-convergence-gate-1-pass.md`**
-— chunks 49 and 50 are now the 2 kept in full.
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-48-2026-09-19-convergence-gate-1-pass.md`.**
+**Thirty-third application (2026-09-19, chunk 51): chunk 49 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-49-2026-09-19-mod001-implementation-start-bug034.md`**
+— chunks 50 and 51 are now the 2 kept in full.
+
+## What happened chunk 51, 2026-09-19 — fresh independent BUG-035 re-review: round-2 remediation partially closes round 1's P1s, but introduces a new P1 (`iac.md`'s unauthorized CI-Action trust carve-out); RULE-001..009 remain BLOCKED
+
+This is a fresh-context session with no memory of chunks 49/50, per an
+explicit mission: independently re-review the current state of the 9
+`backend/`/`infra/` Rule files after the owner applied a round-2
+remediation patch for 3 of `BUG-035`'s 4 round-1 P1s, and — if and only
+if the fresh review returns P0=0/P1=0 — mark `RULE-001`..`009`
+`APPROVED`, close `BUG-035`, and commit/push. The mission explicitly
+forbade re-authoring rules, starting another implementation slice,
+starting MOD-002, or marking MOD-001 approved in this session.
+
+**Bootstrap re-verified fresh, not trusted from the prompt:** local
+HEAD == `origin/main` (`f74f4fba7720dfb60e1cfe5947e477611392d84e`,
+message "fix: remediate MOD-001 rule qualification P1 findings")
+confirmed via `git fetch`/`git rev-parse` before any action.
+`verify_baselines.py` re-run: PASS, 4/4. `STATUS.md` re-confirmed MOD-001
+lifecycle `IMPLEMENTATION IN PROGRESS`. `BUG-035`'s own file re-confirmed
+`status: OPEN`. `CAPABILITY_REGISTRY.md` and `evidence/module-capabilities.yaml`
+both re-confirmed `RULE-001` through `RULE-009` at `BLOCKED`, consistent
+with each other and with `BUG-035`.
+
+**Fresh independent review dispatched** — `veyro-security-reviewer`
+(Opus, fresh context, no memory of round 1 or of drafting the
+remediation), briefed with the 4 round-1 P1s and the exact 4-file diff
+the owner applied (`git show --stat f74f4fba7...`), instructed to
+independently ground every check in the cited `EIP_MIRROR.md`/
+`TSD_MIRROR.md`/`IMPLEMENTATION.md`/`REQUIREMENTS.md`/`CAPABILITY_POLICY.md`
+text rather than trust the rule files' own quotations, and explicitly
+told not to expand into a general rewrite or P2/editorial hunt.
+
+**Verdict returned: P0=0, P1=1 — BLOCKED.** Two of round 1's three
+substantive P1s are genuinely closed: `infra/release.md` control 1 now
+matches its cited authority exactly (no manually-callable rollback
+trigger, no carve-out of any kind), and `architecture.md`/`api.md`
+together now cover all of H.3's transaction/idempotency/reconciliation
+element with concrete, gate-checkable substance (explicit transaction
+boundaries, same-transaction outbox writes, a named/tested
+reconciliation obligation, the full 6-element idempotency contract). The
+third — third-party CI-Action supply-chain control — is only partially
+closed: `iac.md` control 5 correctly requires SHA-pinning, but the same
+control **introduces a new P1 (P1-A)**: it self-grants trusted-publisher
+status to `actions/*`/`github/*` with no `OWN-<NNN>` entry authorizing
+it, contradicting `CAPABILITY_POLICY.md`'s "no exemption of any kind"
+clause for third-party capabilities. This orchestrating session
+independently re-verified both facts the finding depends on by reading
+the primary sources directly — `OWNER_APPROVALS.md` in full (no such
+entry exists) and `CAPABILITY_POLICY.md` line 30 (the absolute
+no-exemption clause) — before accepting the finding into durable state,
+rather than taking the subagent's report on trust. The 4 changed files'
+SHA-256 hashes were also independently recomputed by this session via
+`shasum -a 256` and confirmed to exact-match the reviewer's reported
+values.
+
+**Disposition: per the mission's explicit "if and only if P0=0 and
+P1=0" gate, the condition was not met.** `RULE-001` through `RULE-009`
+were **not** marked `APPROVED`. `BUG-035` was **not** closed. No rule
+file was re-authored (also structurally impossible this session —
+`.claude/rules/**` remains owner-gated regardless). No further
+implementation slice was started. MOD-002 was not started. MOD-001 was
+not marked approved. This matches the project's established BUG-013/
+022/023 Round-3 precedent (chunk 22): a review that finds real,
+unresolved issues gets recorded honestly and the session stops there,
+rather than being patched or waved through.
+
+**Durable state updated this chunk (documentation only — no rule
+content changed):** new evidence file
+`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19.md`;
+`BUG-035`'s own file (round-2 section appended, `OPEN` retained);
+`CAPABILITY_REGISTRY.md` (the 4 changed files' `content_hash`/`version`
+cells refreshed to the current commit — CAP-007's own established
+governance convention of updating the hash whenever the file changes —
+`review_status` unchanged at `BLOCKED` for all 9 rows; per-row status
+text corrected to reflect round 2); `evidence/module-capabilities.yaml`
+(`required_rule_ids` status text per file, `resolution_attempt_budget_evidence`
+attempt count 1→2, `missing_capability_blockers`, `status`);
+`BUG_REGISTRY.md`'s `BUG-035` row; `STATUS.md`'s "Implementation
+progress" section and front matter; `CURRENT_STATE.md` front matter;
+this file (chunk 49 compressed/archived per the retention rule to make
+room, this chunk added in full).
+
+**Next legally allowed action:** re-author `iac.md` control 5 alone
+(remove the unauthorized `actions/*`/`github/*` trusted-publisher
+clause, or obtain an ADR + `OWN-<NNN>` entry explicitly authorizing
+specific trusted publishers and reconcile it against
+`CAPABILITY_POLICY.md`'s no-exemption clause), dispatched to
+`veyro-infra-sre-engineer`, then a third independent fresh-context
+qualification review before `RULE-001`..`009` may read `APPROVED` and
+`BUG-035` may close. Not Code Review, not Manual QA, not Gatekeeper
+certification, not MOD-002, not a further implementation slice.
 
 ## What happened chunk 50, 2026-09-19 — `BUG-034` CLOSED (owner applied the rule-family patch); independent qualification review of the applied content returned BLOCKED, filed as `BUG-035`; `RULE-001`..`009` registered at `BLOCKED`; slice 2 (`tools/validate_capability_manifest.py`) complete
 
@@ -209,89 +302,7 @@ infra/CI slice (e.g. `contracts/**` scaffolding, another `tools/**`
 validator) while `BUG-035` remains open. Not Code Review, not Manual QA,
 not Gatekeeper certification, not MOD-002.
 
-## What happened chunk 49, 2026-09-19 — MOD-001 implementation started: slice 1 (`tools/validate_baseline_binding.py`) complete; `BUG-034` (`.claude/rules/backend/**`/`infra/**` owner-gated) found and routed to owner, not bypassed
-
-This is the first MOD-001 implementation session, following chunk 48's
-Convergence Gate #1 (Definition of Ready = PASS) and per that gate's own
-"next legally allowed action: MOD-001 implementation, in a new fresh
-session" determination.
-
-**Bootstrap re-verified fresh, not trusted from the prompt:** local
-HEAD == `origin/main` == the governed Ready commit
-(`1e178ce18831fb0c4f672aaa5836004c5e04c845`) confirmed before any action;
-`STATUS.md`, `REQUIREMENTS.md`, `IMPLEMENTATION.md`, `SCENARIOS.md`,
-`CAPABILITIES.md`, `MODEL_ROUTE.md`, `ADR-005`, `ADR-006`,
-`evidence/module-capabilities.yaml` all read in full.
-
-**First implementation slice selected and completed:**
-`tools/validate_baseline_binding.py` (GOV-01-R04, `REQUIREMENTS.md` §3's
-baseline-artifact binding schema validation obligation) — the CI-gate
-generalization of MOD-000's `verify_baselines.py`, covering all 5
-EIP-mandated fail-closed conditions (mismatch, unapproved-candidate-EIP,
-missing/ambiguous identity, missing hash, missing bootstrap-enforcement-
-metadata), per `SCENARIOS.md` SCN-MOD001-025/026/124. Chosen specifically
-because it lives under `tools/**`, a known-infrastructure path unaffected
-by the rule-family gap found below. Dispatched to `veyro-implementer`
-(Sonnet) per `MODEL_ROUTE.md`'s existing routing table — not a critical
-slice, not Backend/Infra surface work. The dispatch was interrupted once
-by this session's own rate limit and resumed cleanly after reset.
-Independently re-traced by this orchestrating session against the real
-`PROJECT_INDEX.md` content (not merely trusting the authoring agent's own
-report) — no discrepancy found. **Live execution honestly disclosed
-BLOCKED**: `.claude/security/bash_guard.py`'s `python3` family only
-executes 7 pre-existing, hash-pinned scripts; this new script is not on
-that list, and the guard file itself is owner-gated, so no session can
-add itself to the allowlist. This is not a novel blocker — `BUG-025`
-already discloses the identical residual for a different tool, unresolved
-since 2026-09-13. No test-pass claim was fabricated; the script's logic
-was hand-traced by two independent readers (the authoring agent, then this
-session separately) against all 6 SCN-025/026/124 cases, with the trace
-itself recorded as evidence, not "PASS." Full record:
-`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`.
-
-**Pre-implementation capability gap found and routed to the owner, not
-bypassed:** `ADR-005` Decision 2's binding pre-implementation condition
-("Before implementation work begins at `infra/**`, CI, or `backend/**`:
-the two profiles' agents and rule families must exist with real
-content") is unmet — `.claude/rules/` is confirmed still flat (4 loose
-files, no family subdirectories), matching chunk 48's own confirmation.
-Confirmed directly: `.claude/rules/**` is `Edit`/`Write`-denied
-(`.claude/settings.json` lines 135-136) and Bash-mutation-denied
-(`bash_guard.py`'s `.claude` protected-path fragment) — the identical
-protection class `BUG-029`/`BUG-030` found for `.claude/agents/**`. Filed
-as **`BUG-034`**, OPEN, P1, scoped (blocks `backend/**`/`infra/**`/CI
-implementation specifically, not the rest of MOD-001 — which is why
-slice 1 above still completed this session). Per the `BUG-028`/`029`/`030`
-precedent, this was not worked around: the exact patch — 4 `git mv`
-commands relocating the existing loose files into `global/`/`admin/`
-family directories, plus 9 new H.3-conforming rule files (4 `infra/`, 5
-`backend/`) — was drafted by the exact chartered agents `ADR-005` names
-for this content (`veyro-infra-sre-engineer`, `veyro-backend-engineer`,
-dispatched in parallel with the slice-1 build; the backend-rules dispatch
-was also interrupted by the rate limit and resumed cleanly), each
-independently reviewed by this orchestrating session against its cited
-EIP/TSD mirror sources and MOD-001's own planning documents before
-inclusion. Full patch content:
-`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-patch/` (10 files);
-bug record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.
-
-**Durable state updated this chunk:** `STATUS.md` (lifecycle →
-IMPLEMENTATION IN PROGRESS, new "Implementation progress" section),
-`CURRENT_STATE.md`, `PROJECT_INDEX.md`'s Active Module section,
-`BUG_REGISTRY.md` (`BUG-034` row + corrected summary),
-`evidence/module-capabilities.yaml` (`required_rule_ids`,
-`missing_capability_blockers`, `resolution_attempt_budget_evidence`,
-`status`). No Code Review, Manual QA, Security Review, Performance
-Review, or Gatekeeper certification was run this session, per the
-mission's own explicit instruction not to run these prematurely.
-
-**Next legally allowed action:** either (a) the owner applies `BUG-034`'s
-patch, closing the `backend/**`/`infra/**`/CI blocker, after which a
-future session can proceed with the tenant-isolation/RLS harness or other
-backend/infra slices; or (b) a future session picks up a further
-non-backend/infra/CI slice (e.g. `contracts/**` scaffolding, another
-`tools/**` validator) while `BUG-034` remains open. Not Code Review, not
-Manual QA, not Gatekeeper certification, not MOD-002.
+## What happened chunk 49, 2026-09-19 (compressed 2026-09-19, thirty-third retention-rule application) — MOD-001 implementation started: slice 1 (`tools/validate_baseline_binding.py`) complete; `BUG-034` (`.claude/rules/backend/**`/`infra/**` owner-gated) found and routed to owner, not bypassed; superseded by chunk 50's `BUG-034` closure. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-49-2026-09-19-mod001-implementation-start-bug034.md`.
 
 ## What happened chunk 48, 2026-09-19 (compressed 2026-09-19, thirty-second retention-rule application) — Convergence Gate #1 executed under `ADR-006`/`OWN-005`: MOD-001 Definition of Ready = PASS, lifecycle state transitions to READY FOR IMPLEMENTATION; implementation NOT started this session. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-48-2026-09-19-convergence-gate-1-pass.md`.
 

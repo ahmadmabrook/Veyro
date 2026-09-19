@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (implementation continuation session — `BUG-034` CLOSED (owner applied the rule-family patch, independently verified twice); independent qualification review of the applied content returned BLOCKED (P0=0/P1=4/P2=8/Editorial=7), filed as `BUG-035`; `RULE-001` through `RULE-009` registered in `CAPABILITY_REGISTRY.md` at `BLOCKED`, not `APPROVED` — the first `RULE-<NNN>` IDs ever assigned on this project. Slice 2 (`tools/validate_capability_manifest.py`, `REQUIREMENTS.md` §3) implemented. `backend/**`/`infra/**`/CI implementation continues to not proceed, now gated on `BUG-035` rather than `BUG-034`. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.)
+updated: 2026-09-19 (fresh independent BUG-035 re-review session — owner applied a round-2 remediation patch (commit `f74f4fba7720dfb60e1cfe5947e477611392d84e`) for 3 of round 1's 4 P1s; a second, independent, fresh-context `veyro-security-reviewer` found the rollback-override and backend transaction/idempotency P1s genuinely CLOSED, but the CI-Action remediation itself introduced a NEW P1 (P1-A — `iac.md` control 5 self-grants `actions/*`/`github/*` trusted-publisher status with no `OWN-<NNN>` entry authorizing it). **Verdict: still BLOCKED (P0=0/P1=1).** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19}.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -238,20 +238,40 @@ text named as the next legally allowed action.
       verified twice (byte-for-byte read-back + a distinct
       `veyro-security-reviewer` SHA-256 check). See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md`.
-- [ ] **`BUG-035` found, OPEN — the applied rule content's own
-      qualification review returned BLOCKED:** a fresh-context
-      `veyro-security-reviewer` (Opus) independently reviewed the 9
-      applied files (citation accuracy, H.3 falsifiability, internal
-      consistency, style conformance) and returned **P0=0, P1=4, P2=8,
-      Editorial=7 — BLOCKED**. `RULE-001` through `RULE-009` registered
-      in `knowledge/00-System/CAPABILITY_REGISTRY.md` at
+- [ ] **`BUG-035` found, still OPEN — round 1 qualification review
+      returned BLOCKED; a round-2 fresh independent re-review of the
+      owner's partial remediation also returned BLOCKED:** round 1, a
+      fresh-context `veyro-security-reviewer` (Opus) independently
+      reviewed the 9 applied files (citation accuracy, H.3
+      falsifiability, internal consistency, style conformance) and
+      returned **P0=0, P1=4, P2=8, Editorial=7 — BLOCKED**. `RULE-001`
+      through `RULE-009` registered in
+      `knowledge/00-System/CAPABILITY_REGISTRY.md` at
       `review_status: BLOCKED`, not `APPROVED` — the first `RULE-<NNN>`
-      IDs ever assigned on this project. `backend/**`/`infra/**`/CI
-      implementation continues to not rely on this content until
-      re-authored (by the chartered surface agents) and re-reviewed
-      to `APPROVED`. See
+      IDs ever assigned on this project. The owner applied a
+      remediation patch (commit `f74f4fba7720dfb60e1cfe5947e477611392d84e`)
+      for 3 of the 4 P1s. **Round 2** (this session, a separate fresh
+      `veyro-security-reviewer` dispatch with no memory of round 1 or of
+      drafting the patch): the manual-rollback-override P1 and the
+      missing backend transaction/idempotency/reconciliation-coverage
+      P1 are **genuinely closed**, independently cross-checked against
+      the cited `EIP_MIRROR.md`/`TSD_MIRROR.md`/`IMPLEMENTATION.md`/
+      `REQUIREMENTS.md` sources — but the CI-Action-supply-chain
+      remediation (`iac.md` control 5) introduced a **new** P1 (P1-A):
+      it self-grants `actions/*`/`github/*` trusted-publisher status
+      with no `OWN-<NNN>` entry authorizing it, contradicting
+      `CAPABILITY_POLICY.md`'s "no exemption of any kind" clause for
+      third-party capabilities — independently re-verified this session
+      by reading `OWNER_APPROVALS.md` (no such entry exists) and
+      `CAPABILITY_POLICY.md` line 30 directly. **Verdict: P0=0, P1=1 —
+      still BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`,
+      not `APPROVED`. No rule file was re-authored this session (per
+      this session's own governing mission's explicit scope); a third
+      re-authoring pass (`veyro-infra-sre-engineer`, scoped to `iac.md`
+      control 5 alone) plus a third independent review are the next
+      legally allowed action on this bug. See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`,
-      `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`.
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19}.md`.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any

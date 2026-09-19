@@ -70,6 +70,42 @@ substantial work this session chose not to fold into an already-large
 turn without being asked. This is recorded as a real, open, honestly
 scoped follow-up, not silently deferred.
 
+## Round 2 (2026-09-19) — owner applied a remediation patch; fresh independent re-review returned BLOCKED again, P0=0/P1=1
+
+The owner applied a remediation patch (commit
+`f74f4fba7720dfb60e1cfe5947e477611392d84e`) touching
+`infra/release.md`, `infra/iac.md`, `backend/architecture.md`,
+`backend/api.md`. A second, independent, fresh-context
+`veyro-security-reviewer` (Opus, no memory of round 1 or of drafting the
+patch) reviewed the current on-disk content of all 9 files from scratch.
+
+**Verdict: P0=0, P1=1 — BLOCKED.** P1-1 (unauthorized manual rollback
+override) and P1-2 (missing backend transaction/idempotency/
+reconciliation coverage) are **genuinely closed** — independently
+verified against the cited `EIP_MIRROR.md`/`TSD_MIRROR.md`/
+`IMPLEMENTATION.md`/`REQUIREMENTS.md` sources, not just re-worded. P1-3
+(third-party CI-Action supply chain) is **partially closed**: the
+SHA-pinning requirement is correctly specified, but the same control
+(`iac.md` control 5) introduces a **new** unauthorized trust carve-out —
+self-granting trusted-publisher status to `actions/*`/`github/*` with no
+`OWN-<NNN>` entry authorizing it, contradicting
+`CAPABILITY_POLICY.md`'s "no exemption of any kind" clause for
+third-party capabilities. Filed as **P1-A**. Full record:
+`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19.md`.
+
+**Status: still OPEN.** `RULE-001` through `RULE-009` remain `BLOCKED`
+(not `APPROVED`) in `CAPABILITY_REGISTRY.md` and
+`module-capabilities.yaml`. Per this session's governing mission's
+explicit "if and only if P0=0 and P1=0" gate, no registry row was
+marked `APPROVED`, this bug was not closed, and no rule file was
+re-authored this session (`.claude/rules/**` remains owner-gated
+regardless). Closing P1-A requires either removing `iac.md` control 5's
+trusted-publisher clause (every `uses:` reference needs both a SHA pin
+and an `APPROVED CAP-<NNN>` row), or an ADR plus an `OWN-<NNN>` entry
+explicitly authorizing specific trusted publishers, reconciled against
+`CAPABILITY_POLICY.md`'s no-exemption clause — followed by a third
+independent qualification review.
+
 ## Registration (P1-4, closed as part of this filing)
 
 RULE-001 through RULE-009 are registered in

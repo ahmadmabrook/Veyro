@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-19 (MOD-001 implementation continued this session — owner applied `BUG-034`'s patch, independently verified and CLOSED; the applied rule content's own qualification review returned BLOCKED, filed as `BUG-035`; `RULE-001`..`009` registered at `BLOCKED`; slice 2 (`tools/validate_capability_manifest.py`) implemented. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-19 (fresh independent BUG-035 re-review session — owner applied a round-2 remediation patch for 3 of round 1's 4 P1s; a second independent fresh-context qualification review found 2 genuinely closed but 1 new P1 introduced by the remediation itself (`iac.md`'s unauthorized CI-Action trust carve-out). `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
