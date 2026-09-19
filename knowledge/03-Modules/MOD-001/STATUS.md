@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (Scenario Review round 16 ran, BLOCKED, P0=0/P1=4/P2=6/Editorial=4, all remediated same session — round 15's remediation held on 7 of its own 11 named claims, but its own Mobile UI CI-row fix still claimed a real Android pass/fail in the one location it introduced, its LOC/A11Y mobile-parity scenarios required a fixture under a still-DEFERRED profile that gate 7 must deny, its rule-family disposition misassigned one surface-scoped file to `global/`, and its new Component-tests row gated a currently-real surface behind a future condition; independent evidence-integrity adjudication confirmed all 15 (not 14 — self-referential growth from `BUG-033`'s own filing) evidence_integrity_check.py findings have a durable, source-backed, non-Ready-blocking disposition (9 ADR-005-deferred, 6 checker false positives tracked as `BUG-033`); Scenario Review round 17 pending — see `SCENARIOS.md` §5)
+updated: 2026-09-19 (Governance adjudication + owner decision `OWN-005`: the repeated-full-Scenario-Review stopping rule is superseded by a bounded Convergence Gate, `ADR-006`. Round 16 (P0=0/P1=4/P2=6/Editorial=4, all remediated same session) and its independent evidence-integrity adjudication (0 Ready-blocking findings) stand as before — see `SCENARIOS.md` §5. Next step is a fresh-context Convergence Gate, not Scenario Review round 17; not yet run. MOD-001 remains NOT READY, NOT APPROVED, implementation not started.)
 ---
 
 # MOD-001 — Module Status
@@ -187,13 +187,27 @@ them. See `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-028-docx-read-capabili
       this session; see `SCENARIOS.md` §5's round 15 entry.**
 - [ ] Definition of Ready — **not yet reached.** `BUG-031` and
       `BUG-032` are both CLOSED (satisfied, independently verified —
-      see the bug-review checklist item above). Still gated on an
-      independent round returning `MOD-001 SCENARIO REVIEW
-      APPROVED` with P0=0/P1=0 — see `SCENARIOS.md` §5's current round
-      for what remains; that confirmation is round 16's own subject.
+      see the bug-review checklist item above). **Corrected 2026-09-19
+      (`OWN-005`, `ADR-006`): the prior rule gating this on "an
+      independent round returning `MOD-001 SCENARIO REVIEW APPROVED`
+      with P0=0/P1=0" (i.e. a from-scratch full re-audit after every
+      remediation) is superseded.** Round 16 (2026-09-19) returned
+      P0=0/P1=4/P2=6/Editorial=4, all remediated same session; a
+      separate independent evidence-integrity adjudication found 0
+      Ready-blocking defects. Per the bounded Convergence Gate rule now
+      in force (`ADR-006`), the next step is a fresh-context
+      Convergence Gate re-verifying round 16's remediation and the
+      current Ready-blocking P0/P1 state — not an unbounded Scenario
+      Review round 17. That Convergence Gate has **not yet been run**
+      as of this correction; Definition of Ready is still not reached.
+      See `SCENARIOS.md` §5 for the round 16 detail and the governance
+      correction appended after it.
 
 **Approval status: NOT READY. NOT APPROVED.** No Module Approval
 Certificate exists or is expected at this stage — this is a planning
 turn. MOD-001 implementation has not started and will not start until
 Definition of Ready is met and independently confirmed, per this
-project's WIP=1 / no-self-certification discipline.
+project's WIP=1 / no-self-certification discipline. The stopping rule
+for the planning-review cycle itself is now the bounded Convergence
+Gate (`ADR-006`, `OWN-005`), not the repeated-full-round rule this file
+previously stated.

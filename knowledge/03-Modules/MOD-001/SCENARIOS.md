@@ -4285,3 +4285,27 @@ Ready. Implementation has not started and is not authorized to start.
 Next legally allowed action: an independent Scenario Review round 17**,
 to confirm round 16's remediation actually holds — not implementation,
 not MOD-002, not a self-granted Ready determination.
+
+### Governance correction (2026-09-19) — Round-16 Gate Rule superseded
+
+A governance adjudication this session traced the "Round-15/16 Gate
+Rule" above (and every prior round's identical "review-budget rule"
+citation, `SCENARIOS.md:2839` onward) to source: `EIP_MIRROR.md`'s own
+§8 table and lifecycle sequence treat Ready and Scenario Review as
+distinct, sequential gates and do not require a from-scratch full
+catalog re-audit after every remediation; `OWNER_APPROVALS.md` carried
+no durable record of the "owner's explicit review-budget rule" this
+rule was attributed to. The owner was asked directly and chose to
+replace the rule: recorded as **`OWN-005`**, decision detail in
+**`ADR-006`**
+(`knowledge/04-Decisions/ADR-006-mod001-scenario-review-bounded-convergence-gate.md`).
+
+**The paragraph immediately above ("Next legally allowed action: an
+independent Scenario Review round 17") is superseded, not deleted, per
+this project's policy of not rewriting historical review-log text.**
+The actual next legally allowed action is a fresh-context
+**Convergence Gate** (per `ADR-006`'s bounded rule) re-verifying round
+16's remediation and the current Ready-blocking P0/P1 state — not an
+unbounded 17th full independent Scenario Review. That Convergence Gate
+has not been run as of this correction. MOD-001 remains ACTIVATED,
+NOT READY, NOT APPROVED; implementation has not started.
