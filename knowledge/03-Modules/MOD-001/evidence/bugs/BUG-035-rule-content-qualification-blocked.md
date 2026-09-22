@@ -106,6 +106,44 @@ explicitly authorizing specific trusted publishers, reconciled against
 `CAPABILITY_POLICY.md`'s no-exemption clause — followed by a third
 independent qualification review.
 
+## Round 3 (2026-09-22) — owner closed P1-A; fresh independent re-review found P1-A genuinely closed but a new P1 (P1-Q, no stage-5 qualification evidence)
+
+The owner applied a further remediation (commit
+`d3ce17ad42978761a0294909509e772444d5352d`) touching only `infra/iac.md`
+control 5, removing the round-2 `actions/*`/`github/*` trusted-publisher
+carve-out entirely — every GitHub Action now requires the full
+`CAPABILITY_POLICY.md` 9-stage lifecycle with no publisher exemption. A
+third, independent, fresh-context `veyro-security-reviewer` (Opus, no
+memory of rounds 1 or 2) reviewed all 9 files from scratch.
+
+**Verdict: P0=0, P1=1 — BLOCKED.** P1-A is **genuinely closed** —
+independently re-verified against `CAPABILITY_POLICY.md`'s verbatim "no
+exemption of any kind" clause and `OWNER_APPROVALS.md` (no relevant
+`OWN-<NNN>` entry exists). Round 2's other two closures (rollback
+override, backend transaction/idempotency/reconciliation coverage) were
+re-confirmed unregressed. **A new P1 was found: P1-Q** — none of the 9
+rule files has the stage-5 positive/negative qualification-test evidence
+`CAPABILITY_POLICY.md` requires before a Rule may become `ACTIVE`/
+`APPROVED` (`knowledge/05-QA/capability-evidence/` has no `RULE-*`
+subdirectory; the registry's `evidence` column cites only the three
+content-qualification review documents, which are stage-4 evaluation,
+not stage-5 test evidence). Independently confirmed by this orchestrating
+session by direct directory listing and by re-reading
+`CAPABILITY_POLICY.md` stages 5/6 verbatim, not taken on the subagent's
+word. Full record:
+`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22.md`.
+
+**Status: still OPEN.** `RULE-001` through `RULE-009` remain `BLOCKED`
+(not `APPROVED`). Per this session's governing mission's explicit "if
+and only if P0=0 and P1=0" gate, no registry row was marked `APPROVED`,
+this bug was not closed, and no rule file was re-authored this session.
+Closing P1-Q requires producing, for each of the 9 files: `paths:`
+frontmatter, a recorded positive test and a recorded negative
+(non-matching-path) test under
+`knowledge/05-QA/capability-evidence/RULE-<NNN>/`, and an Opus
+evaluation of that evidence — followed by a fourth independent
+qualification review.
+
 ## Registration (P1-4, closed as part of this filing)
 
 RULE-001 through RULE-009 are registered in

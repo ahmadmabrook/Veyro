@@ -1,5 +1,5 @@
 module_id: MOD-001
-status: IMPLEMENTATION IN PROGRESS (see knowledge/03-Modules/MOD-001/STATUS.md) — implementation slice 1 (tools/validate_baseline_binding.py) complete; BUG-034 (rule-family write access) CLOSED; owner applied a round-2 remediation patch for 3 of BUG-035's 4 round-1 P1s, but a second independent qualification review found a new P1 (P1-A, iac.md control 5's unauthorized CI-Action trust carve-out) — backend/**/infra/**/CI implementation remains blocked pending BUG-035 (RULE-001..009 still BLOCKED, not APPROVED)
+status: IMPLEMENTATION IN PROGRESS (see knowledge/03-Modules/MOD-001/STATUS.md) — implementation slice 1 (tools/validate_baseline_binding.py) complete; BUG-034 (rule-family write access) CLOSED; owner applied a round-2 remediation patch for 3 of BUG-035's 4 round-1 P1s, then a round-3 remediation closing the round-2-introduced P1-A — a third independent qualification review confirmed P1-A closed but found a new P1 (P1-Q, no stage-5 positive/negative qualification-test evidence exists for the 9 rule files) — backend/**/infra/**/CI implementation remains blocked pending BUG-035 (RULE-001..009 still BLOCKED, not APPROVED)
 applicable_capability_profiles:
   - Infra/SRE/CI (ACTIVATED — ADR-005 Decision 2; agent: veyro-infra-sre-engineer)
   - Backend (ACTIVATED, bounded — ADR-005 Decision 2; agent: veyro-backend-engineer)
@@ -161,34 +161,34 @@ required_agent_roles:
     scope: "Module certification verdict, fresh context, orchestrator-dispatched only (not a peer-escalation target); never self-certifies"
     model: opus
     status: "ACTIVE (already registered, MOD-000) — added Scenario Review round 12, P1-4, same gap"
-required_rule_ids:  # Assigned 2026-09-19 — first RULE-ID assignment on this project. All 9 files applied by the owner (BUG-034 CLOSED). Round-1 qualification review: BLOCKED (P1=4). Owner applied a round-2 remediation patch (commit f74f4fba7720dfb60e1cfe5947e477611392d84e) for 3 of the 4 P1s; round-2 independent review (2026-09-19): P1-1 (rollback override) and P1-2 (backend transaction/idempotency) genuinely CLOSED, but a NEW P1 (P1-A) found in iac.md control 5. Still none may be treated as governing/enforced until re-authored + re-reviewed to APPROVED. See BUG-035.
+required_rule_ids:  # Assigned 2026-09-19 — first RULE-ID assignment on this project. All 9 files applied by the owner (BUG-034 CLOSED). Round 1: BLOCKED (P1=4). Round 2 (after owner remediation, commit f74f4fba7720dfb60e1cfe5947e477611392d84e): P1-1/P1-2 CLOSED, new P1-A found (iac.md control 5 publisher carve-out). Round 3 (2026-09-22, after owner remediation, commit d3ce17ad42978761a0294909509e772444d5352d): P1-A CLOSED, new P1-Q found (no stage-5 positive/negative qualification-test evidence exists for any of the 9 files). Still none may be treated as governing/enforced until this evidence is produced + re-reviewed to APPROVED. See BUG-035.
   - id: RULE-001
     path: .claude/rules/infra/iac.md
-    status: "BLOCKED (round-2 P1-A — iac.md control 5 self-grants actions/*/github/* trusted-publisher status with no OWN-<NNN> entry authorizing it, contradicting CAPABILITY_POLICY.md's no-exemption clause; SHA-pinning half of the original P1-3 is correctly closed)"
+    status: "BLOCKED (round-2 P1-A — the actions/*/github/* trusted-publisher carve-out — genuinely CLOSED in round 3; still blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
   - id: RULE-002
     path: .claude/rules/infra/secrets.md
-    status: "BLOCKED (no P1 of its own in either round; blocked as part of the 9-file set qualification — round-2's sole remaining open item, P1-A, is confined to iac.md)"
+    status: "BLOCKED (no P1 of its own in any round; blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
   - id: RULE-003
     path: .claude/rules/infra/observability.md
-    status: "BLOCKED (no P1 of its own in either round; blocked as part of the 9-file set qualification — round-2's sole remaining open item, P1-A, is confined to iac.md)"
+    status: "BLOCKED (no P1 of its own in any round; blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
   - id: RULE-004
     path: .claude/rules/infra/release.md
-    status: "BLOCKED (round-1's own P1-1 — unauthorized manual-rollback-override carve-out — genuinely CLOSED in round 2; still blocked only as part of the 9-file set qualification, per iac.md's round-2 P1-A)"
+    status: "BLOCKED (round-1's own P1-1 — unauthorized manual-rollback-override carve-out — genuinely CLOSED in round 2, confirmed unregressed round 3; still blocked as part of the 9-file set's round-3 finding, P1-Q)"
   - id: RULE-005
     path: .claude/rules/backend/architecture.md
-    status: "BLOCKED (round-1's own P1-2, with RULE-006 — missing transaction/idempotency/reconciliation coverage — genuinely CLOSED in round 2; still blocked only as part of the 9-file set qualification, per iac.md's round-2 P1-A)"
+    status: "BLOCKED (round-1's own P1-2, with RULE-006 — missing transaction/idempotency/reconciliation coverage — genuinely CLOSED in round 2, confirmed unregressed round 3; still blocked as part of the 9-file set's round-3 finding, P1-Q)"
   - id: RULE-006
     path: .claude/rules/backend/api.md
-    status: "BLOCKED (round-1's own P1-2, with RULE-005 — genuinely CLOSED in round 2; still blocked only as part of the 9-file set qualification, per iac.md's round-2 P1-A)"
+    status: "BLOCKED (round-1's own P1-2, with RULE-005 — genuinely CLOSED in round 2, confirmed unregressed round 3; still blocked as part of the 9-file set's round-3 finding, P1-Q)"
   - id: RULE-007
     path: .claude/rules/backend/database.md
-    status: "BLOCKED (no P1 of its own in either round; blocked as part of the 9-file set qualification)"
+    status: "BLOCKED (no P1 of its own in any round; blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
   - id: RULE-008
     path: .claude/rules/backend/concurrency.md
-    status: "BLOCKED (no P1 of its own in either round; blocked as part of the 9-file set qualification)"
+    status: "BLOCKED (no P1 of its own in any round; blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
   - id: RULE-009
     path: .claude/rules/backend/performance.md
-    status: "BLOCKED (no P1 of its own in either round; blocked as part of the 9-file set qualification)"
+    status: "BLOCKED (no P1 of its own in any round; blocked as part of the 9-file set's round-3 finding, P1-Q — no stage-5 qualification evidence exists)"
 required_skill_ids: []  # None identified as missing this session — see knowledge/03-Modules/MOD-001/CAPABILITIES.md's gap analysis
 # Added (Scenario Review round 4, P1-8): Appendix H.1 (EIP_MIRROR.md lines
 # 20597-20601) requires the manifest to "also record capability dependency
@@ -216,9 +216,9 @@ resolution_attempt_budget_evidence:
     resolved: true
     evidence: "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-034-rule-family-content-owner-gated.md — owner applied the patch (commit 3632764e44522376277d96441bee847d148843fa), byte-for-byte match independently verified twice (this session + veyro-security-reviewer's own SHA-256 check). CLOSED."
   - gap: "BUG-035 (9 new backend/+infra/ Rule files — qualification review BLOCKED, P0=0/P1=4/P2=8/Editorial=7)"
-    attempts: 2
+    attempts: 3
     resolved: false
-    evidence: "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md — round 1 BLOCKED (P1=4); owner applied a remediation patch (commit f74f4fba7720dfb60e1cfe5947e477611392d84e) for 3 of the 4 P1s; round 2 independent re-review found 2 genuinely closed but 1 new P1 (P1-A, iac.md control 5's unauthorized CI-Action trust carve-out) — still BLOCKED. Further re-authoring by the chartered surface agents + a third independent review required before RULE-001..009 may read APPROVED."
+    evidence: "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md — round 1 BLOCKED (P1=4); owner remediation (commit f74f4fba7720dfb60e1cfe5947e477611392d84e) closed P1-1/P1-2, round 2 found new P1-A (iac.md control 5's unauthorized CI-Action trust carve-out) — still BLOCKED; owner remediation (commit d3ce17ad42978761a0294909509e772444d5352d) closed P1-A, round 3 (2026-09-22) found new P1-Q (no stage-5 positive/negative qualification-test evidence exists for any of the 9 files) — still BLOCKED. Producing paths: frontmatter + recorded positive/negative test evidence under knowledge/05-QA/capability-evidence/RULE-<NNN>/ for each file, plus an Opus evaluation of that evidence, is required before RULE-001..009 may read APPROVED."
 lifecycle_review_state: "PLANNING — not yet subject to a lifecycle review cycle; applicable once this manifest is a certified (not draft) module-capabilities row per this file's own notes field below"
 rollback_target: "Git-level only — no production state exists to roll back (DC-16, no Production promotion ever occurred); see IMPLEMENTATION.md §9 for the full module-level rollback strategy"
 required_cross_cutting_controls:
@@ -232,9 +232,9 @@ required_cross_cutting_controls:
   - Load (CI-runner/environment smoke-load, bounded per IMPLEMENTATION.md §5)
   - Observability (release-evidence, capability-manifest validation)
 missing_capability_blockers:
-  - "BUG-035 (RULE-001..009 qualification BLOCKED — round 1 P0=0/P1=4/P2=8/Editorial=7; round 2, after a partial remediation, P0=0/P1=1) — blocks treating backend/**/infra/** rule content as qualified/reliable; does not block tools/**/contracts/** implementation. BUG-034 (the write-access gap) is CLOSED."
+  - "BUG-035 (RULE-001..009 qualification BLOCKED — round 1 P0=0/P1=4/P2=8/Editorial=7; round 2, after a partial remediation, P0=0/P1=1 (P1-A); round 3, after P1-A's remediation, P0=0/P1=1 (P1-Q — no stage-5 qualification-test evidence exists)) — blocks treating backend/**/infra/** rule content as qualified/reliable; does not block tools/**/contracts/** implementation. BUG-034 (the write-access gap) is CLOSED."
 capability_evidence_ids:
-  - "RULE-001 through RULE-009 — see knowledge/00-System/CAPABILITY_REGISTRY.md and knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19}.md (BLOCKED, not APPROVED)"
+  - "RULE-001 through RULE-009 — see knowledge/00-System/CAPABILITY_REGISTRY.md and knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md (BLOCKED, not APPROVED)"
 notes: >-
   This manifest is a planning-stage draft, not a certified module-capabilities
   row. It exists to satisfy Appendix H.1's "manifest exists before Scenario

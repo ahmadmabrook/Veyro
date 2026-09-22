@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-19 (fresh independent BUG-035 re-review session — owner applied a round-2 remediation patch (commit `f74f4fba7720dfb60e1cfe5947e477611392d84e`) for 3 of round 1's 4 P1s; a second, independent, fresh-context `veyro-security-reviewer` found the rollback-override and backend transaction/idempotency P1s genuinely CLOSED, but the CI-Action remediation itself introduced a NEW P1 (P1-A — `iac.md` control 5 self-grants `actions/*`/`github/*` trusted-publisher status with no `OWN-<NNN>` entry authorizing it). **Verdict: still BLOCKED (P0=0/P1=1).** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19}.md`.)
+updated: 2026-09-22 (fresh independent BUG-035 round-3 re-review session — owner applied a further remediation patch (commit `d3ce17ad42978761a0294909509e772444d5352d`) closing round 2's P1-A (`iac.md` control 5's publisher carve-out removed entirely); a third, independent, fresh-context `veyro-security-reviewer` confirmed P1-A genuinely CLOSED and round 2's other two closures unregressed, but found a NEW P1 (P1-Q — no stage-5 positive/negative qualification-test evidence exists for any of the 9 rule files). **Verdict: still BLOCKED (P0=0/P1=1).** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -266,12 +266,35 @@ text named as the next legally allowed action.
       `CAPABILITY_POLICY.md` line 30 directly. **Verdict: P0=0, P1=1 —
       still BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`,
       not `APPROVED`. No rule file was re-authored this session (per
-      this session's own governing mission's explicit scope); a third
-      re-authoring pass (`veyro-infra-sre-engineer`, scoped to `iac.md`
-      control 5 alone) plus a third independent review are the next
-      legally allowed action on this bug. See
+      this session's own governing mission's explicit scope).
+      **Round 3** (2026-09-22, review-only session, a third fresh
+      `veyro-security-reviewer` dispatch with no memory of rounds 1/2):
+      the owner applied a further remediation (commit
+      `d3ce17ad42978761a0294909509e772444d5352d`) removing `iac.md`
+      control 5's publisher carve-out entirely — every GitHub Action now
+      requires the full `CAPABILITY_POLICY.md` 9-stage lifecycle with no
+      exemption. P1-A is **genuinely closed** — independently
+      re-verified against `CAPABILITY_POLICY.md`'s "no exemption of any
+      kind" clause and `OWNER_APPROVALS.md` directly. Round 2's other two
+      closures re-confirmed unregressed. **A new P1 (P1-Q) was found:**
+      none of the 9 files has the stage-5 positive/negative
+      qualification-test evidence `CAPABILITY_POLICY.md` requires before
+      a Rule may become `ACTIVE`/`APPROVED` —
+      `knowledge/05-QA/capability-evidence/` has no `RULE-*`
+      subdirectory, independently confirmed by this orchestrating
+      session's own directory listing, not taken on the subagent's word.
+      **Verdict: P0=0, P1=1 — still BLOCKED.** `RULE-001` through
+      `RULE-009` remain `BLOCKED`, not `APPROVED`; no rule file was
+      re-authored (structurally impossible this session regardless —
+      `.claude/rules/**` remains owner-gated). The next legally allowed
+      action: produce, for each of the 9 files, `paths:` frontmatter plus
+      a recorded positive test and a recorded negative
+      (non-matching-path) test under
+      `knowledge/05-QA/capability-evidence/RULE-<NNN>/`, an Opus
+      evaluation of that evidence, then a fourth independent
+      qualification review. See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`,
-      `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19}.md`.
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any

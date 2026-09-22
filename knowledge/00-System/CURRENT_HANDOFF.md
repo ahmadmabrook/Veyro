@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-19 (chunk 51 — fresh independent BUG-035 re-review session. Verified local HEAD == `origin/main` (`f74f4fba7720dfb60e1cfe5947e477611392d84e`, the owner's round-2 remediation commit) before any action. A second, independent, fresh-context `veyro-security-reviewer` (no memory of round 1 or of drafting the remediation) found the manual-rollback-override P1 and the backend transaction/idempotency/reconciliation P1 genuinely CLOSED, but the CI-Action-supply-chain remediation (`iac.md` control 5) introduced a NEW P1 (P1-A — an unauthorized `actions/*`/`github/*` trust carve-out with no `OWN-<NNN>` entry). **Verdict: P0=0, P1=1 — still BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`; `BUG-035` remains OPEN. No rule file re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-22 (chunk 52 — fresh independent BUG-035 round-3 re-review session. Verified local HEAD == `origin/main` (`d3ce17ad42978761a0294909509e772444d5352d`, the owner's round-3 remediation commit) before any action. A third, independent, fresh-context `veyro-security-reviewer` (no memory of rounds 1/2 or of drafting the remediation) found round-2's P1-A (the `iac.md` publisher carve-out) genuinely CLOSED and round 2's other two closures unregressed, but found a NEW P1 (P1-Q — no stage-5 positive/negative qualification-test evidence exists for any of the 9 rule files). **Verdict: P0=0, P1=1 — still BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`; `BUG-035` remains OPEN. No rule file re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
 ---
 
 # Current Handoff
@@ -111,7 +111,104 @@ to a summary line, full narrative archived to
 **Thirty-third application (2026-09-19, chunk 51): chunk 49 compressed
 to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-49-2026-09-19-mod001-implementation-start-bug034.md`**
-— chunks 50 and 51 are now the 2 kept in full.
+**Thirty-fourth application (2026-09-22, chunk 52): chunk 50 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-50-2026-09-19-bug034-closed-round1-qualification-blocked.md`.**
+— chunks 51 and 52 are now the 2 kept in full.
+
+## What happened chunk 52, 2026-09-22 — fresh independent BUG-035 round-3 re-review: round-3 remediation closes P1-A, but a new P1 (P1-Q, no stage-5 qualification-test evidence) is found; RULE-001..009 remain BLOCKED
+
+This is a fresh-context, review-only session with no memory of chunks
+50/51, per an explicit mission: independently re-review the current
+state of the 9 `backend/`/`infra/` Rule files after the owner applied a
+round-3 remediation patch closing round 2's `BUG-035` P1 (P1-A), and —
+if and only if the fresh review returns P0=0/P1=0 — mark `RULE-001`..
+`009` `APPROVED`, close `BUG-035`, and commit/push. The mission
+explicitly forbade re-authoring rules, starting another implementation
+slice, starting MOD-002, or marking MOD-001 approved in this session.
+
+**Bootstrap re-verified fresh, not trusted from the prompt:** local HEAD
+== `origin/main` (`d3ce17ad42978761a0294909509e772444d5352d`, message
+"fix: close remaining BUG-035 infra rule P1") confirmed via `git
+fetch`/`git status`/`git log` before any action. `verify_baselines.py`
+re-run: PASS, 4/4. `STATUS.md` re-confirmed MOD-001 lifecycle
+`IMPLEMENTATION IN PROGRESS`. `BUG-035`'s own file re-confirmed
+`status: OPEN`. `CAPABILITY_REGISTRY.md` and
+`evidence/module-capabilities.yaml` both re-confirmed `RULE-001` through
+`RULE-009` at `BLOCKED`. `git show d3ce17a --stat`/`--patch` confirmed
+the owner's round-3 patch touches only `.claude/rules/infra/iac.md`
+(+21/-18), removing round 2's `actions/*`/`github/*` trusted-publisher
+carve-out entirely.
+
+**Fresh independent review dispatched** — `veyro-security-reviewer`
+(Opus, fresh context, no memory of rounds 1 or 2), briefed with the
+round-1/round-2 finding history and the exact round-3 diff, instructed
+to independently ground every check in the cited `EIP_MIRROR.md`/
+`TSD_MIRROR.md`/`IMPLEMENTATION.md`/`REQUIREMENTS.md`/
+`CAPABILITY_POLICY.md` text rather than trust the rule files' own
+quotations, and explicitly told not to expand into a general rewrite or
+P2/editorial hunt.
+
+**Verdict returned: P0=0, P1=1 — BLOCKED.** P1-A (round 2's finding) is
+**genuinely closed**: `iac.md` control 5 no longer grants any
+publisher-based exemption — every GitHub Action, "regardless of
+publisher — including `actions/*` and `github/*`", now requires the
+full `CAPABILITY_POLICY.md` 9-stage lifecycle with no `OWN-<NNN>`/
+in-rule exemption of any kind. Round 2's other two closures (rollback
+override, backend transaction/idempotency/reconciliation coverage) were
+re-verified unregressed. **A new P1 was found (P1-Q):** none of the 9
+rule files has the stage-5 positive/negative qualification-test evidence
+`CAPABILITY_POLICY.md` requires before a Rule may become `ACTIVE`/
+`APPROVED` — three rounds of content review are stage-4 independent
+evaluation, not stage-5 test evidence. This orchestrating session
+independently re-verified the finding rather than taking the subagent's
+report on trust: `knowledge/05-QA/capability-evidence/` has only
+`GOVERNANCE_DRILL/`, `CAP-001/`, `CAP-002/` subdirectories — no `RULE-*`
+directory exists; `CAPABILITY_POLICY.md` stages 5/6 re-read directly,
+confirming the requirement is real and binding; `BUG-035`'s own file
+re-checked to confirm this gap was never previously raised or dismissed.
+The 4 changed file's SHA-256 hash was also independently recomputed by
+this session via `shasum -a 256` and confirmed to exact-match the
+reviewer's reported value.
+
+**Disposition: per the mission's explicit "if and only if P0=0 and
+P1=0" gate, the condition was not met.** `RULE-001` through `RULE-009`
+were **not** marked `APPROVED`. `BUG-035` was **not** closed. No rule
+file was re-authored (also structurally impossible this session —
+`.claude/rules/**` remains owner-gated regardless). No further
+implementation slice was started. MOD-002 was not started. MOD-001 was
+not marked approved. This matches the project's established BUG-013/
+022/023 Round-3 precedent and chunk 51's own round-2 precedent: a review
+that finds real, unresolved issues gets recorded honestly and the
+session stops there.
+
+**Durable state updated this chunk (documentation only — no rule
+content changed):** new evidence file
+`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22.md`;
+`BUG-035`'s own file (round-3 section appended, `OPEN` retained);
+`CAPABILITY_REGISTRY.md` (`iac.md`'s `content_hash`/`version` cells
+refreshed to the current commit, all 9 rows' `last_reviewed_at` and
+status text updated to reflect P1-A closed/P1-Q open, the two narrative
+sections below the table corrected — `review_status` unchanged at
+`BLOCKED` for all 9 rows); `evidence/module-capabilities.yaml`
+(`required_rule_ids` status text per file, `resolution_attempt_budget_evidence`
+attempt count 2→3, `missing_capability_blockers`, `status`,
+`capability_evidence_ids`); `BUG_REGISTRY.md`'s `BUG-035` row plus a new
+dated "Corrected" note; `STATUS.md`'s "Implementation progress" section
+and front matter; `CURRENT_STATE.md` front matter; this file (chunk 50
+compressed/archived per the retention rule to make room, this chunk
+added in full).
+
+**Next legally allowed action:** produce, for each of `RULE-001`..
+`RULE-009`: `paths:` frontmatter (`backend/**` for the 5 backend files;
+`infra/**` plus `.github/workflows/**` for the 4 infra files), a
+recorded positive test and a recorded negative (non-matching-path) test
+under `knowledge/05-QA/capability-evidence/RULE-<NNN>/`, and an Opus
+(`veyro-security-reviewer`) evaluation of that evidence — then a fourth
+independent qualification review before `RULE-001`..`009` may read
+`APPROVED` and `BUG-035` may close. Not Code Review, not Manual QA, not
+Gatekeeper certification, not MOD-002, not a further implementation
+slice.
 
 ## What happened chunk 51, 2026-09-19 — fresh independent BUG-035 re-review: round-2 remediation partially closes round 1's P1s, but introduces a new P1 (`iac.md`'s unauthorized CI-Action trust carve-out); RULE-001..009 remain BLOCKED
 
@@ -203,104 +300,7 @@ qualification review before `RULE-001`..`009` may read `APPROVED` and
 `BUG-035` may close. Not Code Review, not Manual QA, not Gatekeeper
 certification, not MOD-002, not a further implementation slice.
 
-## What happened chunk 50, 2026-09-19 — `BUG-034` CLOSED (owner applied the rule-family patch); independent qualification review of the applied content returned BLOCKED, filed as `BUG-035`; `RULE-001`..`009` registered at `BLOCKED`; slice 2 (`tools/validate_capability_manifest.py`) complete
-
-Continuation of chunk 49's MOD-001 implementation session, resumed after
-the owner reported applying `BUG-034`'s patch (new HEAD
-`3632764e44522376277d96441bee847d148843fa`).
-
-**BUG-034 patch verified, not trusted.** `git log -1 --stat` on the
-owner's commit confirmed all 4 `git mv` moves as pure renames (0
-insertions/0 deletions each — the migration introduced no unreviewed
-content change). All 9 new files read back from their applied
-`.claude/rules/{backend,infra}/` locations and compared against this
-session's own `BUG-034-patch/` drafts — byte-identical. Rule-family
-structure confirmed exactly as planned: `global/` (3), `admin/` (1),
-`backend/` (5), `infra/` (4); the other 7 Appendix H.2 families
-correctly remain absent. A suspected front-matter deviation on 2 of the
-4 migrated files was investigated and retracted — `git log -1 --stat`
-showed the front matter pre-existed the migration (0 insertions on the
-rename), it just hadn't been visible via this session's earlier
-`CLAUDE.md`-embedded reads of those files.
-
-**Independent qualification review dispatched — `veyro-security-reviewer`
-(Opus, fresh context), per `CAPABILITY_POLICY.md`'s binding
-model-routing rule** ("No capability may become APPROVED solely from a
-Sonnet implementation run"). Verified 14 citations directly against the
-cited `EIP_MIRROR.md`/`TSD_MIRROR.md` ranges (all accurate, several
-verbatim-exact); independently SHA-256-hashed all 9 applied files
-against the reviewed drafts (byte-identical, confirming the same finding
-this session made separately); confirmed both scope boundaries the
-mission specifically flagged (the RLS-harness carve-out in `database.md`,
-the no-invented-load-budget refusal in `performance.md`) are correctly
-drawn. **Verdict: P0=0, P1=4, P2=8, Editorial=7 — BLOCKED.** The 4 P1s:
-`infra/release.md` permits a manually-callable rollback override its own
-cited authority explicitly forbids, with no ADR authorizing the
-carve-out; the 5 backend files cover none of H.3's "transaction/
-idempotency/reconciliation" element despite quoting the EIP row that
-names it; the 4 infra files (governing `.github/workflows/**`) have no
-third-party CI-Action supply-chain control; a stage-7 registration gap
-(orchestrator-side, closed same chunk). Full record:
-`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_2026-09-19.md`.
-
-**Disposition: `BUG-034` CLOSED on its own narrow scope (no
-write-access path existed; now it does, applied correctly) — the
-qualification-BLOCKED finding is a distinct, newly-discovered defect,
-filed separately as `BUG-035`, not folded into `BUG-034`'s closure**, per
-this project's established `BUG-030`→`BUG-031`→`BUG-032` precedent of
-not conflating a newly-found defect with an already-resolved bug.
-**`RULE-001` through `RULE-009` registered in `CAPABILITY_REGISTRY.md`**
-at `review_status: BLOCKED`, not `APPROVED`, following `CAP-007`'s own
-precedent of registering a capability before it clears qualification —
-the first `RULE-<NNN>` IDs ever assigned on this project.
-`module-capabilities.yaml`'s `required_rule_ids` updated to list all 9
-with per-file status notes; `missing_capability_blockers` now points at
-`BUG-035`. Full bug record:
-`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`.
-
-**Slice 2 implemented:** `tools/validate_capability_manifest.py`
-(`REQUIREMENTS.md` §3's capability-governance validation gate,
-generalizing `validate_capabilities.py` to any module). Solves a real
-schema-divergence problem found during authoring — MOD-000's manifest
-uses a flat `capability_id:` list, MOD-001's has no such field, only
-`required_rule_ids`/free-text mentions — by discovering `CAP-`/`RULE-`/
-`SKL-` ID tokens directly from the manifest's raw text rather than
-assuming one field-naming convention, while scoping *duplicate*
-detection to genuine structural declarations so incidental prose
-mentions don't misfire. Also implements the two `REQUIREMENTS.md` §3
-checks the original doesn't (cyclic capability-dependency detection,
-mandatory privileged-surface-Rule check), both currently structural
-no-ops against real data (no dependency edges exist yet; no module
-activates the Admin Web/privileged-console surface yet). Routed to
-`veyro-implementer` (Sonnet). Independently re-traced by this
-orchestrating session against MOD-000's real manifest (0 errors, PASS),
-MOD-001's real manifest (18 errors citing all 9 `BUG-035`-blocked RULE
-IDs, FAIL), and a synthetic cycle fixture — one real, disclosed
-precision gap found (the `approved_by` check's `"—"` sentinel doesn't
-trip the same way `"N/A"` would; doesn't change either verdict). **Live
-execution honestly disclosed BLOCKED** — same CAP-007 `python3`-allowlist
-gap as slice 1 (`BUG-025` class, no new bug filed). Full record:
-`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.
-
-**Durable state updated this chunk:** `STATUS.md` (implementation
-progress, `BUG-034` checked closed, `BUG-035` added, slice 2 checked
-complete), `CURRENT_STATE.md`, `BUG_REGISTRY.md` (`BUG-034` CLOSED,
-`BUG-035` added), `CAPABILITY_REGISTRY.md` (9 new `RULE-<NNN>` rows +
-lifecycle-status note), `evidence/module-capabilities.yaml`
-(`required_rule_ids`, `missing_capability_blockers`,
-`resolution_attempt_budget_evidence`, `status`). No Code Review, Manual
-QA, Security Review, Performance Review, or Gatekeeper certification was
-run this session.
-
-**Next legally allowed action:** either (a) re-authoring the 3
-P1-carrying rule files by the chartered surface agents
-(`veyro-infra-sre-engineer` for the `infra/release.md` and third-party-
-CI-Action findings, `veyro-backend-engineer` for the missing
-transaction/idempotency coverage) followed by a fresh independent
-qualification review, closing `BUG-035`; or (b) a further non-backend/
-infra/CI slice (e.g. `contracts/**` scaffolding, another `tools/**`
-validator) while `BUG-035` remains open. Not Code Review, not Manual QA,
-not Gatekeeper certification, not MOD-002.
+## What happened chunk 50, 2026-09-19 (compressed 2026-09-22, thirty-fourth retention-rule application) — `BUG-034` CLOSED (owner applied the rule-family patch); round-1 independent qualification review of the applied content returned BLOCKED (P0=0/P1=4), filed as `BUG-035`; `RULE-001`..`009` registered at `BLOCKED`; slice 2 (`tools/validate_capability_manifest.py`) complete. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-50-2026-09-19-bug034-closed-round1-qualification-blocked.md`.
 
 ## What happened chunk 49, 2026-09-19 (compressed 2026-09-19, thirty-third retention-rule application) — MOD-001 implementation started: slice 1 (`tools/validate_baseline_binding.py`) complete; `BUG-034` (`.claude/rules/backend/**`/`infra/**` owner-gated) found and routed to owner, not bypassed; superseded by chunk 50's `BUG-034` closure. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-49-2026-09-19-mod001-implementation-start-bug034.md`.
 
