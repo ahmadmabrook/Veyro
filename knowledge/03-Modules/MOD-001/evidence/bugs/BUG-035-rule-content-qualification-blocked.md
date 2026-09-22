@@ -144,6 +144,84 @@ frontmatter, a recorded positive test and a recorded negative
 evaluation of that evidence — followed by a fourth independent
 qualification review.
 
+## Stage-5 evidence production (same day, 2026-09-22) — content-level evidence produced; path-scope test genuinely FAILS, confirmed as a real owner-gated blocker
+
+Per round 3's explicit next-legally-allowed-action, a fresh
+`veyro-test-author` (Sonnet) dispatch produced Stage-5 qualification
+evidence for all 9 rule files under
+`knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`,
+per `CAPABILITY_POLICY.md` stage 5 and EIP Appendix H.5
+(`EIP_MIRROR.md` lines 20809-20825: "Every new Skill/Rule must have at
+least one success-path eval and one failure/negative eval" plus,
+Rule-specific, "A Rule change must be tested against representative
+matching and non-matching paths so path scoping is correct").
+
+**Content-level positive/negative evaluation: produced and sound.** For
+each rule, a synthetic compliant fixture and a deliberately-violating
+fixture were built and evaluated by literal textual reading against the
+rule's own quoted control clause (no `backend/`/`infra/` code exists yet
+to run a real CI gate against). An independent, fresh-context
+`veyro-security-reviewer` (Opus) evaluated this evidence — not a round-4
+content-qualification verdict on the 9 rule files themselves, which
+stays deferred, but an assessment of whether the evidence itself was
+sound, honest, and non-fabricated. **Two real defects were found and
+fixed same session:**
+1. **RULE-002's negative fixture originally contained a literal
+   credential-shaped string** (a Stripe-live-key-format value and a
+   plausible real password) — which would itself have violated
+   `secrets.md` control 1 (never a plausible-looking real-shaped value,
+   even in fixtures) had it been committed, and risked tripping this
+   repo's own planned secret-scanning gate. Fixed by describing the
+   violation's shape in prose instead of writing a matching literal.
+2. **All 9 files' header/status line originally claimed `QUALIFIED`**,
+   which `CAPABILITY_POLICY.md` defines as "tests ran and passed" — not
+   earned, since the path-scope half of Stage 5 (below) is a FAIL, not a
+   pass. Corrected to `PARTIAL` on all 9.
+
+Additionally, RULE-001's evidence carried 3 accuracy errors the Opus
+review caught (a misquote of `iac.md`'s fail-closed text, a miscount of
+`OWNER_APPROVALS.md`'s rows — 4, not 5 — and a misattribution of an
+observation to round 3 that round 3 never made) — all fixed same
+session. The remaining 8 files' content-level evaluations were confirmed
+sound with no defect.
+
+**Path-scope qualification case: genuinely FAILS, confirmed real and
+reproducible, not fabricated.** Independently verified by this
+orchestrating session, the `veyro-test-author` run, and the `veyro-
+security-reviewer` run, separately: none of the 9 rule files has
+`paths:` YAML frontmatter (each opens with an HTML comment then a bare
+`# Rule:` heading) — contrast `.claude/rules/global/knowledge-vault-durability.md`,
+which does carry real `scope: path` / `paths: [...]` frontmatter. This
+is directly, reproducibly observable: in at least three separate
+sessions now (this evidence-production session, the independent Opus
+review session, and the orchestrating session itself, across this and
+the round-3 turn), all 9 rule files were present in context at the
+start of `knowledge/`-only work, while the path-scoped
+`knowledge-vault-durability.md` only appeared after a `knowledge/` file
+was actually read. This means all 9 rule files load unconditionally
+regardless of the working path — the exact "pollute unrelated contexts"
+failure EIP H.5 exists to catch.
+
+**This is a genuine, confirmed, owner-gated blocker, not something this
+or any session can close on its own.** Adding `paths:` frontmatter means
+editing the 9 files under `.claude/rules/**`, which `.claude/settings.json`
+denies Edit/Write on to every session (the same protection class as
+`BUG-029`/`BUG-030`/`BUG-034`). Per this task's own explicit instruction,
+no such edit was attempted this session.
+
+**Status: still OPEN, more precisely characterized than before.**
+`RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not
+`QUALIFIED`. What changed: P1-Q's original framing ("no stage-5 evidence
+exists") is no longer accurate — content-level evidence now exists and
+is sound. The blocking condition is now specifically and confirmedly:
+**EIP H.5's path-scope test fails for all 9 files, and closing it
+requires an owner-approved `paths:`-frontmatter patch to `.claude/rules/**`**
+(mirroring how `BUG-034`/round-2/round-3's remediations were each
+applied by the owner directly), followed by a fourth independent
+qualification review. Full record: the 9
+`knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`
+files.
+
 ## Registration (P1-4, closed as part of this filing)
 
 RULE-001 through RULE-009 are registered in

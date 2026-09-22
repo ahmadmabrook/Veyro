@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-22 (fresh independent BUG-035 round-3 re-review session — owner applied a further remediation patch closing round 2's P1-A; a third independent fresh-context qualification review confirmed P1-A genuinely closed but found a new P1 (P1-Q — no stage-5 qualification-test evidence exists for the 9 rule files). `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-22 (Stage-5 qualification-evidence production session, following round-3's re-review — content-level positive/negative evidence produced for all 9 `backend/`/`infra/` rule files, independently reviewed (2 real defects fixed). The review confirmed EIP H.5's path-scope test genuinely FAILS for all 9 files (no `paths:` frontmatter exists), a real owner-gated blocker. `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State

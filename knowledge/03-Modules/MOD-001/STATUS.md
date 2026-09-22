@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-22 (fresh independent BUG-035 round-3 re-review session — owner applied a further remediation patch (commit `d3ce17ad42978761a0294909509e772444d5352d`) closing round 2's P1-A (`iac.md` control 5's publisher carve-out removed entirely); a third, independent, fresh-context `veyro-security-reviewer` confirmed P1-A genuinely CLOSED and round 2's other two closures unregressed, but found a NEW P1 (P1-Q — no stage-5 positive/negative qualification-test evidence exists for any of the 9 rule files). **Verdict: still BLOCKED (P0=0/P1=1).** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`.)
+updated: 2026-09-22 (Stage-5 qualification-evidence production session, same day as and following the round-3 re-review — per round 3's own next-legally-allowed-action, a `veyro-test-author` (Sonnet) run produced content-level positive/negative Stage-5 evidence for all 9 rule files under `knowledge/05-QA/capability-evidence/RULE-<NNN>/`; an independent, fresh-context `veyro-security-reviewer` (Opus) evaluated it, found it sound after 2 real defects were fixed (a credential-shaped fixture string; an unearned `QUALIFIED` claim on all 9), plus 3 accuracy errors fixed in `RULE-001`'s evidence. **The review confirmed, directly and reproducibly, that EIP H.5's path-scope test genuinely FAILS for all 9 files — none has `paths:` frontmatter, so all 9 load unconditionally regardless of path.** This is a real, confirmed, owner-gated blocker (fixing it means editing `.claude/rules/**`, which no session may do), distinct from and more precise than round 3's P1-Q framing ("no evidence exists"). `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`, `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -286,15 +286,31 @@ text named as the next legally allowed action.
       **Verdict: P0=0, P1=1 — still BLOCKED.** `RULE-001` through
       `RULE-009` remain `BLOCKED`, not `APPROVED`; no rule file was
       re-authored (structurally impossible this session regardless —
-      `.claude/rules/**` remains owner-gated). The next legally allowed
-      action: produce, for each of the 9 files, `paths:` frontmatter plus
-      a recorded positive test and a recorded negative
-      (non-matching-path) test under
-      `knowledge/05-QA/capability-evidence/RULE-<NNN>/`, an Opus
-      evaluation of that evidence, then a fourth independent
-      qualification review. See
+      `.claude/rules/**` remains owner-gated).
+      **Stage-5 evidence production (same day):** a fresh
+      `veyro-test-author` (Sonnet) produced content-level positive/
+      negative evidence for all 9 files under
+      `knowledge/05-QA/capability-evidence/RULE-<NNN>/`; an independent,
+      fresh-context `veyro-security-reviewer` (Opus) evaluated it — sound
+      after 2 real defects were fixed (a credential-shaped fixture string
+      in `RULE-002`'s evidence that would itself have violated the rule
+      being tested; an unearned `QUALIFIED` claim across all 9, corrected
+      to `PARTIAL`), plus 3 accuracy errors fixed in `RULE-001`'s
+      evidence (a misquote, a miscount of `OWNER_APPROVALS.md`'s rows, a
+      misattribution). **The review confirmed, directly and reproducibly
+      (independently observed across three separate sessions), that EIP
+      H.5's path-scope test genuinely FAILS for all 9 files: none has
+      `paths:` frontmatter, so all 9 load unconditionally regardless of
+      path.** This is a real, confirmed, owner-gated blocker — closing it
+      requires an owner-approved edit adding `paths:` frontmatter to the
+      9 files (Edit/Write-denied to every session), followed by a fourth
+      independent qualification review. No rule file was re-authored, no
+      `RULE-<NNN>` row was marked `APPROVED`, `BUG-035` was not closed,
+      no implementation slice started, MOD-002 not started, MOD-001 not
+      marked approved. See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`,
-      `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`.
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`,
+      `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any
