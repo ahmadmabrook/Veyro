@@ -3,7 +3,7 @@ scope: global
 ---
 <!-- Target path once applied: .claude/rules/infra/secrets.md -->
 
-# Rule: Infra/SRE — Secrets Externalization Baseline (`infra/**` binding)
+# Rule: Infra/SRE — Secrets Externalization Baseline (global binding)
 
 Authored per DC-21 (EIP §4.3/Appendix H — Infra/SRE/CI profile) and
 Appendix H.3's content standard, grounded in EIP Appendix H.3's Infra/SRE

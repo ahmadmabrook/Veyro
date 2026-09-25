@@ -7,7 +7,7 @@ paths:
 ---
 <!-- Target path once applied: .claude/rules/infra/release.md -->
 
-# Rule: Infra/SRE — Release, Rollback/Canary, and Cost Baseline (`infra/**` binding)
+# Rule: Infra/SRE — Release, Rollback/Canary, and Cost Baseline (`infra/**`, CI, and backend Python binding)
 
 Authored per DC-21 (EIP §4.3/Appendix H — Infra/SRE/CI profile) and
 Appendix H.3's content standard, grounded in EIP Appendix H.3's Infra/SRE
