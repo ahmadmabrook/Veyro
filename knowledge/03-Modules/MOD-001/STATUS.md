@@ -445,6 +445,31 @@ text named as the next legally allowed action.
       workflow referencing it may exist committed — no such row exists
       yet. See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`.
+- [x] **`BUG-036` investigation complete (2026-09-25, dedicated
+      review-only session, no implementation slice run):** root-caused
+      the recurring `bash_guard.py`/CAP-007 local test-execution gap
+      Slices 1-3 each independently disclosed. Confirmed by direct code
+      inspection and direct attempt (not taken on any agent's prior
+      report): `pytest`/`ruff`/`mypy` have no command family in the guard
+      at all (`UNKNOWN_COMMAND`); `python3` only allows the 7
+      pre-existing SHA-256-pinned scripts, no new script, no `-m` form,
+      no bare flags (`DISALLOWED_FLAG_OR_SHAPE`). `bash_guard.py`'s own
+      hash independently re-verified unchanged
+      (`315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`)
+      before trusting the analysis. Filed as new `BUG-036`, not a
+      `BUG-025` reopening (that bug's own subject remains correctly
+      fixed; this is a distinct, broader-scoped, now DC-11-binding-
+      severity recurrence of the same disclosed residual class).
+      Two-tier owner patch drafted: Tier 1 (4 new
+      `_ALLOWED_PYTHON_SCRIPTS` hash entries — zero new mechanism, no
+      `pip` dependency, closes all 4 new `tools/**` scripts immediately)
+      and Tier 2 (new bounded `pytest`/`ruff`/`mypy` command families —
+      gated on an owner `pip install` policy decision plus a fresh
+      independent `veyro-security-reviewer` pass, per CAP-007's own
+      stage-9 re-evaluation precedent). No `.claude/security/**` file was
+      or could be edited by this session. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
+      for the full patch draft.
 - [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
       documentation), GOV-01-R01's own CI-wiring half, and
       GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.
@@ -452,7 +477,10 @@ text named as the next legally allowed action.
       (`BUG-035` CLOSED, Round 5 `APPROVED`); CI-wiring specifically
       additionally requires GitHub-Actions-per-Action capability
       qualification (see Slice 3's own disclosed scope gap) before any
-      `.github/workflows/**` file may be committed.
+      `.github/workflows/**` file may be committed. `BUG-036`'s Tier 1/2
+      patches (owner action needed) should land before further slices
+      accumulate more unexecuted test debt, per explicit owner
+      instruction.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.

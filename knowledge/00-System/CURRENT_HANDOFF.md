@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-25 (chunk 57 — first `backend/**`-touching MOD-001 implementation slice after `BUG-035` Round 5 closure: Slice 3, `backend/` test-pyramid skeleton (GOV-01-R01) — directory conventions + runner configuration for the static/lint, unit, component, integration, and contract layers, plus `tools/validate_repo_skeleton.py`. Dispatched to `veyro-backend-engineer`/`veyro-test-author`/`veyro-implementer` (all Sonnet, no critical-slice routing needed). Independently re-verified by this orchestrating session (files re-read, `find_missing_paths()` logic re-traced, guard-block re-confirmed by direct attempt). Live execution honestly disclosed BLOCKED — same `bash_guard.py` `python3`-allowlist/no-`pytest`-family gap as `BUG-025`/Slice 1/Slice 2, no new bug filed. CI wiring (`.github/workflows/**`) deliberately deferred, not built this slice: `.claude/rules/infra/iac.md` control 5 requires every GitHub Action to carry an `APPROVED` `CAP-<NNN>` row before a referencing workflow may exist committed, and none exists yet. MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved; no Code Review/Manual QA/Security Review/Gatekeeper run. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md` — not restated here.)
+updated: 2026-09-25 (chunk 58 — dedicated investigation of the recurring `bash_guard.py`/CAP-007 local test-execution block Slices 1-3 each independently disclosed: root-caused precisely by direct code inspection and direct attempt (no command family for `pytest`/`ruff`/`mypy`; `python3` scoped to 7 pre-existing SHA-256-pinned scripts only, no `-m` form). Filed as new `BUG-036` (P1) — not a `BUG-025` reopening, that bug's own subject remains correctly fixed; this is the same disclosed-residual class recurring across 6 new MOD-001 files, now DC-11-binding-severity. Two-tier owner patch drafted, neither applied: Tier 1 (4 new `_ALLOWED_PYTHON_SCRIPTS` hash entries, zero new mechanism, no `pip` dependency) and Tier 2 (new bounded `pytest`/`ruff`/`mypy` command families, gated on an owner `pip install` policy decision plus a fresh independent `veyro-security-reviewer` pass per CAP-007's own stage-9 re-evaluation precedent). No `.claude/security/**` file was or could be edited by this session. No implementation slice was started or continued; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved. Full detail: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md` — not restated here.)
 ---
 
 # Current Handoff
@@ -129,7 +129,120 @@ to a summary line, full narrative archived to
 **Thirty-ninth application (2026-09-25, chunk 57): chunk 55 compressed
 to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-55-2026-09-25-round4-remediation-stage5-rerun.md`.**
-— chunks 56 and 57 are now the 2 kept in full.
+**Fortieth application (2026-09-25, chunk 58): chunk 56 compressed to a
+summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-56-2026-09-25-round5-approved-bug035-closed.md`.**
+— chunks 57 and 58 are now the 2 kept in full.
+
+## What happened chunk 58, 2026-09-25 (same day) — dedicated investigation of the recurring CAP-007 test-execution block: root-caused, BUG-036 filed, two-tier owner patch drafted, no implementation slice run
+
+Per an explicit follow-up instruction after chunk 57's Slice 3: the
+owner flagged that 3 consecutive MOD-001 slices (1, 2, 3) had each
+independently disclosed the same `bash_guard.py`/CAP-007 execution
+block, and that this had become a repeated implementation-wide
+constraint requiring resolution before further slices accumulate
+unexecuted test debt — not another slice to implement around it.
+Mission: root-cause it precisely, determine the smallest governance-
+compliant fix, determine BUG-025/new-bug disposition, and if
+`.claude/security/**` needs a change, prepare the exact owner patch
+rather than apply anything — explicitly no new implementation slice, no
+GOV-01-R02 start, MOD-001 stays IMPLEMENTATION IN PROGRESS.
+
+**Bootstrap re-verified fresh:** local HEAD == `origin/main` ==
+`cd3723c75da65ad68deedf1ed1424c0c2090f9e7` (Slice 3's own commit).
+
+**Root cause, confirmed by direct code inspection of
+`.claude/security/bash_guard.py` (current governed content, SHA-256
+`315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245` —
+independently recomputed via `shasum -a 256`, exact match to
+`CAPABILITY_REGISTRY.md`'s CAP-007 row, no drift) and independently
+re-confirmed by direct attempt (not taken on any prior agent's report):**
+`pytest`/`ruff`/`mypy` have no command family anywhere in the guard
+(`_READONLY_DISPATCH` lists exactly 11 names, none of these three) →
+`UNKNOWN_COMMAND`; `python3` is recognized but `_python_readonly` only
+allows the exact shape `python3 <script>` where `<script>` is one of 7
+fixed, SHA-256-content-hash-pinned paths in `_ALLOWED_PYTHON_SCRIPTS` —
+none of MOD-001's 4 new scripts is in that dict, and no `-m` form or bare
+flag (`--version`) matches either → `DISALLOWED_FLAG_OR_SHAPE`,
+structurally, regardless of which script or flag is tried. A third,
+separate factor was also identified: no `pip`/install command family
+exists at all, so even a corrected guard could not install
+`pytest`/`ruff`/`mypy` if they are not already present on the host —
+and this guarded session cannot check, since every read-only family it
+exposes is restricted to repo-relative paths only, with no visibility
+into absolute-path system locations. Recorded as an open, unresolved
+question for the owner rather than guessed at.
+
+**Disposition: new bug, not a `BUG-025` reopening.** `BUG-025`
+(`knowledge/03-Modules/MOD-000/evidence/bugs/BUG-025-no-material-change-reevaluation-trigger.md`)
+remains correctly `FIXED` — its own subject (`capability_drift_check.py`'s
+version-drift logic) is unaffected and unchanged. What it separately
+*disclosed* (that new script's own execution being blocked by the same
+allowlist gap) was accepted as a single, non-blocking residual at
+MOD-000 certification time; that same disclosed pattern has since
+recurred, unchanged, across 6 new MOD-001 files spanning all 3
+implementation slices to date — no longer one accepted instance, and
+`DEVELOPMENT_CONSTITUTION.md` DC-11 ("Cumulative regression... becomes
+binding starting MOD-001") means real executed regression evidence is
+now a binding module obligation, not an aspirational one. Filed as new
+`BUG-036`
+(`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`),
+P1 (degrades MOD-001's evidence quality project-wide and blocks
+Gatekeeper certification's real-execution requirement once reached; does
+not block continued slice authoring, since slices may still hand-trace
+and disclose honestly, per established precedent).
+
+**Two-tier remediation drafted, neither applied (`.claude/security/**`
+is Edit/Write- and Bash-mutation-denied to every session, confirmed
+against the live `.claude/settings.json`):**
+
+- **Tier 1** (recommended immediately): add 4 new SHA-256 entries to the
+  existing, already-`APPROVED` `_ALLOWED_PYTHON_SCRIPTS` dict — the exact
+  same mechanism already governing the 7 current entries, zero new code,
+  no `pip` dependency (all 4 scripts confirmed stdlib-only by reading
+  their imports). Hashes independently recomputed this session via
+  `shasum -a 256` (`tools/validate_baseline_binding.py`,
+  `tools/validate_capability_manifest.py`,
+  `tools/validate_repo_skeleton.py`,
+  `tools/tests/test_validate_repo_skeleton.py`). Closes the "new project
+  validators" half of the gap entirely and immediately once applied.
+- **Tier 2** (larger, for `pytest`/`ruff`/`mypy` themselves): gated on an
+  owner policy decision first (is `pip install` of exact-pinned versions
+  an action any session may take through Bash at all — a DC-19-governed
+  question distinct from `CAPABILITIES.md`'s existing "standard tooling,
+  no special review" disposition, which covered using these tools, not
+  installing them via an autonomous session), then a full draft of three
+  new bounded, read-only-only command families (no `-m` form, no
+  `ruff format` without `--check`, every path argument restricted to
+  `backend/`/`tools/` via the guard's existing `_is_safe_relative_path`
+  primitive) — explicitly presented as a draft for a fresh independent
+  `veyro-security-reviewer` (Opus) pass, per CAP-007's own stage-9
+  "material change... mandatory return to stage 4-5" precedent that
+  every prior change to this file has gone through, not as
+  pre-approved.
+
+**Durable state updated this chunk:** new
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
+(full patch draft); `BUG_REGISTRY.md` (new `BUG-036` row, front matter, a
+new "Corrected" note); `STATUS.md`'s "Implementation progress" section;
+this file (chunk 56 compressed/archived per the retention rule to make
+room, this chunk added in full).
+
+**Disposition:** no code was changed. No `.claude/security/**` file was
+or could be edited by this session. `BUG-025` was not reopened. No
+implementation slice was started or continued. MOD-002 not started.
+MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved. WIP remains 1.
+
+**Next legally allowed action:** an owner decision on the open host
+question (are `pytest`/`ruff`/`mypy` already present outside this
+guarded session's visibility?) and on Tier 2(a)'s `pip install` policy
+question; applying Tier 1 (lowest-risk, immediately actionable,
+independent of both); if Tier 2 proceeds, routing its draft to a fresh
+`veyro-security-reviewer` for independent review before `ACTIVE`. Once
+either tier lands, a fresh session should re-run Slices 1-3's scripts for
+real and correct their evidence from "hand-traced only" to actual
+pass/fail output. Not another implementation slice in the meantime,
+per this chunk's own explicit instruction.
 
 ## What happened chunk 57, 2026-09-25 (same day) — first backend/**-touching implementation slice after BUG-035 Round 5 closure: Slice 3, backend test-pyramid skeleton (GOV-01-R01)
 
@@ -252,98 +365,7 @@ MOD-002.
 
 ## What happened chunk 55, 2026-09-25 (compressed 2026-09-25, thirty-ninth retention-rule application) — post-round-4 remediation: owner corrects both scope-gap P1s (2 further commits); Stage-5 evidence re-run for all 9 rule files; independent review catches a mid-session HEAD move, fixed directly; RULE-001..009 remain BLOCKED, Round 5 next. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-55-2026-09-25-round4-remediation-stage5-rerun.md`.
 
-## What happened chunk 56, 2026-09-25 (same day) — Round 5, the final independent qualification review: APPROVED, P0=0/P1=0 — RULE-001..009 now ACTIVE/APPROVED, BUG-035 CLOSED
-
-Continuation of chunk 55's mission on the same HEAD, per an explicit
-follow-up instruction: this session was review-only, forbidden from
-re-authoring any `.claude/rules/**` file, regenerating Stage-5 evidence
-unless found stale/inconsistent, or starting another implementation
-slice. Mission: dispatch a fresh independent `veyro-security-reviewer`
-(Opus) for Round 5 against the 8-point check list the instruction
-specified; if and only if P0=0/P1=0, mark `RULE-001`..`009` `APPROVED`,
-close `BUG-035`, and commit/push.
-
-**Bootstrap re-verified fresh before dispatch:** `git rev-parse HEAD` and
-`git rev-parse origin/main` both `8e90680e8e8bcbd86e5136b6181371ac8161eee7`,
-matching the mission's stated governed HEAD exactly. `verify_baselines.py`
-PASS 4/4. `CURRENT_STATE.md`/`CURRENT_HANDOFF.md`/`CAPABILITY_REGISTRY.md`
-all independently confirmed to already agree: MOD-001 IMPLEMENTATION IN
-PROGRESS, `BUG-035` OPEN, `RULE-001`..`009` `BLOCKED`.
-
-**`veyro-security-reviewer` (Opus, fresh context, no memory of rounds
-1-4) dispatched** with the full 8-point check list plus explicit file
-paths for the 9 rule files, their Stage-5 evidence, and background
-reading (`CAPABILITY_POLICY.md`, EIP H.5, `BUG-035`'s own history,
-`IMPLEMENTATION.md`). **The reviewer's own bootstrap check caught a
-further HEAD move this orchestrating session's dispatch brief had not
-accounted for:** the brief (written from `CURRENT_HANDOFF.md` chunk 55's
-own text) stated `14d1337` as governed HEAD, but the reviewer
-independently re-ran `git rev-parse` and found the true HEAD was
-`8e90680` — chunk 55's own documentation-only commit, landed after chunk
-55's narrative text was written but touching nothing under
-`.claude/rules/**`. The reviewer correctly treated its own live check as
-authoritative over the brief's stale reference, exactly as instructed.
-
-**Findings: P0=0, P1=0, P2=3, Editorial=1 — APPROVED.** `RULE-002`'s
-`scope: global` confirmed both correctly scoped and non-polluting under
-EIP H.5's actual clause text; `RULE-004`'s added `backend/**/*.py` glob
-confirmed to reach its own qualified rollback-trigger fixture
-(`backend/app/main.py`) with no scope overshoot; all 7 prior-round P1
-closures re-confirmed genuinely unregressed; the 2 carried-forward
-observations (global-scope non-pollution; possible nested-glob matching)
-investigated and neither promoted, for lack of a present material
-defect. One new P2 (P2-1): 7 of the 9 Stage-5 evidence files' binding
-text still named the superseded `183acd5` as "current governed HEAD"
-rather than `8e90680` — a self-reference staleness defect, not a
-substantive one (all 9 rule files independently confirmed byte-identical
-across `183acd5`/`14d1337`/`8e90680` via `shasum -a 256`). Two P2s
-carried from round 4 (`observability.md`'s `tools/**` validator-scope
-gap; `concurrency.md`'s raw-`.sql`-file gap) and one new Editorial
-(`iac.md`/`observability.md`'s H1 headings omitting `.github/workflows/**`
-from their own label) — all disclosed, non-blocking, not required for
-`APPROVED`.
-
-**This orchestrating session fixed P2-1 directly** (the reviewer's
-mandate was P0/P1-only, not evidence authoring): re-verified the
-byte-identical claim independently via `shasum -a 256` against
-`CAPABILITY_REGISTRY.md`'s recorded hashes before writing anything, then
-corrected the commit-binding paragraph in all 7 affected
-`POSITIVE_NEGATIVE_EVAL_2026-09-25.md` files to name the true governed
-HEAD and disclose the staleness explicitly, rather than silently
-editing the date.
-
-**Per the mission's "if and only if P0=0 and P1=0" gate — met.** Applied
-this chunk: `RULE-001` through `RULE-009` marked `APPROVED`/`ACTIVE` in
-`CAPABILITY_REGISTRY.md` (9 row updates, Lifecycle status section,
-Qualification history narrative, version/hash snapshot table, front
-matter) and `module-capabilities.yaml` (top-level status,
-`required_rule_ids` all 9 statuses, `resolution_attempt_budget_evidence`
-BUG-035 entry resolved:true/attempts 6, `missing_capability_blockers`
-cleared, `capability_evidence_ids`); `BUG-035`'s own evidence file closed
-with a new "Round 5" section (front matter `status: CLOSED`);
-`BUG_REGISTRY.md`'s `BUG-035` row and front matter updated, a new
-"Corrected" note appended; `STATUS.md`'s front matter and "Implementation
-progress" checklist (post-round-4 item marked `[x]`, new Round 5 `[x]`
-item added, the "remains blocked" line corrected to "unblocked");
-`CURRENT_STATE.md` front matter; a new
-`knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND5_2026-09-25.md`
-durable record of the full review. No rule file was re-authored by any
-session across `BUG-035`'s entire history — every content change was
-owner-applied. No implementation slice was started as part of this
-closure. MOD-002 was not started. MOD-001 was not marked approved — this
-closure clears one named `ADR-005` Decision 2 pre-implementation
-condition specifically, not a module certification.
-
-**Next legally allowed action:** `backend/**`/`infra/**`/CI-touching
-MOD-001 implementation slices (GOV-01-R01/R02/R03/R05/R06/R07/R08) are
-now legally startable, as are `contracts/**`/further `tools/**`
-slices that were already unblocked. The 4 disclosed P2/Editorial
-residuals (`observability.md`'s `tools/**` gap; `concurrency.md`'s raw
-`.sql` gap; and the H1-label omission) remain open for a future
-remediation pass, not blocking. Module certification (Gatekeeper) still
-requires real implementation across GOV-01's requirements plus the
-assurance gates (Code Review, Manual QA, Security/Performance Review) —
-none of that has started.
+## What happened chunk 56, 2026-09-25 (compressed 2026-09-25, fortieth retention-rule application) — Round 5, the final independent qualification review: APPROVED, P0=0/P1=0 — RULE-001..009 now ACTIVE/APPROVED, BUG-035 CLOSED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-56-2026-09-25-round5-approved-bug035-closed.md`.
 
 ## What happened chunk 53, 2026-09-22 (compressed 2026-09-25, thirty-eighth retention-rule application) — Stage-5 qualification evidence produced for RULE-001..009; independent Opus review fixes 2 real defects and confirms EIP H.5's path-scope test genuinely FAILS (real, owner-gated blocker, since closed by Round 5). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-53-2026-09-22-stage5-evidence-produced.md`.
 
