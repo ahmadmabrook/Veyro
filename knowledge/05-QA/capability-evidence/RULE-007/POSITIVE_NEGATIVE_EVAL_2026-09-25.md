@@ -8,12 +8,19 @@ updated: 2026-09-25
 
 **Rule ID:** RULE-007
 **Source rule file:** `.claude/rules/backend/database.md`
-**Commit binding:** `183acd535e6786f1edc1993a5ef6f13afd13a4ec` (current
-governed HEAD, confirmed this session to equal `origin/main`; no edit was
-made to any file under `.claude/rules/**` in the course of producing this
-evidence). Supersedes the prior binding to `5aa5cc5b6b6d041372b83e043febf179d0460fa5`
-in `POSITIVE_NEGATIVE_EVAL_2026-09-22.md` (retained as historical record,
-not deleted).
+**Commit binding:** `183acd535e6786f1edc1993a5ef6f13afd13a4ec`. Supersedes
+the prior binding to `5aa5cc5b6b6d041372b83e043febf179d0460fa5` in
+`POSITIVE_NEGATIVE_EVAL_2026-09-22.md` (retained as historical record, not
+deleted). **Correction (Round 5 review, 2026-09-25, P2-1):** the true
+current governed HEAD is `8e90680e8e8bcbd86e5136b6181371ac8161eee7` (this
+repo's own subsequent commit, which only added the Stage-5 evidence/
+registry files and touched nothing under `.claude/rules/**`), not `183acd5`
+as this file's binding line above originally claimed — a self-reference
+staleness defect. Content-identical: `.claude/rules/backend/database.md`
+is byte-for-byte unchanged across `183acd5`/`14d1337`/`8e90680` (re-verified
+via `shasum -a 256`, `9483ab4aa9df14ebfe38192b89fecd221d1b0fc9b93839d9579878fe2fbe7e76`,
+matching `CAPABILITY_REGISTRY.md`'s recorded hash exactly), so this
+evidence's substance is unaffected.
 **Reviewer/model evidence:** veyro-test-author (Sonnet tier per
 `DEVELOPMENT_CONSTITUTION.md` model routing — this session's actual model
 is `claude-sonnet-5`)

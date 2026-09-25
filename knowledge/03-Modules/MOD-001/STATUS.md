@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-25 (post-round-4 remediation session — the owner corrected round 4's 2 scope-gap P1s: commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec` added `backend/**/*.py` to `release.md` and set `secrets.md` to `scope: global`; a further commit, `14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a` (**current governed HEAD**), corrected both files' H1 headings to match. `veyro-test-author` (Sonnet) re-ran Stage-5 evidence for all 9 rule files bound to `14d1337` — new work for `RULE-004` (a third path-scope case proving its rollback-trigger fixture is now reachable) and `RULE-002` (path-scope recorded `N/A (scope: global)`, not PASS/FAIL). An independent `veyro-security-reviewer` (Opus) found `RULE-002`/`RULE-004`'s evidence still bound to the superseded `183acd5` (the owner pushed `14d1337` mid-session) — fixed directly by this session, re-verified against primary sources. **All 9 Stage-5 evidence files are now sound and current.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN — an independent Round 5 qualification review (not run this session, per explicit instruction) is the sole remaining step. No rule was re-authored by this session (the two corrective commits were the owner's own action); no registry row marked `APPROVED`; no implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 4 follow-up" sections, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22,RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25}.md`.)
+updated: 2026-09-25 (Round 5, final independent qualification review — CLOSES BUG-035: a fresh-context `veyro-security-reviewer` (no memory of rounds 1-4) returned **P0=0, P1=0 — APPROVED** for all 9 `backend/**`/`infra/**` rule files, independently re-deriving the true current governed HEAD `8e90680e8e8bcbd86e5136b6181371ac8161eee7` (correcting a stale `14d1337` reference in its own dispatch brief) before trusting anything else. `RULE-002`'s `scope: global` and `RULE-004`'s backend-scope addition were both confirmed correct with no overshoot; all 7 prior-round P1 closures were re-confirmed unregressed; 3 P2 + 1 Editorial residual disclosed, non-blocking. **`RULE-001` through `RULE-009` are now `APPROVED` and `ACTIVE`. `BUG-035` is CLOSED.** No rule was re-authored by any session across this bug's history — every content change was owner-applied. No implementation slice started as part of this closure; MOD-002 not started; MOD-001 not marked approved — this closure clears one named `ADR-005` Decision 2 pre-implementation condition specifically, not a module certification. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 5" section, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND5_2026-09-25.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -342,10 +342,9 @@ text named as the next legally allowed action.
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s
       "Round 4" section,
       `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`.
-- [ ] **`BUG-035` post-round-4 remediation (2026-09-25, same day): owner
+- [x] **`BUG-035` post-round-4 remediation (2026-09-25, same day): owner
       corrected round 4's 2 scope-gap P1s; Stage-5 evidence re-run for
-      all 9 files and re-verified sound; Round 5 is the next required
-      step.** Owner commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec`
+      all 9 files and re-verified sound; Round 5 closed it (see below).** Owner commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec`
       added `backend/**/*.py` to `release.md`'s `paths:` (closing P1-1)
       and replaced `secrets.md`'s `scope: path`/`paths:` with
       `scope: global` (closing P1-2); a further commit,
@@ -381,6 +380,40 @@ text named as the next legally allowed action.
       "Round 4 follow-up" sections, the 9
       `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-25.md`
       files.
+- [x] **`BUG-035` Round 5 (2026-09-25, same day): final independent
+      qualification review — APPROVED, P0=0/P1=0. CLOSED.** A fresh,
+      independent `veyro-security-reviewer` (Opus, no memory of rounds
+      1-4, no participation in producing any Stage-5 evidence or prior
+      remediation) reviewed all 9 rule files and their Stage-5 evidence
+      against the full 8-point check list. The reviewer's own bootstrap
+      check caught a further HEAD move the dispatch brief had not
+      accounted for — the true current governed HEAD was
+      `8e90680e8e8bcbd86e5136b6181371ac8161eee7` (this repo's own prior
+      evidence/registry-only commit), not `14d1337` — independently
+      re-derived via `git rev-parse`, not taken on trust. `RULE-002`'s
+      `scope: global` was confirmed both correctly scoped (its control
+      1's repo-wide invariant admits no narrower correct path list) and
+      non-polluting under EIP H.5; `RULE-004`'s added `backend/**/*.py`
+      glob was confirmed to reach its own qualified rollback-trigger
+      fixture with no scope overshoot; all 7 prior-round P1 closures
+      were re-confirmed genuinely unregressed; the 2 carried-forward
+      observations (global-scope non-pollution; possible nested-glob
+      matching) were investigated and neither promoted to P1, for lack
+      of a present material defect. One new P2 was found (7 of 9
+      evidence files' binding text still named the superseded `183acd5`,
+      not `8e90680` — fixed same session by this orchestrating session,
+      since the underlying evidence was content-identical, not stale in
+      substance) plus 2 carried P2s and 1 new Editorial, all disclosed,
+      non-blocking, not required for `APPROVED`. **`RULE-001` through
+      `RULE-009` are now `APPROVED` and `ACTIVE` in
+      `CAPABILITY_REGISTRY.md`/`module-capabilities.yaml`. `BUG-035` is
+      CLOSED.** No rule file was re-authored by any session across this
+      bug's entire history — every content change was owner-applied.
+      `backend/**`/`infra/**`/CI implementation (`ADR-005` Decision 2's
+      pre-implementation condition) is now unblocked. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s
+      "Round 5" section,
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND5_2026-09-25.md`.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any
@@ -396,10 +429,10 @@ text named as the next legally allowed action.
       allowlist gap as slice 1). See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.
 - [ ] Remaining GOV-01-R01/R02/R03/R05/R06/R07/R08 implementation slices
-      — not started. `backend/**`/`infra/**`/CI-touching slices remain
-      blocked on `BUG-035`; other slices (`contracts/**` scaffolding,
-      further `tools/**` validators) remain legally startable in a
-      future session.
+      — not started. `backend/**`/`infra/**`/CI-touching slices are now
+      unblocked (`BUG-035` CLOSED, Round 5 `APPROVED`); no implementation
+      slice was started as part of this closure, per explicit
+      instruction.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.

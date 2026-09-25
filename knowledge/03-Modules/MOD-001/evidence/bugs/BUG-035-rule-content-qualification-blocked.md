@@ -1,9 +1,10 @@
 ---
 doc: BUG-035
-status: OPEN
+status: CLOSED
 module: MOD-001
 severity: P1 (blocks treating `backend/**`/`infra/**`/CI rule content as qualified/reliable; does not block non-backend/infra/CI implementation work)
 opened: 2026-09-19
+closed: 2026-09-25 (Round 5 — independent fresh-context `veyro-security-reviewer` returned P0=0/P1=0, APPROVED, for all 9 rule files)
 ---
 
 # BUG-035 — 9 new `backend/`/`infra/` Rule files: independent qualification review returned BLOCKED (P0=0, P1=4, P2=8, Editorial=7)
@@ -382,3 +383,92 @@ already uses). The exact patch content is prepared, not applied
 `RULE-001` through `RULE-009` remain `BLOCKED`; `BUG-035` remains
 `OPEN`. No registry/status file was updated this turn — this is
 patch-preparation only, not a new independent review round.
+
+## Post-round-4 remediation (2026-09-25, same day) — owner applies the scope-correction patch, Stage-5 evidence re-run
+
+The owner applied the prepared patch: commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec`
+added `backend/**/*.py` to `release.md`'s `paths:` and replaced
+`secrets.md`'s `scope: path`/`paths:` with `scope: global`; a further
+commit, `14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a`, corrected both
+files' own H1 headings (which had briefly still read "(`infra/**`
+binding)" after the scope change) to match. `veyro-test-author`
+(Sonnet) re-ran Stage-5 evidence for all 9 rule files bound to
+`14d1337`. An independent, fresh-context `veyro-security-reviewer`
+(Opus) found `RULE-002`/`RULE-004`'s evidence still bound to the
+now-superseded `183acd5` (the owner's `14d1337` commit landed
+mid-session) — fixed directly by the orchestrating session, re-verified
+against primary sources. All 9 Stage-5 evidence files were sound and
+current as of `14d1337`. `RULE-001` through `RULE-009` remained
+`BLOCKED`; `BUG-035` remained `OPEN` — an independent Round 5
+qualification review was the next required step. Full detail:
+`knowledge/00-System/CAPABILITY_REGISTRY.md`'s Qualification History
+section, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`'s
+follow-up context.
+
+## Round 5 (2026-09-25, same day) — independent qualification review: APPROVED, P0=0/P1=0 — CLOSED
+
+A fresh-context `veyro-security-reviewer` (Opus, no memory of rounds
+1-4, no participation in producing any Stage-5 evidence or prior
+remediation) reviewed all 9 rule files and their Stage-5 evidence
+against the full 8-point check list this project's Round 5 mission
+specified.
+
+**The reviewer's own bootstrap re-derivation caught a further HEAD
+move the dispatch brief had not accounted for:** the true current
+governed HEAD was `8e90680e8e8bcbd86e5136b6181371ac8161eee7` (this
+repo's own prior session's evidence/registry commit, which added the
+Stage-5 evidence and registry updates themselves and touched nothing
+under `.claude/rules/**`), not `14d1337` as the dispatch brief stated —
+independently re-derived via `git rev-parse`, not taken on trust.
+
+**Findings:**
+- `RULE-002`'s `scope: global` confirmed both correctly scoped (control
+  1's repo-wide no-secret-commit invariant admits no narrower correct
+  path list) and non-polluting under EIP H.5 (controls 2-3 are inert
+  outside their own applicable contexts, same shape as this project's
+  other global rules). `N/A (scope: global)` confirmed a valid Stage-5
+  disposition.
+- `RULE-004`'s added `backend/**/*.py` glob confirmed to reach its own
+  qualified rollback-trigger fixture (`backend/app/main.py`) with no
+  scope overshoot.
+- All 7 prior-round P1 closures (manual-rollback-override carve-out;
+  backend transaction/outbox/reconciliation/idempotency coverage;
+  CI-Action supply-chain no-publisher-carve-out; rule registration;
+  Stage-5 evidence existence; path metadata; stale evidence binding)
+  re-confirmed genuinely closed, unregressed.
+- The 2 carried-forward observations (whether `scope: global` fully
+  satisfies H.5's non-pollution half; whether the rule-loader might
+  match a non-root-anchored nested glob) were investigated and neither
+  promoted to P1, for lack of a present, material, implementation-
+  blocking defect to cite.
+- **P2-1 (new):** 7 of the 9 Stage-5 evidence files (`RULE-001`,
+  `003`, `005`, `006`, `007`, `008`, `009`) still named the superseded
+  `183acd5` as "current governed HEAD" — stale the moment `8e90680`
+  (which added those very files) was committed. Not P1: all 9 rule
+  files are byte-for-byte identical across `183acd5`/`14d1337`/
+  `8e90680`, independently re-confirmed by SHA-256. **Fixed by this
+  orchestrating session** in the same 7 files, immediately after the
+  review.
+- P2-2 (`observability.md`'s `tools/**` validator-scope gap) and P2-3
+  (`concurrency.md`'s raw-`.sql`-file gap), both carried from round 4,
+  re-confirmed still present, still non-gating, left open as disclosed
+  residuals.
+- Editorial-1 (new): `iac.md`/`observability.md`'s H1 headings omit
+  `.github/workflows/**` from their own label despite covering it —
+  left open, non-blocking.
+
+**Verdict: P0=0, P1=0 — APPROVED.**
+
+**Disposition:** per the governing mission's "if and only if P0=0 and
+P1=0" gate, the condition is **met**. `RULE-001` through `RULE-009` are
+marked `APPROVED` and `ACTIVE` in `CAPABILITY_REGISTRY.md` and
+`module-capabilities.yaml`. **`BUG-035` is CLOSED.** No rule file was
+re-authored by any session (the four owner-applied patch commits were
+the owner's own action throughout this bug's history). No
+implementation slice was started as part of this closure. MOD-002 was
+not started. MOD-001 was not marked approved — this closure clears one
+named pre-implementation condition (`ADR-005` Decision 2) for
+`backend/**`/`infra/**`/CI implementation specifically, it is not a
+module certification.
+
+Full record: `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND5_2026-09-25.md`.
