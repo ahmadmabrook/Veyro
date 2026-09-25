@@ -1,8 +1,5 @@
 ---
-scope: path
-paths:
-  - "infra/**"
-  - ".github/workflows/**"
+scope: global
 ---
 <!-- Target path once applied: .claude/rules/infra/secrets.md -->
 

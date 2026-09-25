@@ -3,8 +3,8 @@ scope: path
 paths:
   - "infra/**"
   - ".github/workflows/**"
+  - "backend/**/*.py"
 ---
-
 <!-- Target path once applied: .claude/rules/infra/release.md -->
 
 # Rule: Infra/SRE — Release, Rollback/Canary, and Cost Baseline (`infra/**` binding)
