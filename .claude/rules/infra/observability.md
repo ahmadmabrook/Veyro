@@ -1,3 +1,10 @@
+---
+scope: path
+paths:
+  - "infra/**"
+  - ".github/workflows/**"
+---
+
 <!-- Target path once applied: .claude/rules/infra/observability.md -->
 
 # Rule: Infra/SRE — Observability, SLO, and DR-Evidence Baseline (`infra/**` binding)

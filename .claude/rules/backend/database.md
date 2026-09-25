@@ -1,3 +1,8 @@
+---
+scope: path
+paths:
+  - "backend/**"
+---
 <!-- Target path once applied: .claude/rules/backend/database.md -->
 
 # Rule: Backend PostgreSQL Tenant Isolation (RLS) and Migration Safety (`backend/**` binding)

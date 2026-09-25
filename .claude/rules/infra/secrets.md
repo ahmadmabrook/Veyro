@@ -1,3 +1,9 @@
+---
+scope: path
+paths:
+  - "infra/**"
+  - ".github/workflows/**"
+---
 <!-- Target path once applied: .claude/rules/infra/secrets.md -->
 
 # Rule: Infra/SRE — Secrets Externalization Baseline (`infra/**` binding)

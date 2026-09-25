@@ -1,3 +1,10 @@
+---
+scope: path
+paths:
+  - "infra/**"
+  - ".github/workflows/**"
+---
+
 <!-- Target path once applied: .claude/rules/infra/iac.md -->
 
 # Rule: Infra/SRE — Infrastructure-as-Code (IaC) Baseline (`infra/**` binding)

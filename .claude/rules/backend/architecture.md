@@ -1,3 +1,8 @@
+---
+scope: path
+paths:
+  - "backend/**/*.py"
+---
 <!-- Target path once applied: .claude/rules/backend/architecture.md -->
 
 # Rule: Backend Modular-Monolith Architecture Boundaries (`backend/**/*.py` binding)

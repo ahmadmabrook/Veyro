@@ -1,3 +1,8 @@
+---
+scope: path
+paths:
+  - "backend/**/*.py"
+---
 <!-- Target path once applied: .claude/rules/backend/concurrency.md -->
 
 # Rule: Backend Optimistic Concurrency for Mutable Aggregates (`backend/**/*.py` binding)

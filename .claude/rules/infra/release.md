@@ -1,3 +1,10 @@
+---
+scope: path
+paths:
+  - "infra/**"
+  - ".github/workflows/**"
+---
+
 <!-- Target path once applied: .claude/rules/infra/release.md -->
 
 # Rule: Infra/SRE — Release, Rollback/Canary, and Cost Baseline (`infra/**` binding)

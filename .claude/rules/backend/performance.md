@@ -1,3 +1,8 @@
+---
+scope: path
+paths:
+  - "backend/**/*.py"
+---
 <!-- Target path once applied: .claude/rules/backend/performance.md -->
 
 # Rule: Backend Load Scope and Observability Baseline (`backend/**/*.py` binding)

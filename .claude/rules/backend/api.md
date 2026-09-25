@@ -1,3 +1,8 @@
+---
+scope: path
+paths:
+  - "backend/**/*.py"
+---
 <!-- Target path once applied: .claude/rules/backend/api.md -->
 
 # Rule: Backend API Request/Response and Permission Boundaries (`backend/**/*.py` binding)
