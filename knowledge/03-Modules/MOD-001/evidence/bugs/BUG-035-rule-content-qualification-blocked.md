@@ -357,3 +357,28 @@ close. Not Code Review, not Manual QA, not Gatekeeper certification, not
 MOD-002, not a further implementation slice.
 
 Full record: `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`.
+
+## Round 4 follow-up (2026-09-25, same day) — owner patch prepared for P1-1/P1-2
+
+Per round 4's own "next legally allowed action," this follow-up turn
+re-read `release.md`'s and `secrets.md`'s exact current bodies and
+determined the minimal path-scope correction each one's own
+already-approved control text requires — no rule body changed, no new
+content authored, no Stage-5 re-run, no round 5 review. **`release.md`
+needs `backend/**/*.py` added** (control 1's own named exposure
+mechanisms — HTTP endpoint/CLI flag/webhook/manual override — plus its
+own already-qualified Stage-5 negative fixture at `backend/app/main.py`
+both require it; the positive fixture already sits inside the existing
+`infra/**` scope, so this is additive only). **`secrets.md` needs
+`scope: path`/`paths:` replaced with `scope: global`** (control 1's own
+text — "in any form... source, config, fixtures, test data, or
+documentation" — and control 3's own references to the repo-root
+`.gitignore` and to non-infra evidence/fixture files are both
+unconditionally repo-wide, matching the exact `scope: global`
+convention `.claude/rules/global/owner-reserved-restrictions.md`
+already uses). The exact patch content is prepared, not applied
+(`.claude/rules/**` remains owner-gated), at
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-release-secrets-scope-patch/PATCH_PLAN.md`.
+`RULE-001` through `RULE-009` remain `BLOCKED`; `BUG-035` remains
+`OPEN`. No registry/status file was updated this turn — this is
+patch-preparation only, not a new independent review round.

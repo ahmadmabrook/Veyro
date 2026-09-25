@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-25 (round-4 review-only session — the owner applied the `paths:`-frontmatter patch (commit `5ad7d3cbb67f0433031850b0e3180f7a4872cccc`) round 3's follow-up prepared. A fresh, independent, fresh-context `veyro-security-reviewer` (Opus, no memory of rounds 1-3) reviewed the applied patch: frontmatter validity and all prior-round P1 closures both re-verified genuinely unregressed, but the patch itself was found to introduce **3 new P1s** — P1-1 (`release.md`'s new `infra/**`-only scope excludes `backend/**`, where its own Stage-5-qualified rollback-trigger negative fixture lives, and no backend rule covers rollback triggers); P1-2 (`secrets.md`'s new `infra/**`-only scope is narrower than its own repo-wide "no secret... in any form" control text, and nothing else covers non-infra secrets); P1-3 (all 9 Stage-5 evidence files remain bound to the pre-patch commit, now stale). **Verdict: P0=0, P1=3 — BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 4" section, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22,RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25}.md`.)
+updated: 2026-09-25 (post-round-4 remediation session — the owner corrected round 4's 2 scope-gap P1s: commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec` added `backend/**/*.py` to `release.md` and set `secrets.md` to `scope: global`; a further commit, `14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a` (**current governed HEAD**), corrected both files' H1 headings to match. `veyro-test-author` (Sonnet) re-ran Stage-5 evidence for all 9 rule files bound to `14d1337` — new work for `RULE-004` (a third path-scope case proving its rollback-trigger fixture is now reachable) and `RULE-002` (path-scope recorded `N/A (scope: global)`, not PASS/FAIL). An independent `veyro-security-reviewer` (Opus) found `RULE-002`/`RULE-004`'s evidence still bound to the superseded `183acd5` (the owner pushed `14d1337` mid-session) — fixed directly by this session, re-verified against primary sources. **All 9 Stage-5 evidence files are now sound and current.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN — an independent Round 5 qualification review (not run this session, per explicit instruction) is the sole remaining step. No rule was re-authored by this session (the two corrective commits were the owner's own action); no registry row marked `APPROVED`; no implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 4 follow-up" sections, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22,RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25}.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -342,6 +342,45 @@ text named as the next legally allowed action.
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s
       "Round 4" section,
       `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`.
+- [ ] **`BUG-035` post-round-4 remediation (2026-09-25, same day): owner
+      corrected round 4's 2 scope-gap P1s; Stage-5 evidence re-run for
+      all 9 files and re-verified sound; Round 5 is the next required
+      step.** Owner commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec`
+      added `backend/**/*.py` to `release.md`'s `paths:` (closing P1-1)
+      and replaced `secrets.md`'s `scope: path`/`paths:` with
+      `scope: global` (closing P1-2); a further commit,
+      `14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a` (**current governed
+      HEAD**, confirmed via fresh `git fetch`/`git rev-parse` to equal
+      `origin/main`), corrected both files' own H1 headings — which had
+      briefly still read "(`infra/**` binding)" even after the scope
+      change — to match. A fresh `veyro-test-author` (Sonnet) re-ran
+      Stage-5 evidence for all 9 rule files bound to `14d1337`: the 7
+      unaffected files got a refreshed commit binding and path-scope PASS
+      reasoning; `RULE-004` got a new third path-scope case demonstrating
+      its own qualified rollback-trigger fixture (`backend/app/main.py`)
+      is now genuinely reachable under the added glob; `RULE-002`
+      recorded its path-scope disposition as `N/A (scope: global)` —
+      explicitly neither `PASS` nor `FAIL`, matching
+      `.claude/rules/global/owner-reserved-restrictions.md`'s existing
+      precedent for the same shape. An independent, fresh-context
+      `veyro-security-reviewer` (Opus) evaluated this new evidence and
+      found `RULE-002`/`RULE-004`'s files still bound to the
+      now-superseded `183acd5` rather than the further `14d1337` commit
+      the owner had pushed mid-session — a genuine staleness defect (the
+      underlying glob-matching and content-level reasoning in both files
+      was independently confirmed correct once re-bound). Both fixed
+      directly by this orchestrating session, re-verified against
+      primary sources (`git show`, `shasum -a 256`, direct file reads)
+      rather than taken on trust. **All 9 Stage-5 evidence files are now
+      sound and bound to the current governed commit.** No rule file was
+      re-authored by this session (the two corrective commits were the
+      owner's own action); no `RULE-<NNN>` row was marked `APPROVED`;
+      `BUG-035` was not closed; no Round 5 qualification review was run,
+      per explicit instruction. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s
+      "Round 4 follow-up" sections, the 9
+      `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-25.md`
+      files.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any

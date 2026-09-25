@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-25 (round-4 review-only session — owner applied the `paths:`-frontmatter patch (commit `5ad7d3cbb67f0433031850b0e3180f7a4872cccc`); a fresh independent `veyro-security-reviewer` found the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap) — verdict P0=0/P1=3, still BLOCKED. `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-25 (post-round-4 remediation — owner corrected round 4's 2 scope-gap P1s (commits `183acd5`/`14d1337`, current governed HEAD `14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a`); Stage-5 evidence re-run for all 9 rule files and independently re-verified sound (2 files' commit-binding staleness found and fixed). `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`; `BUG-035` remains OPEN — an independent Round 5 qualification review is the sole remaining step. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
