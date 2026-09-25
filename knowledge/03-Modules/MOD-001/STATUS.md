@@ -428,11 +428,31 @@ text named as the next legally allowed action.
       overall verdict). Live execution disclosed BLOCKED (same CAP-007
       allowlist gap as slice 1). See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.
-- [ ] Remaining GOV-01-R01/R02/R03/R05/R06/R07/R08 implementation slices
-      — not started. `backend/**`/`infra/**`/CI-touching slices are now
-      unblocked (`BUG-035` CLOSED, Round 5 `APPROVED`); no implementation
-      slice was started as part of this closure, per explicit
-      instruction.
+- [x] **Slice 3 complete:** `backend/` Python test-pyramid skeleton
+      (GOV-01-R01) — directory conventions + runner configuration for the
+      static/lint, unit, component, integration, and contract layers,
+      plus `tools/validate_repo_skeleton.py` (skeleton-completeness
+      validator, isolated-fixture-tested). Routed to `veyro-backend-engineer`
+      (skeleton), `veyro-test-author` (4 scaffold-liveness fixtures + NEG-
+      evidence attempt), `veyro-implementer` (validator). Independently
+      re-traced by the orchestrating session against all 3 deliverables;
+      no discrepancy found. Live execution disclosed BLOCKED (same
+      CAP-007 `python3`-allowlist gap as slices 1/2 — independently
+      re-confirmed this session, not taken on the agents' word). CI
+      wiring explicitly deferred: no `.github/workflows/**` file created,
+      since `.claude/rules/infra/iac.md` control 5 requires every
+      GitHub Action to carry an `APPROVED` `CAP-<NNN>` row before a
+      workflow referencing it may exist committed — no such row exists
+      yet. See
+      `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`.
+- [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
+      documentation), GOV-01-R01's own CI-wiring half, and
+      GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.
+      `backend/**`/`infra/**`/CI-touching slices remain unblocked
+      (`BUG-035` CLOSED, Round 5 `APPROVED`); CI-wiring specifically
+      additionally requires GitHub-Actions-per-Action capability
+      qualification (see Slice 3's own disclosed scope gap) before any
+      `.github/workflows/**` file may be committed.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.

@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-25 (chunk 56 — Round 5, the final independent qualification review, dispatched fresh-context `veyro-security-reviewer` (no memory of rounds 1-4): **P0=0, P1=0 — APPROVED** for all 9 `backend/**`/`infra/**` rule files. The reviewer independently re-derived the true current governed HEAD as `8e90680e8e8bcbd86e5136b6181371ac8161eee7` (correcting a stale `14d1337` reference in its own dispatch brief) before trusting anything else. `RULE-002`'s `scope: global` and `RULE-004`'s backend-scope addition both confirmed correct with no overshoot; all 7 prior-round P1 closures re-confirmed unregressed; 3 P2 + 1 Editorial residual disclosed, non-blocking (1 new P2 — stale binding text in 7 of 9 evidence files — fixed same session by this orchestrating session). `RULE-001` through `RULE-009` are now `APPROVED` and `ACTIVE`. `BUG-035` is CLOSED. No rule file was re-authored by any session across this bug's history — every content change was owner-applied. No implementation slice started as part of this closure; MOD-002 not started; MOD-001 not marked approved. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 5" section, `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND5_2026-09-25.md` — not restated here, per this file's own repeated lesson about facts duplicated across documents going stale.)
+updated: 2026-09-25 (chunk 57 — first `backend/**`-touching MOD-001 implementation slice after `BUG-035` Round 5 closure: Slice 3, `backend/` test-pyramid skeleton (GOV-01-R01) — directory conventions + runner configuration for the static/lint, unit, component, integration, and contract layers, plus `tools/validate_repo_skeleton.py`. Dispatched to `veyro-backend-engineer`/`veyro-test-author`/`veyro-implementer` (all Sonnet, no critical-slice routing needed). Independently re-verified by this orchestrating session (files re-read, `find_missing_paths()` logic re-traced, guard-block re-confirmed by direct attempt). Live execution honestly disclosed BLOCKED — same `bash_guard.py` `python3`-allowlist/no-`pytest`-family gap as `BUG-025`/Slice 1/Slice 2, no new bug filed. CI wiring (`.github/workflows/**`) deliberately deferred, not built this slice: `.claude/rules/infra/iac.md` control 5 requires every GitHub Action to carry an `APPROVED` `CAP-<NNN>` row before a referencing workflow may exist committed, and none exists yet. MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved; no Code Review/Manual QA/Security Review/Gatekeeper run. Full detail: `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section, `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md` — not restated here.)
 ---
 
 # Current Handoff
@@ -126,125 +126,131 @@ to a summary line, full narrative archived to
 **Thirty-eighth application (2026-09-25, chunk 56): chunk 53 compressed
 to a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-53-2026-09-22-stage5-evidence-produced.md`.**
-— chunks 55 and 56 are now the 2 kept in full.
+**Thirty-ninth application (2026-09-25, chunk 57): chunk 55 compressed
+to a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-55-2026-09-25-round4-remediation-stage5-rerun.md`.**
+— chunks 56 and 57 are now the 2 kept in full.
+
+## What happened chunk 57, 2026-09-25 (same day) — first backend/**-touching implementation slice after BUG-035 Round 5 closure: Slice 3, backend test-pyramid skeleton (GOV-01-R01)
+
+Continuation per `/ponytail:ponytail` resume instruction, same governed
+HEAD as chunk 56 (`c43ef8c1f995c59cde49ff370e6093c65c414c8b`). Mission:
+verify current state, select the next dependency-safe MOD-001
+implementation slice, implement exactly one coherent slice, test what's
+actually executable, record evidence honestly, commit/push, stop.
+
+**Bootstrap re-verified fresh:** `git status`/`git log`/`git rev-parse`
+confirmed local HEAD == `origin/main` == `c43ef8c1f995c59cde49ff370e6093c65c414c8b`,
+matching the instruction's stated governed HEAD exactly.
+`verify_baselines.py` PASS 4/4. `STATUS.md`/`CURRENT_STATE.md` read in
+full, confirming `RULE-001`..`009` `APPROVED`/`ACTIVE`, `BUG-035`
+`CLOSED`, 2 implementation slices already complete
+(`tools/validate_baseline_binding.py`, `tools/validate_capability_manifest.py`),
+`backend/**`/`infra/**`/CI unblocked, no open P0/P1.
+
+**Slice selection:** read `REQUIREMENTS.md` (GOV-01-R01 through R08's
+own declared dependency chains — R01 has none beyond MOD-000 tooling;
+R02/R03/R04/R05/R07 each declare a dependency on R01), `IMPLEMENTATION.md`
+§1-§3 (repository topology, environment boundaries, CI/CD gate
+specification), and `SCENARIOS.md`'s Group A (SCN-MOD001-001/002/003,
+"Repository skeleton"). Selected GOV-01-R01 as the correct next slice
+per the module's own approved dependency order, bounded to `backend/**`
+only (not the full topology's admin-web/frontdesk-web/mobile/contracts/
+infra/.github/workflows, each a separate future slice) and to local
+proof only — no `.github/workflows/**` file created this slice, since
+`.claude/rules/infra/iac.md` control 5 requires every referenced GitHub
+Action to carry an `APPROVED` `CAP-<NNN>` row (full `CAPABILITY_POLICY.md`
+9-stage lifecycle, no publisher carve-out) before a workflow referencing
+it may exist committed, and no such row exists yet for any Action. This
+mirrors `CAPABILITIES.md`'s own pre-existing "DC-19 supply-chain review
+for any third-party Action" disposition — not a new bug, a foreseeable
+reading of an already-`APPROVED` rule, recorded so a future session
+doesn't silently scaffold CI workflows without that qualification first.
+
+**Three Sonnet dispatches, run in parallel (disjoint file sets, no
+critical-slice routing needed — this is plain surface-profile scaffold,
+not the RLS/authn/RLS-lint territory `ADR-005` Decision 1 reserves for
+`veyro-critical-engineer`):**
+
+- `veyro-backend-engineer` — `backend/pyproject.toml` (Python `>=3.13`,
+  dev-only deps `pytest`/`ruff`/`mypy`, deliberately no `fastapi`/
+  `pydantic`/`sqlalchemy`/`alembic` yet since no app code needs them),
+  `backend/app/__init__.py`, `backend/app/modules/__init__.py`,
+  `backend/app/modules/_shared/__init__.py` (docstring-only, no code,
+  per `.claude/rules/backend/architecture.md` control 3),
+  `backend/tests/{unit,component,integration,contract}/__init__.py`,
+  `backend/.gitignore`.
+- `veyro-test-author` — one scaffold-liveness fixture per pyramid layer
+  (`backend/tests/{unit,component,integration,contract}/test_scaffold_live.py`,
+  each a trivial passing assertion), plus an honest NEG-evidence attempt:
+  wrote a deliberately-broken fixture to session scratch (never
+  git-tracked), attempted 4 independent `python3`/pytest invocations, all
+  denied byte-identical `BLOCKED: DISALLOWED_FLAG_OR_SHAPE` text; cleanup
+  (`rm`/`unlink`) also denied (`BLOCKED: UNKNOWN_COMMAND`, no delete
+  primitive in the guard at all), but the file was never written under a
+  git-tracked path so no cleanup gap reaches the committed tree. Recorded
+  honestly in `evidence/implementation/SLICE-3-neg-fixture-proof-2026-09-25.md`
+  as **BLOCKED, not PASS** — no pytest execution was actually observed.
+- `veyro-implementer` — `tools/validate_repo_skeleton.py` (matches
+  `validate_baseline_binding.py`'s CLI conventions; `REQUIRED_PATHS`
+  seeded with only this slice's 7 real paths, explicitly documented as
+  growing with future topology slices rather than hardcoding the full
+  future tree, which would produce a false `MISSING_REQUIRED_PATH`
+  against legitimate not-yet-built work) plus
+  `tools/tests/test_validate_repo_skeleton.py` (3 tests against an
+  isolated `tempfile.TemporaryDirectory` fixture, never the real repo
+  tree — including SCN-MOD001-003's own literal case, deleting an entire
+  required top-level directory, correctly naming every nested path
+  individually missing).
+
+**Independent verification this session performed:** read every file
+all three agents produced in full (not taken on their say-so); manually
+re-traced `find_missing_paths()`'s top-level-directory-deletion behavior
+and confirmed it matches the authoring agent's own trace; confirmed
+`_shared/__init__.py` is docstring-only per `architecture.md` control 3;
+confirmed `git status` shows only the declared new paths, nothing
+unexpected. **Independently re-ran the guard-block check myself**
+(`python3 --version`, `python3 tools/validate_repo_skeleton.py`) rather
+than trusting the agents' reports — both denied, byte-identical text to
+all three agents' independent reports.
+
+**Disclosed execution residual — not a new bug:** none of this slice's
+Python was executed. Same structural gap as `BUG-025`/`SLICE-1`/`SLICE-2`:
+`bash_guard.py`'s `python3` family only executes 7 pre-existing
+SHA-256-pinned scripts; `pytest` has no recognized command family in the
+guard at all. No new bug filed — this is the same already-tracked
+architectural gap, not new information. Full detail:
+`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`.
+
+**Durable state updated this chunk:** `STATUS.md`'s "Implementation
+progress" section (slice 3 marked complete, remaining GOV-01-R01 layers
+and CI wiring named as not-yet-started); `evidence/module-capabilities.yaml`
+top-level `status` line; 2 new evidence files under
+`evidence/implementation/`; this file (chunk 55 compressed/archived per
+the retention rule to make room, this chunk added in full).
+
+**Disposition:** MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
+`APPROVED`. No Code Review, Manual QA, Security/Performance Review, or
+Gatekeeper certification run this chunk, per the mission's own explicit
+instruction not to run these prematurely. MOD-002 not started. WIP
+remains 1 (MOD-001).
+
+**Next legally allowed action:** the next dependency-safe GOV-01-R0x
+implementation slice — most naturally GOV-01-R01's own remaining layers
+(component/integration/contract already have scaffold-liveness fixtures
+now; E2E, mobile UI, and the exploratory-testing procedure document
+remain), or GOV-01-R02 (critical-slice territory — tenant-isolation/RLS
+harness and authn negative-credential fixture pattern, routes to
+`veyro-critical-engineer` on Opus per `ADR-005` Decision 1, and itself
+depends on R01's pyramid infrastructure existing, which this slice
+partially satisfies). GitHub Actions CI wiring for any layer remains
+blocked pending per-Action `CAPABILITY_POLICY.md` 9-stage qualification.
+Not Code Review, not Manual QA, not Gatekeeper certification, not
+MOD-002.
 
 ## What happened chunk 54, 2026-09-25 (compressed 2026-09-25, thirty-seventh retention-rule application) — fresh independent BUG-035 round-4 review: owner's `paths:`-frontmatter patch applied, but the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap); RULE-001..009 remain BLOCKED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-54-2026-09-25-round4-scope-gaps-found.md`.
 
-## What happened chunk 55, 2026-09-25 (same day) — post-round-4 remediation: owner corrects both scope-gap P1s (2 further commits); Stage-5 evidence re-run for all 9 rule files; independent review catches a mid-session HEAD move, fixed directly; RULE-001..009 remain BLOCKED, Round 5 next
-
-Continuation of chunk 54's mission on the same day, per an explicit
-follow-up instruction: the owner had already applied a scope-correction
-patch (commit `183acd535e6786f1edc1993a5ef6f13afd13a4ec`) closing round
-4's P1-1/P1-2 by the time this turn started. Mission: verify the patch,
-re-run Stage-5 evidence for all 9 rule files bound to the new commit,
-using `veyro-test-author` and an independent assurance role, keep
-`RULE-001`..`009` `BLOCKED` and `BUG-035` `OPEN`, do not run Round 5 in
-this session.
-
-**Bootstrap re-verified fresh:** `verify_baselines.py` PASS 4/4; local
-HEAD == `origin/main` == `183acd535e6786f1edc1993a5ef6f13afd13a4ec`
-confirmed via `git fetch`/`git rev-parse` before dispatching any agent.
-`git show 183acd5 --stat`/full diff independently read: touches exactly
-`release.md` (added `backend/**/*.py` to `paths:`) and `secrets.md`
-(replaced `scope: path`/`paths:` with `scope: global`) — both matching
-this session's own previously-prepared patch plan exactly. The other 7
-rule files' SHA-256 hashes independently recomputed and confirmed
-unchanged from round 4's recorded values.
-
-**`veyro-test-author` (Sonnet) dispatched** to re-run Stage-5 evidence
-for all 9 rule files bound to `183acd5`, writing new
-`POSITIVE_NEGATIVE_EVAL_2026-09-25.md` files (the 2026-09-22 files
-retained as historical record): the 7 unaffected files got a refreshed
-commit binding and honest textual path-scope PASS reasoning (explicitly
-disclaiming any claim to have observed real harness load/skip
-behavior — that remains unverified project-wide); `RULE-004` got a new
-third path-scope case demonstrating its own Stage-5-qualified
-rollback-trigger fixture (`app/main.py`, resolved to
-`backend/app/main.py` per `IMPLEMENTATION.md` line 426) is now
-genuinely reachable under the added `backend/**/*.py` glob, with an
-explicit before/after statement that this reachability did not exist
-under the pre-patch frontmatter; `RULE-002` recorded its path-scope
-disposition as **`N/A (scope: global)`** — explicitly neither `PASS`
-nor `FAIL`, since a global-scope rule has no non-matching path to
-construct a test against, citing `.claude/rules/global/owner-reserved-restrictions.md`
-as this project's existing precedent for the identical shape.
-
-**Independent `veyro-security-reviewer` (Opus, fresh context) dispatched**
-to evaluate this new evidence against 6 checks (no overclaiming, the 7
-unchanged files' reasoning, RULE-004's 3-case reasoning, RULE-002's
-`N/A` disposition, content-level sections carried forward faithfully, no
-misstatement of which files changed in which commit). **Verdict:
-BLOCKED — 7 of 9 files SOUND, 2 defective.** The reviewer's own
-bootstrap check found something this orchestrating session had not yet
-seen: **the owner had pushed a further commit,
-`14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a`, mid-session** — after
-`veyro-test-author` had already written and dated its evidence, but
-before the review ran. That commit corrected both files' own H1
-headings (which had briefly still read "(`infra/**` binding)" /
-"(`infra/**` binding)" even after their frontmatter changed) to match:
-`release.md` now reads "(`infra/**`, CI, and backend Python binding)",
-`secrets.md` now reads "(global binding)" — no frontmatter or control
-text changed. `RULE-002` and `RULE-004`'s evidence files were still
-bound to the now-superseded `183acd5` and, in `RULE-002`'s case, made a
-now-inaccurate claim that `183acd5` itself was "not an incomplete
-patch" (it was, for one more commit — the H1/frontmatter contradiction
-`14d1337` closed). The reviewer's own independent verification of the
-underlying glob-matching, `IMPLEMENTATION.md` line 426 citation, and
-`owner-reserved-restrictions.md` precedent all held up; this was a
-staleness/accuracy defect in the binding and narrative, not a reasoning
-error.
-
-**This orchestrating session independently re-verified the HEAD move**
-(`git fetch`/`git rev-parse`: local HEAD == `origin/main` ==
-`14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a`, confirmed via `git show
-14d1337` to touch only the two H1 lines) and fixed both evidence files
-directly — re-binding to `14d1337`, adding an honest account of the
-3-commit history (including a whitespace-only diff detail the original
-`RULE-004` version had also glossed over — round 4's original evidence
-claimed "no other line changed" in `183acd5`, which was false even at
-that commit, a separate minor accuracy note the reviewer also caught),
-and correcting `RULE-002`'s overstated "not an incomplete patch" claim.
-Both fixes re-verified against primary sources (`git show`, `shasum -a
-256`, direct file reads), not merely asserted. **All 9 Stage-5 evidence
-files are now sound and bound to the current governed commit.**
-
-**Disposition:** `RULE-001` through `RULE-009` were **not** marked
-`APPROVED`. `BUG-035` was **not** closed. No rule file was re-authored
-by this session — the two corrective commits (`183acd5`, `14d1337`)
-were the owner's own action. No Round 5 qualification review was run,
-per explicit instruction. No implementation slice started. MOD-002 not
-started. MOD-001 not marked approved.
-
-**Durable state updated this chunk:** 9 new
-`knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-25.md`
-files (2 corrected post-review by this orchestrating session);
-`BUG-035`'s own file unchanged this chunk (its "Round 4 follow-up"
-sections already covered the patch-prep half; the remediation-execution
-half is recorded here and in the registries); `CAPABILITY_REGISTRY.md`
-(all 9 rows' `version`/`content_hash`/evidence pointers refreshed to
-`14d1337`, both narrative sections below the table updated);
-`evidence/module-capabilities.yaml` (`required_rule_ids` per-file status,
-`resolution_attempt_budget_evidence` attempt count 4→5,
-`missing_capability_blockers`, `capability_evidence_ids`, top-level
-`status`); `BUG_REGISTRY.md`'s `BUG-035` row plus a new dated
-"Corrected" note; `STATUS.md`'s "Implementation progress" section and
-front matter; `CURRENT_STATE.md` front matter; this file (chunk 54
-compressed/archived per the retention rule to make room, this chunk
-added in full).
-
-**Next legally allowed action:** an independent, fresh-context Round 5
-qualification review of all 9 rule files, bound to commit
-`14d13376680cdeba9011f9b1d2d3e9ab1d7c2a7a` — the only remaining step
-before `RULE-001`..`009` may read `APPROVED` and `BUG-035` may close.
-Not Code Review, not Manual QA, not Gatekeeper certification, not
-MOD-002, not a further implementation slice. Two open, non-blocking
-questions this review should weigh: (1) whether `RULE-002`'s `scope:
-global` fully satisfies EIP H.5's "does not pollute unrelated contexts"
-half, not just its "correct" half; (2) an unconfirmed, single-session
-observation from the round-4 reviewer that this project's rule-loader
-may match `infra/**`/`backend/**` globs even when that segment isn't
-the first path component — not verified or acted on by this or the
-chunk-54 session, flagged for whoever next has reason to test it.
+## What happened chunk 55, 2026-09-25 (compressed 2026-09-25, thirty-ninth retention-rule application) — post-round-4 remediation: owner corrects both scope-gap P1s (2 further commits); Stage-5 evidence re-run for all 9 rule files; independent review catches a mid-session HEAD move, fixed directly; RULE-001..009 remain BLOCKED, Round 5 next. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-55-2026-09-25-round4-remediation-stage5-rerun.md`.
 
 ## What happened chunk 56, 2026-09-25 (same day) — Round 5, the final independent qualification review: APPROVED, P0=0/P1=0 — RULE-001..009 now ACTIVE/APPROVED, BUG-035 CLOSED
 
