@@ -249,3 +249,111 @@ pass more easily (e.g. accepting the P1-1 manual-override carve-out
 without an ADR, or treating the missing idempotency/transaction coverage
 as out of scope without a recorded reason) — the fix is re-authoring the
 content to actually meet the bar, not lowering the bar.
+
+## Round 4 (2026-09-25) — owner's `paths:` frontmatter patch applied; fresh independent review finds the patch itself introduces 2 new P1 scope gaps plus 1 P1 stale-evidence gap; still BLOCKED
+
+**Fresh-context, review-only session, no memory of rounds 1-3.** Bootstrap
+re-verified before any action: `verify_baselines.py` PASS 4/4; local HEAD
+== `origin/main` == the governed commit named in this round's mission,
+`5ad7d3cbb67f0433031850b0e3180f7a4872cccc` ("fix: add path scope metadata
+to MOD-001 rule family"); `git show 5ad7d3c` independently read and
+confirmed to touch exactly the 9 rule files, inserting only a `scope:
+path` / `paths:` YAML frontmatter block at line 1 of each (no body-text
+change) — the owner-applied patch this bug's round-3 section named as
+the next legally allowed action.
+
+**Fresh `veyro-security-reviewer` (Opus, no memory of rounds 1-3)
+dispatched** with the exact round-4 mission (verify frontmatter validity;
+verify path bindings against the recorded Stage-5 evidence; verify
+positive/negative fixture paths genuinely match/don't match; verify
+Stage-5 evidence sufficiency; verify no regression of prior P1 closures;
+verify no new P0/P1 from this specific patch).
+
+**Verdict returned: P0=0, P1=3, P2=2, Editorial=2 — BLOCKED.** This
+orchestrating session independently re-verified the load-bearing claims
+rather than taking the subagent's report on trust:
+
+1. **Frontmatter validity — PASS**, confirmed by direct read of all 9
+   files: each opens with a well-formed `scope: path` / `paths: [...]`
+   block, same shape as the pre-existing
+   `.claude/rules/global/knowledge-vault-durability.md` example.
+2. **SHA-256 hashes independently recomputed by this session** via
+   `shasum -a 256` against all 9 files — exact match to the reviewer's
+   9 reported values (see the registry update below).
+3. **`actions/*`/`github/*` no-carve-out text in `iac.md` line 96
+   independently re-confirmed present** ("Every action, regardless of
+   publisher — including `actions/*`") — round 2's P1-A closure has not
+   regressed.
+
+**P1-1 — `infra/release.md`'s new path scope (`infra/**`,
+`.github/workflows/**`) excludes the surface where its own qualified
+negative fixture lives.** RULE-004's own Stage-5 evidence
+(`knowledge/05-QA/capability-evidence/RULE-004/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`
+§3) qualifies control 1 (no manually-callable rollback trigger) against a
+negative fixture at `app/main.py` — a backend HTTP route
+(`knowledge/03-Modules/MOD-001/IMPLEMENTATION.md` line 426 independently
+confirms `backend/app/main.py` as this project's canonical backend-surface
+example path). No backend-scoped rule file (`RULE-005`..`009`) covers
+rollback triggers — independently grepped, only `database.md` mentions
+"rollback" and only in a migration context. Before this patch, `release.md`
+loaded unconditionally on every path, so it accidentally covered this
+backend-surface violation too; the patch that fixes EIP H.5's path-scope
+test for `release.md` genuinely narrows its real protection away from the
+exact violation its own qualification evidence names.
+
+**P1-2 — `infra/secrets.md`'s new path scope (`infra/**`,
+`.github/workflows/**`) is narrower than control 1's own repo-wide text**
+("No secret is ever committed to the repository, in any form... whether
+in source, config, fixtures, test data, or documentation" —
+`secrets.md` line ~33, independently re-read). No other rule file covers
+committed credentials outside `infra/**` — independently grepped for
+"secret" across `.claude/rules/**`, only `secrets.md`/`iac.md`/`performance.md`
+mention it, and `performance.md`'s reference is log-statement-scoped, not
+credential-scoped. A hardcoded credential in `backend/**` config, a test
+fixture, or a repo-root dotfile would load no rule under the new scope.
+Separately and non-dispositively: RULE-002's own recorded positive/negative
+fixtures target `infra/environments/qa/.env.example`, a dotfile segment;
+this session could not confirm whether the harness's glob-matching
+treats a leading-dot path segment as covered by `**` by default (many
+glob implementations exclude dotfiles from `*`/`**` without an explicit
+`dot: true` option) — an open, unresolved question this bug does not
+close, flagged for whoever next verifies `.claude/rules/*.md` path-scope
+enforcement mechanically (the same open item `CURRENT_STATE.md` already
+carries: rule auto-loading is `BLOCKED/UNVERIFIED`).
+
+**P1-3 — the 9 Stage-5 evidence files are now stale against the governed
+commit.** All 9 `POSITIVE_NEGATIVE_EVAL_2026-09-22.md` files still bind to
+commit `5aa5cc5b6b6d041372b83e043febf179d0460fa5` (pre-frontmatter-patch)
+and still record §2's path-scope case as a directly-observed FAIL. Per
+`CAPABILITY_POLICY.md` (a scope change routes back through stages 4-5),
+this evidence needs a fresh run bound to `5ad7d3c`, now that a `paths:`
+mechanism actually exists to exercise a real matching-vs-non-matching
+test against (rather than recording `NOT EXECUTABLE`/`FAIL`-by-absence).
+This is not this review's job to produce — `CAPABILITY_POLICY.md`'s own
+role separation keeps the Opus reviewer from re-running the tests it is
+evaluating.
+
+**Prior P1 closures re-verified unregressed (round-4-specific spot
+checks, this orchestrating session):** `iac.md`'s no-publisher-carve-out
+text (line 96) confirmed present; `CAPABILITY_REGISTRY.md`/
+`module-capabilities.yaml` row-to-file mapping confirmed unchanged and
+correct.
+
+**Disposition: per the mission's explicit "if and only if P0=0 and
+P1=0" gate, the condition was not met.** `RULE-001` through `RULE-009`
+were **not** marked `APPROVED`. `BUG-035` was **not** closed. No rule
+file was re-authored (also structurally impossible this session —
+`.claude/rules/**` remains owner-gated). No implementation slice was
+started. MOD-002 was not started. MOD-001 was not marked approved.
+
+**Next legally allowed action:** an owner decision on the two scope
+questions P1-1/P1-2 raise (broaden `release.md`'s and `secrets.md`'s
+`paths:` to include the backend surface / go `scope: global`, or accept
+the narrower scope with a recorded reason), followed by a fresh
+`veyro-test-author` re-run of all 9 Stage-5 evidence files bound to the
+current commit (P1-3), followed by a fifth independent qualification
+review before `RULE-001`..`009` may read `APPROVED` and `BUG-035` may
+close. Not Code Review, not Manual QA, not Gatekeeper certification, not
+MOD-002, not a further implementation slice.
+
+Full record: `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`.

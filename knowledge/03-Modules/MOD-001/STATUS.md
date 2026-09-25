@@ -1,7 +1,7 @@
 ---
 doc: MOD-001_STATUS
 status: LIVE
-updated: 2026-09-22 (Stage-5 qualification-evidence production session, same day as and following the round-3 re-review — per round 3's own next-legally-allowed-action, a `veyro-test-author` (Sonnet) run produced content-level positive/negative Stage-5 evidence for all 9 rule files under `knowledge/05-QA/capability-evidence/RULE-<NNN>/`; an independent, fresh-context `veyro-security-reviewer` (Opus) evaluated it, found it sound after 2 real defects were fixed (a credential-shaped fixture string; an unearned `QUALIFIED` claim on all 9), plus 3 accuracy errors fixed in `RULE-001`'s evidence. **The review confirmed, directly and reproducibly, that EIP H.5's path-scope test genuinely FAILS for all 9 files — none has `paths:` frontmatter, so all 9 load unconditionally regardless of path.** This is a real, confirmed, owner-gated blocker (fixing it means editing `.claude/rules/**`, which no session may do), distinct from and more precise than round 3's P1-Q framing ("no evidence exists"). `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no further implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`, `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`.)
+updated: 2026-09-25 (round-4 review-only session — the owner applied the `paths:`-frontmatter patch (commit `5ad7d3cbb67f0433031850b0e3180f7a4872cccc`) round 3's follow-up prepared. A fresh, independent, fresh-context `veyro-security-reviewer` (Opus, no memory of rounds 1-3) reviewed the applied patch: frontmatter validity and all prior-round P1 closures both re-verified genuinely unregressed, but the patch itself was found to introduce **3 new P1s** — P1-1 (`release.md`'s new `infra/**`-only scope excludes `backend/**`, where its own Stage-5-qualified rollback-trigger negative fixture lives, and no backend rule covers rollback triggers); P1-2 (`secrets.md`'s new `infra/**`-only scope is narrower than its own repo-wide "no secret... in any form" control text, and nothing else covers non-infra secrets); P1-3 (all 9 Stage-5 evidence files remain bound to the pre-patch commit, now stale). **Verdict: P0=0, P1=3 — BLOCKED.** `RULE-001` through `RULE-009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`. `BUG-035` remains OPEN. No rule was re-authored this session; no registry row marked `APPROVED`; no implementation slice started; MOD-002 not started; MOD-001 not marked approved. Full record: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s "Round 4" section, `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22,RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25}.md`.)
 ---
 
 # MOD-001 — Module Status
@@ -311,6 +311,37 @@ text named as the next legally allowed action.
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`,
       `knowledge/03-Modules/MOD-001/evidence/model-routing/{RULE_QUALIFICATION_REVIEW_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND2_2026-09-19,RULE_QUALIFICATION_REVIEW_ROUND3_2026-09-22}.md`,
       `knowledge/05-QA/capability-evidence/RULE-<NNN>/POSITIVE_NEGATIVE_EVAL_2026-09-22.md`.
+- [ ] **`BUG-035` round 4 (2026-09-25, review-only session): owner's
+      `paths:`-frontmatter patch applied (commit
+      `5ad7d3cbb67f0433031850b0e3180f7a4872cccc`), but a fresh
+      independent `veyro-security-reviewer` (Opus, no memory of rounds
+      1-3) found the patch itself introduces 3 new P1s.** Frontmatter
+      validity confirmed valid for all 9 files; all prior-round P1
+      closures (rollback-override carve-out, backend transaction/
+      idempotency/reconciliation coverage, `iac.md`'s CI-Action
+      no-publisher-carve-out) independently re-verified genuinely
+      unregressed — SHA-256 hashes independently recomputed by this
+      orchestrating session, exact match to the reviewer's 9 reported
+      values. **New findings:** P1-1 — `release.md`'s new `infra/**`-only
+      scope excludes `backend/**`, the exact surface where its own
+      Stage-5-qualified rollback-trigger negative fixture (`app/main.py`)
+      lives, and no backend-scoped rule covers rollback triggers, so the
+      rule can no longer stop the violation its own evidence names (the
+      unconditional pre-patch loading gave this accidental coverage; the
+      patch that fixes EIP H.5's path-scope test removes it). P1-2 —
+      `secrets.md`'s new `infra/**`-only scope is narrower than its own
+      repo-wide "no secret... in any form" control text, and no other
+      rule covers committed secrets outside `infra/**`. P1-3 — all 9
+      Stage-5 evidence files remain bound to the pre-patch commit
+      (`5aa5cc5b6b6d041372b83e043febf179d0460fa5`) and still record the
+      path-scope case as FAIL, now stale against the governed commit.
+      **Verdict: P0=0, P1=3 — still BLOCKED.** No rule file was
+      re-authored, no `RULE-<NNN>` row was marked `APPROVED`, `BUG-035`
+      was not closed, no implementation slice started, MOD-002 not
+      started, MOD-001 not marked approved. See
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-035-rule-content-qualification-blocked.md`'s
+      "Round 4" section,
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/RULE_QUALIFICATION_REVIEW_ROUND4_2026-09-25.md`.
 - [x] **Slice 2 complete:** `tools/validate_capability_manifest.py`
       (`REQUIREMENTS.md` §3's capability-governance validation gate
       obligation, generalizing `validate_capabilities.py` to any

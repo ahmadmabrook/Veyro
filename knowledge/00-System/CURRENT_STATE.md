@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-22 (Stage-5 qualification-evidence production session, following round-3's re-review — content-level positive/negative evidence produced for all 9 `backend/`/`infra/` rule files, independently reviewed (2 real defects fixed). The review confirmed EIP H.5's path-scope test genuinely FAILS for all 9 files (no `paths:` frontmatter exists), a real owner-gated blocker. `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
+updated: 2026-09-25 (round-4 review-only session — owner applied the `paths:`-frontmatter patch (commit `5ad7d3cbb67f0433031850b0e3180f7a4872cccc`); a fresh independent `veyro-security-reviewer` found the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap) — verdict P0=0/P1=3, still BLOCKED. `RULE-001`..`009` remain `BLOCKED`, not `APPROVED`, not `QUALIFIED`; `BUG-035` remains OPEN. See `knowledge/03-Modules/MOD-001/STATUS.md`'s "Implementation progress" section for full detail, not restated here. MOD-000 remains APPROVED; WIP=1 on MOD-001, MOD-002+ locked. This front-matter line is deliberately kept short and pointed at `STATUS.md` rather than restating module-internal state, after three consecutive Scenario Review rounds found this exact kind of restatement going stale.)
 ---
 
 # Current State
