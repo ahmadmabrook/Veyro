@@ -550,6 +550,14 @@ _ALLOWED_PYTHON_SCRIPTS = {
         "881c83ed1adff28f0c23f9c4a1b2e1b4d392620d3237d93e49b4e38a55dee409",
     ".claude/security/tests/test_bash_guard.py":
         "c3ab3e94e77824c3966755a398f1fae8aa1b4c39e5d21f6423c03fec437d409c",
+    "tools/validate_baseline_binding.py":
+        "b76c4f37491a858ccfb58d72a3f2a8d040f9862d6c80529113c1596bfbe0d70b",
+    "tools/validate_capability_manifest.py":
+        "c53404eda5837f0754ab68e00699effb25a2f653bce2d8eacb98360217c99517",
+    "tools/validate_repo_skeleton.py":
+        "162750a3e8a52afb93cf6ed3087df3814e7d5cd9150a1e152f3f11f8cdaf5d91",
+    "tools/tests/test_validate_repo_skeleton.py":
+        "bcae0d8a81fdd41972b5398f14ded7bed806cc6f8c1a274316095ab8aa2ed919",
 }
 
 
