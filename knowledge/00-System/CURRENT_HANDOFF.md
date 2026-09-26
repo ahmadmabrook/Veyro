@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-25 (chunk 58 — dedicated investigation of the recurring `bash_guard.py`/CAP-007 local test-execution block Slices 1-3 each independently disclosed: root-caused precisely by direct code inspection and direct attempt (no command family for `pytest`/`ruff`/`mypy`; `python3` scoped to 7 pre-existing SHA-256-pinned scripts only, no `-m` form). Filed as new `BUG-036` (P1) — not a `BUG-025` reopening, that bug's own subject remains correctly fixed; this is the same disclosed-residual class recurring across 6 new MOD-001 files, now DC-11-binding-severity. Two-tier owner patch drafted, neither applied: Tier 1 (4 new `_ALLOWED_PYTHON_SCRIPTS` hash entries, zero new mechanism, no `pip` dependency) and Tier 2 (new bounded `pytest`/`ruff`/`mypy` command families, gated on an owner `pip install` policy decision plus a fresh independent `veyro-security-reviewer` pass per CAP-007's own stage-9 re-evaluation precedent). No `.claude/security/**` file was or could be edited by this session. No implementation slice was started or continued; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved. Full detail: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md` — not restated here.)
+updated: 2026-09-26 (chunk 59 — `BUG-036` remediation planning: the owner confirmed, outside Claude Code, that `pytest`/`ruff`/`mypy` are not installed anywhere this host exposes. Tier 1's exact patch to `_ALLOWED_PYTHON_SCRIPTS` finalized with freshly-recomputed SHA-256 hashes (not reused) for the 4 unexecuted `tools/**` scripts — ready for the owner to apply verbatim. Tier 2 redesigned around an owner-performed, project-local `backend/.venv/` install (never through an agent session — `pip install` is a different risk class from anything this guard already permits) with the new command families keyed on the exact venv-relative binary path, bounded to `backend/**` only, `ruff format` dropped entirely (only `ruff check` needed). Exact positive/negative regression tests defined for both tiers. No `.claude/security/**` file was or could be edited by this session. No implementation slice started; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved; `BUG-036` remains OPEN. Full detail: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`'s "Round 2" section — not restated here.)
 ---
 
 # Current Handoff
@@ -132,7 +132,10 @@ to a summary line, full narrative archived to
 **Fortieth application (2026-09-25, chunk 58): chunk 56 compressed to a
 summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-56-2026-09-25-round5-approved-bug035-closed.md`.**
-— chunks 57 and 58 are now the 2 kept in full.
+**Forty-first application (2026-09-26, chunk 59): chunk 57 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-57-2026-09-25-slice3-backend-test-pyramid-skeleton.md`.**
+— chunks 58 and 59 are now the 2 kept in full.
 
 ## What happened chunk 58, 2026-09-25 (same day) — dedicated investigation of the recurring CAP-007 test-execution block: root-caused, BUG-036 filed, two-tier owner patch drafted, no implementation slice run
 
@@ -244,122 +247,78 @@ real and correct their evidence from "hand-traced only" to actual
 pass/fail output. Not another implementation slice in the meantime,
 per this chunk's own explicit instruction.
 
-## What happened chunk 57, 2026-09-25 (same day) — first backend/**-touching implementation slice after BUG-035 Round 5 closure: Slice 3, backend test-pyramid skeleton (GOV-01-R01)
+## What happened chunk 57, 2026-09-25 (compressed 2026-09-26, forty-first retention-rule application) — first backend/**-touching implementation slice after BUG-035 Round 5 closure: Slice 3, backend test-pyramid skeleton (GOV-01-R01). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-57-2026-09-25-slice3-backend-test-pyramid-skeleton.md`.
 
-Continuation per `/ponytail:ponytail` resume instruction, same governed
-HEAD as chunk 56 (`c43ef8c1f995c59cde49ff370e6093c65c414c8b`). Mission:
-verify current state, select the next dependency-safe MOD-001
-implementation slice, implement exactly one coherent slice, test what's
-actually executable, record evidence honestly, commit/push, stop.
+## What happened chunk 59, 2026-09-26 — BUG-036 remediation planning: owner confirmed pytest/ruff/mypy not installed; Tier 1 patch finalized with fresh hashes; Tier 2 redesigned around an owner-side venv install
 
-**Bootstrap re-verified fresh:** `git status`/`git log`/`git rev-parse`
-confirmed local HEAD == `origin/main` == `c43ef8c1f995c59cde49ff370e6093c65c414c8b`,
-matching the instruction's stated governed HEAD exactly.
-`verify_baselines.py` PASS 4/4. `STATUS.md`/`CURRENT_STATE.md` read in
-full, confirming `RULE-001`..`009` `APPROVED`/`ACTIVE`, `BUG-035`
-`CLOSED`, 2 implementation slices already complete
-(`tools/validate_baseline_binding.py`, `tools/validate_capability_manifest.py`),
-`backend/**`/`infra/**`/CI unblocked, no open P0/P1.
+Continuation of chunk 58's `BUG-036` investigation, per an explicit
+follow-up instruction: the owner ran an environment check outside Claude
+Code and confirmed `pytest`/`ruff`/`mypy` are not installed anywhere this
+host exposes — resolving chunk 58's open question. Mission: finalize the
+exact Tier-1 owner patch with freshly-recomputed (not reused) SHA-256
+hashes, define the minimal owner decision needed to install
+`pytest`/`ruff`/`mypy`, recommend the narrowest install mechanism, draft
+(not apply) the Tier-2 guard patch for the exact bounded shapes needed
+after installation, and define exact regression tests for both tiers —
+explicitly no implementation slice, no `.claude/security/**` edit,
+`BUG-036` stays `OPEN`.
 
-**Slice selection:** read `REQUIREMENTS.md` (GOV-01-R01 through R08's
-own declared dependency chains — R01 has none beyond MOD-000 tooling;
-R02/R03/R04/R05/R07 each declare a dependency on R01), `IMPLEMENTATION.md`
-§1-§3 (repository topology, environment boundaries, CI/CD gate
-specification), and `SCENARIOS.md`'s Group A (SCN-MOD001-001/002/003,
-"Repository skeleton"). Selected GOV-01-R01 as the correct next slice
-per the module's own approved dependency order, bounded to `backend/**`
-only (not the full topology's admin-web/frontdesk-web/mobile/contracts/
-infra/.github/workflows, each a separate future slice) and to local
-proof only — no `.github/workflows/**` file created this slice, since
-`.claude/rules/infra/iac.md` control 5 requires every referenced GitHub
-Action to carry an `APPROVED` `CAP-<NNN>` row (full `CAPABILITY_POLICY.md`
-9-stage lifecycle, no publisher carve-out) before a workflow referencing
-it may exist committed, and no such row exists yet for any Action. This
-mirrors `CAPABILITIES.md`'s own pre-existing "DC-19 supply-chain review
-for any third-party Action" disposition — not a new bug, a foreseeable
-reading of an already-`APPROVED` rule, recorded so a future session
-doesn't silently scaffold CI workflows without that qualification first.
+**Bootstrap re-verified fresh:** local HEAD == `origin/main` ==
+`ab5473fe0cd5380a71851eb726a2d054029a67df` (chunk 58's own commit).
+`.claude/security/bash_guard.py`'s own SHA-256 independently
+re-recomputed — unchanged (`315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`).
+The 4 target scripts' hashes recomputed fresh via `shasum -a 256` rather
+than reused from chunk 58's record (confirmed identical, since none of
+the 4 files changed between turns — verified, not assumed).
 
-**Three Sonnet dispatches, run in parallel (disjoint file sets, no
-critical-slice routing needed — this is plain surface-profile scaffold,
-not the RLS/authn/RLS-lint territory `ADR-005` Decision 1 reserves for
-`veyro-critical-engineer`):**
+**Tier 1 finalized:** the exact 4-line diff to
+`_ALLOWED_PYTHON_SCRIPTS` (no other line changes, no new mechanism) is
+now ready for the owner to apply verbatim. Newly-allowed/still-denied
+command lists spelled out precisely.
 
-- `veyro-backend-engineer` — `backend/pyproject.toml` (Python `>=3.13`,
-  dev-only deps `pytest`/`ruff`/`mypy`, deliberately no `fastapi`/
-  `pydantic`/`sqlalchemy`/`alembic` yet since no app code needs them),
-  `backend/app/__init__.py`, `backend/app/modules/__init__.py`,
-  `backend/app/modules/_shared/__init__.py` (docstring-only, no code,
-  per `.claude/rules/backend/architecture.md` control 3),
-  `backend/tests/{unit,component,integration,contract}/__init__.py`,
-  `backend/.gitignore`.
-- `veyro-test-author` — one scaffold-liveness fixture per pyramid layer
-  (`backend/tests/{unit,component,integration,contract}/test_scaffold_live.py`,
-  each a trivial passing assertion), plus an honest NEG-evidence attempt:
-  wrote a deliberately-broken fixture to session scratch (never
-  git-tracked), attempted 4 independent `python3`/pytest invocations, all
-  denied byte-identical `BLOCKED: DISALLOWED_FLAG_OR_SHAPE` text; cleanup
-  (`rm`/`unlink`) also denied (`BLOCKED: UNKNOWN_COMMAND`, no delete
-  primitive in the guard at all), but the file was never written under a
-  git-tracked path so no cleanup gap reaches the committed tree. Recorded
-  honestly in `evidence/implementation/SLICE-3-neg-fixture-proof-2026-09-25.md`
-  as **BLOCKED, not PASS** — no pytest execution was actually observed.
-- `veyro-implementer` — `tools/validate_repo_skeleton.py` (matches
-  `validate_baseline_binding.py`'s CLI conventions; `REQUIRED_PATHS`
-  seeded with only this slice's 7 real paths, explicitly documented as
-  growing with future topology slices rather than hardcoding the full
-  future tree, which would produce a false `MISSING_REQUIRED_PATH`
-  against legitimate not-yet-built work) plus
-  `tools/tests/test_validate_repo_skeleton.py` (3 tests against an
-  isolated `tempfile.TemporaryDirectory` fixture, never the real repo
-  tree — including SCN-MOD001-003's own literal case, deleting an entire
-  required top-level directory, correctly naming every nested path
-  individually missing).
+**Tier 2 redesigned**, given "not installed" is now confirmed: the
+narrowest install mechanism is a project-local `backend/.venv/`
+(already gitignored since Slice 3), installed by the owner or a human
+terminal — **never through an agent's own Bash tool**, since `pip
+install` fetches and can execute arbitrary third-party code, a
+different risk class from anything this guard's Class A/B already
+permits. Recommended, alongside the install decision: pin
+`backend/pyproject.toml`'s currently-floating `pytest`/`ruff`/`mypy` dev
+deps to exact versions first (not applied this chunk — outside this
+turn's own scope, flagged as a natural follow-up commit). The guard
+extension itself now keys its 3 new command families on the **exact
+venv-relative binary path** (`backend/.venv/bin/{pytest,ruff,mypy}`)
+rather than a bare, PATH-ambiguous command name — matching
+`_python_readonly`'s own exact-script-path philosophy — bounded to
+`backend/**` only (not `tools/**`, which Tier 1 already fully covers),
+and drops `ruff format` entirely rather than gating it (only
+`ruff check` was asked for). Exact positive/negative regression tests
+defined for both tiers, including tampered-hash and unlisted-script
+negatives for Tier 1, and bounded-path/no-implicit-invocation/wrong-flag
+negatives for Tier 2.
 
-**Independent verification this session performed:** read every file
-all three agents produced in full (not taken on their say-so); manually
-re-traced `find_missing_paths()`'s top-level-directory-deletion behavior
-and confirmed it matches the authoring agent's own trace; confirmed
-`_shared/__init__.py` is docstring-only per `architecture.md` control 3;
-confirmed `git status` shows only the declared new paths, nothing
-unexpected. **Independently re-ran the guard-block check myself**
-(`python3 --version`, `python3 tools/validate_repo_skeleton.py`) rather
-than trusting the agents' reports — both denied, byte-identical text to
-all three agents' independent reports.
+**Durable state updated this chunk:**
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
+(new "Round 2" section — finalized Tier 1 diff, redesigned Tier 2 draft,
+exact regression tests, front matter updated); `BUG_REGISTRY.md` (row +
+front matter + new "Corrected" note); this file (chunk 57
+compressed/archived per the retention rule to make room, this chunk
+added in full).
 
-**Disclosed execution residual — not a new bug:** none of this slice's
-Python was executed. Same structural gap as `BUG-025`/`SLICE-1`/`SLICE-2`:
-`bash_guard.py`'s `python3` family only executes 7 pre-existing
-SHA-256-pinned scripts; `pytest` has no recognized command family in the
-guard at all. No new bug filed — this is the same already-tracked
-architectural gap, not new information. Full detail:
-`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`.
+**Disposition:** `BUG-036` remains `OPEN`. No `.claude/security/**` file
+was or could be edited by this session. No implementation slice was
+started or continued. MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
+approved. WIP remains 1.
 
-**Durable state updated this chunk:** `STATUS.md`'s "Implementation
-progress" section (slice 3 marked complete, remaining GOV-01-R01 layers
-and CI wiring named as not-yet-started); `evidence/module-capabilities.yaml`
-top-level `status` line; 2 new evidence files under
-`evidence/implementation/`; this file (chunk 55 compressed/archived per
-the retention rule to make room, this chunk added in full).
-
-**Disposition:** MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
-`APPROVED`. No Code Review, Manual QA, Security/Performance Review, or
-Gatekeeper certification run this chunk, per the mission's own explicit
-instruction not to run these prematurely. MOD-002 not started. WIP
-remains 1 (MOD-001).
-
-**Next legally allowed action:** the next dependency-safe GOV-01-R0x
-implementation slice — most naturally GOV-01-R01's own remaining layers
-(component/integration/contract already have scaffold-liveness fixtures
-now; E2E, mobile UI, and the exploratory-testing procedure document
-remain), or GOV-01-R02 (critical-slice territory — tenant-isolation/RLS
-harness and authn negative-credential fixture pattern, routes to
-`veyro-critical-engineer` on Opus per `ADR-005` Decision 1, and itself
-depends on R01's pyramid infrastructure existing, which this slice
-partially satisfies). GitHub Actions CI wiring for any layer remains
-blocked pending per-Action `CAPABILITY_POLICY.md` 9-stage qualification.
-Not Code Review, not Manual QA, not Gatekeeper certification, not
-MOD-002.
+**Next legally allowed action:** owner applies Tier 1 verbatim
+(independent of everything else); owner decides Tier 2(a) (approve the
+`backend/.venv/` install mechanism, ideally alongside pinning exact
+versions in `backend/pyproject.toml`); if approved, the install itself
+happens outside this guarded session; Tier 2(b)'s draft then routes to a
+fresh-context `veyro-security-reviewer` (Opus) before it may reach
+`ACTIVE`. After either tier lands, a fresh session should re-run Slices
+1-3's scripts and fixtures for real. Not another implementation slice in
+the meantime.
 
 ## What happened chunk 54, 2026-09-25 (compressed 2026-09-25, thirty-seventh retention-rule application) — fresh independent BUG-035 round-4 review: owner's `paths:`-frontmatter patch applied, but the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap); RULE-001..009 remain BLOCKED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-54-2026-09-25-round4-scope-gaps-found.md`.
 

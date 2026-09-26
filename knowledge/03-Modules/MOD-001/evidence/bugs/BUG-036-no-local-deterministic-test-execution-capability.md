@@ -1,6 +1,6 @@
 ---
 doc: BUG-036
-status: OPEN — OWNER ACTION NEEDED (patch drafted below, not applied; Tier 2 also needs an owner policy decision before it can even be drafted for review)
+status: OPEN — OWNER ACTION NEEDED (Tier 1 patch finalized below with freshly-recomputed hashes, ready to apply; Tier 2 design refined and bounded to `backend/**`, still needs the owner's install-mechanism decision before any install happens, then independent review before the guard extension itself may activate)
 found_date: 2026-09-25
 found_by: this session, dispatched specifically to investigate the recurring CAP-007 execution block after Slices 1-3 all disclosed it independently
 severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent)
@@ -352,3 +352,314 @@ investigation, per explicit instruction.
 5. After either tier lands, a fresh session must re-run the affected
    Slice 1/2/3 scripts for real and correct their evidence files from
    "hand-traced only" to actual pass/fail output — not before.
+
+## Round 2 (2026-09-26) — owner environment check completed; Tier 1 finalized with fresh hashes; Tier 2 redesigned around an owner-side install step
+
+**Owner check, outside Claude Code:** `pytest`, `ruff`, `mypy` are **not
+installed** anywhere this host exposes to the owner's own check. This
+resolves the open question Round 1 left unanswered — Tier 2(a)'s install
+question is live, not moot.
+
+**Bootstrap re-verified fresh before finalizing anything:** local HEAD ==
+`origin/main` == `ab5473fe0cd5380a71851eb726a2d054029a67df`.
+`.claude/security/bash_guard.py`'s own SHA-256 independently
+re-recomputed: `315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`
+— unchanged from Round 1, and from `CAPABILITY_REGISTRY.md`'s CAP-007
+row. The 4 target scripts' hashes independently **recomputed fresh this
+turn**, not reused from Round 1's record (they happen to be identical,
+since none of the 4 files changed between turns — confirmed by
+recomputing rather than assumed):
+
+```
+b76c4f37491a858ccfb58d72a3f2a8d040f9862d6c80529113c1596bfbe0d70b  tools/validate_baseline_binding.py
+c53404eda5837f0754ab68e00699effb25a2f653bce2d8eacb98360217c99517  tools/validate_capability_manifest.py
+162750a3e8a52afb93cf6ed3087df3814e7d5cd9150a1e152f3f11f8cdaf5d91  tools/validate_repo_skeleton.py
+bcae0d8a81fdd41972b5398f14ded7bed806cc6f8c1a274316095ab8aa2ed919  tools/tests/test_validate_repo_skeleton.py
+```
+
+### Tier 1 — finalized owner patch (ready to apply as-is)
+
+Target file: `.claude/security/bash_guard.py`. Change: append exactly 4
+new key/value pairs to the existing `_ALLOWED_PYTHON_SCRIPTS` dict
+(current lines 538-553). No other line in the file changes. No new
+function, no new dispatch entry, no new mechanism — `python3` is already
+in `_READONLY_DISPATCH` and already routes to `_python_readonly`, which
+already checks any `script in _ALLOWED_PYTHON_SCRIPTS`; these 4 lines are
+the entire diff.
+
+```diff
+ _ALLOWED_PYTHON_SCRIPTS = {
+     "knowledge/00-System/validate_capabilities.py":
+         "680ee3fbb0a0c076412f1dac084053c8613e4f00546511f18a73478f0aec6db2",
+     "knowledge/00-System/verify_baselines.py":
+         "d8deb8679c71fe775875690b0486228c2cf32e717f3c756d818cffbd2dca8a72",
+     "knowledge/05-QA/tools/mr_verify.py":
+         "be5a4ce85ca4bb1b7154bf0d422c5b70aa7213faaa140372fc4a994ced31d40e",
+     "knowledge/05-QA/tools/resolution_bound.py":
+         "c50105f7fc08be0d73d4728caf3b93acf60a2c3f0c5afd1014b50cba9194c527",
+     "knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py":
+         "d0bfab4e756a89600e67db98d77addeaad69b6695930605a3e38dfd526ae81fd",
+     "knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/tools/evidence_integrity_check.py":
+         "881c83ed1adff28f0c23f9c4a1b2e1b4d392620d3237d93e49b4e38a55dee409",
+     ".claude/security/tests/test_bash_guard.py":
+         "c3ab3e94e77824c3966755a398f1fae8aa1b4c39e5d21f6423c03fec437d409c",
++    "tools/validate_baseline_binding.py":
++        "b76c4f37491a858ccfb58d72a3f2a8d040f9862d6c80529113c1596bfbe0d70b",
++    "tools/validate_capability_manifest.py":
++        "c53404eda5837f0754ab68e00699effb25a2f653bce2d8eacb98360217c99517",
++    "tools/validate_repo_skeleton.py":
++        "162750a3e8a52afb93cf6ed3087df3814e7d5cd9150a1e152f3f11f8cdaf5d91",
++    "tools/tests/test_validate_repo_skeleton.py":
++        "bcae0d8a81fdd41972b5398f14ded7bed806cc6f8c1a274316095ab8aa2ed919",
+ }
+```
+
+**Newly allowed after Tier 1:**
+- `python3 tools/validate_baseline_binding.py`
+- `python3 tools/validate_capability_manifest.py`
+- `python3 tools/validate_repo_skeleton.py`
+- `python3 tools/tests/test_validate_repo_skeleton.py` (this one is
+  self-contained — its own `if __name__ == "__main__"` block runs all 3
+  of its tests and prints PASS/FAIL with no `pytest` dependency at all)
+- The same 4, prefixed `./`, per `_python_readonly`'s existing
+  `./`-stripping normalization (unchanged behavior, not new).
+- Trailing arguments after any of the 4 scripts (e.g.
+  `python3 tools/validate_repo_skeleton.py --root /tmp/fixture`) —
+  already unrestricted for allowlisted scripts per the existing
+  mechanism's own documented design (the script is integrity-checked;
+  its own argument parsing is its business, not the guard's).
+
+**Still denied after Tier 1 (unchanged, confirmed by re-reading
+`_python_readonly` and `classify()`):**
+- `pytest`, `ruff`, `mypy` in any form — still `UNKNOWN_COMMAND`, no
+  family added.
+- `python3 -m pytest ...` / `python3 -m <anything>` — still
+  `DISALLOWED_FLAG_OR_SHAPE` (`tokens[0]` is `"-m"`, never a dict key).
+- `python3 --version` / `python3 -c ...` — still
+  `DISALLOWED_FLAG_OR_SHAPE`.
+- `python3 <any 5th script not in the dict>` — still
+  `DISALLOWED_FLAG_OR_SHAPE`; the mechanism stays a fixed enumerated set,
+  not a glob or directory-prefix rule, per the explicit instruction not
+  to broaden Python execution beyond the exact-script mechanism.
+- `pip`/`pip3`/`python3 -m pip` — still `UNKNOWN_COMMAND`; Tier 1 adds no
+  install path.
+
+### Tier 2(a) — the minimal owner decision, now that "not installed" is confirmed
+
+Exactly one decision is required, with two parts that should be decided
+together: **may `pytest`, `ruff`, and `mypy` (exact-pinned versions) be
+installed into a project-local virtual environment, and if so, by what
+mechanism.**
+
+**Recommended narrowest mechanism — a project-local venv, installed
+OUTSIDE this guarded session, never through an agent's own Bash tool:**
+
+1. `python3 -m venv backend/.venv` — already excluded from git
+   (`backend/.gitignore` line 3, `.venv/`, added in Slice 3). This is the
+   narrowest possible install boundary available: every installed file
+   lands under one already-gitignored, already-project-scoped directory;
+   nothing touches the host's global `site-packages`, no `--user`
+   install, no system package manager.
+2. Pin exact versions before installing — `backend/pyproject.toml`'s
+   current `dev = ["pytest", "ruff", "mypy"]` (Slice 3) is unpinned
+   floating-latest, which is itself a supply-chain gap by this project's
+   own standard (the same "floating tag/version is not reviewable"
+   principle `.claude/rules/infra/iac.md` control 5 already applies to
+   GitHub Actions). **Recommend, as part of this same owner decision**:
+   pin `dev = ["pytest==<exact>", "ruff==<exact>", "mypy==<exact>"]` (or
+   an equivalent `backend/requirements-dev.txt` with `--require-hashes`
+   -compatible `--hash=sha256:...` entries per package, if stronger
+   reproducibility is wanted) — not applied by this session, since it is
+   a `backend/pyproject.toml` content edit outside this turn's own
+   10-item scope, but it is the natural, small, separate follow-up
+   commit to make at the same time the owner performs the install.
+3. `backend/.venv/bin/pip install -r backend/requirements-dev.txt` (or
+   the pinned `pyproject.toml` extra) — run by the owner, or by CI/a
+   human terminal outside Claude Code's guard. **No agent session
+   performs this step, ever** — `pip install` fetches and can execute
+   arbitrary third-party code (`setup.py`/build-backend hooks), a
+   fundamentally different risk class from anything this guard's Class A
+   (read-only) or Class B (narrowly governed mutation) already permits;
+   this is exactly the class of action this project's own precedent
+   (BUG-029/030/034, and this very bug's Tier 1) already routes to the
+   owner rather than attempting inside a guarded session.
+
+**Why this is the owner decision, not something to infer:** DC-19's
+supply-chain review (provenance, license, transitive dependencies) for
+these three specific packages has not been formally recorded anywhere —
+`CAPABILITIES.md`'s existing "standard tooling, no special review" line
+covered the decision to *use* pytest/ruff/mypy in this project's stack,
+not the decision to let an autonomous session (or even a human, without
+the owner's sign-off) install them. This session makes no assumption
+about whether that sign-off is a formality or a real gate — it names the
+decision precisely and stops.
+
+### Tier 2(b) — exact planned command shapes and guard patch draft (for review only, after installation, not applied)
+
+Once `backend/.venv/bin/{pytest,ruff,mypy}` exist (owner-installed, per
+above), the guard needs to recognize exactly 3 command shapes — narrower
+than Round 1's draft, which used bare `pytest`/`ruff`/`mypy` names (PATH-
+resolved, ambiguous about which binary actually runs) and included a
+`ruff format --check` shape this turn's instruction does not ask for.
+This redesign keys on the **exact venv-relative path** as the command
+name itself — matching `_python_readonly`'s own exact-script-path
+philosophy, and removing any ambiguity about which binary executes (a
+system-wide `pytest`, if one ever appeared on PATH, would simply not
+match any dispatch key):
+
+- `backend/.venv/bin/pytest <bounded backend/ paths>`
+- `backend/.venv/bin/ruff check <bounded backend/ paths>`
+- `backend/.venv/bin/mypy <bounded backend/ paths>`
+
+Scope is `backend/**` only, not `tools/**` — Tier 1 already fully covers
+`tools/**` (all 4 scripts there are stdlib-only, no `pytest`/`ruff`/`mypy`
+need ever touches that directory), so extending Tier 2's bounded-root
+set to `tools/` as Round 1's draft did would be unused scope, not a real
+need.
+
+```python
+_VENV_TEST_TOOL_ROOT = "backend/"
+
+
+def _under_venv_test_tool_root(path):
+    return path == _VENV_TEST_TOOL_ROOT.rstrip("/") or path.startswith(_VENV_TEST_TOOL_ROOT)
+
+
+_PYTEST_FLAGS = {"-v", "-vv", "-q", "-x", "--collect-only", "--tb=short", "--tb=line", "--tb=no"}
+
+
+def _venv_pytest_readonly(tokens):
+    flags, positionals = _split_flags_positionals(tokens)
+    if not all(f in _PYTEST_FLAGS for f in flags):
+        return
+    if not positionals:
+        return  # never implicit/bare invocation — always an explicit bounded target
+    if not all(_is_safe_relative_path(p) and _under_venv_test_tool_root(p) for p in positionals):
+        return
+    _allow("backend/.venv/bin/pytest (bounded to backend/)")
+
+
+def _venv_ruff_check_readonly(tokens):
+    if not tokens or tokens[0] != "check":
+        return  # only the "check" subcommand — never "format" (would mutate files in place)
+    flags, positionals = _split_flags_positionals(tokens[1:])
+    if not all(f in ("--quiet", "-q") for f in flags):
+        return
+    if not positionals:
+        return  # never an implicit/cwd-relative scope
+    if not all(_is_safe_relative_path(p) and _under_venv_test_tool_root(p) for p in positionals):
+        return
+    _allow("backend/.venv/bin/ruff check (bounded to backend/)")
+
+
+def _venv_mypy_readonly(tokens):
+    flags, positionals = _split_flags_positionals(tokens)
+    if flags:
+        return  # no flags at all in this first bounded pass
+    if not positionals:
+        return
+    if not all(_is_safe_relative_path(p) and _under_venv_test_tool_root(p) for p in positionals):
+        return
+    _allow("backend/.venv/bin/mypy (bounded to backend/)")
+```
+
+...and 3 new entries in `_READONLY_DISPATCH` (the dict key is the exact
+literal path string, not a bare command name — `classify()`'s
+`cmd, rest = tokens[0], tokens[1:]` and its `if cmd in _READONLY_DISPATCH`
+check already support any string as a key, so this needs no change to
+`classify()` itself):
+
+```python
+    "backend/.venv/bin/pytest": _venv_pytest_readonly,
+    "backend/.venv/bin/ruff": _venv_ruff_check_readonly,
+    "backend/.venv/bin/mypy": _venv_mypy_readonly,
+```
+
+**Explicitly not proposed as final — needs the same fresh-context
+`veyro-security-reviewer` (Opus) pass every prior `bash_guard.py` change
+has received, per CAP-007's own stage-9 re-evaluation rule.** Design
+notes for that reviewer: no `-m` invocation form anywhere (avoids
+re-opening the module-injection ambiguity `_python_readonly` was built
+to close); `ruff format` excluded entirely, not just gated behind
+`--check` (Round 1's draft allowed `format --check`; this redesign drops
+`format` outright, since this turn's instruction only asks for
+`ruff check`, and the narrower shape is preferred when nothing needs the
+wider one); every family requires at least one explicit positional
+(never implicit/whole-repo/cwd-relative scope); every positional is
+restricted to `backend/` via the existing `_is_safe_relative_path`
+primitive plus a new bounded-root check, so this cannot be pointed at
+`.claude/`/`knowledge/` even by an unexpected `pytest`/`mypy` plugin
+argument; the venv binaries themselves are trusted by exact path, not
+content-hash-pinned like `_ALLOWED_PYTHON_SCRIPTS`'s 11 entries — a
+disclosed, deliberate difference (these binaries change on every
+legitimate reinstall/upgrade, unlike the long-lived validator scripts,
+so a hash-pin-every-time model would be operationally impractical, not
+a stronger control) that the reviewer should weigh explicitly, not
+inherit silently from the python-script mechanism's own convention.
+
+### Regression tests required — exact, for both tiers
+
+**Tier 1 (before it may be trusted as `ACTIVE`):**
+- Positive: each of the 4 new dict entries, invoked as
+  `python3 <script>` with no other arguments, is classified `ALLOW`.
+- Positive: `python3 tools/tests/test_validate_repo_skeleton.py`
+  specifically executes end-to-end once the patch lands, and reports
+  `PASS — all 3 tests passed.` (this is the one Tier-1 script that can
+  fully close its own loop with no further tooling).
+- Negative: the same 4 scripts, with even one byte of tampered content
+  (a modified copy at the same path), are denied
+  (`_script_integrity_ok` returns `False`) — proves the hash-pin, not
+  just the path-membership, is load-bearing (this is the exact class of
+  regression `_ALLOWED_PYTHON_SCRIPTS`'s own governance note already
+  requires for the existing 7 entries; extend, don't special-case).
+- Negative: a 5th, never-listed script (e.g. a throwaway fixture at
+  `tools/not_allowlisted.py`) is still denied — proves the mechanism
+  stayed a fixed enumerated set, not a directory-prefix rule.
+- Regression: all existing cases in `.claude/security/tests/test_bash_guard.py`
+  for the original 7 scripts still pass unchanged.
+
+**Tier 2 (before it may be trusted as `ACTIVE`, additional to Tier 1's):**
+- Positive: `backend/.venv/bin/pytest backend/tests/unit` (and the
+  `component`/`integration`/`contract` equivalents) → `ALLOW`.
+- Positive: `backend/.venv/bin/ruff check backend/app` → `ALLOW`.
+- Positive: `backend/.venv/bin/mypy backend/app` → `ALLOW`.
+- Negative: `backend/.venv/bin/ruff format backend/app` → denied (no
+  `format` subcommand recognized at all).
+- Negative: `backend/.venv/bin/ruff check .claude/rules` → denied (path
+  outside `backend/`).
+- Negative: `backend/.venv/bin/pytest` with **no** positional argument →
+  denied (never implicit/bare invocation).
+- Negative: `backend/.venv/bin/pytest -p no:cacheprovider backend/tests/unit`
+  → denied (`-p` not in `_PYTEST_FLAGS`; this is exactly the
+  plugin-loading flag class this design deliberately excludes).
+- Negative: a bare, PATH-resolved `pytest`/`ruff`/`mypy` (no
+  `backend/.venv/bin/` prefix) → still `UNKNOWN_COMMAND`, proving the
+  dispatch key's exact-path requirement is load-bearing, not
+  coincidental.
+- Regression: every Tier-1 and pre-existing case still passes unchanged.
+
+## Disposition (Round 2)
+
+**`BUG-036` remains OPEN.** Tier 1 is now fully specified and ready for
+the owner to apply verbatim; Tier 2's install step has an explicit,
+narrow recommended mechanism (`backend/.venv/bin/pip install`, owner/
+human-terminal only, never through an agent session) and its guard
+extension is drafted for review, not applied. No `.claude/security/**`
+file was or could be edited by this session. No implementation slice was
+started or continued.
+
+## Next owner action (Round 2)
+
+1. Apply Tier 1 verbatim (the 4-entry diff above) — independent of every
+   other decision here.
+2. Decide Tier 2(a): approve the `backend/.venv/` install mechanism
+   (and, ideally in the same decision, approve pinning exact versions in
+   `backend/pyproject.toml` before installing).
+3. If approved, perform the install (`python3 -m venv backend/.venv`
+   then `backend/.venv/bin/pip install ...`) **outside this guarded
+   session** — owner's own terminal, or CI.
+4. Route Tier 2(b)'s draft to a fresh-context `veyro-security-reviewer`
+   (Opus) for independent review before it may reach `ACTIVE`.
+5. After Tier 1 (and, once ready, Tier 2) land, a fresh session should
+   re-run Slices 1-3's scripts and fixtures for real and correct their
+   evidence from "hand-traced only" to actual pass/fail output.
