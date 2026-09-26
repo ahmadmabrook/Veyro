@@ -512,10 +512,31 @@ text named as the next legally allowed action.
       `--require-hashes` format, installs strictly with
       `--require-hashes`. `backend/requirements-dev.txt`'s comment
       corrected to match. No new owner decision required beyond the
-      existing Tier 2(a) approval. Tier 2's `bash_guard.py` extension
-      remains drafted, not applied, not reviewed. `BUG-036` remains OPEN,
-      unchanged scope. See the bug file's "Round 4" section for full
-      detail.
+      existing Tier 2(a) approval. **Further hardened (Round 5,
+      2026-09-26), before the owner ran anything:** decided against a
+      `pip install --upgrade pip` bootstrap step (itself an unpinned
+      mutation — use the venv's bundled pip as-is; `--only-binary=:all:`/
+      `--require-hashes` are both old, stable pip features needing no
+      upgrade); specified `pip download --only-binary=:all:` for
+      wheel-only acquisition (fails loudly rather than silently
+      source-building); deferred environment-compatibility verification
+      honestly to the owner's own download run (this session has no
+      `pip` access and no knowledge of the owner's exact CPU
+      architecture); built `tools/generate_requirements_lock.py`
+      (stdlib-only `generate`/`check` modes) to eliminate manual
+      hash/version transcription from the lock file entirely — every
+      value parsed from real wheel filenames or computed via
+      `hashlib.sha256` on real bytes, independently re-verifiable via its
+      own `check` mode — plus `tools/tests/test_generate_requirements_lock.py`
+      proving both directions against synthetic fixtures (neither script
+      executed live, same disclosed `bash_guard.py` gap as every other
+      MOD-001 tool). Portability stated honestly: the resulting lock is
+      specific to the exact macOS/architecture/Python-3.13-build it's
+      generated on, not portable without regenerating. Tier 2's
+      `bash_guard.py` extension remains drafted, not applied, not
+      reviewed — not touched this round, per explicit instruction.
+      `BUG-036` remains OPEN, unchanged scope. See the bug file's
+      "Round 5" section for full detail.
 - [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
       documentation), GOV-01-R01's own CI-wiring half, and
       GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.

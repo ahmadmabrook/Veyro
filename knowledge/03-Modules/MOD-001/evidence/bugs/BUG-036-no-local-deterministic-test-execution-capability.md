@@ -1,6 +1,6 @@
 ---
 doc: BUG-036
-status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install materials corrected and internally consistent as of Round 4 (bare-`pip` hash-lock mechanism, `pip-tools` evaluated and rejected as unnecessary; exact 6-step owner sequence + lock-file format defined), install not yet performed, guard extension not yet applied or reviewed
+status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install plan hardened as of Round 5 (no pip upgrade, `--only-binary=:all:` wheel-only acquisition, `tools/generate_requirements_lock.py` eliminates manual hash/version transcription, portability scope stated as single-machine-specific), install not yet performed, guard extension not yet applied or reviewed
 found_date: 2026-09-25
 found_by: this session, dispatched specifically to investigate the recurring CAP-007 execution block after Slices 1-3 all disclosed it independently
 severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent) — narrowed by Tier 1's closure: the `tools/**` half of this bug is now fully resolved with real evidence; only the `pytest`/`ruff`/`mypy` half remains open
@@ -1050,15 +1050,228 @@ implementation slice was started or continued — the
 supply-chain-hygiene documentation fix Round 3's `pyproject.toml`
 version-pinning was, not product work.
 
-### Next owner action (Round 4)
+### Next owner action (Round 4 — superseded by Round 5 below: "hand-assemble
+the lock file" was itself a real, unaddressed manual-transcription risk)
 
 1. Run the corrected 6-step sequence above (venv → download → hash →
    hand-assemble the lock file → `--require-hashes` install → verify),
-   outside Claude Code.
-2. Commit `backend/requirements-dev.lock.txt`.
+   outside Claude Code. **Superseded — see Round 5: step 1's `pip
+   install --upgrade pip` was an unpinned bootstrap mutation the owner
+   correctly flagged, step 2's plain `pip download` (no
+   `--only-binary=:all:`) could silently fall back to a source build,
+   and "hand-assemble" left the exact transcription risk this whole
+   remediation exists to close. Use Round 5's corrected sequence
+   instead.**
+2. Commit `backend/requirements-dev.lock.txt`. (unchanged)
 3. Route Tier 2(b)'s guard-extension draft (Round 2 section) to a
    fresh-context `veyro-security-reviewer` for independent review.
+   (unchanged)
 4. Once reviewed and applied, a fresh session should execute the 4
+   `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
+   `ruff check`/`mypy` against `backend/`, and record those real results
+   the same way Round 3 did for Tier 1's 4 scripts. (unchanged)
+
+## Round 5 (2026-09-26) — hardening the install plan before the owner runs it: pip bootstrap, wheel-only acquisition, and eliminating manual lock-file transcription
+
+**Before performing the Tier-2 install, the owner asked to harden the
+plan further** — 4 real gaps in Round 4's own sequence, addressed one at
+a time below. No install was performed. No `.claude/security/**` file
+was touched. No implementation slice started.
+
+### 1. pip bootstrap decision — do NOT upgrade; use the venv's bundled pip as-is
+
+`backend/.venv/bin/pip install --upgrade pip` was an unpinned,
+un-hash-verified bootstrap mutation — a floating-version install of the
+exact kind this whole remediation exists to close, one level removed.
+**Decision: use whatever pip `python3 -m venv` bundles via `ensurepip`,
+unchanged. No upgrade step.** `--only-binary=:all:` (pip ≥7.1) and `pip
+hash`/`pip download --require-hashes` compatibility (pip ≥8) are both
+old, stable features — any Python 3.13 installation's bundled pip is
+comfortably recent enough to support them, so there is no functional
+reason to upgrade. This also avoids adding a second thing to pin/verify:
+pinning pip itself would need its own version+hash, and un-pinned pip
+is exactly the mutation being removed. `backend/.venv/bin/pip --version`
+is a read-only diagnostic the owner can run to record what shipped, for
+the audit trail — it mutates nothing and is not a decision point.
+
+### 2. Wheel-only acquisition — `--only-binary=:all:`
+
+Confirmed as the exact mechanism: `pip download --only-binary=:all: -r
+backend/requirements-dev.txt -d <dir>` refuses to fall back to a source
+distribution for any package in the closure — no `setup.py`/build-backend
+code runs, ever, for any of the 3 direct packages or their transitive
+dependencies. If a package has no compatible wheel for the exact
+machine/Python build running the command, the download **fails loudly**,
+naming the package — this is the intended, fail-closed behavior. **A
+failure here is a new, separate decision point** (wait for a wheel to be
+published, or explicitly and separately decide to permit a reviewed
+source build for that one package) — never something to quietly route
+around by dropping `--only-binary=:all:` for just that package.
+
+### 3. Resolved-environment assumptions — verification is the owner's own download run, not this session's guess
+
+This session cannot verify wheel availability directly: `pip` is not
+installed/allowlisted here, and even if it were, this session does not
+know the owner's exact CPU architecture (Intel vs Apple Silicon) or exact
+Python 3.13 patch build. **Best-effort desk check, not a substitute for
+the real verification:** all three packages are mainstream,
+wheel-first-distribution projects — `pytest` ships one universal
+`py3-none-any` wheel (works on any platform); `ruff` (Astral) publishes
+platform-specific wheels for macOS x86_64, macOS arm64, and macOS
+universal2, among others; `mypy` publishes both a pure-Python wheel and
+compiled (mypyc) wheels per CPython minor version for macOS x86_64/arm64.
+None of this is asserted as proof. **The actual verification is step 2
+of the owner's own sequence below**: `pip download --only-binary=:all:`
+succeeding, on the owner's real machine, against the owner's real
+Python 3.13 build, is the only trustworthy confirmation — this session's
+own research (including an earlier `WebFetch`-sourced hash transcription
+error this same bug already found) is not a reliable enough channel to
+assert this in its place.
+
+### 4. Eliminating manual lock-file transcription
+
+Built `tools/generate_requirements_lock.py` (stdlib-only — `argparse`,
+`hashlib`, `pathlib`, `sys`, no dependency on `packaging` or any other
+library): `generate <wheel_dir> <lock_file>` derives every package name
+and version by parsing the real wheel filenames (PEP 427/600 naming —
+`{name}-{version}(-{build})?-{pytag}-{abitag}-{platformtag}.whl`) and
+every hash via `hashlib.sha256` on the real file bytes — **no value in
+the generated lock file is ever hand-typed**, closing the exact
+transcription-risk class this bug's Round 3 already found once (an
+implausible-length hash from a summarizing web-fetch tool). `check
+<wheel_dir> <lock_file>` is a second, independent code path that
+re-derives the same values from the wheel directory and diffs them
+against an existing lock file, proving the 4 properties requested
+directly: **(a)** every wheel in the directory has exactly one lock
+entry (`real wheel ... has no lock entry at all` if missing); **(b)**
+every lock entry's version is exact (`lock says version X, real wheel is
+Y` if not); **(c)** every lock entry's hash is the real file's SHA-256
+(`lock hash does not match` if not); **(d)** no lock entry lacks a
+matching wheel (`... no matching wheel ... extra/stale entry` if so). A
+duplicate package name found in the wheel directory itself (ambiguous —
+which wheel would the lock mean?) is also a hard, named failure, never a
+silent pick-one. `tools/tests/test_generate_requirements_lock.py`
+proves both directions against synthetic, isolated wheel fixtures (real
+bytes, real filenames, real computed hashes — never the owner's actual
+downloads): a clean generate→check round trip passes; a hand-tampered
+hash, an extra lock entry with no matching wheel, and a duplicate
+package name in the wheel directory each independently fail closed.
+
+**Disclosed, not fabricated: neither script has been executed.** Same
+structural reason as every other MOD-001 tool before Tier 1:
+`bash_guard.py` has no allowlist entry for either new file (this round
+deliberately did not add one — extending Tier 1 further was not asked
+for this turn, and both scripts are meant to run on the owner's own
+machine, entirely outside the guard, per their own docstrings — there is
+no actual need for guard execution here at all). Both were verified
+carefully by hand-tracing every code path against the test file's own
+cases (wheel-filename parsing for 5- and 6-segment names, the
+underscore-to-hyphen name normalization, the round-trip pass case, and
+all 3 fail-closed cases) rather than by a live run.
+
+### Exact final owner commands, in order
+
+```bash
+cd /Users/ahmadmabrouk/Desktop/Veyro
+
+# 1. Create the venv — do NOT upgrade pip, use the bundled version as-is
+python3 -m venv backend/.venv
+backend/.venv/bin/pip --version   # read-only, records what shipped
+
+# 2. Wheel-only download of the full resolved closure — fails loudly if
+#    any package lacks a compatible wheel for this exact machine; this
+#    failure/success IS the environment-compatibility verification
+mkdir -p /tmp/veyro-wheels
+backend/.venv/bin/pip download --only-binary=:all: -r backend/requirements-dev.txt -d /tmp/veyro-wheels
+
+# 3. Generate the lock file — every value parsed/hashed from the real
+#    downloaded wheels, nothing hand-typed
+backend/.venv/bin/python3 tools/generate_requirements_lock.py generate /tmp/veyro-wheels backend/requirements-dev.lock.txt
+
+# 4. Independently verify the generated lock against the same wheel
+#    directory (a second, separate code path — not the same computation
+#    repeated)
+backend/.venv/bin/python3 tools/generate_requirements_lock.py check /tmp/veyro-wheels backend/requirements-dev.lock.txt
+
+# 5. Install strictly from the verified, hash-locked file
+backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock.txt
+
+# 6. Verify the tools installed correctly
+backend/.venv/bin/pytest --version
+backend/.venv/bin/ruff --version
+backend/.venv/bin/mypy --version
+```
+
+If step 2 fails naming a specific package: **stop** — do not drop
+`--only-binary=:all:` to work around it. Report which package lacks a
+wheel; that is a new, separate decision (not something this round
+pre-authorizes a workaround for).
+
+### Exact files to commit
+
+- `tools/generate_requirements_lock.py` (new, this round).
+- `tools/tests/test_generate_requirements_lock.py` (new, this round).
+- `backend/requirements-dev.txt` (comment block corrected to match this
+  round's sequence — same 3 version pins, no dependency change).
+- `backend/requirements-dev.lock.txt` — does not exist yet; the owner
+  generates and commits it after running the sequence above.
+
+### Portability scope of the lock — NOT portable, stated plainly
+
+**The resulting `backend/requirements-dev.lock.txt` is specific to the
+exact OS, CPU architecture, and Python 3.13 build it is generated on.**
+`ruff` and `mypy` both ship platform/Python-version-specific wheels (not
+pure-Python universal wheels like `pytest`'s), so the SHA-256 hashes this
+lock records are for e.g. "macOS arm64, CPython 3.13.x" specifically —
+**not** for Linux, not for a different CPU architecture, and not
+guaranteed for a different Python 3.13 patch release if that patch
+changes which ABI-tagged wheel resolves. Using this exact lock file to
+`pip install --require-hashes` on a different machine/OS/architecture
+will most likely fail closed (no matching hash for that platform's
+wheel) rather than silently install something unverified — a safe
+failure mode, but not portability. If this project ever needs the same
+dependencies hash-locked for a second platform (e.g. a Linux CI runner),
+that is a distinct future decision requiring its own generation run (or
+an explicit multi-platform download via `pip download --platform ...
+--python-version ... --only-binary=:all:`, out of scope here) — not
+assumed solved by this file.
+
+### Tier 2 installation readiness (Round 5)
+
+**Install plan now hardened and internally consistent**: pip bootstrap
+decided (no upgrade), wheel-only acquisition specified
+(`--only-binary=:all:`), environment-compatibility verification defined
+(the download's own success/failure, on the owner's real machine — not
+asserted from here), lock-file generation and independent verification
+both made deterministic and transcription-free
+(`tools/generate_requirements_lock.py`), exact 6-step command sequence
+given, exact files to commit named, portability scope stated honestly
+(single-machine-specific, not portable). **Still not installed. Tier
+2(b)'s `bash_guard.py` extension (Round 2) remains unchanged, not
+applied, not reviewed** — this round did not touch it, per explicit
+instruction.
+
+### Disposition (Round 5)
+
+**`BUG-036` remains OPEN**, unchanged scope from Round 3/4 (the
+`tools/**` half closed with real execution; the `pytest`/`ruff`/`mypy`
+half open, install plan now hardened but not yet run). No install was
+performed. No `.claude/security/**` file was touched. No Tier-2 security
+review was run this round, per explicit instruction. No implementation
+slice was started or continued.
+
+### Next owner action (Round 5)
+
+1. Run the 6-step sequence above, outside Claude Code, on the owner's
+   own machine.
+2. If step 2 fails for any package, stop and report which one — do not
+   work around it.
+3. Commit `backend/requirements-dev.lock.txt` once steps 3-4 both report
+   `PASS`.
+4. Route Tier 2(b)'s guard-extension draft (Round 2 section) to a
+   fresh-context `veyro-security-reviewer` for independent review — not
+   run this round, per explicit instruction.
+5. Once reviewed and applied, a fresh session should execute the 4
    `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
    `ruff check`/`mypy` against `backend/`, and record those real results
    the same way Round 3 did for Tier 1's 4 scripts.
