@@ -127,7 +127,65 @@ separately reported: `PreToolUse:Bash hook error: BLOCKED:
 DISALLOWED_FLAG_OR_SHAPE — python3 did not match its allowlisted
 read-only shape`.
 
-## Disclosed execution residual — NOT fabricated test-pass evidence
+## Execution residual — PARTIALLY CLOSED 2026-09-26 (`BUG-036` Tier 1)
+
+**Superseded update, 2026-09-26:** `BUG-036`'s Tier 1 owner patch
+(commit `e971523c3a665020df601b685d8f4b092ead7052`) added
+`tools/validate_repo_skeleton.py` and
+`tools/tests/test_validate_repo_skeleton.py` to `bash_guard.py`'s
+`_ALLOWED_PYTHON_SCRIPTS`. This session independently verified the
+applied diff matched the drafted patch exactly, recomputed both scripts'
+SHA-256 fresh (`162750a3e8a52afb93cf6ed3087df3814e7d5cd9150a1e152f3f11f8cdaf5d91`
+and `bcae0d8a81fdd41972b5398f14ded7bed806cc6f8c1a274316095ab8aa2ed919`
+respectively, both matching the guard's entries), ran the full 194-test
+`bash_guard.py` regression suite (194/194 PASS), and **actually executed
+both scripts for real**:
+
+```
+$ python3 tools/validate_repo_skeleton.py
+======================================================================
+MOD-001 REPOSITORY-SKELETON REQUIRED-PATH VALIDATOR
+======================================================================
+
+Root checked: /Users/ahmadmabrouk/Desktop/Veyro
+Required paths checked: 7
+
+PASS — all 7 required paths present.
+
+$ python3 tools/tests/test_validate_repo_skeleton.py
+PASS — all 3 tests passed.
+```
+
+**Both are real, observed PASS results** — the validator ran against the
+real repo tree (not a mock), and its own unit-test file ran all 3 of its
+isolated-fixture assertions for real, including the
+`shutil.rmtree`-the-`backend/`-directory case, and reported PASS. Both
+scripts' Group-A traceability (SCN-MOD001-001's backend-portion,
+SCN-MOD001-003's fail-closed logic) now has genuine executed evidence,
+not hand-tracing alone.
+
+**Still not executed — Tier 1 does not cover this half:** the 4
+`backend/tests/{unit,component,integration,contract}/test_scaffold_live.py`
+scaffold-liveness fixtures need `pytest`, which has no command family in
+the guard at all (`UNKNOWN_COMMAND` — confirmed by direct attempt this
+session: `python3 -m pytest` and bare `pytest` both still denied,
+unaffected by Tier 1, exactly as `BUG-036`'s own analysis predicted).
+This is `BUG-036` Tier 2's scope, not yet built or reviewed — see that
+bug's file for the current state (owner has confirmed `pytest`/`ruff`/
+`mypy` not installed; Tier 2's guard extension is drafted, pending an
+owner install decision and independent security review). The
+NEG-evidence attempt in `SLICE-3-neg-fixture-proof-2026-09-25.md` (a
+deliberately-broken fixture, denial attempts) also remains unexecuted for
+the identical reason and is unaffected by this update.
+
+**What IS now claimed, beyond the original slice:** `tools/validate_repo_skeleton.py`
+and its own test file are proven correct by real execution, not only by
+inspection. **What is still NOT claimed:** that `pytest` collects/runs
+the 4 scaffold-liveness fixtures, or that `ruff`/`mypy` pass clean on
+`backend/` — none of that is observed yet, and none of it can be until
+Tier 2 lands.
+
+## Historical residual record (accurate as of 2026-09-25, partially superseded above)
 
 **None of this slice's Python was executed.** Same structural gap as
 `BUG-025`/`SLICE-1`/`SLICE-2`: `.claude/security/bash_guard.py`'s
@@ -145,20 +203,6 @@ carries into the committed tree. See
 `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-neg-fixture-proof-2026-09-25.md`
 for the full, separately-documented NEG-evidence attempt (4 independent
 denial attempts, byte-identical guard text each time).
-
-**What IS claimed:** every file was authored carefully and hand-traced
-by at least two independent readers (the authoring agent, then this
-orchestrating session separately); the validator's logic and its
-isolated-fixture unit tests are sound by inspection. **What is NOT
-claimed:** that `pytest` actually collects/runs the 4 scaffold-liveness
-fixtures, that `ruff`/`mypy` pass clean, or that `tools/validate_repo_skeleton.py`
-and its own test file execute correctly — none of that was observed.
-Live-executed evidence awaits either an owner allowlist update to
-`bash_guard.py` or a human terminal run outside this guarded session, per
-the same standing, accepted gap `BUG-025` already discloses project-wide
-(no new bug filed here, for the same reason SLICE-1/SLICE-2 didn't file
-one — this would be registry noise for an already-tracked architectural
-gap, not new information).
 
 ## Disclosed scope gap: CI wiring deferred (new observation, not a new bug)
 
@@ -186,9 +230,11 @@ slices.
 ## Traceability
 
 - Requirement: GOV-01-R01 (`REQUIREMENTS.md` §1).
-- Scenarios: SCN-MOD001-001 (partial — backend-portion only),
-  SCN-MOD001-002, SCN-MOD001-003 — all remain `NOT EXECUTED` in the
-  live-run sense (logic-traced only, per the disclosed residual above).
+- Scenarios: SCN-MOD001-003 (NEG, fail-closed logic) now `EXECUTED —
+  PASS` (2026-09-26, real run of `tools/validate_repo_skeleton.py` and
+  its own test file, see above). SCN-MOD001-001 (partial — backend-portion
+  only) and SCN-MOD001-002 (VAL — needs `ruff`/`mypy`, Tier 2) remain
+  `NOT EXECUTED` — logic-traced only.
 - Model routing: `veyro-backend-engineer`/Sonnet, `veyro-test-author`/Sonnet,
   `veyro-implementer`/Sonnet. No critical-slice or Opus role required.
 - Related evidence: `SLICE-3-neg-fixture-proof-2026-09-25.md` (NEG-evidence

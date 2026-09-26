@@ -1,9 +1,9 @@
 ---
 doc: BUG-036
-status: OPEN — OWNER ACTION NEEDED (Tier 1 patch finalized below with freshly-recomputed hashes, ready to apply; Tier 2 design refined and bounded to `backend/**`, still needs the owner's install-mechanism decision before any install happens, then independent review before the guard extension itself may activate)
+status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install materials prepared (exact pinned versions, `backend/requirements-dev.txt`, exact owner terminal commands), install not yet performed, guard extension not yet applied or reviewed
 found_date: 2026-09-25
 found_by: this session, dispatched specifically to investigate the recurring CAP-007 execution block after Slices 1-3 all disclosed it independently
-severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent)
+severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent) — narrowed by Tier 1's closure: the `tools/**` half of this bug is now fully resolved with real evidence; only the `pytest`/`ruff`/`mypy` half remains open
 ---
 
 # BUG-036: no MOD-001 session can execute `pytest`/`ruff`/`mypy`, or any newly-authored `tools/**` validator script, through this project's own guarded Bash tool
@@ -663,3 +663,220 @@ started or continued.
 5. After Tier 1 (and, once ready, Tier 2) land, a fresh session should
    re-run Slices 1-3's scripts and fixtures for real and correct their
    evidence from "hand-traced only" to actual pass/fail output.
+
+## Round 3 (2026-09-26) — Tier 1 applied and verified with real execution; Tier 2 install materials prepared
+
+**Owner applied Tier 1** (commit
+`e971523c3a665020df601b685d8f4b092ead7052`, "fix: allow MOD-001
+deterministic validators"). Mission this round: verify the applied patch
+matches exactly, recompute all hashes fresh, run the full guard
+regression suite, actually execute the 4 newly-allowlisted scripts and
+record real results, then prepare (not apply) Tier 2's install
+materials.
+
+### Tier 1 verification
+
+- Local HEAD == `origin/main` == `e971523c3a665020df601b685d8f4b092ead7052`
+  — confirmed via `git rev-parse` both, plus `git fetch` first.
+- `git show e971523` read in full: exactly 8 lines added to
+  `.claude/security/bash_guard.py`, all 4 new dict entries, byte-identical
+  to the drafted Round-2 patch — no other line touched, no new function,
+  no new mechanism.
+- All 4 target scripts' SHA-256 recomputed fresh via `shasum -a 256`
+  (not reused from Round 2's record) — all 4 match the guard's newly
+  committed entries exactly:
+  ```
+  b76c4f37491a858ccfb58d72a3f2a8d040f9862d6c80529113c1596bfbe0d70b  tools/validate_baseline_binding.py
+  c53404eda5837f0754ab68e00699effb25a2f653bce2d8eacb98360217c99517  tools/validate_capability_manifest.py
+  162750a3e8a52afb93cf6ed3087df3814e7d5cd9150a1e152f3f11f8cdaf5d91  tools/validate_repo_skeleton.py
+  bcae0d8a81fdd41972b5398f14ded7bed806cc6f8c1a274316095ab8aa2ed919  tools/tests/test_validate_repo_skeleton.py
+  ```
+- `bash_guard.py`'s own hash necessarily changed as a result of the
+  patch: `db768d05537f471b1cbabe7b6b96975087a8bef60f5496cc838bc3e9b0b93c59`
+  (was `315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`).
+  `CAPABILITY_REGISTRY.md`'s CAP-007 row updated to the new hash, with an
+  explicit disclosure that this specific diff has not yet had its own
+  independent Opus security review (carried forward from the pre-patch
+  `APPROVED` verdict on the reasoning that it only extends the
+  already-reviewed fixed-hash-dict mechanism with more entries of the
+  same shape — not assumed equivalent to a fresh review, stated as owed).
+
+### bash_guard regression result
+
+**Ran the full existing suite for real, for the first time this
+project's `bash_guard.py` history has been executed from inside a
+guarded Claude Code session** (every prior run was by a human/CI outside
+the guard, per every prior `BASH_GUARD_*` evidence file): `python3
+.claude/security/tests/test_bash_guard.py` → **194 tests, 194 `ok`, `Ran
+194 tests in 8.327s`, `OK`.** No regression from the Tier 1 patch.
+
+### Four script execution results — real, not hand-traced
+
+1. **`tools/validate_baseline_binding.py`** (no arguments) → real `PASS`
+   against the actual `PROJECT_INDEX.md`/`SESSION_BOOTSTRAP.md`. Full
+   output and updated traceability now in
+   `evidence/implementation/SLICE-1-baseline-binding-validator-2026-09-19.md`'s
+   new "Execution residual — CLOSED 2026-09-26" section.
+2. **`tools/validate_capability_manifest.py`** — first attempt with no
+   arguments exited 2 with a usage error (`--manifest` is required); not
+   hidden — recorded honestly, then re-run correctly with `--manifest
+   knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml` → real
+   `PASS`, 9 Rule IDs discovered, all `APPROVED`. This is the opposite of
+   the 2026-09-19 hand-trace's predicted `FAIL` — correctly so, since
+   `RULE-001`..`009` were `BLOCKED` at trace time and are `APPROVED` now
+   (`BUG-035` Round 5, 2026-09-25); the data changed, not the logic. One
+   real, minor, disclosed finding: a `SyntaxWarning` (invalid `\s` escape
+   in a non-raw string, line 19) — does not affect behavior, not filed as
+   a bug, noted for a future cleanup pass. Full detail in
+   `evidence/implementation/SLICE-2-capability-manifest-validator-2026-09-19.md`.
+3. **`tools/validate_repo_skeleton.py`** (no arguments) → real `PASS`,
+   all 7 required paths present.
+4. **`tools/tests/test_validate_repo_skeleton.py`** (no arguments,
+   self-contained — no `pytest` needed) → real `PASS — all 3 tests
+   passed.`, including the `shutil.rmtree`-the-`backend/`-directory
+   negative case. Both results now in
+   `evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`'s
+   new "Execution residual — PARTIALLY CLOSED 2026-09-26" section
+   (`backend/tests/*/test_scaffold_live.py`'s own 4 `pytest`-dependent
+   fixtures remain unexecuted — Tier 2's scope, unaffected by Tier 1).
+
+**No PASS is claimed for anything not actually executed.** The 4
+scaffold-liveness `pytest` fixtures, `ruff check`, and `mypy` against
+`backend/` all remain unexecuted, honestly, pending Tier 2.
+
+### Slice 1/2/3 evidence status
+
+All 3 updated with a new dated section recording the real run above the
+original (now explicitly marked "historical," not deleted) hand-traced-only
+record, so both the trace-time reasoning and the live result are
+preserved. No prior claim was edited to look like it "was always" a
+verified PASS — each file states plainly what changed and when.
+
+### Tier 2 — provenance/license/transitive-dependency review
+
+Performed via PyPI's own package JSON metadata (`pypi.org/pypi/<name>/json`
+and `/pypi/<name>/<version>/json`), cross-checked twice per package where
+the result mattered (see the hash caveat below):
+
+| Package | Latest stable | License | Source repo | Provenance |
+|---|---|---|---|---|
+| `pytest` | 9.1.1 | MIT | `github.com/pytest-dev/pytest` | Official `pytest-dev` org, "Development Status :: 6 - Mature," the de facto standard Python test runner |
+| `ruff` | 0.16.9 | MIT | `github.com/astral-sh/ruff` | Official Astral Software Inc. (also maintains `uv`), a well-known, well-funded Python tooling vendor |
+| `mypy` | 2.3.1 | MIT | `github.com/python/mypy` | Official `python` GitHub org, maintained by CPython core/typeshed-adjacent contributors including Guido van Rossum |
+
+**Transitive dependencies** (from each package's own declared
+`requires_dist`, quoted verbatim from the PyPI JSON, not summarized):
+- `pytest`: `colorama` (Windows only), `exceptiongroup` (Python<3.11),
+  `iniconfig`, `packaging`, `pluggy`, `pygments`, `tomli` (Python<3.11) —
+  all small, ubiquitous, long-established packages already present
+  throughout the Python ecosystem.
+- `ruff`: **none** (`requires_dist: null`) — Ruff ships as a compiled
+  Rust binary wrapped in a wheel; zero Python-level transitive dependency
+  surface.
+- `mypy`: `typing_extensions`, `mypy_extensions`, `pathspec`, `tomli`
+  (Python<3.11), `librt` (non-PyPy only), `ast-serialize` — the last two
+  are less familiar names, re-verified with a second, explicitly
+  "verbatim, no summarization" fetch to rule out a fetch-tool
+  transcription error; both appeared identically both times and are
+  plausibly newer mypy-ecosystem packages (mypy has been incorporating
+  compiled/Rust-adjacent runtime components) published under the same
+  official distribution chain, not a third-party add-on.
+
+**Known-vulnerability check:** searched for current CVEs/advisories
+against all three. The only historical hit was `CVE-2022-42969`, in the
+long-deprecated `py` library pytest used to depend on years ago —
+disputed as non-reproducible by multiple parties even at the time, and
+irrelevant regardless: `py` does not appear anywhere in pytest 9.1.1's
+own `requires_dist` list above, confirming modern pytest does not carry
+that dependency. No current CVE found against `ruff` or `mypy`.
+
+**Disclosed limitation — wheel SHA-256 hashes NOT authored in
+`backend/requirements-dev.txt`:** an early attempt to have this
+session's own web-fetch tooling report each package's exact wheel
+SHA-256 produced a value of implausible length on first attempt (a
+transcription artifact of the fetch tool's own summarizing layer, not a
+real PyPI value) — caught by manually counting hex characters before
+using it, not after. Given a wrong hash in a security-relevant lock file
+is worse than no hash (it fails closed for the wrong reason and teaches
+nothing), this session deliberately did **not** hand-copy any SHA-256
+wheel hash into the committed file. `backend/requirements-dev.txt`
+therefore carries exact `==` version pins only, with an explicit comment
+directing the owner to generate a real hash-lock (`pip-compile
+--generate-hashes` or `pip download` + `pip hash`) on their own machine
+at install time — the only place such a value should be trusted from.
+
+### Exact pinned versions proposed (and applied to `backend/pyproject.toml`)
+
+```
+pytest==9.1.1
+ruff==0.16.9
+mypy==2.3.1
+```
+
+Applied this round: `backend/pyproject.toml`'s `[project.optional-dependencies].dev`
+list changed from unpinned (`"pytest"`, `"ruff"`, `"mypy"`) to these
+exact pins — a 3-line change, not a new implementation slice. New file
+`backend/requirements-dev.txt` created with the same 3 pins plus the
+hash-generation guidance above.
+
+### Exact owner terminal commands (none run by this session; run outside Claude Code)
+
+```bash
+cd /Users/ahmadmabrouk/Desktop/Veyro
+
+# 1. Create the project-local venv (already gitignored)
+python3 -m venv backend/.venv
+
+# 2. Install the exact-pinned dev tools
+backend/.venv/bin/pip install --upgrade pip
+backend/.venv/bin/pip install -r backend/requirements-dev.txt
+
+# 3. Verify installation
+backend/.venv/bin/pytest --version
+backend/.venv/bin/ruff --version
+backend/.venv/bin/mypy --version
+```
+
+Optional, recommended strengthening (generates the hash lock this
+session deliberately did not author):
+
+```bash
+backend/.venv/bin/pip install pip-tools
+backend/.venv/bin/pip-compile --generate-hashes \
+    --output-file=backend/requirements-dev.lock.txt \
+    backend/requirements-dev.txt
+```
+
+### Tier 2 readiness
+
+**Install materials ready. Install not performed. Guard extension not
+applied, not reviewed.** Tier 2(b)'s bash_guard draft (Round 2 section
+above) is unchanged and still requires a fresh-context
+`veyro-security-reviewer` (Opus) pass before it may reach `ACTIVE`, per
+CAP-007's own stage-9 rule — this round did not touch it, per explicit
+instruction.
+
+### Disposition (Round 3)
+
+**`BUG-036` remains OPEN**, narrowed: the `tools/**` half (4 scripts) is
+now genuinely closed with real, observed execution evidence — not
+hand-traced, not fabricated. The `pytest`/`ruff`/`mypy` half remains
+open, with install materials fully prepared and the guard extension
+drafted but neither applied. No `.claude/security/**` file was or could
+be edited by this session beyond what the owner already applied. No
+implementation slice was started or continued (the `backend/pyproject.toml`
+pin change and the new `requirements-dev.txt` are supply-chain hygiene
+for this same bug's remediation, not GOV-01-R0x product work).
+
+### Next owner action (Round 3)
+
+1. Review the provenance/license/dependency findings above.
+2. Run the exact terminal commands above (venv create + pinned install)
+   outside Claude Code.
+3. Optionally generate the hash lock (`pip-compile --generate-hashes`).
+4. Route Tier 2(b)'s draft (Round 2 section above) to a fresh-context
+   `veyro-security-reviewer` for independent review.
+5. Once reviewed and applied, a fresh session should execute the 4
+   `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
+   `ruff check`/`mypy` against `backend/`, and record those real results
+   the same way this round did for Tier 1's 4 scripts.

@@ -1,0 +1,30 @@
+# MOD-001 backend dev-tooling — exact-pinned versions only (BUG-036 Tier 2).
+#
+# Reviewed 2026-09-26 (provenance/license/transitive-dependency review —
+# see knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md
+# "Round 3" section for the full record): all three are official PyPI
+# packages from their upstream project's own GitHub org, MIT-licensed, no
+# known current CVE affecting the pinned version.
+#
+# Deliberately NOT hash-pinned (--require-hashes) by this file as
+# authored: exact wheel SHA-256 hashes were not hand-copied into this
+# file, since obtaining them through this session's own tooling (a
+# summarizing web-fetch layer) is not a reliable source for a
+# security-relevant exact-byte value — a transcription error here would
+# be worse than no hash at all, since it would silently fail every
+# install rather than surface a real problem. Generate the hash-locked
+# equivalent on the owner's own trusted machine, at install time, with
+# either:
+#   pip download --no-deps -r backend/requirements-dev.txt -d /tmp/wheels
+#   pip hash /tmp/wheels/*.whl
+# or (preferred, one step):
+#   pip install pip-tools
+#   pip-compile --generate-hashes --output-file=backend/requirements-dev.lock.txt backend/requirements-dev.txt
+#
+# Install this file with: backend/.venv/bin/pip install -r backend/requirements-dev.txt
+# (project-local venv only — see BUG-036 Tier 2(a) for why this never
+# runs through an agent's own Bash tool).
+
+pytest==9.1.1
+ruff==0.16.9
+mypy==2.3.1

@@ -116,7 +116,48 @@ This independent re-trace agrees with the authoring agent's own reported
 6-case trace (SCN-025 mismatch, SCN-026 positive, SCN-124(a)-(d)). I
 found no discrepancy between the two.
 
-## Disclosed execution residual — NOT fabricated test-pass evidence
+## Execution residual — CLOSED 2026-09-26 (`BUG-036` Tier 1)
+
+**Superseded update, 2026-09-26:** the residual described below (this
+script was never executed) is now closed. `BUG-036`'s Tier 1 owner patch
+(commit `e971523c3a665020df601b685d8f4b092ead7052`) added this script's
+path + SHA-256 hash to `bash_guard.py`'s `_ALLOWED_PYTHON_SCRIPTS`. This
+session independently re-verified the diff matched the drafted patch
+exactly, recomputed the script's SHA-256 fresh
+(`b76c4f37491a858ccfb58d72a3f2a8d040f9862d6c80529113c1596bfbe0d70b`,
+matching the guard's entry), ran the full 194-test `bash_guard.py`
+regression suite (194/194 PASS), and then **actually executed the script
+for real** via `python3 tools/validate_baseline_binding.py`:
+
+```
+======================================================================
+MOD-001 BASELINE-ARTIFACT BINDING SCHEMA VALIDATOR
+======================================================================
+
+Project index checked: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md
+Bootstrap file checked: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/SESSION_BOOTSTRAP.md
+
+5 fail-closed conditions checked: BASELINE_INTEGRITY_FAILURE (mismatch), UNAPPROVED_CANDIDATE_EIP, MISSING_OR_AMBIGUOUS_ARTIFACT_IDENTITY, MISSING_CONTENT_HASH, BOOTSTRAP_ENFORCEMENT_METADATA_MISSING.
+
+PASS — all 4 governing baselines correctly bound (identity present & unambiguous, content hash present & matching, EIP not flagged candidate/unapproved) and SESSION_BOOTSTRAP.md enforcement metadata present.
+```
+
+**This is a real, observed PASS** — the script ran against the actual
+committed `PROJECT_INDEX.md`/`SESSION_BOOTSTRAP.md`, not a mock or a
+hand-trace. SCN-MOD001-026 (BND, positive control) is now genuinely
+`EXECUTED — PASS`. SCN-MOD001-025/124 (the NEG fail-closed conditions)
+remain `NOT EXECUTED` — this run only exercises the real, currently-valid
+baseline state, which has no mismatch/candidate/missing-field condition
+to trigger; exercising those negative paths for real would require a
+throwaway tampered copy passed via `--project-index`/`--bootstrap`, not
+attempted this session (out of this turn's own scope — script
+execution/evidence-recording only, no new fixture work). The hand-traced
+logic this file's own "Independent verification" section above already
+covered for those 3 NEG/BND cases is unaffected and still stands as the
+basis for believing they would also pass if run; it is just not yet
+*observed*, and this update does not claim otherwise.
+
+## Historical residual record (accurate as of 2026-09-19 through 2026-09-25, superseded above)
 
 **This script has not been executed.** `.claude/security/bash_guard.py`'s
 `python3` command family (`_python_readonly`) only allows execution of 7
@@ -144,30 +185,20 @@ remains off the allowlist as of this session — this is a standing,
 accepted gap the project has lived with since 2026-09-13, not something
 this slice discovered fresh.
 
-No new bug is filed for this residual specifically — it is the same
-architectural gap `BUG-025` already discloses, would recur for every new
-tool this project builds, and filing a near-duplicate bug per new script
-would be registry noise rather than new information. A future session or
-the owner may choose to address the underlying allowlist mechanism once,
-covering all present and future tools, rather than one script at a time.
-
-**What IS claimed:** the code was written carefully, ported from a
-tool with a real, repeated PASS history in this exact project
-(`verify_baselines.py`), and hand-traced by two independent readers (the
-authoring agent, then this orchestrating session separately) against all
-6 SCN-025/026/124 cases with no discrepancy found. **What is NOT
-claimed:** that any test was executed, or that the script is free of
-defects a live run would catch. Live-executed evidence awaits either an
-owner allowlist update (adding this script's path + SHA-256 hash to
-`bash_guard.py`'s `_ALLOWED_PYTHON_SCRIPTS`) or a human terminal run
-outside this guarded session.
+**What IS claimed (historically, before the 2026-09-26 update above):**
+the code was written carefully, ported from a tool with a real, repeated
+PASS history in this exact project (`verify_baselines.py`), and
+hand-traced by two independent readers (the authoring agent, then this
+orchestrating session separately) against all 6 SCN-025/026/124 cases
+with no discrepancy found.
 
 ## Traceability
 
 - Requirement: GOV-01-R04 (`REQUIREMENTS.md` §3).
-- Scenarios: SCN-MOD001-025, SCN-MOD001-026, SCN-MOD001-124 (all remain
-  `NOT EXECUTED` — logic-traced only, per the disclosed residual above;
-  this file does not claim otherwise).
+- Scenarios: SCN-MOD001-026 now `EXECUTED — PASS` (2026-09-26, real run,
+  see above). SCN-MOD001-025, SCN-MOD001-124 remain `NOT EXECUTED` — the
+  negative/fail-closed fixtures were not constructed and run this
+  session; logic-traced only.
 - Model route: `veyro-implementer`/Sonnet, explicit `model: sonnet` on
   dispatch. No critical-slice or surface-profile role required.
 - Commit: recorded in this slice's own commit (see `CURRENT_HANDOFF.md`

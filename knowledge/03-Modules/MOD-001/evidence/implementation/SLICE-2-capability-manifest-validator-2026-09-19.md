@@ -127,7 +127,73 @@ trace:
    control (a 3-node chain, no back-edge) that the same DFS correctly
    returns no cycle.
 
-## Disclosed execution residual — NOT fabricated test-pass evidence
+## Execution residual — CLOSED 2026-09-26 (`BUG-036` Tier 1)
+
+**Superseded update, 2026-09-26:** the residual described below is now
+closed. `BUG-036`'s Tier 1 owner patch (commit
+`e971523c3a665020df601b685d8f4b092ead7052`) added this script to
+`bash_guard.py`'s `_ALLOWED_PYTHON_SCRIPTS`. This session independently
+verified the applied diff matched the drafted patch exactly, recomputed
+the script's SHA-256 fresh
+(`c53404eda5837f0754ab68e00699effb25a2f653bce2d8eacb98360217c99517`,
+matching the guard's entry), ran the full 194-test `bash_guard.py`
+regression suite (194/194 PASS), and **actually executed the script for
+real** against the real MOD-001 manifest (`--manifest
+knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml`, its
+required argument — the script exits 2 with a usage error if invoked
+with none, which this session hit first and then corrected, honestly
+noted rather than hidden):
+
+```
+/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_capability_manifest.py:19: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  `capability_id:\s*(CAP-\d+)`. That is MOD-000's manifest shape only — a
+======================================================================
+CAPABILITY-GOVERNANCE MANIFEST VALIDATOR (any module)
+======================================================================
+
+Manifest: knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml
+Registry: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/CAPABILITY_REGISTRY.md
+
+--- INFO (12) ---
+  [i] 9 structurally-declared ID(s) via 'capability_id:'/'id:' list-entry properties, no duplicates. (26 raw ID-token occurrence(s) across the full manifest text; 9 distinct ID(s) after dedup — checks 2-6 below run once per distinct ID.)
+  [i] RULE-001 through RULE-009: registered, APPROVED (Round 5, 2026-09-25 ...)
+  [i] capability_dependency_ids: no real edges declared (empty/absent) — cyclic-dependency check is a structural no-op.
+  [i] mandatory-privileged-surface-Rule check: no activated Admin Web/privileged-console surface found — structural no-op.
+
+--- ERRORS (0) ---
+
+RESULT: PASS — 9 capability/Rule ID(s) discovered, all registered and APPROVED with required fields present; no cyclic dependency; no missing mandatory privileged-surface Rule.
+```
+
+**This is a real, observed PASS against the real MOD-001 manifest — not
+the `FAIL` the manual trace below predicted, and not a discrepancy.**
+The manual trace (case 2, 2026-09-19) was correct *for the state that
+existed at trace time*: `RULE-001`..`009` were `BLOCKED` then. Between
+that trace and this live run, `BUG-035` Round 5 (2026-09-25)
+independently reviewed and closed all 9 rules to `APPROVED`/`ACTIVE`.
+The script is now correctly reporting `PASS` because the underlying data
+it reads legitimately changed, not because the earlier trace or the
+script's own logic was wrong — re-confirmed by reading the manifest file
+directly before trusting the script's own output. Case 1 (MOD-000's real
+manifest) and case 3 (the synthetic 2-node cycle fixture) were not
+re-run live this session (out of this turn's own scope — recording
+results for the 4 named BUG-036 scripts, not re-deriving every
+historical hand-traced case); their PASS/cycle-detected traces from
+2026-09-19 stand unexecuted, unchanged.
+
+One real, minor, disclosed finding from this live run that the hand-trace
+could not have caught: **a `SyntaxWarning` at line 19** — a
+docstring/comment containing `` `capability_id:\s*(CAP-\d+)` `` uses `\s`
+in a plain (non-raw) Python string, which Python 3.12+ warns is an
+invalid escape sequence. It does not affect current behavior (the string
+is documentation text, not a compiled regex — the actual regex elsewhere
+in the file presumably uses a raw string or `re.compile` correctly, not
+re-verified this turn) and is not filed as a new bug (a one-line
+`SyntaxWarning` on documentation text, non-blocking, not a defect in the
+validator's actual logic) — noted here so it isn't silently dropped from
+the record, and left for a future small cleanup pass.
+
+## Historical residual record (accurate as of 2026-09-19 through 2026-09-25, superseded above)
 
 **This script has not been executed**, for the identical reason as slice
 1: `.claude/security/bash_guard.py`'s `python3` family only executes 7
@@ -136,18 +202,17 @@ list, and the guard file is itself owner-gated. Directly confirmed
 (`python3 tools/validate_capability_manifest.py ...` and `python3 -m
 py_compile ...` both denied `DISALLOWED_FLAG_OR_SHAPE`). This is the same
 precedented, accepted residual as `BUG-025` and this session's own slice
-1 — no new bug filed for the same recurring architectural gap. What is
-claimed: the logic was hand-traced by two independent readers (the
-authoring agent, then this orchestrating session separately) against all
-3 required cases, with one real, disclosed precision gap found (check 4's
-`"—"` sentinel) that does not change either manifest's overall verdict.
-What is NOT claimed: that any test was executed, or that a live run
-wouldn't surface something this trace missed.
+1 — no new bug filed for the same recurring architectural gap.
 
 ## Traceability
 
 - Requirement: `REQUIREMENTS.md` §3, "Capability-governance validation
   gates" (GOV-01-R04).
+- MOD-001 real-manifest case now `EXECUTED — PASS` (2026-09-26, real run,
+  see above — result changed from the 2026-09-19 trace's predicted FAIL
+  because `RULE-001`..`009` are now `APPROVED`, not because the trace or
+  the script was wrong). MOD-000 real-manifest and synthetic-cycle cases
+  remain `NOT EXECUTED` — hand-traced only.
 - Model route: `veyro-implementer`/Sonnet, explicit `model: sonnet`. No
   critical-slice or surface-profile role required.
 - Commit: recorded in this slice's own commit (see `CURRENT_HANDOFF.md`

@@ -470,6 +470,41 @@ text named as the next legally allowed action.
       or could be edited by this session. See
       `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
       for the full patch draft.
+- [x] **`BUG-036` Tier 1 CLOSED with real execution (2026-09-26):** owner
+      applied the drafted patch (commit
+      `e971523c3a665020df601b685d8f4b092ead7052`) — 4 new
+      `_ALLOWED_PYTHON_SCRIPTS` entries, independently verified byte-for-
+      byte against the drafted patch, all 4 hashes recomputed fresh and
+      matching. **For the first time in this project's `bash_guard.py`
+      history, the full 194-test regression suite ran from inside a
+      guarded Claude Code session** (194/194 `ok`), and all 4
+      newly-allowlisted scripts were **actually executed** with real,
+      observed results: `validate_baseline_binding.py` PASS,
+      `validate_capability_manifest.py` PASS against the real MOD-001
+      manifest (correctly the opposite of the 2026-09-19 hand-trace's
+      predicted FAIL, since `RULE-001`..`009` are `APPROVED` now — data
+      changed, not logic; one disclosed minor `SyntaxWarning`, not a
+      bug), `validate_repo_skeleton.py` PASS, and its own test file PASS
+      (3/3, no `pytest` needed). Slice 1/2/3 evidence files updated with
+      the real results; historical hand-traced-only sections preserved,
+      marked superseded, not deleted. `CAPABILITY_REGISTRY.md`'s CAP-007
+      hash updated post-patch, with an explicit disclosure that this
+      specific diff still needs its own independent Opus security
+      review (not assumed satisfied by inference from the prior
+      approval). Performed the Tier 2 provenance/license/transitive-
+      dependency review (`pytest`==9.1.1, `ruff`==0.16.9, `mypy`==2.3.1 —
+      all official, MIT, no current CVE); pinned these exact versions in
+      `backend/pyproject.toml` and created `backend/requirements-dev.txt`
+      (version-pinned only — wheel SHA-256 hashes deliberately not
+      hand-authored after this session's own web-fetch tooling produced
+      an implausible-length hash on a first attempt; the owner is
+      instructed to generate a real hash lock via `pip-compile
+      --generate-hashes` at install time instead). Exact owner terminal
+      commands for the `backend/.venv` create+install prepared, not run.
+      Tier 2's `bash_guard.py` extension remains drafted, not applied,
+      not reviewed. `BUG-036` remains OPEN, narrowed to the
+      `pytest`/`ruff`/`mypy` half only. See the bug file's "Round 3"
+      section for full detail.
 - [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
       documentation), GOV-01-R01's own CI-wiring half, and
       GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.
@@ -477,10 +512,10 @@ text named as the next legally allowed action.
       (`BUG-035` CLOSED, Round 5 `APPROVED`); CI-wiring specifically
       additionally requires GitHub-Actions-per-Action capability
       qualification (see Slice 3's own disclosed scope gap) before any
-      `.github/workflows/**` file may be committed. `BUG-036`'s Tier 1/2
-      patches (owner action needed) should land before further slices
-      accumulate more unexecuted test debt, per explicit owner
-      instruction.
+      `.github/workflows/**` file may be committed. `BUG-036` Tier 2
+      (owner install + independent guard review) should land before the
+      4 `backend/tests/*/test_scaffold_live.py` pytest fixtures and any
+      `ruff`/`mypy` run can close their own remaining execution gap.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.
