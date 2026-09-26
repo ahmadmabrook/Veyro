@@ -1,6 +1,6 @@
 ---
 doc: BUG-036
-status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install materials prepared (exact pinned versions, `backend/requirements-dev.txt`, exact owner terminal commands), install not yet performed, guard extension not yet applied or reviewed
+status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install materials corrected and internally consistent as of Round 4 (bare-`pip` hash-lock mechanism, `pip-tools` evaluated and rejected as unnecessary; exact 6-step owner sequence + lock-file format defined), install not yet performed, guard extension not yet applied or reviewed
 found_date: 2026-09-25
 found_by: this session, dispatched specifically to investigate the recurring CAP-007 execution block after Slices 1-3 all disclosed it independently
 severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent) — narrowed by Tier 1's closure: the `tools/**` half of this bug is now fully resolved with real evidence; only the `pytest`/`ruff`/`mypy` half remains open
@@ -868,15 +868,197 @@ implementation slice was started or continued (the `backend/pyproject.toml`
 pin change and the new `requirements-dev.txt` are supply-chain hygiene
 for this same bug's remediation, not GOV-01-R0x product work).
 
-### Next owner action (Round 3)
+### Next owner action (Round 3 — superseded by Round 4 below; "optionally
+generate the hash lock" understated a real inconsistency, corrected)
 
 1. Review the provenance/license/dependency findings above.
-2. Run the exact terminal commands above (venv create + pinned install)
-   outside Claude Code.
-3. Optionally generate the hash lock (`pip-compile --generate-hashes`).
+2. ~~Run the exact terminal commands above (venv create + pinned
+   install) outside Claude Code.~~ **Superseded — see Round 4: those
+   commands installed directly from the unlocked
+   `backend/requirements-dev.txt`, contradicting this same round's own
+   "generate a hash lock first" recommendation. Use Round 4's corrected
+   sequence instead.**
+3. ~~Optionally generate the hash lock (`pip-compile --generate-hashes`).~~
+   **Superseded — Round 4 found this was never actually wired into the
+   install sequence above, and re-evaluated whether `pip-tools` is even
+   the right tool for this narrow a job.**
 4. Route Tier 2(b)'s draft (Round 2 section above) to a fresh-context
-   `veyro-security-reviewer` for independent review.
+   `veyro-security-reviewer` for independent review. (unchanged)
 5. Once reviewed and applied, a fresh session should execute the 4
    `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
    `ruff check`/`mypy` against `backend/`, and record those real results
-   the same way this round did for Tier 1's 4 scripts.
+   the same way this round did for Tier 1's 4 scripts. (unchanged)
+
+## Round 4 (2026-09-26) — reconciling a real inconsistency: lock-generation was described but never wired into the install sequence; pip-tools evaluated and rejected as unnecessary
+
+**The owner caught a real defect in Round 3's own output**, not a
+misunderstanding: Round 3 stated hashes "should" be generated via
+`pip-compile --generate-hashes` (in `backend/requirements-dev.txt`'s own
+comment block) but the "exact owner terminal commands" given in that
+same round's report installed directly from the **unlocked**
+`backend/requirements-dev.txt` via a plain `pip install -r`, never
+generating or using any lock file at all. The two halves of Round 3's
+own output contradicted each other. This round reconciles that,
+end-to-end, as one consistent sequence.
+
+### Decision: bare `pip` (`pip download` + `pip hash`), NOT `pip-tools`
+
+`pip-tools` is **not required**. Reasons, weighed against
+`CAPABILITY_POLICY.md`'s own "no capability may be granted broader scope
+... than the specific gap requires" scope rule and this project's
+established preference (`IMPLEMENTATION.md` §7, `CAPABILITIES.md`) for
+"default to free/open-source/already-available tooling first":
+
+1. **Bootstrapping/second-order-trust problem.** `pip-tools` would
+   itself need installing before it can generate anything — via an
+   unpinned, un-hash-verified `pip install pip-tools` (the exact
+   unverified-install pattern this whole remediation exists to avoid),
+   or via its own separately-authored pin+hash (which does not eliminate
+   manual hash-authoring, it just relocates it one level up, from the 3
+   target packages to `pip-tools` itself and *its own* transitive
+   dependencies — a strictly larger surface for no corresponding
+   benefit at this scale).
+2. **Scope mismatch.** `pip-tools`'s real value is automatic, repeated
+   transitive-dependency *resolution* across a large, frequently-changing
+   dependency graph. This is 3 direct dev-tool pins with a small (~13
+   package), low-churn transitive closure (dev tooling, not runtime
+   deps) — resolved once, not on every commit. `pip download`
+   (recursive by default) plus `pip hash` covers the exact same
+   `--require-hashes`-compatible output for this size of job, using a
+   tool (`pip` itself) already mandatory for the install regardless — no
+   new package, no new provenance/license review, no new trust root.
+3. **This is a one-time, careful, owner-run step, not a recurring CI
+   job.** The manual assembly step (below) is exactly the kind of
+   security-sensitive authoring this project's own convention already
+   reserves for the owner's own trusted machine (`BUG-036` Tier 2(a)'s
+   own "never through an agent's own Bash tool" principle) — a small
+   amount of one-time manual care there is the correct trade, not a
+   burden to engineer away with an extra dependency.
+
+**Alternative deterministic hash-lock mechanism (bare `pip`, consistent
+with this project's supply-chain governance):** `pip download` resolves
+and downloads the full transitive closure (direct packages plus every
+dependency `requires_dist` pulls in) to a local directory as `.whl`
+files; `pip hash` computes each file's real SHA-256 directly, as a local
+subprocess, with **no summarizing web-fetch layer in the loop at all** —
+this is the exact property that was missing when this session's own
+`WebFetch` tool produced an implausible-length hash in Round 3. The
+owner then hand-assembles a `--require-hashes`-compatible requirements
+file from that real, locally-computed output, and `pip install
+--require-hashes` refuses to install anything not exactly matching —
+fail-closed, the same property `_ALLOWED_PYTHON_SCRIPTS`'s own
+hash-pinning already relies on elsewhere in this project.
+
+### Exact owner terminal commands, corrected and consistent, in order (none run by this session)
+
+```bash
+cd /Users/ahmadmabrouk/Desktop/Veyro
+
+# 1. Create the project-local venv and update pip
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install --upgrade pip
+
+# 2. Download the 3 direct packages AND their full transitive closure
+#    (no --no-deps this time — the lock file must cover every package
+#    a --require-hashes install will need, not just the 3 direct pins)
+mkdir -p /tmp/veyro-wheels
+backend/.venv/bin/pip download -r backend/requirements-dev.txt -d /tmp/veyro-wheels
+
+# 3. Compute each downloaded wheel's real SHA-256 (local subprocess
+#    output — trust this directly, unlike a web-fetched value)
+backend/.venv/bin/pip hash /tmp/veyro-wheels/*.whl
+```
+
+**4. Hand-assemble `backend/requirements-dev.lock.txt`** — one block per
+file step 3 printed (the 3 direct packages plus every transitive
+dependency `pip download` resolved: expected to include at minimum
+`colorama`/`exceptiongroup`/`iniconfig`/`packaging`/`pluggy`/`pygments`/
+`tomli` for `pytest`, and `typing_extensions`/`mypy_extensions`/
+`pathspec`/`tomli`/`librt`/`ast-serialize` for `mypy`, per Round 3's own
+transitive-dependency review — `ruff` has none). Exact format
+(pip's native `--require-hashes` requirements syntax, one entry per
+resolved package):
+
+```
+pytest==9.1.1 \
+    --hash=sha256:<value pip hash printed for the pytest wheel>
+ruff==0.16.9 \
+    --hash=sha256:<value pip hash printed for the ruff wheel>
+mypy==2.3.1 \
+    --hash=sha256:<value pip hash printed for the mypy wheel>
+colorama==<version pip download resolved> \
+    --hash=sha256:<value pip hash printed for it>
+# ... one block per remaining transitive package pip download resolved
+```
+
+(Each version number in the lock file comes from the actual filename
+`pip download` wrote to `/tmp/veyro-wheels/`, not guessed — e.g.
+`colorama-0.4.6-py2.py3-none-any.whl` names the exact resolved
+`0.4.6`.)
+
+```bash
+# 5. Install strictly from the hash-locked file — refuses anything
+#    that doesn't match exactly
+backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock.txt
+
+# 6. Verify
+backend/.venv/bin/pytest --version
+backend/.venv/bin/ruff --version
+backend/.venv/bin/mypy --version
+```
+
+### Exact file committed
+
+`backend/requirements-dev.lock.txt` — does not exist yet, generated and
+committed by the owner after running the commands above.
+`backend/requirements-dev.txt` (already committed, Round 3) stays as the
+human-authored, unlocked source-of-intent file — its own comment block
+updated this round to point at the corrected sequence above and to stop
+recommending the direct, unlocked `pip install -r
+backend/requirements-dev.txt` this round found was never actually
+consistent with the rest of that file's own text.
+
+### Whether any new owner decision is required
+
+**No new decision beyond what Round 3 already asked for.** Tier 2(a)'s
+original approval (project-local `backend/.venv` only, exact-pinned
+versions, owner installs manually, no agent pip-install capability) already
+covers this — this round only corrects *how* the hash-lock half of that
+approval is actually carried out, it does not introduce a new capability,
+new package, or new risk class. Choosing bare `pip` over `pip-tools`
+is a tooling-mechanism decision within the scope Round 3's approval
+already granted, not a fresh DC-19 supply-chain decision on its own
+(there is no new third-party package being introduced by this choice —
+that is precisely why it was chosen over the `pip-tools` alternative).
+
+### Tier 2 install readiness (Round 4)
+
+**Materials now internally consistent.** `backend/requirements-dev.txt`'s
+own comment corrected to match the actual recommended sequence.
+`backend/requirements-dev.lock.txt` does not exist yet — generating it is
+the owner's own next step, using the exact commands above. Tier 2(b)'s
+`bash_guard.py` extension draft (Round 2) is unchanged, still not applied,
+still needs independent review.
+
+### Disposition (Round 4)
+
+**`BUG-036` remains OPEN**, unchanged scope from Round 3 (the `tools/**`
+half closed with real execution; the `pytest`/`ruff`/`mypy` half open).
+No install was performed. No `.claude/security/**` file was touched. No
+implementation slice was started or continued — the
+`backend/requirements-dev.txt` comment correction is the same class of
+supply-chain-hygiene documentation fix Round 3's `pyproject.toml`
+version-pinning was, not product work.
+
+### Next owner action (Round 4)
+
+1. Run the corrected 6-step sequence above (venv → download → hash →
+   hand-assemble the lock file → `--require-hashes` install → verify),
+   outside Claude Code.
+2. Commit `backend/requirements-dev.lock.txt`.
+3. Route Tier 2(b)'s guard-extension draft (Round 2 section) to a
+   fresh-context `veyro-security-reviewer` for independent review.
+4. Once reviewed and applied, a fresh session should execute the 4
+   `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
+   `ruff check`/`mypy` against `backend/`, and record those real results
+   the same way Round 3 did for Tier 1's 4 scripts.

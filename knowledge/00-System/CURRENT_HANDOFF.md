@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-26 (chunk 60 — `BUG-036` Tier 1 applied by the owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, and independently verified with REAL EXECUTION: the applied diff matches the drafted patch exactly, all 4 scripts' SHA-256 recomputed fresh and matching, and — for the first time in this project's `bash_guard.py` history — the full 194-test regression suite ran from inside a guarded session (194/194 PASS), followed by real execution of all 4 newly-allowlisted `tools/**` scripts (all real PASS, one disclosed non-blocking `SyntaxWarning`). Slice 1/2/3 evidence updated with the real results, historical hand-traced records preserved not deleted. `CAPABILITY_REGISTRY.md`'s CAP-007 hash updated with an explicit pending-independent-review disclosure. Tier 2 provenance/license/transitive-dependency review completed for `pytest`==9.1.1/`ruff`==0.16.9/`mypy`==2.3.1 (all official, MIT, no current CVE); exact versions pinned in `backend/pyproject.toml`, new `backend/requirements-dev.txt` created (version-pinned only — wheel hashes deliberately not hand-authored after a fetch-tool transcription risk was caught); exact owner venv-install terminal commands prepared, not run. Tier 2's guard extension remains drafted, not applied, not reviewed. `BUG-036` remains OPEN, narrowed to the `pytest`/`ruff`/`mypy` half only. No `.claude/security/**` file was or could be edited by this session beyond what the owner already applied. No implementation slice started; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved. Full detail: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`'s "Round 3" section — not restated here.)
+updated: 2026-09-26 (chunk 61 — `BUG-036` Round 4: before performing the Tier-2 install, the owner caught a real inconsistency in chunk 60's own output — `backend/requirements-dev.txt` recommended generating a hash lock via `pip-compile --generate-hashes`, but the install commands given never used one, installing directly from the unlocked file instead. Reconciled end-to-end: decided `pip-tools` is NOT required (would need its own unpinned bootstrap or its own separate pin+hash review, for a resolution feature this narrow a job — 3 direct pins, ~13-package low-churn closure — doesn't need); chosen mechanism is bare `pip download` (full transitive closure) + `pip hash` (real local-subprocess SHA-256, no summarizing web-fetch layer in the loop), owner hand-assembles `backend/requirements-dev.lock.txt` in pip's native `--require-hashes` format, installs strictly with `--require-hashes`. `backend/requirements-dev.txt`'s comment corrected to match. No new owner decision required beyond the existing Tier 2(a) approval. No install performed, no `.claude/security/**` file touched, no implementation slice started. `BUG-036` remains OPEN, unchanged scope. Full detail: `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`'s "Round 4" section — not restated here.)
 ---
 
 # Current Handoff
@@ -138,82 +138,16 @@ a summary line, full narrative archived to
 **Forty-second application (2026-09-26, chunk 60): chunk 58 compressed to
 a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-58-2026-09-25-bug036-filed-root-caused.md`.**
-— chunks 59 and 60 are now the 2 kept in full.
+**Forty-third application (2026-09-26, chunk 61): chunk 59 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-59-2026-09-26-tier1-finalized-tier2-redesigned.md`.**
+— chunks 60 and 61 are now the 2 kept in full.
 
 ## What happened chunk 58, 2026-09-25 (compressed 2026-09-26, forty-second retention-rule application) — dedicated investigation of the recurring CAP-007 test-execution block: root-caused, BUG-036 filed, two-tier owner patch drafted, no implementation slice run. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-58-2026-09-25-bug036-filed-root-caused.md`.
 
 ## What happened chunk 57, 2026-09-25 (compressed 2026-09-26, forty-first retention-rule application) — first backend/**-touching implementation slice after BUG-035 Round 5 closure: Slice 3, backend test-pyramid skeleton (GOV-01-R01). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-57-2026-09-25-slice3-backend-test-pyramid-skeleton.md`.
 
-## What happened chunk 59, 2026-09-26 — BUG-036 remediation planning: owner confirmed pytest/ruff/mypy not installed; Tier 1 patch finalized with fresh hashes; Tier 2 redesigned around an owner-side venv install
-
-Continuation of chunk 58's `BUG-036` investigation, per an explicit
-follow-up instruction: the owner ran an environment check outside Claude
-Code and confirmed `pytest`/`ruff`/`mypy` are not installed anywhere this
-host exposes — resolving chunk 58's open question. Mission: finalize the
-exact Tier-1 owner patch with freshly-recomputed (not reused) SHA-256
-hashes, define the minimal owner decision needed to install
-`pytest`/`ruff`/`mypy`, recommend the narrowest install mechanism, draft
-(not apply) the Tier-2 guard patch for the exact bounded shapes needed
-after installation, and define exact regression tests for both tiers —
-explicitly no implementation slice, no `.claude/security/**` edit,
-`BUG-036` stays `OPEN`.
-
-**Bootstrap re-verified fresh:** local HEAD == `origin/main` ==
-`ab5473fe0cd5380a71851eb726a2d054029a67df` (chunk 58's own commit).
-`.claude/security/bash_guard.py`'s own SHA-256 independently
-re-recomputed — unchanged (`315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`).
-The 4 target scripts' hashes recomputed fresh via `shasum -a 256` rather
-than reused from chunk 58's record (confirmed identical, since none of
-the 4 files changed between turns — verified, not assumed).
-
-**Tier 1 finalized:** the exact 4-line diff to
-`_ALLOWED_PYTHON_SCRIPTS` (no other line changes, no new mechanism) is
-now ready for the owner to apply verbatim. Newly-allowed/still-denied
-command lists spelled out precisely.
-
-**Tier 2 redesigned**, given "not installed" is now confirmed: the
-narrowest install mechanism is a project-local `backend/.venv/`
-(already gitignored since Slice 3), installed by the owner or a human
-terminal — **never through an agent's own Bash tool**, since `pip
-install` fetches and can execute arbitrary third-party code, a
-different risk class from anything this guard's Class A/B already
-permits. Recommended, alongside the install decision: pin
-`backend/pyproject.toml`'s currently-floating `pytest`/`ruff`/`mypy` dev
-deps to exact versions first (not applied this chunk — outside this
-turn's own scope, flagged as a natural follow-up commit). The guard
-extension itself now keys its 3 new command families on the **exact
-venv-relative binary path** (`backend/.venv/bin/{pytest,ruff,mypy}`)
-rather than a bare, PATH-ambiguous command name — matching
-`_python_readonly`'s own exact-script-path philosophy — bounded to
-`backend/**` only (not `tools/**`, which Tier 1 already fully covers),
-and drops `ruff format` entirely rather than gating it (only
-`ruff check` was asked for). Exact positive/negative regression tests
-defined for both tiers, including tampered-hash and unlisted-script
-negatives for Tier 1, and bounded-path/no-implicit-invocation/wrong-flag
-negatives for Tier 2.
-
-**Durable state updated this chunk:**
-`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
-(new "Round 2" section — finalized Tier 1 diff, redesigned Tier 2 draft,
-exact regression tests, front matter updated); `BUG_REGISTRY.md` (row +
-front matter + new "Corrected" note); this file (chunk 57
-compressed/archived per the retention rule to make room, this chunk
-added in full).
-
-**Disposition:** `BUG-036` remains `OPEN`. No `.claude/security/**` file
-was or could be edited by this session. No implementation slice was
-started or continued. MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
-approved. WIP remains 1.
-
-**Next legally allowed action:** owner applies Tier 1 verbatim
-(independent of everything else); owner decides Tier 2(a) (approve the
-`backend/.venv/` install mechanism, ideally alongside pinning exact
-versions in `backend/pyproject.toml`); if approved, the install itself
-happens outside this guarded session; Tier 2(b)'s draft then routes to a
-fresh-context `veyro-security-reviewer` (Opus) before it may reach
-`ACTIVE`. After either tier lands, a fresh session should re-run Slices
-1-3's scripts and fixtures for real. Not another implementation slice in
-the meantime.
+## What happened chunk 59, 2026-09-26 (compressed 2026-09-26, forty-third retention-rule application) — BUG-036 remediation planning: owner confirmed pytest/ruff/mypy not installed; Tier 1 patch finalized with fresh hashes; Tier 2 redesigned around an owner-side venv install. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-59-2026-09-26-tier1-finalized-tier2-redesigned.md`.
 
 ## What happened chunk 60, 2026-09-26 — BUG-036 Tier 1 applied by owner and independently verified with REAL EXECUTION; Tier 2 provenance review + install materials prepared
 
@@ -347,6 +281,98 @@ applied, a fresh session should execute the 4
 `ruff check`/`mypy` against `backend/`, and record those real results the
 same way this chunk did for Tier 1's 4 scripts. Not another
 implementation slice in the meantime.
+
+## What happened chunk 61, 2026-09-26 — BUG-036 Round 4: reconciled a real inconsistency in the Tier-2 install plan (lock-generation described but never wired in); pip-tools evaluated and rejected; corrected bare-pip mechanism defined
+
+Continuation of chunk 60's `BUG-036` remediation. Before performing the
+Tier-2 install, the owner caught a genuine inconsistency in chunk 60's
+own output: `backend/requirements-dev.txt`'s comment recommended
+generating a hash lock via `pip-compile --generate-hashes`, but the
+"exact owner terminal commands" given in that same chunk's report
+installed directly from the unlocked file via a plain `pip install -r`
+— the lock-generation step was described but never actually used.
+Mission: reconcile this, decide the exact deterministic dependency-
+locking mechanism (preferring the smallest project-local solution),
+and — if `pip-tools` turns out to be required — give its own pinned
+version and provenance review; if not, explain why and give the
+alternative. Explicitly: do not install anything, do not touch the
+Tier-2 guard, keep `BUG-036` `OPEN`, no new implementation slice.
+
+**Bootstrap re-verified fresh:** local HEAD == `origin/main` ==
+`8015a1d4a3f0b1cb86859cdec852786ec592831e` (chunk 60's own commit).
+Re-read `backend/pyproject.toml`, `backend/requirements-dev.txt`, and
+`BUG-036`'s own file to confirm the inconsistency directly rather than
+take the owner's description on trust — confirmed: the file's own
+comment named `pip-compile --generate-hashes` as the "preferred" path,
+but nothing in the prior chunk's install commands or in the file's own
+"Install this file with" line ever generated or referenced a lock file.
+
+**Decision: bare `pip` (`pip download` + `pip hash`), NOT `pip-tools`.**
+Weighed against `CAPABILITY_POLICY.md`'s "no capability may be granted
+broader scope... than the specific gap requires" scope rule and this
+project's "default to free/open-source/already-available tooling
+first" convention: `pip-tools` would need its own unpinned bootstrap
+install (the exact unverified-install pattern this remediation exists
+to avoid) or its own separate pin+hash review (relocating the
+manual-hash problem one level up, to `pip-tools` itself and its own
+transitive dependencies, not solving it) — for a resolution feature
+(automatic transitive-dependency resolution across a large,
+frequently-changing graph) this narrow a job (3 direct pins, ~13-package
+low-churn transitive closure, resolved once, not on every commit) does
+not need. Bare `pip download` (recursive by default, resolves the full
+closure) + `pip hash` (real local-subprocess SHA-256, no summarizing
+web-fetch layer in the loop — the exact property missing when chunk
+60's own `WebFetch` attempt produced an implausible-length hash)
+achieves the same `--require-hashes`-compatible result using a tool
+(`pip`) already mandatory for the install regardless.
+
+**Corrected sequence defined, end-to-end, consistent this time:**
+create `backend/.venv` → `pip download -r backend/requirements-dev.txt
+-d /tmp/veyro-wheels` (full closure, no `--no-deps`) → `pip hash
+/tmp/veyro-wheels/*.whl` → owner hand-assembles
+`backend/requirements-dev.lock.txt` (pip's native `--require-hashes`
+format, one `name==version` + `--hash=sha256:...` block per resolved
+file, including every transitive package, not just the 3 direct ones)
+→ `pip install --require-hashes -r backend/requirements-dev.lock.txt` →
+verify with `--version` on all three. `backend/requirements-dev.txt`'s
+own comment block corrected to point at this sequence and explicitly
+state it is the unlocked source-of-intent file, not an install target.
+
+**No new owner decision required** beyond chunk 60's own Tier 2(a)
+approval (project-local venv, exact-pinned versions, owner installs
+manually, no agent pip-install capability) — this only corrects *how*
+the hash-lock half of that approval is carried out; no new package, no
+new capability, no new risk class is introduced by choosing bare `pip`
+over `pip-tools`.
+
+**Durable state updated this chunk:**
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
+(new "Round 4" section; Round 3's own stale "optionally generate the
+hash lock" next-action item struck through and pointed at this
+correction); `backend/requirements-dev.txt` (comment block corrected —
+no code/dependency change, same 3 version pins); `BUG_REGISTRY.md` (row
++ front matter + new "Corrected" note); this file (chunk 59
+compressed/archived per the retention rule to make room, this chunk
+added in full).
+
+**Disposition:** `BUG-036` remains `OPEN`, unchanged scope from Round 3.
+No install performed. No `.claude/security/**` file touched. No
+implementation slice started — the `requirements-dev.txt` comment fix is
+the same class of supply-chain-hygiene documentation correction Round 3's
+`pyproject.toml` pinning was, not product work. MOD-001 remains
+`IMPLEMENTATION IN PROGRESS`, not approved. WIP remains 1.
+
+**Next legally allowed action:** owner runs the corrected 6-step
+sequence above (venv → download → hash → hand-assemble the lock file →
+`--require-hashes` install → verify) outside Claude Code, commits
+`backend/requirements-dev.lock.txt`; routes Tier 2(b)'s
+`bash_guard.py`-extension draft (unchanged since Round 2) to a
+fresh-context `veyro-security-reviewer` for independent review. Once
+reviewed and applied, a fresh session should execute the 4
+`backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
+`ruff check`/`mypy` against `backend/`, and record those real results the
+same way Round 3 did for Tier 1's 4 scripts. Not another implementation
+slice in the meantime.
 
 ## What happened chunk 54, 2026-09-25 (compressed 2026-09-25, thirty-seventh retention-rule application) — fresh independent BUG-035 round-4 review: owner's `paths:`-frontmatter patch applied, but the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap); RULE-001..009 remain BLOCKED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-54-2026-09-25-round4-scope-gaps-found.md`.
 

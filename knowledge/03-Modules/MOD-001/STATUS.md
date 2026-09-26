@@ -497,14 +497,25 @@ text named as the next legally allowed action.
       `backend/pyproject.toml` and created `backend/requirements-dev.txt`
       (version-pinned only — wheel SHA-256 hashes deliberately not
       hand-authored after this session's own web-fetch tooling produced
-      an implausible-length hash on a first attempt; the owner is
-      instructed to generate a real hash lock via `pip-compile
-      --generate-hashes` at install time instead). Exact owner terminal
-      commands for the `backend/.venv` create+install prepared, not run.
-      Tier 2's `bash_guard.py` extension remains drafted, not applied,
-      not reviewed. `BUG-036` remains OPEN, narrowed to the
-      `pytest`/`ruff`/`mypy` half only. See the bug file's "Round 3"
-      section for full detail.
+      an implausible-length hash on a first attempt). **Corrected
+      (Round 4, 2026-09-26): the owner caught before installing anything
+      that this round's own recommendation (`pip-compile
+      --generate-hashes`) had never actually been wired into the install
+      commands given, which installed directly from the unlocked file
+      instead — a real inconsistency, not a misunderstanding.** Resolved:
+      `pip-tools` evaluated and rejected as unnecessary (its own
+      unpinned-bootstrap or separate-pin-review problem, for a job this
+      narrow); corrected mechanism is bare `pip download` (full
+      transitive closure) + `pip hash` (real local-subprocess SHA-256, no
+      web-fetch layer in the loop), owner hand-assembles
+      `backend/requirements-dev.lock.txt` in pip's native
+      `--require-hashes` format, installs strictly with
+      `--require-hashes`. `backend/requirements-dev.txt`'s comment
+      corrected to match. No new owner decision required beyond the
+      existing Tier 2(a) approval. Tier 2's `bash_guard.py` extension
+      remains drafted, not applied, not reviewed. `BUG-036` remains OPEN,
+      unchanged scope. See the bug file's "Round 4" section for full
+      detail.
 - [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
       documentation), GOV-01-R01's own CI-wiring half, and
       GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.
