@@ -1,6 +1,6 @@
 ---
 doc: BUG-036
-status: OPEN — Tier 1 CLOSED (applied by owner, commit `e971523c3a665020df601b685d8f4b092ead7052`, independently verified and 4 scripts + full 194-test regression suite actually executed for real); Tier 2 install plan hardened as of Round 5 (no pip upgrade, `--only-binary=:all:` wheel-only acquisition, `tools/generate_requirements_lock.py` eliminates manual hash/version transcription, portability scope stated as single-machine-specific), install not yet performed, guard extension not yet applied or reviewed
+status: CLOSED (Round 6, 2026-09-29) — Tier 1 closed Round 3; Tier 2 closed Round 6 by real execution of the full 6-step install sequence (venv, wheel-only download, lock generate+check, hash-locked install, pytest/ruff/mypy all verified) plus a real run of the 4 `backend/tests/*/test_scaffold_live.py` fixtures, `ruff check`, and `mypy` against `backend/` — not via the originally-planned `bash_guard.py` allowlist extension, which became moot when CAP-007 was retired (`OWN-006`/`ADR-007`)
 found_date: 2026-09-25
 found_by: this session, dispatched specifically to investigate the recurring CAP-007 execution block after Slices 1-3 all disclosed it independently
 severity: P1 (degrades MOD-001's implementation evidence quality project-wide and blocks Gatekeeper certification's real-execution requirement; does NOT block continued implementation-slice authoring, since slices may still hand-trace logic and disclose execution as honestly BLOCKED, per established precedent) — narrowed by Tier 1's closure: the `tools/**` half of this bug is now fully resolved with real evidence; only the `pytest`/`ruff`/`mypy` half remains open
@@ -1275,3 +1275,115 @@ slice was started or continued.
    `backend/tests/*/test_scaffold_live.py` fixtures via `pytest`, run
    `ruff check`/`mypy` against `backend/`, and record those real results
    the same way Round 3 did for Tier 1's 4 scripts.
+
+## Round 6 (2026-09-28/29) — Tier 2(a)/(b) moot: CAP-007 retired under `OWN-006`/`ADR-007`; full 6-step sequence executed for real; `BUG-036` CLOSED
+
+**Context change, not a remediation of the guard:** the owner retired
+CAP-007's `PreToolUse` enforcement entirely (commit `058ed27`, backfilled
+as `OWN-006`/`ADR-007` — see
+`knowledge/04-Decisions/ADR-007-autonomous-development-mode-cap007-retirement.md`)
+in favor of unrestricted local Bash for this project. This makes Tier
+2(b)'s guard-extension review (the Round 5 "next owner action" item 4
+above) moot — there is no allowlist left to extend — and removes the
+structural blocker this bug has tracked since 2026-09-25. This round did
+not touch `bash_guard.py` or `.claude/settings.json` itself; both were
+already retired before this round started. Governance backfill for that
+retirement is `OWN-006`/`ADR-007`, not this bug.
+
+**The Round 5 6-step sequence was executed for real, in-session, exactly
+as specified (system Python is 3.14.5, not the 3.13 the plan
+anticipated — the lock file is correctly generated against the real
+interpreter present, per the plan's own "specific to the exact ...
+Python build it is generated on" disclosure, not a deviation from it):**
+
+```
+$ python3 -m venv backend/.venv
+$ backend/.venv/bin/pip --version
+pip 26.1.1 from .../backend/.venv/lib/python3.14/site-packages/pip (python 3.14)
+
+$ backend/.venv/bin/pip download --only-binary=:all: -r backend/requirements-dev.txt -d <wheels-dir>
+Successfully downloaded pytest ruff mypy ast-serialize pluggy iniconfig librt mypy_extensions packaging pathspec pygments typing_extensions
+  (12 wheels total, all with a compatible wheel for this exact machine — no source build attempted)
+
+$ backend/.venv/bin/python3 tools/generate_requirements_lock.py generate <wheels-dir> backend/requirements-dev.lock.txt
+PASS — wrote 12 package(s) to backend/requirements-dev.lock.txt
+
+$ backend/.venv/bin/python3 tools/generate_requirements_lock.py check <wheels-dir> backend/requirements-dev.lock.txt
+PASS — 12 package(s): every wheel appears exactly once in the lock, every version and SHA-256 is exact, no extra entries.
+
+$ backend/.venv/bin/pip install --require-hashes -r backend/requirements-dev.lock.txt --no-index --find-links <wheels-dir>
+Successfully installed ast-serialize-0.11.2 iniconfig-2.3.0 librt-0.15.0 mypy-2.3.1 mypy-extensions-1.1.0 packaging-26.3 pathspec-1.1.1 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1 ruff-0.16.9 typing-extensions-4.16.0
+
+$ backend/.venv/bin/pytest --version && backend/.venv/bin/ruff --version && backend/.venv/bin/mypy --version
+pytest 9.1.1
+ruff 0.16.9
+mypy 2.3.1 (compiled: yes)
+```
+
+(`--no-index --find-links <wheels-dir>` added to the install step beyond
+the plan's literal text so the install stays offline from the same
+already-downloaded, already-hash-verified wheels — not a weakening of
+`--require-hashes`, which still enforces every installed file's SHA-256
+against the lock.)
+
+**The 4 `backend/tests/*/test_scaffold_live.py` fixtures, `ruff check`,
+and `mypy` were then run for real against `backend/`, from `backend/`
+(matching `pyproject.toml`'s `testpaths = ["tests"]`):**
+
+```
+$ backend/.venv/bin/pytest -v          # run from backend/
+tests/component/test_scaffold_live.py::test_component_harness_is_live PASSED
+tests/contract/test_scaffold_live.py::test_contract_harness_is_live PASSED
+tests/integration/test_scaffold_live.py::test_integration_harness_is_live PASSED
+tests/unit/test_scaffold_live.py::test_unit_harness_is_live PASSED
+4 passed in 0.01s
+
+$ backend/.venv/bin/ruff check .       # run from backend/
+All checks passed!
+
+$ backend/.venv/bin/mypy .             # run from backend/
+Success: no issues found in 12 source files
+```
+
+**Slices 1-3's own validators were re-run for real in the same session**
+(regression, not new evidence for those slices): `validate_baseline_binding.py`
+PASS (4/4 baselines bound); `validate_capability_manifest.py` PASS
+against both MOD-000's and MOD-001's real manifests; `validate_repo_skeleton.py`
+PASS (7/7 required paths present); `tools/tests/` full suite (now 18
+tests, after this round's own new Slice-4 suite — see
+`SLICE-4-database-migration-ordering-tooling-2026-09-29.md`) — 18/18
+`ok`.
+
+**One real, pre-existing defect found and fixed in passing:**
+`tools/validate_capability_manifest.py` line 19 raised a `SyntaxWarning`
+("\s"/"\d" invalid escape sequences in a non-raw docstring) on every
+invocation — cosmetic today, but Python has been moving these toward a
+hard `SyntaxError` in a future version. Fixed by making the module
+docstring a raw string (`r"""`); re-ran the script against both real
+manifests afterward, identical `PASS` output, confirming the fix changed
+nothing but the warning.
+
+### Disposition (Round 6) — CLOSED
+
+**`BUG-036` is CLOSED.** Both halves are now resolved: the `tools/**`
+half (Tier 1, Round 3) and the `pytest`/`ruff`/`mypy` half (this round) —
+the latter closed not by extending `bash_guard.py`'s allowlist as
+originally planned, but because the guard itself was retired by owner
+decision (`OWN-006`/`ADR-007`) before this round started. No further
+Tier 2(b) guard-review action is needed or possible.
+
+### Evidence
+
+- This section (Round 6) — real command transcripts above, not
+  hand-traced.
+- `knowledge/04-Decisions/ADR-007-autonomous-development-mode-cap007-retirement.md`,
+  `knowledge/00-System/OWNER_APPROVALS.md` (`OWN-006`) — why the guard is
+  gone.
+- `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-4-database-migration-ordering-tooling-2026-09-29.md`
+  — the implementation slice this closure unblocked.
+
+### Next owner action (Round 6)
+
+None outstanding for this bug specifically. `backend/requirements-dev.lock.txt`
+is generated, verified, and should be committed (see Exact files to
+commit, Round 5 section above — unchanged).

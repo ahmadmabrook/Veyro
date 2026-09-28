@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Capability-governance manifest validator — generalized to ANY module
 (MOD-001, `REQUIREMENTS.md` §3, "Capability-governance validation gates").
 

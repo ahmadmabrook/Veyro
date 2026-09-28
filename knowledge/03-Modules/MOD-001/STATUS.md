@@ -445,6 +445,37 @@ text named as the next legally allowed action.
       workflow referencing it may exist committed — no such row exists
       yet. See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-3-backend-test-pyramid-skeleton-2026-09-25.md`.
+- [x] **`BUG-036` CLOSED for real (Round 6, 2026-09-29):** the owner
+      retired CAP-007's `PreToolUse` guard entirely under autonomous
+      development mode (`OWN-006`/`ADR-007`), removing the structural
+      blocker this bug tracked since 2026-09-25. This session executed
+      the full Round-5 6-step install sequence for real (venv, wheel-only
+      download, hash-lock generate+check, `--require-hashes` install) and
+      confirmed `pytest`/`ruff`/`mypy` all runnable. The 4
+      `backend/tests/*/test_scaffold_live.py` fixtures, `ruff check .`,
+      and `mypy .` were then run for real against `backend/` — all clean
+      (4/4 pytest, 0 ruff findings, 0 mypy findings). Slices 1-3's own
+      validators were re-run as regression (all still PASS). One
+      pre-existing real defect found and fixed in passing:
+      `validate_capability_manifest.py`'s module docstring raised a
+      `SyntaxWarning` on every run (non-raw string with regex-shaped
+      escape sequences) — fixed by making it a raw string, output
+      unchanged. See `BUG-036`'s own "Round 6" section for full command
+      transcripts.
+- [x] **Slice 4 complete (2026-09-29):** GOV-01-R06 (database-change
+      policy/tooling) — `backend/migrations/TEMPLATE.md` (TSD §24.2's
+      6-field migration-record schema) and
+      `tools/validate_migration_ordering.py` (stdlib-only lint enforcing
+      expand-migrate-switch-contract ordering per `change_id`, fails
+      closed on a missing field, an invalid phase, or an out-of-order
+      phase — e.g. a destructive contract attempted without a preceding
+      switch). No new dependency introduced (no Alembic wiring yet — no
+      real schema exists to migrate). Implemented directly by this
+      orchestrating session per `OWN-003`'s existing model (not a
+      critical slice per `ADR-005`). 6 new unit tests against isolated
+      fixtures, all passing; full backend + tools regression re-run
+      clean. See
+      `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-4-database-migration-ordering-tooling-2026-09-29.md`.
 - [x] **`BUG-036` investigation complete (2026-09-25, dedicated
       review-only session, no implementation slice run):** root-caused
       the recurring `bash_guard.py`/CAP-007 local test-execution gap
@@ -537,17 +568,26 @@ text named as the next legally allowed action.
       reviewed — not touched this round, per explicit instruction.
       `BUG-036` remains OPEN, unchanged scope. See the bug file's
       "Round 5" section for full detail.
+- [x] **`BUG-036` Tier 2 CLOSED (Round 6, 2026-09-29):** superseded the
+      note below — see the `BUG-036`/Slice-4 entries above. Local
+      execution is no longer a disclosed gap for any MOD-001 tool.
 - [ ] Remaining GOV-01-R01 layers (E2E, mobile UI, exploratory-procedure
-      documentation), GOV-01-R01's own CI-wiring half, and
-      GOV-01-R02/R03/R04/R05/R06/R07/R08 implementation — not started.
+      documentation) checked this session and found each correctly
+      non-actionable right now, not merely deferred by choice: mobile UI
+      has no real surface under the still-DEFERRED Android/iOS Host
+      profiles; E2E is tied to a staging deploy gate with no local
+      equivalent and no staging environment exists; the exploratory
+      procedure is already fully documented (`MANUAL_QA.md` §10) and its
+      remaining step is a real `veyro-manual-qa` pass against a *running*
+      surface, which doesn't exist yet. GOV-01-R01's own CI-wiring half,
+      and GOV-01-R02/R03/R04/R05/R07/R08 implementation — not started.
       `backend/**`/`infra/**`/CI-touching slices remain unblocked
       (`BUG-035` CLOSED, Round 5 `APPROVED`); CI-wiring specifically
       additionally requires GitHub-Actions-per-Action capability
       qualification (see Slice 3's own disclosed scope gap) before any
-      `.github/workflows/**` file may be committed. `BUG-036` Tier 2
-      (owner install + independent guard review) should land before the
-      4 `backend/tests/*/test_scaffold_live.py` pytest fixtures and any
-      `ruff`/`mypy` run can close their own remaining execution gap.
+      `.github/workflows/**` file may be committed. GOV-01-R06 completed
+      as Slice 4 (see above) — it did not depend on CI wiring for its own
+      acceptance criteria.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.
