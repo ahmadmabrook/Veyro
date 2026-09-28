@@ -476,6 +476,34 @@ text named as the next legally allowed action.
       fixtures, all passing; full backend + tools regression re-run
       clean. See
       `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-4-database-migration-ordering-tooling-2026-09-29.md`.
+- [x] **Slice 5 complete (2026-09-29):** GOV-01-R02 critical slice
+      (`ADR-005` Decision 1, slices 1+2 only) — tenant-isolation/RLS harness
+      (fixture schema, `veyro_schema_owner`/`veyro_runtime` roles, grants,
+      `access_grant` fixture) and the authentication negative-credential
+      fixture pattern, under `backend/tests/harness/` +
+      `backend/tests/integration/`. **Implemented directly by
+      `veyro-critical-engineer` (Opus), no supervision leg** (MR
+      `MR-MOD001-20260929-001`). Runs against a real disposable local
+      Postgres 16 (Docker, digest-pinned, torn down every run) as a real
+      NOSUPERUSER/NOBYPASSRLS/non-owner runtime role. Superuser is used only
+      for setup and ground truth. The harness re-reads the connection's own
+      posture and refuses elevated connections. Real results:
+      37/37 backend tests, ruff clean, mypy clean (20 files), all validators
+      + 4/4 baselines PASS. The negative proofs are real: RLS disabled,
+      permissive policy, not-forced, nullable `tenant_id`, runtime-owns-table,
+      BYPASSRLS and superuser connections are all detected, and
+      13 negative credentials are rejected with state byte-identical. A
+      7-mutation check (incl. "harness silently connects as superuser") is
+      7/7 killed. New runtime dependency: `psycopg[binary]==3.3.6` (LGPL-3.0,
+      flagged), added via the hash-locked wheel-only path; only 2 lock
+      entries added, all 12 prior hashes unchanged. SCN-MOD001-027/067
+      executed, awaiting independent `veyro-security-reviewer` judgment.
+      SCN-067's R04-gate half is NOT EXECUTED (out of scope).
+      SCN-MOD001-028/097 executed, PASS. `BUG-037` filed (`mr_verify.py`
+      rejects the current `claude-opus-5-5` id; fails closed). Still open
+      under GOV-01-R02: migration-safety harness, domain suite scaffolds,
+      financial-invariant placeholder, DOM-002 concurrency pattern. See
+      `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`.
 - [x] **`BUG-036` investigation complete (2026-09-25, dedicated
       review-only session, no implementation slice run):** root-caused
       the recurring `bash_guard.py`/CAP-007 local test-execution gap
@@ -580,7 +608,10 @@ text named as the next legally allowed action.
       procedure is already fully documented (`MANUAL_QA.md` §10) and its
       remaining step is a real `veyro-manual-qa` pass against a *running*
       surface, which doesn't exist yet. GOV-01-R01's own CI-wiring half,
-      and GOV-01-R02/R03/R04/R05/R07/R08 implementation — not started.
+      and GOV-01-R03/R04/R05/R07/R08 implementation — not started.
+      GOV-01-R02: critical half done (Slice 5); routine half (domain suite
+      scaffolds, financial-invariant placeholder, migration-safety harness,
+      DOM-002 concurrency pattern) not started.
       `backend/**`/`infra/**`/CI-touching slices remain unblocked
       (`BUG-035` CLOSED, Round 5 `APPROVED`); CI-wiring specifically
       additionally requires GitHub-Actions-per-Action capability

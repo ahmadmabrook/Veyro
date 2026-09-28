@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-29 (chunk 63 — autonomous development mode adopted, backfilled as `OWN-006`/`ADR-007` after this session caught commit `058ed27` retiring CAP-007's Bash guard with no same-commit approval row. `BUG-036` Tier 2 CLOSED with real execution: full venv/download/lock/install sequence run for real, `pytest`/`ruff`/`mypy` all installed and verified, the 4 `backend/tests/*/test_scaffold_live.py` fixtures + `ruff check` + `mypy` all run clean against `backend/` for the first time in this project's history. Slice 4 (GOV-01-R06, database-migration ordering tooling) implemented directly by this session — stdlib-only lint, zero new dependency, 6 new tests passing. Full detail: this file's own "chunk 63" section below; `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`'s "Round 6" section; `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-4-database-migration-ordering-tooling-2026-09-29.md`.)
+updated: 2026-09-29 (chunk 64 — GOV-01-R02 critical slice (Slice 5) implemented: tenant-isolation/RLS harness + authentication negative-credential fixture pattern, dispatched to `veyro-critical-engineer` (Opus) per `ADR-005`, run for real against a disposable local Postgres 16 (Docker daemon started this chunk). 37/37 backend tests, ruff/mypy clean, all validators + 4/4 baselines PASS, independently re-verified by the orchestrating session. Both required negative proofs are real (5-way `access_grant` breakage detection; 13/13 negative-credential rejection); a 7-mutation kill-check confirms the suite fails closed. `BUG-037` filed (`mr_verify.py` rejects the current Opus model id) — not self-fixed. Full detail: this file's own "chunk 64" section below; `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`.)
 ---
 
 # Current Handoff
@@ -144,7 +144,10 @@ a summary line, full narrative archived to
 **Forty-fourth application (2026-09-26, chunk 62): chunk 60 compressed to
 a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-60-2026-09-26-tier1-verified-real-execution.md`.**
-— chunks 61 and 62 are now the 2 kept in full.
+**Forty-seventh application (2026-09-29, chunk 64): chunk 62 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-62-2026-09-26-bug036-round5-hardening.md`.**
+— chunks 63 and 64 are now the 2 kept in full.
 
 ## What happened chunk 58, 2026-09-25 (compressed 2026-09-26, forty-second retention-rule application) — dedicated investigation of the recurring CAP-007 test-execution block: root-caused, BUG-036 filed, two-tier owner patch drafted, no implementation slice run. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-58-2026-09-25-bug036-filed-root-caused.md`.
 
@@ -156,115 +159,7 @@ a summary line, full narrative archived to
 
 ## What happened chunk 61, 2026-09-26 (compressed 2026-09-29, forty-sixth retention-rule application) — BUG-036 Round 4: reconciled a real inconsistency in the Tier-2 install plan (lock-generation described but never wired in); pip-tools evaluated and rejected; corrected bare-pip mechanism defined. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-61-2026-09-26-bug036-round4-lock-mechanism-reconciled.md`.
 
-## What happened chunk 62, 2026-09-26 — BUG-036 Round 5: hardened the Tier-2 install plan before the owner ran it — no pip upgrade, wheel-only acquisition, eliminated manual lock transcription via a new generator/checker script, portability stated honestly
-
-Continuation of chunk 61's `BUG-036` reconciliation. Before running the
-install, the owner asked for 4 further hardening fixes: an unpinned
-`pip install --upgrade pip` bootstrap step; wheel-only acquisition to
-guarantee no source-distribution build path runs; verification that
-required packages have compatible wheels for the owner's actual macOS/
-Python environment before proceeding; and elimination of the remaining
-manual transcription risk in assembling `backend/requirements-dev.lock.txt`.
-Explicitly: do not install anything, do not touch the Tier-2 guard, do
-not start another implementation slice, keep `BUG-036` `OPEN`.
-
-**Bootstrap re-verified fresh:** local HEAD == `origin/main` ==
-`7f66f1b6668df6908fab36f63723f62542e8a294` (chunk 61's own commit).
-Re-read `backend/pyproject.toml`, `backend/requirements-dev.txt`, and
-`BUG-036`'s own file before changing anything.
-
-**1. pip bootstrap — decided against upgrading.** `pip install --upgrade
-pip` was itself an unpinned, un-hash-verified mutation, one level
-removed from the exact problem this remediation exists to close.
-Decision: use whatever pip `python3 -m venv` bundles via `ensurepip`,
-unchanged — `--only-binary=:all:` (pip ≥7.1) and `--require-hashes`
-(pip ≥8) are both old, stable features any Python 3.13 build's bundled
-pip comfortably supports, so there is no functional reason to add a
-second unpinned thing to the sequence. `pip --version` remains available
-as a read-only diagnostic, not a decision point.
-
-**2. Wheel-only acquisition — `pip download --only-binary=:all:`.**
-Confirmed as the exact mechanism: refuses to fall back to a source
-distribution for any package in the closure, failing loudly (naming the
-package) rather than silently running build-backend code — a failure
-here is a new, separate decision point, never something to route around
-by dropping the flag for just that package.
-
-**3. Environment-compatibility verification — deferred honestly to the
-owner's own machine.** This session has no `pip` access and no knowledge
-of the owner's exact CPU architecture or Python 3.13 patch build, so it
-cannot itself confirm wheel availability. Stated plainly: a best-effort
-desk check (all three are mainstream wheel-first-distribution projects)
-is not a substitute for the real verification, which is simply the
-owner's own `pip download --only-binary=:all:` succeeding on their real
-machine — the same lesson this bug's own Round 3 already taught once,
-when a `WebFetch`-sourced value proved unreliable for a security-relevant
-detail.
-
-**4. Eliminating manual lock-file transcription.** Built
-`tools/generate_requirements_lock.py` (stdlib-only: `argparse`,
-`hashlib`, `pathlib`, `sys` — no dependency on `packaging`): `generate`
-derives every package name and version by parsing real wheel filenames
-(PEP 427/600 naming) and every hash via `hashlib.sha256` on the real
-file bytes, so no value in the lock file is ever hand-typed; `check` is
-an independent second code path that re-derives the same values from a
-wheel directory and diffs them against an existing lock file, proving
-directly: every wheel appears exactly once, every version is exact,
-every hash is exact, and no lock entry lacks a matching wheel — a
-duplicate package name in the wheel directory is also a hard, named
-failure, never a silent pick-one. `tools/tests/test_generate_requirements_lock.py`
-proves both directions against synthetic, isolated fixtures (a clean
-round trip; a hand-tampered hash, an extra lock entry, and a duplicate
-wheel name each fail closed). Neither script has been executed —
-disclosed honestly, same structural `bash_guard.py` gap as every other
-MOD-001 tool, verified instead by hand-tracing every code path against
-the test file's own cases.
-
-**Exact 6-step owner sequence, corrected and hardened:** venv create
-(no pip upgrade) → `pip --version` (diagnostic) → `pip download
---only-binary=:all: -r backend/requirements-dev.txt -d /tmp/veyro-wheels`
-→ `generate_requirements_lock.py generate` → `generate_requirements_lock.py
-check` → `pip install --require-hashes -r backend/requirements-dev.lock.txt`
-→ verify with `--version` on all three tools. If the download step fails
-naming a package, stop — do not drop the wheel-only flag to work around
-it.
-
-**Portability stated honestly, not implied:** the resulting lock file is
-specific to the exact macOS/architecture/Python-3.13-build it is
-generated on (`ruff`/`mypy` ship platform-specific wheels, unlike
-`pytest`'s universal one) — not portable to a different platform or
-Python minor version without regenerating. A future need for a second
-platform's lock (e.g. Linux CI) is a distinct decision, not assumed
-solved here.
-
-**Durable state updated this chunk:**
-`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-036-no-local-deterministic-test-execution-capability.md`
-(new "Round 5" section; Round 4's own stale next-action item struck
-through and pointed at this correction); 2 new files
-(`tools/generate_requirements_lock.py`,
-`tools/tests/test_generate_requirements_lock.py`);
-`backend/requirements-dev.txt` (comment corrected to the hardened
-sequence, no dependency change); `BUG_REGISTRY.md` (row + front matter +
-new "Corrected" note); `STATUS.md`'s "Implementation progress" section;
-this file (chunk 60 compressed/archived per the retention rule to make
-room, this chunk added in full).
-
-**Disposition:** `BUG-036` remains `OPEN`, unchanged scope. No install
-performed. No `.claude/security/**` file touched. No Tier-2 security
-review run, per explicit instruction. No implementation slice started.
-MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not approved. WIP remains 1.
-
-**Next legally allowed action:** owner runs the 6-step sequence above,
-outside Claude Code; if the download step fails for any package, stop
-and report which one rather than working around it; commits
-`backend/requirements-dev.lock.txt` once `generate`/`check` both report
-`PASS`; routes Tier 2(b)'s `bash_guard.py`-extension draft (unchanged
-since Round 2) to a fresh-context `veyro-security-reviewer` for
-independent review. Once reviewed and applied, a fresh session should
-execute the 4 `backend/tests/*/test_scaffold_live.py` fixtures via
-`pytest`, run `ruff check`/`mypy` against `backend/`, and record those
-real results the same way Round 3 did for Tier 1's 4 scripts. Not
-another implementation slice in the meantime.
+## What happened chunk 62, 2026-09-26 (compressed 2026-09-29, forty-seventh retention-rule application) — BUG-036 Round 5: hardened the Tier-2 install plan before the owner ran it (no pip upgrade, wheel-only acquisition, generator/checker script eliminating manual lock transcription, portability stated honestly). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-62-2026-09-26-bug036-round5-hardening.md`.
 
 ## What happened chunk 63, 2026-09-28/29 — autonomous development mode adopted (OWN-006/ADR-007 backfilled); BUG-036 Tier 2 CLOSED with real execution; Slice 4 (GOV-01-R06 database-migration tooling) implemented
 
@@ -369,6 +264,162 @@ qualification), or route GOV-01-R02 to `veyro-critical-engineer` if the
 next session's mission calls for it. `backend/requirements-dev.lock.txt`
 should be committed (generated and verified this chunk, per Round 5's
 own "exact files to commit" list).
+
+## What happened chunk 64, 2026-09-29 — GOV-01-R02 critical slice (Slice 5): tenant-isolation/RLS harness + authentication negative-credential fixture pattern, dispatched to `veyro-critical-engineer` (Opus) per ADR-005, executed against a real disposable Postgres
+
+Mission named GOV-01-R02 as the one critical slice for this turn,
+explicitly routed to `veyro-critical-engineer` on Opus. Bootstrap
+re-verified fresh (local HEAD == `origin/main` == `3552299`, Autonomous
+Development Mode active, CAP-007 retired, BUG-036 closed, Slices 1-4
+complete). Re-read `REQUIREMENTS.md` GOV-01-R02, `ADR-005`,
+`.claude/rules/backend/{database,architecture,api,performance,concurrency}.md`,
+`SCENARIOS.md`'s GOV-01-R02-tagged scenarios, and `IMPLEMENTATION.md`
+§1-4 before dispatching.
+
+**Scope boundary set before dispatch, stated explicitly rather than left
+implicit:** `ADR-005` Decision 1 bounds `veyro-critical-engineer` to
+three named slices (tenant-isolation/RLS harness; auth negative-credential
+fixture; the RLS-lint+permission-lint gates). The mission's own text
+listed all three as "applicable obligations," but the mission's own
+header also said "This turn is for GOV-01-R02 only" — the gates are
+GOV-01-R04. Resolved as: dispatch the two genuinely R02 items only (one
+coherent slice), leave the R04 gates for a separate future dispatch
+(their own valid-fixture needs real committed backend schema to lint
+against, which this slice produces — natural ordering, not an
+avoidance). Also found, before dispatch: the six named domain suite
+scaffolds (membership/booking/payment/ledger/pos/access) and the
+financial-invariant placeholder harness are GOV-01-R02 text obligations
+per `REQUIREMENTS.md`, but `ADR-005` does NOT list them among the
+critical-engineer's bounded slices, and `SCENARIOS.md` itself routes
+SCN-MOD001-132/133 to `veyro-implementer`/Sonnet, not the critical
+role — left out of this dispatch for the same reason, available as a
+separate future routine slice.
+
+**A real capability gap found and closed before dispatch:** no
+`psql`/Postgres locally, and Docker's daemon was not running (`docker
+info` failed) — a genuine blocker for a real RLS proof (SQLite has no
+roles/RLS; faking it would be exactly the false-clean harness failure
+mode `ADR-005`/the critical-engineer's own charter warn against).
+Started Docker Desktop (`open -a Docker`), waited for the daemon (up in
+~20s, Engine 29.6.0/29.7.2), and pulled `postgres:16-alpine` — a
+free, local-only, synthetic-data-only capability, no owner approval
+needed. Recorded as a fact available to the dispatch, not assumed.
+
+**Dispatch: `veyro-critical-engineer` (Opus), foreground.** Full brief
+covered the governing text, the exact scope boundary above, the
+Docker/Postgres fact, the scenario IDs to satisfy (SCN-MOD001-027/028/
+067/097), the negative-proof strategy `database.md`/the agent's own
+charter require (production-equivalent non-privileged runtime role
+only, ground-truth-observer pattern, a deliberately-broken-fixture
+counter-proof), and the dependency-addition path already established by
+`BUG-036` (wheel-only download → `generate_requirements_lock.py` →
+`--require-hashes` install).
+
+**What it built, independently re-verified by this session (not taken
+on the subagent's report alone):** `backend/tests/harness/{postgres,
+tenant_isolation,authn}.py` plus integration/unit tests. A real,
+disposable, digest-pinned `postgres:16-alpine` container per pytest
+session (127.0.0.1-only, force-removed after). Two distinct roles —
+`veyro_schema_owner` (NOLOGIN, owns the tables) and `veyro_runtime`
+(LOGIN, NOSUPERUSER, NOBYPASSRLS, no memberships, owns nothing,
+password sent only as a SCRAM verifier, never cleartext to the server).
+The canonical `access_grant` fixture (SCN-067) has `tenant_id NOT NULL`,
+`ENABLE`/`FORCE ROW LEVEL SECURITY`, and a policy keyed on a
+transaction-local `app.tenant_id` setting. Every negative-isolation
+probe is measured against ground truth read by a separate superuser
+observer (so "0 rows" can't mean "nothing was there"), and the harness
+refuses an observer that is itself RLS-filtered. The auth harness is an
+explicit non-product fixture (TSD ADR-009: real auth is a managed OIDC/
+passkey provider) built around an HMAC-signed token, signature checked
+before any claim is parsed, with a 13-case negative-credential catalog
+and byte-identical before/after state assertions plus an audit trail
+that never stores the raw credential.
+
+**Independently re-run by this session, all confirmed:** `pytest -v`
+in `backend/` — 37/37 passed. `ruff check .` — clean. `mypy .` (strict)
+— clean, 20 files. `pytest tools/tests` — 18/18 passed.
+`tools/validate_repo_skeleton.py` (7/7), `tools/validate_baseline_binding.py`,
+`tools/validate_capability_manifest.py` (both MOD-000 and MOD-001
+manifests), `tools/validate_migration_ordering.py` — all PASS.
+`knowledge/00-System/verify_baselines.py` — 4/4 governing baselines
+still MATCH. `docker ps -a` confirmed no leftover Veyro container after
+the run (only unrelated pre-existing containers from other projects on
+this machine). Read both new harness modules and the dependency/
+STATUS.md/BUG_REGISTRY.md diffs directly — no fabricated claims found.
+
+**The two required negative proofs, both real:** (1) `access_grant`
+deliberately broken 5 ways (RLS disabled, permissive policy, NOT
+FORCED, nullable `tenant_id`, runtime-owns-table) plus BYPASSRLS/
+superuser connections — every one detected by name
+(`RLS_NOT_ENABLED`/`RLS_NOT_FORCED`/`TENANT_ID_NULLABLE_OR_MISSING`/
+`RUNTIME_ROLE_OWNS_TABLE`/etc.), each exposing the real cross-tenant
+leak such a broken fixture would hide; the correct configuration shows
+0 of the other tenant's rows visible/updatable/deletable, with
+insert/reassign refused by Postgres itself (`new row violates row-level
+security policy`). (2) All 13 negative-credential cases rejected, no
+session issued, state byte-identical, exactly one `authentication.failed`
+audit row per case, raw credential never stored. A 7-mutation kill-check
+(each mutation restored + SHA-256-verified after) confirmed the test
+suite actually goes red for each — including "the runtime fixture
+silently connects as superuser," the exact false-clean failure mode
+this role exists to prevent.
+
+**Dependency added:** `psycopg[binary]==3.3.6` (chosen over SQLAlchemy/
+Alembic — the harness runs raw SQL as distinct roles, no ORM needed yet;
+also SQLAlchemy 2's own future driver, so no throwaway choice), added
+to `backend/pyproject.toml`'s real `dependencies` (not `dev` — a DB
+driver is a runtime dependency) via the exact `BUG-036` wheel-lock-install
+path (2 new lock entries, all 12 prior hashes unchanged, independently
+re-diffed by this session). LGPL-3.0 licence flagged for the owner's
+awareness (not treated as a material business change by either the
+subagent or this session, but neither is a lawyer — owner's call, no
+owner approval sought or claimed as obtained).
+
+**`BUG-037` filed, not fixed by the filer:** `knowledge/05-QA/tools/mr_verify.py`
+rejects the harness's own genuine Opus transcript
+(`claude-opus-5-5`, 127/127 turns) because its family regex only
+accepted dot-separated minor versions; also missing the 3 `ADR-005`
+agents from its tier map. Correctly not self-fixed (the tool attests the
+filer's own tier — fixing it would be self-certification). This means
+Slice 5's MR evidence carries raw transcript evidence side-by-side with
+the tool's `BLOCKED` verdict, not a tool-attested PASS — disclosed
+honestly in both the MR file and here, not smoothed over.
+
+**Durable state updated this chunk:** `backend/tests/harness/` (new),
+`backend/tests/integration/{conftest.py,test_tenant_isolation_harness.py,
+test_authn_harness.py}` (new), `backend/tests/unit/test_harness_postgres_fail_closed.py`
+(new), `backend/pyproject.toml`/`requirements-dev.txt`/
+`requirements-dev.lock.txt` (modified), new
+`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`,
+new `knowledge/03-Modules/MOD-001/evidence/model-routing/CRITICAL_ENGINEER_SLICE5_DISPATCH_2026-09-29.md`,
+new `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-037-mr-verify-rejects-current-opus-model-id.md`,
+`knowledge/03-Modules/MOD-001/STATUS.md` (Slice 5 entry + corrected R02
+progress line), `knowledge/05-QA/BUG_REGISTRY.md` (BUG-037 row + totals
+note), this file (chunk 62 compressed/archived per the retention rule
+to make room, this chunk added in full).
+
+**Disposition:** MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
+approved. WIP remains 1. MOD-002 not started. No Code Review / Manual
+QA / Security / Performance / Gatekeeper phase run this chunk, per the
+mission's own explicit instruction. `SCENARIOS.md` not edited — the two
+executed-but-unjudged scenarios (SCN-027/067) await independent
+`veyro-security-reviewer` judgment before their disposition changes
+there; this file and `STATUS.md` record execution, not certification.
+
+**Next legally allowed action:** commit and push this chunk's changes
+(done immediately after this entry was written — see git log for the
+commit SHA); then either (a) route an independent fresh-context
+`veyro-security-reviewer` to judge SCN-027/067's mechanical PASS
+results and to independently re-verify the RLS/authn harness's
+anti-false-clean properties (no self-review, per the critical-engineer's
+own charter), (b) dispatch the RLS-lint/permission-lint gates
+(GOV-01-R04, `ADR-005`'s third critical-engineer slice) as a distinct
+future critical slice now that real backend schema exists for gate 1 to
+lint against, or (c) continue with further dependency-safe routine
+slices (the six domain suite scaffolds/financial-invariant placeholder,
+GOV-01-R03/R05/R07/R08). Also open: route `BUG-037` to whoever owns
+`mr_verify.py`/DC-17 re-qualification of the current Opus/Sonnet model
+ids — every future Opus MR attestation is `BLOCKED` until that lands.
 
 ## What happened chunk 54, 2026-09-25 (compressed 2026-09-25, thirty-seventh retention-rule application) — fresh independent BUG-035 round-4 review: owner's `paths:`-frontmatter patch applied, but the patch itself introduces 3 new P1s (2 rule-scope gaps + 1 stale-evidence gap); RULE-001..009 remain BLOCKED. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-54-2026-09-25-round4-scope-gaps-found.md`.
 

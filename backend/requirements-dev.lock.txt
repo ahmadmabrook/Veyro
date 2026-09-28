@@ -1,5 +1,5 @@
 # Generated deterministically by tools/generate_requirements_lock.py
-# from the real downloaded wheels in /private/tmp/claude-501/-Users-ahmadmabrouk-Desktop-Veyro/a8cd4936-55d6-44dc-a907-dcbdb5393c26/scratchpad/veyro-wheels.
+# from the real downloaded wheels in /private/tmp/claude-501/-Users-ahmadmabrouk-Desktop-Veyro/eca6420e-750e-4f5a-8636-1c4a7d0a68db/scratchpad/veyro-wheels.
 # Every name/version/hash below was parsed from a real wheel filename
 # or computed via hashlib.sha256 on the real file — never hand-typed.
 # Re-run `tools/generate_requirements_lock.py check <wheel_dir> <this file>`
@@ -21,6 +21,10 @@ pathspec==1.1.1 \
     --hash=sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
 pluggy==1.6.0 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+psycopg==3.3.6 \
+    --hash=sha256:a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631
+psycopg-binary==3.3.6 \
+    --hash=sha256:5927b7ba63153cd8e9862987290a2b783a5c590daf2a4ef981700cc3569166d4
 pygments==2.21.0 \
     --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
 pytest==9.1.1 \

@@ -2,7 +2,12 @@
 name = "veyro-backend"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+# psycopg: PostgreSQL driver for the GOV-01-R02 tenant-isolation/authn harness
+# (raw SQL as distinct DB roles). Also SQLAlchemy 2's `postgresql+psycopg`
+# dialect driver, so the TSD reference stack can adopt it later unchanged.
+dependencies = [
+    "psycopg[binary]==3.3.6",
+]
 
 [project.optional-dependencies]
 dev = [

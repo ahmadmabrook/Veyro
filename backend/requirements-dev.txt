@@ -41,3 +41,9 @@
 pytest==9.1.1
 ruff==0.16.9
 mypy==2.3.1
+
+# Runtime dependency, mirrored from pyproject.toml `dependencies` so the one
+# hash-locked dev install also carries it (MOD-001 Slice 5, GOV-01-R02 harness).
+# LGPL-3.0 (psycopg) — reviewed in
+# knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md
+psycopg[binary]==3.3.6
