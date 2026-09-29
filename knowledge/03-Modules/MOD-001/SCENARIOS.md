@@ -1055,12 +1055,21 @@ scenario's real target, same as `SCN-127`(a)'s Gradle stubs and
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
-**SCN-MOD001-027 · AUTHN · Blocker · GOV-01-R02 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-027 · AUTHN · Blocker · GOV-01-R02 · Automated · veyro-security-reviewer/Opus · BLOCKED (2026-09-29, pending BUG-038)**
 Steps: send a deliberately invalid/expired credential to the
 authentication harness's fixture endpoint (same drill class MOD-000's
 own SCN-MOD000-095 established for a live TestSprite endpoint, applied
 here to MOD-001's own harness). Expected: rejection, no session issued,
-real profile/state unaffected before/after.
+real profile/state unaffected before/after. **Executed and independently
+reviewed 2026-09-29** by a fresh-context `veyro-security-reviewer`
+(no participation in authoring the harness): all 13 negative-credential
+cases reject correctly with byte-identical before/after state, read by
+a structurally independent observer connection — technically PASS. Not
+recorded as an unconditional PASS because the evidence rests on an
+unregistered/unqualified capability (Docker Engine + `postgres:16-alpine`
+— see `BUG-038`); the reviewer's own explicit position is that this
+scenario is recordable PASS once `BUG-038` closes, with no re-run
+needed. See `knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`.
 
 **SCN-MOD001-028 · AUTHZ · Major · GOV-01-R02 · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Steps: the tenant-isolation harness's authorization check runs for a
@@ -1443,7 +1452,7 @@ Steps: a synthetic large-backfill job is interrupted mid-run. Expected:
 it resumes from a checkpoint rather than restarting from zero, per TSD
 §24.2's "online/resumable jobs with progress and throttling" text.
 
-**SCN-MOD001-067 · LIFE · Blocker · GOV-01-R02 (tenant-isolation harness, life-safety framing) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-067 · LIFE · Blocker · GOV-01-R02 (tenant-isolation harness, life-safety framing) · Automated · veyro-security-reviewer/Opus · BLOCKED (2026-09-29, two independent reasons — see below)**
 **Corrected (Scenario Review round 1, P1-6):** the original draft had no
 procedure distinct from 005/007. Rewritten with a concrete, distinct
 fixture. Preconditions: a synthetic table representing a physical-access
@@ -1460,6 +1469,21 @@ specific fixture (companion to 005's own negative), the denial fails and
 the gate itself (not just this scenario) must catch it — proving the
 general-purpose RLS gate (004/005) genuinely covers a life-safety-shaped
 table, not just a generic one.
+**Executed and independently reviewed 2026-09-29** by a fresh-context
+`veyro-security-reviewer` (no participation in authoring the harness).
+Two independent reasons this remains BLOCKED, not PASS: (1) the harness
+half is technically PASS, reproduced directly by the reviewer (0 of the
+other tenant's rows visible/updatable/deletable, INSERT/reassign denied
+by Postgres with the RLS error naming `access_grant` in the server log,
+all 5 deliberate breakages + the BYPASSRLS/superuser self-checks
+correctly caught) — but this evidence rests on the same unregistered/
+unqualified Docker/Postgres capability as SCN-027 (`BUG-038`); (2) the
+scenario's own negative clause requires "the gate itself" (the R04
+RLS-lint gate, GOV-01-R04, out of scope for this dispatch per `ADR-005`)
+to catch disabled RLS — that gate does not exist yet, a precondition
+already honestly disclosed as NOT EXECUTED by the implementer, not a
+new finding. See
+`knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`.
 
 **SCN-MOD001-068 · PERF · Major · GOV-01-R03/§12 of IMPLEMENTATION.md (CI runner smoke-load) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
 **Corrected (Scenario Review round 1, P1-7):** the original draft set the

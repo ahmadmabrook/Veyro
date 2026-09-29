@@ -622,3 +622,38 @@ text named as the next legally allowed action.
 - [ ] Code Review / Manual QA / Security Review / Performance Review /
       Gatekeeper certification — none run this session, per the
       mission's own explicit instruction not to run these prematurely.
+- [x] **Independent Slice-5 security review (2026-09-29):** fresh-context
+      `veyro-security-reviewer` (no participation in Slice 5) independently
+      reproduced the tenant-isolation/RLS and authn harness evidence —
+      technically sound (6 hand-mutations killed the suite, FORCE-RLS
+      semantics independently verified against real Postgres, no
+      real/synthetic-data violation found). **Verdict: BLOCKED, P0=0/P1=1
+      (`BUG-038`), P2=5, Editorial=3.** SCN-MOD001-027/067 both recorded
+      BLOCKED (not PASS) pending `BUG-038`'s closure — SCN-067 is
+      additionally, independently blocked on the still-not-built R04
+      RLS-lint gate (already-disclosed precondition, not a new finding).
+      **MOD-001 does not proceed to its next critical slice (the R04
+      gates) until `BUG-038` closes.** See
+      `knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`,
+      `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-038-docker-postgres-capability-unregistered.md`.
+- [x] **`BUG-037` CLOSED (2026-09-29), 2 remediation rounds + 3 independent
+      reviews:** `mr_verify.py` now recognizes `claude-opus-5-5` via an
+      exact per-tier allowlist (`_QUALIFIED_MODELS`) — round 1's regex-
+      widening fix was found by independent review to overshoot (silently
+      accepted other unqualified ids) and was replaced, not patched
+      further. DC-17 re-qualification of `claude-opus-5-5` recorded in
+      `knowledge/04-Decisions/ADR-008-dc17-requalification-opus-5-5-sonnet-5.md`.
+      The Slice-5 MR record now shows tool-attested PASS (170/170 turns).
+      3 new non-blocking findings filed (`BUG-039`/`040`/`041`). See
+      `knowledge/03-Modules/MOD-001/evidence/model-routing/BUG037_FINAL_VERIFICATION_2026-09-29.md`.
+- [x] **psycopg dependency qualification independently re-verified
+      (2026-09-29):** installed wheel metadata, bundled LICENSE.txt text,
+      and PyPI's own authoritative JSON metadata all agree —
+      `License-Expression: LGPL-3.0-only`, no known vulnerabilities (OSV).
+      **No owner decision required** — `CAPABILITY_POLICY.md`'s scope
+      (Skills/Rules/Plugins/MCPs/hooks/scripts) does not cover an ordinary
+      pip runtime dependency (same precedent as `pytest`/`ruff`/`mypy`,
+      never registered either), and unmodified/dynamically-imported LGPL
+      use with no redistribution is not a DC-16 material business/
+      architecture change. See
+      `knowledge/03-Modules/MOD-001/evidence/security/PSYCOPG-DEPENDENCY-QUALIFICATION-2026-09-29.md`.

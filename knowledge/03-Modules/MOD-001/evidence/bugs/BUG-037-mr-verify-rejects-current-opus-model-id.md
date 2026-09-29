@@ -2,9 +2,40 @@
 doc: BUG-037
 module: MOD-000 (tool: knowledge/05-QA/tools/mr_verify.py), surfaced by MOD-001
 severity: P1 (proposed by the filer; blocks DC-17 runtime model attestation for every Opus-tier assurance action; fails closed, so no false-clean risk)
-status: OPEN (2026-09-29)
+status: CLOSED (2026-09-29, after 2 remediation rounds + 3 independent review passes — see "Closure" below)
 filed: 2026-09-29 by veyro-critical-engineer (Opus) during MOD-001 Slice 5 (GOV-01-R02); not fixed by the filer (see "Why not fixed here")
 ---
+
+## Closure (2026-09-29)
+
+Fixed in 2 rounds, by `veyro-implementer` (Sonnet — a role that did not
+author Slice 5), each independently verified by a fresh-context
+`veyro-security-reviewer` (Opus):
+
+- **Round 1** widened `_FAMILY_RE` to accept the dash-separated minor
+  version (`claude-opus-5-5`). Fixed the reported bug, but an
+  independent review found it overshot — the widened regex also
+  silently accepted every other real-but-unqualified Opus/Sonnet id
+  (`claude-opus-4-5`, `claude-opus-5-6`, `claude-sonnet-4-5-20250929`,
+  etc.), a new fail-open worse in kind than the original fail-closed
+  bug. That review also made the substantive DC-17 call that
+  `claude-opus-5-5` is genuinely this project's current Opus tier, not
+  a fallback/degraded variant — recorded in
+  `knowledge/04-Decisions/ADR-008-dc17-requalification-opus-5-5-sonnet-5.md`.
+- **Round 2** replaced the regex with an exact per-tier allowlist
+  (`_QUALIFIED_MODELS = {"opus": frozenset({"claude-opus-5",
+  "claude-opus-5-5"}), "sonnet": frozenset({"claude-sonnet-5"})}`) —
+  any id not on the list fails closed, regardless of shape. A third,
+  final independent review (no participation in either fix or the
+  round-1 review) re-tested 54 must-block cases plus the full real-
+  transcript regression corpus (107 transcripts) and confirmed CLOSE.
+  Full record:
+  `knowledge/03-Modules/MOD-001/evidence/model-routing/BUG037_FINAL_VERIFICATION_2026-09-29.md`.
+
+3 new findings surfaced during remediation, filed separately,
+non-blocking to this closure: `BUG-039` (P3, stale MR evidence
+backfill), `BUG-040` (P2, near-miss label-canonicalization gap),
+`BUG-041` (P3, malformed-row exception instead of BLOCKED verdict).
 
 # BUG-037 — `mr_verify.py` rejects the harness's current Opus model id (`claude-opus-5-5`), and lacks 3 ADR-005 agents
 

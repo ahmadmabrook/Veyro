@@ -80,6 +80,23 @@ bypasses of the tier-enforcement this tool exists to provide:
    plain `open()` file-object, which `extract_models` already consumed
    one line at a time — O(1) memory instead of O(file size), same
    semantics, no behavior change.
+
+## BUG-037 Round 2 remediation (2026-09-29, independent `veyro-security-reviewer`)
+
+Round 1 fixed BUG-037's reported symptom (`claude-opus-5-5` rejected) by
+widening `_FAMILY_RE` to accept any dash- or dot-separated digit-group
+suffix. A fresh-context review found this fixed the report but broke the
+actual DC-17 property the tool exists to enforce: a shape-matching regex
+silently accepts *any* real, unqualified id of the right shape
+(`claude-opus-4-0`, `claude-opus-6-0`, `claude-sonnet-4-5-20250929`, ...),
+none of which this project has reviewed. That is a fail-open regression —
+worse than the original fail-closed bug. Fixed by replacing the regex with
+`_QUALIFIED_MODELS`, an exact per-tier allowlist of ids this project has
+actually confirmed observed and qualified. Membership is exact string
+equality — no normalization, no shape inference. A new provider-side id
+(old or new, real or fabricated) must be added to the allowlist by an
+explicit re-qualification decision before it can verify PASS; it is never
+inferred from resembling an already-qualified id.
 """
 import json
 import re
@@ -92,17 +109,38 @@ EXPECTED_TIER_BY_AGENT = {
     "veyro-manual-qa": "opus", "veyro-security-reviewer": "opus",
     "veyro-performance-reviewer": "opus", "veyro-gatekeeper": "opus",
     "veyro-test-author": "sonnet",
+    # Added 2026-09-29 (BUG-037): the 3 agents ADR-005 registered that were
+    # missing from this map, tier confirmed against MODEL_ROUTING.md's
+    # §4.3 surface-profile-agents table and each agent's own frontmatter
+    # `model:` field.
+    "veyro-critical-engineer": "opus",
+    "veyro-backend-engineer": "sonnet",
+    "veyro-infra-sre-engineer": "sonnet",
 }
 
-# Family pattern per tier: "claude-<tier>-<version>", version = digits/dots only,
-# nothing trailing after it. Tightened 2026-09-05 (second Phase 5 re-review, N-9):
-# the prior check was `expected_tier in observed` (substring), which a fabricated
-# model id like "claude-opus-9-nonexistent-model-id" would pass -- confirmed by
-# the reviewer. This anchors both ends so only a genuine family+version string
-# matches.
-_FAMILY_RE = {
-    "opus": re.compile(r"^claude-opus-\d+(\.\d+)*$"),
-    "sonnet": re.compile(r"^claude-sonnet-\d+(\.\d+)*$"),
+# Exact per-tier allowlist of DC-17-qualified model ids (BUG-037 Round 2,
+# 2026-09-29). A shape-matching regex (Round 1's approach, and N-9's
+# original approach before it) cannot express "this specific id was
+# reviewed" -- it can only express "this looks like the right family",
+# which silently admits every other real, unqualified id of that shape.
+# DC-17 requires a NEW provider-side id to force an explicit
+# re-qualification decision, never a silent pass on shape resemblance.
+# Membership must be checked by exact string equality only -- do not
+# normalize/strip the observed value before checking, and do not add an
+# id here without confirming it is a genuinely-observed, qualified id:
+#   - claude-opus-5    : historical Opus id, qualified.
+#   - claude-opus-5-5  : current Opus id (BUG-037's own subject), qualified.
+#   - claude-sonnet-5  : current and, per the BUG-037 round-2 review, the
+#     only Sonnet id ever observed across this project's transcripts.
+# Deliberately excluded: "claude-sonnet-5-5" (never observed -- Sonnet
+# still resolves to "claude-sonnet-5"), and the dot-separated forms
+# "claude-opus-5.5"/"claude-sonnet-5.5" (never independently confirmed as
+# real observed ids; they were accepted by the pre-BUG-037 regex only
+# because N-9's hardening pass wrote that pattern defensively, not because
+# dot-form was ever actually seen).
+_QUALIFIED_MODELS = {
+    "opus": frozenset({"claude-opus-5", "claude-opus-5-5"}),
+    "sonnet": frozenset({"claude-sonnet-5"}),
 }
 
 # The harness's own out-of-band sentinel for a rate-limit/session notice —
@@ -206,17 +244,17 @@ def verify(models: list[str], expected_tier: str, agent_label: str = "") -> dict
         }
     observed = distinct[0]
     tier_key = expected_tier.lower()
-    pattern = _FAMILY_RE.get(tier_key)
-    if pattern is None:
+    qualified = _QUALIFIED_MODELS.get(tier_key)
+    if qualified is None:
         return {
             "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
-            "reason": f"Unknown expected tier '{expected_tier}' — must be one of {sorted(_FAMILY_RE)}.",
+            "reason": f"Unknown expected tier '{expected_tier}' — must be one of {sorted(_QUALIFIED_MODELS)}.",
             "models_observed": distinct, "expected_tier": expected_tier,
         }
-    if not pattern.match(observed):
+    if observed not in qualified:
         return {
             "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
-            "reason": f"Resolved model '{observed}' does not match required tier '{expected_tier}' (expected pattern {pattern.pattern}) for {agent_label or 'agent'}.",
+            "reason": f"Resolved model '{observed}' is not a DC-17-qualified id for tier '{expected_tier}' (qualified: {sorted(qualified)}) for {agent_label or 'agent'} — a new provider-side id requires explicit re-qualification, not a shape-based match.",
             "models_observed": distinct, "expected_tier": expected_tier,
         }
     return {

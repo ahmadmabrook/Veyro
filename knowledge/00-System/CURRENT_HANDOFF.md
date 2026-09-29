@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_HANDOFF
 status: LIVE
-updated: 2026-09-29 (chunk 64 — GOV-01-R02 critical slice (Slice 5) implemented: tenant-isolation/RLS harness + authentication negative-credential fixture pattern, dispatched to `veyro-critical-engineer` (Opus) per `ADR-005`, run for real against a disposable local Postgres 16 (Docker daemon started this chunk). 37/37 backend tests, ruff/mypy clean, all validators + 4/4 baselines PASS, independently re-verified by the orchestrating session. Both required negative proofs are real (5-way `access_grant` breakage detection; 13/13 negative-credential rejection); a 7-mutation kill-check confirms the suite fails closed. `BUG-037` filed (`mr_verify.py` rejects the current Opus model id) — not self-fixed. Full detail: this file's own "chunk 64" section below; `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`.)
+updated: 2026-09-29 (chunk 65 — independent Slice-5 security review returned BLOCKED (P1=1, `BUG-038`: Docker/Postgres capability unregistered — blocks MOD-001's next critical slice until closed); `BUG-037` (mr_verify.py tooling defect) remediated in 2 rounds + 3 independent reviews, now CLOSED (`ADR-008` records the DC-17 re-qualification of `claude-opus-5-5`); psycopg dependency independently re-verified, no owner decision required. Full detail: this file's own "chunk 65" section below. Prior update, same day (chunk 64): GOV-01-R02 critical slice (Slice 5) implemented: tenant-isolation/RLS harness + authentication negative-credential fixture pattern, dispatched to `veyro-critical-engineer` (Opus) per `ADR-005`, run for real against a disposable local Postgres 16 (Docker daemon started this chunk). 37/37 backend tests, ruff/mypy clean, all validators + 4/4 baselines PASS, independently re-verified by the orchestrating session. Both required negative proofs are real (5-way `access_grant` breakage detection; 13/13 negative-credential rejection); a 7-mutation kill-check confirms the suite fails closed. Full detail: this file's own "chunk 64" section below; `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`.)
 ---
 
 # Current Handoff
@@ -147,7 +147,10 @@ a summary line, full narrative archived to
 **Forty-seventh application (2026-09-29, chunk 64): chunk 62 compressed to
 a summary line, full narrative archived to
 `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-62-2026-09-26-bug036-round5-hardening.md`.**
-— chunks 63 and 64 are now the 2 kept in full.
+**Forty-eighth application (2026-09-29, chunk 65): chunk 63 compressed to
+a summary line, full narrative archived to
+`knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-63-2026-09-28-autonomous-mode-bug036-tier2-slice4.md`.**
+— chunks 64 and 65 are now the 2 kept in full.
 
 ## What happened chunk 58, 2026-09-25 (compressed 2026-09-26, forty-second retention-rule application) — dedicated investigation of the recurring CAP-007 test-execution block: root-caused, BUG-036 filed, two-tier owner patch drafted, no implementation slice run. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-58-2026-09-25-bug036-filed-root-caused.md`.
 
@@ -161,109 +164,133 @@ a summary line, full narrative archived to
 
 ## What happened chunk 62, 2026-09-26 (compressed 2026-09-29, forty-seventh retention-rule application) — BUG-036 Round 5: hardened the Tier-2 install plan before the owner ran it (no pip upgrade, wheel-only acquisition, generator/checker script eliminating manual lock transcription, portability stated honestly). Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-62-2026-09-26-bug036-round5-hardening.md`.
 
-## What happened chunk 63, 2026-09-28/29 — autonomous development mode adopted (OWN-006/ADR-007 backfilled); BUG-036 Tier 2 CLOSED with real execution; Slice 4 (GOV-01-R06 database-migration tooling) implemented
+## What happened chunk 63, 2026-09-28/29 (compressed 2026-09-29, forty-eighth retention-rule application) — autonomous development mode adopted (OWN-006/ADR-007 backfilled); BUG-036 Tier 2 CLOSED with real execution; Slice 4 (GOV-01-R06 database-migration tooling) implemented. Full narrative archived: `knowledge/03-Modules/MOD-000/evidence/handoff-archive/CHUNK-63-2026-09-28-autonomous-mode-bug036-tier2-slice4.md`.
 
-Session opened under a mission naming "Autonomous Development Mode" as
-already enabled, asking this session to verify that state and continue
-MOD-001 work without stopping for local-development owner actions,
-reserving only Production/spend/real-data/destructive-remote-git for
-owner confirmation.
+## What happened chunk 65, 2026-09-29 — independent Slice-5 security review (BLOCKED, `BUG-038` filed); BUG-037 remediated in 2 rounds + 3 independent reviews (CLOSED, `ADR-008`); psycopg dependency qualification independently re-verified (no owner decision required)
 
-**Verification, not assumption:** confirmed local HEAD == `origin/main`
-== `058ed27` (a real commit, authored under the owner's own git identity,
-dated this session). Read the commit's actual diff rather than trusting
-the mission's framing: it replaced `.claude/security/bash_guard.py`'s
-~797-line allow-by-construction classifier with a 24-line inert stub and
-removed the `PreToolUse` hook registration from `.claude/settings.json`
-entirely (now `Bash(*)` allow / `deny: []` / `defaultMode:
-bypassPermissions`). **Found a real governance gap**: this project's own
-`OWNER_APPROVALS.md` requires "any session that receives explicit owner
-approval for an otherwise owner-reserved action" to add a row "in the
-same commit as the approved action" — `058ed27` added none, for a change
-retiring a security control that took 4 review rounds (v1) + a capped
-Round 3 + P1 remediation + a 14-point live-activation test (v2) to build.
-Stopped and asked the user directly rather than either reverting the
-change or silently proceeding as if it were already properly logged.
+Mission (4 parts): (1) independent Slice-5 security review with explicit
+SCN-MOD001-027/067 judgments, (2) BUG-037 remediation by a role that did
+not author Slice 5, verified by a fresh assurance reviewer, (3)
+independent psycopg license/provenance re-verification, (4) durable-state
+update. Explicit instruction: do not start the next implementation
+slice, do not start MOD-002, do not mark MOD-001 approved, do not run
+final Gatekeeper/Manual QA/Code Review. Bootstrap re-verified fresh:
+local HEAD == `origin/main` == `5f88936`, matching the mission's stated
+governed HEAD.
 
-**User chose: log it, then continue.** Authored `ADR-007`
-(`knowledge/04-Decisions/ADR-007-autonomous-development-mode-cap007-retirement.md`)
-scoping the decision precisely — agent Bash/permission friction relaxed;
-WIP=1, module certification gates, and the 4 owner-reserved absolute
-restrictions explicitly NOT altered — added `OWN-006` to
-`OWNER_APPROVALS.md`, and marked CAP-007 RETIRED in
-`CAPABILITY_REGISTRY.md` with an explicit rollback path (revert `058ed27`
-+ re-run the 194-test guard suite). Committed and pushed
-(`6742533`) before doing any further work, so the audit trail exists
-independent of whether the rest of this session's work landed cleanly.
+**1. Independent Slice-5 review.** Fresh-context `veyro-security-reviewer`
+(no participation in authoring Slice 5), foreground dispatch. Verdict:
+**BLOCKED, P0=0, P1=1, P2=5, Editorial=3.** The harness itself held up
+under direct reproduction: 6 hand-applied mutations (3 matching the
+implementer's own M1/M4/M5 kill-check counts exactly), a 5-combination
+FORCE-RLS truth table independently measured against real Postgres and
+matching the harness's own claims, 9 self-escalation probes all denied,
+synthetic-data-only confirmed. **The P1 (`BUG-038`) is a supply-chain
+governance gap, not a harness defect:** Docker Engine + the pinned
+`postgres:16-alpine` image — the trust anchor for both Blocker-severity
+scenarios — have no `CAPABILITY_REGISTRY.md` entry, no qualification
+evidence, no independent Opus approval, violating
+`CAPABILITY_POLICY.md`'s own fail-closed rule. Registered as `CAP-008`,
+status `PENDING`. **SCN-MOD001-027: technically PASS, recorded BLOCKED
+pending `BUG-038`.** **SCN-MOD001-067: BLOCKED for two independent
+reasons** — the same `BUG-038` concern, plus the already-disclosed,
+separate precondition that the R04 RLS-lint gate (GOV-01-R04, out of
+scope for Slice 5 per `ADR-005`) doesn't exist yet, so the scenario's
+own "the gate itself must catch it" clause can't be executed. **Per the
+mission's own rule, MOD-001 does not proceed to its next critical slice
+(the R04 gates) until `BUG-038` closes.** 5 P2 + 3 Editorial findings
+recorded, non-blocking, not remediated this chunk (out of this turn's
+scope). Full record:
+`knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`,
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-038-docker-postgres-capability-unregistered.md`.
 
-**BUG-036 Tier 2 closed by real execution**, not by the originally-planned
-`bash_guard.py` allowlist extension (moot now that the guard is retired):
-created `backend/.venv` (Python 3.14.5 — the plan's own "specific to the
-exact ... Python build it is generated on" disclosure covers this, not a
-deviation), ran the full Round-5 6-step sequence for real (`pip download
---only-binary=:all:` — all 12 wheels resolved for this machine;
-`generate_requirements_lock.py generate`/`check` — both PASS;
-`pip install --require-hashes` from the verified lock, offline from the
-already-downloaded wheels), and confirmed `pytest 9.1.1`/`ruff
-0.16.9`/`mypy 2.3.1 (compiled)` all installed and runnable. Then actually
-ran the 4 `backend/tests/*/test_scaffold_live.py` fixtures (4/4 PASS),
-`ruff check .` (clean), and `mypy .` (clean, 12 source files) against
-`backend/` for the first time in this project's history. Slices 1-3's own
-validators re-run as regression: all PASS, no discrepancy. Found and
-fixed one real pre-existing defect in passing:
-`validate_capability_manifest.py`'s module docstring was a non-raw string
-containing regex-shaped `\s`/`\d` text, raising a `SyntaxWarning` on every
-invocation; made it `r"""`, re-ran, identical output. `BUG-036` marked
-CLOSED (Round 6 section in its own evidence file), `STATUS.md` updated.
+**2. BUG-037 remediation — 2 rounds, 3 independent reviews, now CLOSED.**
+Per the mission's role-separation rule, dispatched to `veyro-implementer`
+(Sonnet — did not author Slice 5), not the critical-engineer that filed
+the bug. **Round 1** widened `mr_verify.py`'s `_FAMILY_RE` to accept the
+dash-separated minor version (`claude-opus-5-5`) and added the 3
+`ADR-005` agents to `EXPECTED_TIER_BY_AGENT`. A fresh independent
+`veyro-security-reviewer` verification found this **overshot**: the
+widened regex also silently accepted every other real-but-unqualified
+Opus/Sonnet id (`claude-opus-4-5`, `claude-opus-5-6`,
+`claude-sonnet-4-5-20250929`, etc.) — a new fail-open, worse in kind
+than the original fail-closed bug, since it defeated DC-17's entire
+re-qualification trip-wire. That same review made the substantive DC-17
+call that `claude-opus-5-5` genuinely is this project's current Opus
+tier (clean single-id cutover across 8 real transcripts, no
+alias/resolved-id disagreement, no mixed-id transcript) — recorded in
+new `knowledge/04-Decisions/ADR-008-dc17-requalification-opus-5-5-sonnet-5.md`
+per this session's `OWN-003` authority to record (not make) an Opus
+subagent's already-made judgment. **Round 2** (`veyro-implementer`
+again) replaced the regex with an exact per-tier allowlist
+(`_QUALIFIED_MODELS = {"opus": {"claude-opus-5", "claude-opus-5-5"},
+"sonnet": {"claude-sonnet-5"}}`) — any id not on the list now fails
+closed regardless of shape. **A third, final independent review**
+(no participation in either fix or the round-1 review) re-tested 54
+must-block cases plus all 107 real registered-agent transcripts in the
+project (0 regressions), confirmed `ADR-008`'s reasoning sound via its
+own independent re-derivation of the same 146-transcript corpus, fixed
+2 bookkeeping defects in `ADR-008` itself (a transcript-count
+arithmetic error; missing evidence links — both fixed directly, no
+further review round needed), and returned **verdict: CLOSE.** Updated
+the Slice-5 MR record to show tool-attested PASS (170/170 turns,
+`veyro-critical-engineer`'s real transcript). **`BUG-037` is CLOSED.**
+3 new non-blocking findings filed separately during this remediation:
+`BUG-039` (P3, stale MR evidence missing model id), `BUG-040` (P2,
+`mr_verify.py`'s near-miss label check bypassable by typo/homoglyph),
+`BUG-041` (P3, malformed JSONL row raises a bare exception instead of
+the tool's own BLOCKED verdict shape). Full record:
+`knowledge/03-Modules/MOD-001/evidence/model-routing/BUG037_FINAL_VERIFICATION_2026-09-29.md`.
 
-**Slice 4 implemented: GOV-01-R06 (database-change policy/tooling).**
-Checked GOV-01-R02 (critical-slice, routed to `veyro-critical-engineer`
-per `ADR-005`, not this session's to build) and GOV-01-R01's 3 remaining
-named gaps (E2E, mobile UI, exploratory-procedure documentation) before
-picking R06 — found each of the three R01 gaps genuinely non-actionable
-right now (mobile UI has no real surface under the still-DEFERRED
-Android/iOS Host profiles; E2E is architecturally tied to a staging
-deploy gate with no local equivalent and no staging environment exists;
-the exploratory procedure is already fully documented in `MANUAL_QA.md`
-§10 and its remaining step is a real manual-QA pass against a *running*
-surface that doesn't exist yet), rather than assuming R01 was the natural
-next slice just because it was named first. R06's own acceptance criteria
-don't depend on CI wiring (still blocked on GitHub-Actions-per-Action
-capability qualification) or a real schema (R06's own OUT-of-scope line),
-making it the dependency-safe choice. Built
-`backend/migrations/TEMPLATE.md` (TSD §24.2's 6-field record schema) and
-`tools/validate_migration_ordering.py` — a stdlib-only lint (zero new
-dependency; Alembic deliberately not wired in yet, since no real schema
-exists to migrate) enforcing expand→migrate→switch→contract ordering per
-`change_id`, failing closed on a missing field, an invalid phase, or an
-out-of-order phase. 6 new unit tests against isolated fixtures, all
-passing; full backend + tools regression re-run clean throughout.
-Implemented directly by this orchestrating session (Sonnet) per `OWN-003`'s
-existing model — not a critical slice, no architecture-decision-class
-judgment call made unilaterally.
+**3. psycopg dependency qualification — independently re-verified, no
+owner decision required.** Read installed wheel `METADATA` directly
+(`License-Expression: LGPL-3.0-only` for both `psycopg`/`psycopg-binary`
+3.3.6), confirmed the bundled `LICENSE.txt` is genuinely GNU LGPLv3 text,
+cross-checked against PyPI's own authoritative JSON API (exact match,
+no discrepancy from the prior implementation report), and re-queried
+OSV.dev independently (`{}`, no known vulnerabilities for either
+package at 3.3.6). Checked project governance directly rather than
+assuming a blocker: `CAPABILITY_POLICY.md`'s stated scope (Skills/
+Rules/Plugins/MCPs/hooks/scripts) does not cover an ordinary pip
+runtime dependency — same precedent as `pytest`/`ruff`/`mypy`, never
+registered either; DC-16's "material business/architecture/scope
+change" does not capture an unmodified, dynamically-imported LGPL
+dependency with no redistribution; the EIP's "open-source license
+governance" text names a distinct future governance area (GOV-03-adjacent
+Vendor/Compliance), not GOV-01/MOD-001's own scope. **Conclusion: no
+owner decision manufactured, none required.** Full record:
+`knowledge/03-Modules/MOD-001/evidence/security/PSYCOPG-DEPENDENCY-QUALIFICATION-2026-09-29.md`.
 
-**Durable state updated this chunk:** `ADR-007`, `OWNER_APPROVALS.md`
-(`OWN-006`), `CAPABILITY_REGISTRY.md` (CAP-007 RETIRED), `BUG-036`
-evidence file (Round 6, status CLOSED), `STATUS.md` (BUG-036 closure +
-Slice 4 entries), new
-`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-4-database-migration-ordering-tooling-2026-09-29.md`,
-this file (chunk 61 compressed/archived per the retention rule to make
-room, this chunk added in full).
+**Durable state updated this chunk:** new `ADR-008`; new `BUG-038`/
+`039`/`040`/`041` evidence files; `BUG-037`'s own evidence file marked
+CLOSED with full round history; new
+`knowledge/03-Modules/MOD-001/evidence/security/{SLICE5-INDEPENDENT-REVIEW-2026-09-29,PSYCOPG-DEPENDENCY-QUALIFICATION-2026-09-29}.md`;
+new `knowledge/03-Modules/MOD-001/evidence/model-routing/BUG037_FINAL_VERIFICATION_2026-09-29.md`;
+`CRITICAL_ENGINEER_SLICE5_DISPATCH_2026-09-29.md` (tool attestation
+updated PASS); `CAPABILITY_REGISTRY.md` (`CAP-008` added, `PENDING`);
+`BUG_REGISTRY.md` (all 5 new bugs + `BUG-037` closure); `SCENARIOS.md`
+(SCN-027/067 dispositions); `STATUS.md`; this file (chunk 63
+compressed/archived per the retention rule to make room, this chunk
+added in full).
 
 **Disposition:** MOD-001 remains `IMPLEMENTATION IN PROGRESS`, not
-approved. WIP remains 1. MOD-002 not started, per explicit instruction.
-No Code Review / Manual QA / Security Review / Performance Review /
-Gatekeeper certification run this chunk, per the standing instruction not
-to run these prematurely.
+approved. WIP remains 1. MOD-002 not started. No implementation slice
+started (per explicit instruction). No Code Review / Manual QA /
+Security Review / Performance Review / Gatekeeper certification run
+this chunk (per explicit instruction) — the security review that did
+run was scoped to Slice 5 specifically, not a module-wide pass.
 
-**Next legally allowed action:** continue MOD-001 with further
-dependency-safe slices (GOV-01-R03/R05/R07/R08 remain unstarted and
-unblocked by any known gap; GOV-01-R02 awaits `veyro-critical-engineer`
-dispatch; GOV-01-R04/CI-wiring awaits GitHub-Actions capability
-qualification), or route GOV-01-R02 to `veyro-critical-engineer` if the
-next session's mission calls for it. `backend/requirements-dev.lock.txt`
-should be committed (generated and verified this chunk, per Round 5's
-own "exact files to commit" list).
+**Next legally allowed action:** `BUG-038` must be remediated (register
+Docker Engine + the pinned `postgres:16-alpine` image through
+`CAPABILITY_POLICY.md`'s stages 4-7, resolve the disclosed Docker
+Desktop licensing sub-question, get an independent Opus approval)
+before the R04 RLS-lint/permission-lint gates (`ADR-005`'s third
+critical-engineer slice) may be dispatched. Independently of that,
+further dependency-safe routine slices remain available and unblocked
+(the six domain suite scaffolds/financial-invariant placeholder,
+GOV-01-R03/R05/R07/R08, DOM-002 concurrency pattern). `BUG-039`/`040`/
+`041` (all non-blocking) and Slice 5's own disclosed P2/Editorial
+findings (from the independent review) remain open, not yet routed.
 
 ## What happened chunk 64, 2026-09-29 — GOV-01-R02 critical slice (Slice 5): tenant-isolation/RLS harness + authentication negative-credential fixture pattern, dispatched to `veyro-critical-engineer` (Opus) per ADR-005, executed against a real disposable Postgres
 

@@ -40,16 +40,27 @@ also requires recording "whether Opus directly implemented or supervised."
   value, no mid-task substitution); the count grows as the transcript does.
   This is the same `message.model` signal `mr_verify.py` was built to read
   (F5-005).
-- **Tool attestation:** `knowledge/05-QA/tools/mr_verify.py <transcript> opus
-  veyro-critical-engineer` → **`BLOCKED: MODEL_ASSURANCE_UNVERIFIED`**
-  (exit 1). This is the tool's own verdict, recorded unedited. Root cause
-  (`BUG-037`, filed this session): the tool's family regex
-  `^claude-opus-\d+(\.\d+)*$` rejects the dash-separated id `claude-opus-5-5`.
-  Separately, `veyro-critical-engineer` is missing from its
-  `EXPECTED_TIER_BY_AGENT` map. **This record does not claim tool-attested
-  PASS.** The raw transcript evidence and the tool's BLOCKED verdict stand
-  side by side until an independent reviewer resolves `BUG-037`, including
-  the DC-17 re-qualification of the `claude-opus-5-5` alias resolution.
+- **Tool attestation — updated 2026-09-29 after `BUG-037` closed:**
+  `knowledge/05-QA/tools/mr_verify.py <transcript> opus veyro-critical-engineer`
+  now returns **`PASS`** (exit 0): `170 turn(s), 100% consistent, model
+  'claude-opus-5-5' matches required tier 'opus'.` Independently re-run by
+  the final `BUG-037` verification reviewer (a third, distinct fresh-context
+  `veyro-security-reviewer` dispatch, no participation in Slice 5 or in
+  either fix round) directly against this exact transcript path, not
+  inferred. Original finding, preserved for the record: at the time of
+  Slice 5's own dispatch, the tool returned `BLOCKED:
+  MODEL_ASSURANCE_UNVERIFIED` (exit 1) at 147/147 turns, because its family
+  regex `^claude-opus-\d+(\.\d+)*$` rejected the dash-separated id
+  `claude-opus-5-5`, and `veyro-critical-engineer` was missing from
+  `EXPECTED_TIER_BY_AGENT`. Filed as `BUG-037`, fixed in 2 rounds (round 1's
+  regex-widening fix was itself found to overshoot — silently accepting
+  other unqualified ids — by an independent review; round 2 replaced it
+  with an exact per-tier allowlist, `_QUALIFIED_MODELS`), and the DC-17
+  re-qualification of `claude-opus-5-5` as this project's genuine current
+  Opus tier is recorded in `knowledge/04-Decisions/ADR-008-dc17-requalification-opus-5-5-sonnet-5.md`.
+  `BUG-037` is now CLOSED. This record's earlier "does not claim
+  tool-attested PASS" caveat no longer applies — the tool now attests PASS
+  on this transcript, independently confirmed.
 - **Execution mode (§4.1):** **Opus implemented directly.** No
   `veyro-implementer` supervision leg. All harness design and code was written
   by this dispatch; the reasoning is in the Slice 5 evidence file's "Routing

@@ -1,7 +1,7 @@
 ---
 doc: CURRENT_STATE
 status: LIVE
-updated: 2026-09-29 (GOV-01-R02 critical slice (Slice 5) implemented: `veyro-critical-engineer` (Opus, per `ADR-005` Decision 1) built the tenant-isolation/RLS harness (fixture schema, `veyro_schema_owner`/`veyro_runtime` roles, grants, the canonical `access_grant` fixture) and the authentication negative-credential fixture pattern, run for real against a disposable local Postgres 16 (Docker daemon started this session, `postgres:16-alpine` pulled). Independently re-verified by the orchestrating session (not taken on the subagent's report alone): 37/37 backend tests, ruff/mypy clean, all validators + 4/4 baselines PASS, both required negative proofs real (a 5-way deliberately-broken `access_grant` all correctly detected; 13/13 negative credentials rejected with byte-identical state), a 7-mutation kill-check confirms the suite fails closed including "harness silently connects as superuser." Scope deliberately held to `ADR-005`'s two R02 items only — the RLS-lint/permission-lint gates (R04) and the six domain-suite-scaffolds/financial-invariant placeholder (routine, Sonnet-routed per `SCENARIOS.md`) are explicitly NOT part of this slice. `BUG-037` filed (`mr_verify.py` rejects the current `claude-opus-5-5` id — every future Opus MR attestation is `BLOCKED` until fixed/re-qualified), not self-fixed. MOD-000 remains APPROVED; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved; WIP=1, MOD-002+ locked. See `knowledge/00-System/CURRENT_HANDOFF.md` chunk 64 and `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md` for full detail, not restated here.)
+updated: 2026-09-29 (Independent Slice-5 security review: BLOCKED, P1=1 — `BUG-038` (Docker/Postgres capability unregistered) blocks MOD-001's next critical slice until closed. `BUG-037` (mr_verify.py tooling defect) CLOSED after 2 remediation rounds + 3 independent reviews — see `STATUS.md`/`BUG_REGISTRY.md`/`ADR-008` for full detail. Prior update, same day: GOV-01-R02 critical slice (Slice 5) implemented: `veyro-critical-engineer` (Opus, per `ADR-005` Decision 1) built the tenant-isolation/RLS harness (fixture schema, `veyro_schema_owner`/`veyro_runtime` roles, grants, the canonical `access_grant` fixture) and the authentication negative-credential fixture pattern, run for real against a disposable local Postgres 16 (Docker daemon started this session, `postgres:16-alpine` pulled). Independently re-verified by the orchestrating session (not taken on the subagent's report alone): 37/37 backend tests, ruff/mypy clean, all validators + 4/4 baselines PASS, both required negative proofs real (a 5-way deliberately-broken `access_grant` all correctly detected; 13/13 negative credentials rejected with byte-identical state), a 7-mutation kill-check confirms the suite fails closed including "harness silently connects as superuser." Scope deliberately held to `ADR-005`'s two R02 items only — the RLS-lint/permission-lint gates (R04) and the six domain-suite-scaffolds/financial-invariant placeholder (routine, Sonnet-routed per `SCENARIOS.md`) are explicitly NOT part of this slice. `BUG-037` filed (`mr_verify.py` rejects the current `claude-opus-5-5` id — every future Opus MR attestation is `BLOCKED` until fixed/re-qualified), not self-fixed. MOD-000 remains APPROVED; MOD-001 remains IMPLEMENTATION IN PROGRESS, not approved; WIP=1, MOD-002+ locked. See `knowledge/00-System/CURRENT_HANDOFF.md` chunk 64 and `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md` for full detail, not restated here.)
 ---
 
 # Current State
@@ -217,7 +217,17 @@ PASS (2026-09-19, Convergence Gate #1)** — see
 which is the file this one now points to rather than duplicates, and
 `knowledge/03-Modules/MOD-001/evidence/convergence-gate/CONVERGENCE_GATE_1_2026-09-19.md`
 for the gate's own full trace. MOD-001 is **READY FOR IMPLEMENTATION**;
-implementation itself has not started.
+implementation started 2026-09-19 (Slice 1) and 5 slices are complete
+as of 2026-09-29 — current slice/bug/scenario detail lives in
+`knowledge/03-Modules/MOD-001/STATUS.md`, not restated here (the exact
+staleness trap this section's own history above warns about).
+**2026-09-29: an independent Slice-5 security review returned BLOCKED
+(P1=1, `BUG-038` — an unregistered/unqualified Docker/Postgres
+capability underlying the Blocker-severity RLS/authn evidence).
+MOD-001 does not proceed to its next critical slice (the R04 gates)
+until `BUG-038` closes.** `BUG-037` (separately, an `mr_verify.py`
+tooling defect surfaced by Slice 5) is CLOSED, after 2 remediation
+rounds and 3 independent reviews — see `STATUS.md` for both.
 
 **MOD-002 and all later product modules remain LOCKED** (WIP=1;
 unaffected by MOD-001's planning activity).
