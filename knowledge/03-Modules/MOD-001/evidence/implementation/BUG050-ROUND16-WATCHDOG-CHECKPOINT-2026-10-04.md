@@ -12,3 +12,7 @@ The first round-16 reviewer stopped at a Claude five-hour/session rate limit (tr
 ## Recovery update — 2026-10-03T23:33:57.076180+00:00
 
 The resumed reviewer agent-aba25ab718d28c1ae.jsonl ended at 23:23:57 UTC with a rejected test-tool call. The recorded ACPX PID 28962 is absent, no Veyro ACPX reviewer process remains, no round-16 report exists, and no exit-code artifact was produced. This is an interrupted attempt, not a security verdict or owner stop. REVIEW_IN_FLIGHT was cleared after those checks. Preserve all existing work; retry in a new fresh independent review session and attest the result.
+
+## Fresh retry launched — 2026-10-03T23:36:05.530428+00:00
+
+Fresh independent ACPX session `veyro-bug050-round16-retry-20261004` (`5318331d-31d0-4ce9-af75-77a61aa38c25`) created with governed flags. REVIEW_IN_FLIGHT claimed and committed before dispatch (`9871538`). Live foreground-shell ACPX process via `/tmp/veyro_bug050_round16_retry_run.sh`; full response `/tmp/veyro_bug050_round16_retry_acpx.log`, exit code `/tmp/veyro_bug050_round16_retry_exit.txt` on completion. No verdict or runtime-model attestation yet. Inspect process and files before any retry; do not duplicate a live reviewer.
