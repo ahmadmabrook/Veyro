@@ -1,7 +1,7 @@
 ---
 doc: REVIEW_IN_FLIGHT
 status: LIVE — minimal durable claim mechanism, authored 2026-10-03 per R12-5 (round-12 independent review, `knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-SLICE7-DOMAIN-SCAFFOLDS-FINANCIAL-INVARIANT-SECURITY-REVIEW-ROUND12-2026-10-03.md` §4.5), implementing the process fix R11b-2/`SLICE-7-ROUND11-COLLISION-CHECKPOINT-2026-10-03.md` recommended after two orchestrating sessions independently dispatched the same round-11 review without knowing about each other.
-current_claim: IN_FLIGHT — BUG-050 round 16 retry, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-03T23:34:12.961162+00:00. Expected subagent: veyro-security-reviewer (fresh Opus) via ACPX session veyro-bug050-round16-retry-20261004 (5318331d-31d0-4ce9-af75-77a61aa38c25). Clear on result recorded, not merely on subagent completion.
+current_claim: IN_FLIGHT — BUG-050 round 16 bounded continuation, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, prepared 2026-10-04T00:05:36.275087+00:00. Independent review ACPX session veyro-bug050-round16-retry-20261004 (5318331d-31d0-4ce9-af75-77a61aa38c25) retained; fresh Opus reviewer required. Clear only after result recorded.
 
 Round-14 retry claim cleared 2026-10-03T21:19:34+00:00: completed report exists and CURRENT_STATE.md records independently attested verdict; no live ACPX process at watchdog inspection. No new verdict inferred.
 
@@ -102,3 +102,5 @@ reason to keep this file minimal rather than building out a queue this
 project does not yet need.
 
 Round-16 recovery 2026-10-03T23:33:57.076180+00:00: reviewer transcript agent-aba25ab718d28c1ae.jsonl stopped at 2026-10-03T23:23:57Z after a rejected test-tool call; PID 28962 is absent, no ACPX process or completed round-16 report exists. No verdict inferred. Original claim cleared for a fresh independent retry.
+
+Round-16 retry recovery 2026-10-04T00:05:36.275087+00:00: prior retry parent/subagent transcript 76f94e23-227b-4247-8b7e-46cc5c9e350f / agent-aaa1fcc5be6cc6f94 stopped at 2026-10-03T23:54:50Z on a tool rejection contemporaneous with the 1200-second cron timeout. No exit-code file, no live Veyro ACPX process, and no completed round-16 report exist. No verdict inferred. The prior claim was checked and superseded by a bounded continuation claim before dispatch. Existing work preserved.
