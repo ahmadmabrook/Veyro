@@ -1,7 +1,9 @@
 ---
 doc: REVIEW_IN_FLIGHT
 status: LIVE — minimal durable claim mechanism, authored 2026-10-03 per R12-5 (round-12 independent review, `knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-SLICE7-DOMAIN-SCAFFOLDS-FINANCIAL-INVARIANT-SECURITY-REVIEW-ROUND12-2026-10-03.md` §4.5), implementing the process fix R11b-2/`SLICE-7-ROUND11-COLLISION-CHECKPOINT-2026-10-03.md` recommended after two orchestrating sessions independently dispatched the same round-11 review without knowing about each other.
-current_claim: IN_FLIGHT — DOM-002 code review round 4, claimed by Veyro watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T06:18:56.294365+00:00. Expected subagent: veyro-code-reviewer (Opus). Clear only after result independently attested and recorded.
+current_claim: IN_FLIGHT — SCN-MOD001-070 independent security/scenario evidence review round 1, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T11:51:44.275553+00:00. Expected subagent: fresh veyro-security-reviewer/Opus via ACPX. Clear on result recorded, not merely on process exit.
+prior_claim: IN_FLIGHT — BUG-048 independent code review round 1 recovery, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T10:20:14.933383+00:00. Expected subagent: fresh Opus via ACPX. Clear only after result recorded. (Fulfilled by the dispatching session in-process; cleared above on result recorded, not merely on subagent exit.)
+prior_claim_2: CLEAR — BUG-048 round-1 attempt interrupted without verdict, reconciled 2026-10-04T10:19:45.195270+00:00; no live Veyro ACPX/Claude reviewer or pytest process, transcript 3ae687f2-4ec8-4329-a048-cec0a3a7dd87 stopped at 2026-10-04T10:13:48Z during a test call, and no report exists. No completed review counted. DOM-002 round 5 remains interrupted/non-resumable.
 
 Prior claim (round 1, watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T03:03:51.309736+00:00) fulfilled by this same dispatching session, not superseded by crash recovery — the dispatch ran to completion in-process and its result is recorded above.
 
@@ -11,6 +13,8 @@ Prior claim cleared 2026-10-03T23:52:00+03:00, crash-recovery check performed pe
 ---
 
 # Review-in-flight claim
+
+**2026-10-04 control note:** The SCN-MOD001-009 fresh independent review was dispatched while this claim still read CLEAR; its report noted that this protocol was missed. No duplicate review or active reviewer was observed. The result is preserved and independently model-attested, but this is a control-plane process defect, not a precedent to skip the pre-dispatch claim. Future fresh independent reviews must write IN_FLIGHT before launch.
 
 ## Why this file exists
 
