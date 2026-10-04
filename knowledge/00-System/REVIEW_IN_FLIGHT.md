@@ -1,7 +1,7 @@
 ---
 doc: REVIEW_IN_FLIGHT
 status: LIVE — minimal durable claim mechanism, authored 2026-10-03 per R12-5 (round-12 independent review, `knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-SLICE7-DOMAIN-SCAFFOLDS-FINANCIAL-INVARIANT-SECURITY-REVIEW-ROUND12-2026-10-03.md` §4.5), implementing the process fix R11b-2/`SLICE-7-ROUND11-COLLISION-CHECKPOINT-2026-10-03.md` recommended after two orchestrating sessions independently dispatched the same round-11 review without knowing about each other.
-current_claim: IN_FLIGHT — BUG-050 round 16 bounded continuation, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, prepared 2026-10-04T00:05:36.275087+00:00. Independent review ACPX session veyro-bug050-round16-retry-20261004 (5318331d-31d0-4ce9-af75-77a61aa38c25) retained; fresh Opus reviewer required. Clear only after result recorded.
+current_claim: IN_FLIGHT — CAP-008 fresh post-R16 assurance, claimed by watchdog at 2026-10-04T02:04:17.462865+00:00; ACPX session veyro-cap008-r16-assurance-20261004 (c58baf67-c73e-4bb2-8789-fc236e829c26). Expected subagent: veyro-security-reviewer (Opus). Clear only after result, model attestation and durable recording.
 
 Round-14 retry claim cleared 2026-10-03T21:19:34+00:00: completed report exists and CURRENT_STATE.md records independently attested verdict; no live ACPX process at watchdog inspection. No new verdict inferred.
 
