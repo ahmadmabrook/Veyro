@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  event-contract:
-    name: architecture-event-contract
+  candidate-spoof:
+    name: architecture-event-contract-trusted
     runs-on: ubuntu-24.04
     steps:
       - name: Candidate-controlled gate bypass probe
