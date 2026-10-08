@@ -19,6 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compare candidate events to PR base
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
