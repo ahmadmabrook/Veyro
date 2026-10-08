@@ -2,13 +2,14 @@ name: architecture-event-contract
 
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   candidate-spoof:
-    name: architecture-event-contract-trusted
+    name: architecture-event-contract
     runs-on: ubuntu-24.04
     steps:
       - name: Candidate-controlled gate bypass probe
