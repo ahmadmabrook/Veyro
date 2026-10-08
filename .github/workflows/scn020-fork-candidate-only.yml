@@ -1,0 +1,18 @@
+# Disposable SCN-020(i) fork-candidate workflow probe; never merge.
+# This definition exists only in the untrusted fork head, not trusted main.
+name: scn020-fork-candidate-only
+on:
+  pull_request_target:
+    branches: [scn020-protected-base-20261009]
+permissions:
+  contents: read
+jobs:
+  candidate-probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Probe inert candidate workflow boundary
+        env:
+          SCN020_CANARY: ${{ secrets.SCN020_NONEXISTENT_SYNTHETIC_CANARY }}
+        run: |
+          echo SCN020_CANDIDATE_WORKFLOW_EXECUTED
+          test -z "$SCN020_CANARY"
