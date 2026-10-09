@@ -1,8 +1,8 @@
 # M1-C-06 - INERT candidate workflow for the governed real-tree scanner
 # preflight (CAP-009 gitleaks 8.30.1 / CAP-010 Ruff 0.16.9 `S`).
 #
-# STATUS: INERT CANDIDATE. Authored locally, untracked in the authoritative
-# repository, and triggered only by a branch that does not exist. It has not
+# STATUS: INERT CANDIDATE. Committed locally, not activated on the remote,
+# and triggered only by a branch that does not exist. It has not
 # been run. It is NOT a gate, NOT a required status check and NOT a trust
 # anchor, and `.claude/rules/infra/iac.md` control 1 requires it to land as a
 # reviewed commit before it takes effect anywhere.
@@ -15,10 +15,9 @@
 # inspectable in a real CI environment:
 #
 #   1. install-time digest verification of the pinned upstream artifacts,
-#      verify-before-extract, failing closed (C09-X item 5) - and the one
-#      input that pin is still missing: the extracted linux binary's own
-#      SHA-256, which upstream records only as an archive digest, so no
-#      determination has pinned it and the wrapper refuses it today;
+#      verify-before-extract and verify the extracted Linux binary's observed
+#      SHA-256, failing closed (C09-X item 5). This is an artifact identity
+#      check, not a CAP-009/010 real-tree or CI scope grant;
 #   2. that `tools/governed_scanner_preflight.py scan` fail-closes with exit 3
 #      against the checkout, naming every unmet authorisation condition.
 #
@@ -28,7 +27,7 @@
 # invoker on the branch where that field is `true`. On this revision it is
 # `false` for both scanners - no grant token in either registry row, no
 # authorising determination named, and the wrapper/manifest/workflow are not
-# committed - so the executed branch is the assertion that `scan` exits 3. The
+# independently approved - so the executed branch is the assertion that `scan` exits 3. The
 # authorised branch is written, reviewable and unreachable; nothing here can
 # make the predicate pass.
 #
@@ -42,13 +41,9 @@
 # a materialized copy is still governed as a Veyro scan: copying the bytes out
 # of the checkout does not make them approved synthetic scope.
 #
-# Known reason an authorised run would still refuse (exit 2) on this runner, and
-# why that is left to fail the job loudly rather than be tolerated: the eligible
-# *contained-binary* digest set holds the darwin arm64 binary only. Upstream
-# records the linux x64 artifact as an archive digest, so no determination has
-# pinned the extracted linux binary, and `verify_artifact_digest` refuses it.
-# That pin is a determination's to record, not this workflow's and not the
-# wrapper's - hence the `sha256sum` line below records without pinning.
+# The Linux contained-binary identity is pinned and checked before version or
+# scan invocation. The separate capability and reviewed-CI authorisations
+# remain absent; this digest check cannot make the scan branch reachable.
 #
 # Constraints held by construction: zero `uses:` action references (every
 # GitHub Action is BLOCKED until it carries an APPROVED CAP row - iac.md
@@ -112,6 +107,8 @@ jobs:
           echo "a21713e629d3e5bdb2f5c2def1cc7f04f47fa8e1a7eb0571b4a28e1da64bc728  $dl/ruff.whl" \
             | sha256sum -c -
           tar -xzf "$dl/gitleaks.tar.gz" -C "$RUNNER_TEMP/bin" gitleaks
+          echo "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509  $RUNNER_TEMP/bin/gitleaks" \
+            | sha256sum -c -
           python3 -I - "$dl/ruff.whl" "$RUNNER_TEMP/bin/ruff" <<'PY'
           import sys
           import zipfile
@@ -123,9 +120,8 @@ jobs:
               handle.write(data)
           PY
           chmod 0755 "$RUNNER_TEMP/bin/ruff"
-          # Record the extracted binaries' own digests. The linux gitleaks
-          # binary digest is the pin no determination has recorded yet; the
-          # wrapper refuses it until one does. Recording is not pinning.
+          # Record extracted identities; gitleaks was checked against its
+          # contained-binary pin above. Scope remains separately blocked.
           sha256sum "$RUNNER_TEMP/bin/gitleaks" "$RUNNER_TEMP/bin/ruff"
           [[ "$("$RUNNER_TEMP/bin/gitleaks" version)" == "8.30.1" ]] \
             || { echo "DENY: gitleaks version is not 8.30.1" >&2; exit 1; }

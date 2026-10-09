@@ -109,12 +109,14 @@ EXIT_BLOCKED = 3  # real-tree scan not authorised
 GITLEAKS_VERSION = "8.30.1"
 RUFF_VERSION = "ruff 0.16.9"
 
-# Only recorded *contained-binary* digest. The linux x64 eligibility is recorded
-# upstream as an archive digest only, so no linux binary digest is invented here
-# (see the evidence record's residuals): on linux this set is empty and the
-# wrapper refuses until a determination records the extracted binary's digest.
+# Recorded *contained-binary* identities, not real-tree scan grants. The Linux
+# digest was derived from the archive pinned below; CAP-009/010 scope still
+# requires a separate qualified determination and the authorisation predicate.
 GITLEAKS_ELIGIBLE_BINARY_SHA256 = frozenset(
-    {"ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f"}
+    {
+        "ba52fb1bfabbcde42f032afad3d6e0b19dff8ed105229a16e7caa338bbc0e84f",  # darwin arm64
+        "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509",  # linux x64
+    }
 )
 # Archive digests, for an install-time verify-then-extract step (CI).
 GITLEAKS_ELIGIBLE_ARCHIVE_SHA256 = frozenset(
