@@ -1,0 +1,173 @@
+# M1-C-06 - INERT candidate workflow for the governed real-tree scanner
+# preflight (CAP-009 gitleaks 8.30.1 / CAP-010 Ruff 0.16.9 `S`).
+#
+# STATUS: INERT CANDIDATE. Authored locally, untracked in the authoritative
+# repository, and triggered only by a branch that does not exist. It has not
+# been run. It is NOT a gate, NOT a required status check and NOT a trust
+# anchor, and `.claude/rules/infra/iac.md` control 1 requires it to land as a
+# reviewed commit before it takes effect anywhere.
+#
+# It performs NO scan of any Veyro file, index, history or copy of those files.
+# Real-tree scanning is NOT approved: `CAPABILITY_REGISTRY.md` CAP-009/CAP-010
+# record real-tree, Git and CI scope as NOT approved, and
+# `M1-C-06-CAP-REAL-SCOPE-EXTENSION-DETERMINATION-2026-10-09.md` §7.1/§8.2
+# BLOCKED that extension. This job's only purpose is to make two things
+# inspectable in a real CI environment:
+#
+#   1. install-time digest verification of the pinned upstream artifacts,
+#      verify-before-extract, failing closed (C09-X item 5) - and the one
+#      input that pin is still missing: the extracted linux binary's own
+#      SHA-256, which upstream records only as an archive digest, so no
+#      determination has pinned it and the wrapper refuses it today;
+#   2. that `tools/governed_scanner_preflight.py scan` fail-closes with exit 3
+#      against the checkout, naming every unmet authorisation condition.
+#
+# The `scan` subcommand is now a real invoker rather than an unconditional
+# refusal, so this job's shape mirrors that: it reads the preflight's own
+# `authorised_for_real_tree_scan` field and only hands the pinned binary to the
+# invoker on the branch where that field is `true`. On this revision it is
+# `false` for both scanners - no grant token in either registry row, no
+# authorising determination named, and the wrapper/manifest/workflow are not
+# committed - so the executed branch is the assertion that `scan` exits 3. The
+# authorised branch is written, reviewable and unreachable; nothing here can
+# make the predicate pass.
+#
+# Why this job fetches a Git checkout even though Git history must never reach a
+# scanner: Git is what proves the tree is the exact pushed commit (the SHA
+# assertion below), and the wrapper's enumeration reads the Git index. The
+# checkout is therefore the source of reviewed bytes, never a scan target -
+# `tools/governed_scanner_preflight.py` materializes exactly the enumerated
+# committed blobs into a git-free directory under `$RUNNER_TEMP` and points
+# `gitleaks dir` at that. A target containing `.git` stays refused outright, and
+# a materialized copy is still governed as a Veyro scan: copying the bytes out
+# of the checkout does not make them approved synthetic scope.
+#
+# Known reason an authorised run would still refuse (exit 2) on this runner, and
+# why that is left to fail the job loudly rather than be tolerated: the eligible
+# *contained-binary* digest set holds the darwin arm64 binary only. Upstream
+# records the linux x64 artifact as an archive digest, so no determination has
+# pinned the extracted linux binary, and `verify_artifact_digest` refuses it.
+# That pin is a determination's to record, not this workflow's and not the
+# wrapper's - hence the `sha256sum` line below records without pinning.
+#
+# Constraints held by construction: zero `uses:` action references (every
+# GitHub Action is BLOCKED until it carries an APPROVED CAP row - iac.md
+# control 5), zero `secrets.` references, `contents: read` only, and no
+# unpinned install (both artifacts are SHA-256 verified before extraction).
+#
+# Advisory before gate: `VEYRO_SCAN_MODE` is `advisory` and there is no gate
+# path here. A gate mode is a later, separately reviewed change.
+
+name: c06-real-tree-scanner-candidate
+
+on:
+  push:
+    branches:
+      # Deliberately a branch that does not exist in any remote, so this
+      # candidate cannot execute even if it were committed by mistake.
+      - ci/c06-real-tree-candidate-NOT-CREATED
+
+permissions:
+  contents: read
+
+env:
+  VEYRO_SCAN_MODE: advisory
+
+jobs:
+  c06-real-tree-scanner-candidate:
+    name: c06-real-tree-scanner-candidate (inert; no scan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the exact pushed commit (tokenless, no action reference)
+        env:
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_REF: ${{ github.ref }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PUSH_REF" == "refs/heads/ci/c06-real-tree-candidate-NOT-CREATED" ]] \
+            || { echo "DENY: ref is not the inert candidate branch" >&2; exit 1; }
+          [[ "$PUSH_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: sha is not 40-hex" >&2; exit 1; }
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$PUSH_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$PUSH_SHA" ]] \
+            || { echo "DENY: checkout is not $PUSH_SHA" >&2; exit 1; }
+          echo "pinned sha: $PUSH_SHA"
+
+      - name: Verify pinned artifact digests before extraction (fail closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$dl" "$RUNNER_TEMP/bin"
+          curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$dl/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dl/gitleaks.tar.gz" \
+            | sha256sum -c -
+          curl -fsSL --proto '=https' --tlsv1.2 --max-time 120 -o "$dl/ruff.whl" \
+            https://files.pythonhosted.org/packages/bc/b8/9c543074918061abbefc3bd139bee22de35abedb00dde0f2d27288838962/ruff-0.16.9-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+          echo "a21713e629d3e5bdb2f5c2def1cc7f04f47fa8e1a7eb0571b4a28e1da64bc728  $dl/ruff.whl" \
+            | sha256sum -c -
+          tar -xzf "$dl/gitleaks.tar.gz" -C "$RUNNER_TEMP/bin" gitleaks
+          python3 -I - "$dl/ruff.whl" "$RUNNER_TEMP/bin/ruff" <<'PY'
+          import sys
+          import zipfile
+
+          wheel, out = sys.argv[1:3]
+          with zipfile.ZipFile(wheel) as archive:
+              data = archive.read("ruff-0.16.9.data/scripts/ruff")
+          with open(out, "wb") as handle:
+              handle.write(data)
+          PY
+          chmod 0755 "$RUNNER_TEMP/bin/ruff"
+          # Record the extracted binaries' own digests. The linux gitleaks
+          # binary digest is the pin no determination has recorded yet; the
+          # wrapper refuses it until one does. Recording is not pinning.
+          sha256sum "$RUNNER_TEMP/bin/gitleaks" "$RUNNER_TEMP/bin/ruff"
+          [[ "$("$RUNNER_TEMP/bin/gitleaks" version)" == "8.30.1" ]] \
+            || { echo "DENY: gitleaks version is not 8.30.1" >&2; exit 1; }
+          [[ "$("$RUNNER_TEMP/bin/ruff" --version)" == "ruff 0.16.9" ]] \
+            || { echo "DENY: ruff version is not 0.16.9" >&2; exit 1; }
+
+      - name: Preflight the reviewed target set, then take the branch the grant predicate allows
+        shell: bash
+        working-directory: ${{ runner.temp }}/head
+        run: |
+          set -euo pipefail
+          [[ "$VEYRO_SCAN_MODE" == "advisory" ]] \
+            || { echo "DENY: only advisory mode is reviewed here" >&2; exit 1; }
+          for scanner in gitleaks ruff; do
+            echo "::group::preflight $scanner (mode=$VEYRO_SCAN_MODE)"
+            python3 -I tools/governed_scanner_preflight.py preflight \
+              --scanner "$scanner" --mode "$VEYRO_SCAN_MODE" --json \
+              | tee "$RUNNER_TEMP/preflight-$scanner.json"
+            echo "::endgroup::"
+            authorised="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["authorised_for_real_tree_scan"])' \
+              "$RUNNER_TEMP/preflight-$scanner.json")"
+            set +e
+            if [[ "$authorised" == "True" ]]; then
+              # Reachable only once a recorded grant, a named determination and a
+              # committed wrapper/manifest/workflow all exist. Advisory only.
+              mkdir -p "$RUNNER_TEMP/scan-$scanner"
+              python3 -I tools/governed_scanner_preflight.py scan \
+                --scanner "$scanner" --mode "$VEYRO_SCAN_MODE" \
+                --binary "$RUNNER_TEMP/bin/$scanner" \
+                --work "$RUNNER_TEMP/scan-$scanner"
+              rc=$?
+              set -e
+              [[ "$rc" -eq 0 || "$rc" -eq 1 ]] \
+                || { echo "DENY: authorised $scanner advisory run exited $rc (refused/blocked)" >&2; exit 1; }
+              echo "OK: $scanner authorised advisory run completed at exit $rc"
+            else
+              python3 -I tools/governed_scanner_preflight.py scan \
+                --scanner "$scanner" --mode "$VEYRO_SCAN_MODE" >/dev/null
+              rc=$?
+              set -e
+              [[ "$rc" -eq 3 ]] \
+                || { echo "DENY: $scanner scan path returned $rc, expected 3 (BLOCKED)" >&2; exit 1; }
+              echo "OK: $scanner real-tree scan is fail-closed at exit 3"
+            fi
+          done
