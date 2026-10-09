@@ -1753,6 +1753,17 @@ pinned to a patched version passes cleanly. **This closes the
 Critical-requirement gap P0-4 identified — SCN-015 (domain-contract
 collision) is retitled below to no longer claim vulnerability coverage
 it never tested.**
+Candidate status 2026-10-10 (NOT a PASS; never executed in CI): the
+`dependency-vulnerability-gate` candidate failed independent review
+(`evidence/code-review/M1-C-05-TRUSTED-DEPENDENCY-CI-REVIEW-2026-10-10.md`,
+BLOCKED) and was locally corrected in the C05 candidate. Update procedure
+once required (owner-executed): temporarily remove the
+check from `main`'s required checks, land the reviewed change by PR, re-add
+it; every open PR must rebase after a gate update. Activation preconditions:
+public repository and an observed green fork-PR dry-run before the check is
+made required. Review P2-4 (`pull_request_target` vs R04 criterion (i)): the
+current no-secrets / candidate-inert interpretation is recorded as pending
+qualified adjudication, not decided.
 
 **SCN-MOD001-095 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2, §6.3 bidirectional pair — positive (P1-5) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 Source: `TSD_MIRROR.md` lines 11606-11608 — "For the four intentional
