@@ -192,9 +192,11 @@ missing_capability_blockers:
   - id: BLOCKER-CI-SCANNER-SCOPES
     detail: real-tree, Git-history and CI scanner scopes are not approved; only the bounded synthetic/local scopes are
 
-capability_evidence_ids: []   # no current-epoch CAP/SKL/RULE evidence is recorded here; evidence is cited from the registry only
+capability_evidence_ids: []   # CAP-012 current qualification record is cited from the registry; no approved capability evidence ID is claimed here
 
-capability_dependency_ids: []
+capability_dependency_ids:
+  - source: CAP-012
+    depends_on: CAP-011   # tools/run_scoped_mypy.py imports Denied/_canonical from tools/run_scoped_pytest.py (CAP-011's wrapper)
 
 resolution_attempts:
   budget: {external_candidates: 2, custom_attempts: 1, minutes: 45, tokens: 50000}
