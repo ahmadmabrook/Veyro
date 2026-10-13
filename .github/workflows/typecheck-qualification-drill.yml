@@ -158,7 +158,9 @@ jobs:
           [[ "$rc" -eq 0 ]] || { echo "DENY: mypy rc is not 0" >&2; exit 1; }
           printf '%s\n' "$out" | grep -Fx 'Success: no issues found in 2 source files' >/dev/null \
             || { echo "DENY: expected success diagnostic absent" >&2; exit 1; }
-          echo "positive proof observed: rc=0 and exact success diagnostic"
+          echo "control evidence retained: mypy rc=0 and exact success diagnostic observed"
+          # DISPOSABLE RED-JOB CONTROL: the assertion below is deliberately inverted; this job is EXPECTED to fail here (never merge).
+          [[ "$rc" -ne 0 ]] || { echo "EXPECTED_RED_CONTROL: inverted assertion tripped (mypy rc=0 where rc!=0 was demanded); job is intentionally red" >&2; exit 1; }
 
       - name: Negative proof 1 - mismatched macOS mypy digest must fail install
         shell: bash
