@@ -1,0 +1,200 @@
+# GOV-01-R04 - mandatory blocking type-check CI CANDIDATE (MOD-001, epoch
+# MOD001-20261013-FRESH-1). INERT: authored, never run, never enabled.
+#
+# What this is: the smallest separate workflow that runs the CAP-012 scoped
+# wrapper tools/run_scoped_mypy.py against the REAL fetched backend/app, shaped
+# so that it could become a genuine required PR gate after a separate CI-scope
+# Opus assurance. It is NOT that gate today.
+#
+# Why it is inert: the only trigger is a push to the branch named below, which
+# does not exist and must not be created for this candidate. There is no
+# pull_request, pull_request_target, workflow_dispatch, schedule or
+# workflow_run trigger and no default-branch or wildcard branch trigger. The
+# first step additionally denies any run whose ref is not exactly that branch.
+# To turn it into a PR gate, a later change (after the CI-scope assurance) must
+# replace the trigger and the SHA source (github.sha -> the PR head sha) and
+# re-justify the fetch for the trusted PR event; this file does not do that.
+#
+# Design, in order: deny unless the ref is the candidate branch; fetch the
+# exact head commit tokenlessly and prove HEAD equals it; regular-file,
+# non-symlink and pinned-SHA-256 checks on the wrapper, the interpreter
+# assertion script and the Linux cp313 lock; resolve a CPython 3.13
+# linux-x86_64 64-bit interpreter with tools/assert_ci_python313.py (deny, never
+# fall back to python3); venv from it with the bundled, unupgraded pip;
+# hash-enforced install of the lock only (--require-hashes --only-binary=:all:
+# --no-deps); then ONE invocation of the wrapper, with a cleared environment,
+# on the fetched backend/app. mypy is never invoked directly; the wrapper owns
+# the one allowlisted mypy command. Only wrapper rc 0 plus its exact success
+# markers passes: rc 1 (type errors) and rc 2 (denial) both fail the job, as
+# does every other code.
+#
+# Constraints held by construction:
+#   - No action references (no CAP-approved action exists; see
+#     `.claude/rules/infra/iac.md` control 5). Plain runner-image tooling only.
+#   - No secret references; `permissions: {}`; tokenless fetch (public repo).
+#   - Untrusted values reach shell only through `env:`, never interpolated into
+#     a script body. The one inline Python reads them from argv.
+#   - Nothing is installed or fetched outside the pinned lock. No other
+#     artifact, cache, download or upload step exists.
+#   - Nothing is written to the fetched checkout except one symlink,
+#     backend/.venv -> the pinned venv, which the wrapper requires and never
+#     walks (the drill proved this shape on synthetic trees).
+#
+# NOT claimed:
+#   - NO GATE CREDIT. CAP-012 is independently approved for BOUNDED LOCAL use
+#     only (wrapper SHA-256 pinned below); it is NOT approved for CI use. This
+#     file is not a required status check, not GOV-01-R04's non-bypassable
+#     gate, and a green run of it would still be no gate PASS until a separate
+#     CI-scope assurance approves it and a pinned head/run/log is inspected.
+#   - The local real-source scoped run (rc 0, 25 files) is a QA record, not CI
+#     evidence about these bytes.
+#   - The hash pins below must be re-derived (and the static test updated)
+#     whenever the pinned file legitimately changes; a stale pin fails closed.
+
+name: typecheck-required-candidate
+
+on:
+  push:
+    branches:
+      - candidate-only/typecheck-required-never-created
+
+permissions: {}
+
+jobs:
+  typecheck-required-candidate:
+    name: typecheck-required-candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Deny unless candidate-only ref; fetch exact head (tokenless, public repository)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          HEAD_SHA: ${{ github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EVENT_NAME" == "push" ]] || { echo "DENY: event is not push" >&2; exit 1; }
+          [[ "$REF" == "refs/heads/candidate-only/typecheck-required-never-created" ]] \
+            || { echo "DENY: ref is not the candidate-only branch" >&2; exit 1; }
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+          echo "pinned head sha: $HEAD_SHA"
+          echo "CANDIDATE ONLY - NO GATE CREDIT: CAP-012 is bounded-local approved, not approved for CI use."
+
+      - name: Guard pinned inputs (regular file, not a symlink, exact SHA-256)
+        env:
+          WRAPPER_SHA256: 1a5df02b6c0ddd69a90c46adb62c81e3adb0b2ba162484fa2180b14ec665399c
+          ASSERT_SHA256: ea51c067d5d75ff2ba1bb7602e37a0a5c88f9908a18c40d957d65b825a4a3d9c
+          LOCK_SHA256: 5e7596d408190a6103ffe1e3988f1c88ea33a34306302cc7de6f0570340e95de
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          check() {
+            local path="$1" want="$2" got
+            [[ -e "$path" ]] || { echo "DENY: $path absent" >&2; exit 1; }
+            [[ ! -L "$path" ]] || { echo "DENY: $path is a symlink" >&2; exit 1; }
+            [[ -f "$path" ]] || { echo "DENY: $path is not a regular file" >&2; exit 1; }
+            got="$(sha256sum "$path" | cut -d' ' -f1)"
+            [[ "$got" == "$want" ]] || { echo "DENY: $path sha256 $got, expected $want" >&2; exit 1; }
+            echo "pinned ok: $want $path"
+          }
+          check "$head/tools/run_scoped_mypy.py" "$WRAPPER_SHA256"
+          check "$head/tools/assert_ci_python313.py" "$ASSERT_SHA256"
+          check "$head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt" "$LOCK_SHA256"
+          [[ -d "$head/backend/app" && ! -L "$head/backend/app" ]] \
+            || { echo "DENY: backend/app is not a real directory" >&2; exit 1; }
+          [[ -f "$head/backend/pyproject.toml" && ! -L "$head/backend/pyproject.toml" ]] \
+            || { echo "DENY: backend/pyproject.toml is not a regular file" >&2; exit 1; }
+          [[ ! -e "$head/backend/.venv" && ! -L "$head/backend/.venv" ]] \
+            || { echo "DENY: backend/.venv is committed in the head" >&2; exit 1; }
+
+      - name: Resolve and assert CPython 3.13 linux-x86_64 interpreter (deny, no fallback)
+        shell: bash
+        run: |
+          set -euo pipefail
+          assert="$RUNNER_TEMP/head/tools/assert_ci_python313.py"
+          shopt -s nullglob
+          candidates=()
+          if found="$(command -v python3.13)"; then candidates+=("$found"); fi
+          candidates+=(/usr/bin/python3.13 /usr/local/bin/python3.13)
+          candidates+=(/opt/hostedtoolcache/Python/3.13.*/x64/bin/python3.13)
+
+          chosen=""
+          for cand in "${candidates[@]}"; do
+            [[ -f "$cand" && -x "$cand" ]] || continue
+            echo "--- candidate: $cand"
+            if "$cand" -I "$assert"; then
+              chosen="$cand"
+              break
+            fi
+          done
+          if [[ -z "$chosen" ]]; then
+            echo "DENY: no CPython 3.13 linux-x86_64 64-bit interpreter resolvable; not falling back to default python3" >&2
+            exit 1
+          fi
+          printf '%s\n' "$chosen" > "$RUNNER_TEMP/interpreter.path"
+          echo "asserted interpreter: $chosen"
+
+      - name: Create venv from asserted interpreter (bundled pip, not upgraded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$(cat "$RUNNER_TEMP/interpreter.path")"
+          "$py" -m venv "$RUNNER_TEMP/venv-typecheck"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -I "$RUNNER_TEMP/head/tools/assert_ci_python313.py" \
+            || { echo "DENY: venv interpreter fails assertion" >&2; exit 1; }
+
+      - name: Hash-enforced install of the Linux cp313 lock (nothing outside the lock)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          lock="$RUNNER_TEMP/head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$lock"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list --disable-pip-version-check --format=freeze
+
+      - name: Scoped wrapper on the fetched backend/app (rc 0 only; rc 1 and rc 2 fail)
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          venv="$RUNNER_TEMP/venv-typecheck"
+          ln -s "$venv" "$head/backend/.venv"
+          work="$(mktemp -d "$RUNNER_TEMP/wrapper-run.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/home" "$work/tmp"
+
+          set +e
+          out="$(cd "$work" && env -i PATH=/usr/bin:/bin HOME="$work/home" TMPDIR="$work/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \
+            "$venv/bin/python" -I "$head/tools/run_scoped_mypy.py" 2>&1)"
+          rc=$?
+          set -e
+          printf 'wrapper rc=%s\n%s\n' "$rc" "$out"
+          case "$rc" in
+            0) ;;
+            1) echo "DENY: wrapper rc 1 - type errors reported on backend/app" >&2; exit 1 ;;
+            2) echo "DENY: wrapper rc 2 - wrapper denied the run" >&2; exit 1 ;;
+            *) echo "DENY: wrapper rc $rc is not an allowed outcome" >&2; exit 1 ;;
+          esac
+          printf '%s\n' "$out" | grep -E '^Success: no issues found in [1-9][0-9]* source files$' >/dev/null \
+            || { echo "DENY: exact success diagnostic absent" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -E '^run_scoped_mypy: rc=0 ' >/dev/null \
+            || { echo "DENY: wrapper rc=0 marker absent" >&2; exit 1; }
+          if printf '%s\n' "$out" | grep -E '^DENY:' >/dev/null; then
+            echo "DENY: wrapper output contains a DENY line" >&2
+            exit 1
+          fi
+          echo "wrapper observed: rc=0 and exact success diagnostic."
+          echo "CANDIDATE ONLY - NO GATE CREDIT: this is not a required check and not a GOV-01-R04 gate PASS."
