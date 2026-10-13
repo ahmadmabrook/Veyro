@@ -1,0 +1,185 @@
+CAP-012 macOS cp314 synthetic-only wrapper matrix — 2026-10-14
+No Veyro source typechecked; no capability or module gate credit.
+Interpreter/platform/mypy:
+3.14.5 (main, May 10 2026, 10:21:34) [Clang 21.0.0 (clang-2100.0.123.102)]
+macOS-27.0.1-arm64-arm-64bit-Mach-O
+2.3.1
+
+Wrapper SHA-256: 2970a9ad0434db791cdbef3532c6acbbe661fedbbcfe23c54323941d5546388d
+Workflow SHA-256: d004cce28ef7a8c1ff8c77b228dc8e6c05682c93a4bc830f4476c4df55fbf793
+Driver command: backend/.venv/bin/python -I driver.py (source below)
+The driver extracts the current workflow Wrapper boundary proof step and runs it on a disposable /private/tmp tree; the tree is removed after output capture.
+
+=== driver.py ===
+import hashlib, os, platform, subprocess, sys, tempfile
+from pathlib import Path
+REPO = Path("/Users/ahmadmabrouk/Desktop/Veyro")
+sys.path.insert(0, str(REPO / "tools" / "tests"))
+import test_typecheck_qualification_drill_workflow as t
+script = t.step_script(t.WRAPPER_STEP)
+venv = REPO / "backend" / ".venv"
+tmp = Path(tempfile.mkdtemp(prefix="cap012-matrix-", dir="/private/tmp")).resolve()
+(tmp / "head" / "tools").mkdir(parents=True)
+import shutil
+shutil.copy(REPO / "tools" / "run_scoped_mypy.py", tmp / "head" / "tools")  # wrapper ALONE
+os.symlink(venv, tmp / "venv-typecheck")
+env = {"PATH": "/usr/bin:/bin", "RUNNER_TEMP": str(tmp), "HOME": str(tmp)}
+p = subprocess.run(["/bin/bash", "-c", script], capture_output=True, text=True, env=env, cwd=tmp)
+print(f"rc={p.returncode}\n--- stdout ---\n{p.stdout}\n--- stderr ---\n{p.stderr}")
+print("leftover disposable dirs:", sorted(x.name for x in tmp.iterdir()))
+shutil.rmtree(tmp)
+
+=== observed output ===
+rc=0
+--- stdout ---
+2970a9ad0434db791cdbef3532c6acbbe661fedbbcfe23c54323941d5546388d /private/tmp/cap012-matrix-25vol6lt/head/tools/run_scoped_mypy.py
+--- positive: rc=0 (want 0)
+{
+  "argv": [
+    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend",
+  "expected_source_files": 2,
+  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+Success: no issues found in 2 source files
+run_scoped_mypy: rc=0 — no issues found in exactly 2 source files
+positive observed: rc=0, exact success line, count 2, no cache
+--- n1-symlink: rc=2 (want 2)
+DENY: symlink inside backend/app: linked.py
+--- n2-config-key: rc=2 (want 2)
+DENY: [tool.mypy] keys are ['ignore_errors', 'python_version', 'strict'], expected exactly ['python_version', 'strict']: any other key can widen, redirect or disable the check
+--- n3-mypypath: rc=2 (want 2)
+DENY: MYPYPATH is set in the environment: an ambient mypy setting can redirect imports, cache or config this wrapper never declared
+--- n4-cache-created: rc=2 (want 2)
+{
+  "argv": [
+    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend",
+  "expected_source_files": 2,
+  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+DENY: a .mypy_cache was created or modified: the cache was not disabled
+Success: no issues found in 2 source files
+--- c5-cache-preexisting: rc=0 (want 0)
+{
+  "argv": [
+    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend",
+  "expected_source_files": 2,
+  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+Success: no issues found in 2 source files
+run_scoped_mypy: rc=0 — no issues found in exactly 2 source files
+--- n5-cache-mutated: rc=2 (want 2)
+{
+  "argv": [
+    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend",
+  "expected_source_files": 2,
+  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+DENY: a .mypy_cache was created or modified: the cache was not disabled
+Success: no issues found in 2 source files
+--- n6-count-mismatch: rc=2 (want 2)
+{
+  "argv": [
+    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend",
+  "expected_source_files": 3,
+  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+Success: no issues found in 2 source files
+run_scoped_mypy: rc=0 — mypy checked 2 source files, expected exactly 3
+DENY: mypy checked 2 source files, expected exactly 3
+--- n7-vacuous: rc=2 (want 2)
+DENY: backend/app holds no .py file: an empty target exits 0 without checking anything
+wrapper boundary proof observed: 1 positive, 1 control, 7 fail-closed negatives
+
+--- stderr ---
+
+leftover disposable dirs: ['head', 'venv-typecheck']

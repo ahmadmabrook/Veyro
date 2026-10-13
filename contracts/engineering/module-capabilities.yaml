@@ -194,9 +194,7 @@ missing_capability_blockers:
 
 capability_evidence_ids: []   # CAP-012 current qualification record is cited from the registry; no approved capability evidence ID is claimed here
 
-capability_dependency_ids:
-  - source: CAP-012
-    depends_on: CAP-011   # tools/run_scoped_mypy.py imports Denied/_canonical from tools/run_scoped_pytest.py (CAP-011's wrapper)
+capability_dependency_ids: []   # tools/run_scoped_mypy.py is self-contained (no CAP-011 import; asserted by tests)
 
 resolution_attempts:
   budget: {external_candidates: 2, custom_attempts: 1, minutes: 45, tokens: 50000}
