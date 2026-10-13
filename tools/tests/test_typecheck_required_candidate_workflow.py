@@ -32,6 +32,11 @@ parsed line-wise. The tests do not just mirror the file:
      swap, new config file) is denied; symlink, executable or gitlink source
      entries and a missing backend/app are denied; nothing from the source is
      executed.
+  3b. BUG-062 round 2: steps 2 and 3 are frozen line-for-line in audit(); the
+     mutated step-2 pin guard (got==got, wrapper check removed) and mutated
+     step-3 (post-pin cp/cat of source bytes over a pinned trusted file) are
+     EXECUTED against throwaway files/git repos to show the mutant lets the
+     drift/overwrite through while the committed step denies or leaves it.
   4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
@@ -102,6 +107,85 @@ SUCCESS_GREP = "grep -E '^Success: no issues found in [1-9][0-9]* source files$'
 MARKER_GREP = "grep -E '^run_scoped_mypy: rc=0 ' >/dev/null"
 ENV_I_CALL = ('env -i PATH=/usr/bin:/bin HOME="$scratch/home" TMPDIR="$scratch/tmp" NO_COLOR=1 '
               'LC_ALL=C.UTF-8 \\\n            "$venv/bin/python" -I "$work/tools/run_scoped_mypy.py"')
+
+
+# Gate-defining steps 2 and 3 are frozen line-for-line (BUG-062 round 2): any inserted,
+# removed, reordered or weakened command - e.g. a post-pin overwrite of the trusted
+# wrapper from source bytes, or a pin comparison that no longer compares to the pin -
+# changes the sequence. Changing them deliberately means updating these literals.
+GUARD_STEP_LINES = (
+    'set -euo pipefail',
+    'work="$RUNNER_TEMP/work"',
+    'check() {',
+    '  local path="$1" want="$2" got',
+    '  [[ -e "$path" ]] || { echo "DENY: $path absent" >&2; exit 1; }',
+    '  [[ ! -L "$path" ]] || { echo "DENY: $path is a symlink" >&2; exit 1; }',
+    '  [[ -f "$path" ]] || { echo "DENY: $path is not a regular file" >&2; exit 1; }',
+    '  got="$(sha256sum "$path" | cut -d\' \' -f1)"',
+    '  [[ "$got" == "$want" ]] || { echo "DENY: $path sha256 $got, expected $want" >&2; exit 1; }',
+    '  echo "pinned ok: $want $path"',
+    '}',
+    'check "$work/tools/run_scoped_mypy.py" "$WRAPPER_SHA256"',
+    'check "$work/tools/assert_ci_python313.py" "$ASSERT_SHA256"',
+    'check "$work/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt" "$LOCK_SHA256"',
+    '[[ -d "$work/backend/app" && ! -L "$work/backend/app" ]] \\',
+    '  || { echo "DENY: backend/app is not a real directory" >&2; exit 1; }',
+    '[[ -f "$work/backend/pyproject.toml" && ! -L "$work/backend/pyproject.toml" ]] \\',
+    '  || { echo "DENY: backend/pyproject.toml is not a regular file" >&2; exit 1; }',
+    '[[ ! -e "$work/backend/.venv" && ! -L "$work/backend/.venv" ]] \\',
+    '  || { echo "DENY: backend/.venv is committed in the trusted tree" >&2; exit 1; }',
+)
+
+TAMPER_STEP_LINES = (
+    'set -euo pipefail',
+    'deny() { echo "DENY: $1" >&2; exit 1; }',
+    'work="$RUNNER_TEMP/work"',
+    'src="$RUNNER_TEMP/source.git"',
+    'stage="$RUNNER_TEMP/source-app"',
+    '[[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]] || deny "trusted sha is not 40-hex"',
+    '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || deny "source sha is not 40-hex"',
+    '[[ "$(git -C "$work" rev-parse HEAD)" == "$TRUSTED_SHA" ]] || deny "trusted tree is not $TRUSTED_SHA"',
+    '[[ "$(git -C "$src" rev-parse "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" ]] \\',
+    '  || deny "source objects are not commit $SOURCE_SHA"',
+    'for rel in \\',
+    '  .github/workflows/typecheck-required-candidate.yml \\',
+    '  tools/run_scoped_mypy.py \\',
+    '  tools/assert_ci_python313.py \\',
+    '  backend/requirements-typecheck-linux-x86_64-cp313.lock.txt \\',
+    '  backend/pyproject.toml backend/mypy.ini backend/.mypy.ini backend/setup.cfg backend/tox.ini',
+    'do',
+    '  want="$(git -C "$work" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")"',
+    '  got="$(git -C "$src" ls-tree --full-tree "$SOURCE_SHA" -- "$rel")"',
+    '  [[ "$got" == "$want" ]] \\',
+    '    || deny "candidate changed $rel; gate bytes must come from the reviewed trusted sha"',
+    'done',
+    'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"',
+    '[[ -s "$RUNNER_TEMP/app.lst" ]] || deny "source has no backend/app entries"',
+    'rm -rf "$stage"',
+    'mkdir -p "$stage"',
+    'count=0',
+    "while IFS= read -r -d '' rec; do",
+    '  meta="${rec%%$\'\\t\'*}"',
+    '  path="${rec#*$\'\\t\'}"',
+    '  read -r mode type oid <<<"$meta"',
+    '  [[ "$mode" == "100644" && "$type" == "blob" ]] \\',
+    '    || deny "refused source entry mode $mode type $type at \'$path\' (symlink/gitlink/executable)"',
+    '  case "$path" in backend/app/?*) ;; *) deny "source entry outside backend/app: \'$path\'" ;; esac',
+    '  case "/$path/" in',
+    '    */../*|*/./*|*//*|*/.git/*) deny "unsafe source path \'$path\'" ;;',
+    '  esac',
+    '  mkdir -p "$stage/$(dirname "$path")"',
+    '  git -C "$src" cat-file blob "$oid" > "$stage/$path"',
+    '  count=$((count + 1))',
+    'done < "$RUNNER_TEMP/app.lst"',
+    '[[ "$count" -ge 1 ]] || deny "no source blobs materialized"',
+    'rm -rf "$work/backend/app"',
+    'mv "$stage/backend/app" "$work/backend/app"',
+    '[[ -z "$(find "$work/backend/app" ! -type f ! -type d)" ]] || deny "non-regular entry in materialized backend/app"',
+    '[[ "$(find "$work/backend/app" -type f | wc -l | tr -d \' \')" == "$count" ]] \\',
+    '  || deny "materialized file count differs from the source listing"',
+    'echo "materialized $count inert source blobs from $SOURCE_SHA into the trusted $TRUSTED_SHA tree"',
+)
 
 
 def sha256_of(path):
@@ -290,6 +374,15 @@ def audit(text):
     if 'assert="$RUNNER_TEMP/work/tools/assert_ci_python313.py"' not in code:
         bad.append("assertion script is not run from the trusted tree")
 
+    # --- steps 2 and 3 are frozen line-for-line (BUG-062 round 2) ----------
+    for prefix, frozen in (("Guard pinned inputs", GUARD_STEP_LINES), ("Deny candidate tamper", TAMPER_STEP_LINES)):
+        got_lines = [ln.rstrip() for n, _e, s in parsed if n.startswith(prefix) for ln in s.splitlines() if ln.strip()]
+        if tuple(got_lines) != frozen:
+            extra = [ln for ln in got_lines if ln not in frozen]
+            missing = [ln for ln in frozen if ln not in got_lines]
+            bad.append(f"step '{prefix}' differs from the frozen script: added {extra}, removed {missing}"
+                       if extra or missing else f"step '{prefix}' lines reordered/duplicated")
+
     # --- exact head fetch, no drift ------------------------------------
     for needle in ('[[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]]', '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
                    "fetch -q --no-tags --depth=1", 'rev-parse HEAD)" == "$TRUSTED_SHA"',
@@ -360,6 +453,21 @@ def audit(text):
 def tamper(text, old, new, count=1):
     assert old in text, f"tamper anchor absent: {old!r}"
     return text.replace(old, new, count)
+
+
+def round2_mutants(t):
+    """BUG-062 round-2 mutants of steps 2 and 3 (post-pin source overwrite, neutered/removed pin compare)."""
+    wipe = '          rm -rf "$work/backend/app"\n'
+    return {
+        "M1 cp source over trusted wrapper": tamper(
+            t, wipe, '          cp "$stage/backend/app/__init__.py" "$work/tools/run_scoped_mypy.py"\n' + wipe),
+        "M1b cat source over trusted assert script": tamper(
+            t, wipe, '          cat "$stage/backend/app/__init__.py" > "$work/tools/assert_ci_python313.py"\n' + wipe),
+        "M5b pin compares got to got": tamper(
+            t, '[[ "$got" == "$want" ]] || { echo "DENY: $path sha256', '[[ "$got" == "$got" ]] || { echo "DENY: $path sha256'),
+        "M5c wrapper pin check removed": tamper(
+            t, '          check "$work/tools/run_scoped_mypy.py" "$WRAPPER_SHA256"\n', ""),
+    }
 
 
 class FakeBash:
@@ -470,6 +578,12 @@ class AuditPolicyTest(unittest.TestCase):
                 self.assertNotEqual(mutated, self.text, "mutant was a no-op")
                 self.assertNotEqual(audit(mutated), [], f"mutant survives audit: {label}")
 
+    def test_round2_mutants_are_flagged_by_audit(self):
+        for label, mutated in round2_mutants(self.text).items():
+            with self.subTest(label):
+                self.assertNotEqual(mutated, self.text, "mutant was a no-op")
+                self.assertNotEqual(audit(mutated), [], f"mutant survives audit: {label}")
+
     def test_wrapper_step_mutants_are_also_killed_by_execution(self):
         """Independent of audit(): run the mutated wrapper step under the behaviour matrix."""
         mutants = self._bug062_mutants()
@@ -541,6 +655,7 @@ class AuditPolicyTest(unittest.TestCase):
             "app not replaced": tamper(t, 'rm -rf "$work/backend/app"\n', ""),
         }
         cases.update({f"bug062: {k}": v for k, v in self._bug062_mutants().items()})
+        cases.update({f"round2: {k}": v for k, v in round2_mutants(t).items()})
         for label, mutated in cases.items():
             with self.subTest(label):
                 self.assertNotEqual(mutated, t, "tamper was a no-op")
@@ -692,14 +807,14 @@ class TrustedBoundaryTest(unittest.TestCase):
         self.step3 = step_script("Deny candidate tamper")
         self.trusted = self.syn.commit()
 
-    def chain(self, source):
+    def chain(self, source, step3=None):
         env = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": self.trusted,
                "SOURCE_SHA": source, "REPO_URL": f"file://{self.syn.repo}", "RUNNER_TEMP": str(self.rt)}
         r1 = FakeBash.run(self.step1, env, self.tmp)
         if r1.returncode != 0 and "not our ref" in r1.stderr:
             self.skipTest("local git transport refuses fetch by sha")
         self.assertEqual(r1.returncode, 0, r1.stderr)
-        return FakeBash.run(self.step3, env, self.tmp)
+        return FakeBash.run(step3 or self.step3, env, self.tmp)
 
     def work(self, rel):
         return self.rt / "work" / rel
@@ -727,6 +842,28 @@ class TrustedBoundaryTest(unittest.TestCase):
         for rel in PROTECTED[:5]:
             self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], rel)
         self.assertIn("materialized 2 inert source blobs", r.stdout)
+
+    def test_post_pin_source_overwrite_mutants_corrupt_gate_files_but_committed_step_does_not(self):
+        """Executes mutated step 3 on a synthetic tree: the mutant rewrites a pinned trusted file from source bytes."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        evil = "EVIL = 1\n"
+        source = self.syn.variant(set={"backend/app/__init__.py": evil})
+        self.assertEqual(self.chain(source).returncode, 0)
+        self.assertEqual(self.work("tools/run_scoped_mypy.py").read_text(), "wrapper-v1\n")
+        self.assertEqual(self.work("tools/assert_ci_python313.py").read_text(), "assert-v1\n")
+        mutants = round2_mutants(text)
+        for label, rel, original in (
+            ("M1 cp source over trusted wrapper", "tools/run_scoped_mypy.py", "wrapper-v1\n"),
+            ("M1b cat source over trusted assert script", "tools/assert_ci_python313.py", "assert-v1\n"),
+        ):
+            with self.subTest(label):
+                shutil.rmtree(self.rt / "work", ignore_errors=True)
+                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+                r = self.chain(source, step3=step_script("Deny candidate tamper", mutants[label]))
+                self.assertEqual(r.returncode, 0, r.stderr)  # the mutant step still "succeeds"
+                self.assertEqual(self.work(rel).read_text(), evil, f"mutant is not load-bearing: {label}")
+                self.assertNotEqual(self.work(rel).read_text(), original)
+                self.assertNotEqual(audit(mutants[label]), [], f"audit missed: {label}")
 
     def test_identical_trusted_and_source_sha_works(self):
         self.assertEqual(self.chain(self.trusted).returncode, 0)
@@ -808,12 +945,12 @@ class PinGuardStepTest(unittest.TestCase):
             shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
         self.script = step_script("Guard pinned inputs")
 
-    def _run(self, **over):
+    def _run(self, script=None, **over):
         env = {"RUNNER_TEMP": str(self.tmp), "PATH": f"{self.bin}:{os.environ['PATH']}",
                "WRAPPER_SHA256": WRAPPER_SHA256, "ASSERT_SHA256": sha256_of(REPO / PINS["ASSERT_SHA256"][0]),
                "LOCK_SHA256": sha256_of(REPO / PINS["LOCK_SHA256"][0])}
         env.update(over)
-        return FakeBash.run(self.script, env, self.tmp)
+        return FakeBash.run(script or self.script, env, self.tmp)
 
     def test_matching_pins_pass(self):
         r = self._run()
@@ -825,6 +962,22 @@ class PinGuardStepTest(unittest.TestCase):
         r = self._run()
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("sha256", r.stderr)
+
+    def test_pin_guard_mutants_let_drift_through_but_committed_step_and_audit_deny(self):
+        """Executes the mutated step 2: a drifted wrapper passes the mutant, is denied by the committed step."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        with open(self.tmp / "work/tools/run_scoped_mypy.py", "ab") as fh:
+            fh.write(b"# drift\n")
+        self.assertNotEqual(self._run().returncode, 0, "committed step must deny the drift")
+        mutants = round2_mutants(text)
+        for label in ("M5b pin compares got to got", "M5c wrapper pin check removed"):
+            with self.subTest(label):
+                mutant = step_script("Guard pinned inputs", mutants[label])
+                self.assertEqual(self._run(script=mutant).returncode, 0, f"mutant is not load-bearing: {label}")
+                self.assertNotEqual(audit(mutants[label]), [], f"audit missed: {label}")
+        # the M5b mutant still denies a missing file: only the pin comparison was defeated
+        os.unlink(self.tmp / "work/tools/run_scoped_mypy.py")
+        self.assertNotEqual(self._run(script=step_script("Guard pinned inputs", mutants["M5b pin compares got to got"])).returncode, 0)
 
     def test_wrong_pin_values_and_symlinks_are_denied(self):
         for var in PINS:
