@@ -1,0 +1,204 @@
+# Canonical module-capabilities manifest (EIP v1.4.1 Appendix: "MOD-000 defines
+# contracts/engineering/module-capabilities.yaml"). Fresh MOD-001 epoch
+# MOD001-20261013-FRESH-1. Derived from CAPABILITY_REGISTRY.md, CAPABILITY_POLICY.md,
+# MODEL_ROUTING.md and MOD-001.md; lifecycle dates, hashes, approvers and rollback
+# targets live in the registry and are deliberately NOT duplicated here (single source).
+# Binding to a registered ID is not approval of the module: DC-10 evidence, independent
+# review and Gatekeeper certification remain separate and outstanding.
+module_id: MOD-001
+status: ACTIVE_NOT_CERTIFIED
+
+capability_profiles:
+  - id: infra-sre-ci
+    path_scope: ["infra/**", ".github/workflows/**"]
+    agent: veyro-infra-sre-engineer
+  - id: backend
+    path_scope: ["backend/**"]
+    agent: veyro-backend-engineer
+    note: excludes the critical-slice harness (see veyro-critical-engineer)
+  - id: critical-slices
+    path_scope: ["backend/tests/harness/**"]
+    agent: veyro-critical-engineer
+    note: bounded to the tenant-isolation/RLS harness, negative-credential fixtures and RLS/permission lint gates
+  - id: admin-web
+    note: not applicable to MOD-001; the privileged-console Rule binds forward to MOD-029
+  - id: web-mobile-edge-data-ai
+    note: no profile agent registered or bound for MOD-001; routine work routes to veyro-implementer
+
+repository_surfaces:
+  - backend/
+  - contracts/
+  - infra/
+  - tools/
+  - .github/workflows/
+  - .claude/
+  - knowledge/
+
+# Sole authority for the surface-profile gate (tools/validate_surface_profile.py; ADR-005
+# Decision 2 Part 3). ACTIVATED = Backend and Infra/SRE/CI only; every other EIP 4.3 surface
+# stays DEFERRED until its own source appears. profile null = known cross-cutting path.
+repository_paths_surfaces:
+  - path: backend/**
+    profile: Backend
+    state: ACTIVATED
+  - path: infra/**
+    profile: Infra/SRE/CI
+    state: ACTIVATED
+  - path: .github/workflows/**
+    profile: Infra/SRE/CI
+    state: ACTIVATED
+  - path: admin-web/**
+    profile: Admin Web
+    state: DEFERRED
+    marker: admin-web/.profile-pending
+  - path: web/**
+    profile: General Web
+    state: DEFERRED
+    marker: web/.profile-pending
+  - path: frontdesk-web/**
+    profile: Front Desk/POS
+    state: DEFERRED
+    marker: frontdesk-web/.profile-pending
+  - path: frontdesk-edge-bridge/**
+    profile: Front Desk/POS
+    state: DEFERRED
+    marker: frontdesk-edge-bridge/.profile-pending
+  - path: mobile/shared/**
+    profile: KMP Mobile
+    state: DEFERRED
+    marker: mobile/shared/.profile-pending
+  - path: mobile/iosApp/**
+    profile: iOS Host
+    state: DEFERRED
+    marker: mobile/iosApp/.profile-pending
+  - path: mobile/androidApp/**
+    profile: Android Host
+    state: DEFERRED
+    marker: mobile/androidApp/.profile-pending
+  - path: mobile/*.md
+    profile: null  # cross-cutting mobile-wide policy docs (TOOLCHAIN_MATRIX.md, RELEASE_POLICY.md)
+    state: n/a
+  - path: RELEASE_TRAIN.md
+    profile: null  # cross-cutting repo-root release-train doc
+    state: n/a
+  - path: edge/**
+    profile: Edge
+    state: DEFERRED
+    marker: edge/.profile-pending
+  - path: data-ai/**
+    profile: Data/AI
+    state: DEFERRED
+    marker: data-ai/.profile-pending
+  - path: contracts/**
+    profile: null
+    state: n/a
+  - path: tools/**
+    profile: null
+    state: n/a
+  - path: .claude/**
+    profile: null  # known-infrastructure, not a 4.3 surface
+    state: n/a
+  - path: knowledge/**
+    profile: null  # known-infrastructure, not a 4.3 surface
+    state: n/a
+  - path: veyro-product-experience-design/**
+    profile: null  # known-infrastructure, frozen design-bundle baseline; classification grants no write permission
+    state: n/a
+
+required_agent_roles:
+  - veyro-lead
+  - veyro-implementer
+  - veyro-backend-engineer
+  - veyro-infra-sre-engineer
+  - veyro-critical-engineer
+  - veyro-test-author
+  - veyro-scenario-reviewer
+  - veyro-code-reviewer
+  - veyro-security-reviewer
+  - veyro-performance-reviewer
+  - veyro-manual-qa
+  - veyro-gatekeeper
+
+required_rule_ids:
+  - id: RULE-001
+    path: .claude/rules/infra/iac.md
+    status: BOUND
+  - id: RULE-002
+    path: .claude/rules/infra/secrets.md
+    status: BOUND
+  - id: RULE-003
+    path: .claude/rules/infra/observability.md
+    status: BOUND
+  - id: RULE-004
+    path: .claude/rules/infra/release.md
+    status: BOUND
+  - id: RULE-005
+    path: .claude/rules/backend/architecture.md
+    status: BOUND
+  - id: RULE-006
+    path: .claude/rules/backend/api.md
+    status: BOUND
+  - id: RULE-007
+    path: .claude/rules/backend/database.md
+    status: BOUND
+  - id: RULE-008
+    path: .claude/rules/backend/concurrency.md
+    status: BOUND
+  - id: RULE-009
+    path: .claude/rules/backend/performance.md
+    status: BOUND
+
+required_skill_ids: []   # .claude/skills/ does not exist; no project Skill is required
+
+required_tool_ids:
+  - id: CAP-004
+    purpose: core harness tools (first-party exemption)
+    status: BOUND
+  - id: CAP-008
+    purpose: local disposable Postgres via Colima for the RLS/authn harness
+    status: BOUND_BOUNDED_LOCAL
+  - id: CAP-009
+    purpose: secret scanning (GOV-01-R03)
+    status: BOUND_BOUNDED_SYNTHETIC_SCOPE_ONLY
+  - id: CAP-010
+    purpose: ruff lint/format and SAST rule family (GOV-01-R03/R04)
+    status: BOUND_BOUNDED
+  - id: CAP-011
+    purpose: pytest through the pinned wrapper (GOV-01-R01/R04)
+    status: BOUND_BOUNDED_LOCAL_ONLY
+  - id: CAP-012
+    purpose: mypy type check of backend/app (GOV-01-R04)
+    status: BLOCKED_NOT_APPROVED   # registry: QUALIFIED only; no reliance permitted until independent Opus approval
+  - id: CAP-002
+    purpose: TestSprite evidence input (EIP MOD-001 deliverable)
+    status: PENDING_SCOPE_CONFIRMATION   # registry scope excludes live-cloud test commands
+
+required_cross_cutting_controls:
+  - DC-10 evidence over assertion; no PASS without reproducible run evidence
+  - independent scenario, code, security, performance and manual-QA reviews separate from implementation
+  - Gatekeeper certification separate from all reviews
+  - six TSD 24.1 architecture gates as blocking CI
+  - capability-governance validation (cycle, lifecycle, privileged-surface Rule, registry integrity)
+  - owner-reserved restrictions (no spend, no real member data, no production deploy, no scope change)
+  - WIP=1; MOD-002 and later stay locked until a signed Approval Certificate exists
+
+missing_capability_blockers:
+  - id: BLOCKER-CAP-012
+    detail: mypy not approved; independent Opus capability-security determination pending
+  - id: BLOCKER-CAP-002
+    detail: TestSprite binding scope for MOD-001 not confirmed from current sources
+  - id: BLOCKER-MANUAL-QA-SURFACES
+    detail: browser and iOS-simulator manual-QA capabilities not confirmed as bound for MOD-001 from current sources; Android surface has no registered capability
+  - id: BLOCKER-CI-SCANNER-SCOPES
+    detail: real-tree, Git-history and CI scanner scopes are not approved; only the bounded synthetic/local scopes are
+
+capability_evidence_ids: []   # no current-epoch CAP/SKL/RULE evidence is recorded here; evidence is cited from the registry only
+
+capability_dependency_ids: []
+
+resolution_attempts:
+  budget: {external_candidates: 2, custom_attempts: 1, minutes: 45, tokens: 50000}
+  recorded: none   # no current-epoch gap-resolution attempt is evidenced; counters not invented
+
+lifecycle_review_state: see CAPABILITY_REGISTRY.md   # last_reviewed_at / next_review_due / lifecycle_status are registry-authoritative
+rollback_target: see CAPABILITY_REGISTRY.md   # per-capability rollback targets are registry-authoritative
