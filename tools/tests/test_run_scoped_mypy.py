@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import run_scoped_mypy as w  # noqa: E402
 from run_scoped_mypy import Denied  # noqa: E402
 
+subprocess_run = subprocess.run
 VENV_PYTHON = Path(__file__).resolve().parents[2] / "backend" / ".venv" / "bin" / "python"
 CLEAN_ENV = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8"}
 GOOD_PYPROJECT = '[tool.mypy]\npython_version = "3.13"\nstrict = true\n'
@@ -422,6 +424,68 @@ class ExecutedAgainstSyntheticFixturesTest(Base):
         with mock.patch.object(w.subprocess, "run", side_effect=replies):
             with self.assertRaises(Denied):
                 w._probe(current, {})
+
+
+class SelfContainedTest(Base):
+    """CAP-012 must not depend on CAP-011's private containment code (review B5)."""
+
+    WRAPPER = Path(w.__file__).resolve()
+
+    def test_no_run_scoped_pytest_import_anywhere(self) -> None:
+        import ast
+
+        for node in ast.walk(ast.parse(self.WRAPPER.read_text())):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            for name in names:
+                self.assertNotIn("run_scoped_pytest", name)
+        self.assertEqual(w.Denied.__module__, "run_scoped_mypy")
+        self.assertEqual(w._canonical.__module__, "run_scoped_mypy")
+
+    def test_imports_and_plans_with_only_the_wrapper_file_present(self) -> None:
+        """The wrapper copied ALONE into an empty dir still imports and fail-closes."""
+        alone = self.root / "alone"
+        alone.mkdir()
+        shutil.copy(self.WRAPPER, alone / "run_scoped_mypy.py")
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); import run_scoped_mypy as m, pathlib;"
+            "assert 'run_scoped_pytest' not in sys.modules;"
+            "\ntry:\n m.plan(pathlib.Path(sys.argv[2]), None, {})\nexcept m.Denied as e: print('DENIED', e)"
+        )
+        proc = subprocess_run([sys.executable, "-I", "-c", code, str(alone), str(self.root / "no-such-root")],
+                              capture_output=True, text=True, check=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("DENIED", proc.stdout)
+
+    def test_canonical_accepts_a_plain_path_and_refuses_each_unsafe_one(self) -> None:
+        self.assertEqual(w._canonical(self.root, "backend/app"), self.app)
+        for rel in ("", ".", "..", "backend/../backend", "/backend/app", "backend//app", "backend/./app"):
+            with self.subTest(rel), self.assertRaises(Denied):
+                w._canonical(self.root, rel)
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "backend/missing")
+
+    def test_canonical_refuses_a_symlink_in_any_component_and_escapes(self) -> None:
+        outside = Path(tempfile.mkdtemp(prefix="veyro-outside-")).resolve()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        (self.root / "escape").symlink_to(outside)
+        with self.assertRaises(Denied) as caught:
+            w._canonical(self.root, "escape")
+        self.assertIn("symlink refused", str(caught.exception))
+        (self.app / "core" / "up").symlink_to(self.root)
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "backend/app/core/up/backend")
+        # a root that is itself reached through a non-canonical spelling is refused
+        with self.assertRaises(Denied):
+            w._canonical(self.root / "backend" / "app" / ".." / "..", "backend")
+
+    def test_canonical_refuses_a_symlink_loop_without_crashing(self) -> None:
+        (self.root / "loop").symlink_to(self.root / "loop")
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "loop")
 
 
 if __name__ == "__main__":

@@ -7,8 +7,11 @@ independent determination or `approved_by` exists, so no mypy result may be
 relied on and no run through this file is a gate, scenario or assurance
 result. It supplies the "unwritten/unqualified wrapper" the CAP-012 row lists
 as a precondition, in reviewable form, and has been exercised only against
-disposable synthetic trees outside the repository. It is not wired into any CI
-workflow.
+disposable synthetic trees outside the repository: the current self-contained
+candidate ran locally on macOS CPython 3.14. Draft PR #6 ran the earlier
+CAP-011-dependent bytes on Linux CPython 3.13; this revised file has not yet
+run in CI. The drill is NOT a required CI typecheck and confers no capability
+approval. This file imports nothing from CAP-011's `run_scoped_pytest`.
 
 The caller supplies nothing. There is no path, flag or config argument; the one
 invocation this file can ever start is the CAP-012 INTENDED shape, with cwd
@@ -77,8 +80,6 @@ if sys.version_info < (3, 11):  # tomllib; the system python3 on this host is 3.
     raise SystemExit("DENY: run_scoped_mypy needs Python >= 3.11 (use backend/.venv)")
 import tomllib  # noqa: E402
 
-from run_scoped_pytest import Denied, _canonical  # noqa: E402
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 EXIT_OK = 0
@@ -95,6 +96,37 @@ RUN_TIMEOUT_SECONDS = 900
 _SKIPPED_DIR_NAMES = {"site-packages", "node_modules"}
 _HIDING_COMMENT = re.compile(r"type:\s*ignore|\bmypy\s*:")
 _SUCCESS = re.compile(r"Success: no issues found in (\d+) source files?")
+
+
+class Denied(Exception):
+    """A fail-closed refusal. CAP-012-owned: this file imports nothing from CAP-011."""
+
+
+def _canonical(root: Path, rel: str) -> Path:
+    """Resolve `rel` under `root`, refusing a symlink in any component.
+
+    Checked component by component on the way down, because `Path.resolve()`
+    alone would quietly follow a symlink. The post-resolve equality is a second,
+    independent statement that nothing was followed. Anything unexpected
+    (empty/absolute/dot components, an unresolvable path) is a denial.
+    """
+    parts = rel.split("/")
+    if rel.startswith("/") or any(part in ("", ".", "..") for part in parts):
+        raise Denied(f"unsafe relative path in the fixed scope table: {rel!r}")
+    current = root
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise Denied(f"symlink refused in the path to the scope: {rel} (at {part!r})")
+    try:
+        resolved = current.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise Denied(f"{rel} cannot be resolved: {exc}")
+    if resolved != current:
+        raise Denied(f"{rel} does not canonicalise to itself ({resolved}): refusing")
+    if root not in resolved.parents:
+        raise Denied(f"{rel} resolves outside the repository root: {resolved}")
+    return resolved
 
 
 def _hash_file(digest: "hashlib._Hash", rel: str, data: bytes) -> None:

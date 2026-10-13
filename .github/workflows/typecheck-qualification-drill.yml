@@ -14,8 +14,8 @@
 # derived programmatically from the existing dev lock, and the runner's
 # a resolvable non-3.13 python3). A final step then proves the CAP-012 wrapper's
 # enforcement boundary (M1C-R04-CAP012-WRAPPER-CI-20261013): the ACTUAL
-# tools/run_scoped_mypy.py (+ its dependency tools/run_scoped_pytest.py), copied
-# byte-for-byte from the fetched head into job-created disposable checkouts
+# tools/run_scoped_mypy.py (self-contained; copied ALONE, no CAP-011 file),
+# copied byte-for-byte from the fetched head into job-created disposable checkouts
 # shaped backend/app + backend/pyproject.toml + tools/, run with the pinned
 # cp313 venv: one positive and seven fail-closed negatives, each asserting its
 # exit code, its exact diagnostic, and whether mypy was reached.
@@ -32,7 +32,9 @@
 #   - The backend dev lock is read-only input; nothing writes to the checkout.
 #
 # NOT claimed:
-#   - This file has not been run. It is authored-only; no CI result exists.
+#   - The prior wrapper-dependent revision ran on draft PR #6 (Linux CPython
+#     3.13, synthetic fixtures only). This self-contained revision has NOT yet
+#     run in CI. It is NOT a required CI typecheck or capability approval.
 #   - Not a required status check and not GOV-01-R04's non-bypassable gate.
 #     Its value, once run, is the inspected run record, not the conclusion.
 #   - CAP-012 stays QUALIFIED - NOT APPROVED. No real-code type-check exists.
@@ -277,7 +279,7 @@ jobs:
           set -euo pipefail
           head="$RUNNER_TEMP/head"
           venv="$RUNNER_TEMP/venv-typecheck"
-          for f in "$head/tools/run_scoped_mypy.py" "$head/tools/run_scoped_pytest.py"; do
+          for f in "$head/tools/run_scoped_mypy.py"; do
             [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
             "$venv/bin/python" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(), sys.argv[1])' "$f"
           done
@@ -297,7 +299,7 @@ jobs:
           build_tree() {
             root="$work/$1"
             mkdir -p "$root/backend/app" "$root/tools"
-            cp "$head/tools/run_scoped_mypy.py" "$head/tools/run_scoped_pytest.py" "$root/tools/"
+            cp "$head/tools/run_scoped_mypy.py" "$root/tools/"
             ln -s "$venv" "$root/backend/.venv"
             cat > "$root/backend/pyproject.toml" <<'TOML'
           [tool.mypy]
