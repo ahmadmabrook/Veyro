@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "authority": "Raw deterministic local CLI observations; not an independent Opus verdict, scenario PASS promotion, CI proof, or module certification",
+  "operationId": "653041ec-59a4-4b9d-a062-082ba5842759",
+  "observedAt": "2026-10-09T02:46:16.624375+00:00",
+  "classification": "MANDATORY_NOW",
+  "cliSha256": "8aa553592128e7ffdb921d41fa179f6e46067ab856fa4505bef7b47c10127565",
+  "python": "/Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python",
+  "cases": [
+    {
+      "id": "SCN-MOD001-012",
+      "name": "mapped synthetic Screen IDs",
+      "registryFixture": {
+        "version": 1,
+        "screens": [
+          "SCR-001",
+          "SCR-002"
+        ]
+      },
+      "manifestFixture": "version: 1\nscreens:\n  - id: SCR-001\n    target: bff:members.profile_read\n  - id: SCR-002\n    target: command:billing.refund_create\n",
+      "commandTemplate": [
+        "/Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python",
+        "/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_architecture_gates.py",
+        "--gate",
+        "screen-contract",
+        "--screen-registry",
+        "<temporary screen-registry.json>",
+        "--screen-contracts",
+        "<temporary screen-contracts.yaml>",
+        "--json"
+      ],
+      "observed": {
+        "exitCode": 0,
+        "report": {
+          "checked": [
+            "SCR-001",
+            "SCR-002"
+          ],
+          "gate": "screen-contract",
+          "inventory": [],
+          "notes": [],
+          "status": "PASS",
+          "violations": []
+        },
+        "stderr": ""
+      },
+      "expected": {
+        "status": "PASS",
+        "exitCode": 0,
+        "codes": []
+      },
+      "mechanicalExpectationMet": true,
+      "individualDisposition": "EXECUTED_MECHANICALLY_AWAITING_QUALIFIED_ASSURANCE"
+    },
+    {
+      "id": "SCN-MOD001-013",
+      "name": "equal-count unmapped Screen ID",
+      "registryFixture": {
+        "version": 1,
+        "screens": [
+          "SCR-001",
+          "SCR-002"
+        ]
+      },
+      "manifestFixture": "version: 1\nscreens:\n  - id: SCR-001\n    target: bff:members.profile_read\n  - id: SCR-003\n    target: command:billing.refund_create\n",
+      "commandTemplate": [
+        "/Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python",
+        "/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_architecture_gates.py",
+        "--gate",
+        "screen-contract",
+        "--screen-registry",
+        "<temporary screen-registry.json>",
+        "--screen-contracts",
+        "<temporary screen-contracts.yaml>",
+        "--json"
+      ],
+      "observed": {
+        "exitCode": 1,
+        "report": {
+          "checked": [
+            "SCR-001",
+            "SCR-002"
+          ],
+          "gate": "screen-contract",
+          "inventory": [],
+          "notes": [],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "UNMAPPED_SCREEN_CONTRACT",
+              "detail": "SCR-002 has no mapped BFF/read-model or typed-command row in screen-contracts",
+              "subject": "SCR-002"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "expected": {
+        "status": "FAIL",
+        "exitCode": 1,
+        "codes": [
+          "UNMAPPED_SCREEN_CONTRACT"
+        ],
+        "subject": "SCR-002"
+      },
+      "mechanicalExpectationMet": true,
+      "individualDisposition": "EXECUTED_MECHANICALLY_AWAITING_QUALIFIED_ASSURANCE"
+    },
+    {
+      "id": "SCN-MOD001-110",
+      "name": "dropped generated row count mismatch",
+      "registryFixture": {
+        "version": 1,
+        "screens": [
+          "SCR-001",
+          "SCR-002"
+        ]
+      },
+      "manifestFixture": "version: 1\nscreens:\n  - id: SCR-001\n    target: bff:members.profile_read\n",
+      "commandTemplate": [
+        "/Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python",
+        "/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_architecture_gates.py",
+        "--gate",
+        "screen-contract",
+        "--screen-registry",
+        "<temporary screen-registry.json>",
+        "--screen-contracts",
+        "<temporary screen-contracts.yaml>",
+        "--json"
+      ],
+      "observed": {
+        "exitCode": 1,
+        "report": {
+          "checked": [
+            "SCR-001",
+            "SCR-002"
+          ],
+          "gate": "screen-contract",
+          "inventory": [],
+          "notes": [],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "SCREEN_CONTRACT_COUNT_MISMATCH",
+              "detail": "canonical registry has 2 screen(s), generated screen-contracts has 1: expected 2, actual 1",
+              "subject": "-"
+            },
+            {
+              "code": "UNMAPPED_SCREEN_CONTRACT",
+              "detail": "SCR-002 has no mapped BFF/read-model or typed-command row in screen-contracts",
+              "subject": "SCR-002"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "expected": {
+        "status": "FAIL",
+        "exitCode": 1,
+        "codes": [
+          "SCREEN_CONTRACT_COUNT_MISMATCH"
+        ],
+        "expectedCount": 2,
+        "actualCount": 1
+      },
+      "mechanicalExpectationMet": true,
+      "individualDisposition": "EXECUTED_MECHANICALLY_AWAITING_QUALIFIED_ASSURANCE"
+    }
+  ],
+  "allMechanicalExpectationsMet": true
+}

@@ -1,0 +1,56 @@
+{
+  "authenticatedLogin": "ahmadmabrook",
+  "authenticatedRepositoryAdmin": true,
+  "capturedAtUtc": "2026-10-08T22:45:31.037012+00:00",
+  "forkHeadRuns": [
+    {
+      "conclusion": "failure",
+      "event": "pull_request",
+      "id": 37854270001,
+      "name": "architecture-event-contract",
+      "path": ".github/workflows/event-contract.yml"
+    },
+    {
+      "conclusion": "failure",
+      "event": "pull_request_target",
+      "id": 37854269848,
+      "name": "architecture-event-contract-trusted",
+      "path": ".github/workflows/scn020-trusted-event-contract.yml"
+    }
+  ],
+  "mainSha": "f85a17ba28cf55a209b0129ea8e9ceacc6a9edb9",
+  "operationId": "32a6680b-8b5c-4a8c-a5ec-464dc8305892",
+  "protectedBaseSha": "36457b4dbe309355c5fede5f56c451371bcfd1f6",
+  "protection": {
+    "allowDeletions": false,
+    "allowForcePushes": false,
+    "enforceAdmins": true,
+    "requiredChecks": [
+      {
+        "app_id": 15368,
+        "context": "architecture-event-contract-trusted"
+      }
+    ],
+    "restrictions": null,
+    "strict": true
+  },
+  "prs": [
+    {
+      "headRepo": "ahmadmabrook/Veyro",
+      "headSha": "45ed3ef32be88b9f38c3a975172f7f3ba8dd3d65",
+      "mergeableState": "blocked",
+      "merged": false,
+      "number": 1,
+      "state": "open"
+    },
+    {
+      "headRepo": "veyro-labs/Veyro",
+      "headSha": "db04cecf62f812bd7ebd28abc4d094cfd75d52d7",
+      "mergeableState": "blocked",
+      "merged": false,
+      "number": 2,
+      "state": "open"
+    }
+  ],
+  "repositoryVisibility": "public"
+}

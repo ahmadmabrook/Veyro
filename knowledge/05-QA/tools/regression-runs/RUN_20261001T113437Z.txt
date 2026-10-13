@@ -1,0 +1,9 @@
+MOD-000 regression run: 2026-10-01T11:34:37.737883+00:00
+======================================================================
+[PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+[PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+[PASS] validate_capabilities.py: RESULT: PASS — 7 capability/capabilities, all registered and APPROVED with required fields present.
+[PASS] evidence_integrity_check.py: PASS — no broken evidence references (beyond expected forward refs) across 322 scanned files, no missing bug linkage, staleness check compared real dates.
+[N/A] test_bash_guard.py: RETIRED/NOT_APPLICABLE — CAP-007 retired (OWN-006/ADR-007); not executed as a current gate; must be restored if CAP-007 is reinstated
+======================================================================
+AGGREGATE RESULT: PASS (4/4 checks passed, 1 N/A excluded)

@@ -1,0 +1,11 @@
+# Gate-2 R1 D6 seeded property corpus — bounded verification (2026-10-05)
+
+**Scope:** MOD-001 / GOV-01-R04 gate 2, fixture-scoped; real-tree domain ownership DEFERRED. This is pure `_cte_scopes` test evidence, not live state-3 wiring, an ADR-011 D3.2/D9 risk judgment, independent review, or a scenario verdict. SCN-MOD001-006/-007/-095/-096 remain NOT EXECUTED and unpromoted.
+
+Named `veyro-implementer` (Sonnet) Task agent `a2cb90b3973284d3b` added `test_cte_scopes_seeded_property_corpus_subset_and_extraction_equivalence` to `tools/tests/test_validate_architecture_gates.py`. Independent `mr_verify.py` against its sidechain transcript: PASS 79/79 `claude-sonnet-5` turns. Guarded operation `D6-SEEDED-PROPERTY-CORPUS` exited 0 with a durable test-file checkpoint.
+
+The repository-resident corpus uses local `random.Random(20261005)`, 512 generated cases, 26 enumerated chunk generators and four separators. Each case checks T9's segment-binding subset relation and I-5's table-identifier extraction multiset equivalence, with seed/index/input in failure output. Non-vacuity thresholds are at least 30 non-empty-binding segments and 100 multi-scope cases. Direct deterministic replay observed **57 non-empty-binding segments** (52 distinct cases) and **190 multi-scope cases**. The implementation comment was corrected from “57 cases” to “57 segments” after that independent count; no assertion or generator changed.
+
+Independent verification: `pytest -q tools/tests/test_validate_architecture_gates.py -k cte_scopes` **18/18 PASS**; complete file **218/218 PASS**; focused new test **1/1 PASS** after the comment correction; Ruff for the test file PASS; `git diff --check` clean. Production source SHA-256 remains `3e05a5108061cd1bf56a27a6e9d1896df3793ec6b9df919664a7cd692d16ed5d`; final test SHA-256 is `7efb1bc7c9a43c93ad9c7bc7d12b2cc452b6b09b730c1ba8a9d10d8240bbd073`.
+
+The deleted two-function prototype's historical 300k+8 result is unreconstructable and does not transfer to this one-pass corpus. No counterexample was found in these 512 cases; finite passing tests do **not** prove absence of an absolute false-clean. The next decision is a fresh bounded named `veyro-lead`/Opus ADR-011 D3.2/D9 judgment on the current evidence. Live scanner wiring remains held pending that decision; independent gate-2 review round 1 remains BLOCKED P0=1/P1=7/P2=6/P3=7.

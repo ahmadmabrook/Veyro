@@ -1,0 +1,179 @@
+{
+  "capturedAt": "2026-10-08T22:03:58.285859+00:00",
+  "repository": "ahmadmabrook/Veyro",
+  "source": "GitHub API via gh",
+  "case": "SCN-MOD001-020(a) corrected continue-on-error replay",
+  "trustedMainSha": "f85a17ba28cf55a209b0129ea8e9ceacc6a9edb9",
+  "candidateHeadSha": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+  "trustedRun": {
+    "conclusion": "failure",
+    "databaseId": 37850950695,
+    "event": "pull_request_target",
+    "headSha": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+    "jobs": [
+      {
+        "completedAt": "2026-10-08T22:03:10Z",
+        "conclusion": "failure",
+        "databaseId": 113563423290,
+        "name": "architecture-event-contract-trusted",
+        "startedAt": "2026-10-08T22:03:05Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-08T22:03:06Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-08T22:03:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:08Z",
+            "conclusion": "failure",
+            "name": "Run trusted gate-3 event-contract check against inert candidate data",
+            "number": 2,
+            "startedAt": "2026-10-08T22:03:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:08Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 3,
+            "startedAt": "2026-10-08T22:03:08Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850950695/job/113563423290"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850950695",
+    "workflowName": "architecture-event-contract-trusted"
+  },
+  "candidateControlledRun": {
+    "conclusion": "success",
+    "databaseId": 37850953256,
+    "event": "pull_request",
+    "headSha": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+    "jobs": [
+      {
+        "completedAt": "2026-10-08T22:03:13Z",
+        "conclusion": "success",
+        "databaseId": 113563429917,
+        "name": "architecture-event-contract",
+        "startedAt": "2026-10-08T22:03:06Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-08T22:03:07Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-08T22:03:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v4",
+            "number": 2,
+            "startedAt": "2026-10-08T22:03:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@v5",
+            "number": 3,
+            "startedAt": "2026-10-08T22:03:10Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Compare candidate events to PR base",
+            "number": 4,
+            "startedAt": "2026-10-08T22:03:10Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@v5",
+            "number": 7,
+            "startedAt": "2026-10-08T22:03:10Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v4",
+            "number": 8,
+            "startedAt": "2026-10-08T22:03:10Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-08T22:03:10Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-10-08T22:03:10Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850953256/job/113563429917"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850953256",
+    "workflowName": "architecture-event-contract"
+  },
+  "headCheckRuns": [
+    {
+      "id": 113563429917,
+      "name": "architecture-event-contract",
+      "status": "completed",
+      "conclusion": "success",
+      "appId": 15368,
+      "headSha": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+      "detailsUrl": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850953256/job/113563429917"
+    },
+    {
+      "id": 113563423290,
+      "name": "architecture-event-contract-trusted",
+      "status": "completed",
+      "conclusion": "failure",
+      "appId": 15368,
+      "headSha": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+      "detailsUrl": "https://github.com/ahmadmabrook/Veyro/actions/runs/37850950695/job/113563423290"
+    }
+  ],
+  "pr": {
+    "baseRefName": "scn020-protected-base-20261009",
+    "headRefOid": "10ab7e2367c5b40e4096a70f9e54a09d9b5e28ec",
+    "mergeStateStatus": "BLOCKED",
+    "mergedAt": null,
+    "state": "OPEN",
+    "url": "https://github.com/ahmadmabrook/Veyro/pull/1"
+  },
+  "protection": {
+    "requiredStatusChecks": {
+      "url": "https://api.github.com/repos/ahmadmabrook/Veyro/branches/scn020-protected-base-20261009/protection/required_status_checks",
+      "strict": true,
+      "contexts": [
+        "architecture-event-contract-trusted"
+      ],
+      "contexts_url": "https://api.github.com/repos/ahmadmabrook/Veyro/branches/scn020-protected-base-20261009/protection/required_status_checks/contexts",
+      "checks": [
+        {
+          "context": "architecture-event-contract-trusted",
+          "app_id": 15368
+        }
+      ]
+    },
+    "adminEnforced": true,
+    "forcePushAllowed": false,
+    "deletionAllowed": false
+  }
+}

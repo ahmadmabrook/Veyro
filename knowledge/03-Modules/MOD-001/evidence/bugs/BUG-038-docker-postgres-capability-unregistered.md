@@ -2,11 +2,44 @@
 doc: BUG-038
 module: MOD-001
 severity: P1 (proposed by the independent reviewer; supply-chain governance gap, not a harness code defect)
-status: OPEN (2026-09-29)
+status: CLOSED (2026-10-02, independent Opus closure review P0=0/P1=0)
+current_as_of: 2026-10-02 — BUG-038 closed for the approved Colima binding only; SCN-027 PASS after fresh reviewed Colima evidence; SCN-067 harness half PASS, overall BLOCKED pending R04
 filed: 2026-09-29 by veyro-security-reviewer (Opus), independent Slice-5 review; not fixed by the filer (reviewers do not implement)
 ---
 
 # BUG-038 — Docker Engine + `postgres:16-alpine` are an unregistered, unqualified capability, relied on for Blocker-severity evidence
+
+## Closure — 2026-10-02
+
+The distinct, fresh-context Opus review in `knowledge/03-Modules/MOD-001/evidence/security/BUG038-CLOSURE-REVIEW-2026-10-02.md` returned **CLOSED-ELIGIBLE, P0=0/P1=0**. Its trace passed `mr_verify.py` (26 turns, 100% `claude-opus-5-5`). CAP-008's current pinned Colima/Postgres binding is registered, qualified, and separately Opus-approved; the original supply-chain governance gap is therefore **CLOSED**. This closure does not retroactively qualify the Docker Desktop substrate used for the original Slice-5 runs. Historical Desktop licence/spend implications remain owner-reserved and undetermined.
+
+The original review's “SCN-027 PASS without re-run” statement assumed approval of that same substrate. Because the binding and harness changed, both harnesses were rerun on approved Colima (31/31 affected integration tests PASS) with raw case/state evidence and a distinct attested Opus review, P0=0/P1=0 (`evidence/security/BUG038-COLIMA-SCENARIO-REVIEW-2026-10-02.md`). **SCN-027 is PASS; SCN-067 harness half is PASS but the scenario overall remains BLOCKED** until the missing R04 RLS-lint gate catches disabled RLS on `access_grant`. R04 may now start under ADR-005 routing; closure is not an R04 verdict.
+
+## Prior closure candidate — 2026-10-02 (historical, superseded above)
+
+The original Docker Desktop binding is superseded by CAP-008's pinned
+Colima/Lima + Docker Engine/Postgres binding. `CAPABILITY_REGISTRY.md` now
+records its provenance, exact version/hash snapshot, loopback/synthetic
+scope, rollback, and review due date. Sonnet re-ran positive and negative
+qualification drills against the reviewed fail-closed harness (8/8 PASS,
+`knowledge/05-QA/capability-evidence/CAP-008/SONNET_REQUALIFICATION_2026-10-02.md`).
+A distinct fresh Opus capability-security review **APPROVED** that binding,
+P0=0/P1=0, with independently verified model trace
+(`.../CAP-008/COLIMA_OPUS_R2_APPROVAL_2026-10-02.md`). Capability drift
+check passes 8/8 after the approval snapshot was aligned exactly.
+
+These facts address this filing's registration/qualification/approval
+remediation steps without relying on Docker Desktop or claiming its licence
+eligibility. They are a **candidate** for BUG-038 closure, not self-closure:
+a separately dispatched fresh Opus BUG-038 reviewer began checking the chain
+but hit a provider session limit before returning a verdict (reported reset
+06:30 Asia/Amman). Keep status OPEN and keep SCN-MOD001-027/067 blocked until
+that distinct closure judgment is delivered and recorded. Original Slice-5
+review says SCN-027 is recordable PASS once this bug closes without a re-run;
+SCN-067 additionally needs the missing R04 gate regardless of BUG-038.
+
+The original finding below remains historical evidence of the gap at filing
+time; it does not describe the currently approved Colima binding.
 
 ## Finding
 

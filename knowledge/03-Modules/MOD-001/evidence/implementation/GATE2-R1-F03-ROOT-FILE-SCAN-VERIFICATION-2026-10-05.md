@@ -1,0 +1,11 @@
+# Gate-2 R1-F03 — modules-root file scan verification (2026-10-05)
+
+**Scope:** one fixture-scoped ADR-011 D4 increment for the original round-1 P1 finding R1-F03. This is local implementation evidence, not independent assurance, a formal finding closure, or a scenario verdict.
+
+- Named `veyro-implementer`/Sonnet operation `R1-F03-ROOT-FILE-SCAN` completed with guarded exit 0 and a durable code checkpoint. Independent `mr_verify.py` on `agent-a0ffd91e571f3b068.jsonl`: **PASS, 91/91 claude-sonnet-5 turns**.
+- `tools/validate_architecture_gates.py` now enumerates direct `--modules-dir` files under the reserved domain-free `_root` importer, scans Python and SQL through the existing paths, permits declared public-interface imports, denies internal imports, denies owned-table SQL and errors on unattributed table references. It does not wire CTE state 3.
+- Seven focused new D4 tests cover planted root `conftest.py` private import denial, root `__init__.py` owned-table SQL denial, public-interface allow, unattributed-table ERROR, direct `.sql` scan, symlink refusal, and preservation of pre-existing positive/vacuous behavior. The symlink test exercises the gate's refusal, but `_discover_modules` can reject first; it does not isolate the new helper branch.
+- Orchestrator-run deterministic checks: `backend/.venv/bin/python -m pytest -q tools/tests/test_validate_architecture_gates.py` **231/231 PASS**; `backend/.venv/bin/ruff check tools/validate_architecture_gates.py tools/tests/test_validate_architecture_gates.py` **PASS**. Source SHA-256 `3d5249f32fbc1a62f6b0bdcd6fd92ab34ee6bafb3149a4aae54c177ec5bb1aea`; test SHA-256 `02db6e1ddc5d29bc0c817b8bcad392e60cdb20b45055956bb457a51c55fce0c4`.
+- Existing working tree was uncommitted and remains so. The real-tree gate cannot supply behavioral proof yet because `contracts/modules/ownership.json` is absent, causing pre-existing `MODULE_DEPS_GATE_INPUT_INVALID` before root scanning. This fixture result cannot promote SCN-MOD001-006/007/095/096.
+
+**Disposition:** R1-F03 is locally fixed/verified against the named fixture criteria, **awaiting combined independent round-2 code assurance** after the other gate-2 blocking code/test findings are reconciled. Round-1 ledger status remains OPEN; no review counter changes.

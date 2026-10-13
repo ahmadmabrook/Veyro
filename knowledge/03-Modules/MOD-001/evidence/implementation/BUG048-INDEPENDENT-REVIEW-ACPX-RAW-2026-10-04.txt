@@ -1,0 +1,2706 @@
+[client] initialize (running)
+
+[client] session/new (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+I'll start by reading the governance bootstrap files and the BUG-048 materials.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/00-System/SESSION_BOOTSTRAP.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/SESSION_BOOTSTRAP.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/SESSION_BOOTSTRAP.md:1
+  output:
+    1	---
+    2	doc: SESSION_BOOTSTRAP
+    3	status: LIVE
+    4	---
+    5	
+    6	# Session Bootstrap — Fail-Closed
+    7	
+    8	Read this first, every session, before any action. This file must let a fresh Claude session (zero prior chat context) reconstruct legal next action from disk alone.
+    9	
+    10	## 1. Governing baseline identities (verify before trusting anything else)
+    11	
+    12	Re-hash **all four** artifacts (the 3 docx files, plus the design bundle
+    13	manifest) and diff against `PROJECT_INDEX.md`. Also confirm the four
+    14	identity strings (`VEYRO-MPB-1.0`, `Veyro TSD v1.4.1`,
+    15	`VEYRO-UX-V1-170-APPROVED`, `VEYRO-EIP-1.4.1-20260827`) are present in
+    16	`PROJECT_INDEX.md` — a hash match alone does not confirm the artifact's
+    17	declared identity/version. If any hash or identity mismatches, STOP —
+    18	report `BLOCKED: BASELINE_INTEGRITY_FAILURE` and do not proceed. (Corrected
+    19	2026-09-04, Phase 5 F5-013 — this section previously verified only 3 of 4
+    20	baselines, silently skipping the design bundle, which is exactly the
+    21	artifact BUG-001 was found in.)
+    22	
+    23	**Primary check (corrected 2026-09-30, session-restore reconciliation —
+    24	this section previously said the command was "allowlisted by the live
+    25	`.claude/security/bash_guard.py` PreToolUse guard (CAP-007, active since
+    26	2026-09-08)"; **CAP-007 was RETIRED 2026-09-28** per `OWN-006`/`ADR-007`
+    27	— `bash_guard.py` is now an inert, unregistered stub and
+    28	`.claude/settings.json` permits unrestricted local Bash execution
+    ... (150 more lines)
+
+[tool] echo "=== model/session proof ===" && date -u && git rev-parse HEAD && git branch --show-current (completed)
+  kind: execute
+  input: echo "=== model/session proof ===" && date -u && git rev-parse HEAD && git branch --show-current
+  output:
+    === model/session proof ===
+    Sun Oct  4 10:20:44 UTC 2026
+    015d7ef3dca4cd42f335226b789b8610fd218c92
+    main
+    
+    ```console
+    === model/session proof ===
+    Sun Oct  4 10:20:44 UTC 2026
+    015d7ef3dca4cd42f335226b789b8610fd218c92
+    main
+    ```
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/00-System/CURRENT_STATE.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/CURRENT_STATE.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/CURRENT_STATE.md:1
+  output:
+    1	---
+    2	doc: CURRENT_STATE
+    3	status: LIVE
+    4	current_as_of: 2026-10-04 SCN-MOD001-009 PROMOTED for synthetic GOV-01-R02/CONC only: fresh independent scenario-evidence review PASS P0/P1/P2=0, P3=3 nonblocking; reviewer independently re-executed 5/5 focused and 204/204 backend tests, killed both relevant mutants, and orchestrator verified 51/51 transcript turns as claude-opus-5. No DOM-002 round-5 resumption/replacement or further code review. Historical DOM-002 counts remain four reviews/four remediations; round 5 remains INTERRUPTED_IN_FLIGHT_EVIDENCE with no verdict. R04/ADR-010 A2 and MOD-001 certification remain separate/open. Review: knowledge/03-Modules/MOD-001/evidence/code-review/SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md.
+    5	prior_current_as_of_scn009: 2026-10-04 (SCN-MOD001-009 scenario evidence reconciliation — distinct record unit, no DOM-002 review/remediation performed or requested): closed the scenario's own evidence clause ("both write attempts' outcomes logged; exactly one succeeds, one gets a version-conflict error"), which the routing correction earlier the same day had left explicitly unresolved. Gap was real and twofold: the two-writer behavior was proven only by assertions with no durable artifact an auditor can read the outcomes off, and "exactly one / exactly one" was a structural property of the call shape (unchecked success call + `pytest.raises`) rather than a measured count — blind to two successes (the lost update) and to a rejection carrying the wrong typed error (`RowNotFound` for a version conflict, round-1 P2-1's class). Fixed with minimal instrumentation in `backend/tests/integration/test_concurrency_harness.py` only — no new test function (file collects 5 before and after), no harness/production change, no new mechanism: both writers run through one outcome recorder and the pair is emitted via the same `{TAG}-EVIDENCE <json>` stdout convention `test_authn_harness.py`/`test_architecture_gate_rls.py` alr...
+
+[tool] Read knowledge/00-System/REVIEW_IN_FLIGHT.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md:1
+  output:
+    1	---
+    2	doc: REVIEW_IN_FLIGHT
+    3	status: LIVE — minimal durable claim mechanism, authored 2026-10-03 per R12-5 (round-12 independent review, `knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-SLICE7-DOMAIN-SCAFFOLDS-FINANCIAL-INVARIANT-SECURITY-REVIEW-ROUND12-2026-10-03.md` §4.5), implementing the process fix R11b-2/`SLICE-7-ROUND11-COLLISION-CHECKPOINT-2026-10-03.md` recommended after two orchestrating sessions independently dispatched the same round-11 review without knowing about each other.
+    4	current_claim: IN_FLIGHT — BUG-048 independent code review round 1 recovery, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T10:20:14.933383+00:00. Expected subagent: fresh Opus via ACPX. Clear only after result recorded.
+    5	prior_claim: CLEAR — BUG-048 round-1 attempt interrupted without verdict, reconciled 2026-10-04T10:19:45.195270+00:00; no live Veyro ACPX/Claude reviewer or pytest process, transcript 3ae687f2-4ec8-4329-a048-cec0a3a7dd87 stopped at 2026-10-04T10:13:48Z during a test call, and no report exists. No completed review counted. DOM-002 round 5 remains interrupted/non-resumable.
+    6	
+    7	Prior claim (round 1, watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T03:03:51.309736+00:00) fulfilled by this same dispatching session, not superseded by crash recovery — the dispatch ran to completion in-process and its result is recorded above.
+    8	
+    9	Round-14 retry claim cleared 2026-10-03T21:19:34+00:00: completed report exists and CURRENT_STATE.md records independently attested verdict; no live ACPX process at watchdog inspection. No new verdict inferred.
+    10	
+    11	Prior claim cleared 2026-10-03T23:52:00+03:00, crash-recovery check performed per this file's own protocol: no live process found for session `ce6d2387-78e1-44fd-8f4d-58d7b04ab090` (`ps aux` shows no matching PID), its subagent transcript `ce6d2387-78e1-44fd-8f4d-58d7b04ab090/subagents/agent-a0c4cdd71de27097d.jsonl` (meta confirms `agentType: veyro-security-r...
+The IN_FLIGHT claim (dispatched 10:20:14Z, 30s before this session started) is this session's own dispatch. Now reading the BUG-048 materials.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] ls knowledge/03-Modules/MOD-001/evidence/bugs/ | grep -i 048; echo "---remediation---"; ls knowledge/03-Modules/MOD-001/evidence/implementation/ | grep -i "BUG048\|BUG-048"; echo "---code-review dir---"; ls knowledge/03-Modules/MOD-001/evidence/code-review/ (completed)
+  kind: execute
+  input: ls knowledge/03-Modules/MOD-001/evidence/bugs/ | grep -i 048; echo "---remediation---"; ls knowledge/03-Modules/MOD-001/evidence/implementation/ | grep -i "BUG048\|BUG-048"; echo "---code-review dir---"; ls knowledge/...
+  output:
+    BUG-048-harness-owner-restore-drops-runtime-grant.md
+    ---remediation---
+    BUG048-REMEDIATION-2026-10-04.md
+    BUG048-WATCHDOG-ACPX-RAW-2026-10-04.txt
+    bug048_acl_restore_probe.py
+    ---code-review dir---
+    CAP008-P1-1-colima-binding-code-review-2026-10-02.md
+    CR-MOD001-GOV01-R02-DOMAIN-SCAFFOLDS-2026-10-03.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md
+    SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md
+    
+    ```console
+    BUG-048-harness-owner-restore-drops-runtime-grant.md
+    ---remediation---
+    BUG048-REMEDIATION-2026-10-04.md
+    BUG048-WATCHDOG-ACPX-RAW-2026-10-04.txt
+    bug048_acl_restore_probe.py
+    ---code-review dir---
+    CAP008-P1-1-colima-binding-code-review-2026-10-02.md
+    CR-MOD001-GOV01-R02-DOMAIN-SCAFFOLDS-2026-10-03.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md
+    SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md
+    ... (1 more lines)
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md:1
+  output:
+    1	---
+    2	doc: BUG-048
+    3	module: MOD-001 (file: backend/tests/integration/test_tenant_isolation_harness.py)
+    4	severity: P2 (test-reliability defect in a Blocker-tier harness suite; fails toward false FAILURES, never false-clean evidence)
+    5	status: FIXED LOCALLY 2026-10-04 — NOT CLOSED (no independent review yet; counts as open P2)
+    6	filed: 2026-10-02 by veyro-critical-engineer (Opus, claude-opus-5-5), GOV-01-R04 critical slice
+    7	remediated: 2026-10-04 by the retained orchestrating session (self-reported `claude-opus-5[1m]`,
+    8	  no mr_verify attestation) — see the Remediation section below and
+    9	  `knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md`
+    10	---
+    11	
+    12	# BUG-048 — Slice-5 `runtime_owns_table` breakage restore silently revokes the runtime role's DML grant
+    13	
+    14	## Finding
+    15	
+    16	`test_scn067_negative_harness_detects_broken_fixture[runtime_owns_table]`
+    17	breaks the fixture with `ALTER TABLE harness.access_grant OWNER TO
+    18	veyro_runtime` and restores it with `... OWNER TO veyro_schema_owner`.
+    19	Postgres rewrites the ACL on each owner change, so the original
+    20	`veyro_runtime=arwd/veyro_schema_owner` entry is merged into the
+    21	temporary owner's privileges and then lost. After "restore",
+    22	`veyro_runtime` has no SELECT/INSERT/UPDATE/DELETE on `access_grant`.
+    23	
+    24	The test's own post-condition (`read_posture(...).violations == []`)
+    25	checks role/table posture, not grants, so it does not notice.
+    26	
+    27	## Reproduction (real execution, approved Colima binding)
+    28	
+    ... (190 more lines)
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md:1
+  output:
+    1	---
+    2	doc: BUG048-REMEDIATION
+    3	module: MOD-001
+    4	bug: BUG-048
+    5	date: 2026-10-04
+    6	session: retained orchestrating session (Opus 5 1M context, `claude-opus-5[1m]` per this
+    7	  session's own environment banner — no `mr_verify.py` transcript attestation was produced
+    8	  for this session, so treat the identity as self-reported, not independently attested)
+    9	status: FIXED LOCALLY — NOT independently reviewed, NOT self-approved, NOT closed
+    10	---
+    11	
+    12	# BUG-048 remediation — Slice-5 `runtime_owns_table` owner-restore re-grants runtime DML
+    13	
+    14	Scope of this session: BUG-048 only. No edit to `R04`, `ADR-010` A2, `SCN-067`,
+    15	`DOM-002`/round 5, `REVIEW_IN_FLIGHT.md`, or any scenario promotion. No commit, no push.
+    16	No independent review dispatched, performed, self-attested, or claimed.
+    17	
+    18	## 1. Change made (one file)
+    19	
+    20	`backend/tests/integration/test_tenant_isolation_harness.py` — the only file changed.
+    21	
+    22	1. New module constants, mirroring the already-reviewed sibling file
+    23	   `test_architecture_gate_rls.py`'s own `_RUNTIME_GRANT` idiom rather than inventing a
+    24	   second mechanism:
+    25	   - `_RUNTIME_GRANT` — `GRANT SELECT, INSERT, UPDATE, DELETE ON harness.access_grant TO
+    26	     veyro_runtime`, the same statement `tests/harness/tenant_isolation.py`'s
+    27	     `create_tenant_table` provisions the fixture with.
+    28	   - `_RUNTIME_DML` — the privilege list the post-restore assertion checks.
+    ... (306 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] git diff -- backend/tests/integration/test_tenant_isolation_harness.py (completed)
+  kind: execute
+  input: git diff -- backend/tests/integration/test_tenant_isolation_harness.py
+  output:
+    diff --git a/backend/tests/integration/test_tenant_isolation_harness.py b/backend/tests/integration/test_tenant_isolation_harness.py
+    index 0b61a80..0a8f8bc 100644
+    --- a/backend/tests/integration/test_tenant_isolation_harness.py
+    +++ b/backend/tests/integration/test_tenant_isolation_harness.py
+    @@ -35,6 +35,11 @@ from tests.harness.tenant_isolation import (
+     
+     RLS_LOG_LINE = 'new row violates row-level security policy for table "access_grant"'
+     _POLICY_EXPR = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+    +# BUG-048: Postgres rewrites a table's ACL on every owner change, so an owner
+    +# round-trip silently drops the runtime role's DML entry. Re-granted on restore,
+    +# same statement `create_tenant_table` provisions it with.
+    +_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON harness.access_grant TO {RUNTIME_ROLE}"
+    +_RUNTIME_DML = "SELECT, INSERT, UPDATE, DELETE"
+     
+     
+     def _evidence(tag: str, payload: Any) -> None:
+    @@ -82,43 +87,45 @@ def test_missing_tenant_context_sees_no_rows(
+         assert visible_without_tenant_context(runtime, ACCESS_GRANT) == 0
+     
+     
+    -# (id, break, restore, posture codes the harness must raise, behavioural leak expected)
+    -BREAKAGES = [
+    +# (id, break, restore statements, posture codes the harness must raise, behavioural leak expected)
+    +BREAKAGES: list[tuple[str, str, list[str], set[str], bool]] = [
+         (
+             "rls_disabled",
+             "ALTER TABLE harness.access_grant DISABLE ROW LEVEL SECURITY",
+    -        "ALTER TABLE harness.access_grant ENABLE ROW LEVEL SECURITY",
+    ... (185 more lines)
+
+[tool] grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -30 (completed)
+  kind: execute
+  input: grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -30
+  output:
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state and evidence, not the developer session's own narrative — see Module discipline below for the Gatekeeper-specific instance of this rule).
+    
+    ```console
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state and evidence, not the developer session's own narrative — see Module discipline below for the Gatekeeper-specific instance of this rule).
+    ```
+Diff is bounded and clear. Per DC-06 + model routing, dispatching a fresh-context Opus `veyro-code-reviewer`.
+
+[tool] Task (pending)
+  input: {}
+
+[tool] BUG-048 Slice-5 ACL restore review (completed)
+  kind: think
+  input: {"subagent_type":"veyro-code-reviewer","description":"BUG-048 Slice-5 ACL restore review","model":"opus","run_in_background":true,"prompt":"You are a FRESH-CONTEXT INDEPENDENT Opus code reviewer (DC-06, no self-approv...
+  output:
+    Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)
+    agentId: a9241a738bf72313c (internal ID - do not mention to user. Use SendMessage with to: 'a9241a738bf72313c', summary: '<5-10 word recap>' to continue this agent.)
+    The agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives — do not report, assume, or predict them; continue other work or respond to the user in the meantime.
+    Do not duplicate this agent's work — avoid working with the same files or topics it is using.
+    output_file: /private/tmp/claude-501/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/tasks/a9241a738bf72313c.output
+    Do NOT Read or tail this file via the shell tool — it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.
+The reviewer is running. Meanwhile, locating the model-attestation tooling so I can independently verify its routing when it finishes.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] git diff -- backend/tests/integration/test_tenant_isolation_harness.py (pending)
+  input: git diff -- backend/tests/integration/test_tenant_isolation_harness.py
+
+[tool] git diff -- backend/tests/integration/test_tenant_isolation_harness.py (completed)
+  kind: execute
+  input: git diff -- backend/tests/integration/test_tenant_isolation_harness.py
+  output:
+    diff --git a/backend/tests/integration/test_tenant_isolation_harness.py b/backend/tests/integration/test_tenant_isolation_harness.py
+    index 0b61a80..0a8f8bc 100644
+    --- a/backend/tests/integration/test_tenant_isolation_harness.py
+    +++ b/backend/tests/integration/test_tenant_isolation_harness.py
+    @@ -35,6 +35,11 @@ from tests.harness.tenant_isolation import (
+     
+     RLS_LOG_LINE = 'new row violates row-level security policy for table "access_grant"'
+     _POLICY_EXPR = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+    +# BUG-048: Postgres rewrites a table's ACL on every owner change, so an owner
+    +# round-trip silently drops the runtime role's DML entry. Re-granted on restore,
+    +# same statement `create_tenant_table` provisions it with.
+    +_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON harness.access_grant TO {RUNTIME_ROLE}"
+    +_RUNTIME_DML = "SELECT, INSERT, UPDATE, DELETE"
+     
+     
+     def _evidence(tag: str, payload: Any) -> None:
+    @@ -82,43 +87,45 @@ def test_missing_tenant_context_sees_no_rows(
+         assert visible_without_tenant_context(runtime, ACCESS_GRANT) == 0
+     
+     
+    -# (id, break, restore, posture codes the harness must raise, behavioural leak expected)
+    -BREAKAGES = [
+    +# (id, break, restore statements, posture codes the harness must raise, behavioural leak expected)
+    +BREAKAGES: list[tuple[str, str, list[str], set[str], bool]] = [
+         (
+             "rls_disabled",
+             "ALTER TABLE harness.access_grant DISABLE ROW LEVEL SECURITY",
+    -        "ALTER TABLE harness.access_grant ENABLE ROW LEVEL SECURITY",
+    ... (185 more lines)
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md (pending)
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md:1
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md:1
+  output:
+    1	---
+    2	doc: BUG-048
+    3	module: MOD-001 (file: backend/tests/integration/test_tenant_isolation_harness.py)
+    4	severity: P2 (test-reliability defect in a Blocker-tier harness suite; fails toward false FAILURES, never false-clean evidence)
+    5	status: FIXED LOCALLY 2026-10-04 — NOT CLOSED (no independent review yet; counts as open P2)
+    6	filed: 2026-10-02 by veyro-critical-engineer (Opus, claude-opus-5-5), GOV-01-R04 critical slice
+    7	remediated: 2026-10-04 by the retained orchestrating session (self-reported `claude-opus-5[1m]`,
+    8	  no mr_verify attestation) — see the Remediation section below and
+    9	  `knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md`
+    10	---
+    11	
+    12	# BUG-048 — Slice-5 `runtime_owns_table` breakage restore silently revokes the runtime role's DML grant
+    13	
+    14	## Finding
+    15	
+    16	`test_scn067_negative_harness_detects_broken_fixture[runtime_owns_table]`
+    17	breaks the fixture with `ALTER TABLE harness.access_grant OWNER TO
+    18	veyro_runtime` and restores it with `... OWNER TO veyro_schema_owner`.
+    19	Postgres rewrites the ACL on each owner change, so the original
+    20	`veyro_runtime=arwd/veyro_schema_owner` entry is merged into the
+    21	temporary owner's privileges and then lost. After "restore",
+    22	`veyro_runtime` has no SELECT/INSERT/UPDATE/DELETE on `access_grant`.
+    23	
+    24	The test's own post-condition (`read_posture(...).violations == []`)
+    25	checks role/table posture, not grants, so it does not notice.
+    26	
+    27	## Reproduction (real execution, approved Colima binding)
+    28	
+    ... (191 more lines)
+
+[tool] find . -name "mr_verify.py" -not -path "*/node_modules/*" 2>/dev/null; echo "---usage---"; f=$(find . -name "mr_verify.py" -not -path "*/node_modules/*" 2>/dev/null | head -1); [ -n "$f" ] && head -40 "$f" (completed)
+  kind: execute
+  input: find . -name "mr_verify.py" -not -path "*/node_modules/*" 2>/dev/null; echo "---usage---"; f=$(find . -name "mr_verify.py" -not -path "*/node_modules/*" 2>/dev/null | head -1); [ -n "$f" ] && head -40 "$f"
+  output:
+    ./knowledge/05-QA/tools/mr_verify.py
+    ---usage---
+    #!/usr/bin/env python3
+    """
+    MR (Model Route) runtime-identity verification tool.
+    
+    Authored 2026-09-05 for F5-005 remediation. Investigates and implements
+    the EIP §4.1 requirement: "an observable session transcript/status/
+    warning record sufficient to detect substitution/fallback" — not just a
+    model's own self-report.
+    
+    ## What was investigated
+    
+    Grepped this project's own live session transcripts (JSONL, one line per
+    turn) and found every assistant-role message carries a `model` field
+    (e.g. "claude-opus-5", "claude-sonnet-5") — populated by the harness/API
+    response metadata, not authored by the model's own output text. Verified
+    across 20 real subagent transcripts from this same session: every
+    Opus-tier agent (veyro-security-reviewer, veyro-code-reviewer,
+    veyro-manual-qa, veyro-gatekeeper, veyro-lead, veyro-scenario-reviewer)
+    showed 100% "claude-opus-5" across every turn of its transcript (not just
+    the first message); every Sonnet-tier agent (veyro-implementer,
+    veyro-test-author) showed 100% "claude-sonnet-5". No environment variable
+    exposes this (checked — real negative finding, `env | grep -i model`
+    returns nothing naming the resolved model); the transcript file is the
+    real signal.
+    
+    ## What this tool does
+    ... (59 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '40,110p' knowledge/05-QA/tools/mr_verify.py (completed)
+  kind: execute
+  input: sed -n '40,110p' knowledge/05-QA/tools/mr_verify.py
+  output:
+    EIP §4.1 requires it: an Opus-required assurance role silently running on
+    Sonnet must never look like a pass.
+    
+    ## Phase 7 security-review hardening (2026-09-06, SEC-08/SEC-09)
+    
+    A fresh-context `veyro-security-reviewer` found and proved three real
+    bypasses of the tier-enforcement this tool exists to provide:
+    
+    1. **Label normalization gap (SEC-08).** `EXPECTED_TIER_BY_AGENT` was
+       consulted only on an exact dict-key match, so `"veyro-code-reviewer "`
+       (trailing space), `"Veyro-Code-Reviewer"` (different case), or an
+       omitted label entirely all fell through to the caller-supplied tier
+       with no cross-check — reproducing the exact defect N-9 was supposed to
+       have closed, via a trivially different string. Fixed: the label is now
+       normalized (`.strip().lower()`) before lookup, and the CLI now
+       requires it (exits 2 if omitted) so tier is always taken from the
+       registered map, never from an unverified caller-supplied string alone.
+    2. **Row-type/sentinel gap (SEC-09a).** `extract_models` read the
+       `model` field off *any* JSON object with a `message` dict, not just
+       `type: "assistant"` rows — a crafted `type: "user"` row with a
+       spoofed `model` field would count. Fixed: only `type == "assistant"`
+       rows are considered.
+    3. **`<synthetic>` sentinel misdiagnosis (SEC-09b).** The harness emits
+       out-of-band `<synthetic>` rows (e.g. session-limit notices) that are
+       not model output at all. The old code folded these into the same
+       "inconsistent model values" bucket as a genuine substitution, so
+       running this tool against any main/orchestrating-session transcript
+       that had ever hit a rate limit produced a false "possible
+    ... (117 more lines)
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md (pending)
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md:1
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md:1
+  output:
+    1	---
+    2	doc: BUG048-REMEDIATION
+    3	module: MOD-001
+    4	bug: BUG-048
+    5	date: 2026-10-04
+    6	session: retained orchestrating session (Opus 5 1M context, `claude-opus-5[1m]` per this
+    7	  session's own environment banner — no `mr_verify.py` transcript attestation was produced
+    8	  for this session, so treat the identity as self-reported, not independently attested)
+    9	status: FIXED LOCALLY — NOT independently reviewed, NOT self-approved, NOT closed
+    10	---
+    11	
+    12	# BUG-048 remediation — Slice-5 `runtime_owns_table` owner-restore re-grants runtime DML
+    13	
+    14	Scope of this session: BUG-048 only. No edit to `R04`, `ADR-010` A2, `SCN-067`,
+    15	`DOM-002`/round 5, `REVIEW_IN_FLIGHT.md`, or any scenario promotion. No commit, no push.
+    16	No independent review dispatched, performed, self-attested, or claimed.
+    17	
+    18	## 1. Change made (one file)
+    19	
+    20	`backend/tests/integration/test_tenant_isolation_harness.py` — the only file changed.
+    21	
+    22	1. New module constants, mirroring the already-reviewed sibling file
+    23	   `test_architecture_gate_rls.py`'s own `_RUNTIME_GRANT` idiom rather than inventing a
+    24	   second mechanism:
+    25	   - `_RUNTIME_GRANT` — `GRANT SELECT, INSERT, UPDATE, DELETE ON harness.access_grant TO
+    26	     veyro_runtime`, the same statement `tests/harness/tenant_isolation.py`'s
+    27	     `create_tenant_table` provisions the fixture with.
+    28	   - `_RUNTIME_DML` — the privilege list the post-restore assertion checks.
+    ... (307 more lines)
+
+[tool] Read backend/tests/harness/tenant_isolation.py (pending)
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/harness/tenant_isolation.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/harness/tenant_isolation.py:1
+
+[tool] Read backend/tests/harness/tenant_isolation.py (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/harness/tenant_isolation.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/harness/tenant_isolation.py:1
+  output:
+    1	"""Tenant-isolation (RLS) harness — GOV-01-R02, proving TSD §24.1's sentence:
+    2	
+    3	    "runtime role cannot own/bypass. Negative isolation tests run with
+    4	     production-equivalent role."
+    5	
+    6	Everything here exists to make that sentence impossible to satisfy vacuously:
+    7	
+    8	* The runtime role is a real LOGIN role with NOSUPERUSER, NOBYPASSRLS, no role
+    9	  memberships, and owns nothing. Its posture is re-read *from the connection
+    10	  under test* on every probe, and any violation fails the probe — a harness
+    11	  that silently connected as a privileged role would report itself broken.
+    12	* Denial is a Postgres policy decision observed on the wire (rows filtered,
+    13	  rowcount 0, or SQLSTATE 42501 "row-level security policy"), never an
+    14	  application-layer exception.
+    15	* Every negative result is measured against ground truth read by a separate
+    16	  superuser/BYPASSRLS observer connection, so "0 rows" can never mean "there
+    17	  was nothing to see".
+    18	
+    19	Distinct credentials (`.claude/rules/backend/database.md` rule 3): the
+    20	superuser `admin`/`observer` connection is setup + ground truth only; tables
+    21	are owned by OWNER_ROLE (NOLOGIN); probes run as RUNTIME_ROLE.
+    22	
+    23	Plug-in point for later modules (MOD-004+): create your real tenant tables
+    24	through your own migrations, grant RUNTIME_ROLE, seed two tenants via the
+    25	observer, then call `probe_cross_tenant(...)` / `probe_same_tenant(...)` and
+    26	assert `.failures == []`.
+    27	
+    28	Known ceiling: tenant context is a transaction-local GUC (`app.tenant_id`) set
+    ... (767 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Read backend/tests/integration/test_tenant_isolation_harness.py (pending)
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_tenant_isolation_harness.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_tenant_isolation_harness.py:1
+
+[tool] Read backend/tests/integration/test_tenant_isolation_harness.py (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_tenant_isolation_harness.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_tenant_isolation_harness.py:1
+  output:
+    1	"""GOV-01-R02 tenant-isolation harness against a real Postgres, as the real
+    2	non-privileged runtime role.
+    3	
+    4	SCN-MOD001-067  cross-tenant access to `access_grant` denied by RLS, plus the
+    5	                deliberately-broken companions proving the harness can tell a
+    6	                correctly-isolated table from a broken one.
+    7	SCN-MOD001-028  same-tenant (correctly-scoped) request permitted.
+    8	
+    9	`*-EVIDENCE` lines are structured JSON, printed for `pytest -rP` capture.
+    10	"""
+    11	
+    12	from __future__ import annotations
+    13	
+    14	import json
+    15	from dataclasses import asdict
+    16	from typing import Any
+    17	from uuid import UUID
+    18	
+    19	import psycopg
+    20	import pytest
+    21	
+    22	from tests.harness.postgres import DisposablePostgres
+    23	from tests.harness.tenant_isolation import (
+    24	    ACCESS_GRANT,
+    25	    OWNER_ROLE,
+    26	    RUNTIME_ROLE,
+    27	    Conn,
+    28	    access_grant_row,
+    ... (367 more lines)
+
+[tool] tail -30 knowledge/05-QA/tools/mr_verify.py; echo "=== locate transcript ==="; ls ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/ 2>/dev/null | tail -5 (completed)
+  kind: execute
+  input: tail -30 knowledge/05-QA/tools/mr_verify.py; echo "=== locate transcript ==="; ls ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/ 2>/dev/null | tail -5
+  output:
+    "reason": f"{len(models)} turn(s), 100% consistent, model '{observed}' matches required tier '{expected_tier}'.",
+            "models_observed": distinct, "expected_tier": expected_tier,
+        }
+    
+    
+    def main():
+        if len(sys.argv) < 4:
+            print("Usage: mr_verify.py <transcript_file> <expected_tier: opus|sonnet> <agent_label>")
+            print("agent_label is mandatory (2026-09-06, SEC-08): tier is taken from")
+            print("EXPECTED_TIER_BY_AGENT, never from an unverified caller-supplied string alone.")
+            sys.exit(2)
+        path, expected_tier, agent_label = sys.argv[1], sys.argv[2], sys.argv[3]
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                models = extract_models(fh)
+        except OSError as e:
+            result = {
+                "verdict": "BLOCKED: MODEL_ASSURANCE_UNVERIFIED",
+                "reason": f"Could not read transcript file '{path}': {e}",
+                "models_observed": [], "expected_tier": expected_tier,
+            }
+            print(json.dumps(result, indent=2))
+            sys.exit(1)
+        result = verify(models, expected_tier, agent_label)
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result["verdict"] == "PASS" else 1)
+    
+    
+    ... (41 more lines)
+
+[tool] ls backend/tests/integration/ && echo "---ARCH GATE---" && cat backend/tests/integration/test_architecture_gate_rls.py 2>/dev/null || find . -name test_architecture_gate_rls.py -not -path "*/node_modules/*" (pending)
+  input: ls backend/tests/integration/ && echo "---ARCH GATE---" && cat backend/tests/integration/test_architecture_gate_rls.py 2>/dev/null || find . -name test_architecture_gate_rls.py -not -path "*/node_modules/*"
+
+[tool] ls backend/tests/integration/ && echo "---ARCH GATE---" && cat backend/tests/integration/test_architecture_gate_rls.py 2>/dev/null || find . -name test_architecture_gate_rls.py -not -path "*/node_modules/*" (completed)
+  kind: execute
+  input: ls backend/tests/integration/ && echo "---ARCH GATE---" && cat backend/tests/integration/test_architecture_gate_rls.py 2>/dev/null || find . -name test_architecture_gate_rls.py -not -path "*/node_modules/*"
+  output:
+    <persisted-output>
+    Output too large (37.5KB). Full output saved to: /Users/ahmadmabrouk/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/tool-results/by727m7xe.txt
+    
+    Preview (first 2KB):
+    __init__.py
+    __pycache__
+    conftest.py
+    test_architecture_gate_rls.py
+    test_authn_harness.py
+    test_concurrency_harness.py
+    test_concurrency_harness_order_independence.py
+    test_migration_safety_harness.py
+    test_scaffold_live.py
+    test_tenant_isolation_harness.py
+    ---ARCH GATE---
+    """GOV-01-R04 RLS-lint gate (TSD §24.1) against a real Postgres catalog — ADR-010.
+    
+    ADR-010 acceptance cases on the approved CAP-008 Colima PostgreSQL 16 binding:
+    N1-N21 (negatives, each must FAIL with its stated code/token, never PASS) and
+    P1-P6 (positives). SCN-MOD001-004/005/067 cases from earlier rounds are kept.
+    
+    Every breakage is applied by the superuser setup connection, judged, then
+    restored; `_broken` re-judges the canonical harness PASS and re-checks the
+    runtime role's DML and schema USAGE afterwards, so no case can leave the
+    shared fixture broken. Negatives that change role attributes, memberships or
+    grants only judge the catalog state; where a real cross-tenant leak exists it
+    is shown with ordinary row counts under the non-privileged runtime role.
+    
+    ... (117 more lines)
+
+[tool] grep -n "_RUNTIME_GRANT\|_RUNTIME_DML\|has_table_privilege\|has_schema_privilege\|def _broken\|_SCHEMA_GRANT\|GRANT " backend/tests/integration/test_architecture_gate_rls.py | head -60 (pending)
+  input: grep -n "_RUNTIME_GRANT\|_RUNTIME_DML\|has_table_privilege\|has_schema_privilege\|def _broken\|_SCHEMA_GRANT\|GRANT " backend/tests/integration/test_architecture_gate_rls.py | head -60
+
+[tool] grep -n "_RUNTIME_GRANT\|_RUNTIME_DML\|has_table_privilege\|has_schema_privilege\|def _broken\|_SCHEMA_GRANT\|GRANT " backend/tests/integration/test_architecture_gate_rls.py | head -60 (completed)
+  kind: execute
+  input: grep -n "_RUNTIME_GRANT\|_RUNTIME_DML\|has_table_privilege\|has_schema_privilege\|def _broken\|_SCHEMA_GRANT\|GRANT " backend/tests/integration/test_architecture_gate_rls.py | head -60
+  output:
+    68:_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TABLE} TO {RT}"
+    124:def _broken(admin: Conn, break_sql: list[str], restore_sql: list[str]) -> Iterator[None]:
+    136:    assert _scalar(admin, "SELECT has_table_privilege(%s, %s, 'SELECT, INSERT, UPDATE, DELETE')",
+    138:    assert _scalar(admin, "SELECT has_schema_privilege(%s, 'harness', 'USAGE')", (RT,)) is True
+    175:        [f"CREATE ROLE {group} NOLOGIN", f"GRANT USAGE ON SCHEMA harness TO {group}",
+    176:         f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TABLE} TO {group}",
+    177:         f"REVOKE ALL ON {TABLE} FROM {RT}", f"GRANT {group} TO {RT}"],
+    178:        [f"REVOKE {group} FROM {RT}", _RUNTIME_GRANT, f"REVOKE ALL ON {TABLE} FROM {group}",
+    194:         f"GRANT SELECT ON {view} TO {RT}"],
+    208:         f"GRANT SELECT, INSERT, UPDATE, DELETE ON harness.gate_platform TO {RT}",
+    210:         f"GRANT USAGE, SELECT, UPDATE ON SEQUENCE harness.gate_seq TO {RT}",
+    296:    with _broken(admin, [f"GRANT TRUNCATE ON {TABLE} TO {RT}"],
+    313:                f"GRANT USAGE ON SCHEMA harness TO {RT}"]
+    328:     [f"ALTER TABLE {TABLE} OWNER TO {OWNER_ROLE}", _RUNTIME_GRANT],
+    332:    ("scn005_runtime_member_of_owner", [f"GRANT {OWNER_ROLE} TO {RT}"],
+    342:     [f"CREATE ROLE {G1} NOLOGIN BYPASSRLS", f"GRANT {G1} TO {RT} WITH INHERIT FALSE, SET TRUE"],
+    346:     [f"CREATE ROLE {G1} NOLOGIN REPLICATION", f"GRANT {G1} TO {RT} WITH INHERIT FALSE, SET TRUE"],
+    349:    *[(f"n4_{role}", [f"GRANT {role} TO {RT} WITH INHERIT FALSE, SET TRUE"],
+    356:    ("n6_system_function_execute_runtime", [f"GRANT EXECUTE ON FUNCTION {_RBF} TO {RT}"],
+    359:    ("n6_system_function_execute_public", [f"GRANT EXECUTE ON FUNCTION {_RBF} TO PUBLIC"],
+    363:     [f"CREATE ROLE {G2} NOLOGIN", f"GRANT EXECUTE ON FUNCTION {_RBF} TO {G2}", f"GRANT {G2} TO {RT}"],
+    369:     [f"CREATE ROLE {G2} NOLOGIN", f"GRANT {G2} TO {RT}", f"ALTER SCHEMA harness OWNER TO {G2}"],
+    372:    ("n8_create_on_schema", [f"GRANT CREATE ON SCHEMA harness TO {RT}"],
+    375:    ("n8_create_on_...
+
+[tool] sed -n 55,145p backend/tests/integration/test_architecture_gate_rls.py (pending)
+  input: sed -n 55,145p backend/tests/integration/test_architecture_gate_rls.py
+
+[tool] sed -n 55,145p backend/tests/integration/test_architecture_gate_rls.py (completed)
+  kind: execute
+  input: sed -n 55,145p backend/tests/integration/test_architecture_gate_rls.py
+  output:
+    spec = importlib.util.spec_from_file_location("validate_architecture_gates", _GATES_PATH)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    
+    
+    gates = _load_gates()
+    
+    TABLE = str(ACCESS_GRANT)
+    RT = RUNTIME_ROLE
+    _POLICY_EXPR = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+    _RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TABLE} TO {RT}"
+    _RESTORE_POLICY = (
+        f"CREATE POLICY tenant_isolation ON {TABLE} USING ({_POLICY_EXPR}) WITH CHECK ({_POLICY_EXPR})"
+    )
+    _ALTER_POLICY_BACK = _RESTORE_POLICY.replace("CREATE", "ALTER", 1)
+    
+    # Synthetic approval root (ADR-010 D3.4): a fixture ADR that names every manifest key used here.
+    AUTH_TABLES = ["harness_auth.identity", "harness_auth.session", "harness_auth.audit_event"]
+    _FIXTURE_KEYS = [*AUTH_TABLES, "harness.gate_platform", "harness.gate_mv", "harness.gate_lookup",
+                     "harness.gate_sd()"]
+    APPROVAL_ROOT = Path(tempfile.mkdtemp(prefix="veyro-adr010-fixture-"))
+    (APPROVAL_ROOT / "knowledge" / "04-Decisions").mkdir(parents=True)
+    (APPROVAL_ROOT / "knowledge" / "04-Decisions" / "ADR-900-synthetic-rls-fixture.md").write_text(
+        "---\nstatus: DECIDED (synthetic test fixture)\n---\n" + "\n".join(_FIXTURE_KEYS) + "\n"
+    )
+    ... (157 more lines)
+Dispatched and running. Brief status while it works:
+
+- **Claim state:** `REVIEW_IN_FLIGHT.md` already read `IN_FLIGHT` for *BUG-048 round-1 recovery*, dispatched 10:20:14Z — 30 seconds before this session began, so that claim is this dispatch's own, not a competing one. The `prior_claim` line confirms the interrupted attempt was reconciled with no verdict counted. I wrote no new claim and did not clear it.
+- **Routing:** fresh-context `veyro-code-reviewer`, Opus tier (DC-06, no self-approval). I will independently run `knowledge/05-QA/tools/mr_verify.py <transcript> opus veyro-code-reviewer` against the reviewer's actual transcript once it finishes, rather than accepting its self-report.
+- **Orchestrator session proof:** this session is `claude-opus-5[1m]` per its own environment banner (self-reported); `git rev-parse HEAD` = `015d7ef3dca4cd42f335226b789b8610fd218c92`, branch `main`, clean of any change by me.
+
+The charge is scoped to the one changed file, instructs the reviewer to write the durable report **before** running any probe (so an interruption leaves a readable partial), caps it at one focused bounded test plus SQL probes, and forbids full-suite reruns and `/tmp` copies — the exact shape that killed the prior attempt. It also forbids any edit, commit, bug closure, scenario promotion, and any touch of DOM-002 round 5, SCN-009, SCN-067, ADR-010 A2, or R04.
+
+Report path being written: `knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md`
+
+One substantive thing I noticed in the diff that I flagged to the reviewer as its highest-value question: the new post-condition passes a comma-separated privilege list to `has_table_privilege`. Whether that is AND or OR semantics in PostgreSQL decides whether the assertion is as strong as the remediation record claims or would pass on a partial re-grant — I asked for that to be settled by execution, not memory. I'll report the verdict, counts, and path when the reviewer returns.
+
+[tool] Read backend/tests/integration/conftest.py (pending)
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py:1
+
+[tool] Read backend/tests/integration/conftest.py (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py:1
+  output:
+    1	"""Integration fixtures for the GOV-01-R02 harnesses (one disposable Postgres per session).
+    2	
+    3	Credential separation (`.claude/rules/backend/database.md` rule 3):
+    4	  `admin`   — container superuser: role creation, fixture DDL, ground-truth reads.
+    5	  `runtime` — RUNTIME_ROLE: every probe/authentication under test runs here.
+    6	"""
+    7	
+    8	from __future__ import annotations
+    9	
+    10	import secrets
+    11	from collections.abc import Iterator
+    12	from uuid import UUID, uuid4
+    13	
+    14	import psycopg
+    15	import pytest
+    16	from psycopg import sql
+    17	
+    18	from tests.harness.authn import provision_auth_schema
+    19	from tests.harness.postgres import DisposablePostgres, disposable_postgres
+    20	from tests.harness.tenant_isolation import (
+    21	    ACCESS_GRANT,
+    22	    ACCESS_GRANT_COLUMNS,
+    23	    RUNTIME_ROLE,
+    24	    Conn,
+    25	    access_grant_row,
+    26	    create_tenant_table,
+    27	    provision_roles,
+    28	    scram_verifier,
+    ... (147 more lines)
+
+[tool] grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -20 (pending)
+  input: grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -20
+
+[tool] grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -20 (completed)
+  kind: execute
+  input: grep -n "DC-06" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -20
+  output:
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state and evidence, not the developer session's own narrative — see Module discipline below for the Gatekeeper-specific instance of this rule).
+    
+    ```console
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state and evidence, not the developer session's own narrative — see Module discipline below for the Gatekeeper-specific instance of this rule).
+    ```
+
+[tool] mkdir -p knowledge/03-Modules/MOD-001/evidence/code-review && cat > knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'EOF'
+---
+doc: BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1
+module: MOD-001
+bug: BUG-048
+date: 2026-10-04
+reviewer_role: veyro-code-reviewer (fresh-context independent Opus code review, DC-06)
+reviewer_model_self_reported: claude-opus-5[1m] (self-reported from this session's environment
+  banner; no mr_verify.py attestation produced by this session)
+agent_id: code-reviewer/BUG048-slice5-acl-restore/round1 (subagent thread, see parent dispatch)
+round: 1 (a PRIOR attempt at this same review was interrupted mid-test and produced NO verdict;
+  it is not resumed, not read as findings, and not counted as a completed review)
+status: IN PROGRESS — seeded before any execution, updated incrementally
+independence: I am an independent, fresh-context reviewer. I did NOT write the code under
+  review and had no part in the BUG-048 remediation session. No self-approval.
+---
+
+# BUG-048 Slice-5 ACL-restore fix — independent code review, round 1
+
+## Scope
+
+One file under review: `backend/tests/integration/test_tenant_isolation_harness.py`
+(uncommitted working-tree change, `git diff` for that path only). Nothing else in the
+working tree is in scope for this review.
+
+Reference material read before any execution:
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md`,
+`knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md`,
+`backend/tests/harness/tenant_isolation.py`,
+`backend/tests/integration/test_architecture_gate_rls.py` (sibling, already reviewed),
+`backend/tests/integration/conftest.py`,
+`knowledge/00-System/DEVELOPMENT_CONSTITUTION.md` DC-06.
+
+## VERDICT
+
+PENDING — to be filled when Q1/Q2/Q3 complete.
+
+## Executed-this-session vs accepted-from-record
+
+PENDING.
+
+## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?
+
+PENDING.
+
+## Q2 — Is the new post-condition load-bearing, or vacuous?
+
+PENDING.
+
+## Q3 — Full-suite order closure
+
+PENDING.
+
+## Findings
+
+PENDING.
+
+## Limits
+
+PENDING.
+
+## Closure
+
+This review does not itself close BUG-048. Closure is the orchestrator's / owner's call.
+EOF
+echo seeded; wc -l knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (pending)
+  input: mkdir -p knowledge/03-Modules/MOD-001/evidence/code-review && cat > knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'EOF' --- doc: BUG048-SLICE5-ACL-REST...
+
+[tool] mkdir -p knowledge/03-Modules/MOD-001/evidence/code-review && cat > knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'EOF'
+---
+doc: BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1
+module: MOD-001
+bug: BUG-048
+date: 2026-10-04
+reviewer_role: veyro-code-reviewer (fresh-context independent Opus code review, DC-06)
+reviewer_model_self_reported: claude-opus-5[1m] (self-reported from this session's environment
+  banner; no mr_verify.py attestation produced by this session)
+agent_id: code-reviewer/BUG048-slice5-acl-restore/round1 (subagent thread, see parent dispatch)
+round: 1 (a PRIOR attempt at this same review was interrupted mid-test and produced NO verdict;
+  it is not resumed, not read as findings, and not counted as a completed review)
+status: IN PROGRESS — seeded before any execution, updated incrementally
+independence: I am an independent, fresh-context reviewer. I did NOT write the code under
+  review and had no part in the BUG-048 remediation session. No self-approval.
+---
+
+# BUG-048 Slice-5 ACL-restore fix — independent code review, round 1
+
+## Scope
+
+One file under review: `backend/tests/integration/test_tenant_isolation_harness.py`
+(uncommitted working-tree change, `git diff` for that path only). Nothing else in the
+working tree is in scope for this review.
+
+Reference material read before any execution:
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-harness-owner-restore-drops-runtime-grant.md`,
+`knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md`,
+`backend/tests/harness/tenant_isolation.py`,
+`backend/tests/integration/test_architecture_gate_rls.py` (sibling, already reviewed),
+`backend/tests/integration/conftest.py`,
+`knowledge/00-System/DEVELOPMENT_CONSTITUTION.md` DC-06.
+
+## VERDICT
+
+PENDING — to be filled when Q1/Q2/Q3 complete.
+
+## Executed-this-session vs accepted-from-record
+
+PENDING.
+
+## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?
+
+PENDING.
+
+## Q2 — Is the new post-condition load-bearing, or vacuous?
+
+PENDING.
+
+## Q3 — Full-suite order closure
+
+PENDING.
+
+## Findings
+
+PENDING.
+
+## Limits
+
+PENDING.
+
+## Closure
+
+This review does not itself close BUG-048. Closure is the orchestrator's / owner's call.
+EOF
+echo seeded; wc -l knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (completed)
+  kind: execute
+  input: mkdir -p knowledge/03-Modules/MOD-001/evidence/code-review && cat > knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'EOF' --- doc: BUG048-SLICE5-ACL-REST...
+  output:
+    seeded
+          63 knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    
+    ```console
+    seeded
+          63 knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    ```
+
+[tool] sed -n 1,80p backend/tests/harness/postgres.py (pending)
+  input: sed -n 1,80p backend/tests/harness/postgres.py
+
+[tool] sed -n 1,80p backend/tests/harness/postgres.py (completed)
+  kind: execute
+  input: sed -n 1,80p backend/tests/harness/postgres.py
+  output:
+    """Disposable, local-only Postgres for the GOV-01-R02 harnesses.
+    
+    One throwaway container per pytest session: random container name, random
+    superuser password generated at runtime (nothing credential-shaped is ever
+    committed), published on 127.0.0.1 only, force-removed on exit. It only ever
+    holds synthetic fixture rows.
+    
+    The superuser DSN is the elevated *setup* credential (role creation, fixture
+    DDL, ground-truth reads). It is never the connection under test — negative
+    isolation tests connect as the non-privileged runtime role from
+    `tenant_isolation`. No Docker means the harness errors out: it never falls back
+    to SQLite or a mock, because a mocked denial is exactly the false-clean
+    evidence this harness exists to prevent.
+    
+    Engine binding (CAP-008, Colima). Every docker call goes through one
+    `DockerRoute`: the pinned Homebrew docker CLI (never whatever `docker` is
+    first on PATH, and never Docker.app's CLI), a fresh empty `--config` dir (so
+    no ambient context, `credsStore` or CLI plugin/hook is consulted), all
+    ambient `DOCKER_*` variables stripped, and an explicit `--host`. The host is
+    Colima's socket unless the caller sets `DOCKER_HOST` — which only negative
+    drills do, to point at an unreachable or foreign engine. Either way the
+    engine must identify as the approved Colima engine before anything runs; a
+    Docker Desktop or otherwise unapproved engine is an error, never a fallback.
+    Cleanup, port and log calls reuse the same route.
+    """
+    
+    from __future__ import annotations
+    
+    ... (135 more lines)
+
+[tool] grep -rn "def trusted_docker" --include=*.py . | head (pending)
+  input: grep -rn "def trusted_docker" --include=*.py . | head
+
+[tool] grep -rn "def trusted_docker" --include=*.py . | head (completed)
+  kind: execute
+  input: grep -rn "def trusted_docker" --include=*.py . | head
+  output:
+    (eval):1: no matches found: --include=*.py
+    
+    ```console
+    (eval):1: no matches found: --include=*.py
+    ```
+
+[tool] export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}' ; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" volume ls --format '{{.Name}}' (pending)
+  input: export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}' ; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima...
+
+[tool] export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}' ; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" volume ls --format '{{.Name}}' (completed)
+  kind: execute
+  input: export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}' ; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima...
+  output:
+    vigilant_matsumoto
+    --- volumes ---
+    712bec68008ece99c2974826cc2f384d370b4c6bfa6054854ee98cf2ec361acf
+    tradingview-mcp-session
+    
+    ```console
+    vigilant_matsumoto
+    --- volumes ---
+    712bec68008ece99c2974826cc2f384d370b4c6bfa6054854ee98cf2ec361acf
+    tradingview-mcp-session
+    ```
+
+[tool] cat > /tmp/bug048_review_probe.py << 'PYEOF'
+"""Independent review probe for BUG-048 (read-only wrt the repo; throwaway container)."""
+from __future__ import annotations
+import sys
+sys.path.insert(0, "/Users/ahmadmabrouk/Desktop/Veyro/backend")
+
+from tests.harness.postgres import disposable_postgres
+from tests.harness.tenant_isolation import (
+    ACCESS_GRANT, ACCESS_GRANT_COLUMNS, OWNER_ROLE, RUNTIME_ROLE,
+    create_tenant_table, provision_roles, one_row, read_posture,
+)
+import psycopg
+
+RT, OWN = RUNTIME_ROLE, OWNER_ROLE
+TBL = "harness.access_grant"
+_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TBL} TO {RT}"
+_RUNTIME_DML = "SELECT, INSERT, UPDATE, DELETE"
+
+def acl(c):
+    return one_row(c.execute("SELECT relacl::text FROM pg_class WHERE oid = %s::regclass", (TBL,)))[0]
+
+def sacl(c):
+    return one_row(c.execute("SELECT nspacl::text FROM pg_namespace WHERE nspname='harness'"))[0]
+
+def htp(c, privs=_RUNTIME_DML, role=RT):
+    return one_row(c.execute("SELECT has_table_privilege(%s, 'harness.access_grant', %s)", (role, privs)))[0]
+
+def flags(c):
+    return one_row(c.execute(
+        "SELECT pg_get_userbyid(c.relowner)::text, c.relrowsecurity, c.relforcerowsecurity,"
+        " (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid),"
+        " (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id' AND NOT a.attisdropped),"
+        " (SELECT p.polqual::text IS NOT NULL FROM pg_policy p WHERE p.polrelid=c.oid LIMIT 1)"
+        " FROM pg_class c WHERE c.oid=%s::regclass", (TBL,)))
+
+def P(label, *vals):
+    print(f"[{label}] " + " | ".join(str(v) for v in vals), flush=True)
+
+with disposable_postgres() as pg:
+    with psycopg.connect(pg.superuser_dsn, autocommit=True) as a:
+        provision_roles(a)
+        create_tenant_table(a, ACCESS_GRANT, ACCESS_GRANT_COLUMNS)
+        baseline_acl = acl(a); baseline_sacl = sacl(a); baseline_flags = flags(a)
+        P("0-BASELINE-relacl", baseline_acl)
+        P("0-BASELINE-nspacl", baseline_sacl)
+        P("0-BASELINE-flags", baseline_flags)
+        P("0-BASELINE-htp(list)", htp(a))
+        P("0-ROLE-attrs", one_row(a.execute(
+            "SELECT rolinherit, rolsuper, rolbypassrls, (SELECT count(*) FROM pg_auth_members m JOIN pg_roles r2 ON r2.oid=m.member WHERE r2.rolname=%s) FROM pg_roles WHERE rolname=%s", (RT, RT))))
+
+        # --- Q2a: comma-list semantics, measured ---
+        a.execute(f"REVOKE INSERT, UPDATE, DELETE ON {TBL} FROM {RT}")
+        P("Q2a-only-SELECT-relacl", acl(a))
+        P("Q2a-only-SELECT-htp(list)", htp(a))
+        P("Q2a-only-SELECT-htp(INSERT)", htp(a, "INSERT"))
+        P("Q2a-only-SELECT-htp(SELECT)", htp(a, "SELECT"))
+        a.execute(f"REVOKE ALL ON {TBL} FROM {RT}")
+        P("Q2a-none-relacl", acl(a))
+        P("Q2a-none-htp(list)", htp(a))
+        a.execute(_RUNTIME_GRANT)
+        P("Q2a-regranted-relacl", acl(a), "identical_to_baseline=", acl(a) == baseline_acl)
+
+        # --- Q2b: PUBLIC-grant path with the runtime ACL entry genuinely absent ---
+        a.execute(f"REVOKE ALL ON {TBL} FROM {RT}")
+        a.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TBL} TO PUBLIC")
+        P("Q2b-PUBLIC-relacl", acl(a))
+        P("Q2b-PUBLIC-htp(list)-with-runtime-entry-absent", htp(a))
+        a.execute(f"REVOKE ALL ON {TBL} FROM PUBLIC")
+        a.execute(_RUNTIME_GRANT)
+        P("Q2b-restored", acl(a) == baseline_acl)
+
+        # --- Q1: owner round-trip WITHOUT the re-grant (mutant M1 = pre-fix shape) ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        P("Q1-M1-owned-by-runtime-relacl", acl(a))
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        P("Q1-M1-after-roundtrip-relacl", acl(a))
+        P("Q1-M1-after-roundtrip-htp(list)", htp(a))
+        P("Q1-M1-ASSERTION-WOULD-PASS", htp(a) is True)
+        P("Q1-M1-nspacl-unchanged", sacl(a) == baseline_sacl, sacl(a))
+        P("Q1-M1-flags-unchanged", flags(a) == baseline_flags, flags(a))
+        P("Q1-M1-posture-violations-empty", read_posture(a, ACCESS_GRANT).violations)
+
+        # --- Q1: the fix's restore order (OWNER TO first, then GRANT) ---
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-FIX-relacl", acl(a))
+        P("Q1-FIX-byte-identical-to-baseline", acl(a) == baseline_acl)
+        P("Q1-FIX-htp(list)", htp(a))
+
+        # --- Q1: reverse order (GRANT issued while veyro_runtime still owns the table) ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-REV-grant-while-runtime-owns-relacl", acl(a))
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        P("Q1-REV-after-owner-back-relacl", acl(a))
+        P("Q1-REV-htp(list)", htp(a))
+        P("Q1-REV-byte-identical-to-baseline", acl(a) == baseline_acl)
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-REV-repaired", acl(a) == baseline_acl)
+
+        # --- Q2d: mutant M2 = partial re-grant (SELECT only) after the owner round-trip ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        a.execute(f"GRANT SELECT ON {TBL} TO {RT}")
+        P("Q2d-M2-partial-relacl", acl(a))
+        P("Q2d-M2-htp(list)", htp(a))
+        P("Q2d-M2-ASSERTION-WOULD-PASS", htp(a) is True)
+        P("Q2d-M2-byte-identical-to-baseline", acl(a) == baseline_acl)
+        P("Q2d-M2-posture-violations", read_posture(a, ACCESS_GRANT).violations)
+        # does real runtime DML actually work in M2 state?
+        a.execute(_RUNTIME_GRANT)
+
+        # --- Q1: do the other four Slice-5 breakages mutate the ACL? ---
+        others = [
+            ("rls_disabled", [f"ALTER TABLE {TBL} DISABLE ROW LEVEL SECURITY"], [f"ALTER TABLE {TBL} ENABLE ROW LEVEL SECURITY"]),
+            ("permissive_policy", [f"ALTER POLICY tenant_isolation ON {TBL} USING (true) WITH CHECK (true)"],
+             [f"ALTER POLICY tenant_isolation ON {TBL} USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+              f" WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"]),
+            ("rls_not_forced", [f"ALTER TABLE {TBL} NO FORCE ROW LEVEL SECURITY"], [f"ALTER TABLE {TBL} FORCE ROW LEVEL SECURITY"]),
+            ("tenant_id_nullable", [f"ALTER TABLE {TBL} ALTER COLUMN tenant_id DROP NOT NULL"], [f"ALTER TABLE {TBL} ALTER COLUMN tenant_id SET NOT NULL"]),
+        ]
+        for name, brk, res in others:
+            for s in brk: a.execute(s)
+            mid_acl, mid_sacl = acl(a), sacl(a)
+            for s in res: a.execute(s)
+            P(f"Q1-OTHER[{name}]", "acl_changed_while_broken=", mid_acl != baseline_acl,
+              "acl_after_restore_identical=", acl(a) == baseline_acl,
+              "nspacl_identical=", sacl(a) == baseline_sacl,
+              "flags_identical=", flags(a) == baseline_flags)
+        P("FINAL-relacl", acl(a), "identical=", acl(a) == baseline_acl)
+        P("FINAL-flags-identical", flags(a) == baseline_flags)
+PYEOF
+cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py 2>&1 | tail -60 (pending)
+  input: cat > /tmp/bug048_review_probe.py << 'PYEOF' """Independent review probe for BUG-048 (read-only wrt the repo; throwaway container).""" from __future__ import annotations import sys sys.path.insert(0, "/Users/ahmadmabr...
+
+[tool] cat > /tmp/bug048_review_probe.py << 'PYEOF'
+"""Independent review probe for BUG-048 (read-only wrt the repo; throwaway container)."""
+from __future__ import annotations
+import sys
+sys.path.insert(0, "/Users/ahmadmabrouk/Desktop/Veyro/backend")
+
+from tests.harness.postgres import disposable_postgres
+from tests.harness.tenant_isolation import (
+    ACCESS_GRANT, ACCESS_GRANT_COLUMNS, OWNER_ROLE, RUNTIME_ROLE,
+    create_tenant_table, provision_roles, one_row, read_posture,
+)
+import psycopg
+
+RT, OWN = RUNTIME_ROLE, OWNER_ROLE
+TBL = "harness.access_grant"
+_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TBL} TO {RT}"
+_RUNTIME_DML = "SELECT, INSERT, UPDATE, DELETE"
+
+def acl(c):
+    return one_row(c.execute("SELECT relacl::text FROM pg_class WHERE oid = %s::regclass", (TBL,)))[0]
+
+def sacl(c):
+    return one_row(c.execute("SELECT nspacl::text FROM pg_namespace WHERE nspname='harness'"))[0]
+
+def htp(c, privs=_RUNTIME_DML, role=RT):
+    return one_row(c.execute("SELECT has_table_privilege(%s, 'harness.access_grant', %s)", (role, privs)))[0]
+
+def flags(c):
+    return one_row(c.execute(
+        "SELECT pg_get_userbyid(c.relowner)::text, c.relrowsecurity, c.relforcerowsecurity,"
+        " (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid),"
+        " (SELECT a.attnotnull FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id' AND NOT a.attisdropped),"
+        " (SELECT p.polqual::text IS NOT NULL FROM pg_policy p WHERE p.polrelid=c.oid LIMIT 1)"
+        " FROM pg_class c WHERE c.oid=%s::regclass", (TBL,)))
+
+def P(label, *vals):
+    print(f"[{label}] " + " | ".join(str(v) for v in vals), flush=True)
+
+with disposable_postgres() as pg:
+    with psycopg.connect(pg.superuser_dsn, autocommit=True) as a:
+        provision_roles(a)
+        create_tenant_table(a, ACCESS_GRANT, ACCESS_GRANT_COLUMNS)
+        baseline_acl = acl(a); baseline_sacl = sacl(a); baseline_flags = flags(a)
+        P("0-BASELINE-relacl", baseline_acl)
+        P("0-BASELINE-nspacl", baseline_sacl)
+        P("0-BASELINE-flags", baseline_flags)
+        P("0-BASELINE-htp(list)", htp(a))
+        P("0-ROLE-attrs", one_row(a.execute(
+            "SELECT rolinherit, rolsuper, rolbypassrls, (SELECT count(*) FROM pg_auth_members m JOIN pg_roles r2 ON r2.oid=m.member WHERE r2.rolname=%s) FROM pg_roles WHERE rolname=%s", (RT, RT))))
+
+        # --- Q2a: comma-list semantics, measured ---
+        a.execute(f"REVOKE INSERT, UPDATE, DELETE ON {TBL} FROM {RT}")
+        P("Q2a-only-SELECT-relacl", acl(a))
+        P("Q2a-only-SELECT-htp(list)", htp(a))
+        P("Q2a-only-SELECT-htp(INSERT)", htp(a, "INSERT"))
+        P("Q2a-only-SELECT-htp(SELECT)", htp(a, "SELECT"))
+        a.execute(f"REVOKE ALL ON {TBL} FROM {RT}")
+        P("Q2a-none-relacl", acl(a))
+        P("Q2a-none-htp(list)", htp(a))
+        a.execute(_RUNTIME_GRANT)
+        P("Q2a-regranted-relacl", acl(a), "identical_to_baseline=", acl(a) == baseline_acl)
+
+        # --- Q2b: PUBLIC-grant path with the runtime ACL entry genuinely absent ---
+        a.execute(f"REVOKE ALL ON {TBL} FROM {RT}")
+        a.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {TBL} TO PUBLIC")
+        P("Q2b-PUBLIC-relacl", acl(a))
+        P("Q2b-PUBLIC-htp(list)-with-runtime-entry-absent", htp(a))
+        a.execute(f"REVOKE ALL ON {TBL} FROM PUBLIC")
+        a.execute(_RUNTIME_GRANT)
+        P("Q2b-restored", acl(a) == baseline_acl)
+
+        # --- Q1: owner round-trip WITHOUT the re-grant (mutant M1 = pre-fix shape) ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        P("Q1-M1-owned-by-runtime-relacl", acl(a))
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        P("Q1-M1-after-roundtrip-relacl", acl(a))
+        P("Q1-M1-after-roundtrip-htp(list)", htp(a))
+        P("Q1-M1-ASSERTION-WOULD-PASS", htp(a) is True)
+        P("Q1-M1-nspacl-unchanged", sacl(a) == baseline_sacl, sacl(a))
+        P("Q1-M1-flags-unchanged", flags(a) == baseline_flags, flags(a))
+        P("Q1-M1-posture-violations-empty", read_posture(a, ACCESS_GRANT).violations)
+
+        # --- Q1: the fix's restore order (OWNER TO first, then GRANT) ---
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-FIX-relacl", acl(a))
+        P("Q1-FIX-byte-identical-to-baseline", acl(a) == baseline_acl)
+        P("Q1-FIX-htp(list)", htp(a))
+
+        # --- Q1: reverse order (GRANT issued while veyro_runtime still owns the table) ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-REV-grant-while-runtime-owns-relacl", acl(a))
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        P("Q1-REV-after-owner-back-relacl", acl(a))
+        P("Q1-REV-htp(list)", htp(a))
+        P("Q1-REV-byte-identical-to-baseline", acl(a) == baseline_acl)
+        a.execute(_RUNTIME_GRANT)
+        P("Q1-REV-repaired", acl(a) == baseline_acl)
+
+        # --- Q2d: mutant M2 = partial re-grant (SELECT only) after the owner round-trip ---
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {RT}")
+        a.execute(f"ALTER TABLE {TBL} OWNER TO {OWN}")
+        a.execute(f"GRANT SELECT ON {TBL} TO {RT}")
+        P("Q2d-M2-partial-relacl", acl(a))
+        P("Q2d-M2-htp(list)", htp(a))
+        P("Q2d-M2-ASSERTION-WOULD-PASS", htp(a) is True)
+        P("Q2d-M2-byte-identical-to-baseline", acl(a) == baseline_acl)
+        P("Q2d-M2-posture-violations", read_posture(a, ACCESS_GRANT).violations)
+        # does real runtime DML actually work in M2 state?
+        a.execute(_RUNTIME_GRANT)
+
+        # --- Q1: do the other four Slice-5 breakages mutate the ACL? ---
+        others = [
+            ("rls_disabled", [f"ALTER TABLE {TBL} DISABLE ROW LEVEL SECURITY"], [f"ALTER TABLE {TBL} ENABLE ROW LEVEL SECURITY"]),
+            ("permissive_policy", [f"ALTER POLICY tenant_isolation ON {TBL} USING (true) WITH CHECK (true)"],
+             [f"ALTER POLICY tenant_isolation ON {TBL} USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+              f" WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"]),
+            ("rls_not_forced", [f"ALTER TABLE {TBL} NO FORCE ROW LEVEL SECURITY"], [f"ALTER TABLE {TBL} FORCE ROW LEVEL SECURITY"]),
+            ("tenant_id_nullable", [f"ALTER TABLE {TBL} ALTER COLUMN tenant_id DROP NOT NULL"], [f"ALTER TABLE {TBL} ALTER COLUMN tenant_id SET NOT NULL"]),
+        ]
+        for name, brk, res in others:
+            for s in brk: a.execute(s)
+            mid_acl, mid_sacl = acl(a), sacl(a)
+            for s in res: a.execute(s)
+            P(f"Q1-OTHER[{name}]", "acl_changed_while_broken=", mid_acl != baseline_acl,
+              "acl_after_restore_identical=", acl(a) == baseline_acl,
+              "nspacl_identical=", sacl(a) == baseline_sacl,
+              "flags_identical=", flags(a) == baseline_flags)
+        P("FINAL-relacl", acl(a), "identical=", acl(a) == baseline_acl)
+        P("FINAL-flags-identical", flags(a) == baseline_flags)
+PYEOF
+cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py 2>&1 | tail -60 (completed)
+  kind: execute
+  input: cat > /tmp/bug048_review_probe.py << 'PYEOF' """Independent review probe for BUG-048 (read-only wrt the repo; throwaway container).""" from __future__ import annotations import sys sys.path.insert(0, "/Users/ahmadmabr...
+  output:
+    [0-BASELINE-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [0-BASELINE-nspacl] {veyro_schema_owner=UC/veyro_schema_owner,veyro_runtime=U/veyro_schema_owner}
+    [0-BASELINE-flags] ('veyro_schema_owner', True, True, 1, True, True)
+    [0-BASELINE-htp(list)] True
+    [0-ROLE-attrs] (False, False, False, 0)
+    [Q2a-only-SELECT-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=r/veyro_schema_owner}
+    [Q2a-only-SELECT-htp(list)] True
+    [Q2a-only-SELECT-htp(INSERT)] False
+    [Q2a-only-SELECT-htp(SELECT)] True
+    [Q2a-none-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q2a-none-htp(list)] False
+    [Q2a-regranted-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner} | identical_to_baseline= | True
+    [Q2b-PUBLIC-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,=arwd/veyro_schema_owner}
+    [Q2b-PUBLIC-htp(list)-with-runtime-entry-absent] True
+    [Q2b-restored] True
+    [Q1-M1-owned-by-runtime-relacl] {veyro_runtime=arwdDxt/veyro_runtime}
+    [Q1-M1-after-roundtrip-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q1-M1-after-roundtrip-htp(list)] False
+    [Q1-M1-ASSERTION-WOULD-PASS] False
+    [Q1-M1-nspacl-unchanged] True | {veyro_schema_owner=UC/veyro_schema_owner,veyro_runtime=U/veyro_schema_owner}
+    [Q1-M1-flags-unchanged] True | ('veyro_schema_owner', True, True, 1, True, True)
+    [Q1-M1-posture-violations-empty] ['RUNTIME_ROLE_SUPERUSER', 'RUNTIME_ROLE_BYPASSRLS']
+    [Q1-FIX-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [Q1-FIX-byte-identical-to-baseline] True
+    [Q1-FIX-htp(list)] True
+    [Q1-REV-grant-while-runtime-owns-relacl] {veyro_runtime=arwdDxt/veyro_runtime}
+    [Q1-REV-after-owner-back-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q1-REV-htp(list)] False
+    ... (57 more lines)
+
+[tool] grep -n "^def test_\|^BREAKAGES\|^@pytest.mark.parametrize\|_broken(" backend/tests/integration/test_architecture_gate_rls.py | sed -n 1,45p (pending)
+  input: grep -n "^def test_\|^BREAKAGES\|^@pytest.mark.parametrize\|_broken(" backend/tests/integration/test_architecture_gate_rls.py | sed -n 1,45p
+
+[tool] grep -n "^def test_\|^BREAKAGES\|^@pytest.mark.parametrize\|_broken(" backend/tests/integration/test_architecture_gate_rls.py | sed -n 1,45p (completed)
+  kind: execute
+  input: grep -n "^def test_\|^BREAKAGES\|^@pytest.mark.parametrize\|_broken(" backend/tests/integration/test_architecture_gate_rls.py | sed -n 1,45p
+  output:
+    124:def _broken(admin: Conn, break_sql: list[str], restore_sql: list[str]) -> Iterator[None]:
+    156:def test_p1_canonical_harness_passes(admin: Conn, runtime: Conn) -> None:
+    168:def test_p2_dml_through_clean_group_role(
+    173:    with _broken(
+    188:def test_p3_security_invoker_view(admin: Conn, runtime: Conn, tenants: tuple[UUID, UUID]) -> None:
+    191:    with _broken(
+    204:def test_p4_p5_p6_manifest_platform_table_sequence_and_reviewed_definer(admin: Conn) -> None:
+    205:    with _broken(
+    229:def test_scn067_gate_catches_rls_disabled_on_access_grant(
+    235:    with _broken(admin, [f"ALTER TABLE {TABLE} DISABLE ROW LEVEL SECURITY"],
+    258:@pytest.mark.parametrize(("name", "using", "check"), TAUTOLOGIES, ids=[t[0] for t in TAUTOLOGIES])
+    259:def test_tautological_policy_that_really_leaks(
+    263:    with _broken(admin,
+    275:def test_tautological_using_with_canonical_check_is_a_read_leak(
+    282:    with _broken(admin, [broken], [_ALTER_POLICY_BACK]):
+    292:def test_n21_runtime_truncate_rejected_and_really_destructive(
+    296:    with _broken(admin, [f"GRANT TRUNCATE ON {TABLE} TO {RT}"],
+    318:BREAKAGES: list[tuple[str, list[str], list[str], list[tuple[str, str]]]] = [
+    433:@pytest.mark.parametrize(
+    436:def test_adr010_negative_breakage(
+    440:    with _broken(admin, break_sql, restore_sql):
+    448:def test_n10_n11_operator_hijack_caught_by_pinned_deparse_and_dependency_closure(
+    469:    with _broken(admin, hijack, undo):
+    491:    with _broken(admin, shadow, [_ALTER_POLICY_BACK, "DROP OPERATOR public.= (text, text)",
+    498:def test_n12_n14_materialized_view(admin: Conn, runtime: Conn, tenants: tuple[UUID, UUID]) -> None:
+    500:    with _broken(admin, [f"CREATE MATERIALIZED VIEW harness.gate_mv AS SELECT * FROM {TABLE}",
+    514:def test_n14_manifest_kind_mismatch(admin: Conn) -> None:
+    515:    with _broken(admin, ["CREATE TABLE harness.gate_lookup (code text PRIMARY KEY)"],
+    ... (65 more lines)
+
+[tool] sed -n 146,200p backend/tests/integration/test_architecture_gate_rls.py (pending)
+  input: sed -n 146,200p backend/tests/integration/test_architecture_gate_rls.py
+
+[tool] sed -n 146,200p backend/tests/integration/test_architecture_gate_rls.py (completed)
+  kind: execute
+  input: sed -n 146,200p backend/tests/integration/test_architecture_gate_rls.py
+  output:
+    runtime.execute(f"SET LOCAL ROLE {set_role}")
+            runtime.execute("SELECT set_config('app.tenant_id', %s, true)", (str(own),))
+            q = "SELECT count(*) FILTER (WHERE tenant_id = %s), count(*) FILTER (WHERE tenant_id = %s)"
+            mine, theirs = one_row(runtime.execute(f"{q} FROM {relation}", (own, other)))
+        return int(mine), int(theirs)
+    
+    
+    # --- positives -----------------------------------------------------------------------
+    
+    
+    def test_p1_canonical_harness_passes(admin: Conn, runtime: Conn) -> None:
+        report = _gate(admin)
+        _evidence("ADR010-P1", asdict(report))
+        assert report.status == gates.PASS, report.render()
+        assert report.exit_code == 0
+        assert report.checked == [TABLE]
+        # Same verdict through the non-privileged runtime connection: the gate needs no elevation.
+        assert asdict(_gate(runtime)) == asdict(report)
+        # D2: the gate's pinned search_path does not leak into the caller's session.
+        assert _scalar(admin, "SHOW search_path") == '"$user", public'
+    
+    
+    def test_p2_dml_through_clean_group_role(
+        admin: Conn, runtime: Conn, tenants: tuple[UUID, UUID]
+    ) -> None:
+        a, b = tenants
+        group = "veyro_gate_dml_group"
+        with _broken(
+    ... (85 more lines)
+
+[tool] R=knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md && python3 - "$R" << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+q1 = '''## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?
+
+**Answer: YES. The re-grant is correct, the ordering is correct and load-bearing, the
+"byte-identical ACL entry" claim holds, and the deliberate omission of a
+`has_schema_privilege` assertion is safe for the Slice-5 breakage set.** All four
+sub-claims were verified by direct execution this session, not accepted from the record.
+
+Probe: `/tmp/bug048_review_probe.py` (throwaway, outside the repo; imports the project's own
+`disposable_postgres()` / CAP-008 Colima route and `create_tenant_table`, so the fixture under
+measurement is the real one). Command:
+`cd backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py`.
+
+Literal results:
+
+    [0-BASELINE-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [0-BASELINE-nspacl] {veyro_schema_owner=UC/veyro_schema_owner,veyro_runtime=U/veyro_schema_owner}
+    [0-BASELINE-flags]  ('veyro_schema_owner', True, True, 1, True, True)   # owner, rowsec, forcerowsec, policies, tenant_id NOT NULL, polqual present
+    [Q1-M1-owned-by-runtime-relacl]   {veyro_runtime=arwdDxt/veyro_runtime}
+    [Q1-M1-after-roundtrip-relacl]    {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q1-M1-after-roundtrip-htp(list)] False
+    [Q1-FIX-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [Q1-FIX-byte-identical-to-baseline] True
+    [Q1-FIX-htp(list)] True
+
+1. **Privilege set / object / grantee / grantor all match.** `_RUNTIME_GRANT`
+   (`test_tenant_isolation_harness.py:41`) is `GRANT SELECT, INSERT, UPDATE, DELETE ON
+   harness.access_grant TO veyro_runtime`; `create_tenant_table`
+   (`backend/tests/harness/tenant_isolation.py:134`) issues the identical privilege list on the
+   identical object to the identical grantee. The only difference is the issuing session:
+   `create_tenant_table` runs it inside `as_schema_owner()` (`SET ROLE veyro_schema_owner`),
+   while the restore runs it on the raw superuser `admin` connection. Measured, that difference
+   is immaterial — PostgreSQL's `select_best_grantor` attributes a superuser-issued GRANT to the
+   object's owner, so the restored entry is `veyro_runtime=arwd/veyro_schema_owner`, and the
+   whole `relacl` array (entries *and* their order) compares byte-equal to the provisioned
+   baseline (`Q1-FIX-byte-identical-to-baseline True`). The remediation record's
+   "byte-identical" claim is confirmed, not merely privilege-equivalent.
+
+2. **Restore ordering is correct, and the reverse order is genuinely broken.** Measured:
+
+       [Q1-REV-grant-while-runtime-owns-relacl] {veyro_runtime=arwdDxt/veyro_runtime}
+       [Q1-REV-after-owner-back-relacl]         {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+       [Q1-REV-htp(list)]                       False
+       [Q1-REV-byte-identical-to-baseline]      False
+
+   Issuing the GRANT while `veyro_runtime` still owns the table makes the grantee equal to the
+   owner, so it merges into the owner's own default entry; the subsequent `OWNER TO
+   veyro_schema_owner` then rewrites that merged entry and the runtime entry is lost again —
+   exactly the BUG-048 failure. `OWNER TO` first, then `GRANT`, is the only order that works.
+   The committed list `[OWNER TO veyro_schema_owner, _RUNTIME_GRANT]`
+   (`test_tenant_isolation_harness.py:128`) is in that order, and the `finally` loop at
+   lines 153-154 preserves list order, so this is correct as written. Worth noting for future
+   edits: the ordering is load-bearing and nothing in the code comments says so.
+
+3. **No other `BREAKAGES` case mutates the ACL.** Measured for all four remaining cases —
+   ACL unchanged *even while broken*, and ACL/schema-ACL/flags identical to baseline after
+   restore:
+
+       [Q1-OTHER[rls_disabled]]       acl_changed_while_broken=False acl_after_restore_identical=True nspacl_identical=True flags_identical=True
+       [Q1-OTHER[permissive_policy]]  ... all True / False as above
+       [Q1-OTHER[rls_not_forced]]     ... all True / False as above
+       [Q1-OTHER[tenant_id_nullable]] ... all True / False as above
+
+   So `permissive_policy` and `rls_disabled` do fully revert, and the new assertion is
+   redundant-but-harmless for those four (it is a regression lock, not a live check, there).
+
+4. **Nothing else `create_tenant_table` provisions is dropped by the owner round-trip.**
+   Measured across the owner round-trip: schema ACL (`nspacl`, which carries the
+   `GRANT USAGE ON SCHEMA harness TO veyro_runtime`) unchanged
+   (`Q1-M1-nspacl-unchanged True`); `relrowsecurity`, `relforcerowsecurity`, policy count (1),
+   policy qual presence, and `tenant_id.attnotnull` all unchanged (`Q1-M1-flags-unchanged
+   True`). The table has no sequence (its `id` default is `gen_random_uuid()`, not a serial) and
+   no column-level grants, so there is nothing else grant-shaped to lose. **The deliberate
+   omission of the sibling file's `has_schema_privilege(..., 'harness', 'USAGE')` assertion is
+   therefore genuinely safe for this breakage set** — independently verified, not taken on the
+   record's word. (It would become necessary the moment a Slice-5 breakage touched schema
+   ownership or schema grants.)
+
+'''
+q2 = '''## Q2 — Is the new post-condition load-bearing, or vacuous?
+
+**Answer: PARTIALLY load-bearing. It kills a total loss of the grant, but it is materially
+weaker than the record implies: `has_table_privilege` with a comma-separated privilege list is
+ANY/OR in PostgreSQL, not ALL, so the assertion passes with only `SELECT` restored.** See
+findings R1, R3, R4, R5.
+
+**(a) Comma-list semantics — measured, OR/ANY.** With the runtime ACL entry narrowed to `r`
+(SELECT only):
+
+    [Q2a-only-SELECT-relacl]      {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=r/veyro_schema_owner}
+    [Q2a-only-SELECT-htp(list)]   True      <-- the committed assertion still passes
+    [Q2a-only-SELECT-htp(INSERT)] False
+    [Q2a-only-SELECT-htp(SELECT)] True
+    [Q2a-none-relacl]             {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q2a-none-htp(list)]          False
+
+So `has_table_privilege(role, table, 'SELECT, INSERT, UPDATE, DELETE')` is **true if ANY of the
+listed privileges is held**. The assertion at
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168` therefore proves only "the
+runtime role holds at least one of the four", not "the runtime role holds all four DML
+privileges" — which is what BUG-048's closure criterion and the remediation record's wording
+both read as. This is finding **R1**.
+
+**(b) Can it be true with the ACL entry genuinely absent?** Yes, via a PUBLIC grant — measured:
+
+    [Q2b-PUBLIC-relacl]                                 {veyro_schema_owner=arwdDxt/veyro_schema_owner,=arwd/veyro_schema_owner}
+    [Q2b-PUBLIC-htp(list)-with-runtime-entry-absent]    True
+
+Role inheritance and superuser status are **not** live escape routes here:
+`[0-ROLE-attrs] (False, False, False, 0)` — `veyro_runtime` is NOINHERIT, NOSUPERUSER,
+NOBYPASSRLS, with zero role memberships. And because the privilege is queried for a *named*
+role rather than `current_user`, the `admin` connection's own superuser status is irrelevant.
+No Slice-5 breakage grants anything to PUBLIC, so (b) is not exploitable by the current
+breakage set — but the check does not pin the specific `veyro_runtime=arwd/veyro_schema_owner`
+entry. Finding **R5**.
+
+**(c) Placement.** The assertion is the *fifth and last* assertion in the test body (line 163),
+after `probe.failures`, `codes <= posture_violations`, the behavioural-leak check, and the
+posture-restored check. The **repair** itself is in the `finally` block (lines 152-154), so the
+ACL is always restored regardless of outcome — that part is right. But the **verification**
+never runs if any earlier assertion fails, so a run that fails for an unrelated reason produces
+no ACL evidence at all. The sibling `_broken` helper has the same shape (its checks sit after
+its own `try/finally`), so this is idiom-consistent rather than novel. Finding **R3**, P3.
+
+**(d) Partial re-grant — mutant SURVIVES.** Measured:
+
+    [Q2d-M2-partial-relacl]        {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=r/veyro_schema_owner}
+    [Q2d-M2-htp(list)]             True
+    [Q2d-M2-ASSERTION-WOULD-PASS]  True
+    [Q2d-M2-byte-identical-to-baseline] False
+    [Q2d-M2-posture-violations]    (posture is blind to ACL, as BUG-048 states)
+
+### Mutants run this session (explicit kill/survive table)
+
+Mutation was performed in the throwaway probe, replicating the committed restore logic in SQL,
+**not** by editing any repo file (hard constraint) and **not** by building a `/tmp` repo copy.
+
+| mutant | what was changed | assertion result | verdict |
+|---|---|---|---|
+| **M1** — `_RUNTIME_GRANT` removed from the restore list (pre-fix shape) | `OWNER TO owner` only | `has_table_privilege(...) is True` -> **False** | **KILLED** |
+| **M2** — `_RUNTIME_GRANT` narrowed to `GRANT SELECT` | partial re-grant | assertion -> **True** (passes) | **SURVIVED** |
+| **M3** — restore order reversed (`GRANT` before `OWNER TO`) | ordering | assertion -> **False** | **KILLED** |
+| **M4** — runtime entry absent but PUBLIC holds `arwd` | ACL entry genuinely gone | assertion -> **True** (passes) | **SURVIVED** (not reachable from the current breakage set) |
+
+M1 killed is the important one: it reproduces BUG-048's own defect and the new assertion
+catches it, with the posture post-condition staying silent — so the fix is **not** vacuous and
+the remediation's Drill-1 claim is independently corroborated. M2/M4 surviving is why the
+assertion is a *partial* regression lock rather than the full one the record describes.
+
+'''
+t = t.replace("## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?\n\nPENDING.\n\n", q1)
+t = t.replace("## Q2 — Is the new post-condition load-bearing, or vacuous?\n\nPENDING.\n\n", q2)
+p.write_text(t)
+print("ok", len(t))
+PYEOF (pending)
+  input: R=knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md && python3 - "$R" << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() q1 = '''...
+
+[tool] R=knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md && python3 - "$R" << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+q1 = '''## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?
+
+**Answer: YES. The re-grant is correct, the ordering is correct and load-bearing, the
+"byte-identical ACL entry" claim holds, and the deliberate omission of a
+`has_schema_privilege` assertion is safe for the Slice-5 breakage set.** All four
+sub-claims were verified by direct execution this session, not accepted from the record.
+
+Probe: `/tmp/bug048_review_probe.py` (throwaway, outside the repo; imports the project's own
+`disposable_postgres()` / CAP-008 Colima route and `create_tenant_table`, so the fixture under
+measurement is the real one). Command:
+`cd backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py`.
+
+Literal results:
+
+    [0-BASELINE-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [0-BASELINE-nspacl] {veyro_schema_owner=UC/veyro_schema_owner,veyro_runtime=U/veyro_schema_owner}
+    [0-BASELINE-flags]  ('veyro_schema_owner', True, True, 1, True, True)   # owner, rowsec, forcerowsec, policies, tenant_id NOT NULL, polqual present
+    [Q1-M1-owned-by-runtime-relacl]   {veyro_runtime=arwdDxt/veyro_runtime}
+    [Q1-M1-after-roundtrip-relacl]    {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q1-M1-after-roundtrip-htp(list)] False
+    [Q1-FIX-relacl] {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=arwd/veyro_schema_owner}
+    [Q1-FIX-byte-identical-to-baseline] True
+    [Q1-FIX-htp(list)] True
+
+1. **Privilege set / object / grantee / grantor all match.** `_RUNTIME_GRANT`
+   (`test_tenant_isolation_harness.py:41`) is `GRANT SELECT, INSERT, UPDATE, DELETE ON
+   harness.access_grant TO veyro_runtime`; `create_tenant_table`
+   (`backend/tests/harness/tenant_isolation.py:134`) issues the identical privilege list on the
+   identical object to the identical grantee. The only difference is the issuing session:
+   `create_tenant_table` runs it inside `as_schema_owner()` (`SET ROLE veyro_schema_owner`),
+   while the restore runs it on the raw superuser `admin` connection. Measured, that difference
+   is immaterial — PostgreSQL's `select_best_grantor` attributes a superuser-issued GRANT to the
+   object's owner, so the restored entry is `veyro_runtime=arwd/veyro_schema_owner`, and the
+   whole `relacl` array (entries *and* their order) compares byte-equal to the provisioned
+   baseline (`Q1-FIX-byte-identical-to-baseline True`). The remediation record's
+   "byte-identical" claim is confirmed, not merely privilege-equivalent.
+
+2. **Restore ordering is correct, and the reverse order is genuinely broken.** Measured:
+
+       [Q1-REV-grant-while-runtime-owns-relacl] {veyro_runtime=arwdDxt/veyro_runtime}
+       [Q1-REV-after-owner-back-relacl]         {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+       [Q1-REV-htp(list)]                       False
+       [Q1-REV-byte-identical-to-baseline]      False
+
+   Issuing the GRANT while `veyro_runtime` still owns the table makes the grantee equal to the
+   owner, so it merges into the owner's own default entry; the subsequent `OWNER TO
+   veyro_schema_owner` then rewrites that merged entry and the runtime entry is lost again —
+   exactly the BUG-048 failure. `OWNER TO` first, then `GRANT`, is the only order that works.
+   The committed list `[OWNER TO veyro_schema_owner, _RUNTIME_GRANT]`
+   (`test_tenant_isolation_harness.py:128`) is in that order, and the `finally` loop at
+   lines 153-154 preserves list order, so this is correct as written. Worth noting for future
+   edits: the ordering is load-bearing and nothing in the code comments says so.
+
+3. **No other `BREAKAGES` case mutates the ACL.** Measured for all four remaining cases —
+   ACL unchanged *even while broken*, and ACL/schema-ACL/flags identical to baseline after
+   restore:
+
+       [Q1-OTHER[rls_disabled]]       acl_changed_while_broken=False acl_after_restore_identical=True nspacl_identical=True flags_identical=True
+       [Q1-OTHER[permissive_policy]]  ... all True / False as above
+       [Q1-OTHER[rls_not_forced]]     ... all True / False as above
+       [Q1-OTHER[tenant_id_nullable]] ... all True / False as above
+
+   So `permissive_policy` and `rls_disabled` do fully revert, and the new assertion is
+   redundant-but-harmless for those four (it is a regression lock, not a live check, there).
+
+4. **Nothing else `create_tenant_table` provisions is dropped by the owner round-trip.**
+   Measured across the owner round-trip: schema ACL (`nspacl`, which carries the
+   `GRANT USAGE ON SCHEMA harness TO veyro_runtime`) unchanged
+   (`Q1-M1-nspacl-unchanged True`); `relrowsecurity`, `relforcerowsecurity`, policy count (1),
+   policy qual presence, and `tenant_id.attnotnull` all unchanged (`Q1-M1-flags-unchanged
+   True`). The table has no sequence (its `id` default is `gen_random_uuid()`, not a serial) and
+   no column-level grants, so there is nothing else grant-shaped to lose. **The deliberate
+   omission of the sibling file's `has_schema_privilege(..., 'harness', 'USAGE')` assertion is
+   therefore genuinely safe for this breakage set** — independently verified, not taken on the
+   record's word. (It would become necessary the moment a Slice-5 breakage touched schema
+   ownership or schema grants.)
+
+'''
+q2 = '''## Q2 — Is the new post-condition load-bearing, or vacuous?
+
+**Answer: PARTIALLY load-bearing. It kills a total loss of the grant, but it is materially
+weaker than the record implies: `has_table_privilege` with a comma-separated privilege list is
+ANY/OR in PostgreSQL, not ALL, so the assertion passes with only `SELECT` restored.** See
+findings R1, R3, R4, R5.
+
+**(a) Comma-list semantics — measured, OR/ANY.** With the runtime ACL entry narrowed to `r`
+(SELECT only):
+
+    [Q2a-only-SELECT-relacl]      {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=r/veyro_schema_owner}
+    [Q2a-only-SELECT-htp(list)]   True      <-- the committed assertion still passes
+    [Q2a-only-SELECT-htp(INSERT)] False
+    [Q2a-only-SELECT-htp(SELECT)] True
+    [Q2a-none-relacl]             {veyro_schema_owner=arwdDxt/veyro_schema_owner}
+    [Q2a-none-htp(list)]          False
+
+So `has_table_privilege(role, table, 'SELECT, INSERT, UPDATE, DELETE')` is **true if ANY of the
+listed privileges is held**. The assertion at
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168` therefore proves only "the
+runtime role holds at least one of the four", not "the runtime role holds all four DML
+privileges" — which is what BUG-048's closure criterion and the remediation record's wording
+both read as. This is finding **R1**.
+
+**(b) Can it be true with the ACL entry genuinely absent?** Yes, via a PUBLIC grant — measured:
+
+    [Q2b-PUBLIC-relacl]                                 {veyro_schema_owner=arwdDxt/veyro_schema_owner,=arwd/veyro_schema_owner}
+    [Q2b-PUBLIC-htp(list)-with-runtime-entry-absent]    True
+
+Role inheritance and superuser status are **not** live escape routes here:
+`[0-ROLE-attrs] (False, False, False, 0)` — `veyro_runtime` is NOINHERIT, NOSUPERUSER,
+NOBYPASSRLS, with zero role memberships. And because the privilege is queried for a *named*
+role rather than `current_user`, the `admin` connection's own superuser status is irrelevant.
+No Slice-5 breakage grants anything to PUBLIC, so (b) is not exploitable by the current
+breakage set — but the check does not pin the specific `veyro_runtime=arwd/veyro_schema_owner`
+entry. Finding **R5**.
+
+**(c) Placement.** The assertion is the *fifth and last* assertion in the test body (line 163),
+after `probe.failures`, `codes <= posture_violations`, the behavioural-leak check, and the
+posture-restored check. The **repair** itself is in the `finally` block (lines 152-154), so the
+ACL is always restored regardless of outcome — that part is right. But the **verification**
+never runs if any earlier assertion fails, so a run that fails for an unrelated reason produces
+no ACL evidence at all. The sibling `_broken` helper has the same shape (its checks sit after
+its own `try/finally`), so this is idiom-consistent rather than novel. Finding **R3**, P3.
+
+**(d) Partial re-grant — mutant SURVIVES.** Measured:
+
+    [Q2d-M2-partial-relacl]        {veyro_schema_owner=arwdDxt/veyro_schema_owner,veyro_runtime=r/veyro_schema_owner}
+    [Q2d-M2-htp(list)]             True
+    [Q2d-M2-ASSERTION-WOULD-PASS]  True
+    [Q2d-M2-byte-identical-to-baseline] False
+    [Q2d-M2-posture-violations]    (posture is blind to ACL, as BUG-048 states)
+
+### Mutants run this session (explicit kill/survive table)
+
+Mutation was performed in the throwaway probe, replicating the committed restore logic in SQL,
+**not** by editing any repo file (hard constraint) and **not** by building a `/tmp` repo copy.
+
+| mutant | what was changed | assertion result | verdict |
+|---|---|---|---|
+| **M1** — `_RUNTIME_GRANT` removed from the restore list (pre-fix shape) | `OWNER TO owner` only | `has_table_privilege(...) is True` -> **False** | **KILLED** |
+| **M2** — `_RUNTIME_GRANT` narrowed to `GRANT SELECT` | partial re-grant | assertion -> **True** (passes) | **SURVIVED** |
+| **M3** — restore order reversed (`GRANT` before `OWNER TO`) | ordering | assertion -> **False** | **KILLED** |
+| **M4** — runtime entry absent but PUBLIC holds `arwd` | ACL entry genuinely gone | assertion -> **True** (passes) | **SURVIVED** (not reachable from the current breakage set) |
+
+M1 killed is the important one: it reproduces BUG-048's own defect and the new assertion
+catches it, with the posture post-condition staying silent — so the fix is **not** vacuous and
+the remediation's Drill-1 claim is independently corroborated. M2/M4 surviving is why the
+assertion is a *partial* regression lock rather than the full one the record describes.
+
+'''
+t = t.replace("## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?\n\nPENDING.\n\n", q1)
+t = t.replace("## Q2 — Is the new post-condition load-bearing, or vacuous?\n\nPENDING.\n\n", q2)
+p.write_text(t)
+print("ok", len(t))
+PYEOF (completed)
+  kind: execute
+  input: R=knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md && python3 - "$R" << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() q1 = '''...
+  output:
+    ok 11657
+    
+    ```console
+    ok 11657
+    ```
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py 2>&1 | tail -15; echo "EXIT=$?" (pending)
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py 2>&1 | tail -15; echo "EXIT=$?"
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py 2>&1 | tail -15; echo "EXIT=$?" (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py 2>&1 | tail -15; echo "EXIT=$?"
+  output:
+    ............                                                             [100%]
+    12 passed in 6.44s
+    EXIT=0
+    
+    ```console
+    ............                                                             [100%]
+    12 passed in 6.44s
+    EXIT=0
+    ```
+
+[tool] export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}'; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" volume ls --format '{{.Name}}'; echo "--- git ---"; cd /Users/ahmadmabrouk/Desktop/Veyro && git status --porcelain | grep -i "code-review\|tenant_isolation_harness" (pending)
+  input: export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}'; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/...
+
+[tool] export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}'; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" volume ls --format '{{.Name}}'; echo "--- git ---"; cd /Users/ahmadmabrouk/Desktop/Veyro && git status --porcelain | grep -i "code-review\|tenant_isolation_harness" (completed)
+  kind: execute
+  input: export DOCKER_CONFIG=$(mktemp -d); /opt/homebrew/bin/docker --host "unix://$HOME/.colima/default/docker.sock" ps -a --format '{{.Names}}'; echo "--- volumes ---"; /opt/homebrew/bin/docker --host "unix://$HOME/.colima/...
+  output:
+    vigilant_matsumoto
+    --- volumes ---
+    712bec68008ece99c2974826cc2f384d370b4c6bfa6054854ee98cf2ec361acf
+    tradingview-mcp-session
+    --- git ---
+     M backend/tests/integration/test_tenant_isolation_harness.py
+    ?? knowledge/03-Modules/MOD-001/evidence/code-review/
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R2-WATCHDOG-DISPATCH-2026-10-04.md
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R3-WATCHDOG-DISPATCH-2026-10-04.md
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R4-WATCHDOG-DISPATCH-2026-10-04.md
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-ACPX-EXIT-2026-10-04.json
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-ACPX-RAW-2026-10-04.txt
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-CONTINUATION-ACPX-EXIT-2026-10-04.json
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-CONTINUATION-ACPX-RAW-2026-10-04.txt
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-RECOVERY-ACPX-RAW-2026-10-04.txt
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-RECOVERY-LAUNCH-2026-10-04.json
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-RECOVERY-PROMPT-2026-10-04.txt
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-WATCHDOG-DISPATCH-2026-10-04.md
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-WATCHDOG-DISPATCH-2026-10-04.md
+    
+    ```console
+    vigilant_matsumoto
+    --- volumes ---
+    712bec68008ece99c2974826cc2f384d370b4c6bfa6054854ee98cf2ec361acf
+    tradingview-mcp-session
+    --- git ---
+     M backend/tests/integration/test_tenant_isolation_harness.py
+    ?? knowledge/03-Modules/MOD-001/evidence/code-review/
+    ... (13 more lines)
+
+[tool] python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+
+t = t.replace("status: IN PROGRESS — seeded before any execution, updated incrementally",
+              "status: COMPLETE — PASS-with-findings (P0=0, P1=0, P2=2, P3=3)")
+
+t = t.replace("""## VERDICT
+
+PENDING.
+""", """## VERDICT
+
+**PASS-with-findings.**
+
+| severity | count | findings |
+|---|---|---|
+| **P0** | **0** | — |
+| **P1** | **0** | — |
+| **P2** | **2** | R1 (assertion is ANY/OR, not ALL — partial-grant mutant survives), R2 (durable record overstates the assertion's strength) |
+| **P3** | **3** | R3 (assertion placement), R4 (catalog-only, no behavioural DML post-condition), R5 (PUBLIC-grant path not excluded; adjacent sibling-file exposure) |
+
+The change is correct, is a genuine improvement over the pre-fix shape, repairs the ACL
+byte-identically, and its new post-condition does kill the actual BUG-048 defect. Nothing in it
+is unsafe, nothing regresses, and no owner-reserved restriction, unregistered capability, or
+baseline drift is implicated. It does **not** warrant BLOCKED. The P2 findings are about the
+*strength* of the new regression lock and the *accuracy* of the durable record describing it,
+not about whether the fix works.
+""")
+
+t = t.replace("""## Executed-this-session vs accepted-from-record
+
+PENDING.
+""", """## Executed-this-session vs accepted-from-record
+
+This distinction is deliberate: Q3 was charged as evidence-based, not re-executed.
+
+### A. Observed by execution THIS session (literal command -> literal result)
+
+1. `cd backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py`
+   -> the full `[...]` probe output quoted verbatim under Q1 and Q2. This covers: the
+   provisioned baseline `relacl`/`nspacl`/RLS-flag state, the comma-list
+   `has_table_privilege` semantics, the PUBLIC-grant path, the runtime role's
+   NOINHERIT/NOSUPERUSER/NOBYPASSRLS/zero-membership attributes, the owner round-trip with and
+   without the re-grant, the reversed restore order, the partial re-grant, and the ACL/flag
+   invariance of the other four breakage cases.
+2. `cd backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py`
+   -> `12 passed in 6.44s`, exit 0. (The single bounded test invocation the charge allows.)
+3. Docker state before and after, via the pinned Homebrew CLI against the Colima socket
+   (`docker ps -a` / `docker volume ls`): before and after are **identical** — one pre-existing
+   out-of-scope container `vigilant_matsumoto` and two pre-existing volumes
+   (`712bec68008e…`, `tradingview-mcp-session`). No prune of any kind was run. No harness
+   container or volume residue.
+4. `git status --porcelain` -> the only in-scope repo path still shows as
+   `M backend/tests/integration/test_tenant_isolation_harness.py` (the implementer's change,
+   untouched by me). The only thing this review added to the tree is this report. No
+   `git add`/`commit`/`push`/`stash`/`reset` was run.
+5. Static reads (not execution, but my own first-hand reading, not the record's summary) of
+   `test_tenant_isolation_harness.py` in full, `tests/harness/tenant_isolation.py`,
+   `tests/integration/conftest.py`, and `test_architecture_gate_rls.py` lines 55-200 / 318-340.
+
+### B. Accepted from previously recorded evidence WITHOUT re-execution
+
+1. `BUG048-REMEDIATION-2026-10-04.md` §5's full-suite order permutations — **204 passed** in
+   default order, Slice-5-first, Slice-5-last, and fully reversed. Not re-run (charge: no
+   full-suite permutations, no `/tmp` full-structure copies).
+2. §5's `ruff check .` clean and `mypy tests/` strict clean (28 files). Not re-run.
+3. §5's governance-check table, including the pre-existing `evidence_integrity_check.py`
+   `CURRENT_HANDOFF.md` staleness artifact. Not re-run.
+4. §3's Drill 1/Drill 2 pytest-level results in the deleted `/tmp` copy. Not re-run — but Drill
+   1's substance (re-grant removed -> the new assertion fails, posture stays silent) was
+   **independently reproduced at the SQL level** this session as mutant M1, so I am not relying
+   on the record for that claim.
+5. §2's `relacl` table. Independently re-measured this session; it matches.
+""")
+
+t = t.replace("""## Q3 — Full-suite order closure
+
+PENDING.
+""", """## Q3 — Full-suite order closure
+
+**Answer: the §4 self-correction is right, and I independently corroborated its mechanism.
+Closure criteria 1-3 are met as literally worded, but criterion 3 is non-probative and
+criterion 2 is weaker than its wording implies — so "genuinely met" applies to 1, and
+"met-but-only-partially-meaningful" applies to 2 and 3.** Criterion 4 is what this review
+addresses.
+
+Per-criterion, against BUG-048's own closure list ("Restore re-grants DML; a post-restore grant
+assertion exists; the full backend suite passes under at least one non-default order … ;
+independent review"):
+
+| # | criterion | status | basis |
+|---|---|---|---|
+| 1 | restore re-grants DML | **MET, verified by me** | Q1; byte-identical `relacl`, correct ordering |
+| 2 | post-restore grant assertion exists | **MET in letter, PARTIAL in strength** | Q2; exists and runs for all 5 cases, kills M1, but survives M2/M4 (R1) |
+| 3 | full suite passes under >=1 non-default order | **MET as worded, NON-PROBATIVE** | accepted from §5 (B.1); §4's own correction |
+| 4 | independent review | **this document** | DC-06 — I did not write the code |
+
+**Is the §4 correction right? Yes.** It claims the order permutations are a no-regression check
+rather than a reproduction, because `test_architecture_gate_rls.py` incidentally repairs the ACL
+before any of its own assertions run. I corroborated that mechanism by static reading rather
+than by re-running the suite:
+
+* `test_p1_canonical_harness_passes` (`test_architecture_gate_rls.py:156`) is the first test
+  collected in that file and needs **no** DML on `harness.access_grant` — it runs the catalog
+  gate via `_gate(admin)` and `_gate(runtime)` and checks `search_path`. A missing runtime DML
+  grant is an *insufficiency*, and that gate hunts *excess* privilege, so it still passes.
+* `test_p2_dml_through_clean_group_role` (line 168) is the first `_broken` user. Its break list
+  contains `REVOKE ALL ON harness.access_grant FROM veyro_runtime` (a no-op if the entry is
+  already gone) and its **restore list contains `_RUNTIME_GRANT`** (line 178); its in-window DML
+  runs through the group role, not the runtime grant. So by the time `_broken`'s own
+  `has_table_privilege` post-condition (line 136) evaluates, the ACL has already been repaired.
+
+That is a complete mechanical explanation for how the pre-fix shape could still yield
+`204 passed` with the Slice-5 file placed first, which is exactly what §4 reports. So the
+honest correction is accurate, and the implementer was right to downgrade their own order
+evidence rather than claim it as a reproduction. Consequence I agree with: **the post-restore
+assertion, not the order permutations, is the regression lock** — which is precisely why R1
+(that lock being ANY-of-four rather than all-four) matters more than it would otherwise.
+
+I did not re-run any permutation, per the charge. My one bounded run (A.2, `12 passed`) confirms
+only that the file passes as committed in its own default intra-file order.
+""")
+
+t = t.replace("""## Findings
+
+PENDING.
+""", """## Findings
+
+### R1 — P2 — `has_table_privilege` with a comma-separated list is ANY, not ALL
+
+`backend/tests/integration/test_tenant_isolation_harness.py:42` (`_RUNTIME_DML`) and
+`:163-168` (the assertion).
+
+Measured this session: with the runtime entry narrowed to `r` (SELECT only),
+`has_table_privilege('veyro_runtime', 'harness.access_grant', 'SELECT, INSERT, UPDATE, DELETE')`
+returns **True** (`[Q2a-only-SELECT-htp(list)] True`, and `htp(INSERT)` False in the same
+state). The assertion therefore proves "at least one of the four", not "all four". Mutant M2
+(partial re-grant) survives it.
+
+Concrete failure scenario: someone later edits `_RUNTIME_GRANT` — narrowing it to
+`GRANT SELECT`, splitting it, or copying it to a new breakage case with a typo in the privilege
+list. The Slice-5 file still reports 12 passed, the posture post-condition stays silent (it is
+ACL-blind, as BUG-048 established), and the next file in collection order that does a runtime
+`INSERT`/`UPDATE`/`DELETE` on `harness.access_grant` fails with `permission denied for table
+access_grant` — BUG-048's exact symptom, re-introduced with its own guard green.
+
+Recommended fix (one statement, same connection, no new dependency):
+
+    assert one_row(admin.execute(
+        "SELECT bool_and(has_table_privilege(%s, 'harness.access_grant', p))"
+        " FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) AS p",
+        (RUNTIME_ROLE,),
+    ))[0] is True, f"runtime role lost part of its DML grant after restoring {name}"
+
+(An equally strong alternative: assert `relacl` contains the literal
+`veyro_runtime=arwd/veyro_schema_owner` entry, which this session measured to be stable and
+byte-identical across the round-trip, and which would also kill M4/R5.)
+
+### R2 — P2 — the durable record overstates the assertion's strength
+
+`knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md` §1.4,
+§3 ("proven load-bearing"), §4 ("the post-restore assertion is the real regression lock"), and
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-…md` lines 47-52 / 80-84.
+
+The record reads as though the post-condition verifies the full DML set; measured, it verifies
+ANY of it (R1). The Drill-1 claim is accurate — M1 is genuinely killed — but "the real
+regression lock" is a partial lock, and a future gatekeeper reading only these files would
+over-trust it. Note that §2's separate "byte-identical ACL entry" claim **is** confirmed by my
+own measurement and needs no correction.
+
+Concrete failure scenario: BUG-048 is closed on the strength of this record, R1's hole is never
+addressed, and a later narrowing edit reopens the defect silently.
+
+Recommended fix: amend the two evidence files to state that the post-condition is an
+ANY-of-four check pending R1, and either adopt R1's `bool_and` form (preferred) or record the
+limitation explicitly as a known residual. This is an orchestrator/owner edit — **I made no
+change to either file**, per my no-edit constraint.
+
+### R3 — P3 — the verification is the last of five assertions, so it is skipped on any earlier failure
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163` (after the asserts at
+:157, :158, :160, :161).
+
+The **repair** is safely in the `finally` block (:152-154) and always runs — that part is
+correct. The **verification** does not run if `probe.failures`, the posture-code check, the
+behavioural-leak check, or the posture-restored check fails first, so a run that fails for an
+unrelated reason yields no ACL evidence at all, which is the exact diagnostic a future BUG-048
+recurrence would need. The sibling `_broken` helper has the same shape, so this is
+idiom-consistent, not novel — hence P3 rather than P2.
+
+Recommended fix: perform the grant verification immediately after the `finally` restore loop
+(before the probe assertions), or move it into a small helper invoked from `finally`, so it is
+unconditional.
+
+### R4 — P3 — catalog-only post-condition; no behavioural proof the runtime connection can do DML
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168`.
+
+The check interrogates `pg_class`-derived privilege state through the `admin` connection. That
+is correctly role-named (so `admin`'s superuser status does not short-circuit it — verified),
+but it never exercises the `runtime` connection. This file already has a stronger instrument on
+hand: `probe_same_tenant(runtime, admin, ACCESS_GRANT, b, access_grant_row(93)).failures == []`
+performs a real same-tenant SELECT, UPDATE and INSERT as the non-privileged role and would kill
+M2 and M4 as well as M1.
+
+Concrete failure scenario: any future ACL mutation that leaves *some* privilege but not the set
+the harness actually needs (R1's class, plus column-level revokes, plus a `REVOKE`-then-
+`GRANT`-wrong-privilege sequence) passes the catalog check and fails later as a permission
+error in another file.
+
+Recommended fix: add (not replace) a behavioural post-condition for the `runtime_owns_table`
+case at minimum, using the existing `probe_same_tenant` helper.
+
+### R5 — P3 — a PUBLIC grant satisfies the assertion with the runtime ACL entry genuinely absent
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168`.
+
+Measured: with the runtime entry removed and `arwd` granted to PUBLIC,
+`has_table_privilege('veyro_runtime', …, list)` returns **True**
+(`[Q2b-PUBLIC-htp(list)-with-runtime-entry-absent] True`). So the check does not pin the
+specific `veyro_runtime=arwd/veyro_schema_owner` entry. Role-inheritance and superuser escape
+routes are **not** live (`[0-ROLE-attrs] (False, False, False, 0)` — NOINHERIT, NOSUPERUSER,
+NOBYPASSRLS, zero memberships), and **no Slice-5 breakage grants anything to PUBLIC** (verified
+across all five cases), so this is not reachable from the file under review. P3 for that reason.
+
+**Adjacent, explicitly OUT of this charge's one-file scope — recommend filing separately:** the
+already-reviewed sibling `backend/tests/integration/test_architecture_gate_rls.py:136` uses the
+identical ANY-semantics idiom in `_broken`, and that file *does* carry PUBLIC-grant breakages on
+the same table (`n16_public_select` :393, `n21_public_truncate` :415, plus the `n29`/`n31b`
+PUBLIC cases), where both R1's and R5's holes are materially more reachable. I did not review
+that file's behaviour and am not asserting a defect in it — only that the same idiom there
+deserves its own bounded look. I made no change to it.
+
+Recommended fix for the reviewed file: adopt R1's `bool_and` form plus an explicit `relacl`
+entry comparison, which closes R5 at the same time.
+""")
+
+t = t.replace("""## Limits
+
+PENDING.
+""", """## Limits — what I did NOT verify, and why
+
+1. **No full-suite run, in any order.** Charged not to (no long permutations, no `/tmp`
+   full-structure copies). The `204 passed` x4 results in `BUG048-REMEDIATION-2026-10-04.md` §5
+   are **accepted from the record**, not re-executed. If those numbers are wrong, this review
+   does not catch it.
+2. **No `ruff` / `mypy` re-run.** Accepted from §5. I did read the new type annotation
+   (`BREAKAGES: list[tuple[str, str, list[str], set[str], bool]]`, :91) and the signature change
+   (`restore_sql: list[str]`, :144) and they are internally consistent with the five tuple
+   literals and the `finally` loop, but I did not re-execute the type checker.
+3. **One bounded test invocation only**, and it was the Slice-5 file in its own default order.
+   I did not run the sibling R04 file, the other integration files, or any cross-file order.
+4. **Mutation was done at the SQL level in a throwaway probe, not by editing the test file.**
+   The hard constraint forbids edits to any implementation or test file, so M1-M4 replicate the
+   committed restore logic in SQL against the real fixture rather than mutating Python. The
+   logic replicated is a two-statement list executed in order, identical to the `finally` loop,
+   so I consider the substitution faithful — but it is a substitution, stated plainly.
+5. **The `elevated_login` bypass-probe role's ACL entry across the owner round-trip was not
+   measured.** Reasoning for why it is immaterial: that fixture (`conftest.py:69-85`) is
+   function-scoped and creates a fresh role plus fresh grants on every use, and the parametrized
+   breakage test is collected before both tests that use it, so no later test depends on a
+   bypass-probe grant surviving a round-trip. Not verified, judged immaterial.
+6. **PostgreSQL version scope.** All measurements are against the harness's pinned
+   `postgres:16-alpine` digest. The ANY-semantics and owner-change ACL-rewrite behaviours are
+   long-standing PostgreSQL semantics, but I verified them only on that pinned image.
+7. **Not assessed, because out of charge:** DOM-002 round 5, SCN-009, SCN-067 promotion,
+   ADR-010 A2, R04, the sibling R04 file's own correctness (beyond the two static structural
+   points Q3 needed), and every other modified/untracked path in the working tree.
+8. **Governance scan performed, nothing found.** No new capability or tool use is introduced by
+   this change (`has_table_privilege` is plain SQL on the already-registered CAP-008 Postgres
+   binding); no paid service, no real member data (`access_grant` fixtures remain synthetic
+   `synthetic-member-NNNN` / `synthetic-zone-N` rows), no Production touch, no material product/
+   pricing/architecture/scope change, no governing-baseline file touched. No
+   owner-reserved-restriction violation and no baseline drift identified.
+""")
+
+t = t.replace("""## Closure
+
+This review does not itself close BUG-048. Closure is the orchestrator's / owner's call.""",
+"""## Closure
+
+**This review does not itself close BUG-048, and does not alter its status.** I made no change
+to `BUG-048-harness-owner-restore-drops-runtime-grant.md`, to
+`BUG048-REMEDIATION-2026-10-04.md`, to `REVIEW_IN_FLIGHT.md`, to `CURRENT_STATE.md`, to
+`CURRENT_HANDOFF.md`, to `BUG_REGISTRY.md`, or to any implementation or test file. No scenario
+was promoted. Closure — and whether R1/R2 must be resolved first or may be carried as recorded
+residuals — is the orchestrator's and ultimately the owner's call, not mine.
+
+My recommendation to whoever makes that call: the fix itself is sound and should not be
+reworked. R1 is a two-line strengthening of an assertion that is already in the right place and
+would take one bounded re-run to verify; resolving R1 and R2 before closure would leave BUG-048
+closed on a regression lock that actually holds for the full privilege set, which is what the
+bug's own closure criteria were reaching for.""")
+
+p.write_text(t)
+print("ok", len(t))
+PYEOF
+wc -l /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (pending)
+  input: python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() t = t.replace("sta...
+
+[tool] python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+
+t = t.replace("status: IN PROGRESS — seeded before any execution, updated incrementally",
+              "status: COMPLETE — PASS-with-findings (P0=0, P1=0, P2=2, P3=3)")
+
+t = t.replace("""## VERDICT
+
+PENDING.
+""", """## VERDICT
+
+**PASS-with-findings.**
+
+| severity | count | findings |
+|---|---|---|
+| **P0** | **0** | — |
+| **P1** | **0** | — |
+| **P2** | **2** | R1 (assertion is ANY/OR, not ALL — partial-grant mutant survives), R2 (durable record overstates the assertion's strength) |
+| **P3** | **3** | R3 (assertion placement), R4 (catalog-only, no behavioural DML post-condition), R5 (PUBLIC-grant path not excluded; adjacent sibling-file exposure) |
+
+The change is correct, is a genuine improvement over the pre-fix shape, repairs the ACL
+byte-identically, and its new post-condition does kill the actual BUG-048 defect. Nothing in it
+is unsafe, nothing regresses, and no owner-reserved restriction, unregistered capability, or
+baseline drift is implicated. It does **not** warrant BLOCKED. The P2 findings are about the
+*strength* of the new regression lock and the *accuracy* of the durable record describing it,
+not about whether the fix works.
+""")
+
+t = t.replace("""## Executed-this-session vs accepted-from-record
+
+PENDING.
+""", """## Executed-this-session vs accepted-from-record
+
+This distinction is deliberate: Q3 was charged as evidence-based, not re-executed.
+
+### A. Observed by execution THIS session (literal command -> literal result)
+
+1. `cd backend && timeout 300 .venv/bin/python /tmp/bug048_review_probe.py`
+   -> the full `[...]` probe output quoted verbatim under Q1 and Q2. This covers: the
+   provisioned baseline `relacl`/`nspacl`/RLS-flag state, the comma-list
+   `has_table_privilege` semantics, the PUBLIC-grant path, the runtime role's
+   NOINHERIT/NOSUPERUSER/NOBYPASSRLS/zero-membership attributes, the owner round-trip with and
+   without the re-grant, the reversed restore order, the partial re-grant, and the ACL/flag
+   invariance of the other four breakage cases.
+2. `cd backend && timeout 480 .venv/bin/python -m pytest -q -p no:randomly tests/integration/test_tenant_isolation_harness.py`
+   -> `12 passed in 6.44s`, exit 0. (The single bounded test invocation the charge allows.)
+3. Docker state before and after, via the pinned Homebrew CLI against the Colima socket
+   (`docker ps -a` / `docker volume ls`): before and after are **identical** — one pre-existing
+   out-of-scope container `vigilant_matsumoto` and two pre-existing volumes
+   (`712bec68008e…`, `tradingview-mcp-session`). No prune of any kind was run. No harness
+   container or volume residue.
+4. `git status --porcelain` -> the only in-scope repo path still shows as
+   `M backend/tests/integration/test_tenant_isolation_harness.py` (the implementer's change,
+   untouched by me). The only thing this review added to the tree is this report. No
+   `git add`/`commit`/`push`/`stash`/`reset` was run.
+5. Static reads (not execution, but my own first-hand reading, not the record's summary) of
+   `test_tenant_isolation_harness.py` in full, `tests/harness/tenant_isolation.py`,
+   `tests/integration/conftest.py`, and `test_architecture_gate_rls.py` lines 55-200 / 318-340.
+
+### B. Accepted from previously recorded evidence WITHOUT re-execution
+
+1. `BUG048-REMEDIATION-2026-10-04.md` §5's full-suite order permutations — **204 passed** in
+   default order, Slice-5-first, Slice-5-last, and fully reversed. Not re-run (charge: no
+   full-suite permutations, no `/tmp` full-structure copies).
+2. §5's `ruff check .` clean and `mypy tests/` strict clean (28 files). Not re-run.
+3. §5's governance-check table, including the pre-existing `evidence_integrity_check.py`
+   `CURRENT_HANDOFF.md` staleness artifact. Not re-run.
+4. §3's Drill 1/Drill 2 pytest-level results in the deleted `/tmp` copy. Not re-run — but Drill
+   1's substance (re-grant removed -> the new assertion fails, posture stays silent) was
+   **independently reproduced at the SQL level** this session as mutant M1, so I am not relying
+   on the record for that claim.
+5. §2's `relacl` table. Independently re-measured this session; it matches.
+""")
+
+t = t.replace("""## Q3 — Full-suite order closure
+
+PENDING.
+""", """## Q3 — Full-suite order closure
+
+**Answer: the §4 self-correction is right, and I independently corroborated its mechanism.
+Closure criteria 1-3 are met as literally worded, but criterion 3 is non-probative and
+criterion 2 is weaker than its wording implies — so "genuinely met" applies to 1, and
+"met-but-only-partially-meaningful" applies to 2 and 3.** Criterion 4 is what this review
+addresses.
+
+Per-criterion, against BUG-048's own closure list ("Restore re-grants DML; a post-restore grant
+assertion exists; the full backend suite passes under at least one non-default order … ;
+independent review"):
+
+| # | criterion | status | basis |
+|---|---|---|---|
+| 1 | restore re-grants DML | **MET, verified by me** | Q1; byte-identical `relacl`, correct ordering |
+| 2 | post-restore grant assertion exists | **MET in letter, PARTIAL in strength** | Q2; exists and runs for all 5 cases, kills M1, but survives M2/M4 (R1) |
+| 3 | full suite passes under >=1 non-default order | **MET as worded, NON-PROBATIVE** | accepted from §5 (B.1); §4's own correction |
+| 4 | independent review | **this document** | DC-06 — I did not write the code |
+
+**Is the §4 correction right? Yes.** It claims the order permutations are a no-regression check
+rather than a reproduction, because `test_architecture_gate_rls.py` incidentally repairs the ACL
+before any of its own assertions run. I corroborated that mechanism by static reading rather
+than by re-running the suite:
+
+* `test_p1_canonical_harness_passes` (`test_architecture_gate_rls.py:156`) is the first test
+  collected in that file and needs **no** DML on `harness.access_grant` — it runs the catalog
+  gate via `_gate(admin)` and `_gate(runtime)` and checks `search_path`. A missing runtime DML
+  grant is an *insufficiency*, and that gate hunts *excess* privilege, so it still passes.
+* `test_p2_dml_through_clean_group_role` (line 168) is the first `_broken` user. Its break list
+  contains `REVOKE ALL ON harness.access_grant FROM veyro_runtime` (a no-op if the entry is
+  already gone) and its **restore list contains `_RUNTIME_GRANT`** (line 178); its in-window DML
+  runs through the group role, not the runtime grant. So by the time `_broken`'s own
+  `has_table_privilege` post-condition (line 136) evaluates, the ACL has already been repaired.
+
+That is a complete mechanical explanation for how the pre-fix shape could still yield
+`204 passed` with the Slice-5 file placed first, which is exactly what §4 reports. So the
+honest correction is accurate, and the implementer was right to downgrade their own order
+evidence rather than claim it as a reproduction. Consequence I agree with: **the post-restore
+assertion, not the order permutations, is the regression lock** — which is precisely why R1
+(that lock being ANY-of-four rather than all-four) matters more than it would otherwise.
+
+I did not re-run any permutation, per the charge. My one bounded run (A.2, `12 passed`) confirms
+only that the file passes as committed in its own default intra-file order.
+""")
+
+t = t.replace("""## Findings
+
+PENDING.
+""", """## Findings
+
+### R1 — P2 — `has_table_privilege` with a comma-separated list is ANY, not ALL
+
+`backend/tests/integration/test_tenant_isolation_harness.py:42` (`_RUNTIME_DML`) and
+`:163-168` (the assertion).
+
+Measured this session: with the runtime entry narrowed to `r` (SELECT only),
+`has_table_privilege('veyro_runtime', 'harness.access_grant', 'SELECT, INSERT, UPDATE, DELETE')`
+returns **True** (`[Q2a-only-SELECT-htp(list)] True`, and `htp(INSERT)` False in the same
+state). The assertion therefore proves "at least one of the four", not "all four". Mutant M2
+(partial re-grant) survives it.
+
+Concrete failure scenario: someone later edits `_RUNTIME_GRANT` — narrowing it to
+`GRANT SELECT`, splitting it, or copying it to a new breakage case with a typo in the privilege
+list. The Slice-5 file still reports 12 passed, the posture post-condition stays silent (it is
+ACL-blind, as BUG-048 established), and the next file in collection order that does a runtime
+`INSERT`/`UPDATE`/`DELETE` on `harness.access_grant` fails with `permission denied for table
+access_grant` — BUG-048's exact symptom, re-introduced with its own guard green.
+
+Recommended fix (one statement, same connection, no new dependency):
+
+    assert one_row(admin.execute(
+        "SELECT bool_and(has_table_privilege(%s, 'harness.access_grant', p))"
+        " FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) AS p",
+        (RUNTIME_ROLE,),
+    ))[0] is True, f"runtime role lost part of its DML grant after restoring {name}"
+
+(An equally strong alternative: assert `relacl` contains the literal
+`veyro_runtime=arwd/veyro_schema_owner` entry, which this session measured to be stable and
+byte-identical across the round-trip, and which would also kill M4/R5.)
+
+### R2 — P2 — the durable record overstates the assertion's strength
+
+`knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-REMEDIATION-2026-10-04.md` §1.4,
+§3 ("proven load-bearing"), §4 ("the post-restore assertion is the real regression lock"), and
+`knowledge/03-Modules/MOD-001/evidence/bugs/BUG-048-…md` lines 47-52 / 80-84.
+
+The record reads as though the post-condition verifies the full DML set; measured, it verifies
+ANY of it (R1). The Drill-1 claim is accurate — M1 is genuinely killed — but "the real
+regression lock" is a partial lock, and a future gatekeeper reading only these files would
+over-trust it. Note that §2's separate "byte-identical ACL entry" claim **is** confirmed by my
+own measurement and needs no correction.
+
+Concrete failure scenario: BUG-048 is closed on the strength of this record, R1's hole is never
+addressed, and a later narrowing edit reopens the defect silently.
+
+Recommended fix: amend the two evidence files to state that the post-condition is an
+ANY-of-four check pending R1, and either adopt R1's `bool_and` form (preferred) or record the
+limitation explicitly as a known residual. This is an orchestrator/owner edit — **I made no
+change to either file**, per my no-edit constraint.
+
+### R3 — P3 — the verification is the last of five assertions, so it is skipped on any earlier failure
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163` (after the asserts at
+:157, :158, :160, :161).
+
+The **repair** is safely in the `finally` block (:152-154) and always runs — that part is
+correct. The **verification** does not run if `probe.failures`, the posture-code check, the
+behavioural-leak check, or the posture-restored check fails first, so a run that fails for an
+unrelated reason yields no ACL evidence at all, which is the exact diagnostic a future BUG-048
+recurrence would need. The sibling `_broken` helper has the same shape, so this is
+idiom-consistent, not novel — hence P3 rather than P2.
+
+Recommended fix: perform the grant verification immediately after the `finally` restore loop
+(before the probe assertions), or move it into a small helper invoked from `finally`, so it is
+unconditional.
+
+### R4 — P3 — catalog-only post-condition; no behavioural proof the runtime connection can do DML
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168`.
+
+The check interrogates `pg_class`-derived privilege state through the `admin` connection. That
+is correctly role-named (so `admin`'s superuser status does not short-circuit it — verified),
+but it never exercises the `runtime` connection. This file already has a stronger instrument on
+hand: `probe_same_tenant(runtime, admin, ACCESS_GRANT, b, access_grant_row(93)).failures == []`
+performs a real same-tenant SELECT, UPDATE and INSERT as the non-privileged role and would kill
+M2 and M4 as well as M1.
+
+Concrete failure scenario: any future ACL mutation that leaves *some* privilege but not the set
+the harness actually needs (R1's class, plus column-level revokes, plus a `REVOKE`-then-
+`GRANT`-wrong-privilege sequence) passes the catalog check and fails later as a permission
+error in another file.
+
+Recommended fix: add (not replace) a behavioural post-condition for the `runtime_owns_table`
+case at minimum, using the existing `probe_same_tenant` helper.
+
+### R5 — P3 — a PUBLIC grant satisfies the assertion with the runtime ACL entry genuinely absent
+
+`backend/tests/integration/test_tenant_isolation_harness.py:163-168`.
+
+Measured: with the runtime entry removed and `arwd` granted to PUBLIC,
+`has_table_privilege('veyro_runtime', …, list)` returns **True**
+(`[Q2b-PUBLIC-htp(list)-with-runtime-entry-absent] True`). So the check does not pin the
+specific `veyro_runtime=arwd/veyro_schema_owner` entry. Role-inheritance and superuser escape
+routes are **not** live (`[0-ROLE-attrs] (False, False, False, 0)` — NOINHERIT, NOSUPERUSER,
+NOBYPASSRLS, zero memberships), and **no Slice-5 breakage grants anything to PUBLIC** (verified
+across all five cases), so this is not reachable from the file under review. P3 for that reason.
+
+**Adjacent, explicitly OUT of this charge's one-file scope — recommend filing separately:** the
+already-reviewed sibling `backend/tests/integration/test_architecture_gate_rls.py:136` uses the
+identical ANY-semantics idiom in `_broken`, and that file *does* carry PUBLIC-grant breakages on
+the same table (`n16_public_select` :393, `n21_public_truncate` :415, plus the `n29`/`n31b`
+PUBLIC cases), where both R1's and R5's holes are materially more reachable. I did not review
+that file's behaviour and am not asserting a defect in it — only that the same idiom there
+deserves its own bounded look. I made no change to it.
+
+Recommended fix for the reviewed file: adopt R1's `bool_and` form plus an explicit `relacl`
+entry comparison, which closes R5 at the same time.
+""")
+
+t = t.replace("""## Limits
+
+PENDING.
+""", """## Limits — what I did NOT verify, and why
+
+1. **No full-suite run, in any order.** Charged not to (no long permutations, no `/tmp`
+   full-structure copies). The `204 passed` x4 results in `BUG048-REMEDIATION-2026-10-04.md` §5
+   are **accepted from the record**, not re-executed. If those numbers are wrong, this review
+   does not catch it.
+2. **No `ruff` / `mypy` re-run.** Accepted from §5. I did read the new type annotation
+   (`BREAKAGES: list[tuple[str, str, list[str], set[str], bool]]`, :91) and the signature change
+   (`restore_sql: list[str]`, :144) and they are internally consistent with the five tuple
+   literals and the `finally` loop, but I did not re-execute the type checker.
+3. **One bounded test invocation only**, and it was the Slice-5 file in its own default order.
+   I did not run the sibling R04 file, the other integration files, or any cross-file order.
+4. **Mutation was done at the SQL level in a throwaway probe, not by editing the test file.**
+   The hard constraint forbids edits to any implementation or test file, so M1-M4 replicate the
+   committed restore logic in SQL against the real fixture rather than mutating Python. The
+   logic replicated is a two-statement list executed in order, identical to the `finally` loop,
+   so I consider the substitution faithful — but it is a substitution, stated plainly.
+5. **The `elevated_login` bypass-probe role's ACL entry across the owner round-trip was not
+   measured.** Reasoning for why it is immaterial: that fixture (`conftest.py:69-85`) is
+   function-scoped and creates a fresh role plus fresh grants on every use, and the parametrized
+   breakage test is collected before both tests that use it, so no later test depends on a
+   bypass-probe grant surviving a round-trip. Not verified, judged immaterial.
+6. **PostgreSQL version scope.** All measurements are against the harness's pinned
+   `postgres:16-alpine` digest. The ANY-semantics and owner-change ACL-rewrite behaviours are
+   long-standing PostgreSQL semantics, but I verified them only on that pinned image.
+7. **Not assessed, because out of charge:** DOM-002 round 5, SCN-009, SCN-067 promotion,
+   ADR-010 A2, R04, the sibling R04 file's own correctness (beyond the two static structural
+   points Q3 needed), and every other modified/untracked path in the working tree.
+8. **Governance scan performed, nothing found.** No new capability or tool use is introduced by
+   this change (`has_table_privilege` is plain SQL on the already-registered CAP-008 Postgres
+   binding); no paid service, no real member data (`access_grant` fixtures remain synthetic
+   `synthetic-member-NNNN` / `synthetic-zone-N` rows), no Production touch, no material product/
+   pricing/architecture/scope change, no governing-baseline file touched. No
+   owner-reserved-restriction violation and no baseline drift identified.
+""")
+
+t = t.replace("""## Closure
+
+This review does not itself close BUG-048. Closure is the orchestrator's / owner's call.""",
+"""## Closure
+
+**This review does not itself close BUG-048, and does not alter its status.** I made no change
+to `BUG-048-harness-owner-restore-drops-runtime-grant.md`, to
+`BUG048-REMEDIATION-2026-10-04.md`, to `REVIEW_IN_FLIGHT.md`, to `CURRENT_STATE.md`, to
+`CURRENT_HANDOFF.md`, to `BUG_REGISTRY.md`, or to any implementation or test file. No scenario
+was promoted. Closure — and whether R1/R2 must be resolved first or may be carried as recorded
+residuals — is the orchestrator's and ultimately the owner's call, not mine.
+
+My recommendation to whoever makes that call: the fix itself is sound and should not be
+reworked. R1 is a two-line strengthening of an assertion that is already in the right place and
+would take one bounded re-run to verify; resolving R1 and R2 before closure would leave BUG-048
+closed on a regression lock that actually holds for the full privilege set, which is what the
+bug's own closure criteria were reaching for.""")
+
+p.write_text(t)
+print("ok", len(t))
+PYEOF
+wc -l /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (completed)
+  kind: execute
+  input: python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() t = t.replace("sta...
+  output:
+    ok 27673
+         428 /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    
+    ```console
+    ok 27673
+         428 /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    ```
+
+[tool] D=knowledge/03-Modules/MOD-001/evidence/code-review && cp /tmp/bug048_review_probe.py $D/bug048_review_probe_round1.py && python3 - $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace("Probe: `/tmp/bug048_review_probe.py` (throwaway, outside the repo;",
+  "Probe: `/tmp/bug048_review_probe.py`, preserved for reproduction as\n"
+  "`knowledge/03-Modules/MOD-001/evidence/code-review/bug048_review_probe_round1.py` (throwaway,\n"
+  "run from outside the repo tree;")
+p.write_text(t)
+print("PENDING left:", t.count("PENDING"))
+PYEOF
+grep -c "PENDING" $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md; ls -la $D (pending)
+  input: D=knowledge/03-Modules/MOD-001/evidence/code-review && cp /tmp/bug048_review_probe.py $D/bug048_review_probe_round1.py && python3 - $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, ...
+
+[tool] D=knowledge/03-Modules/MOD-001/evidence/code-review && cp /tmp/bug048_review_probe.py $D/bug048_review_probe_round1.py && python3 - $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace("Probe: `/tmp/bug048_review_probe.py` (throwaway, outside the repo;",
+  "Probe: `/tmp/bug048_review_probe.py`, preserved for reproduction as\n"
+  "`knowledge/03-Modules/MOD-001/evidence/code-review/bug048_review_probe_round1.py` (throwaway,\n"
+  "run from outside the repo tree;")
+p.write_text(t)
+print("PENDING left:", t.count("PENDING"))
+PYEOF
+grep -c "PENDING" $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md; ls -la $D (completed)
+  kind: execute
+  input: D=knowledge/03-Modules/MOD-001/evidence/code-review && cp /tmp/bug048_review_probe.py $D/bug048_review_probe_round1.py && python3 - $D/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, ...
+  output:
+    PENDING left: 1
+    1
+    total 552
+    drwx------@ 11 ahmadmabrouk  staff    352 Oct  4 13:28 .
+    drwxr-xr-x@ 10 ahmadmabrouk  staff    320 Oct  4 09:59 ..
+    -rw-------@  1 ahmadmabrouk  staff  27932 Oct  4 13:28 BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff   2588 Oct  2 02:29 CAP008-P1-1-colima-binding-code-review-2026-10-02.md
+    -rw-------@  1 ahmadmabrouk  staff  12750 Oct  3 14:10 CR-MOD001-GOV01-R02-DOMAIN-SCAFFOLDS-2026-10-03.md
+    -rw-------@  1 ahmadmabrouk  staff  29686 Oct  4 06:20 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  54409 Oct  4 07:09 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  66335 Oct  4 08:04 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  48843 Oct  4 09:39 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  15553 Oct  4 12:55 SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff   6878 Oct  4 13:28 bug048_review_probe_round1.py
+    
+    ```console
+    PENDING left: 1
+    1
+    total 552
+    drwx------@ 11 ahmadmabrouk  staff    352 Oct  4 13:28 .
+    drwxr-xr-x@ 10 ahmadmabrouk  staff    320 Oct  4 09:59 ..
+    -rw-------@  1 ahmadmabrouk  staff  27932 Oct  4 13:28 BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff   2588 Oct  2 02:29 CAP008-P1-1-colima-binding-code-review-2026-10-02.md
+    -rw-------@  1 ahmadmabrouk  staff  12750 Oct  3 14:10 CR-MOD001-GOV01-R02-DOMAIN-SCAFFOLDS-2026-10-03.md
+    -rw-------@  1 ahmadmabrouk  staff  29686 Oct  4 06:20 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  54409 Oct  4 07:09 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md
+    -rw-------@  1 ahmadmabrouk  staff  66335 Oct  4 08:04 DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md
+    -rw-------@  1 ahmadmabro...
+
+[tool] grep -n "PENDING" knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (pending)
+  input: grep -n "PENDING" knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+
+[tool] grep -n "PENDING" knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (completed)
+  kind: execute
+  input: grep -n "PENDING" knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+  output:
+    35:PENDING — to be filled when Q1/Q2/Q3 complete.
+    
+    ```console
+    35:PENDING — to be filled when Q1/Q2/Q3 complete.
+    ```
+
+[tool] sed -n 28,40p knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (pending)
+  input: sed -n 28,40p knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+
+[tool] sed -n 28,40p knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (completed)
+  kind: execute
+  input: sed -n 28,40p knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+  output:
+    `backend/tests/harness/tenant_isolation.py`,
+    `backend/tests/integration/test_architecture_gate_rls.py` (sibling, already reviewed),
+    `backend/tests/integration/conftest.py`,
+    `knowledge/00-System/DEVELOPMENT_CONSTITUTION.md` DC-06.
+    
+    ## VERDICT
+    
+    PENDING — to be filled when Q1/Q2/Q3 complete.
+    
+    ## Executed-this-session vs accepted-from-record
+    
+    This distinction is deliberate: Q3 was charged as evidence-based, not re-executed.
+    
+    ```console
+    `backend/tests/harness/tenant_isolation.py`,
+    `backend/tests/integration/test_architecture_gate_rls.py` (sibling, already reviewed),
+    `backend/tests/integration/conftest.py`,
+    `knowledge/00-System/DEVELOPMENT_CONSTITUTION.md` DC-06.
+    
+    ## VERDICT
+    
+    PENDING — to be filled when Q1/Q2/Q3 complete.
+    
+    ## Executed-this-session vs accepted-from-record
+    
+    This distinction is deliberate: Q3 was charged as evidence-based, not re-executed.
+    ```
+
+[tool] python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+v = """**PASS-with-findings.**
+
+| severity | count | findings |
+|---|---|---|
+| **P0** | **0** | — |
+| **P1** | **0** | — |
+| **P2** | **2** | R1 (assertion is ANY/OR, not ALL — partial-grant mutant survives), R2 (durable record overstates the assertion's strength) |
+| **P3** | **3** | R3 (assertion placement), R4 (catalog-only, no behavioural DML post-condition), R5 (PUBLIC-grant path not excluded; adjacent sibling-file exposure) |
+
+The change is correct, is a genuine improvement over the pre-fix shape, repairs the ACL
+byte-identically, and its new post-condition does kill the actual BUG-048 defect. Nothing in it
+is unsafe, nothing regresses, and no owner-reserved restriction, unregistered capability, or
+baseline drift is implicated. It does **not** warrant BLOCKED. The P2 findings are about the
+*strength* of the new regression lock and the *accuracy* of the durable record describing it,
+not about whether the fix works."""
+assert "PENDING — to be filled when Q1/Q2/Q3 complete." in t
+t = t.replace("PENDING — to be filled when Q1/Q2/Q3 complete.", v)
+p.write_text(t)
+print("PENDING left:", t.count("PENDING"))
+PYEOF (pending)
+  input: python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() v = """**PASS-with...
+
+[tool] python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+v = """**PASS-with-findings.**
+
+| severity | count | findings |
+|---|---|---|
+| **P0** | **0** | — |
+| **P1** | **0** | — |
+| **P2** | **2** | R1 (assertion is ANY/OR, not ALL — partial-grant mutant survives), R2 (durable record overstates the assertion's strength) |
+| **P3** | **3** | R3 (assertion placement), R4 (catalog-only, no behavioural DML post-condition), R5 (PUBLIC-grant path not excluded; adjacent sibling-file exposure) |
+
+The change is correct, is a genuine improvement over the pre-fix shape, repairs the ACL
+byte-identically, and its new post-condition does kill the actual BUG-048 defect. Nothing in it
+is unsafe, nothing regresses, and no owner-reserved restriction, unregistered capability, or
+baseline drift is implicated. It does **not** warrant BLOCKED. The P2 findings are about the
+*strength* of the new regression lock and the *accuracy* of the durable record describing it,
+not about whether the fix works."""
+assert "PENDING — to be filled when Q1/Q2/Q3 complete." in t
+t = t.replace("PENDING — to be filled when Q1/Q2/Q3 complete.", v)
+p.write_text(t)
+print("PENDING left:", t.count("PENDING"))
+PYEOF (completed)
+  kind: execute
+  input: python3 - knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md << 'PYEOF' import sys, pathlib p = pathlib.Path(sys.argv[1]); t = p.read_text() v = """**PASS-with...
+  output:
+    PENDING left: 0
+    
+    ```console
+    PENDING left: 0
+    ```
+Reviewer returned. Now independently attesting its model routing rather than trusting the self-report.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] T=~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/agent-a9241a738bf72313c.jsonl && wc -l "$T" && cat ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/agent-a9241a738bf72313c.meta.json && echo "=== mr_verify ===" && backend/.venv/bin/python knowledge/05-QA/tools/mr_verify.py "$T" opus veyro-code-reviewer (completed)
+  kind: execute
+  input: T=~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/agent-a9241a738bf72313c.jsonl && wc -l "$T" && cat ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70...
+  output:
+    109 /Users/ahmadmabrouk/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/agent-a9241a738bf72313c.jsonl
+    {"agentType":"veyro-code-reviewer","description":"BUG-048 Slice-5 ACL restore review","toolUseId":"toolu_017fPNBqMnE4HUP7baF2zn3v","spawnDepth":1,"requestShape":"background","requestNonInteractive":true,"model":"opus"}=== mr_verify ===
+    {
+      "verdict": "PASS",
+      "reason": "46 turn(s), 100% consistent, model 'claude-opus-5' matches required tier 'opus'.",
+      "models_observed": [
+        "claude-opus-5"
+      ],
+      "expected_tier": "opus"
+    }
+    
+    ```console
+         109 /Users/ahmadmabrouk/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/15f1ef6e-70a7-42ac-ac7f-b53773013052/subagents/agent-a9241a738bf72313c.jsonl
+    {"agentType":"veyro-code-reviewer","description":"BUG-048 Slice-5 ACL restore review","toolUseId":"toolu_017fPNBqMnE4HUP7baF2zn3v","spawnDepth":1,"requestShape":"background","requestNonInteractive":true,"model":"opus"}=== mr_verify ===
+    {
+      "verdict": "PASS",
+      "reason": "46 turn(s), 100% consistent, model 'claude-opus-5' matches required tier 'opus'.",
+      "models_observed": [
+        "claude-opus-5"
+      ],
+      "expected_tier": "opus"
+    }
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "=== report present ===" && ls -l knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md knowledge/03-Modules/MOD-001/evidence/code-review/bug048_review_probe_round1.py && echo "=== HEAD unchanged ===" && git rev-parse HEAD && echo "=== did reviewer edit any code/test/governance file? ===" && git status --porcelain -- backend/ knowledge/00-System/ knowledge/03-Modules/MOD-001/evidence/bugs/ && echo "=== docker state ===" && docker ps -a --format '{{.Names}}' && docker volume ls --format '{{.Name}}' (completed)
+  kind: execute
+  input: echo "=== report present ===" && ls -l knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md knowledge/03-Modules/MOD-001/evidence/code-review/bug048_review_probe...
+  output:
+    === report present ===
+    -rw-------@ 1 ahmadmabrouk  staff  28817 Oct  4 13:29 knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md
+    -rw-------@ 1 ahmadmabrouk  staff   6878 Oct  4 13:28 knowledge/03-Modules/MOD-001/evidence/code-review/bug048_review_probe_round1.py
+    === HEAD unchanged ===
+    015d7ef3dca4cd42f335226b789b8610fd218c92
+    === did reviewer edit any code/test/governance file? ===
+     M backend/tests/harness/authn.py
+     M backend/tests/harness/postgres.py
+     M backend/tests/integration/test_tenant_isolation_harness.py
+     M backend/tests/unit/test_harness_postgres_fail_closed.py
+     M knowledge/00-System/CAPABILITY_REGISTRY.md
+     M knowledge/00-System/CURRENT_HANDOFF.md
+     M knowledge/00-System/CURRENT_STATE.md
+     M knowledge/00-System/PROJECT_INDEX.md
+     M knowledge/00-System/REVIEW_IN_FLIGHT.md
+     M knowledge/00-System/SESSION_BOOTSTRAP.md
+     M knowledge/00-System/validate_capabilities.py
+     M knowledge/03-Modules/MOD-001/evidence/bugs/BUG-038-docker-postgres-capability-unregistered.md
+    ?? backend/app/modules/_shared/tenant_context.py
+    ?? backend/app/modules/access/
+    ?? backend/app/modules/booking/
+    ?? backend/app/modules/conftest.py
+    ?? backend/app/modules/ledger/
+    ?? backend/app/modules/membership/
+    ?? backend/app/modules/payment/
+    ?? backend/app/modules/pos/
+    ?? backend/migrations/rls-manifest.json
+    ?? backend/tests/contract/_execution_suppression_guard.py
+    ... (75 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "=== reviewed file mtime (dispatch was 10:20Z / 13:20 local) ===" && ls -l --time-style=full-iso backend/tests/integration/test_tenant_isolation_harness.py 2>/dev/null || stat -f '%Sm %N' -t '%Y-%m-%dT%H:%M:%S' backend/tests/integration/test_tenant_isolation_harness.py && echo "=== diff still exactly the BUG-048 fix (line counts) ===" && git diff --stat -- backend/tests/integration/test_tenant_isolation_harness.py && echo "=== REVIEW_IN_FLIGHT untouched by reviewer? ===" && stat -f '%Sm %N' -t '%Y-%m-%dT%H:%M:%S' knowledge/00-System/REVIEW_IN_FLIGHT.md (completed)
+  kind: execute
+  input: echo "=== reviewed file mtime (dispatch was 10:20Z / 13:20 local) ===" && ls -l --time-style=full-iso backend/tests/integration/test_tenant_isolation_harness.py 2>/dev/null || stat -f '%Sm %N' -t '%Y-%m-%dT%H:%M:%S' b...
+  output:
+    === reviewed file mtime (dispatch was 10:20Z / 13:20 local) ===
+    2026-10-04T12:59:46 backend/tests/integration/test_tenant_isolation_harness.py
+    === diff still exactly the BUG-048 fix (line counts) ===
+     .../integration/test_tenant_isolation_harness.py   | 39 +++++++++++++++-------
+     1 file changed, 27 insertions(+), 12 deletions(-)
+    === REVIEW_IN_FLIGHT untouched by reviewer? ===
+    2026-10-04T13:20:14 knowledge/00-System/REVIEW_IN_FLIGHT.md
+    
+    ```console
+    === reviewed file mtime (dispatch was 10:20Z / 13:20 local) ===
+    2026-10-04T12:59:46 backend/tests/integration/test_tenant_isolation_harness.py
+    === diff still exactly the BUG-048 fix (line counts) ===
+     .../integration/test_tenant_isolation_harness.py   | 39 +++++++++++++++-------
+     1 file changed, 27 insertions(+), 12 deletions(-)
+    === REVIEW_IN_FLIGHT untouched by reviewer? ===
+    2026-10-04T13:20:14 knowledge/00-System/REVIEW_IN_FLIGHT.md
+    ```
+Reviewer edited nothing (reviewed file mtime 12:59:46 predates the 13:20:14 dispatch; HEAD unchanged; Docker state matches). Now checking the report's required sections.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -n "^#\|^##\|^VERDICT\|P0=\|P1=\|P2=\|P3=\|^| " knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md | head -70 (completed)
+  kind: execute
+  input: grep -n "^#\|^##\|^VERDICT\|P0=\|P1=\|P2=\|P3=\|^| " knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md | head -70
+  output:
+    12:status: COMPLETE — PASS-with-findings (P0=0, P1=0, P2=2, P3=3)
+    17:# BUG-048 Slice-5 ACL-restore fix — independent code review, round 1
+    19:## Scope
+    33:## VERDICT
+    37:| severity | count | findings |
+    39:| **P0** | **0** | — |
+    40:| **P1** | **0** | — |
+    41:| **P2** | **2** | R1 (assertion is ANY/OR, not ALL — partial-grant mutant survives), R2 (durable record overstates the assertion's strength) |
+    42:| **P3** | **3** | R3 (assertion placement), R4 (catalog-only, no behavioural DML post-condition), R5 (PUBLIC-grant path not excluded; adjacent sibling-file exposure) |
+    51:## Executed-this-session vs accepted-from-record
+    55:### A. Observed by execution THIS session (literal command -> literal result)
+    79:### B. Accepted from previously recorded evidence WITHOUT re-execution
+    93:## Q1 — Does the owner round-trip actually restore `veyro_runtime` DML?
+    172:## Q2 — Is the new post-condition load-bearing, or vacuous?
+    225:### Mutants run this session (explicit kill/survive table)
+    230:| mutant | what was changed | assertion result | verdict |
+    232:| **M1** — `_RUNTIME_GRANT` removed from the restore list (pre-fix shape) | `OWNER TO owner` only | `has_table_privilege(...) is True` -> **False** | **KILLED** |
+    233:| **M2** — `_RUNTIME_GRANT` narrowed to `GRANT SELECT` | partial re-grant | assertion -> **True** (passes) | **SURVIVED** |
+    234:| **M3** — restore order reversed (`GRANT` before `OWNER TO`) | ordering | assertion -> **False** | **KILLED** |
+    235:| **M4** — runtime entry absent but PUBLIC holds `arwd` | ACL entry genuinely gone | assertion -> **True** (passes) | **SURVIVED** (not reachable from the current breakage set) |
+    242:## Q3 — Full-suite order closure
+    254:| # | criterion | status | basis |
+    256:| 1 | restore re-grants DML | **MET, verified by me** | Q1; byte-identical `relacl`, correct ordering |
+    257:| 2 | post-restore grant assertion exists | **MET in letter, PARTIAL in strength** | Q2; exists and runs for all 5 cases, kills M1, but survives M2/M4 (R1) |
+    258:| 3 | full...
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md (396 - 445) (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md","offset":396,"limit":50}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md:396
+  output:
+    396	## Limits — what I did NOT verify, and why
+    397	
+    398	1. **No full-suite run, in any order.** Charged not to (no long permutations, no `/tmp`
+    399	   full-structure copies). The `204 passed` x4 results in `BUG048-REMEDIATION-2026-10-04.md` §5
+    400	   are **accepted from the record**, not re-executed. If those numbers are wrong, this review
+    401	   does not catch it.
+    402	2. **No `ruff` / `mypy` re-run.** Accepted from §5. I did read the new type annotation
+    403	   (`BREAKAGES: list[tuple[str, str, list[str], set[str], bool]]`, :91) and the signature change
+    404	   (`restore_sql: list[str]`, :144) and they are internally consistent with the five tuple
+    405	   literals and the `finally` loop, but I did not re-execute the type checker.
+    406	3. **One bounded test invocation only**, and it was the Slice-5 file in its own default order.
+    407	   I did not run the sibling R04 file, the other integration files, or any cross-file order.
+    408	4. **Mutation was done at the SQL level in a throwaway probe, not by editing the test file.**
+    409	   The hard constraint forbids edits to any implementation or test file, so M1-M4 replicate the
+    410	   committed restore logic in SQL against the real fixture rather than mutating Python. The
+    411	   logic replicated is a two-statement list executed in order, identical to the `finally` loop,
+    412	   so I consider the substitution faithful — but it is a substitution, stated plainly.
+    413	5. **The `elevated_login` bypass-probe role's ACL entry across the owner round-trip was not
+    414	   measured.** Reasoning for why it is immaterial: that fixture (`conftest.py:69-85`) is
+    415	   function-scoped and creates a fresh role plus fresh grants on every use, and the parametrized
+    416	   breakage test is collected before both tests that use it, so no later test depends on a
+    417	   bypass-probe grant surviving a round-trip. Not verified, judged immaterial.
+    418	6. **PostgreSQL version scope.** All measurements are against the harness's pinned
+    419	   `postgres:16-alp...
+All constraints honored and the report is complete. Clearing the `IN_FLIGHT` claim, which that claim itself instructs the dispatching session to do once the result is recorded.
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read knowledge/00-System/REVIEW_IN_FLIGHT.md (4 - 6) (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md","offset":4,"limit":3}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md:4
+  output:
+    4	current_claim: IN_FLIGHT — BUG-048 independent code review round 1 recovery, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T10:20:14.933383+00:00. Expected subagent: fresh Opus via ACPX. Clear only after result recorded.
+    5	prior_claim: CLEAR — BUG-048 round-1 attempt interrupted without verdict, reconciled 2026-10-04T10:19:45.195270+00:00; no live Veyro ACPX/Claude reviewer or pytest process, transcript 3ae687f2-4ec8-4329-a048-cec0a3a7dd87 stopped at 2026-10-04T10:13:48Z during a test call, and no report exists. No completed review counted. DOM-002 round 5 remains interrupted/non-resumable.
+    6
+    
+    ```
+    4	current_claim: IN_FLIGHT — BUG-048 independent code review round 1 recovery, claimed by watchdog 66643874-e295-4d53-a846-ee79cb6c3a44, dispatched 2026-10-04T10:20:14.933383+00:00. Expected subagent: fresh Opus via ACPX. Clear only after result recorded.
+    5	prior_claim: CLEAR — BUG-048 round-1 attempt interrupted without verdict, reconciled 2026-10-04T10:19:45.195270+00:00; no live Veyro ACPX/Claude reviewer or pytest process, transcript 3ae687f2-4ec8-4329-a048-cec0a3a7dd87 stopped at 2026-10-04T10:13:48Z during a test call, and no report exists. No completed review counted. DOM-002 round 5 remains interrupted/non-resumable.
+    ```
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit knowledge/00-System/REVIEW_IN_FLIGHT.md (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md","old_string":"current_claim: IN_FLIGHT — BUG-048 independent code review round 1 recovery, claimed by watchd...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md:1
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/REVIEW_IN_FLIGHT.md (+1 lines)
+**Verdict: PASS-with-findings — P0=0, P1=0, P2=2, P3=3**
+
+Report: `knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md` (plus a reproducible probe at `bug048_review_probe_round1.py` in the same directory)
+
+**Model/session proof.** Fresh-context `veyro-code-reviewer`, Opus tier per DC-06 routing. I did not accept its self-report — I re-ran `mr_verify.py` against the reviewer's own transcript (`agent-a9241a738bf72313c.jsonl`, 109 lines): **PASS, 46/46 turns, 100% consistent `claude-opus-5`**, matching required tier `opus`; agent meta confirms `agentType: veyro-code-reviewer`. Orchestrator session is `claude-opus-5[1m]` (self-reported from its environment banner, no transcript attestation). `git rev-parse HEAD` = `015d7ef`, unchanged throughout.
+
+**The three questions.**
+
+Q1 — the restore is correct, verified by execution against the real pinned fixture rather than taken from the record. The re-granted ACL entry is byte-identical to what `create_tenant_table` provisions (`veyro_runtime=arwd/veyro_schema_owner`, same array position), because PostgreSQL attributes a superuser `GRANT` to the object owner. The statement ordering is not just correct but load-bearing: reversed, the runtime entry is gone again. None of the other four breakages touch the ACL, and schema ACL, RLS flags, policy, and `tenant_id NOT NULL` all survive the owner round-trip — so the deliberate omission of a `has_schema_privilege` assertion is genuinely safe here, independently confirmed rather than assumed.
+
+Q2 — the post-condition is only **partially** load-bearing, and this is the round's real finding. Measured, not recalled: `has_table_privilege` with a comma-separated privilege list is **ANY/OR, not ALL**. So the committed assertion still passes when only `SELECT` is re-granted. Mutants: M1 (re-grant removed, pre-fix shape) **killed**; M3 (order reversed) **killed**; M2 (narrowed to `GRANT SELECT`) **survived**; M4 (runtime entry absent, PUBLIC holds `arwd`) **survived** — M4 not reachable from the Slice-5 breakage set, and inheritance/superuser paths are dead since `veyro_runtime` is `NOINHERIT` with zero memberships. Mutation was done at SQL level in a throwaway probe, never by editing a repo file.
+
+Q3 — the remediation's §4 self-correction is right, corroborated statically rather than by re-running anything: `test_p1_canonical_harness_passes` needs no DML on `access_grant`, and `test_p2_dml_through_clean_group_role` carries `_RUNTIME_GRANT` in its own restore list, repairing the ACL before `_broken`'s check ever evaluates. Closure criteria: 1 met and verified; 2 met in letter but partial in strength; 3 met as worded but non-probative; 4 is this document.
+
+**Executed here vs accepted from record** — the report draws this line explicitly. Executed this session: the ACL/ordering probes, M1–M4, and one bounded run of the Slice-5 file (`12 passed in 6.44s`). Accepted without re-execution: the four `204 passed` order permutations and the `ruff`/`mypy` results from the remediation record.
+
+**Findings.** R1 (P2) ANY-vs-ALL semantics — fix is a `bool_and` over `unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE'])`. R2 (P2) the remediation record and BUG-048's own closure criteria read as all-four and should be amended. R3 (P3) the check is the fifth of five assertions so it is skipped on an earlier failure, though the repair itself is safely in `finally`. R4 (P3) catalog-only, no behavioural DML post-condition. R5 (P3) the PUBLIC path, with an out-of-scope note that the identical idiom in `test_architecture_gate_rls.py` sits in a file that *does* have PUBLIC-grant breakages on the same table and deserves its own bounded look.
+
+**Scope honored.** No implementation or test file edited (reviewed file's mtime 12:59:46 predates the 13:20:14 dispatch), nothing committed or pushed, BUG-048 **not closed** and its status untouched, no scenario promoted, and no touch of DOM-002 round 5, SCN-009, SCN-067, ADR-010 A2, or R04. Docker state identical before and after (`vigilant_matsumoto` plus the two pre-existing volumes), no prune.
+
+One governance action I did take, since the claim itself directed the dispatching session to: I cleared `REVIEW_IN_FLIGHT.md` from `IN_FLIGHT` to `CLEAR` with the verdict, counts, report path, and attestation, and noted there that `CURRENT_STATE.md`/`CURRENT_HANDOFF.md` were deliberately left unwritten by this review-only step — so a following session still owes that record. The reviewer's recommendation, which I'd echo: resolve R1 and R2 before closure, since both are small and would leave BUG-048 closed on a regression lock that actually holds for the full privilege set.
+
+[done] end_turn
+
+[stderr]

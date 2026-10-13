@@ -1,0 +1,203 @@
+# GOV-01-R04 R1 remediation raw execution — 2026-10-02 (veyro-critical-engineer, claude-opus-5-5, direct implementation)
+# HEAD e516bedabf3d654ad3ae16d948b8f3522739ddc2 (uncommitted worktree); engine: colima 29.5.2 Ubuntu 24.04.4 LTS
+# sha256:
+64220dcc6e3ee5795e495d710f842f1347cdde40bd9ae0b11efcf2099064f255  tools/validate_architecture_gates.py
+024614fcc3cdc4cba9a459ab083b149c80edc5b943dd05767b3ab4b301551fa3  tools/tests/test_validate_architecture_gates.py
+09d28299ec640eb2dbd9511e347e1b91f7ec2dbff57579c29e997c1220fd6f3f  backend/tests/integration/test_architecture_gate_rls.py
+a8b733852c34ea99737c01adcb02806064f31aa5aa44464f3dcc37ff18a25c90  knowledge/03-Modules/MOD-001/evidence/implementation/r04_gate_mutation_killcheck.py
+
+## 1. Integration (approved Colima): pytest -rP -v tests/integration/test_architecture_gate_rls.py
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+configfile: pyproject.toml
+collecting ... collected 24 items
+
+tests/integration/test_architecture_gate_rls.py::test_scn004_compliant_access_grant_passes PASSED [  4%]
+tests/integration/test_architecture_gate_rls.py::test_scn067_gate_catches_rls_disabled_on_access_grant PASSED [  8%]
+tests/integration/test_architecture_gate_rls.py::test_scn067_gate_catches_permissive_policy_leak PASSED [ 12%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_runtime_truncate_and_truncate_really_leaks PASSED [ 16%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_truncate_reachable_by_set_role PASSED [ 20%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_forbidden_runtime_privileges[public_truncate] PASSED [ 25%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_forbidden_runtime_privileges[trigger] PASSED [ 29%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_forbidden_runtime_privileges[references_table] PASSED [ 33%]
+tests/integration/test_architecture_gate_rls.py::test_r1_p1a_gate_rejects_forbidden_runtime_privileges[references_column] PASSED [ 37%]
+tests/integration/test_architecture_gate_rls.py::test_r1_gate_rejects_tautological_policy_that_really_leaks[is_not_null] PASSED [ 41%]
+tests/integration/test_architecture_gate_rls.py::test_r1_gate_rejects_tautological_policy_that_really_leaks[self_equal] PASSED [ 45%]
+tests/integration/test_architecture_gate_rls.py::test_r1_gate_rejects_tautological_policy_that_really_leaks[or_true] PASSED [ 50%]
+tests/integration/test_architecture_gate_rls.py::test_r1_gate_rejects_tautological_policy_that_really_leaks[literal_check] PASSED [ 54%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[rls_not_forced] PASSED [ 58%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[policy_dropped] PASSED [ 62%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[tenant_id_nullable] PASSED [ 66%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[runtime_owns_table] PASSED [ 70%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[runtime_bypassrls] PASSED [ 75%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[runtime_member_of_owner] PASSED [ 79%]
+tests/integration/test_architecture_gate_rls.py::test_scn005_gate_denies_each_broken_fixture[runtime_member_of_bypassrls_role] PASSED [ 83%]
+tests/integration/test_architecture_gate_rls.py::test_gate_scans_every_table_and_refuses_unclassified PASSED [ 87%]
+tests/integration/test_architecture_gate_rls.py::test_gate_cli_exemption_only_via_committed_manifest PASSED [ 91%]
+tests/integration/test_architecture_gate_rls.py::test_gate_input_failures_never_pass PASSED [ 95%]
+tests/integration/test_architecture_gate_rls.py::test_gate_cli_end_to_end_as_runtime_role PASSED [100%]
+
+==================================== PASSES ====================================
+__________________ test_scn004_compliant_access_grant_passes ___________________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-004-GATE-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "PASS", "violations": []}
+____________ test_scn067_gate_catches_rls_disabled_on_access_grant _____________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-067-GATE-NEGATIVE-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "ENABLE ROW LEVEL SECURITY missing", "subject": "harness.access_grant"}]}
+SCN-MOD001-067-RUNTIME-LEAK-EVIDENCE {"deleted_other_rows": 6, "failures": ["POSTURE:RLS_NOT_ENABLED", "CROSS_TENANT_READ:3", "CROSS_TENANT_UPDATE:3", "CROSS_TENANT_INSERT:ALLOWED rowcount=1", "CROSS_TENANT_REASSIGN:ALLOWED rowcount=2", "CROSS_TENANT_DELETE:6", "OTHER_TENANT_ROWS_CHANGED"], "insert_as_other": "ALLOWED rowcount=1", "other_fingerprint_after": "d41d8cd98f00b204e9800998ecf8427e", "other_fingerprint_before": "2dc1fa96b3ef7ff08d102c0e66620114", "other_rows_after": 0, "other_rows_before": 3, "other_tenant": "8e2cafa1-7d20-4e0a-b7c0-cf73414b0665", "own_rows_before": 2, "own_tenant": "96fcd89b-1c8d-4b40-9203-88d5bb44fd3b", "posture_violations": ["RLS_NOT_ENABLED"], "reassign_own_to_other": "ALLOWED rowcount=2", "role": "veyro_runtime", "table": "harness.access_grant", "updated_other_rows": 3, "visible_other_rows": 3}
+_______________ test_scn067_gate_catches_permissive_policy_leak ________________
+----------------------------- Captured stdout call -----------------------------
+RLS-GATE-NEGATIVE[permissive_policy]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' USING true is not the canonical tenant predicate", "subject": "harness.access_grant"}, {"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' WITH CHECK true is not the canonical tenant predicate", "subject": "harness.access_grant"}]}
+_____ test_r1_p1a_gate_rejects_runtime_truncate_and_truncate_really_leaks ______
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[truncate]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:TRUNCATE", "subject": "veyro_runtime/harness.access_grant"}]}
+R1-P1A-RUNTIME-TRUNCATE-EVIDENCE {"other_tenant_rows_after": 0, "other_tenant_rows_before": 3}
+___________ test_r1_p1a_gate_rejects_truncate_reachable_by_set_role ____________
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[truncate_via_set_role]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:TRUNCATE", "subject": "veyro_runtime/harness.access_grant"}]}
+____ test_r1_p1a_gate_rejects_forbidden_runtime_privileges[public_truncate] ____
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[public_truncate]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:TRUNCATE", "subject": "veyro_runtime/harness.access_grant"}]}
+________ test_r1_p1a_gate_rejects_forbidden_runtime_privileges[trigger] ________
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[trigger]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:TRIGGER", "subject": "veyro_runtime/harness.access_grant"}]}
+___ test_r1_p1a_gate_rejects_forbidden_runtime_privileges[references_table] ____
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[references_table]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:REFERENCES", "subject": "veyro_runtime/harness.access_grant"}]}
+___ test_r1_p1a_gate_rejects_forbidden_runtime_privileges[references_column] ___
+----------------------------- Captured stdout call -----------------------------
+R1-P1A-GATE[references_column]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "TABLE_PRIVILEGE:REFERENCES", "subject": "veyro_runtime/harness.access_grant"}]}
+___ test_r1_gate_rejects_tautological_policy_that_really_leaks[is_not_null] ____
+----------------------------- Captured stdout call -----------------------------
+R1-TAUTOLOGY[is_not_null]-EVIDENCE {"gate": {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' USING (tenant_id IS NOT NULL) is not the canonical tenant predicate", "subject": "harness.access_grant"}, {"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' WITH CHECK (tenant_id IS NOT NULL) is not the canonical tenant predicate", "subject": "harness.access_grant"}]}, "leak": ["CROSS_TENANT_READ:3", "CROSS_TENANT_UPDATE:3", "CROSS_TENANT_INSERT:ALLOWED rowcount=1", "CROSS_TENANT_REASSIGN:ALLOWED rowcount=2", "CROSS_TENANT_DELETE:6", "OTHER_TENANT_ROWS_CHANGED"]}
+____ test_r1_gate_rejects_tautological_policy_that_really_leaks[self_equal] ____
+----------------------------- Captured stdout call -----------------------------
+R1-TAUTOLOGY[self_equal]-EVIDENCE {"gate": {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' USING (tenant_id = tenant_id) is not the canonical tenant predicate", "subject": "harness.access_grant"}, {"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' WITH CHECK (tenant_id = tenant_id) is not the canonical tenant predicate", "subject": "harness.access_grant"}]}, "leak": ["CROSS_TENANT_READ:3", "CROSS_TENANT_UPDATE:3", "CROSS_TENANT_INSERT:ALLOWED rowcount=1", "CROSS_TENANT_REASSIGN:ALLOWED rowcount=2", "CROSS_TENANT_DELETE:6", "OTHER_TENANT_ROWS_CHANGED"]}
+_____ test_r1_gate_rejects_tautological_policy_that_really_leaks[or_true] ______
+----------------------------- Captured stdout call -----------------------------
+R1-TAUTOLOGY[or_true]-EVIDENCE {"gate": {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' USING ((tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid) OR true) is not the canonical tenant predicate", "subject": "harness.access_grant"}, {"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' WITH CHECK ((tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid) OR true) is not the canonical tenant predicate", "subject": "harness.access_grant"}]}, "leak": ["CROSS_TENANT_READ:3", "CROSS_TENANT_UPDATE:3", "CROSS_TENANT_INSERT:ALLOWED rowcount=1", "CROSS_TENANT_REASSIGN:ALLOWED rowcount=2", "CROSS_TENANT_DELETE:6", "OTHER_TENANT_ROWS_CHANGED"]}
+__ test_r1_gate_rejects_tautological_policy_that_really_leaks[literal_check] ___
+----------------------------- Captured stdout call -----------------------------
+R1-TAUTOLOGY[literal_check]-EVIDENCE {"gate": {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "policy 'tenant_isolation' WITH CHECK ('tenant_id' IS NOT NULL) is not the canonical tenant predicate", "subject": "harness.access_grant"}]}, "leak": ["CROSS_TENANT_INSERT:ALLOWED rowcount=1", "OTHER_TENANT_ROWS_CHANGED"]}
+_________ test_scn005_gate_denies_each_broken_fixture[rls_not_forced] __________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[rls_not_forced]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "FORCE ROW LEVEL SECURITY missing", "subject": "harness.access_grant"}]}
+_________ test_scn005_gate_denies_each_broken_fixture[policy_dropped] __________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[policy_dropped]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_NOT_ENFORCED", "detail": "no RLS policy defined", "subject": "harness.access_grant"}]}
+_______ test_scn005_gate_denies_each_broken_fixture[tenant_id_nullable] ________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[tenant_id_nullable]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_TENANT_ID_NULLABLE", "detail": "tenant_id is nullable", "subject": "harness.access_grant.tenant_id"}]}
+_______ test_scn005_gate_denies_each_broken_fixture[runtime_owns_table] ________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[runtime_owns_table]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "OWNS_TABLE, TABLE_PRIVILEGE:REFERENCES, TABLE_PRIVILEGE:TRIGGER, TABLE_PRIVILEGE:TRUNCATE", "subject": "veyro_runtime/harness.access_grant"}]}
+________ test_scn005_gate_denies_each_broken_fixture[runtime_bypassrls] ________
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[runtime_bypassrls]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "BYPASSRLS", "subject": "veyro_runtime/harness.access_grant"}]}
+_____ test_scn005_gate_denies_each_broken_fixture[runtime_member_of_owner] _____
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[runtime_member_of_owner]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "MEMBER_OF_OWNER:veyro_schema_owner, TABLE_PRIVILEGE:REFERENCES, TABLE_PRIVILEGE:TRIGGER, TABLE_PRIVILEGE:TRUNCATE", "subject": "veyro_runtime/harness.access_grant"}]}
+_ test_scn005_gate_denies_each_broken_fixture[runtime_member_of_bypassrls_role] _
+----------------------------- Captured stdout call -----------------------------
+SCN-MOD001-005-GATE-NEGATIVE[runtime_member_of_bypassrls_role]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_ELEVATED", "detail": "MEMBER_OF_PRIVILEGED_ROLE:veyro_gate_bypass_group", "subject": "veyro_runtime/harness.access_grant"}]}
+_____________ test_gate_scans_every_table_and_refuses_unclassified _____________
+----------------------------- Captured stdout call -----------------------------
+RLS-GATE-NEGATIVE[unclassified]-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_TABLE_UNCLASSIFIED", "detail": "no tenant_id column and not declared non-tenant", "subject": "harness.gate_probe_lookup"}]}
+RLS-GATE-FULL-CATALOG-EVIDENCE {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_TABLE_UNCLASSIFIED", "detail": "no tenant_id column and not declared non-tenant", "subject": "harness_auth.audit_event"}, {"code": "RLS_TABLE_UNCLASSIFIED", "detail": "no tenant_id column and not declared non-tenant", "subject": "harness_auth.identity"}, {"code": "RLS_TABLE_UNCLASSIFIED", "detail": "no tenant_id column and not declared non-tenant", "subject": "harness_auth.session"}]}
+_____________________ test_gate_input_failures_never_pass ______________________
+----------------------------- Captured stdout call -----------------------------
+RLS-GATE-INPUT-FAILURES-EVIDENCE [{"checked": [], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "INCONCLUSIVE", "violations": [{"code": "RLS_GATE_VACUOUS", "detail": "no tenant table in scope; an empty scan proves nothing", "subject": "-"}]}, {"checked": [], "gate": "rls", "notes": [], "status": "ERROR", "violations": [{"code": "RLS_GATE_INPUT_INVALID", "detail": "requested schema(s) do not exist; a typo must not shrink the scan to nothing", "subject": "harnes"}]}, {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime_missing"], "status": "FAIL", "violations": [{"code": "RLS_RUNTIME_ROLE_MISSING", "detail": "runtime role not found; nothing can be proven about it", "subject": "veyro_runtime_missing"}]}, {"checked": ["harness.access_grant"], "gate": "rls", "notes": ["runtime role: veyro_runtime"], "status": "FAIL", "violations": [{"code": "RLS_REQUIRED_TABLE_MISSING", "detail": "required tenant table not found", "subject": "harness.member_note"}]}]
+___________________ test_gate_cli_end_to_end_as_runtime_role ___________________
+----------------------------- Captured stdout call -----------------------------
+RLS-GATE-CLI-EVIDENCE {"bad": [1, "{\n  \"checked\": [\n    \"harness.access_grant\"\n  ],\n  \"gate\": \"rls\",\n  \"notes\": [\n    \"runtime role: veyro_runtime\"\n  ],\n  \"status\": \"FAIL\",\n  \"violations\": [\n    {\n      \"code\": \"RLS_NOT_ENFORCED\",\n      \"detail\": \"ENABLE ROW LEVEL SECURITY missing\",\n      \"subject\": \"harness.access_grant\"\n    }\n  ]\n}\n"], "ok": [0, "{\n  \"checked\": [\n    \"harness.access_grant\"\n  ],\n  \"gate\": \"rls\",\n  \"notes\": [\n    \"runtime role: veyro_runtime\"\n  ],\n  \"status\": \"PASS\",\n  \"violations\": []\n}\n"]}
+============================== 24 passed in 2.75s ==============================
+EXIT=0
+
+## 2. Unit: tools/tests/test_validate_architecture_gates.py
+ok  test_deferred_gates_never_pass
+ok  test_permission_cli_exit_codes
+ok  test_permission_each_missing_field_fails
+ok  test_permission_empty_contract_is_inconclusive_not_pass
+ok  test_permission_every_http_method_is_checked
+ok  test_permission_invalid_registry_is_error
+ok  test_permission_malformed_resource_fails
+ok  test_permission_missing_declaration_fails_citing_endpoint
+ok  test_permission_missing_inputs_are_error
+ok  test_permission_non_string_values_fail
+ok  test_permission_only_openapi_30_31_supported
+ok  test_permission_operations_outside_scan_are_errors
+ok  test_permission_path_level_declaration_does_not_cover_operations
+ok  test_permission_registry_type_confusion_is_structured_error
+ok  test_permission_scope_not_registered_for_permission_fails
+ok  test_permission_scope_outside_grammar_fails
+ok  test_permission_strict_json_inputs
+ok  test_permission_trailing_newline_identifiers_rejected
+ok  test_permission_undeclared_extra_key_fails
+ok  test_permission_unregistered_name_fails
+ok  test_permission_unsupported_or_unreadable_input_is_error
+ok  test_permission_valid_contract_passes
+ok  test_rls_cli_manifest_errors_before_connecting
+ok  test_rls_cli_without_dsn_is_error
+ok  test_rls_compliant_table_passes
+ok  test_rls_disabled_fails
+ok  test_rls_empty_scope_is_inconclusive_not_pass
+ok  test_rls_exemption_manifest_validation
+ok  test_rls_forbidden_runtime_privileges_fail
+ok  test_rls_insert_policy_without_tenant_check_fails
+ok  test_rls_missing_runtime_role_fails
+ok  test_rls_missing_schema_is_error
+ok  test_rls_no_policy_fails
+ok  test_rls_not_forced_fails
+ok  test_rls_nullable_tenant_id_fails
+ok  test_rls_one_broken_table_among_good_ones_is_named
+ok  test_rls_permissive_untenanted_policy_fails
+ok  test_rls_required_table_rules
+ok  test_rls_restrictive_or_unreachable_policies_are_not_widening
+ok  test_rls_runtime_member_of_owner_fails
+ok  test_rls_runtime_owner_fails
+ok  test_rls_runtime_role_attributes_fail
+ok  test_rls_string_literal_in_using_fails
+ok  test_rls_string_literal_only_in_with_check_fails
+ok  test_rls_tautological_policies_fail
+ok  test_rls_unclassified_and_exemption_rules
+PASS — all 46 tests passed.
+EXIT=0
+
+## 3. Full backend suite
+75 passed in 10.26s
+
+## 4. Mutation kill-check (21 mutations; M13-M21 target R1 findings)
+M01 ENABLE check removed: KILLED by unit+integration
+M02 FORCE check removed: KILLED by unit+integration
+M03 nullable tenant_id ignored: KILLED by unit+integration
+M04 policy scoping ignored: KILLED by unit+integration
+M05 no-policy accepted: KILLED by unit+integration
+M06 owner-membership ignored: KILLED by unit+integration
+M07 BYPASSRLS attribute ignored: KILLED by unit+integration
+M08 unclassified tables skipped: KILLED by unit+integration
+M09 vacuous RLS scan passes: KILLED by unit+integration
+M10 permission registry check skipped: KILLED by unit
+M11 missing declaration accepted: KILLED by unit
+M13 runtime table privileges ignored (R1 P1-A): KILLED by unit+integration
+M14 privilege check skips memberships (R1 P1-A): KILLED by integration
+M15 tautology accepted: tenant_id mention suffices: KILLED by unit
+M16 WITH CHECK not judged: KILLED by unit+integration
+M17 unknown path-item keys ignored (R1 P1-B): KILLED by unit
+M18 any 3.x version accepted (R1 P1-B): KILLED by unit
+M19 duplicate JSON keys last-wins: KILLED by unit
+M20 bool registry version accepted: KILLED by unit
+M21 match instead of fullmatch: KILLED by unit
+M12 deferred gate reports PASS: KILLED by unit
+restored sha256=64220dcc6e3ee5795e495d710f842f1347cdde40bd9ae0b11efcf2099064f255
+21/21 mutations killed; survivors=[]
+EXIT=0
+
+## 5. Real-repo invocations
+[permission] ERROR — checked 0 subject(s)
+  PERMISSION_GATE_INPUT_INVALID: - — permission registry /Users/ahmadmabrouk/Desktop/Veyro/contracts/permissions/registry.json not found
+EXIT=2
+[module-deps] ERROR — checked 0 subject(s)
+  GATE_NOT_IMPLEMENTED: module-deps — not implemented in the GOV-01-R04 critical slice; never reported as PASS
+EXIT=2

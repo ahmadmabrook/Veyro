@@ -1,0 +1,16 @@
+# R04 gate-6 published-event exception source reconciliation — 2026-10-09
+
+- Sole runner operation: `15534aad-1a77-4c3b-ac03-fa18696862eb`; existing exclusive lease, WIP=1. Classification **MANDATORY_NOW**, MOD-001 tier **HIGH**. Initial estimate: one bounded source reconciliation; no product code or review dispatch in this operation.
+- Contract and governing-source hash refresh acknowledged for this operation. Previous guarded implementation is `COMPLETED` exit 0; no interrupted child or review claim exists. Gate-6 convergence remains ACTIVE with 0/0 review/remediation; no counters are reset.
+
+## Determination
+
+The apparent conflict is a **staged-scope distinction**, not a change of the governing exception rule:
+
+1. TSD §24.1 requires comparison of published-event sets among six normalized dimensions. Its explicit exception sentence addresses identical *command inventories* and reused *RB IDs*; it does not explicitly prohibit an approved event-ID exception. MOD-001 `IMPLEMENTATION.md` §4's gate-6 row expressly covers a published-event collision and says a matching shared-contract exception resolves a collision. `SCN-MOD001-015` exercises the no-exception event denial; `SCN-MOD001-131` exercises an exact approved exception with disposable synthetic inputs, not a live approval.
+2. The qualified lead's D5 (`R04-GATE6-SOURCE-NORMALIZATION-LEAD-DECISION-2026-10-09.md`, lines 83–94; model qualification `MR-MOD-001-20261009-005.json`) explicitly allows the dimension `published-event`, the **exact event ID**, unordered domain pair, exception ID and affirmative owner-approval reference. It says the exception clears only that exact collision. This is the controlling technical normalization for the full gate, not independent scenario assurance.
+3. `ADR-013-gate6-synthetic-domain-contract-input.md` lines 14, 22–23, 29 explicitly decides **only the first synthetic P1/P2 increment**. The published-event dispatch also explicitly kept its waiver surface P1/P2-only. That bounded partial implementation was lawful while aggregate gate6 remained ERROR; neither document supersedes D5's later complete-gate contract. The current event collision comparison is local only, so its rejection of a `published-event` exception is an **incomplete expanded dimension**, not evidence that approved event collisions must always fail.
+
+The next bounded implementation must accept only a valid synthetic exact pair/dimension/event-ID entry with a uniquely affirmative, action-bound approval reference; it must preserve unapproved, mismatched, stale, duplicate or malformed-input denial and P1/P2 behavior. A waiver for a different dimension or event must not clear the collision. Keep the aggregate result ERROR while the entity, SLI/SLO ownership and failure-vocabulary dimensions, real source, CI and qualified assurance remain pending. No live exception register or real approval is created by this determination.
+
+No scenario or module is promoted: SCN-MOD001-014/015/131 NOT EXECUTED, R04 gate2 original findings 14/14 CLOSED, gate5 HOLD, MOD-001 exit 0/8, SCN-070 cap and U1/U2 B HOLD unchanged. This reconciliation is **not** an independent review, retry entitlement, business decision or owner stop. The next action is one bounded exact event-exception validator/test increment after a material-boundary contract refresh.

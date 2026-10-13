@@ -1,0 +1,9 @@
+MOD-000 regression run: 2026-10-03T09:44:09.142271+00:00
+======================================================================
+[PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+[PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+[PASS] validate_capabilities.py: RESULT: PASS — 7 capability/capabilities, all registered and APPROVED with required fields present.
+[FAIL] evidence_integrity_check.py:   - BROKEN REFERENCE in knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-MIGRATION-SAFETY-HARNESS-SECURITY-REREVIEW-R2-2026-10-03.md: `knowledge/05-QA/tools/regression-runs/RUN_<stamp>.txt` does not exist
+[N/A] test_bash_guard.py: RETIRED/NOT_APPLICABLE — CAP-007 retired (OWN-006/ADR-007); not executed as a current gate; must be restored if CAP-007 is reinstated
+======================================================================
+AGGREGATE RESULT: FAIL (3/4 checks passed, 1 N/A excluded)

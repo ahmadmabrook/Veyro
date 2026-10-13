@@ -1,0 +1,34 @@
+{
+  "at": "2026-10-08T23:01:22.011235+00:00",
+  "upstream": "ahmadmabrook/Veyro",
+  "public": true,
+  "fork": "veyro-labs/Veyro",
+  "forkParent": "ahmadmabrook/Veyro",
+  "upstreamPr1": {
+    "state": "open",
+    "merged": false,
+    "head": "45ed3ef32be88b9f38c3a975172f7f3ba8dd3d65"
+  },
+  "forkOriginPr2": {
+    "url": "https://github.com/ahmadmabrook/Veyro/pull/2",
+    "state": "open",
+    "merged": false,
+    "head": "db04cecf62f812bd7ebd28abc4d094cfd75d52d7",
+    "base": "36457b4dbe309355c5fede5f56c451371bcfd1f6"
+  },
+  "upstreamMain": "f85a17ba28cf55a209b0129ea8e9ceacc6a9edb9",
+  "upstreamProtectedBase": "36457b4dbe309355c5fede5f56c451371bcfd1f6",
+  "requiredChecks": [
+    {
+      "context": "architecture-event-contract-trusted",
+      "app_id": 15368
+    }
+  ],
+  "enforceAdmins": true,
+  "existingEnvironments": [],
+  "existingRepoSecrets": [],
+  "plannedEnvironment": "scn020-sacrificial-canary-20261009",
+  "plannedEnvironmentBranch": "scn020-protected-base-20261009",
+  "plannedCanaryName": "SCN020_TEST_ONLY_CANARY",
+  "canaryValue": "NOT_RECORDED_NON_SENSITIVE_TEST_ONLY"
+}

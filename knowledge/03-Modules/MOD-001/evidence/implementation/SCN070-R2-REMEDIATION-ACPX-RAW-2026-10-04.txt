@@ -1,0 +1,757 @@
+[acpx] session scn070-implementation (fc84a793-79c0-4a6f-b491-b061ea27746f) · /Users/ahmadmabrouk/Desktop/Veyro · agent starting
+[client] initialize (running)
+
+[client] session/resume (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] wc -l knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md && sed -n '1,120p' knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md (completed)
+  kind: execute
+  input: wc -l knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md && sed -n '1,120p' knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT...
+  output:
+    462 knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md
+    ---
+    doc: SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2
+    module: MOD-001
+    requirement: GOV-01-R06 (Database-change policy/tooling), TSD §24.2
+    scenario: SCN-MOD001-070 (MIG · Blocker · negative)
+    round: 2
+    date: 2026-10-04
+    role: veyro-security-reviewer (Opus tier, fresh context)
+    verdict: BLOCKED
+    counts: P0=0 / P1=0 / P2=3 / P3=4
+    ---
+    
+    # SCN-MOD001-070 — Independent Security Review, Round 2
+    
+    Fresh-context independent review of the round-1 remediation of the
+    GOV-01-R06 migration-ordering lint. This round replaces an earlier
+    round-2 attempt that was interrupted before producing any verdict.
+    
+    ## 1. Scope, identity, and independence
+    
+    **Charge.** Decide R1-1 … R1-6 by execution, with specific attention to
+    two shapes observed in the interrupted attempt's partial output: a
+    regular file passed as `--records-dir` producing a vacuous PASS, and a
+    symlinked child directory hiding a destructive contract record. Classify
+    any genuine residue by priority and invariant, and distinguish
+    requirement violations from optional hardening.
+    
+    ... (215 more lines)
+
+[tool] env | grep -E "CLAUDE_CODE_SESSION_ID|CLAUDE_EFFORT|AI_AGENT" && git rev-parse --short HEAD && git status --porcelain | wc -l (completed)
+  kind: execute
+  input: env | grep -E "CLAUDE_CODE_SESSION_ID|CLAUDE_EFFORT|AI_AGENT" && git rev-parse --short HEAD && git status --porcelain | wc -l
+  output:
+    AI_AGENT=claude-code_2-1-274_agent
+    CLAUDE_CODE_SESSION_ID=fc84a793-79c0-4a6f-b491-b061ea27746f
+    CLAUDE_EFFORT=high
+    e481b81
+         323
+    
+    ```console
+    AI_AGENT=claude-code_2-1-274_agent
+    CLAUDE_CODE_SESSION_ID=fc84a793-79c0-4a6f-b491-b061ea27746f
+    CLAUDE_EFFORT=high
+    e481b81
+         323
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '120,320p' knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md (completed)
+  kind: execute
+  input: sed -n '120,320p' knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md
+  output:
+    **Invariant violated:** record discovery is exhaustive — "never a silent
+    partial pass." The lint's own module docstring, "Record discovery
+    (hardened 2026-10-04, round-1 review finding R1-3)," states absolutely:
+    "Every other file **anywhere in that tree** … is reported as
+    `UNRECOGNIZED_RECORD_FILE`, not silently skipped." That claim is false.
+    
+    **Mechanism.** `discover_records()` iterates `records_dir.rglob("*")`.
+    `rglob` does not descend through symlinked directories, so files beneath
+    one are never enumerated. The symlink itself reaches the loop, but
+    `path.is_dir()` follows the link and returns `True`, so the first branch
+    `continue`s — the symlink is neither recursed into nor reported. Both the
+    recursion and the reporting path miss it.
+    
+    **Reproduced (decisive variant, Control E).** A records dir holding a
+    valid, complete `expand → migrate → switch → contract` set for `change_a`,
+    plus a symlinked child `q4/` whose target holds a lone
+    `0005_b_contract.yaml` for `change_b` — a destructive contract phase with
+    no predecessors at all:
+    
+        $ find mixed/ -follow -type f | sort
+        mixed/0001_a_expand.yaml
+        mixed/0002_a_migrate.yaml
+        mixed/0003_a_switch.yaml
+        mixed/0004_a_contract.yaml
+        mixed/q4/0005_b_contract.yaml          <-- reachable, destructive, out of order
+    
+        $ python3 tools/validate_migration_ordering.py --records-dir mixed --require-dir
+        Records dir checked: mixed
+    ... (375 more lines)
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read tools/validate_migration_ordering.py (96 - 125) (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","offset":96,"limit":30}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:96
+  output:
+    96	    """A single migration record fails a structural or field check."""
+    97	
+    98	
+    99	def parse_front_matter(path: Path) -> dict[str, str]:
+    100	    """Parses the `---`-delimited front matter at the top of `path` into a
+    101	    flat dict of the 6 scalar fields this tool understands. Raises
+    102	    `RecordError` (never returns a partial dict) if the file has no
+    103	    front-matter block at all, so a malformed record is never silently
+    104	    treated as an empty-but-valid one."""
+    105	    lines = path.read_text(encoding="utf-8").splitlines()
+    106	    if not lines or lines[0].strip() != "---":
+    107	        raise RecordError(f"{path.name}: MISSING_FRONT_MATTER — no opening '---' on line 1")
+    108	    fields: dict[str, str] = {}
+    109	    for line in lines[1:]:
+    110	        if line.strip() == "---":
+    111	            return fields
+    112	        if ":" not in line:
+    113	            continue
+    114	        key, _, value = line.partition(":")
+    115	        fields[key.strip()] = value.strip()
+    116	    raise RecordError(f"{path.name}: MISSING_FRONT_MATTER — no closing '---' found")
+    117	
+    118	
+    119	def validate_fields(name: str, fields: dict[str, str]) -> list[str]:
+    120	    """Returns every TSD §24.2 field missing or empty in `fields`, plus an
+    121	    invalid `phase` value — empty list means the record's fields are
+    122	    structurally complete (ordering is checked separately)."""
+    123	    problems = []
+    ... (35 more lines)
+Code first. R2-2 — duplicate front-matter keys fail closed:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","old_string":" flat dict of the 6 scalar fields this tool understands. Raises\n `RecordError` (never returns a ...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:101, /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:119
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py (+7 lines)
+R2-1 — symlinks in the records tree fail closed:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","old_string":" records: list[Path] = []\n problems: list[str] = []\n for path in sorted(records_dir.rglob(\"*\"...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:192
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py (+20 lines)
+R2-3 — an existing non-directory fails closed:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","old_string":" if not records_dir.exists():\n if require_dir:\n return [\n f\"{records_dir}: MISSING_RECORDS_DI...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:235
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py (+15 lines)
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","old_string":"`.DS_Store`) are skipped — neither is a plausible migration-record name.","new_string":"`.DS_Stor...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:60
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py (+6 lines)
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py","old_string":" OUT-of-scope line. An *absent* directory is PASS for the same reason\n by default, but fails clo...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py:240
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/validate_migration_ordering.py (+2 lines)
+Now the tests — decisive negatives plus positive controls for all three:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/tests/test_validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py","old_string":"if __name__ == \"__main__\":\n # R1-9: discovered, never hand-listed.","new_string":"#...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py:322
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py (+198 lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python tools/tests/test_validate_migration_ordering.py; echo "EXIT=$?" (completed)
+  kind: execute
+  input: backend/.venv/bin/python tools/tests/test_validate_migration_ordering.py; echo "EXIT=$?"
+  output:
+    PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    EXIT=0
+    
+    ```console
+    PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    EXIT=0
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -n "15-17\|11-13\|  14\.\|7-8\.\|9-10\." tools/tests/test_validate_migration_ordering.py | head -20 (completed)
+  kind: execute
+  input: grep -n "15-17\|11-13\| 14\.\|7-8\.\|9-10\." tools/tests/test_validate_migration_ordering.py | head -20
+  output:
+    35:  7-8.  lone `contract` / lone `switch` with NO predecessors at all — the
+    40:  9-10. `main()` driven as a real subprocess, asserting the process exit
+    45:  11-13. a `.yml`, a `.md`, and a nested-subdirectory record set, each of
+    48:  14.   `.gitkeep` stays ignored, so the real empty records dir still
+    50:  15-17. a missing `--records-dir` reports a vacuous-pass NOTICE and
+    
+    ```console
+    35:  7-8.  lone `contract` / lone `switch` with NO predecessors at all — the
+    40:  9-10. `main()` driven as a real subprocess, asserting the process exit
+    45:  11-13. a `.yml`, a `.md`, and a nested-subdirectory record set, each of
+    48:  14.   `.gitkeep` stays ignored, so the real empty records dir still
+    50:  15-17. a missing `--records-dir` reports a vacuous-pass NOTICE and
+    ```
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read tools/tests/test_validate_migration_ordering.py (26 - 61) (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py","offset":26,"limit":36}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py:26
+  output:
+    26	
+    27	## Round-1 independent-review additions (2026-10-04)
+    28	
+    29	`SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND1-2026-10-04.md`
+    30	found that the six tests above leave two code paths covered by nothing,
+    31	and proved it with surviving mutants: neutralizing the start-phase guard
+    32	(mutant M3) and neutralizing `main()`'s rejection exit code (mutant M5)
+    33	both kept the suite 6/6 green. Tests 7-17 close exactly those gaps:
+    34	
+    35	  7-8.  lone `contract` / lone `switch` with NO predecessors at all — the
+    36	        scenario's own broadest reading ("before its expand+backfill+
+    37	        switch predecessors have run", i.e. none present). These are the
+    38	        only tests that reach the start-phase guard, and they are what
+    39	        kills M3 (R1-1, P1).
+    40	  9-10. `main()` driven as a real subprocess, asserting the process exit
+    41	        code (1 on violation, 0 on the ordered control) and the stdout
+    42	        text. The exit code is the actual rejection signal the evidence
+    43	        record rests on, and nothing tested it before — this is what
+    44	        kills M5 (R1-2, P2).
+    45	  11-13. a `.yml`, a `.md`, and a nested-subdirectory record set, each of
+    46	        which previously passed with exit 0 while being genuinely
+    47	        out of order -> now UNRECOGNIZED_RECORD_FILE (R1-3, P2).
+    48	  14.   `.gitkeep` stays ignored, so the real empty records dir still
+    49	        passes — the R1-3 fix must not break the live tree.
+    50	  15-17. a missing `--records-dir` reports a vacuous-pass NOTICE and
+    51	        exit 0 by default, and fails closed with `--require-dir`
+    52	        (R1-4, P2).
+    53	
+    ... (47 more lines)
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit tools/tests/test_validate_migration_ordering.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py","old_string":"both kept the suite 6/6 green. Tests 7-17 close exactly those gaps:\n\n 7-8. lone `con...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py:30
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/tools/tests/test_validate_migration_ordering.py (+22 lines)
+Now extend the mutation harness with mutants for the three new guards, preserving M1–M8:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py","old_string":" \"M8 --require-dir neutralized (R1-4 ...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py:123
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py (+10 lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py; echo "EXIT=$?" (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py; echo "EXIT=$?"
+  output:
+    m0 baseline (unmutated): SANE — unit exit 0, PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    M1 check_ordering returns [] immediately: KILLED by unit+cli-negative+cli-lone
+    M2 ordering predicate accepts any skip-ahead: KILLED by unit+cli-negative
+    M3 start-phase guard neutralized (R1-1, SURVIVED at round 1): KILLED by unit+cli-lone
+    M4 validate_fields returns [] immediately: KILLED by unit
+    M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1): KILLED by unit+cli-negative+cli-lone
+    M6 discovery narrowed back to glob('*.yaml') (R1-3 fix removed): KILLED by unit
+    M7 UNRECOGNIZED_RECORD_FILE suppressed (R1-3 fix removed): KILLED by unit+cli-negative+cli-lone
+    M8 --require-dir neutralized (R1-4 fix removed): KILLED by unit
+    M9 symlink guard neutralized (R2-1 fix removed): KILLED by unit
+    M10 duplicate front-matter key last-wins again (R2-2 fix removed): KILLED by unit
+    M11 non-directory records path accepted again (R2-3 fix removed): KILLED by unit
+    
+    real tool sha256 unchanged:  34b3a43b9d55cec552be096e4d70e76f986c302eff367e2f31f068607c4a81be
+    real test sha256 unchanged:  79d369d9cff6d14ac6540d76a7ac6407afbc4cac359ffb82df506ca47e6cc8c3
+    11/11 mutations killed; survivors=[]
+    round-1 survivors now killed: ['M3 start-phase guard neutralized (R1-1, SURVIVED at round 1)', 'M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1)']
+    EXIT=0
+    
+    ```console
+    m0 baseline (unmutated): SANE — unit exit 0, PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    M1 check_ordering returns [] immediately: KILLED by unit+cli-negative+cli-lone
+    M2 ordering predicate accepts any skip-ahead: KILLED by unit+cli-negative
+    M3 start-phase guard neutralized (R1-1, SURVIVED at round 1): KILLED by unit+cli-lone
+    M4 validate_fields returns [] immediately: KILLED by unit
+    M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1): KILLED by unit+cli-negative+cli-lone
+    M6 discovery narrowed back to glob('*.yaml') (R1-3 fix removed): KILLED by un...
+M7's anchor drifted into a broader mutant. Re-anchoring it to the precise pre-fix behavior:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py","old_string":" \"M7 UNRECOGNIZED_RECORD_FILE suppres...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py:118
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py (+5 lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py 2>&1 | tee /tmp/scn070_r2_kill.txt; echo "EXIT=${pipestatus[1]}" (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py 2>&1 | tee /tmp/scn070_r2_kill.txt; echo "EXIT=${pipestatus[1]}"
+  output:
+    m0 baseline (unmutated): SANE — unit exit 0, PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    M1 check_ordering returns [] immediately: KILLED by unit+cli-negative+cli-lone
+    M2 ordering predicate accepts any skip-ahead: KILLED by unit+cli-negative
+    M3 start-phase guard neutralized (R1-1, SURVIVED at round 1): KILLED by unit+cli-lone
+    M4 validate_fields returns [] immediately: KILLED by unit
+    M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1): KILLED by unit+cli-negative+cli-lone
+    M6 discovery narrowed back to glob('*.yaml') (R1-3 fix removed): KILLED by unit
+    M7 UNRECOGNIZED_RECORD_FILE suppressed (R1-3 fix removed): KILLED by unit
+    M8 --require-dir neutralized (R1-4 fix removed): KILLED by unit
+    M9 symlink guard neutralized (R2-1 fix removed): KILLED by unit
+    M10 duplicate front-matter key last-wins again (R2-2 fix removed): KILLED by unit
+    M11 non-directory records path accepted again (R2-3 fix removed): KILLED by unit
+    
+    real tool sha256 unchanged:  34b3a43b9d55cec552be096e4d70e76f986c302eff367e2f31f068607c4a81be
+    real test sha256 unchanged:  79d369d9cff6d14ac6540d76a7ac6407afbc4cac359ffb82df506ca47e6cc8c3
+    11/11 mutations killed; survivors=[]
+    round-1 survivors now killed: ['M3 start-phase guard neutralized (R1-1, SURVIVED at round 1)', 'M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1)']
+    EXIT=0
+    
+    ```console
+    m0 baseline (unmutated): SANE — unit exit 0, PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    M1 check_ordering returns [] immediately: KILLED by unit+cli-negative+cli-lone
+    M2 ordering predicate accepts any skip-ahead: KILLED by unit+cli-negative
+    M3 start-phase guard neutralized (R1-1, SURVIVED at round 1): KILLED by unit+cli-lone
+    M4 validate_fields returns [] immediately: KILLED by unit
+    M5 main() rejection exit code neutralized (R1-2, SURVIVED at round 1): KILLED by unit+cli-negative+cli-lone
+    M6 discovery narrowed back to glob('*.yaml') (R1-3 fix removed): KILLED by unit
+    M7 UNRECOGNIZED_REC...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] rm -rf /tmp/scn070_r2fix && mkdir -p /tmp/scn070_r2fix/{mixed,hidden,realnested/q4,dupkey,ok,linktarget}
+w() { printf -- '---\nchange_id: %s\nphase: %s\nowner: jane@example.com\nlock_impact: %s\nrollback_strategy: restore from backup\nvalidation_query: SELECT 1\n---\n\nSynthetic fixture record.\n' "$2" "$3" "${4:-none}" > "$1"; }
+# R2-1 decisive: valid 4-phase set + symlinked q4/ hiding destructive contract
+w /tmp/scn070_r2fix/mixed/0001_a_expand.yaml change_a expand
+w /tmp/scn070_r2fix/mixed/0002_a_migrate.yaml change_a migrate
+w /tmp/scn070_r2fix/mixed/0003_a_switch.yaml change_a switch
+w /tmp/scn070_r2fix/mixed/0004_a_contract.yaml change_a contract
+w /tmp/scn070_r2fix/hidden/0005_b_contract.yaml change_b contract "DROP COLUMN — destructive"
+ln -s /tmp/scn070_r2fix/hidden /tmp/scn070_r2fix/mixed/q4
+# R2-1 negative control: real subdir
+w /tmp/scn070_r2fix/realnested/q4/0005_b_contract.yaml change_b contract
+# R2-2 decisive: duplicate phase key, contract first
+printf -- '---\nchange_id: add_widget_column\nphase: contract\nowner: j@e.com\nlock_impact: DROP COLUMN — destructive, rewrites table\nrollback_strategy: restore from backup\nvalidation_query: SELECT 1\nphase: expand\n---\n' > /tmp/scn070_r2fix/dupkey/0001_widget.yaml
+# R2-3: regular file as records dir
+printf 'not a records directory\n' > /tmp/scn070_r2fix/plainfile.txt
+# positive controls
+w /tmp/scn070_r2fix/ok/0001_a_expand.yaml change_a expand
+w /tmp/scn070_r2fix/ok/0002_a_migrate.yaml change_a migrate
+w /tmp/scn070_r2fix/ok/0003_a_switch.yaml change_a switch
+w /tmp/scn070_r2fix/ok/0004_a_contract.yaml change_a contract
+w /tmp/scn070_r2fix/linktarget/0001_a_expand.yaml change_a expand
+w /tmp/scn070_r2fix/linktarget/0002_a_migrate.yaml change_a migrate
+w /tmp/scn070_r2fix/linktarget/0003_a_switch.yaml change_a switch
+w /tmp/scn070_r2fix/linktarget/0004_a_contract.yaml change_a contract
+ln -s /tmp/scn070_r2fix/linktarget /tmp/scn070_r2fix/records_link
+echo "fixtures built"; find /tmp/scn070_r2fix/mixed -follow -type f | sort (completed)
+  kind: execute
+  input: rm -rf /tmp/scn070_r2fix && mkdir -p /tmp/scn070_r2fix/{mixed,hidden,realnested/q4,dupkey,ok,linktarget} w() { printf -- '---\nchange_id: %s\nphase: %s\nowner: jane@example.com\nlock_impact: %s\nrollback_strategy: res...
+  output:
+    fixtures built
+    /tmp/scn070_r2fix/mixed/0001_a_expand.yaml
+    /tmp/scn070_r2fix/mixed/0002_a_migrate.yaml
+    /tmp/scn070_r2fix/mixed/0003_a_switch.yaml
+    /tmp/scn070_r2fix/mixed/0004_a_contract.yaml
+    /tmp/scn070_r2fix/mixed/q4/0005_b_contract.yaml
+    
+    ```console
+    fixtures built
+    /tmp/scn070_r2fix/mixed/0001_a_expand.yaml
+    /tmp/scn070_r2fix/mixed/0002_a_migrate.yaml
+    /tmp/scn070_r2fix/mixed/0003_a_switch.yaml
+    /tmp/scn070_r2fix/mixed/0004_a_contract.yaml
+    /tmp/scn070_r2fix/mixed/q4/0005_b_contract.yaml
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] P=backend/.venv/bin/python
+run() { echo "##### $* #####"; $P tools/validate_migration_ordering.py "$@" 2>&1 | tail -8; echo "EXIT=${pipestatus[1]}"; echo; }
+run --records-dir /tmp/scn070_r2fix/mixed --require-dir
+run --records-dir /tmp/scn070_r2fix/realnested --require-dir
+run --records-dir /tmp/scn070_r2fix/dupkey --require-dir
+run --records-dir /tmp/scn070_r2fix/plainfile.txt --require-dir
+run --records-dir /tmp/scn070_r2fix/plainfile.txt
+run --records-dir /tmp/scn070_r2fix/ok --require-dir
+run --records-dir /tmp/scn070_r2fix/records_link --require-dir (completed)
+  kind: execute
+  input: P=backend/.venv/bin/python run() { echo "##### $* #####"; $P tools/validate_migration_ordering.py "$@" 2>&1 | tail -8; echo "EXIT=${pipestatus[1]}"; echo; } run --records-dir /tmp/scn070_r2fix/mixed --require-dir run ...
+  output:
+    ##### --records-dir /tmp/scn070_r2fix/mixed --require-dir #####
+    ======================================================================
+    MOD-001 DATABASE-MIGRATION ORDERING + RECORD VALIDATOR
+    ======================================================================
+    
+    Records dir checked: /tmp/scn070_r2fix/mixed
+    
+    BLOCKED: 1 problem(s) found:
+      - q4: SYMLINK_IN_RECORDS_TREE — symlinks are not followed, so anything beneath or behind this link would go unchecked; replace it with the real file/directory or remove it
+    EXIT=1
+    
+    ##### --records-dir /tmp/scn070_r2fix/realnested --require-dir #####
+    ======================================================================
+    MOD-001 DATABASE-MIGRATION ORDERING + RECORD VALIDATOR
+    ======================================================================
+    
+    Records dir checked: /tmp/scn070_r2fix/realnested
+    
+    BLOCKED: 1 problem(s) found:
+      - q4/0005_b_contract.yaml: UNRECOGNIZED_RECORD_FILE — not a '*.yaml' file directly inside the records dir, so it would not be checked at all; rename it to '*.yaml', move it out of the subdirectory, or remove it
+    EXIT=1
+    
+    ##### --records-dir /tmp/scn070_r2fix/dupkey --require-dir #####
+    ======================================================================
+    MOD-001 DATABASE-MIGRATION ORDERING + RECORD VALIDATOR
+    ======================================================================
+    
+    Records dir checked: /tmp/scn070_r2fix/dupkey
+    ... (123 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "### real tree default ###" && backend/.venv/bin/python tools/validate_migration_ordering.py | tail -4; echo "EXIT=${pipestatus[1]}"; echo; echo "### run_regression ###" && backend/.venv/bin/python knowledge/05-QA/tools/run_regression.py 2>&1 | tail -12 (completed)
+  kind: execute
+  input: echo "### real tree default ###" && backend/.venv/bin/python tools/validate_migration_ordering.py | tail -4; echo "EXIT=${pipestatus[1]}"; echo; echo "### run_regression ###" && backend/.venv/bin/python knowledge/05-Q...
+  output:
+    ### real tree default ###
+    Records dir checked: /Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/records
+    NOTICE: records dir exists but contains no migration records — vacuous pass, no record was checked.
+    
+    PASS — every migration record is complete and phase-ordered correctly (or no records exist yet).
+    EXIT=0
+    
+    ### run_regression ###
+    ======================================================================
+    [PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    [PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+    [PASS] validate_capabilities.py: RESULT: PASS — 8 capability/capabilities, all registered and APPROVED with required fields present.
+    [FAIL] evidence_integrity_check.py:   - STALE: knowledge/00-System/CURRENT_HANDOFF.md last committed 2026-09-29 (updated: field says 2026-10-01), but tracked module evidence (all MOD-*/evidence trees) has a later commit dated 2026-10-04 — knowledge/00-System/CURRENT_HANDOFF.md may not reflect the most recent evidence.
+    [PASS] validate_migration_ordering.py: PASS — every migration record is complete and phase-ordered correctly (or no records exist yet).
+    [PASS] test_validate_migration_ordering.py: PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    [N/A] test_bash_guard.py: RETIRED/NOT_APPLICABLE — CAP-007 retired (OWN-006/ADR-007); not executed as a current gate; must be restored if CAP-007 is reinstated
+    ======================================================================
+    AGGREGATE RESULT: FAIL (5/6 checks passed, 1 N/A excluded)
+    
+    Record written: knowledge/05-QA/tools/regression-runs/RUN_20261004T123955Z.txt
+    
+    ```console
+    ### real tree default ###
+    Records dir checked: /Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/records
+    NOTICE: records dir exists but contains no migration records — vacuous pass, no record was checked.
+    
+    PASS — every migration record is complete and phase...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -n "tests 7-8\|tests 9-10\|tests 11-14\|tests 15-18\|6 tests → 18\|test 18\|all 18 tests\|18 tests" knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-MIGRATION-ORDERING-EXECUTION-2026-10-04.md (completed)
+  kind: execute
+  input: grep -n "tests 7-8\|tests 9-10\|tests 11-14\|tests 15-18\|6 tests → 18\|test 18\|all 18 tests\|18 tests" knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md knowledge/03-Module...
+  output:
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-MIGRATION-ORDERING-EXECUTION-2026-10-04.md:130:PASS — all 18 tests passed (discovered dynamically, not hand-listed).
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:88:| R1-1 start-phase guard uncovered; mutant M3 survives | **P1** | **FIXED — M3 now KILLED** | `tools/tests/test_validate_migration_ordering.py` tests 7-8 |
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:89:| R1-2 `main()` exit-code contract uncovered; mutant M5 survives | P2 | **FIXED — M5 now KILLED** | same file, tests 9-10 (real `subprocess`) |
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:90:| R1-3 non-`.yaml`/nested records silently ignored | P2 | **FIXED (closed, not accepted-risk)** | `tools/validate_migration_ordering.py` `discover_records()`; tests 11-14 |
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:91:| R1-4 typo'd `--records-dir` exits 0 with PASS line | P2 | **FIXED** | same tool: `--require-dir` + grep-able vacuous-pass NOTICE; tests 15-18 |
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:143:and locked down by test 18
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:150:6 tests → 18. The original 6 are byte-unchanged (behavior preserved
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:194:| A1 | `tools/tests/test_validate_migration_ordering.py` | `PASS — all 18 tests passed (discovered dynamically, not hand-listed).` exit **0** |
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md:254:m0 baseline (unmutated): SANE — unit exit 0, PASS — all 18 tests passed (discovered dynamically, not hand-listed).
+    
+    ```console
+    knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-MIG...
+Round-1 record: fixing the brittle positional test citations (R2-6) without rewriting its historical observed outputs:
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] python3 - <<'EOF'
+import pathlib
+p = pathlib.Path("knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md")
+t = p.read_text()
+subs = [
+ ("`tools/tests/test_validate_migration_ordering.py` tests 7-8 |",
+  "`tools/tests/test_validate_migration_ordering.py` — `test_lone_contract_with_no_predecessors_fails_closed`, `test_lone_switch_with_no_predecessors_fails_closed` |"),
+ ("same file, tests 9-10 (real `subprocess`) |",
+  "same file — `test_cli_exit_code_is_1_on_violation`, `test_cli_exit_code_is_0_on_ordered_control` (real `subprocess`) |"),
+ ("`discover_records()`; tests 11-14 |",
+  "`discover_records()`; the `*_is_not_silently_ignored` tests plus `test_gitkeep_placeholder_is_ignored_without_a_problem` |"),
+ ("vacuous-pass NOTICE; tests 15-18 |",
+  "vacuous-pass NOTICE; the `*_require_dir*` / `*_vacuous_pass_notice*` tests |"),
+ ("and locked down by test 18\n(`test_cli_blocked_run_emits_no_vacuous_pass_notice`), so",
+  "and locked down by\n`test_cli_blocked_run_emits_no_vacuous_pass_notice`, so"),
+]
+for old, new in subs:
+    assert t.count(old) == 1, (t.count(old), old[:50])
+    t = t.replace(old, new)
+p.write_text(t)
+print("4 table citations + 1 inline citation de-numbered")
+EOF (completed)
+  kind: execute
+  input: python3 - <<'EOF' import pathlib p = pathlib.Path("knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md") t = p.read_text() subs = [ ("`tools/tests/test_validate_migration_order...
+  output:
+    4 table citations + 1 inline citation de-numbered
+    
+    ```console
+    4 table citations + 1 inline citation de-numbered
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cat >> knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md <<'EOF'
+
+---
+
+## Amendment 2026-10-04 (post round-2 review)
+
+Round 2 (`../security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md`,
+BLOCKED, P0=0/P1=0/P2=3/P3=4) confirmed R1-1's P1 and R1-2/R1-5/R1-6/R1-9
+closed **by independent execution of this record's own mutation harness**.
+Two claims in §2's table were **overstated** and are corrected here rather
+than left standing:
+
+- **R1-3 "FIXED (closed, not accepted-risk)"** — round 2: *partially*
+  closed. Correct for `.yml`, `.md`, and real subdirectories; **open for
+  symlinked subdirectories**, where `rglob` does not descend and
+  `is_dir()` follows the link, so a destructive out-of-order `contract`
+  behind a symlinked child produced exit 0 with no notice (R2-1).
+- **R1-4 "FIXED"** — round 2: *partially* closed. Correct for an absent
+  path; **open when the path exists but is not a directory**, where
+  `--require-dir` was entirely inert (R2-3).
+- **R1-8 (left unfixed here as P3)** — round 2 escalated it to **P2**
+  (R2-2), taking up this record's own §6 item 2 invitation: rated on
+  consequence rather than mechanism, a duplicated `phase:` key producing a
+  green destructive `contract` is the same observable outcome as R1-3.
+
+All three are now closed — see
+`SCN070-ROUND2-REMEDIATION-2026-10-04.md`. The §2 table and §4/§5 outputs
+above are left as the dated record of what was observed at this round's
+12:13Z closeout (18 tests, 8 mutants); they are historical observations,
+not current state. Current state is 29 tests and 11 mutants.
+
+Positional test-number citations in §2's table (previously "tests 7-8",
+"tests 11-14", etc.) were replaced with test *function names* — round-2
+finding R2-6 showed positional references drift the moment a test is added.
+EOF
+echo appended (completed)
+  kind: execute
+  input: cat >> knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md <<'EOF' --- ## Amendment 2026-10-04 (post round-2 review) Round 2 (`../security/SCN070-MIGRATION-ORDERING-LINT-SECURI...
+  output:
+    appended
+    
+    ```console
+    appended
+    ```
+Now TEMPLATE.md authoring guidance, then runtime proof refresh:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit backend/migrations/TEMPLATE.md (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/TEMPLATE.md","old_string":"Two further operational notes on the lint, same hardening pass:","new_string":"Two authoring rules adde...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/TEMPLATE.md:39
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/TEMPLATE.md has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/migrations/TEMPLATE.md (+12 lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/05-QA/tools/mr_verify.py ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/fc84a793-79c0-4a6f-b491-b061ea27746f.jsonl opus scn070-remediation-implementation-session; echo "EXIT=$?"; echo "=== SHAs ==="; shasum -a 256 tools/validate_migration_ordering.py tools/tests/test_validate_migration_ordering.py knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py backend/migrations/TEMPLATE.md; echo "=== HEAD/porcelain ==="; git rev-parse --short HEAD; git status --porcelain | wc -l; git status --porcelain | grep -E "^( D|D |R )" || echo "no deletions/renames" (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/05-QA/tools/mr_verify.py ~/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/fc84a793-79c0-4a6f-b491-b061ea27746f.jsonl opus scn070-remediation-implementation-session; echo "EXIT=$?...
+  output:
+    {
+      "verdict": "PASS",
+      "reason": "144 turn(s), 100% consistent, model 'claude-opus-5' matches required tier 'opus'.",
+      "models_observed": [
+        "claude-opus-5"
+      ],
+      "expected_tier": "opus"
+    }
+    EXIT=0
+    === SHAs ===
+    34b3a43b9d55cec552be096e4d70e76f986c302eff367e2f31f068607c4a81be  tools/validate_migration_ordering.py
+    79d369d9cff6d14ac6540d76a7ac6407afbc4cac359ffb82df506ca47e6cc8c3  tools/tests/test_validate_migration_ordering.py
+    3ab83550445b447fdd467bf3c6b563326dbad4d64d47d24ba57738f15189e5c8  knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py
+    c6f2f72a2b1b410d84014acf8e4db15dba323f2aefa8113cb2c7ffb539b312cf  backend/migrations/TEMPLATE.md
+    === HEAD/porcelain ===
+    e481b81
+         324
+    no deletions/renames
+    
+    ```console
+    {
+      "verdict": "PASS",
+      "reason": "144 turn(s), 100% consistent, model 'claude-opus-5' matches required tier 'opus'.",
+      "models_observed": [
+        "claude-opus-5"
+      ],
+      "expected_tier": "opus"
+    }
+    ... (11 more lines)
+Now the dated evidence record:
+
+[tool] Preparing file… (pending)
+  input: {}
+
+[tool] Write knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md (completed)
+  kind: edit
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md","content":"---\ndoc: SCN070-ROUND2-REMEDIATION\nmodule: MOD-001\nrequiremen...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md
+  output:
+    File created successfully at: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md (+351 lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] rm -rf /tmp/scn070_r2fix /tmp/scn070_r2_kill.txt && ([ -e /tmp/scn070_r2fix ] && echo STILL_PRESENT || echo "fixtures CONFIRMED_ABSENT") && (ls -d /tmp/veyro-scn070-killcheck-* 2>/dev/null || echo "killcheck mirrors CONFIRMED_ABSENT")
+echo "=== final gates ==="
+backend/.venv/bin/python tools/tests/test_validate_migration_ordering.py; echo "unit EXIT=$?"
+backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py >/dev/null 2>&1; echo "killcheck EXIT=$?"
+backend/.venv/bin/python tools/validate_migration_ordering.py >/dev/null; echo "lint EXIT=$?"
+grep -c "SCN-MOD001-070 · MIG · Blocker · GOV-01-R06, negative · Automated · veyro-security-reviewer/Opus · EXECUTED — PENDING INDEPENDENT REVIEW" knowledge/03-Modules/MOD-001/SCENARIOS.md
+git rev-parse --short HEAD (completed)
+  kind: execute
+  input: rm -rf /tmp/scn070_r2fix /tmp/scn070_r2_kill.txt && ([ -e /tmp/scn070_r2fix ] && echo STILL_PRESENT || echo "fixtures CONFIRMED_ABSENT") && (ls -d /tmp/veyro-scn070-killcheck-* 2>/dev/null || echo "killcheck mirrors C...
+  output:
+    fixtures CONFIRMED_ABSENT
+    (eval):1: no matches found: /tmp/veyro-scn070-killcheck-*
+    killcheck mirrors CONFIRMED_ABSENT
+    === final gates ===
+    PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    unit EXIT=0
+    killcheck EXIT=0
+    lint EXIT=0
+    1
+    e481b81
+    
+    ```console
+    fixtures CONFIRMED_ABSENT
+    (eval):1: no matches found: /tmp/veyro-scn070-killcheck-*
+    killcheck mirrors CONFIRMED_ABSENT
+    === final gates ===
+    PASS — all 29 tests passed (discovered dynamically, not hand-listed).
+    unit EXIT=0
+    killcheck EXIT=0
+    lint EXIT=0
+    1
+    e481b81
+    ```
+Done. All three P2 fixes land as structural fail-closed guards, not wording changes.
+
+## Changes — 5 files
+
+`tools/validate_migration_ordering.py`
+- **R2-1**: `path.is_symlink()` check placed **before** `is_dir()` in `discover_records` → `SYMLINK_IN_RECORDS_TREE`. `is_dir()` followed the link and `continue`d; `rglob` independently refused to descend. Reported, not followed — resolving targets widens the walk and invites cycles.
+- **R2-2**: `if key in fields: raise RecordError(DUPLICATE_FRONT_MATTER_KEY)` in `parse_front_matter`. Refuses rather than resolves; applies to every key, not just `phase` (duplicate `change_id` silently re-keys an ordering chain the same way).
+- **R2-3**: `exists()` → `is_dir()`, two causes split. **One judgment call beyond the literal suggestion**: `RECORDS_PATH_NOT_A_DIRECTORY` fails closed regardless of `--require-dir` — absent-dir has a documented legitimate state (no product schema), a regular file never does, and gating it behind an opt-in leaves the default invocation `run_regression.py` actually uses still green on a botched path.
+
+`tools/tests/...` 18 → **29**. `knowledge/.../scn070_ordering_lint_mutation_killcheck.py` +M9/M10/M11. `backend/migrations/TEMPLATE.md` authoring rules. Round-1 record: positional citations → function names + dated amendment.
+
+## Tests
+
+- Unit: `PASS — all 29 tests passed`, exit 0
+- Mutation: **11/11 killed, survivors=[]**. **M1–M8 kill signals identical to round 1** — prior 8/8 preserved, not re-asserted.
+- Round-2 shapes re-run: symlinked-`q4` mixed fixture exit **1**; duplicate-`phase` exit **1**; regular-file-as-records-dir exit **1** with and without the flag. Positives still exit 0: legitimate 4-phase set, and a symlink *to* a real records dir (read through it, violation found). Real-subdir control unchanged at `UNRECOGNIZED_RECORD_FILE` — new guard didn't absorb that path. No `NOTICE` beside any `BLOCKED`.
+- `run_regression.py`: FAIL (5/6, 1 N/A) — single FAIL is pre-existing `CURRENT_HANDOFF.md` staleness, byte-identical in `RUN_20261004T114858Z.txt` from before this session. Both migration checks PASS. Clearing it needs a commit.
+- `mr_verify.py`: PASS, 144/144 `claude-opus-5`, same session resumed.
+
+## Worth your attention
+
+**M7's anchor drifted.** R2-1's fix moved the `relative = …` line to the loop top, so M7 inserted `continue` as the first statement and suppressed *all* discovery — broader mutant than intended, showed as `KILLED by unit+cli-negative+cli-lone` vs round 1's `unit`. Re-anchored to the `UNRECOGNIZED_RECORD_FILE` append; back to `unit`. Recorded, not quietly fixed — a drifted anchor is how a harness starts reporting kills it never performed.
+
+## Remaining

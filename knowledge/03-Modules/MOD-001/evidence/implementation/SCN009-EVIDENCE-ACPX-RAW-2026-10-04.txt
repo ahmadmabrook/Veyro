@@ -1,0 +1,1728 @@
+[client] initialize (running)
+
+[client] session/new (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+
+[client] _auth/status_update (running)
+I'll start by reading the governing documents and the scenario in question.
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cat knowledge/00-System/SESSION_BOOTSTRAP.md (completed)
+  kind: execute
+  input: cat knowledge/00-System/SESSION_BOOTSTRAP.md
+  output:
+    ---
+    doc: SESSION_BOOTSTRAP
+    status: LIVE
+    ---
+    
+    # Session Bootstrap — Fail-Closed
+    
+    Read this first, every session, before any action. This file must let a fresh Claude session (zero prior chat context) reconstruct legal next action from disk alone.
+    
+    ## 1. Governing baseline identities (verify before trusting anything else)
+    
+    Re-hash **all four** artifacts (the 3 docx files, plus the design bundle
+    manifest) and diff against `PROJECT_INDEX.md`. Also confirm the four
+    identity strings (`VEYRO-MPB-1.0`, `Veyro TSD v1.4.1`,
+    `VEYRO-UX-V1-170-APPROVED`, `VEYRO-EIP-1.4.1-20260827`) are present in
+    `PROJECT_INDEX.md` — a hash match alone does not confirm the artifact's
+    declared identity/version. If any hash or identity mismatches, STOP —
+    report `BLOCKED: BASELINE_INTEGRITY_FAILURE` and do not proceed. (Corrected
+    2026-09-04, Phase 5 F5-013 — this section previously verified only 3 of 4
+    baselines, silently skipping the design bundle, which is exactly the
+    artifact BUG-001 was found in.)
+    
+    **Primary check (corrected 2026-09-30, session-restore reconciliation —
+    this section previously said the command was "allowlisted by the live
+    `.claude/security/bash_guard.py` PreToolUse guard (CAP-007, active since
+    2026-09-08)"; **CAP-007 was RETIRED 2026-09-28** per `OWN-006`/`ADR-007`
+    — `bash_guard.py` is now an inert, unregistered stub and
+    `.claude/settings.json` permits unrestricted local Bash execution
+    ... (149 more lines)
+
+[tool] cat AUTONOMOUS_CONVERGENCE_STATE.json 2>/dev/null || find . -maxdepth 3 -name "AUTONOMOUS_CONVERGENCE_STATE.json" -not -path "*/node_modules/*" (completed)
+  kind: execute
+  input: cat AUTONOMOUS_CONVERGENCE_STATE.json 2>/dev/null || find . -maxdepth 3 -name "AUTONOMOUS_CONVERGENCE_STATE.json" -not -path "*/node_modules/*"
+  output:
+    ./knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json
+    
+    ```console
+    ./knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cat knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json (completed)
+  kind: execute
+  input: cat knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json
+  output:
+    {
+      "schemaVersion": 1,
+      "purpose": "Operational orchestration state; repository engineering evidence remains authoritative.",
+      "activeModule": "MOD-001",
+      "activeSlice": "SCN-MOD001-009 scenario routing/evidence reconciliation (distinct record work unit; DOM-002 code cycle closed)",
+      "totalReviewRoundsForSlice": 4,
+      "totalRemediationRoundsForSlice": 4,
+      "roundCounting": {
+        "reviewRoundsCompleted": 4,
+        "reviewRoundsInFlight": 0,
+        "reviewRoundDispatched": 5,
+        "round5Status": "INTERRUPTED_IN_FLIGHT_EVIDENCE",
+        "round5Verdict": null,
+        "round5Resumable": false,
+        "remediationRoundsCompleted": 4,
+        "reviewEvidence": "evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1..ROUND4-2026-10-04.md; round-5 ACPX process and REVIEW_IN_FLIGHT.md claim",
+        "remediationEvidence": "evidence/implementation/DOM002-ROUND1..ROUND4-REMEDIATION-2026-10-04.md",
+        "note": "Four substantive review rounds complete. Round-5 attempts stopped without a verdict; the last bounded ACPX invocation exited before a Claude turn due expired OAuth. All are INTERRUPTED_IN_FLIGHT_EVIDENCE, not a fifth completed review and not resumable or replaceable while ANALYSIS_REQUIRED."
+      },
+      "findings": [
+        {
+          "id": "DOM002-SCHEMA-RLS-ORDER",
+          "fingerprint": "GOV-01-R02/RLS isolation|cross-suite order independence|backend/tests/harness/concurrency.py and Postgres schema/catalog|schema ownership and unclassified persistent relation|round-1 order/RLS negative drills",
+          "recurrenceCount": 0,
+          "remediationCount": 1,
+          "firstSeenRound": 1,
+          "lastSeenRound": 2,
+          "currentClassification": "NEW_DEFECT",
+    ... (351 more lines)
+
+[tool] grep -n "SCN-MOD001-009" -r knowledge backend --include=*.md --include=*.py --include=*.json --include=*.yaml -l (completed)
+  kind: execute
+  input: grep -n "SCN-MOD001-009" -r knowledge backend --include=*.md --include=*.py --include=*.json --include=*.yaml -l
+  output:
+    (eval):1: no matches found: --include=*.md
+    
+    ```console
+    (eval):1: no matches found: --include=*.md
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -rn "SCN-MOD001-009" --include='*.md' --include='*.py' --include='*.json' --include='*.yaml' -l . 2>/dev/null | grep -v node_modules (completed)
+  kind: execute
+  input: grep -rn "SCN-MOD001-009" --include='*.md' --include='*.py' --include='*.json' --include='*.yaml' -l . 2>/dev/null | grep -v node_modules
+  output:
+    backend/tests/integration/test_concurrency_harness.py
+    backend/tests/harness/concurrency.py
+    knowledge/00-System/CURRENT_HANDOFF.md
+    knowledge/00-System/DOM002-CONVERGENCE-ASSESSMENT-2026-10-04.md
+    knowledge/00-System/CURRENT_STATE.md
+    knowledge/03-Modules/MOD-001/STATUS.md
+    knowledge/03-Modules/MOD-001/SCENARIOS.md
+    knowledge/00-System/DOM002-CONVERGENCE-DISPATCH-CONTROL-2026-10-04.md
+    knowledge/03-Modules/MOD-001/TEST_RESULTS.md
+    knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json
+    knowledge/03-Modules/MOD-001/evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND3-REMEDIATION-WATCHDOG-DISPATCH-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R5-WATCHDOG-DISPATCH-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R3-WATCHDOG-DISPATCH-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-R5-OAUTH-RECOVERY-CHECKPOINT-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND2-REMEDIATION-WATCHDOG-DISPATCH-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND1-REMEDIATION-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND2-REMEDIATION-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-CODE-REVIEW-R4-WATCHDOG-DISPATCH-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND4-REMEDIATION-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-ROUND5-TIMEOUT-CONVERGENCE-CHECKPOINT-2026-10-04.md
+    knowledge/03-Modules/MOD-001/evidence/i...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -n "SCN-MOD001-009" knowledge/03-Modules/MOD-001/SCENARIOS.md (completed)
+  kind: execute
+  input: grep -n "SCN-MOD001-009" knowledge/03-Modules/MOD-001/SCENARIOS.md
+  output:
+    418:**SCN-MOD001-009 · CONC · Major · GOV-01-R02, DOM-002 (synthetic concurrency/versioning pattern) · Automated · veyro-implementer/Sonnet · EXECUTED — PENDING SCENARIO EVIDENCE DISPOSITION (not promoted)**
+    454:business logic. **This scenario (SCN-MOD001-009) is NOT promoted and NOT
+    
+    ```console
+    418:**SCN-MOD001-009 · CONC · Major · GOV-01-R02, DOM-002 (synthetic concurrency/versioning pattern) · Automated · veyro-implementer/Sonnet · EXECUTED — PENDING SCENARIO EVIDENCE DISPOSITION (not promoted)**
+    454:business logic. **This scenario (SCN-MOD001-009) is NOT promoted and NOT
+    ```
+
+[tool] cat knowledge/00-System/CURRENT_HANDOFF.md (completed)
+  kind: execute
+  input: cat knowledge/00-System/CURRENT_HANDOFF.md
+  output:
+    <persisted-output>
+    Output too large (249.9KB). Full output saved to: /Users/ahmadmabrouk/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/e7c14839-a724-4470-93dd-3a2e6f53236b/tool-results/bkkud9gv7.txt
+    
+    Preview (first 2KB):
+    ---
+    doc: CURRENT_HANDOFF
+    status: LIVE
+    current_as_of: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4 PASS-with-findings remediated, not self-approved): round-4 independent review (mr_verify.py PASS 107/107 claude-opus-5, attested by the orchestrator before dispatch) returned verdict PASS P0=0/P1=0/P2=0/P3=6, confirming all 6 of round 3's findings fixed, no new blocking defect. Fixed same retained implementation session, R4-4 first per explicit priority: R4-4 (update_versioned's 404-vs-409 disambiguation ran as two separate statements, racy under real concurrency and forward-binding since 5 later modules are told to copy this exact shape; independently reproduced live with two real connections before fixing) via folding into one WITH statement (one snapshot, no gap for a concurrent commit to land in; _row_exists removed as dead code); new structural regression test counts real execute() calls during the disambiguation path and asserts exactly one, proven non-vacuous by reverting to two statements in a throwaway copy and confirming it then fails. R4-1 (warnings.warn itself not unconditionally non-raising; under -W error it would mask the real TimeoutExpired, R3-4's defect reintroduced through its own fix) via a new _warn helper forcing simplefilter("always"); verified under a global error filter and by re-running the existing regression test directly under python -W error. R4-3 (Go template concatenated multi-volume mounts with no separator, correct only by coincidence with today's single-VOLUME image) via newline-separated list return (_anonymous_volumes_of); verified live against a real 3-volume container, correctly separated. R4-2 (container-token env var breaks under an overlapping multi-container process tree; independent...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '400,475p' knowledge/03-Modules/MOD-001/SCENARIOS.md (completed)
+  kind: execute
+  input: sed -n '400,475p' knowledge/03-Modules/MOD-001/SCENARIOS.md
+  output:
+    from the missing-FORCE case above; (ii) the 004 fixture with
+    `tenant_id` declared nullable — expected `RLS_TENANT_ID_NULLABLE`
+    denial citing the column. Evidence for both: the gate's own denial
+    report, same mechanism as the missing-FORCE case.**
+    
+    **SCN-MOD001-006 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2 (module dependency/SQL) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+    Steps: a synthetic module importing only its own owned table
+    prefix/approved read-model interface. Expected: PASS.
+    
+    **SCN-MOD001-007 · TEN · Blocker · GOV-01-R04, TSD §24.1 gate 2 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+    Steps: a synthetic module directly importing another module's raw
+    table/ORM model. Expected: `CROSS_DOMAIN_SQL_IMPORT` denial citing both
+    modules — proves DOM-001 (Appendix I).
+    
+    **SCN-MOD001-008 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 3 (event contract) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+    Steps: a synthetic event referenced in code with a matching AsyncAPI/
+    JSON-Schema registry entry. Expected: PASS. Negative case: 019.
+    
+    **SCN-MOD001-009 · CONC · Major · GOV-01-R02, DOM-002 (synthetic concurrency/versioning pattern) · Automated · veyro-implementer/Sonnet · EXECUTED — PENDING SCENARIO EVIDENCE DISPOSITION (not promoted)**
+    Steps: a synthetic mutable aggregate updated by two concurrent
+    "requests" (simulated, not real load); optimistic-versioning check
+    proves the second write detects a version conflict rather than silently
+    overwriting (lost-update behavior explicit, per DOM-002). Evidence: both
+    write attempts' outcomes logged; exactly one succeeds, one gets a
+    version-conflict error.
+    **Routing/evidence reconciliation (2026-10-04):** The former R04/TSD
+    §24.1 gate-2 label was a catalog error. `REQUIREMENTS.md`'s DOM-002 row
+    assigns this pattern to GOV-01-R02; gate 2 is module dependency/SQL lint.
+    ... (127 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '475,540p' knowledge/03-Modules/MOD-001/SCENARIOS.md (completed)
+  kind: execute
+  input: sed -n '475,540p' knowledge/03-Modules/MOD-001/SCENARIOS.md
+  output:
+    this note's own text above still describes historically. Also, per P3-3:
+    "racing writers" in this note and in `STATUS.md` means the harness's own
+    documented simulated/sequential shape, not real parallel load — see the
+    harness module's "Known ceiling" section. Still not promoted, still not
+    claimed PASS, for the same reasons as above; a second independent review
+    of this remediation is the next action, not a self-certified promotion.
+    
+    **SCN-MOD001-010 · HP · Major · GOV-01-R04, TSD §24.1 gate 4 (permission) · Automated · veyro-implementer/Sonnet · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+    Executed 2026-10-02 (GOV-01-R04 critical slice; positive control run with its gate): synthetic contract with registered `members.profile.read`/`self` and `billing.refund.create`/`location` → PASS. See `evidence/security/PERMISSION_GATE_FIXTURE_2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; permission gate re-implemented to ADR-009 D1-D4, unit 57/57; 37/37 mutations killed). Stays pending a fresh independent R2 security re-review; see `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
+    Steps: a synthetic command declaring `action`/`resource`/`scope`.
+    Expected: PASS.
+    
+    **SCN-MOD001-011 · NEG · Blocker · GOV-01-R04, TSD §24.1 gate 4 · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+    Executed 2026-10-02 (GOV-01-R04 critical slice): undeclared operation and unregistered `platform.tenant.impersonate` each → `UNREGISTERED_PERMISSION` citing the endpoint. Opus judgment pending. See `evidence/security/PERMISSION_GATE_FIXTURE_2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; perm...
+
+[tool] sed -n '580,600p' knowledge/03-Modules/MOD-001/REQUIREMENTS.md (completed)
+  kind: execute
+  input: sed -n '580,600p' knowledge/03-Modules/MOD-001/REQUIREMENTS.md
+  output:
+    | **7th architecture gate: surface-profile activation (added, Scenario Review round 13, P1-5 — this gate has existed since round 1 P0-3/P1-9 but had no row in this table at all, and GOV-01-R04's own evidence/acceptance-criteria text above still said "6" until this round)** | `knowledge/04-Decisions/ADR-005-mod001-critical-slice-and-surface-profile-routing.md` Decision 2 Part 3 — not itself a TSD §24.1 gate, an EIP §4.3/ADR-005-derived control | Deny any source file under an unactivated §4.3 surface's path scope, with a bounded build/toolchain/CI-file carve-out for still-deferred surfaces; a real CI-blocking check with a deliberate-violation fixture proving fail-closed, same as the six above | GOV-01-R04 (by the same "every architecture gate is CI-blocking" acceptance criterion, extended to this ADR-005-added gate) |
+    | **Capability-governance validation gates** | EIP card, `EIP_MIRROR.md` lines 4122-4157, 4233-4256; Appendix H.1-H.3, lines 20590-20740 | Validate `.claude/agents`/`.claude/rules`/`.claude/skills`/`module-capabilities.yaml`; reject cyclic capability dependencies, overdue lifecycle reviews, manifests missing mandatory privileged-surface Rules; require every Appendix H.2 rule family to resolve to an Appendix H.3 content standard | Reuses MOD-000's `validate_capabilities.py`/`CAPABILITY_REGISTRY.md` pattern — extend, don't duplicate |
+    | **Baseline-artifact binding schema validation** | `EIP_MIRROR.md` lines 4140-4143, 4253-4256, 4260-4263 | Require `PROJECT_INDEX.md` entries for all governing baselines with non-empty cryptographic hashes and `SESSION_BOOTSTRAP.md` enforcement metadata; reject use of an unapproved candidate EIP or a missing/ambiguous/mismatched identity+hash | Already substantively satisfied by MOD-000's `verify_baselines.py` — MOD-001 must fold this into the CI-gate layer (currently a manual per-session check, not yet a CI gate); `SCN-MOD001-025`/`026` (mismatch case) + `SCN-MOD001-124` (the other 4 fail-closed conditions — **added roun...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] wc -l backend/tests/integration/test_concurrency_harness.py backend/tests/harness/concurrency.py && cat backend/tests/harness/concurrency.py (completed)
+  kind: execute
+  input: wc -l backend/tests/integration/test_concurrency_harness.py backend/tests/harness/concurrency.py && cat backend/tests/harness/concurrency.py
+  output:
+    253 backend/tests/integration/test_concurrency_harness.py
+         295 backend/tests/harness/concurrency.py
+         548 total
+    """Optimistic-concurrency/versioning harness — GOV-01-R02, CONC category,
+    proving `.claude/rules/backend/concurrency.md` (`DOM-002`:
+    "Each mutable aggregate uses optimistic concurrency/versioning. Lost-update
+    behavior must be explicit") against a synthetic mutable aggregate.
+    
+    Guarantees this harness proves on that aggregate:
+    
+    * A correct version-checked mutation reads, checks, and increments the
+      version in one atomic `UPDATE ... WHERE id = %s AND version = %s`
+      statement (rule control 2).
+    * A version mismatch (another writer moved the version first) affects zero
+      rows and is surfaced as a typed, distinguishable `VersionConflict` — never
+      silently retried or overwritten (rule control 3). A missing row is a
+      *different* typed error, `RowNotFound` — never conflated with a version
+      conflict (round-1 code-review P2-1 fix: a bare zero-rowcount check cannot
+      tell the two apart). The existence check and the version-checked update
+      are folded into **one** `WITH` statement (round-4 code-review R4-4 fix —
+      see `update_versioned`'s own docstring): running them as two separate
+      statements let a concurrent insert land in the gap between them and
+      produce a 409-shaped `VersionConflict` for a row that did not exist when
+      the mutation actually ran.
+    * A deliberately-broken comparison fixture (`update_unversioned_blind`, no
+      version predicate at all) is included so the pattern can be shown to tell
+      correct from broken: run the identical two-writer shape against it and
+      the lost update actually happens, proving the proof method is sensitive to
+    ... (571 more lines)
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Read backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:1
+  output:
+    1	"""Concurrency/versioning test pattern — GOV-01-R02, CONC category.
+    2	
+    3	Proves `.claude/rules/backend/concurrency.md` against the synthetic
+    4	`concurrency_harness.versioned_widget` aggregate (`tests/harness/
+    5	concurrency.py`): positive single-writer evidence, lost-update negative
+    6	evidence (exactly one of two simulated, sequential writers succeeds, the
+    7	other gets a typed `VersionConflict`), a missing-row negative evidence
+    8	(`RowNotFound`, never conflated with a version conflict), and a
+    9	fail-closed differential proof that the deliberately-broken unversioned
+    10	comparison fixture actually loses an update when run through the identical
+    11	two-writer shape — i.e. the pattern is shown to distinguish correct from
+    12	broken, not pass either vacuously.
+    13	
+    14	Round-1 code review (`knowledge/03-Modules/MOD-001/evidence/code-review/
+    15	DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md`) found this
+    16	file's `_widget_table` fixture was session-scoped/autouse with no teardown,
+    17	which (combined with the harness sharing the tenant-isolation harness's
+    18	`"harness"` schema) made this suite's "199/199 passing" claim contingent on
+    19	pytest's default alphabetical collection order and could make the ADR-010
+    20	RLS architecture gate FAIL under a different order (P1-1/P1-2). Fixed here:
+    21	`widget` now creates and drops the table around every individual test (see
+    22	`tests/harness/concurrency.py`'s teardown contract), and the aggregate lives
+    23	in its own exclusively-owned `concurrency_harness` schema. See
+    24	`test_concurrency_harness_order_independence.py` for the permanent,
+    25	automated regression coverage pinning the review's own §4.4/§4.5 drills.
+    26	
+    27	Scope note: this proves the test *pattern* works on a synthetic aggregate.
+    28	It does not promote or claim PASS on `SCN-MOD001-009` itself, which
+    ... (482 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && ls tests tests/integration tests/harness tests/contract tests/unit 2>/dev/null && echo "--- conftest ---" && cat tests/conftest.py 2>/dev/null | head -80 (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && ls tests tests/integration tests/harness tests/contract tests/unit 2>/dev/null && echo "--- conftest ---" && cat tests/conftest.py 2>/dev/null | head -80
+  output:
+    tests:
+    __init__.py
+    __pycache__
+    component
+    contract
+    harness
+    integration
+    unit
+    
+    tests/contract:
+    __init__.py
+    __pycache__
+    _execution_suppression_guard.py
+    test_domain_scaffold_inventory.py
+    test_financial_invariant_scaffold.py
+    test_scaffold_live.py
+    
+    tests/harness:
+    __init__.py
+    __pycache__
+    authn.py
+    concurrency.py
+    migration_safety.py
+    postgres.py
+    tenant_context.py
+    tenant_isolation.py
+    
+    tests/integration:
+    ... (67 more lines)
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro && (docker info >/dev/null 2>&1 && echo "DOCKER_OK") || echo "DOCKER_UNAVAILABLE"; docker context ls 2>/dev/null | head; echo "---"; ls backend/.venv/bin/python 2>/dev/null && backend/.venv/bin/python -V (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro && (docker info >/dev/null 2>&1 && echo "DOCKER_OK") || echo "DOCKER_UNAVAILABLE"; docker context ls 2>/dev/null | head; echo "---"; ls backend/.venv/bin/python 2>/dev/null && back...
+  output:
+    DOCKER_OK
+    NAME            DESCRIPTION                               DOCKER ENDPOINT                                          ERROR
+    colima *        colima                                    unix:///Users/ahmadmabrouk/.colima/default/docker.sock   
+    default         Current DOCKER_HOST based configuration   unix:///var/run/docker.sock                              
+    desktop-linux   Docker Desktop                            unix:///Users/ahmadmabrouk/.docker/run/docker.sock       
+    ---
+    backend/.venv/bin/python
+    Python 3.14.5
+    
+    ```console
+    DOCKER_OK
+    NAME            DESCRIPTION                               DOCKER ENDPOINT                                          ERROR
+    colima *        colima                                    unix:///Users/ahmadmabrouk/.colima/default/docker.sock   
+    default         Current DOCKER_HOST based configuration   unix:///var/run/docker.sock                              
+    desktop-linux   Docker Desktop                            unix:///Users/ahmadmabrouk/.docker/run/docker.sock       
+    ---
+    backend/.venv/bin/python
+    Python 3.14.5
+    ```
+
+[tool] Read File (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Read backend/tests/integration/conftest.py (completed)
+  kind: read
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py"}
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/conftest.py:1
+  output:
+    1	"""Integration fixtures for the GOV-01-R02 harnesses (one disposable Postgres per session).
+    2	
+    3	Credential separation (`.claude/rules/backend/database.md` rule 3):
+    4	  `admin`   — container superuser: role creation, fixture DDL, ground-truth reads.
+    5	  `runtime` — RUNTIME_ROLE: every probe/authentication under test runs here.
+    6	"""
+    7	
+    8	from __future__ import annotations
+    9	
+    10	import secrets
+    11	from collections.abc import Iterator
+    12	from uuid import UUID, uuid4
+    13	
+    14	import psycopg
+    15	import pytest
+    16	from psycopg import sql
+    17	
+    18	from tests.harness.authn import provision_auth_schema
+    19	from tests.harness.postgres import DisposablePostgres, disposable_postgres
+    20	from tests.harness.tenant_isolation import (
+    21	    ACCESS_GRANT,
+    22	    ACCESS_GRANT_COLUMNS,
+    23	    RUNTIME_ROLE,
+    24	    Conn,
+    25	    access_grant_row,
+    26	    create_tenant_table,
+    27	    provision_roles,
+    28	    scram_verifier,
+    ... (146 more lines)
+
+[tool] grep -rn "evidence" backend/tests --include='*.py' | grep -iv "^.*#" | head -40 (completed)
+  kind: execute
+  input: grep -rn "evidence" backend/tests --include='*.py' | grep -iv "^.*#" | head -40
+  output:
+    backend/tests/contract/test_domain_scaffold_inventory.py:48:evidence (`d3`/`d4`).
+    backend/tests/integration/conftest.py:72:    prove the harness rejects it, never to produce isolation evidence."""
+    backend/tests/contract/test_financial_invariant_scaffold.py:306:    for the composed-mutant evidence for both gaps."""
+    backend/tests/contract/test_financial_invariant_scaffold.py:383:    evidence instead of one more prose attempt — was sound; the "stops
+    backend/tests/contract/test_financial_invariant_scaffold.py:385:    `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-050-financial-invariant-placeholder-false-clean.md`'s
+    backend/tests/contract/test_financial_invariant_scaffold.py:460:    the full reproduction evidence and reasoning."""
+    backend/tests/contract/test_financial_invariant_scaffold.py:538:    section for the reproduction evidence."""
+    backend/tests/integration/test_authn_harness.py:34:def _evidence(tag: str, payload: Any) -> None:
+    backend/tests/integration/test_authn_harness.py:60:    _evidence("SCN-MOD001-097", assert_authenticated(auth, admin, credential, SUBJECT))
+    backend/tests/integration/test_authn_harness.py:69:    _evidence(f"SCN-MOD001-027[{case_name}]", assert_rejected_without_side_effects(auth, admin, case))
+    backend/tests/integration/test_authn_harness.py:85:    _evidence("AUTHN-HARNESS-SELF-CHECK[accepts_expired]", str(caught.value))
+    backend/tests/integration/test_concurrency_harness.py:5:concurrency.py`): positive single-writer evidence, lost-update negative
+    backend/tests/integration/test_concurrency_harness.py:6:evidence (exactly one of two simulated, sequential writers succeeds, the
+    backend/tests/integration/test_concurrency_harness.py:7:other gets a typed `VersionConflict`), a missing-row negative evidence
+    backend/tests/integration/test_concurrency_harness.py:14:Round-1 code review (`knowledge/03-Modules/MOD-001/evidence/code-review/
+    backend/tests/integration/test_concurrency_harness_order_independence.py:3:Round-1 code review (`knowledge/03-Modul...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && sed -n '1,70p' tests/integration/test_authn_harness.py (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && sed -n '1,70p' tests/integration/test_authn_harness.py
+  output:
+    """GOV-01-R02 authentication harness against a real Postgres, as the runtime role.
+    
+    SCN-MOD001-097  valid credential -> session issued + success audit event.
+    SCN-MOD001-027  every negative credential -> rejected, no session, state unchanged.
+    Self-check      a deliberately broken authenticator is caught by the same assertions.
+    """
+    
+    from __future__ import annotations
+    
+    import json
+    import secrets
+    from typing import Any
+    
+    import psycopg
+    import pytest
+    
+    from tests.harness.authn import (
+        FixtureAuthenticator,
+        assert_authenticated,
+        assert_rejected_without_side_effects,
+        mint,
+        negative_credentials,
+    )
+    from tests.harness.tenant_isolation import Conn
+    
+    NOW = 1_900_000_000  # fixed clock: deterministic expiry boundaries
+    SUBJECT = "synthetic-member-0001"
+    DISABLED = "synthetic-member-0002"
+    ... (113 more lines)
+
+[tool] sed -n '90,115p' tests/integration/test_architecture_gate_rls.py (completed)
+  kind: execute
+  input: sed -n '90,115p' tests/integration/test_architecture_gate_rls.py
+  output:
+    "platform_scope_relations": {
+                name: {"kind": kind, "reason": "synthetic harness fixture", "approval": "ADR-900"}
+                for name, kind in rels.items()
+            },
+            "reviewed_security_definer_functions": {
+                key: {"reason": "synthetic reviewed fixture", "approval": "ADR-900"}
+                for key in functions
+            },
+        }
+    
+    
+    def _evidence(tag: str, payload: Any) -> None:
+        print(f"{tag}-EVIDENCE {json.dumps(payload, sort_keys=True, default=str)}")
+    
+    
+    def _gate(conn: Conn, **kw: Any) -> Any:
+        args: dict[str, Any] = {"required_tables": [TABLE], "manifest": _manifest(),
+                                "resolver_root": APPROVAL_ROOT}
+        return gates.run_rls_gate(conn, RT, **{**args, **kw})
+    
+    
+    def _violations(report: Any) -> list[tuple[str, str, str]]:
+        return [(v.code, v.subject, v.detail) for v in report.violations]
+    
+    
+    def _has(report: Any, code: str, fragment: str) -> bool:
+    
+    ```console
+    ... (27 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "SCN-MOD001-009" -A14 knowledge/03-Modules/MOD-001/TEST_RESULTS.md | head -60 (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "SCN-MOD001-009" -A14 knowledge/03-Modules/MOD-001/TEST_RESULTS.md | head -60
+  output:
+    9:prior_updated_round18: 2026-10-04 (round 18 — GOV-01-R02 DOM-002 concurrency/versioning test pattern built): new `backend/tests/integration/test_concurrency_harness.py` (3 tests against a synthetic `harness.versioned_widget` aggregate via `backend/tests/harness/concurrency.py`) — `test_single_writer_succeeds_and_increments_version`, `test_concurrent_writers_lost_update_detected` (typed `VersionConflict` on the stale writer), `test_naive_unversioned_update_loses_the_update` (fail-closed differential proof the broken comparison fixture actually loses the update) — **3/3 PASS**. Full backend suite re-run: **199/199 passing** (196 prior + these 3; no regressions — tenant-isolation, authn, migration-safety, scaffold-live, architecture-gate-RLS suites all still green). `ruff check .` and `mypy tests/` (strict) both clean across the whole backend tree. `SCN-MOD001-009` NOT promoted/claimed PASS (see `SCENARIOS.md` disclosure on its own stale R04/gate-2 tag). No R04/ADR-010/SCN-067/BUG-048 file touched.
+    10-prior_updated_round17: 2026-10-04 (Slice-7 round 17 — CAP-008 APPROVED, SCN-MOD001-132 PROMOTED) — a fresh independent Opus capability-security assurance review (CAP008-POST-R16-INDEPENDENT-ASSURANCE-2026-10-04.md, mr_verify.py PASS 70/70 claude-opus-5) verified round 16's R16-3/R16-5 corrections by execution; found R17-1/R17-2 blocking APPROVED, both fixed same session exactly as specified (no new drill); re-ran validate_capabilities.py, tools/validate_capability_manifest.py (MOD-001), and capability_drift_check.py with Python 3.14 — all now PASS by execution. CAP-008 restored to APPROVED; SCN-MOD001-132 PROMOTED on its already-MET live evidence. Harness unit 17/17, Slice-7 focused pair 25/25 re-confirmed passing.
+    11-prior_updated_round16seg3: 2026-10-04 (Slice-7 round 16, full round complete — BUG-050/051 CLOSED, SCN-133 PROMOTED) — orchestrator-attested whole round 120/120 turns `claude-opus-5`, FINAL VERDICT PASS (P0=0/P1=0/P2=3/P3=4). Current real counts, re-run...
+
+[tool] grep -n -i "promot\|self-approv\|independent review" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -40 (completed)
+  kind: execute
+  input: grep -n -i "promot\|self-approv\|independent review" knowledge/00-System/DEVELOPMENT_CONSTITUTION.md | head -40
+  output:
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state and evidence, not the developer session's own narrative — see Module discipline below for the Gatekeeper-specific instance of this rule).
+    43:No paid services or spend. No real member data. No deploys/promotion to Production. No material product, pricing, business, architecture, or scope change without explicit, recorded owner approval in `knowledge/00-System/OWNER_APPROVALS.md`. Per DC-16, this also covers: activation of any paid vendor/payment provider/messaging provider/hardware supplier. Pending owner approval BLOCKS the affected action/module and cannot be waived by a Module Gatekeeper.
+    59:WIP=1. One active module at a time, recorded in `CURRENT_STATE.md`. Do not begin production implementation or QA of another module until the active module is formally APPROVED — preparation/research for another module is allowed only under the EIP §8 unlock rule and may not create production implementation. A module is not "done" until it has a Module Approval Certificate signed by a fresh-context Gatekeeper role — never self-approved by the implementing session.
+    106:- **DC-20 — Automatic path-scoped Rule synthesis.** A session may create/refine project Rules automatically when a stable engineering constraint is missing, but the rule must derive from a higher-precedence Veyro baseline, be scoped as narrowly as practical, avoid duplication/conflict, pass independent review and representative positive/negative validation, and be committed as durable state. A Rule may never override the Blueprint, TSD, or the EIP.
+    
+    ```console
+    23:- Reviewers must run in a fresh context, separate from the implementing session — no self-approval (**DC-06 — Independent full code review**; **DC-07 — Fresh-context final QA**: the final Gatekeeper/QA role reads durable state...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && grep -rn "test_concurrency_harness" --include='*.py' . | grep -v "^./tests/integration/test_concurrency_harness" | head -20; echo "=== order-indep head ==="; sed -n '1,60p' tests/integration/test_concurrency_harness_order_independence.py (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && grep -rn "test_concurrency_harness" --include='*.py' . | grep -v "^./tests/integration/test_concurrency_harness" | head -20; echo "=== order-indep head ==="; sed -n '1,6...
+  output:
+    tests/integration/test_concurrency_harness.py:24:`test_concurrency_harness_order_independence.py` for the permanent,
+    tests/integration/test_concurrency_harness_order_independence.py:99:CONCURRENCY = "tests/integration/test_concurrency_harness.py"
+    tests/harness/concurrency.py:60:`drop_versioned_table` and `tests/integration/test_concurrency_harness.py`'s
+    tests/harness/postgres.py:168:# `test_concurrency_harness_order_independence.py`) needs to identify *this
+    === order-indep head ===
+    """Permanent order-independence regression — GOV-01-R02, CONC category.
+    
+    Round-1 code review (`knowledge/03-Modules/MOD-001/evidence/code-review/
+    DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md`) found P1-1
+    (the concurrency harness silently depended on pytest's default alphabetical
+    collection order to avoid clobbering the tenant-isolation harness's schema
+    ownership) and P1-2 (a persistent, unclassified synthetic table could make
+    the ADR-010 RLS architecture gate FAIL if a gate test ran after the
+    concurrency module in the same session), demonstrated by two manual drills
+    (review §4.4/§4.5). This file pins those exact drills as permanent,
+    automated regressions: each test shells out to a fresh `pytest` subprocess
+    with the review's own non-default file/test ordering and asserts success,
+    so a future change that reintroduces either defect fails this suite rather
+    than only being catchable by a one-off manual drill.
+    
+    Each subprocess starts its own disposable-Postgres session (CAP-008,
+    APPROVED) — slower than an in-process check, but a real, independent
+    collection-order proof; an in-process pytest run cannot reorder its own
+    already-fixed collection, so a subprocess is the only way to actually
+    exercise a different order mechanically rather than by hand.
+    
+    Round-2 code review (R2-1): `subprocess.run(..., timeout=...)` SIGKILLs the
+    child pytest on a timeout. The child owns a CAP-008 Postgres container
+    ... (105 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '90,135p' tests/integration/test_concurrency_harness_order_independence.py && echo "=== tests in file ===" && grep -n "^def test_\|^    \"\"\"" tests/integration/test_concurrency_harness_order_independence.py | grep "^.*def test_" (completed)
+  kind: execute
+  input: sed -n '90,135p' tests/integration/test_concurrency_harness_order_independence.py && echo "=== tests in file ===" && grep -n "^def test_\|^ \"\"\"" tests/integration/test_concurrency_harness_order_independence.py | gr...
+  output:
+    trusted_docker,
+    )
+    
+    BACKEND_ROOT = Path(__file__).resolve().parents[2]
+    GATE_CANONICAL = "tests/integration/test_architecture_gate_rls.py::test_p1_canonical_harness_passes"
+    GATE_CATALOG = (
+        "tests/integration/test_architecture_gate_rls.py"
+        "::test_p4_p5_p6_manifest_platform_table_sequence_and_reviewed_definer"
+    )
+    CONCURRENCY = "tests/integration/test_concurrency_harness.py"
+    
+    # Measured on the round-3 review's machine (its own §4.5): the child
+    # creates its container at ~0.36s and finishes normally at ~1.72-1.86s, so
+    # 1.2 sits inside that valid window with ~0.5s/~1.45x headroom either way.
+    # The exact value is no longer load-bearing for *correctness* — the
+    # regression test below independently asserts a container was actually
+    # created before asserting anything about cleanup, so a value that is ever
+    # too short on a slower/colder host fails that assertion loudly instead of
+    # passing vacuously (R3-3). This value only affects how long the
+    # forced-timeout test takes to run.
+    _FORCED_TIMEOUT_S = 1.2
+    
+    
+    def _container_exists(docker: DockerRoute, name: str) -> bool:
+        """Exact-name membership check — never a substring/regex `--filter`,
+        which Docker matches loosely (round-3 review §4.6(a): a `--filter
+        name=veyro-mod001-harness-` matched an unrelated container named
+        `unrelated-veyro-mod001-harness-xyz`)."""
+    ... (75 more lines)
+Now I understand the gap precisely. Let me make the minimal instrumentation change.
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py","old_string":"Scope note: this proves the test *pattern* works on a synthetic aggregate.\nIt d...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:25, /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:49
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+12 lines)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+1 lines)
+Now add the evidence helper and attempt-record helper:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py","old_string":"@pytest.fixture\ndef widget(admin: Conn) -> Iterator[UUID]:","new_string":"def _...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:72
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+50 lines)
+Now the lost-update test itself:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py","old_string":" must be rejected with a `VersionConflict` rather than silently\n overwriting th...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:163, /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:211
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+21 lines)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+13 lines)
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py","old_string":" row_id = widget\n writer_a_version = read_version(admin, VERSIONED_WIDGET, row_...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:326, /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py:356
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+8 lines)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/backend/tests/integration/test_concurrency_harness.py (+11 lines)
+Now run lint, type checks, and the focused tests:
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] .venv/bin/python -m ruff check . 2>&1 | tail -20; echo "--- ruff format check (changed file) ---"; .venv/bin/python -m ruff format --check tests/integration/test_concurrency_harness.py 2>&1 | tail -5; echo "--- mypy strict tests/ ---"; .venv/bin/python -m mypy tests/ 2>&1 | tail -15 (completed)
+  kind: execute
+  input: .venv/bin/python -m ruff check . 2>&1 | tail -20; echo "--- ruff format check (changed file) ---"; .venv/bin/python -m ruff format --check tests/integration/test_concurrency_harness.py 2>&1 | tail -5; echo "--- mypy s...
+  output:
+    All checks passed!
+    --- ruff format check (changed file) ---
+    410 +         },
+    411 +     )
+        |
+    
+    1 file would be reformatted
+    --- mypy strict tests/ ---
+    Success: no issues found in 28 source files
+    
+    ```console
+    All checks passed!
+    --- ruff format check (changed file) ---
+    410 +         },
+    411 +     )
+        |
+    
+    1 file would be reformatted
+    --- mypy strict tests/ ---
+    Success: no issues found in 28 source files
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] git stash list >/dev/null; git show HEAD:backend/tests/integration/test_concurrency_harness.py > /tmp/orig_conc.py 2>/dev/null && echo "got HEAD version" && .venv/bin/python -m ruff format --check --stdin-filename tests/integration/test_concurrency_harness.py < /tmp/orig_conc.py 2>&1 | tail -3 (failed)
+  kind: execute
+  input: git stash list >/dev/null; git show HEAD:backend/tests/integration/test_concurrency_harness.py > /tmp/orig_conc.py 2>/dev/null && echo "got HEAD version" && .venv/bin/python -m ruff format --check --stdin-filename tes...
+  output:
+    Exit code 128
+    
+    ```
+    Exit code 128
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro && git show HEAD:backend/tests/integration/test_concurrency_harness.py > /tmp/orig_conc.py 2>&1; echo "exit=$?"; ls -l /tmp/orig_conc.py; git log --oneline -1 -- backend/tests/integration/test_concurrency_harness.py (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro && git show HEAD:backend/tests/integration/test_concurrency_harness.py > /tmp/orig_conc.py 2>&1; echo "exit=$?"; ls -l /tmp/orig_conc.py; git log --oneline -1 -- backend/tests/inte...
+  output:
+    exit=128
+    -rw-------@ 1 ahmadmabrouk  wheel  102 Oct  4 12:37 /tmp/orig_conc.py
+    
+    ```console
+    exit=128
+    -rw-------@ 1 ahmadmabrouk  wheel  102 Oct  4 12:37 /tmp/orig_conc.py
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && .venv/bin/python -m ruff format --check . 2>&1 | tail -15; echo "=== pyproject ruff/lint config ==="; sed -n '1,80p' pyproject.toml | grep -n -A12 "\[tool.ruff"  (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && .venv/bin/python -m ruff format --check . 2>&1 | tail -15; echo "=== pyproject ruff/lint config ==="; sed -n '1,80p' pyproject.toml | grep -n -A12 "\[tool.ruff"
+  output:
+    - def test_validate_post_contract_detects_a_changed_status_value(admin: Conn, table: WidgetTable) -> None:
+    677 + def test_validate_post_contract_detects_a_changed_status_value(
+    678 +     admin: Conn, table: WidgetTable
+    679 + ) -> None:
+    680 |     """Probe V13: `STATUS_MISMATCH` (mutant P8). Widget id 0 always maps to
+    --------------------------------------------------------------------------------
+    840 |
+        -     admin.execute(sql.SQL("ALTER TABLE {} ALTER COLUMN id TYPE text USING id::text").format(table.ident))
+    841 +     admin.execute(
+    842 +         sql.SQL("ALTER TABLE {} ALTER COLUMN id TYPE text USING id::text").format(table.ident)
+    843 +     )
+    844 |     admin.execute(sql.SQL("UPDATE {} SET id = 'x' WHERE id = '0'").format(table.ident))
+        |
+    
+    10 files would be reformatted, 42 files already formatted
+    === pyproject ruff/lint config ===
+    22:[tool.ruff]
+    23-line-length = 100
+    24-target-version = "py313"
+    25-
+    26-[tool.mypy]
+    27-python_version = "3.13"
+    28-strict = true
+    
+    ```console
+        - def test_validate_post_contract_detects_a_changed_status_value(admin: Conn, table: WidgetTable) -> None:
+    677 + def test_validate_post_contract_detects_a_changed_status_value(
+    678 +     admin: Conn, table: WidgetTable
+    ... (21 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] .venv/bin/python -m ruff format --check --diff tests/integration/test_concurrency_harness.py 2>&1 | head -80 (completed)
+  kind: execute
+  input: .venv/bin/python -m ruff format --check --diff tests/integration/test_concurrency_harness.py 2>&1 | head -80
+  output:
+    --- tests/integration/test_concurrency_harness.py
+    +++ tests/integration/test_concurrency_harness.py
+    @@ -150,8 +150,12 @@
+         row_id = widget
+         before = read_version(admin, VERSIONED_WIDGET, row_id)
+         rowcount = update_versioned(
+    -        admin, VERSIONED_WIDGET, row_id, before,
+    -        sql.SQL("value = %s"), ["updated-once"],
+    +        admin,
+    +        VERSIONED_WIDGET,
+    +        row_id,
+    +        before,
+    +        sql.SQL("value = %s"),
+    +        ["updated-once"],
+         )
+         assert rowcount == 1
+         assert read_version(admin, VERSIONED_WIDGET, row_id) == before + 1
+    @@ -180,14 +184,30 @@
+         assert writer_a_version == writer_b_version  # both read the same starting version
+     
+         attempts = [
+    -        _attempt("writer-a", writer_a_version, lambda: update_versioned(
+    -            admin, VERSIONED_WIDGET, row_id, writer_a_version,
+    -            sql.SQL("value = %s"), ["writer-a"],
+    -        )),
+    -        _attempt("writer-b", writer_b_version, lambda: update_versioned(
+    -            admin, VERSIONED_WIDGET, row_id, writer_b_version,
+    -            sql.SQL("value = %s"), ["writer-b"],
+    ... (135 more lines)
+Pre-existing code in this file is already non-ruff-format-conforming (hunk at line 150 is untouched code), so I'll keep house style. Now running the tests:
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] .venv/bin/python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly 2>&1 | tail -40 (completed)
+  kind: execute
+  input: .venv/bin/python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly 2>&1 | tail -40
+  output:
+    ============================= test session starts ==============================
+    platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python
+    cachedir: .pytest_cache
+    rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+    configfile: pyproject.toml
+    collecting ... collected 5 items
+    
+    tests/integration/test_concurrency_harness.py::test_single_writer_succeeds_and_increments_version PASSED
+    tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected SCN-MOD001-009-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "attempts": [{"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-a"}, {"error": {"conflict_expected_version": 1, "message": "version conflict on concurrency_harness.versioned_widget: id=67c8747f-db83-4382-95a4-8f428391d305 expected_version=1", "type": "VersionConflict"}, "expected_version": 1, "outcome": "rejected", "rowcount": 0, "writer": "writer-b"}], "committed_count": 1, "concurrency_shape": "two simulated sequential writers on one connection (see tests/harness/concurrency.py 'Known ceiling')", "final_row": {"value": "writer-a", "version": 2}, "lost_update_resolution": "reject-and-retry (REQUIREMENTS.md DOM-002 row)", "rejected_count": 1, "row_id": "67c8747f-db83-4382-95a4-8f428391d305", "starting_version": 1}
+    PASSED
+    tests/integration/test_concurrency_harness.py::test_update_versioned_distinguishes_missing_row_from_version_conflict PASSED
+    tests/integration/test_concurrency_harness.py::test_update_versioned_executes_exactly_one_statement PASSED
+    tests/integration/test_concurrency_harness.py::test_naive_unversioned_update_loses_the_update SCN-MOD001-009-DIFFERENTIAL[unversioned-control]-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "attempts": [{"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-a"}, {"error": null, "expected_version": 1, "outcome": "comm...
+Now a mutation-sensitivity drill to prove the new count/type assertions are non-vacuous:
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cp tests/harness/concurrency.py /tmp/conc_backup.py && restore() { cp /tmp/conc_backup.py tests/harness/concurrency.py; }
+echo "########## M1: drop the version predicate (lost update reintroduced) ##########"
+.venv/bin/python - <<'EOF'
+import pathlib
+p = pathlib.Path("tests/harness/concurrency.py")
+s = p.read_text()
+old = "WHERE id = %s AND version = %s RETURNING 1) "
+assert s.count(old) == 1, s.count(old)
+p.write_text(s.replace(old, "WHERE id = %s RETURNING 1) "))
+EOF
+.venv/bin/python -m pytest tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected -q -p no:randomly 2>&1 | tail -12
+restore
+echo "########## M2: raise RowNotFound where VersionConflict is correct ##########"
+.venv/bin/python - <<'EOF'
+import pathlib
+p = pathlib.Path("tests/harness/concurrency.py")
+s = p.read_text()
+old = "    raise VersionConflict(table, row_id, expected_version)"
+assert s.count(old) == 1
+p.write_text(s.replace(old, "    raise RowNotFound(table, row_id)"))
+EOF
+.venv/bin/python -m pytest tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected -q -p no:randomly 2>&1 | tail -12
+restore
+echo "########## restored — diff must be empty ##########"
+diff /tmp/conc_backup.py tests/harness/concurrency.py && echo "HARNESS_RESTORED_IDENTICAL" (completed)
+  kind: execute
+  input: cp tests/harness/concurrency.py /tmp/conc_backup.py && restore() { cp /tmp/conc_backup.py tests/harness/concurrency.py; } echo "########## M1: drop the version predicate (lost update reintroduced) ##########" .venv/bi...
+  output:
+    ########## M1: drop the version predicate (lost update reintroduced) ##########
+                        )
+                    return cur.execute(query, prepare=prepare)
+                else:
+                    return cur.execute(query, params, prepare=prepare)
+            except e._NO_TRACEBACK as ex:
+    >           raise ex.with_traceback(None)
+    E           psycopg.ProgrammingError: the query has 3 placeholders but 4 parameters were passed
+    
+    .venv/lib/python3.14/site-packages/psycopg/connection.py:304: ProgrammingError
+    =========================== short test summary info ============================
+    FAILED tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected
+    1 failed in 1.40s
+    ########## M2: raise RowNotFound where VersionConflict is correct ##########
+            assert rejected[0]["writer"] == "writer-b"
+            # Must be the version-conflict error specifically, never `RowNotFound`.
+    >       assert rejected[0]["error"]["type"] == "VersionConflict"
+    E       AssertionError: assert 'RowNotFound' == 'VersionConflict'
+    E         
+    E         - VersionConflict
+    E         + RowNotFound
+    
+    tests/integration/test_concurrency_harness.py:202: AssertionError
+    =========================== short test summary info ============================
+    FAILED tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected
+    1 failed in 1.39s
+    ########## restored — diff must be empty ##########
+    HARNESS_RESTORED_IDENTICAL
+    ... (31 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] restore() { cp /tmp/conc_backup.py tests/harness/concurrency.py; }
+echo "########## M1 (well-formed): version predicate made always-true -> lost update ##########"
+.venv/bin/python - <<'EOF'
+import pathlib
+p = pathlib.Path("tests/harness/concurrency.py")
+s = p.read_text()
+old = "WHERE id = %s AND version = %s RETURNING 1) "
+assert s.count(old) == 1
+p.write_text(s.replace(old, "WHERE id = %s AND version <> %s + 1000000 RETURNING 1) "))
+EOF
+.venv/bin/python -m pytest tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected -q -p no:randomly 2>&1 | tail -14
+restore
+echo "########## restored ##########"
+diff /tmp/conc_backup.py tests/harness/concurrency.py && echo "HARNESS_RESTORED_IDENTICAL" (completed)
+  kind: execute
+  input: restore() { cp /tmp/conc_backup.py tests/harness/concurrency.py; } echo "########## M1 (well-formed): version predicate made always-true -> lost update ##########" .venv/bin/python - <<'EOF' import pathlib p = pathlib...
+  output:
+    ########## M1 (well-formed): version predicate made always-true -> lost update ##########
+            ]
+        
+            committed = [a for a in attempts if a["outcome"] == "committed"]
+            rejected = [a for a in attempts if a["outcome"] == "rejected"]
+            assert len(attempts) == 2, "scenario requires exactly two recorded writer attempts"
+    >       assert len(committed) == 1, f"expected exactly one committed write, got {committed}"
+    E       AssertionError: expected exactly one committed write, got [{'writer': 'writer-a', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, 'error': None}, {'writer': 'writer-b', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, 'error': None}]
+    E       assert 2 == 1
+    E        +  where 2 = len([{'writer': 'writer-a', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, ...}, {'writer': 'writer-b', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, ...}])
+    
+    tests/integration/test_concurrency_harness.py:196: AssertionError
+    =========================== short test summary info ============================
+    FAILED tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected
+    1 failed in 1.43s
+    ########## restored ##########
+    HARNESS_RESTORED_IDENTICAL
+    
+    ```console
+    ########## M1 (well-formed): version predicate made always-true -> lost update ##########
+            ]
+        
+            committed = [a for a in attempts if a["outcome"] == "committed"]
+            rejected = [a for a in attempts if a["outcome"] == "rejected"]
+            assert len(attempts) == 2, "scenario requires exactly two recorded writer attempts"
+    >       assert len(committed) == 1, f"expected exactly one committed write, got {committed}"
+    E       AssertionError: expected exactly one committed write, got [{'writer': 'writer-a', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, 'error': None}, {'writer': 'writer-b', 'expected_version': 1, 'outcome': 'committed', 'rowcount': 1, 'error': None}]
+    E       assert 2 == 1
+    .....
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "### docker volume/container count BEFORE ###" && docker ps -aq | wc -l && docker volume ls -q | wc -l && .venv/bin/python -m pytest tests/integration/test_concurrency_harness_order_independence.py -v -p no:randomly 2>&1 | tail -15 (completed)
+  kind: execute
+  input: echo "### docker volume/container count BEFORE ###" && docker ps -aq | wc -l && docker volume ls -q | wc -l && .venv/bin/python -m pytest tests/integration/test_concurrency_harness_order_independence.py -v -p no:rando...
+  output:
+    ### docker volume/container count BEFORE ###
+           1
+           2
+    ============================= test session starts ==============================
+    platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python
+    cachedir: .pytest_cache
+    rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+    configfile: pyproject.toml
+    collecting ... collected 3 items
+    
+    tests/integration/test_concurrency_harness_order_independence.py::test_concurrency_before_canonical_rls_harness_test_review_4_4 PASSED [ 33%]
+    tests/integration/test_concurrency_harness_order_independence.py::test_concurrency_between_two_rls_gate_invocations_review_4_5 PASSED [ 66%]
+    tests/integration/test_concurrency_harness_order_independence.py::test_subprocess_timeout_does_not_leak_container_or_volume_review_r2_1 PASSED [100%]
+    
+    ============================== 3 passed in 5.67s ===============================
+    
+    ```console
+    ### docker volume/container count BEFORE ###
+           1
+           2
+    ============================= test session starts ==============================
+    platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python
+    cachedir: .pytest_cache
+    rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+    configfile: pyproject.toml
+    collecting ... collected 3 items
+    
+    tests/integration/test_concurrency_harness_order_independence.py::test_concurrency_before_canonical_rls_harness_test_review_4_4 PASSED [ 33%]
+    ... (5 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] .venv/bin/python -m pytest -q -p no:randomly 2>&1 | tail -12; echo "### docker counts AFTER ###"; docker ps -aq | wc -l; docker volume ls -q | wc -l (completed)
+  kind: execute
+  input: .venv/bin/python -m pytest -q -p no:randomly 2>&1 | tail -12; echo "### docker counts AFTER ###"; docker ps -aq | wc -l; docker volume ls -q | wc -l
+  output:
+    ........................................................................ [ 35%]
+    ........................................................................ [ 70%]
+    ............................................................             [100%]
+    204 passed in 25.14s
+    ### docker counts AFTER ###
+           1
+           2
+    
+    ```console
+    ........................................................................ [ 35%]
+    ........................................................................ [ 70%]
+    ............................................................             [100%]
+    204 passed in 25.14s
+    ### docker counts AFTER ###
+           1
+           2
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "def main\|CHECKS\|^CHECK" knowledge/05-QA/tools/run_regression.py | head -20 (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "def main\|CHECKS\|^CHECK" knowledge/05-QA/tools/run_regression.py | head -20
+  output:
+    36:CHECKS = [
+    122:def main():
+    124:    results = run_all(CHECKS, retired_capability_ids(lifecycle_conflicts))
+    
+    ```console
+    36:CHECKS = [
+    122:def main():
+    124:    results = run_all(CHECKS, retired_capability_ids(lifecycle_conflicts))
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '36,70p' knowledge/05-QA/tools/run_regression.py (completed)
+  kind: execute
+  input: sed -n '36,70p' knowledge/05-QA/tools/run_regression.py
+  output:
+    CHECKS = [
+        ("verify_baselines.py",
+         [sys.executable, str(REPO_ROOT / "knowledge/00-System/verify_baselines.py")]),
+        ("validate_catalog.py",
+         [sys.executable, str(REPO_ROOT / "knowledge/03-Modules/MOD-000/scenario-catalog/tools/validate_catalog.py")]),
+        ("validate_capabilities.py",
+         [sys.executable, str(REPO_ROOT / "knowledge/00-System/validate_capabilities.py")]),
+        ("evidence_integrity_check.py",
+         [sys.executable, str(REPO_ROOT / "knowledge/03-Modules/MOD-000/evidence/scenario-execution/phase3/tools/evidence_integrity_check.py")]),
+        ("test_bash_guard.py",
+         [sys.executable, str(REPO_ROOT / ".claude/security/tests/test_bash_guard.py")]),
+    ]
+    
+    # Added 2026-10-01 (BUG-044): test_bash_guard.py exercises CAP-007's
+    # PreToolUse enforcement, which OWN-006/ADR-007 retired 2026-09-28
+    # (bash_guard.py replaced with an inert allow-stub, commit 058ed27). The
+    # suite now correctly, permanently fails 149/194 -- it is testing
+    # behavior that was deliberately removed, not a real regression. Treating
+    # that as a current gate failure is itself wrong: it would either block
+    # every future regression run forever for a known, owner-authorized
+    # reason, or train sessions to ignore this harness's FAIL verdicts
+    # entirely. This name is read from the *live* registry on every run
+    # (via cdc.resolve_capability_lifecycle), not hardcoded -- if CAP-007 is
+    # ever reinstated (a later-dated REINSTATED/ACTIVE marker, corroborated
+    # by the registry's own `lifecycle_status` field), this check
+    # automatically resumes running and gating normally again, with no code
+    # change required here. An *unresolved* lifecycle claim (same-date
+    # conflict, or an unbacked/disagreeing marker -- see BUG-045) must never
+    ... (45 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/00-System/verify_baselines.py 2>&1 | tail -12 (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/00-System/verify_baselines.py 2>&1 | tail -12
+  output:
+    Checked 4 of 4 expected governing baselines against /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md:
+      [MATCH] Gym_OS_Master_Product_Blueprint_v1_English.docx: 80f4b381df26919b358b3e64e209c67beba2ba9224c0f4df3951d3b179d426ef
+      [MATCH] Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx: 0d41c8a1231e5c8680c96a44b3ccc02c4f42cf8984c84d04bf9b60378cc158e8
+      [MATCH] Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx: e5b5ec3b08859e27da3689dc3b54d17ea766cba5bf4c4e0007239baa920866b6
+      [MATCH] veyro-product-experience-design: c96f77abdf4345b231a60b37f832d76ac82cf52fb8b00ae3066f20bb10a36dbb
+    
+    PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    
+    ```console
+    Checked 4 of 4 expected governing baselines against /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md:
+      [MATCH] Gym_OS_Master_Product_Blueprint_v1_English.docx: 80f4b381df26919b358b3e64e209c67beba2ba9224c0f4df3951d3b179d426ef
+      [MATCH] Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx: 0d41c8a1231e5c8680c96a44b3ccc02c4f42cf8984c84d04bf9b60378cc158e8
+      [MATCH] Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx: e5b5ec3b08859e27da3689dc3b54d17ea766cba5bf4c4e0007239baa920866b6
+      [MATCH] veyro-product-experience-design: c96f77abdf4345b231a60b37f832d76ac82cf52fb8b00ae3066f20bb10a36dbb
+    
+    PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/05-QA/tools/run_regression.py 2>&1 | tail -25 (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/05-QA/tools/run_regression.py 2>&1 | tail -25
+  output:
+    MOD-000 regression run: 2026-10-04T09:39:26.507092+00:00
+    ======================================================================
+    [PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    [PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+    [PASS] validate_capabilities.py: RESULT: PASS — 8 capability/capabilities, all registered and APPROVED with required fields present.
+    [FAIL] evidence_integrity_check.py:   - STALE: knowledge/00-System/CURRENT_HANDOFF.md last committed 2026-09-29 (updated: field says 2026-10-01), but tracked module evidence (all MOD-*/evidence trees) has a later commit dated 2026-10-04 — knowledge/00-System/CURRENT_HANDOFF.md may not reflect the most recent evidence.
+    [N/A] test_bash_guard.py: RETIRED/NOT_APPLICABLE — CAP-007 retired (OWN-006/ADR-007); not executed as a current gate; must be restored if CAP-007 is reinstated
+    ======================================================================
+    AGGREGATE RESULT: FAIL (3/4 checks passed, 1 N/A excluded)
+    
+    Record written: knowledge/05-QA/tools/regression-runs/RUN_20261004T093926Z.txt
+    
+    ```console
+    MOD-000 regression run: 2026-10-04T09:39:26.507092+00:00
+    ======================================================================
+    [PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    [PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+    [PASS] validate_capabilities.py: RESULT: PASS — 8 capability/capabilities, all registered and APPROVED with required fields present.
+    [FAIL] evidence_integrity_check.py:   - STALE: knowledge/00-System/CURRENT_HANDOFF.md last committed 2026-09-29 (updated: field says 2026-10-01), but tracked module evidence (all MOD-*/evidence trees) has a later commit dated 2026-10-04 — knowledge/00-System/CURRENT_HANDOFF.md may not...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "=== validate_capability_manifest.py MOD-001 ===" && backend/.venv/bin/python tools/validate_capability_manifest.py MOD-001 2>&1 | tail -8; echo "=== capability_drift_check.py ==="; backend/.venv/bin/python knowledge/05-QA/tools/capability_drift_check.py 2>&1 | tail -8 (completed)
+  kind: execute
+  input: echo "=== validate_capability_manifest.py MOD-001 ===" && backend/.venv/bin/python tools/validate_capability_manifest.py MOD-001 2>&1 | tail -8; echo "=== capability_drift_check.py ==="; backend/.venv/bin/python knowl...
+  output:
+    === validate_capability_manifest.py MOD-001 ===
+    usage: validate_capability_manifest.py [-h] --manifest MANIFEST
+                                           [--registry REGISTRY]
+    validate_capability_manifest.py: error: the following arguments are required: --manifest
+    === capability_drift_check.py ===
+      [i] CAP-004: version/hash unchanged since approval — no drift.
+      [i] CAP-005: version/hash unchanged since approval — no drift.
+      [i] CAP-006: version/hash unchanged since approval — no drift.
+      [i] CAP-007: RETIRED — non-live, reapproval-for-continued-reliance not applicable. Version/hash differ from the approval snapshot (expected for a capability whose content changed after its last approval and before retirement); not flagged as drift requiring re-review since there is no continued reliance to gate.
+      [i] CAP-008: version/hash unchanged since approval — no drift.
+    
+    ======================================================================
+    RESULT: PASS — 8 capabilities checked, no drift detected.
+    
+    ```console
+    === validate_capability_manifest.py MOD-001 ===
+    usage: validate_capability_manifest.py [-h] --manifest MANIFEST
+                                           [--registry REGISTRY]
+    validate_capability_manifest.py: error: the following arguments are required: --manifest
+    === capability_drift_check.py ===
+      [i] CAP-004: version/hash unchanged since approval — no drift.
+      [i] CAP-005: version/hash unchanged since approval — no drift.
+      [i] CAP-006: version/hash unchanged since approval — no drift.
+      [i] CAP-007: RETIRED — non-live, reapproval-for-continued-reliance not applicable. Version/hash differ from the approval snapshot (expected for a capability whose content changed after its last approval and before retirement); not flagged as drift requiring re-review since there is no continued reliance to gate.
+      [i] CAP-008: version/hash unchanged since approval — no drift.
+    
+    ======================================================================
+    RESULT: PASS — 8 capabilities checked, ...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python tools/validate_capability_manifest.py --manifest knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml 2>&1 | tail -8 (completed)
+  kind: execute
+  input: backend/.venv/bin/python tools/validate_capability_manifest.py --manifest knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml 2>&1 | tail -8
+  output:
+    [i] RULE-009: registered, **APPROVED** (Round 5, 2026-09-25, P0=0/P1=0 — no P1 of its ...
+      [i] capability_dependency_ids: no real edges declared (empty/absent) — cyclic-dependency check is a structural no-op.
+      [i] mandatory-privileged-surface-Rule check: no activated Admin Web/privileged-console surface found — structural no-op.
+    
+    --- ERRORS (0) ---
+    
+    ======================================================================
+    RESULT: PASS — 10 capability/Rule ID(s) discovered, all registered and APPROVED with required fields present; no cyclic dependency; no missing mandatory privileged-surface Rule.
+    
+    ```console
+      [i] RULE-009: registered, **APPROVED** (Round 5, 2026-09-25, P0=0/P1=0 — no P1 of its ...
+      [i] capability_dependency_ids: no real edges declared (empty/absent) — cyclic-dependency check is a structural no-op.
+      [i] mandatory-privileged-surface-Rule check: no activated Admin Web/privileged-console surface found — structural no-op.
+    
+    --- ERRORS (0) ---
+    
+    ======================================================================
+    RESULT: PASS — 10 capability/Rule ID(s) discovered, all registered and APPROVED with required fields present; no cyclic dependency; no missing mandatory privileged-surface Rule.
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] ls knowledge/03-Modules/MOD-001/evidence/ && echo "--- scenario-execution if any ---" && ls knowledge/03-Modules/MOD-001/evidence/scenario-execution 2>/dev/null | head (completed)
+  kind: execute
+  input: ls knowledge/03-Modules/MOD-001/evidence/ && echo "--- scenario-execution if any ---" && ls knowledge/03-Modules/MOD-001/evidence/scenario-execution 2>/dev/null | head
+  output:
+    bugs
+    code-review
+    convergence-gate
+    implementation
+    model-routing
+    module-capabilities.yaml
+    security
+    --- scenario-execution if any ---
+    
+    ```console
+    bugs
+    code-review
+    convergence-gate
+    implementation
+    model-routing
+    module-capabilities.yaml
+    security
+    --- scenario-execution if any ---
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && OUT=/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt
+{ echo "# SCN-MOD001-009 canonical two-writer outcome run log"
+  echo "# host date (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "# interpreter: $(.venv/bin/python -V)"
+  echo "# command: python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly"
+  echo
+  .venv/bin/python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly 2>&1
+} > "$OUT"
+tail -20 "$OUT" (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && OUT=/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt { echo "# SCN-MOD001-0...
+  output:
+    # host date (UTC): 2026-10-04T09:39:47Z
+    # interpreter: Python 3.14.5
+    # command: python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly
+    
+    ============================= test session starts ==============================
+    platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python
+    cachedir: .pytest_cache
+    rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+    configfile: pyproject.toml
+    collecting ... collected 5 items
+    
+    tests/integration/test_concurrency_harness.py::test_single_writer_succeeds_and_increments_version PASSED
+    tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected SCN-MOD001-009-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "attempts": [{"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-a"}, {"error": {"conflict_expected_version": 1, "message": "version conflict on concurrency_harness.versioned_widget: id=28d0dab6-448f-490a-91d3-6f57a9bfb31c expected_version=1", "type": "VersionConflict"}, "expected_version": 1, "outcome": "rejected", "rowcount": 0, "writer": "writer-b"}], "committed_count": 1, "concurrency_shape": "two simulated sequential writers on one connection (see tests/harness/concurrency.py 'Known ceiling')", "final_row": {"value": "writer-a", "version": 2}, "lost_update_resolution": "reject-and-retry (REQUIREMENTS.md DOM-002 row)", "rejected_count": 1, "row_id": "28d0dab6-448f-490a-91d3-6f57a9bfb31c", "starting_version": 1}
+    PASSED
+    tests/integration/test_concurrency_harness.py::test_update_versioned_distinguishes_missing_row_from_version_conflict PASSED
+    tests/integration/test_concurrency_harness.py::test_update_versioned_executes_exactly_one_statement PASSED
+    tests/integration/test_concurrency_harness.py::test_naive_unversioned_update_loses_the_update SCN-MOD001-009-DIFFERENTIAL[unversioned-control]-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "att...
+Now the durable evidence record:
+
+[tool] Preparing file… (pending)
+  input: {}
+
+[tool] Write knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md (completed)
+  kind: edit
+  input: {"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md","content":"---\ndoc: SCN-MOD001-009-EVIDENCE-RECONCILIATION\nm...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md
+  output:
+    File created successfully at: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md (+243 lines)
+Now update the scenario catalog entry:
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit knowledge/03-Modules/MOD-001/SCENARIOS.md (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md","old_string":"version-conflict error.\n**Routing/evidence reconciliation (2026-10-04):** The former R04/TS...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md:434
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md (+35 lines)
+
+[tool] Edit (pending)
+  input: {}
+
+[tool] Edit knowledge/03-Modules/MOD-001/SCENARIOS.md (completed)
+  kind: edit
+  input: {"replace_all":false,"file_path":"/Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md","old_string":"**SCN-MOD001-009 · CONC · Major · GOV-01-R02, DOM-002 (synthetic concurrency/versioning patt...
+  files: /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md:415
+  output:
+    The file /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md has been updated successfully. (file state is current in your context — no need to Read it back)
+    
+    diff /Users/ahmadmabrouk/Desktop/Veyro/knowledge/03-Modules/MOD-001/SCENARIOS.md (line count unchanged)
+Now update STATUS.md, TEST_RESULTS.md, CURRENT_STATE.md and the convergence checkpoint. Let me check the current entries first:
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "SCN-MOD001-009" knowledge/03-Modules/MOD-001/STATUS.md knowledge/00-System/CURRENT_STATE.md | head -20 (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro && grep -n "SCN-MOD001-009" knowledge/03-Modules/MOD-001/STATUS.md knowledge/00-System/CURRENT_STATE.md | head -20
+  output:
+    <persisted-output>
+    Output too large (42.7KB). Full output saved to: /Users/ahmadmabrouk/.claude/projects/-Users-ahmadmabrouk-Desktop-Veyro/e7c14839-a724-4470-93dd-3a2e6f53236b/tool-results/b0w37pztz.txt
+    
+    Preview (first 2KB):
+    knowledge/03-Modules/MOD-001/STATUS.md:4:updated: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4 PASS-with-findings fixed): round-4 independent fresh-context Opus review (`DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md`, `mr_verify.py` PASS 107/107 `claude-opus-5`) returned **verdict PASS, P0=0/P1=0/P2=0/P3=6** — confirmed all six of round 3's findings genuinely fixed by its own execution, found no new P0/P1/P2 (the regression pattern from rounds 2/3 did not repeat at blocking severity), surfaced 6 new P3s. **Fixed, priority order per the task: R4-4 first** (non-atomic 404-vs-409 disambiguation in `update_versioned` — two separate statements on an autocommit connection let a concurrent insert land in the gap between them, raising `VersionConflict` for a row that never existed when the `UPDATE` ran; forward-binding since the "Plug-in point" section tells 5 later modules to copy this exact shape; independently reproduced live with two real connections before fixing) — folded into **one** `WITH` statement (PostgreSQL gives every non-`RETURNING`-chained part of one statement the same snapshot, closing the gap by construction); `_row_exists` removed as dead code; new structural regression test counts real `execute()` calls and asserts exactly one, proven non-vacuous by reverting to two statements in a throwaway copy and confirming the test then fails. **R4-1** (`warnings.warn` itself not unconditionally non-raising; under `filterwarnings=["error"]` it would mask the real `TimeoutExpired` — R3-4's defect reintroduced through its own fix) — new `_warn` helper wraps every call in `catch_warnings()`+`simplefilter("always")`; verified under a global error filter, no exception escapes. **R4-3** (`_anonymous_volume_of`'s Go...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] grep -n "SCN-MOD001-009" knowledge/00-System/CURRENT_STATE.md | cut -c1-300 (completed)
+  kind: execute
+  input: grep -n "SCN-MOD001-009" knowledge/00-System/CURRENT_STATE.md | cut -c1-300
+  output:
+    4:current_as_of: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4 PASS-with-findings remediated, not self-approved): resumed the same retained implementation session to remediate round-4's review (`DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND4-2026-10-04.md`, verdict **PASS P0=0/P1=0
+    5:prior_current_as_of_round18remediation4_dispatch: 2026-10-04 DOM-002 round-4 independent code review completed and independently attested: mr_verify.py PASS 107/107 claude-opus-5, verdict PASS with findings P0=0/P1=0/P2=0/P3=6. Reviewer independently verified all six round-3 fixes and 203/203 back
+    6:prior_current_as_of_round18remediation3: 2026-10-04 (round 18 remediation 3 — DOM-002 code-review round-3 PASS-with-findings remediated, not self-approved): resumed the same retained implementation session to remediate round-3's review (`DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND3-2026-10-04.md`
+    7:prior_current_as_of_round18remediation3_dispatch: 2026-10-04 (DOM-002 round-3 independent review recovered): fresh veyro-code-reviewer report completed; watchdog independently ran mr_verify.py on agent-aeec218ea8828024b actual transcript: PASS 130/130 turns claude-opus-5. Review verdict PASS P0=0/
+    8:prior_current_as_of_round18remediation2: 2026-10-04 (round 18 remediation 2 — DOM-002 code-review round-2 PASS-with-findings remediated, not self-approved): resumed the same retained implementation session to remediate round-2's review (`DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND2-2026-10-04.md`
+    9:prior_current_as_of_round18remediation2_dispatch: 2026-10-04 DOM-002 independent code review round 2 recovered and model-assured — reviewer verdict PASS P0=0/P1=0/P2=1/P3=4; orchestrator reran mr_verify.py against actual reviewer transcript: PASS 102/102 claude-opus-5. Round-1 P1/P2 findings indep
+    10:prior_current_as_of_round18remediation1: 2026-10-04 (round 18 remediation — DOM-002 code-review round-1 BLOCKED findings fixed, not self-approved): resumed the same retained MOD-001 GOV-01...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '1,5p' knowledge/00-System/CURRENT_STATE.md | cut -c1-200 && echo "...."; awk 'NR>=1 && NR<=30 {printf "%d: %s\n", NR, substr($0,1,90)}' knowledge/00-System/CURRENT_STATE.md (completed)
+  kind: execute
+  input: sed -n '1,5p' knowledge/00-System/CURRENT_STATE.md | cut -c1-200 && echo "...."; awk 'NR>=1 && NR<=30 {printf "%d: %s\n", NR, substr($0,1,90)}' knowledge/00-System/CURRENT_STATE.md
+  output:
+    ---
+    doc: CURRENT_STATE
+    status: LIVE
+    current_as_of: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4 PASS-with-findings remediated, not self-approved): resumed the same retained implementation session to remediate round-4
+    prior_current_as_of_round18remediation4_dispatch: 2026-10-04 DOM-002 round-4 independent code review completed and independently attested: mr_verify.py PASS 107/107 claude-opus-5, verdict PASS with fi
+    ....
+    1: ---
+    2: doc: CURRENT_STATE
+    3: status: LIVE
+    4: current_as_of: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4 PASS-wit
+    5: prior_current_as_of_round18remediation4_dispatch: 2026-10-04 DOM-002 round-4 independent c
+    6: prior_current_as_of_round18remediation3: 2026-10-04 (round 18 remediation 3 — DOM-002 co
+    7: prior_current_as_of_round18remediation3_dispatch: 2026-10-04 (DOM-002 round-3 independent 
+    8: prior_current_as_of_round18remediation2: 2026-10-04 (round 18 remediation 2 — DOM-002 co
+    9: prior_current_as_of_round18remediation2_dispatch: 2026-10-04 DOM-002 independent code revi
+    10: prior_current_as_of_round18remediation1: 2026-10-04 (round 18 remediation — DOM-002 code
+    11: prior_current_as_of_round18: 2026-10-04 (round 18 — GOV-01-R02 DOM-002 concurrency/versi
+    12: prior_current_as_of_round17: 2026-10-04 (round 17 — CAP-008 APPROVED, SCN-MOD001-132 PRO
+    13: prior_current_as_of_round16seg3: 2026-10-04 (round 16 segment 3 — full round complete; B
+    14: prior_current_as_of_round16seg12: 2026-10-04 (round-16 bounded continuation) — retained 
+    15: prior_current_as_of_round15: 2026-10-04 (round 15 remediation) — retained routine-implem
+    16: prior_current_as_of_round15_reviewonly: 2026-10-04 round-15 independent security review: B
+    17: prior_current_as_of_round14: 2026-10-04 (round 14 remediation) — round 14's review (agen
+    18: prior_current_as_of_round14_reviewonly: 2026-10-03→04 (round 14 retry, review-only, NOT 
+    19: prior_current_as_of_round13: 2026-10-03 (round 13 remediation) — fresh thirteenth `veyro
+    20: prior_current_a...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] for f in knowledge/03-Modules/MOD-001/STATUS.md knowledge/03-Modules/MOD-001/TEST_RESULTS.md knowledge/00-System/CURRENT_HANDOFF.md; do echo "=== $f ==="; awk 'NR<=12 {printf "%d: %s\n", NR, substr($0,1,75)}' "$f"; done (completed)
+  kind: execute
+  input: for f in knowledge/03-Modules/MOD-001/STATUS.md knowledge/03-Modules/MOD-001/TEST_RESULTS.md knowledge/00-System/CURRENT_HANDOFF.md; do echo "=== $f ==="; awk 'NR<=12 {printf "%d: %s\n", NR, substr($0,1,75)}' "$f"; done
+  output:
+    === knowledge/03-Modules/MOD-001/STATUS.md ===
+    1: ---
+    2: doc: MOD-001_STATUS
+    3: status: LIVE
+    4: updated: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4
+    5: prior_updated_round18remediation3: 2026-10-04 (round 18 remediation 3 — D
+    6: prior_updated_round18remediation2: 2026-10-04 (round 18 remediation 2 — D
+    7: prior_updated_round18remediation1: 2026-10-04 (round 18 remediation — DOM
+    8: prior_updated_round18: 2026-10-04 (round 18 — GOV-01-R02 DOM-002 concurre
+    9: prior_updated_round17: 2026-10-04 (Slice-7 round 17 — CAP-008 APPROVED, S
+    10: prior_updated_round16seg3: 2026-10-04 (Slice-7 round 16, full round complet
+    11: prior_updated_round16seg12: 2026-10-04 (Slice-7 round-16 bounded continuati
+    12: prior_updated_round15: 2026-10-04 (Slice-7 round 15 remediation) — retain
+    === knowledge/03-Modules/MOD-001/TEST_RESULTS.md ===
+    1: ---
+    2: doc: MOD-001_TEST_RESULTS
+    3: status: LIVE — implementation evidence recorded, MOD-001 certification in
+    4: module: MOD-001
+    5: updated: 2026-10-04 (round 18 remediation 4 — DOM-002 code-review round-4
+    6: prior_updated_round18remediation3: 2026-10-04 (round 18 remediation 3 — D
+    7: prior_updated_round18remediation2: 2026-10-04 (round 18 remediation 2 — D
+    8: prior_updated_round18remediation1: 2026-10-04 (round 18 remediation — DOM
+    9: prior_updated_round18: 2026-10-04 (round 18 — GOV-01-R02 DOM-002 concurre
+    10: prior_updated_round17: 2026-10-04 (Slice-7 round 17 — CAP-008 APPROVED, S
+    11: prior_updated_round16seg3: 2026-10-04 (Slice-7 round 16, full round complet
+    12: prior_updated_round15: 2026-10-04 (Slice-7 round-15 remediation) — round 
+    === knowledge/00-System/CURRENT_HANDOFF.md ===
+    1: ---
+    ... (53 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python - <<'PYEOF'
+import pathlib
+
+NEW = (
+    "2026-10-04 (SCN-MOD001-009 scenario evidence reconciliation — distinct record unit, "
+    "no DOM-002 review/remediation performed or requested): closed the scenario's own evidence "
+    "clause (\"both write attempts' outcomes logged; exactly one succeeds, one gets a "
+    "version-conflict error\"), which the routing correction earlier the same day had left "
+    "explicitly unresolved. Gap was real and twofold: the two-writer behavior was proven only by "
+    "assertions with no durable artifact an auditor can read the outcomes off, and \"exactly one / "
+    "exactly one\" was a structural property of the call shape (unchecked success call + "
+    "`pytest.raises`) rather than a measured count — blind to two successes (the lost update) and "
+    "to a rejection carrying the wrong typed error (`RowNotFound` for a version conflict, round-1 "
+    "P2-1's class). Fixed with minimal instrumentation in "
+    "`backend/tests/integration/test_concurrency_harness.py` only — no new test function (file "
+    "collects 5 before and after), no harness/production change, no new mechanism: both writers "
+    "run through one outcome recorder and the pair is emitted via the same `{TAG}-EVIDENCE <json>` "
+    "stdout convention `test_authn_harness.py`/`test_architecture_gate_rls.py` already use. "
+    "Executed results, all this session on Colima (CAP-008): focused suite **5/5 PASS** with the "
+    "record reading `committed_count: 1`/`rejected_count: 1`, rejection typed `VersionConflict` at "
+    "the stale version, surviving row writer-a at version 2; the deliberately-broken unversioned "
+    "control emits the same shape reading **2 committed / 0 rejected**, so 1/1 is discriminating "
+    "rather than unconditional. Two mutants killed by the *new* assertions specifically "
+    "(always-true version predicate → count assertion fails `assert 2 == 1`; `RowNotFound` "
+    "substituted for `VersionConflict` → type assertion fails); harness restored byte-identical "
+    "after both drills. Order-independence regression **3/3**, full backend **204/204** (same "
+    "count as before), `ruff check` clean, `mypy tests/` strict clean (28 files), Docker "
+    "container/volume counts stable 1/2 before and after, `verify_baselines.py` PASS 4/4, "
+    "capability manifest + drift checks PASS, aggregate `run_regression.py` FAIL 3/4 on the "
+    "pre-existing `CURRENT_HANDOFF.md` evidence-integrity staleness artifact only. "
+    "**SCN-MOD001-009 still NOT promoted**: the instrumentation was written by the implementing "
+    "session, so promotion needs a fresh-context independent review of it (DC-06, no "
+    "self-approval) — round-4's PASS covered an earlier snapshot. Whether that review may be "
+    "dispatched is itself an open governance question "
+    "(`AUTONOMOUS_CONVERGENCE_STATE.json`: `anotherReviewCurrentlyAllowed: false`); none was "
+    "dispatched and no `REVIEW_IN_FLIGHT.md` claim was written. R04/ADR-010 A2 and MOD-001 "
+    "certification untouched. Nothing committed or pushed. Record: "
+    "`knowledge/03-Modules/MOD-001/evidence/implementation/"
+    "SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md`."
+)
+
+TARGETS = [
+    ("knowledge/00-System/CURRENT_STATE.md", "current_as_of", "prior_current_as_of_round18remediation4"),
+    ("knowledge/00-System/CURRENT_HANDOFF.md", "current_as_of", "prior_current_as_of_round18remediation4"),
+    ("knowledge/03-Modules/MOD-001/STATUS.md", "updated", "prior_updated_round18remediation4"),
+    ("knowledge/03-Modules/MOD-001/TEST_RESULTS.md", "updated", "prior_updated_round18remediation4"),
+]
+
+for rel, key, demoted in TARGETS:
+    p = pathlib.Path(rel)
+    lines = p.read_text().split("\n")
+    idx = next(i for i, l in enumerate(lines) if l.startswith(f"{key}: "))
+    assert not any(l.startswith(f"{demoted}:") for l in lines), f"{rel}: {demoted} already present"
+    lines[idx] = f"{demoted}: " + lines[idx][len(key) + 2:]
+    lines.insert(idx, f"{key}: {NEW}")
+    p.write_text("\n".join(lines))
+    print(f"[ok] {rel}: rotated {key} -> {demoted}, new current line inserted at {idx + 1}")
+PYEOF (completed)
+  kind: execute
+  input: backend/.venv/bin/python - <<'PYEOF' import pathlib NEW = ( "2026-10-04 (SCN-MOD001-009 scenario evidence reconciliation — distinct record unit, " "no DOM-002 review/remediation performed or requested): closed the sce...
+  output:
+    [ok] knowledge/00-System/CURRENT_STATE.md: rotated current_as_of -> prior_current_as_of_round18remediation4, new current line inserted at 4
+    [ok] knowledge/00-System/CURRENT_HANDOFF.md: rotated current_as_of -> prior_current_as_of_round18remediation4, new current line inserted at 4
+    [ok] knowledge/03-Modules/MOD-001/STATUS.md: rotated updated -> prior_updated_round18remediation4, new current line inserted at 4
+    [ok] knowledge/03-Modules/MOD-001/TEST_RESULTS.md: rotated updated -> prior_updated_round18remediation4, new current line inserted at 5
+    
+    ```console
+    [ok] knowledge/00-System/CURRENT_STATE.md: rotated current_as_of -> prior_current_as_of_round18remediation4, new current line inserted at 4
+    [ok] knowledge/00-System/CURRENT_HANDOFF.md: rotated current_as_of -> prior_current_as_of_round18remediation4, new current line inserted at 4
+    [ok] knowledge/03-Modules/MOD-001/STATUS.md: rotated updated -> prior_updated_round18remediation4, new current line inserted at 4
+    [ok] knowledge/03-Modules/MOD-001/TEST_RESULTS.md: rotated updated -> prior_updated_round18remediation4, new current line inserted at 5
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python knowledge/05-QA/tools/run_regression.py 2>&1 | tail -12 (completed)
+  kind: execute
+  input: backend/.venv/bin/python knowledge/05-QA/tools/run_regression.py 2>&1 | tail -12
+  output:
+    MOD-000 regression run: 2026-10-04T09:42:16.820139+00:00
+    ======================================================================
+    [PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    [PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+    [PASS] validate_capabilities.py: RESULT: PASS — 8 capability/capabilities, all registered and APPROVED with required fields present.
+    [FAIL] evidence_integrity_check.py:   - STALE: knowledge/00-System/CURRENT_HANDOFF.md last committed 2026-09-29 (updated: field says 2026-10-01), but tracked module evidence (all MOD-*/evidence trees) has a later commit dated 2026-10-04 — knowledge/00-System/CURRENT_HANDOFF.md may not reflect the most recent evidence.
+    [N/A] test_bash_guard.py: RETIRED/NOT_APPLICABLE — CAP-007 retired (OWN-006/ADR-007); not executed as a current gate; must be restored if CAP-007 is reinstated
+    ======================================================================
+    AGGREGATE RESULT: FAIL (3/4 checks passed, 1 N/A excluded)
+    
+    Record written: knowledge/05-QA/tools/regression-runs/RUN_20261004T094216Z.txt
+    
+    ```console
+    MOD-000 regression run: 2026-10-04T09:42:16.820139+00:00
+    ======================================================================
+    [PASS] verify_baselines.py: PASS — all 4 governing baseline hashes match /Users/ahmadmabrouk/Desktop/Veyro/knowledge/00-System/PROJECT_INDEX.md exactly.
+    [PASS] validate_catalog.py: RESULT: PASS — 0 errors, 1 warning(s) (non-blocking, tracked).
+    [PASS] validate_capabilities.py: RESULT: PASS — 8 capability/capabilities, all registered and APPROVED with required fields present.
+    [FAIL] evidence_integrity_check.py:   - STALE: knowledge/00-System/CURRENT_HANDOFF.md last committed 2026-09-29 (updated: field says 2026-10-01), but tracked module evidence (all MOD-*/evidence trees) has a later commit dated 2026-10-04 — knowledge/00-System/CURRENT_HANDOFF.md may not...
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] backend/.venv/bin/python - <<'PYEOF'
+import json, pathlib
+
+p = pathlib.Path("knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json")
+s = json.loads(p.read_text())
+TS = "2026-10-04T09:42:16Z"
+
+a = s["analysis"]
+# Governance flags deliberately NOT touched: anotherReviewCurrentlyAllowed,
+# normalDom002ReviewOrRemediationAllowed, interruptedRound5ContinuationAllowed,
+# round5Disposition, continuationRecoveryResult.
+for k in ("anotherReviewCurrentlyAllowed", "normalDom002ReviewOrRemediationAllowed",
+          "interruptedRound5ContinuationAllowed", "round5Disposition"):
+    assert k in a, k
+
+a["currentOperation"] = (
+    "SCN-MOD001-009 scenario evidence clause closed by execution. The scenario's own "
+    "acceptance evidence requirement (both write attempts' outcomes logged; exactly one "
+    "success, one typed VersionConflict) is now satisfied by a durable logged record, not "
+    "only by assertions: minimal instrumentation added to "
+    "backend/tests/integration/test_concurrency_harness.py (no new test function, no "
+    "harness/production change, reusing the existing {TAG}-EVIDENCE stdout convention). "
+    "Focused suite 5/5 PASS with committed_count 1 / rejected_count 1; broken-control "
+    "differential emits 2 committed / 0 rejected; two mutants killed by the new assertions; "
+    "order-independence 3/3; full backend 204/204; ruff/mypy clean; Docker counts stable. "
+    "No DOM-002 review or remediation performed or requested; interrupted round 5 untouched."
+)
+a["scenario009Disposition"] = (
+    "EXECUTED 2026-10-04 — EVIDENCE CLAUSE SATISFIED BY EXECUTION; NOT PROMOTED "
+    "(blocked only on fresh-context independent review of the new instrumentation, DC-06 "
+    "no self-approval, plus a governance decision on whether that review is dispatchable)"
+)
+a["nextAutonomousAction"] = (
+    "No further autonomous engineering action is available on SCN-MOD001-009. Promotion "
+    "requires (1) a governed decision on whether an independent review of the scenario-evidence "
+    "instrumentation is a work unit distinct from the closed DOM-002 code-review cycle and may "
+    "therefore be dispatched, and if so (2) that fresh-context review, claimed in "
+    "REVIEW_IN_FLIGHT.md before dispatch. Do not dispatch any DOM-002 review/remediation and do "
+    "not resume/retry/replace the interrupted round 5."
+)
+a["scenario009EvidenceClosureAt"] = TS
+a["scenario009BlockingReasons"] = [
+    "BLOCKED: INDEPENDENT_REVIEW_REQUIRED — instrumentation authored by the implementing session; DC-06 forbids self-approval; round-4 PASS covered an earlier snapshot.",
+    "BLOCKED: GOVERNANCE_DECISION_REQUIRED — anotherReviewCurrentlyAllowed is false for the closed DOM-002 cycle; whether a review of this distinct scenario-evidence unit is dispatchable is not a decision this session may make for itself.",
+]
+a["scenario009EvidenceRecord"] = (
+    "knowledge/03-Modules/MOD-001/evidence/implementation/"
+    "SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md (+ "
+    "SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt)"
+)
+
+s["lastMaterialProgress"] = {
+    "round": "SCN-MOD001-009 scenario evidence reconciliation (not a review round)",
+    "result": (
+        "Scenario evidence clause satisfied by execution and durably recorded; scenario left "
+        "unpromoted with two named blockers. No review round consumed, no remediation round "
+        "consumed, historical budgets unchanged."
+    ),
+    "evidence": (
+        "knowledge/03-Modules/MOD-001/evidence/implementation/"
+        "SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md"
+    ),
+}
+s["updatedAt"] = TS
+s["statusTransition"]["note"] = (
+    "Bounded work unit's engineering work is complete as of " + TS + "; the unit remains open "
+    "only on the two blockers recorded in analysis.scenario009BlockingReasons. Review/"
+    "remediation round counts are unchanged by this unit (4 and 4)."
+)
+
+p.write_text(json.dumps(s, indent=2) + "\n")
+print("[ok] convergence state updated; review rounds completed still:",
+      s["roundCounting"]["reviewRoundsCompleted"],
+      "| anotherReviewCurrentlyAllowed:", a["anotherReviewCurrentlyAllowed"])
+PYEOF (completed)
+  kind: execute
+  input: backend/.venv/bin/python - <<'PYEOF' import json, pathlib p = pathlib.Path("knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json") s = json.loads(p.read_text()) TS = "2026-10-04T09:42:16Z" a = s["analysis"] # Governa...
+  output:
+    [ok] convergence state updated; review rounds completed still: 4 | anotherReviewCurrentlyAllowed: False
+    
+    ```console
+    [ok] convergence state updated; review rounds completed still: 4 | anotherReviewCurrentlyAllowed: False
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] for f in knowledge/03-Modules/MOD-001/STATUS.md knowledge/03-Modules/MOD-001/TEST_RESULTS.md; do echo "=== $f (body mentions, past front matter) ==="; awk '/^---$/{c++} c>=2 && /SCN-MOD001-009/ {printf "%d: %s\n", NR, substr($0,1,220)}' "$f"; done (completed)
+  kind: execute
+  input: for f in knowledge/03-Modules/MOD-001/STATUS.md knowledge/03-Modules/MOD-001/TEST_RESULTS.md; do echo "=== $f (body mentions, past front matter) ==="; awk '/^---$/{c++} c>=2 && /SCN-MOD001-009/ {printf "%d: %s\n", NR,...
+  output:
+    === knowledge/03-Modules/MOD-001/STATUS.md (body mentions, past front matter) ===
+    === knowledge/03-Modules/MOD-001/TEST_RESULTS.md (body mentions, past front matter) ===
+    
+    ```console
+    === knowledge/03-Modules/MOD-001/STATUS.md (body mentions, past front matter) ===
+    === knowledge/03-Modules/MOD-001/TEST_RESULTS.md (body mentions, past front matter) ===
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] echo "=== GOV-01-R02 / concurrency body claims in STATUS.md ===" && awk '/^---$/{c++} c>=2 && (/concurrency/ || /GOV-01-R02/) {printf "%d: %s\n", NR, substr($0,1,200)}' knowledge/03-Modules/MOD-001/STATUS.md | head -20 (completed)
+  kind: execute
+  input: echo "=== GOV-01-R02 / concurrency body claims in STATUS.md ===" && awk '/^---$/{c++} c>=2 && (/concurrency/ || /GOV-01-R02/) {printf "%d: %s\n", NR, substr($0,1,200)}' knowledge/03-Modules/MOD-001/STATUS.md | head -20
+  output:
+    === GOV-01-R02 / concurrency body claims in STATUS.md ===
+    61: **Older Slice-7 checkpoint (2026-10-03, historical — preserved verbatim, superseded by the round-7 checkpoint above):** GOV-01-R02 domain-suite and financial placeholders implemented; fresh security
+    64: **Current GOV-01-R02 migration-harness checkpoint (2026-10-03):** Sixth fresh independent Opus security re-review PASS (P0/P1/P2=0); 51/51 focused and 170/170 backend tests, live Colima adversarial pr
+    562: - [x] **Slice 5 complete (2026-09-29):** GOV-01-R02 critical slice
+    587:       under GOV-01-R02: migration-safety harness, domain suite scaffolds,
+    588:       financial-invariant placeholder, DOM-002 concurrency pattern. See
+    695:       GOV-01-R02: critical half done (Slice 5); routine half (domain suite
+    697:       DOM-002 concurrency pattern) not started.
+    
+    ```console
+    === GOV-01-R02 / concurrency body claims in STATUS.md ===
+    61: **Older Slice-7 checkpoint (2026-10-03, historical — preserved verbatim, superseded by the round-7 checkpoint above):** GOV-01-R02 domain-suite and financial placeholders implemented; fresh security
+    64: **Current GOV-01-R02 migration-harness checkpoint (2026-10-03):** Sixth fresh independent Opus security re-review PASS (P0/P1/P2=0); 51/51 focused and 170/170 backend tests, live Colima adversarial pr
+    562: - [x] **Slice 5 complete (2026-09-29):** GOV-01-R02 critical slice
+    587:       under GOV-01-R02: migration-safety harness, domain suite scaffolds,
+    588:       financial-invariant placeholder, DOM-002 concurrency pattern. See
+    695:       GOV-01-R02: critical half done (Slice 5); routine half (domain suite
+    697:       DOM-002 concurrency pattern) not started.
+    ```
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] sed -n '580,600p' knowledge/03-Modules/MOD-001/STATUS.md (completed)
+  kind: execute
+  input: sed -n '580,600p' knowledge/03-Modules/MOD-001/STATUS.md
+  output:
+    7/7 killed. New runtime dependency: `psycopg[binary]==3.3.6` (LGPL-3.0,
+          flagged), added via the hash-locked wheel-only path; only 2 lock
+          entries added, all 12 prior hashes unchanged. SCN-MOD001-027/067
+          executed, awaiting independent `veyro-security-reviewer` judgment.
+          SCN-067's R04-gate half is NOT EXECUTED (out of scope).
+          SCN-MOD001-028/097 executed, PASS. `BUG-037` filed (`mr_verify.py`
+          rejects the current `claude-opus-5-5` id; fails closed). Still open
+          under GOV-01-R02: migration-safety harness, domain suite scaffolds,
+          financial-invariant placeholder, DOM-002 concurrency pattern. See
+          `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-5-gov01-r02-tenant-isolation-auth-harness-2026-09-29.md`.
+    - [x] **`BUG-036` investigation complete (2026-09-25, dedicated
+          review-only session, no implementation slice run):** root-caused
+          the recurring `bash_guard.py`/CAP-007 local test-execution gap
+          Slices 1-3 each independently disclosed. Confirmed by direct code
+          inspection and direct attempt (not taken on any agent's prior
+          report): `pytest`/`ruff`/`mypy` have no command family in the guard
+          at all (`UNKNOWN_COMMAND`); `python3` only allows the 7
+          pre-existing SHA-256-pinned scripts, no new script, no `-m` form,
+          no bare flags (`DISALLOWED_FLAG_OR_SHAPE`). `bash_guard.py`'s own
+          hash independently re-verified unchanged
+          (`315df926ff607fb0560f4f1842646d28eeb2a059b771130db5002edb347cc245`)
+    
+    ```console
+          7/7 killed. New runtime dependency: `psycopg[binary]==3.3.6` (LGPL-3.0,
+          flagged), added via the hash-locked wheel-only path; only 2 lock
+          entries added, all 12 prior hashes unchanged. SCN-MOD001-027/067
+          executed, awaiting independent `veyro-security-reviewer` judgment.
+          SCN-067's R04-gate half is NOT EXECUTED (out of scope).
+    ... (17 more lines)
+
+[tool] Terminal (pending)
+  input: {}
+
+[tool] cd /Users/ahmadmabrouk/Desktop/Veyro/backend && .venv/bin/python -m pytest tests/integration/test_concurrency_harness.py tests/integration/test_concurrency_harness_order_independence.py -q -p no:randomly 2>&1 | tail -4 && .venv/bin/python -m ruff check . 2>&1 | tail -2 && .venv/bin/python -m mypy tests/ 2>&1 | tail -2 && echo "=== git status (short) ===" && cd /Users/ahmadmabrouk/Desktop/Veyro && git status --short | grep -E "test_concurrency|SCN-MOD001-009|CURRENT_STATE|CURRENT_HANDOFF|STATUS.md|TEST_RESULTS.md|SCENARIOS.md|AUTONOMOUS_CONVERGENCE|regression-runs" (completed)
+  kind: execute
+  input: cd /Users/ahmadmabrouk/Desktop/Veyro/backend && .venv/bin/python -m pytest tests/integration/test_concurrency_harness.py tests/integration/test_concurrency_harness_order_independence.py -q -p no:randomly 2>&1 | tail -...
+  output:
+    ........                                                                 [100%]
+    8 passed in 9.00s
+    All checks passed!
+    Success: no issues found in 28 source files
+    === git status (short) ===
+     M knowledge/00-System/CURRENT_HANDOFF.md
+     M knowledge/00-System/CURRENT_STATE.md
+     M knowledge/03-Modules/MOD-000/TEST_RESULTS.md
+     M knowledge/03-Modules/MOD-001/SCENARIOS.md
+     M knowledge/03-Modules/MOD-001/STATUS.md
+     M knowledge/03-Modules/MOD-001/TEST_RESULTS.md
+    ?? backend/tests/integration/test_concurrency_harness.py
+    ?? backend/tests/integration/test_concurrency_harness_order_independence.py
+    ?? knowledge/00-System/AUTONOMOUS_CONVERGENCE_STATE.json
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md
+    ?? knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T064138Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T064403Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T064441Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T065159Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T065412Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T065451Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T065732Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T065804Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T071916Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T071935Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T075426Z.txt
+    ?? knowledge/05-QA/tools/regression-runs/RUN_20261001T090330Z.txt
+    ... (163 more lines)
+All work is complete and verified. Here's the summary.
+
+## What I found
+
+`SCN-MOD001-009`'s acceptance text asks for more than a pass/fail: *"Evidence: both write attempts' outcomes logged; exactly one succeeds, one gets a version-conflict error."* Governing requirement is `REQUIREMENTS.md:590` (DOM-002 → GOV-01-R02/CONC; the R04/gate-2 label was already established as a catalog error). The gap was real and twofold:
+
+1. **No logged outcome record** — the behavior was proven only by assertions plus pytest pass/fail. Sibling GOV-01-R02 harnesses (`test_authn_harness.py:34`, `test_architecture_gate_rls.py:101`) already emit `{TAG}-EVIDENCE <json>`; the concurrency suite was the one that didn't.
+2. **"Exactly one / exactly one" was structural, not measured** — writer A was an unchecked call, writer B a `pytest.raises` block. That shape cannot see two successes (the lost update itself) or a rejection carrying the wrong typed error (`RowNotFound` for a version conflict — round-1 P2-1's class).
+
+## Change (one file, no new test function, no new mechanism)
+
+`backend/tests/integration/test_concurrency_harness.py` — reused the existing `_evidence` convention; added `_attempt` so both writers go through one recorder; asserted the property as a count plus an error-type check; emitted the same record shape from the deliberately-broken control. All pre-existing assertions retained. No harness or production code touched.
+
+## Exact results
+
+| Check | Result |
+|---|---|
+| `pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly` | **5 passed in 1.46s**; record reads `committed_count: 1`, `rejected_count: 1`, rejection typed `VersionConflict` at stale version 1, surviving row `writer-a` @ version 2 |
+| Broken-control differential | same record shape, **2 committed / 0 rejected** — so 1/1 is discriminating, not unconditional |
+| Mutant M1 (version predicate made always-true) | **KILLED** by the new count assertion — `assert 2 == 1` at `:196` |
+| Mutant M2 (`RowNotFound` for `VersionConflict`) | **KILLED** by the new type assertion — `assert 'RowNotFound' == 'VersionConflict'` at `:202` |
+| Order-independence regression | **3 passed in 5.67s** |
+| Full backend suite | **204 passed in 25.14s** (same count — no test added) |
+| `ruff check .` / `mypy tests/` strict | clean / **28 files, no issues** |
+| Docker containers / volumes before & after | **1 / 2 — stable** (BUG-051 class) |
+| `verify_baselines.py` | **PASS 4/4** |
+| `run_regression.py` | **FAIL 3/4** — pre-existing `CURRENT_HANDOFF.md` staleness artifact only (git-commit-based; identical before and after my edits) |
+| capability manifest + drift | **PASS** / **PASS** |
+
+Harness file restored byte-identical after both mutation drills (`diff` empty). `ruff format` would reformat this file, but that's pre-existing — the reported diff includes untouched code at line ~150, and `ruff format` isn't an enforced gate here.
+
+## Disposition
+
+**EXECUTED 2026-10-04 — EVIDENCE CLAUSE SATISFIED BY EXECUTION; NOT PROMOTED.**
+
+Two honest blockers:
+1. `BLOCKED: INDEPENDENT_REVIEW_REQUIRED` — I wrote the instrumentation, so DC-06 forbids self-approval; round-4's PASS covered an earlier snapshot and can't cover code written after it.
+2. `BLOCKED: GOVERNANCE_DECISION_REQUIRED` — whether a review of this *scenario-evidence* unit is distinct from the closed DOM-002 cycle (where `anotherReviewCurrentlyAllowed: false`) isn't a call I may make for myself. I dispatched nothing and wrote no `REVIEW_IN_FLIGHT.md` claim.
+
+No DOM-002 review/remediation performed or requested; interrupted round 5 untouched; R04/ADR-010 A2 and module certification unaffected. Nothing committed or pushed; all other uncommitted work preserved.
+
+## Paths
+
+- `backend/tests/integration/test_concurrency_harness.py` (only code change)
+- `knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md`
+- `knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt`
+- `knowledge/03-Modules/MOD-001/SCENARIOS.md` (entry header + closure note), `STATUS.md`, `TEST_RESULTS.md`, `knowledge/00-System/CURRENT_STATE.md`, `CURRENT_HANDOFF.md`, `AUTONOMOUS_CONVERGENCE_STATE.json` (round counts and all dispatch-permission flags left untouched)
+
+[done] end_turn
+
+--- STDERR ---

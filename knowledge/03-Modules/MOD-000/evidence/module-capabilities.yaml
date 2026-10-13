@@ -52,7 +52,7 @@ capabilities:
       governed solely by .claude/settings.json's own permissions.deny globs, which
       the owner's activation patch separately extended to cover .claude/security/**,
       CLAUDE.md, and .mcp.json.
-    required_status: APPROVED (2026-09-08, fourth independent Opus review, P0=0/P1=0) — activated and live-verified 2026-09-08 (14/14 fresh-session live-test matrix PASS, see CAPABILITY_REGISTRY.md and evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md)
+    required_status: APPROVED (2026-09-08, fourth independent Opus review, P0=0/P1=0) — activated and live-verified 2026-09-08 (14/14 fresh-session live-test matrix PASS, see CAPABILITY_REGISTRY.md and evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md). RETIRED 2026-09-28 (OWN-006/ADR-007, commit 058ed27) — enforcement removed, bash_guard.py now an inert stub, MOD-000's Bash surface no longer technically depends on this guard. The APPROVED verdict above is preserved as the historical review outcome, not erased or downgraded; corrected 2026-10-01, this entry had no retirement note despite the registry already recording it.
 
 supply_chain_notes: >
   Updated 2026-09-05 (round 2, closing BUG-006/CAP-001 and BUG-009/CAP-005/006):
@@ -78,5 +78,13 @@ supply_chain_notes: >
   manually applied the drafted .claude/settings.json activation patch, and a
   fresh Claude Code session ran the full 14-row live-test matrix (all PASS),
   confirming the PreToolUse hook actually executes and denies its named
-  bypass classes live. CAP-007's lifecycle_status is now ACTIVE in
-  CAPABILITY_REGISTRY.md.
+  bypass classes live. CAP-007's lifecycle_status was ACTIVE in
+  CAPABILITY_REGISTRY.md from this point through 2026-09-27.
+
+  Corrected 2026-10-01: CAP-007 was RETIRED 2026-09-28 (OWN-006/ADR-007,
+  commit 058ed27) — this note had kept saying lifecycle_status "is now
+  ACTIVE" three days after that stopped being true. Current
+  lifecycle_status in CAPABILITY_REGISTRY.md is REVOKED (the closest fit
+  in that field's ACTIVE/DEPRECATED/REVOKED enum to ADR-007's own term
+  "RETIRED"). The 2026-09-08 activation history above is unchanged and
+  not erased.

@@ -24,7 +24,7 @@ profile applies to it directly.
 | CAP-004 | Core harness tools (Bash/Read/Write/Edit) | APPROVED (harness-native) | registry entry only |
 | CAP-005 | Browser tools | **APPROVED** (2026-09-05, distinct fresh-context Opus review, public/unauthenticated/stateless-endpoint scope) | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md`, `evidence/bugs/BUG-009-*.md` |
 | CAP-006 | iOS Simulator control | APPROVED (2026-09-05, same review, stock-Apple-apps-only scope) | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` |
-| CAP-007 | PreToolUse Bash security guard (`bash_guard.py`) | **APPROVED, ACTIVE** (2026-09-08, fourth independent Opus review + owner live-activation verification) | `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`, `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` |
+| CAP-007 | PreToolUse Bash security guard (`bash_guard.py`) | **APPROVED, ACTIVE 2026-09-08 through 2026-09-27** (fourth independent Opus review + owner live-activation verification); **RETIRED 2026-09-28** (`OWN-006`/`ADR-007`, commit `058ed27` — enforcement removed, `bash_guard.py` now an inert stub; corrected 2026-10-01, this row had kept saying plain "ACTIVE") | `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md`, `evidence/security/BUG-013-022-023-LIVE-ACTIVATION-VERIFICATION-2026-09-08.md` |
 
 **Missing capability blockers:** none currently blocking Phase 1-9 work.
 CAP-001's qualification tier is CLOSED (BUG-006, 2026-09-05) — the

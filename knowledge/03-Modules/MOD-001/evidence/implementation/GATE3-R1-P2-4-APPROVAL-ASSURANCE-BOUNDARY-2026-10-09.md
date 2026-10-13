@@ -1,0 +1,17 @@
+# Gate-3 P2-4 upstream approval and assurance boundary — 2026-10-09
+
+Sole runner operation `2f00ff46-9b3e-4238-993f-249d278a7758`. **MANDATORY_NOW** bounded boundary reconciliation for the already-prepared P2-4 upstream installation, with no code edit, reviewer dispatch, merge or scenario verdict. Contract refresh acknowledged at `8c8a3320eeeb5602caacb52dee08a7dedb4291c1708a5ca98f19f08163eef2d1`; governing hashes matched. MOD-001 remains HIGH; scope alert has an existing review (`scopeReviewRequired=false`).
+
+Live [upstream PR #3](https://github.com/ahmadmabrook/Veyro/pull/3) was changed from DRAFT to READY FOR REVIEW, without a review request. GitHub readback: OPEN, head `8c7978013250dcc2acccf908c4ccad8e8309009c`, base `f85a17ba28cf55a209b0129ea8e9ceacc6a9edb9`, `reviewDecision=REVIEW_REQUIRED`, zero submitted reviews, zero review requests, `mergeStateStatus=BLOCKED`, no status checks. The repository collaborator API lists only PR author `ahmadmabrook` with write/admin permission. Upstream `main` protection still requires one approving PR review and enforces admins; required status is still null. No protection was weakened; upstream main and disposable PRs #1/#2 remain unchanged/unmerged.
+
+| Plausible path | Current disposition |
+| --- | --- |
+| Existing upstream protected PR | Prepared and ready, but cannot satisfy its own one-approval rule from the current author-only collaborator set; no eligible independent collaborator/review has appeared. No reviewer was created or requested by the runner. |
+| Existing true fork’s protected proof | The P2-4 clean/negative runs prove feasibility on a different repository, not an approving review or a standing gate on upstream `main`. |
+| Existing disposable upstream PRs #1/#2 | Target the SCN-020 sacrificial base, not upstream `main`; repurposing or merging them would not install P2-4 and would violate their retention scope. |
+| Temporarily lower review protection, push directly, admin override, or force-push | Rejected: it would weaken/bypass the protected upstream path and contradict the owner’s preservation direction. No such probe was attempted. |
+| Self-approval or automatic qualified-review retry | Not available from current observed state/authority: PR author is the only listed collaborator; the sole owner-authorized independent gate-3 review was consumed on the prior BLOCKED snapshot. No review counter or entitlement was reset. |
+
+The GitHub one-approval rule and the separate project-qualified code/security assurance are distinct prerequisites. A future GitHub approval alone would not certify P2-4, while a qualified model verdict alone would not merge PR #3. The exact next external dependency for this P2-4 branch is an independent eligible approval under unchanged upstream protection; qualified current-snapshot assurance remains a later separate gate requiring lawful authority. This is **not** a discretionary `OWNER_STOP` for the whole mission because other mandatory MOD-001 work can be prepared/executed under WIP=1 while PR #3 waits. Do not infer approval, merge, upstream enforcement, review retry or SCN-020 PASS. Gate-2 original R1-F01..F14 stay 14/14 formally CLOSED; MOD-001 exit stays 0/8.
+
+Next legal bounded mission action after refresh at this blocked-unit-to-next-slice boundary: read-only reconcile the next mandatory MOD-001 R04 gate/requirement surface against the live convergence ledger and module checklist, select one distinct unblocked unit, and preserve the P2-4 approval/assurance hold. No second product writer or reviewer.

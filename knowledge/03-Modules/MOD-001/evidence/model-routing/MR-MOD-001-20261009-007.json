@@ -1,0 +1,22 @@
+{
+  "id": "MR-MOD-001-20261009-007",
+  "at": "2026-10-09T06:22:28.330962+00:00",
+  "class": "architecture_d4_prose_input_decision",
+  "operationId": "9be8fd06-4ccd-410d-aa5d-477427198502",
+  "subgoal": "R04-GATE6-D4-PROSE-INPUT-DECISION",
+  "namedRole": "veyro-lead",
+  "roleSource": "one fresh-context Task inside sole guarded ACPX operation",
+  "parentSessionId": "5081843d-509a-4d43-bb9a-8486d601a885",
+  "childAgentId": "a8db24ed2701159fa",
+  "model": "claude-opus-5-5",
+  "requiredTier": "opus",
+  "mrVerify": "PASS",
+  "turnsConsistent": 17,
+  "turnsTotal": 17,
+  "transcriptSha256": "dc2ee2c13541da9dc23df62797d205d952b4d274822e561d6428f4bebd166176",
+  "transcriptLocation": "private local Claude session directory; not copied into public repository",
+  "decisionEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/R04-GATE6-D4-PROSE-INPUT-LEAD-DECISION-2026-10-09.md",
+  "decisionSha256": "11a97b950f9c574d446967b18cd2e3888d9bf1e922c6cccb2ae796a463842057",
+  "reviewEntitlement": "UNCHANGED; not independent code/security/scenario review",
+  "productCodeChanged": false
+}

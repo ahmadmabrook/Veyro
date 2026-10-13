@@ -1,0 +1,21 @@
+# SCN-MOD001-009 canonical two-writer outcome run log
+# host date (UTC): 2026-10-04T09:39:47Z
+# interpreter: Python 3.14.5
+# command: python -m pytest tests/integration/test_concurrency_harness.py -v -s -p no:randomly
+
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0 -- /Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ahmadmabrouk/Desktop/Veyro/backend
+configfile: pyproject.toml
+collecting ... collected 5 items
+
+tests/integration/test_concurrency_harness.py::test_single_writer_succeeds_and_increments_version PASSED
+tests/integration/test_concurrency_harness.py::test_concurrent_writers_lost_update_detected SCN-MOD001-009-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "attempts": [{"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-a"}, {"error": {"conflict_expected_version": 1, "message": "version conflict on concurrency_harness.versioned_widget: id=28d0dab6-448f-490a-91d3-6f57a9bfb31c expected_version=1", "type": "VersionConflict"}, "expected_version": 1, "outcome": "rejected", "rowcount": 0, "writer": "writer-b"}], "committed_count": 1, "concurrency_shape": "two simulated sequential writers on one connection (see tests/harness/concurrency.py 'Known ceiling')", "final_row": {"value": "writer-a", "version": 2}, "lost_update_resolution": "reject-and-retry (REQUIREMENTS.md DOM-002 row)", "rejected_count": 1, "row_id": "28d0dab6-448f-490a-91d3-6f57a9bfb31c", "starting_version": 1}
+PASSED
+tests/integration/test_concurrency_harness.py::test_update_versioned_distinguishes_missing_row_from_version_conflict PASSED
+tests/integration/test_concurrency_harness.py::test_update_versioned_executes_exactly_one_statement PASSED
+tests/integration/test_concurrency_harness.py::test_naive_unversioned_update_loses_the_update SCN-MOD001-009-DIFFERENTIAL[unversioned-control]-EVIDENCE {"aggregate": "concurrency_harness.versioned_widget", "attempts": [{"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-a"}, {"error": null, "expected_version": 1, "outcome": "committed", "rowcount": 1, "writer": "writer-b"}], "committed_count": 2, "final_row": {"value": "writer-b", "version": 2}, "note": "deliberately-broken comparison fixture; lost update is the expected outcome", "rejected_count": 0, "row_id": "5f71de15-626d-4915-9b96-3d4740ad872b", "starting_version": 1}
+PASSED
+
+============================== 5 passed in 1.46s ===============================

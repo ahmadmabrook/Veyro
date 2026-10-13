@@ -24,7 +24,7 @@ during the 2026-09-05 vault migration (git history intact via `git mv`):
 | CAP-004 | N/A — first-party/harness-native exemption, same basis as CAP-003 | N/A, same exemption | ACTIVE | 2026-12-04 |
 | CAP-005 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | none yet run | ACTIVE | 2026-12-04 |
 | CAP-006 | `evidence/manual-qa/CAPABILITY_DRILL_PHASE5_RERUN.md` | invalid-deep-link-scheme negative control, same file | ACTIVE | 2026-12-04 |
-| CAP-007 | `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md` (positive: 194/194 tests + ~250 adversarial fixtures) | same file (negative: fail-closed on unknown/composed/wrapped commands, tamper/symlink/exception probing of hash-pinning) | ACTIVE | 2026-12-07 |
+| CAP-007 | `evidence/security/BASH_GUARD_V2_FINAL_VERIFICATION_2026-09-08.md` (positive: 194/194 tests + ~250 adversarial fixtures) | same file (negative: fail-closed on unknown/composed/wrapped commands, tamper/symlink/exception probing of hash-pinning) | REVOKED (was ACTIVE 2026-09-08 through 2026-09-27; retired 2026-09-28 per `OWN-006`/`ADR-007`, commit `058ed27` — corrected 2026-09-30, see `CAPABILITY_REGISTRY.md`) | 2026-12-07 |
 
 **Corrected 2026-09-05 (fourth Phase 5 re-review, NF4-3):** this table
 previously said `next_review_due` was "not yet set" for every row after

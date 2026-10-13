@@ -1,0 +1,11 @@
+{
+  "exitCode": 1,
+  "startedAt": "2026-10-04T08:18:27.356010+00:00",
+  "completedAt": "2026-10-04T08:18:31.084245+00:00",
+  "commandFlags": [
+    "--approve-all",
+    "--non-interactive-permissions fail",
+    "--timeout 1200"
+  ],
+  "session": "veyro-mod001-dom002-r5-bounded-20261004"
+}

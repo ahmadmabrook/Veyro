@@ -353,7 +353,8 @@ project's own `knowledge/` or governing baselines. Evidence shared: a
 named violation-type report (or clean pass) written to
 `evidence/security/<GATE>_GATE_FIXTURE_<date>.md`.
 
-**SCN-MOD001-004 · BND · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · NOT EXECUTED**
+**SCN-MOD001-004 · BND · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+Executed 2026-10-02 by `veyro-critical-engineer` (GOV-01-R04 critical slice) on approved Colima: compliant `access_grant` → gate PASS, exit 0, identical through the runtime connection. Opus judgment pending. See `evidence/security/RLS_GATE_FIXTURE_2026-10-02.md`, `evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; permission gate re-implemented to ADR-009 D1-D4, unit 57/57; 37/37 mutations killed). Stays pending a fresh independent R2 security re-review; see `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
 Steps: create a synthetic tenant table with `tenant_id NOT NULL`, RLS
 policy, `FORCE ROW LEVEL SECURITY`, **owned by a role distinct from the
 production-equivalent runtime role, with the runtime role granted
@@ -366,7 +367,8 @@ closes that for real, matching `IMPLEMENTATION.md` §4 gate 1's own
 valid-fixture cell); run `validate_architecture_gates.py --gate rls`.
 Expected: PASS. Negative failure behavior: covered by 005.
 
-**SCN-MOD001-005 · AUTHN · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment) · NOT EXECUTED**
+**SCN-MOD001-005 · AUTHN · Blocker · GOV-01-R04, TSD §24.1 gate 1 (RLS) · Automated · veyro-security-reviewer/Opus (judgment) · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+Executed 2026-10-02 (GOV-01-R04 critical slice, approved Colima): FORCE omitted → `RLS_NOT_ENFORCED`; (i) runtime owns table / BYPASSRLS / member of owner / member of BYPASSRLS group → `RLS_RUNTIME_ROLE_ELEVATED`; (ii) nullable `tenant_id` → `RLS_TENANT_ID_NULLABLE`. Note: with FORCE omitted but ENABLE kept, the non-privileged non-owner runtime role still reads 0 cross-tenant rows (FORCE only binds the owner), consistent with Slice 5's own measured truth table; the gate denies regardless. Opus judgment pending. See `evidence/security/RLS_GATE_FIXTURE_2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; permission gate re-implemented to ADR-009 D1-D4, unit 57/57; 37/37 mutations killed). Stays pending a fresh independent R2 security re-review; see `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
 **Corrected (Scenario Review round 1, P1-4):** TSD §24.1 (`TSD_MIRROR.md`
 lines 11599-11601) is explicit — "runtime role cannot own/bypass.
 Negative isolation tests run with **production-equivalent role**," i.e.
@@ -400,44 +402,167 @@ from the missing-FORCE case above; (ii) the 004 fixture with
 denial citing the column. Evidence for both: the gate's own denial
 report, same mechanism as the missing-FORCE case.**
 
-**SCN-MOD001-006 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2 (module dependency/SQL) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-006 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2 (module dependency/SQL) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Steps: a synthetic module importing only its own owned table
 prefix/approved read-model interface. Expected: PASS.
+Current-snapshot local execution passed the focused positive fixture; see `evidence/implementation/GATE2-FOUR-SCENARIO-CURRENT-SNAPSHOT-LOCAL-RECONCILIATION-2026-10-08.md`. This is execution evidence only, not the named independent judgment.
 
-**SCN-MOD001-007 · TEN · Blocker · GOV-01-R04, TSD §24.1 gate 2 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-007 · TEN · Blocker · GOV-01-R04, TSD §24.1 gate 2 · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Steps: a synthetic module directly importing another module's raw
 table/ORM model. Expected: `CROSS_DOMAIN_SQL_IMPORT` denial citing both
 modules — proves DOM-001 (Appendix I).
+Current-snapshot local combined import/SQL negative and isolated raw-table negative/own-table positive fixtures passed; see `evidence/implementation/GATE2-FOUR-SCENARIO-CURRENT-SNAPSHOT-LOCAL-RECONCILIATION-2026-10-08.md`. R1-F14's one-off code finding adjudication is closed, but it did not promote this scenario.
 
-**SCN-MOD001-008 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 3 (event contract) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-008 · SEC · Blocker · GOV-01-R04, TSD §24.1 gate 3 (event contract) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Steps: a synthetic event referenced in code with a matching AsyncAPI/
 JSON-Schema registry entry. Expected: PASS. Negative case: 019.
+**Schema-validity note (gate-3 review R1 P2-1 remediation, 2026-10-09 —
+implemented, NOT independently reviewed; P2-1 is not claimed closed and
+this scenario is not promoted or re-dispositioned by it):** "matching
+JSON-Schema registry entry" is now enforced as a *documented reduction*,
+not full JSON Schema or AsyncAPI validation. Each `schema`, in the
+candidate registry and the baseline alike, must sit inside a
+dependency-free subset before membership or diff can produce PASS: every
+node is an object declaring `type` (one of `object`, `array`, `string`,
+`integer`, `number`, `boolean`, `null`, or a unique nonempty list of them)
+and uses only `type`, `properties` (object of subschemas), `required`
+(unique strings), `additionalProperties` (boolean or subschema), `items`
+(one subschema), `enum` (nonempty, unique), `title`, `description`
+(strings), nested at most 32 deep. Anything else — `{"x":1}`, an invalid
+`type`, a malformed nested/`properties` subschema, `$ref`, composition,
+`$schema` — is `EVENT_CONTRACT_GATE_INPUT_INVALID` ERROR / exit 2 naming
+the document, event and JSON Pointer. Residual: keywords are checked
+structurally only (not against the declared `type`); no AsyncAPI document
+exists or is validated; schemas valid under full JSON Schema but outside
+this subset are refused (fail-closed by design). Test:
+`test_event_contract_schema_must_be_in_the_supported_json_schema_subset`.
 
-**SCN-MOD001-009 · CONC · Major · GOV-01-R04, TSD §24.1 gate 2 (DOM-002) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-009 · CONC · Major · GOV-01-R02, DOM-002 (synthetic concurrency/versioning pattern) · Automated · veyro-implementer/Sonnet · PASS 2026-10-04 — PROMOTED AFTER INDEPENDENT SCENARIO-EVIDENCE REVIEW**
 Steps: a synthetic mutable aggregate updated by two concurrent
 "requests" (simulated, not real load); optimistic-versioning check
 proves the second write detects a version conflict rather than silently
 overwriting (lost-update behavior explicit, per DOM-002). Evidence: both
 write attempts' outcomes logged; exactly one succeeds, one gets a
 version-conflict error.
+**Routing/evidence reconciliation (2026-10-04):** The former R04/TSD
+§24.1 gate-2 label was a catalog error. `REQUIREMENTS.md`'s DOM-002 row
+assigns this pattern to GOV-01-R02; gate 2 is module dependency/SQL lint.
+The synthetic two-writer check has executed in
+`backend/tests/integration/test_concurrency_harness.py`, with a positive
+write, typed stale-writer conflict, and deliberately broken unversioned
+control. Round-4 independent code review returned PASS with P0/P1/P2=0;
+round-4 remediation's later focused tests passed in the convergence
+assessment. This corrects execution/routing metadata only: the scenario
+remains unpromoted pending reconciliation of its exact evidence requirement
+(including a durable record of both write outcomes) and scenario-level
+disposition. It does not complete R04, ADR-010 A2, or module certification.
+**Evidence-clause closure (2026-10-04, second reconciliation — still not a
+promotion):** the evidence clause above ("both write attempts' outcomes
+logged; exactly one succeeds, one gets a version-conflict error") is now
+satisfied by execution, which it previously was not: the behavior was
+proven by assertions, but no durable artifact existed that the two outcomes
+could be read *off*, and "exactly one / exactly one" was a structural
+property of the test's call shape rather than a measured count — a shape
+blind to both two successes (the lost update itself) and a rejection
+carrying the wrong typed error (`RowNotFound` for a version conflict,
+round-1 P2-1's class). Closed by minimal instrumentation in the existing
+test file only (no new test function, no harness/production change, no new
+mechanism): both writers now run through one outcome recorder and the pair
+is emitted via the same `{TAG}-EVIDENCE <json>` convention
+`test_authn_harness.py`/`test_architecture_gate_rls.py` already use.
+Executed result — focused suite **5/5 PASS**, logged record reads
+`committed_count: 1`, `rejected_count: 1`, rejection typed
+`VersionConflict` at the stale version, surviving row writer-a at version 2;
+the deliberately-broken control emits the same record shape reading
+`2 committed / 0 rejected`, so the 1/1 result is discriminating rather than
+unconditional. Non-vacuity also shown by two killed mutants (always-true
+version predicate → count assertion fails; `RowNotFound` substituted for
+`VersionConflict` → type assertion fails). Order-independence regression
+**3/3**, full backend **204/204** (unchanged count), `ruff check` clean,
+`mypy` strict clean, Docker container/volume counts stable. Full record:
+`evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md`
+plus its raw run log. **Still NOT promoted and NOT claimed PASS**, for one
+reason now: the instrumentation was written by the implementing session, so
+promotion needs a fresh-context independent review of it (DC-06, no
+self-approval) — round-4's PASS covered an earlier snapshot and cannot
+cover code written after it. Whether that review may be dispatched at all
+is itself an open governance question, since
+`AUTONOMOUS_CONVERGENCE_STATE.json` records
+`anotherReviewCurrentlyAllowed: false` for the closed DOM-002 cycle; this
+session did not dispatch one and did not assume entitlement to. R04,
+ADR-010 A2, and module certification remain untouched and unaffected.
+**Promotion supersession (2026-10-04):** A fresh independent scenario-evidence
+review reproduced the 5/5 focused and 204/204 backend results, killed both
+evidence mutants, and returned PASS with P0/P1/P2=0 (three nonblocking P3
+record-hygiene observations). The orchestrator independently attested its
+51/51 turns as `claude-opus-5`. The evidence clause and DC-06 independent
+review requirement are satisfied; this scenario is promoted only for its
+synthetic GOV-01-R02/CONC scope. The earlier pending-review and not-promoted
+statements above are historical. This does not certify R04/ADR-010 A2,
+real business aggregates, or MOD-001. Review:
+`evidence/code-review/SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md`.
+**Historical round-18 disclosure (superseded by routing correction above):** the former
+header's "GOV-01-R04, TSD §24.1 gate 2 (DOM-002)" routing tag was
+inaccurate — `IMPLEMENTATION.md` §4's fixture-plan table (lines 380-387)
+defines TSD §24.1 gate 2 as the module dependency/SQL lint
+(`CROSS_DOMAIN_SQL_IMPORT`/`REVERSE_EDGE_NOT_EVENT_DRIVEN`), not
+concurrency, and `REQUIREMENTS.md` line 590's own DOM-002 traceability row
+routes the concurrency/versioning proof obligation to **GOV-01-R02** (CONC
+category), not R04. At round 18 this entry's tag had been left unchanged;
+the 2026-10-04 routing correction above superseded it. Separately from this
+tag, round 18 built the
+underlying GOV-01-R02 test *pattern* the DOM-002 proof obligation requires —
+`backend/tests/harness/concurrency.py` + `backend/tests/integration/
+test_concurrency_harness.py`, then 3/3 passing (positive single-writer case, a
+lost-update negative case proving exactly one of two racing writers
+succeeds and the other gets a typed `VersionConflict`, and a fail-closed
+differential proof against a deliberately-broken unversioned comparison
+fixture) — against a synthetic aggregate, no business logic. At that
+historical point SCN-MOD001-009 had not been promoted because its header
+named an R04/gate-2 prerequisite; the routing was corrected and the
+scenario independently reviewed and promoted on 2026-10-04 as recorded above.
+ADR-010 A2/R04 remains separate and blocked.
+**Round-1 code review + remediation (2026-10-04):** an independent fresh-
+context Opus review (`mr_verify.py` PASS 104/104 `claude-opus-5`) returned
+BLOCKED P1=2/P2=2/P3=6 — see `evidence/code-review/
+DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1-2026-10-04.md`. P1-1/P1-2
+(shared, unowned `harness` schema + no teardown made the "3/3 passing"
+result order-dependent and could fail the ADR-010 RLS gate under a
+different collection order) and P2-1/P2-2 (missing-row conflated with
+version-conflict; test 3's "identical two-writer shape" claim was
+inaccurate) were fixed the same session — see
+`evidence/implementation/DOM002-ROUND1-REMEDIATION-2026-10-04.md` for the
+full remediation record, including the two review drills (§4.4/§4.5)
+re-run clean, a new permanent order-independence regression file, full
+suite 202/202 in both default and reversed collection order, and a
+mutation-sensitivity re-check (M1/M2/M5/M6 killed). The aggregate now lives
+in its own `concurrency_harness` schema, not the shared `harness` schema
+this note's own text above still describes historically. Also, per P3-3:
+"racing writers" in this note and in `STATUS.md` means the harness's own
+documented simulated/sequential shape, not real parallel load — see the
+harness module's "Known ceiling" section. Still not promoted, still not
+claimed PASS, for the same reasons as above; a second independent review
+of this remediation is the next action, not a self-certified promotion.
 
-**SCN-MOD001-010 · HP · Major · GOV-01-R04, TSD §24.1 gate 4 (permission) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-010 · HP · Major · GOV-01-R04, TSD §24.1 gate 4 (permission) · Automated · veyro-implementer/Sonnet · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+Executed 2026-10-02 (GOV-01-R04 critical slice; positive control run with its gate): synthetic contract with registered `members.profile.read`/`self` and `billing.refund.create`/`location` → PASS. See `evidence/security/PERMISSION_GATE_FIXTURE_2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; permission gate re-implemented to ADR-009 D1-D4, unit 57/57; 37/37 mutations killed). Stays pending a fresh independent R2 security re-review; see `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
 Steps: a synthetic command declaring `action`/`resource`/`scope`.
 Expected: PASS.
 
-**SCN-MOD001-011 · NEG · Blocker · GOV-01-R04, TSD §24.1 gate 4 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-011 · NEG · Blocker · GOV-01-R04, TSD §24.1 gate 4 · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-02 — PENDING INDEPENDENT REVIEW (not promoted)**
+Executed 2026-10-02 (GOV-01-R04 critical slice): undeclared operation and unregistered `platform.tenant.impersonate` each → `UNREGISTERED_PERMISSION` citing the endpoint. Opus judgment pending. See `evidence/security/PERMISSION_GATE_FIXTURE_2026-10-02.md`. **R1/ADR-009 update (2026-10-02, not a promotion):** security R1 returned BLOCKED P1=2 against the first submission; remediated and re-run (RLS 24/24 on approved Colima; permission gate re-implemented to ADR-009 D1-D4, unit 57/57; 37/37 mutations killed). Stays pending a fresh independent R2 security re-review; see `knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
 Steps: a synthetic command with an undeclared permission name. Expected:
 `UNREGISTERED_PERMISSION` denial — proves IAM-002 (Appendix I: "authz
 enforced in the domain application layer even when the UI hides an
 action").
 
-**SCN-MOD001-012 · BND · Major · GOV-01-R04, TSD §24.1 gate 5 (screen contract) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
+**SCN-MOD001-012 · BND · Major · GOV-01-R04, TSD §24.1 gate 5 (screen contract) · Automated · veyro-implementer/Sonnet · EXECUTED 2026-10-09 — PENDING INDEPENDENT SECURITY/SCENARIO ASSURANCE (not promoted)**
 Steps: a synthetic Screen ID mapped to a BFF/command manifest row.
 Expected: PASS. Real-world note: MOD-001 owns zero real screens
 (`REQUIREMENTS.md` §4) — this fixture is synthetic by necessity, not a
 gap.
 
-**SCN-MOD001-013 · AUTHZ · Major · GOV-01-R04, TSD §24.1 gate 5 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-013 · AUTHZ · Major · GOV-01-R04, TSD §24.1 gate 5 · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-09 — PENDING INDEPENDENT SECURITY/SCENARIO ASSURANCE (not promoted)**
 **Corrected (Scenario Review round 1, tier-consistency note): routed to
 Sonnet in the original draft while the structurally identical gate-4
 violation (011) routed to Opus — aligned to Opus, matching every other
@@ -531,11 +656,11 @@ dependencies, provenance links back to the exact source commit.
 Steps: a backward-compatible OpenAPI change (additive field). Expected:
 PASS. Negative case: 034.
 
-**SCN-MOD001-019 · NEG · Blocker · GOV-01-R04 (event contract, negative) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-019 · NEG · Blocker · GOV-01-R04 (event contract, negative) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Steps: an event referenced in code with no registry entry (companion to
 008). Expected: `UNREGISTERED_EVENT_CONTRACT` denial.
 
-**SCN-MOD001-020 · SEC · Blocker · Gate-bypass attempt (CI-workflow layer) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-020 · SEC · Blocker · Gate-bypass attempt (CI-workflow layer) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-09 — (a)-(i) have individual live bypass-attempt dispositions; PENDING INDEPENDENT SECURITY/SCENARIO ASSURANCE; NOT PROMOTED**
 **Corrected (round 1, P1-3):** the original draft tested a *local
 shell-invocation* bypass taxonomy (absolute path, wrapper, malformed
 flag — modeled on `bash_guard.py`'s BUG-013/022/023 history). That is
@@ -626,11 +751,13 @@ deliberately mismatched synthetic Notion row (in a disposable test
 page, never the real MOD-001 Notion page) is proven to be detected by
 the same check.
 
-**SCN-MOD001-022 · MIG · Blocker · GOV-01-R06, TSD §24.2 · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-022 · MIG · Blocker · GOV-01-R06, TSD §24.2 · Automated · veyro-security-reviewer/Opus · PASS (2026-10-03, approved Colima synthetic execution and independent Opus R5 review)**
 Steps: run a synthetic 4-phase migration (expand→migrate/backfill→
 switch→contract) against a disposable schema. Expected: each phase
 completes in order; a validation query confirms data integrity
 post-migration. Negative case: 070.
+
+Execution evidence: `backend/tests/integration/test_migration_safety_harness.py` (`test_scn022_each_phase_completes_in_order`, `test_scn022_full_sequence_passes_post_migration_validation`) passed on CAP-008 approved disposable Colima/Postgres; 51/51 focused and 170/170 backend tests passed. Independent fresh-context `veyro-security-reviewer` on attested `claude-opus-5-5` executed positive, negative, and mutation probes and found P0/P1/P2=0: `knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-MIGRATION-SAFETY-HARNESS-SECURITY-REREVIEW-R5-2026-10-03.md`. This PASS covers only the literal four-phase synthetic migration and post-contract integrity query. SCN-070, SCN-066, SCN-113, and SCN-059 remain NOT EXECUTED; the harness does not satisfy their separate obligations.
 
 **SCN-MOD001-023 · HP · Major · GOV-01-R04 (full pipeline) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Steps: run the complete CI pipeline (`IMPLEMENTATION.md` §3) end to end
@@ -843,7 +970,7 @@ job absent from the release-candidate trigger path is denied by the
 workflow-graph check. Evidence: the Android smoke-test report plus the
 iOS workflow-graph inspection report.
 
-**SCN-MOD001-130 · SEC · Blocker · TSD §24.1 gate 3, event-contract owner-approval sub-clause (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-130 · SEC · Blocker · TSD §24.1 gate 3, event-contract owner-approval sub-clause (P0-1) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 **Added (Scenario Review round 10, P0-1): TSD §24.1's event contract
 lint (`TSD_MIRROR.md` lines 11610-11612) has two normative halves —
 "every event... exists in the registry" and "compatibility and
@@ -881,6 +1008,50 @@ diff. Companion positive: the identical diff, this time run against a
 disposable synthetic copy of `OWNER_APPROVALS.md` carrying a matching
 row ID (never a real row written to the live file), passes. Evidence:
 the denial report plus the positive-pass report.
+**Extended (gate-3 review R1 P1-2, 2026-10-09) — NOT EXECUTED; the
+2026-10-08 execution in this scenario's status line covers the *change*
+direction above only, and the criteria added here are additional,
+unexecuted, and do not inherit that execution or its pending review.**
+The owner-approval sub-clause has a second direction the steps above
+never reached: a registered event *withdrawn* from the registry. The
+change check iterates the candidate registry and looks each id up in
+the baseline, so a baseline id absent from the registry — the maximal
+compatibility break on the axis §24.1 reserves to the owner — was never
+examined and reached PASS with no approval anywhere. Added steps, all
+against disposable synthetic registry/baseline/approval fixtures (never
+the live `OWNER_APPROVALS.md` or the live `contracts/events/` files):
+(a) a baseline event dropped from the candidate registry with nothing
+cited denies with `EVENT_REMOVED_UNAPPROVED` naming the event, FAIL /
+exit 1; (b) the same withdrawal citing `removals: {"<event id>":
+"OWN-NNN"}` against a synthetic row whose *Action approved* explicitly
+approves withdrawal of that event passes; (c) each insufficient
+citation still denies — an `ADR-NNN` rather than an `OWN-NNN`, a row
+that resolves but does not approve that event's withdrawal (approves
+only its introduction, approves another event's withdrawal, states
+withdrawal only in Scope, or negates it — e.g. "Approve introduction of
+event gone only; withdrawal is not approved"), an ambiguous duplicate
+row, and the baseline entry's own `ownerApproval`,
+which approved that entry's last change and never spoke to its
+withdrawal; (d) the accepted-baseline lifecycle: promote the candidate
+that passed in (b) to be the next baseline byte-identically, tombstone
+included, and re-run it unchanged — expected PASS / exit 0, since the
+baseline *is* the last candidate this gate accepted and repeating its
+tombstone re-approves nothing (before the R1 P1-2 lifecycle fix this
+step was ERROR / exit 2 `EVENT_CONTRACT_GATE_INPUT_INVALID`, so an
+approved removal could never be shipped); (e) that lifecycle is not a
+loophole — a settled tombstone restated under a *different* citation,
+and any `removals` entry naming an id the baseline neither registers
+nor already carries byte-identically, are refused as pre-staged input
+with `EVENT_CONTRACT_GATE_INPUT_INVALID`, ERROR / exit 2; and (f) a
+spent approval cannot be re-aimed — the record that authorised one
+withdrawal, pointed at a second event it does not approve withdrawing, denies with
+`EVENT_REMOVED_UNAPPROVED`, and a tombstone the baseline carries never
+stands in for a citation the candidate still owes. Expected evidence:
+one report per step. Disclosed limit, which this scenario must not be
+written up as covering: (b)/(c) establish that the cited row's *Action
+approved* text explicitly approves that withdrawal under a fixed-phrase,
+negation-refusing check — not that the owner authored the row or
+actually decided on the removal.
 
 **SCN-MOD001-131 · SEC · Blocker · TSD §24.1 gate 6, domain-uniqueness shared-contract-exception sub-clause (P0-1) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
 **Added (Scenario Review round 10, P0-1): TSD §24.1's domain contract
@@ -910,7 +1081,26 @@ exception ID in its output (proving the gate reads the exception, not
 merely skips the check). Evidence: the denial report plus the
 exception-resolved pass report.
 
-**SCN-MOD001-132 · DATA · Blocker · GOV-01-R02, six named domain suite scaffolds wired (P0-2) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · NOT EXECUTED**
+**SCN-MOD001-132 · DATA · Blocker · GOV-01-R02, six named domain suite scaffolds wired (P0-2) · Automated · veyro-security-reviewer/Opus (judgment), veyro-implementer/Sonnet (mechanical run) · PASS (2026-10-04, promoted — CAP-008 gate cleared)**
+
+**Promoted 2026-10-04 (round 17, following `CAP008-POST-R16-INDEPENDENT-ASSURANCE-2026-10-04.md`'s own explicit statement that this scenario "may be promoted with no new drill" once R17-1/R17-2 land).** This scenario's own live positive/negative evidence was already gathered and found MET on 2026-10-04 (round 16 segment 3, §15.2-15.4 — six scaffolds pass live against a real pinned-digest, loopback-published container; both named negative variants, broken and deleted, produce a non-zero exit naming exactly the affected domain; zero volume residue across every drill). The only gate was administrative: that evidence was produced by CAP-008 while its `review_status` read `QUALIFIED`, not `APPROVED`. CAP-008 is now `APPROVED` (2026-10-04, third independent fresh-context Opus capability-security review, `CAP008-POST-R16-INDEPENDENT-ASSURANCE-2026-10-04.md`, `mr_verify.py` PASS 70/70 `claude-opus-5`) on the strength of that same round-16 live evidence plus this review's own verification that the two documentation conditions (R16-3, R16-5) blocking `APPROVED` were corrected — explicitly **no new qualification drill**. No new scenario drill was run to promote this entry either: the live evidence and the capability approval are both already real and dated the same day. Evidence: round-16 report §15.2-15.4, 19.2; `CAP008-POST-R16-INDEPENDENT-ASSURANCE-2026-10-04.md`; `CAPABILITY_REGISTRY.md`'s CAP-008 row.
+**Executed and found MET 2026-10-04 (round-16 independent Opus review,
+segment 3, §15.2-15.4):** all six domain scaffolds passed live against a
+real disposable Postgres at CAP-008's pinned digest, loopback-published,
+independently re-confirmed through the scenario's own CI gate
+(`test_domain_scaffold_inventory.py`); both negative variants this
+scenario's own text names (broken, deleted) produced a non-zero exit
+naming exactly the affected domain, with zero Docker volume residue
+across both failing drills. **Not promoted, by explicit instruction of
+this round's dispatch:** this scenario's positive/negative evidence is
+produced entirely by CAP-008 (Docker/Colima/Postgres), whose
+`review_status` is `QUALIFIED`, not `APPROVED` — per
+`CAPABILITY_POLICY.md`'s fail-closed rule a non-`APPROVED` capability's
+output may not be relied on to satisfy a gate for real project work.
+Promotable with no new drill once a fresh independent Opus
+capability-security re-review restores CAP-008 to `APPROVED` (see
+`CAPABILITY_REGISTRY.md`'s CAP-008 row and round 16 §18.4's exact two
+now-closed documentation conditions). Evidence: round-16 report §§15.2-15.4, 19.2.
 **Added (Scenario Review round 10, P0-2): `REQUIREMENTS.md`'s own
 GOV-01-R02 implementation obligation and acceptance criteria commit
 MOD-001 to "documented, empty-but-wired suite scaffolds for membership/
@@ -949,7 +1139,21 @@ green with five domains actually collected. Evidence: the six
 placeholder-fixture pass reports plus the broken-domain failure
 report.
 
-**SCN-MOD001-133 · SEC · Blocker · GOV-01-R02, financial-invariant test harness (P0-2) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-133 · SEC · Blocker · GOV-01-R02, financial-invariant test harness (P0-2) · Automated · veyro-security-reviewer/Opus · PASS (2026-10-04, round-16 independent Opus review, segments 1-3, orchestrator-attested 120/120 turns `claude-opus-5`)**
+**Promoted 2026-10-04 (retained implementation session, authorized by this
+round's dispatch on the strength of the independently attested round-16
+review).** Round 16 §15.1/§15.5 confirmed, live: no Postgres dependency
+(checked by imports and by execution — `23 passed in 0.03s`); the balanced
+set passes; the negative control (`v01_t6_only`) genuinely fails citing
+the specific anchored invariant message, proving real detection, not a
+rubber stamp; nine independently-reconstructed mutants plus three
+counterfactual controls (segment 1 §2.3-2.4) prove the detection cannot be
+suppressed by the harness's own test-level guards. BUG-050 (the bug this
+scenario's own harness was built to close) is independently verified
+fixed across sixteen rounds; see `knowledge/03-Modules/MOD-001/evidence/bugs/BUG-050-financial-invariant-placeholder-false-clean.md`. No CAP-008
+dependency, so unlike `SCN-MOD001-132` this scenario's promotion is not
+gated by CAP-008's `QUALIFIED` status. Evidence: round-16 report
+`knowledge/03-Modules/MOD-001/evidence/security/GOV01-R02-SLICE7-DOMAIN-SCAFFOLDS-FINANCIAL-INVARIANT-SECURITY-REVIEW-ROUND16-2026-10-04.md` §§2-3, 15.1, 15.5, 19.2.
 **Added (Scenario Review round 10, P0-2): `IMPLEMENTATION.md` §3's own
 CI stage table names a Blocking "financial-invariant tests" check
 alongside domain-contract/tenant-isolation/authorization tests; no
@@ -1055,7 +1259,7 @@ scenario's real target, same as `SCN-127`(a)'s Gradle stubs and
 
 ### Group E — Environments and authentication/tenant harnesses (GOV-01-R02)
 
-**SCN-MOD001-027 · AUTHN · Blocker · GOV-01-R02 · Automated · veyro-security-reviewer/Opus · BLOCKED (2026-09-29, pending BUG-038)**
+**SCN-MOD001-027 · AUTHN · Blocker · GOV-01-R02 · Automated · veyro-security-reviewer/Opus · PASS (2026-10-02, fresh Colima 13-case run and independent Opus review)**
 Steps: send a deliberately invalid/expired credential to the
 authentication harness's fixture endpoint (same drill class MOD-000's
 own SCN-MOD000-095 established for a live TestSprite endpoint, applied
@@ -1067,9 +1271,7 @@ cases reject correctly with byte-identical before/after state, read by
 a structurally independent observer connection — technically PASS. Not
 recorded as an unconditional PASS because the evidence rests on an
 unregistered/unqualified capability (Docker Engine + `postgres:16-alpine`
-— see `BUG-038`); the reviewer's own explicit position is that this
-scenario is recordable PASS once `BUG-038` closes, with no re-run
-needed. See `knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`.
+— see `BUG-038`); the original reviewer said this would be recordable PASS once `BUG-038` closed without a re-run. That assumption was superseded by the 2026-10-02 independent BUG-038 closure review because CAP-008 switched the substrate from Docker Desktop to Colima and the harness changed. BUG-038 is CLOSED. That fresh Colima 13-case run (all before/after fingerprints identical) and a distinct attested Opus review now PASS, P0=0/P1=0; see `evidence/security/BUG038-COLIMA-SCENARIO-REVIEW-2026-10-02.md` and `knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`.
 
 **SCN-MOD001-028 · AUTHZ · Major · GOV-01-R02 · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Steps: the tenant-isolation harness's authorization check runs for a
@@ -1452,7 +1654,7 @@ Steps: a synthetic large-backfill job is interrupted mid-run. Expected:
 it resumes from a checkpoint rather than restarting from zero, per TSD
 §24.2's "online/resumable jobs with progress and throttling" text.
 
-**SCN-MOD001-067 · LIFE · Blocker · GOV-01-R02 (tenant-isolation harness, life-safety framing) · Automated · veyro-security-reviewer/Opus · BLOCKED (2026-09-29, two independent reasons — see below)**
+**SCN-MOD001-067 · LIFE · Blocker · GOV-01-R02 (tenant-isolation harness, life-safety framing) · Automated · veyro-security-reviewer/Opus · BLOCKED (2026-10-02, Colima harness half PASS; R04 gate-negative executed, pending independent review — see below)**
 **Corrected (Scenario Review round 1, P1-6):** the original draft had no
 procedure distinct from 005/007. Rewritten with a concrete, distinct
 fixture. Preconditions: a synthetic table representing a physical-access
@@ -1471,8 +1673,8 @@ general-purpose RLS gate (004/005) genuinely covers a life-safety-shaped
 table, not just a generic one.
 **Executed and independently reviewed 2026-09-29** by a fresh-context
 `veyro-security-reviewer` (no participation in authoring the harness).
-Two independent reasons this remains BLOCKED, not PASS: (1) the harness
-half is technically PASS, reproduced directly by the reviewer (0 of the
+Historical 2026-09-29 reasons for BLOCKED (superseded for the BUG-038 status by the 2026-10-02 closure): (1) the harness
+half was technically PASS on Docker Desktop, reproduced directly by the reviewer (0 of the
 other tenant's rows visible/updatable/deletable, INSERT/reassign denied
 by Postgres with the RLS error naming `access_grant` in the server log,
 all 5 deliberate breakages + the BYPASSRLS/superuser self-checks
@@ -1483,7 +1685,7 @@ RLS-lint gate, GOV-01-R04, out of scope for this dispatch per `ADR-005`)
 to catch disabled RLS — that gate does not exist yet, a precondition
 already honestly disclosed as NOT EXECUTED by the implementer, not a
 new finding. See
-`knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`.
+`knowledge/03-Modules/MOD-001/evidence/security/SLICE5-INDEPENDENT-REVIEW-2026-09-29.md`. **Current disposition (2026-10-02):** BUG-038 is CLOSED for approved Colima only. The harness half was rerun on approved Colima and independently reviewed PASS, P0=0/P1=0 (`evidence/security/BUG038-COLIMA-SCENARIO-REVIEW-2026-10-02.md`). The scenario overall remains BLOCKED until the R04 RLS-lint gate catches disabled RLS on this exact fixture. **R04 update (2026-10-02, not a promotion):** the R04 RLS-lint gate now exists and, on approved Colima, returns FAIL `RLS_NOT_ENFORCED harness.access_grant` with RLS disabled on this fixture, while the runtime-role probe shows the same breakage leaks 3/3 cross-tenant rows. Implemented by `veyro-critical-engineer`; **SCN-067 stays BLOCKED until an independent fresh-context `veyro-security-reviewer` accepts that proof.** R1 judged the literal SCN-067 gate-negative proof eligible but the slice BLOCKED (P1=2); after remediation it remains BLOCKED pending R2. See `evidence/security/RLS_GATE_FIXTURE_2026-10-02.md`, `evidence/implementation/SLICE-6-gov01-r04-rls-permission-lint-gates-2026-10-02.md`.
 
 **SCN-MOD001-068 · PERF · Major · GOV-01-R03/§12 of IMPLEMENTATION.md (CI runner smoke-load) · Automated · veyro-performance-reviewer/Opus · NOT EXECUTED**
 **Corrected (Scenario Review round 1, P1-7):** the original draft set the
@@ -1513,11 +1715,12 @@ low bar appropriate to a health-check endpoint with no real product
 logic behind it yet). Negative/failure behavior: any request exceeding
 2s or returning non-200 fails this scenario.
 
-**SCN-MOD001-070 · MIG · Blocker · GOV-01-R06, negative · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-070 · MIG · Blocker · GOV-01-R06, negative · Automated · veyro-security-reviewer/Opus · EXECUTED — PENDING INDEPENDENT REVIEW (2026-10-04)**
 Steps: a deliberately out-of-order destructive (contract-phase)
 migration attempted before its expand+backfill+switch predecessors have
 run. Expected: the migration-safety lint rejects it — companion
 negative to 022.
+Execution evidence: `evidence/implementation/SCN070-MIGRATION-ORDERING-EXECUTION-2026-10-04.md` (synthetic CLI negative exit 1 with `OUT_OF_ORDER_PHASE`, ordered control exit 0; 6/6 unit tests). No PASS/promotion before fresh independent review.
 
 **SCN-MOD001-071 · HP · Minor · GOV-01-R01 (alternate bootstrap path) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 **Corrected (Scenario Review round 6, P1-3): was tagged ALT/Non-Required.
@@ -1765,18 +1968,20 @@ made required. Review P2-4 (`pull_request_target` vs R04 criterion (i)): the
 current no-secrets / candidate-inert interpretation is recorded as pending
 qualified adjudication, not decided.
 
-**SCN-MOD001-095 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2, §6.3 bidirectional pair — positive (P1-5) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-095 · AUTHZ · Blocker · GOV-01-R04, TSD §24.1 gate 2, §6.3 bidirectional pair — positive (P1-5) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Source: `TSD_MIRROR.md` lines 11606-11608 — "For the four intentional
 bidirectional pairs, §6.3 is the normative directed graph: only the
 listed synchronous edge may import/call the opposite application
 interface." Steps: a synthetic pair of modules standing in for one of
 the four real §6.3 pairs, with only the permitted direction's
 synchronous import present. Expected: PASS.
+Current-snapshot local test passed all four declared directed pairs; see `evidence/implementation/GATE2-FOUR-SCENARIO-CURRENT-SNAPSHOT-LOCAL-RECONCILIATION-2026-10-08.md`. Independent judgment remains.
 
-**SCN-MOD001-096 · TEN · Blocker · Same gate, negative (P1-5) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-096 · TEN · Blocker · Same gate, negative (P1-5) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-08 — PENDING INDEPENDENT SCENARIO/SECURITY REVIEW (not promoted)**
 Steps: the same synthetic pair, but the *reverse* direction also
 attempts a synchronous import (the edge §6.3 requires stay
 event-driven). Expected: `REVERSE_EDGE_NOT_EVENT_DRIVEN` denial.
+Current-snapshot local test denied all four reverse directions with the required code; see `evidence/implementation/GATE2-FOUR-SCENARIO-CURRENT-SNAPSHOT-LOCAL-RECONCILIATION-2026-10-08.md`. Independent judgment remains.
 
 **SCN-MOD001-097 · AUTHN · Major · GOV-01-R02, authentication harness — positive (P1-1 companion) · Automated · veyro-implementer/Sonnet · NOT EXECUTED**
 Source: GOV-01-R02 (`EIP_MIRROR.md` lines 17545-17549) — "Critical
@@ -2151,7 +2356,7 @@ pipeline (`IMPLEMENTATION.md` §3). Expected: the pipeline halts at the
 unit-test stage, blocking every downstream stage — build, integration,
 deploy never run. Evidence: pipeline run log showing the halt point.
 
-**SCN-MOD001-110 · BND · Blocker · Card-mandated drill: screen-contract count mismatch (P0-3) · Automated · veyro-security-reviewer/Opus · NOT EXECUTED**
+**SCN-MOD001-110 · BND · Blocker · Card-mandated drill: screen-contract count mismatch (P0-3) · Automated · veyro-security-reviewer/Opus · EXECUTED 2026-10-09 — PENDING INDEPENDENT SECURITY/SCENARIO ASSURANCE (not promoted)**
 **Corrected (Scenario Review round 4, P1-2): same tier realignment as
 SCN-109 above.**
 Source: `EIP_MIRROR.md` lines 4189-4191 — "screen contract/**count**."

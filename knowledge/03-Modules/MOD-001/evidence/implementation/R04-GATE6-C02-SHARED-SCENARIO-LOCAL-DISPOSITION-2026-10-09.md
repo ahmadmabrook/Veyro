@@ -1,0 +1,13 @@
+# R04 gate 6 / M1-C-02 shared synthetic scenario batch
+
+Operation `89e36ebd-820e-4b30-8425-cda966b7badc`; classification `MANDATORY_TO_CLOSE_MOD001_NOW`; HIGH risk. Criterion: TSD §24.1 gate 6 and GOV-01-R04, with individual SCN-MOD001-014/015/131 obligations. This is one coherent shared CLI batch, not three implementation operations. Exact input documents, expected and observed exit/status/codes, output reports, and validator/workflow hashes are retained in [`GATE6-C02-SHARED-SYNTHETIC-CLI-BATCH-2026-10-09.json`](../scenario-execution/GATE6-C02-SHARED-SYNTHETIC-CLI-BATCH-2026-10-09.json).
+
+| Scenario | Local evidence | Individual disposition |
+| --- | --- | --- |
+| SCN-MOD001-014 | Two synthetic domains disjoint across all six dimensions: PASS/0, no violations. Separate entity and failure-vocabulary collisions denied; positive case alone does not prove enforcement. | Local criterion met; **NOT formally PASS** pending live required CI and qualified assurance. |
+| SCN-MOD001-015 | Independent runbook ID, unordered identical command inventory, published-event ID, and foreign SLO signal cases each returned `DOMAIN_CONTRACT_COLLISION`/FAIL/1, citing the pair. Entity and failure-vocabulary denial controls also returned FAIL/1. | All four catalog negatives met locally; **NOT formally PASS** pending live required CI and qualified assurance. |
+| SCN-MOD001-131 | Shared RB-ID without exception: `DOMAIN_CONTRACT_COLLISION`/FAIL/1. Same synthetic pair with exact `SCE-001` exception and disposable `OWN-001` approval row: PASS/0, output cites `SCE-001`. The disposable approval is fixture data, not an actual owner decision. | Both companion cases met locally; **NOT formally PASS** pending live required CI and qualified assurance. |
+
+All 9/9 direct CLI case expectations met. No real domain-contract registry was invented: the default gate still returns ERROR/2 because its committed source is absent. `.github/workflows/domain-uniqueness.yml` is locally authored and locally probed only; it has not received governed code review, a trusted default-branch commit, or a live required-status demonstration. Accordingly the scenario catalog stays NOT EXECUTED, gate-6 assurance stays 0/0, MOD-001 exit stays 0/8, and R04 gate-2's historical 14/14 closure is unchanged. No reviewer dispatch, entitlement, review-counter change, or scenario promotion occurred.
+
+Next legal C02 action: reconcile this batch with the minimum governed code/workflow review and trusted CI activation path under the existing sole lease; do not infer new review authority from the compressed plan. Preserve the source-grounded no-real-domain NOT_APPLICABLE path and prove live required status before formal dispositions.

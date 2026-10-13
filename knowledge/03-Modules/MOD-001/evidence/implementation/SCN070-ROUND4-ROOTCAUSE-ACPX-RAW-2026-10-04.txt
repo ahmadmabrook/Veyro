@@ -1,0 +1,2 @@
+⚠ No acpx session found (searched up to /Users/ahmadmabrouk/Desktop/Veyro).
+Create one: acpx claude sessions new --name fc84a793-79c0-4a6f-b491-b061ea27746f

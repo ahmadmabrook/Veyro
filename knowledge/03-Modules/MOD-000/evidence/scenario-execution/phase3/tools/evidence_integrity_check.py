@@ -12,7 +12,7 @@ Checks, against the real repo state:
 1. Every evidence/config path referenced (backticked `knowledge/...` or
    `.claude/...` paths) across all durable "brain" files actually exists
    on disk.
-2. Every bugs/BUG-*.md file referenced in CURRENT_STATE.md exists.
+2. Every bugs/BUG-*.md file referenced in CURRENT_STATE.md exists in a module evidence tree.
 3. CURRENT_STATE.md / CURRENT_HANDOFF.md `updated:` dates are not older
    than the latest commit touching MOD-000 evidence (now an actual
    comparison, not dead code).
@@ -146,8 +146,25 @@ def check_file_refs(rel_path: str, findings: list, expected_absent: list):
     is_adr = bool(re.match(r"^knowledge/04-Decisions/ADR-\d+", rel_path))
     text = md_file.read_text(encoding="utf-8", errors="replace")
     for rel in referenced_paths(text):
+        if "RULE-<NNN>" in rel:
+            # Generic per-rule-file placeholder token used in prose (e.g.
+            # "see knowledge/05-QA/capability-evidence/RULE-<NNN>/...") to
+            # mean "each RULE-NNN's own evidence file", never a literal path.
+            expected_absent.append(f"{rel_path}: `{rel}` (RULE-<NNN> is a generic placeholder token, not a literal path)")
+            continue
         p = ROOT / rel
         if not p.exists():
+            if rel.startswith(".claude/rules/") and rel.count("/") == 2:
+                # Rules were reorganized into admin/backend/global/infra/
+                # subdirectories (ADR-005 surface-profile work); many docs
+                # still cite the bare pre-reorg filename. Resolve by
+                # basename anywhere under .claude/rules/ before calling it
+                # broken, same fix already applied to check_bug_refs below
+                # for the analogous MOD-000-hardcoded bugs/ path.
+                basename = rel.rsplit("/", 1)[-1]
+                matches = list((ROOT / ".claude/rules").glob(f"*/{basename}"))
+                if len(matches) == 1:
+                    continue
             if is_adr and any(rel.startswith(prefix) for prefix in PRE_MIGRATION_PATH_PREFIXES):
                 expected_absent.append(f"{rel_path}: `{rel}` (historical pre-migration path, ADR narrative, not a current-state claim)")
             elif rel in EXPECTED_NOT_YET_CREATED:
@@ -160,7 +177,7 @@ def check_file_refs(rel_path: str, findings: list, expected_absent: list):
 def check_bug_refs(findings: list):
     text = (ROOT / "knowledge/00-System/CURRENT_STATE.md").read_text(encoding="utf-8", errors="replace")
     for bug_id in sorted(set(re.findall(r"BUG-\d{3}", text))):
-        matches = list((ROOT / "knowledge/03-Modules/MOD-000/evidence/bugs").glob(f"{bug_id}-*.md"))
+        matches = list((ROOT / "knowledge/03-Modules").glob(f"MOD-*/evidence/bugs/{bug_id}-*.md"))
         if not matches:
             findings.append(f"BUG LINKAGE MISSING: {bug_id} referenced in CURRENT_STATE.md but no bugs/{bug_id}-*.md file found")
 
@@ -195,15 +212,32 @@ def latest_commit_dates_under(rel_dir: str) -> dict:
             latest_by_path[line] = current_date
     return latest_by_path
 
-def check_staleness(findings: list):
+def discover_module_evidence_roots() -> list:
+    """Every knowledge/03-Modules/MOD-*/evidence directory that exists on
+    disk, not just MOD-000 — added 2026-09-30 (Sonnet-tier review P1):
+    CURRENT_STATE.md/CURRENT_HANDOFF.md describe cross-module state (they
+    already carry MOD-001 content), so staleness must be measured against
+    every module's evidence, not just MOD-000's, or a newer MOD-001-only
+    evidence commit produces a false-clean result."""
+    return sorted(
+        str(p.relative_to(ROOT))
+        for p in (ROOT / "knowledge/03-Modules").glob("MOD-*/evidence")
+        if p.is_dir()
+    )
+
+def latest_date_across_roots(evidence_roots: list) -> str:
     latest_evidence_date = "0000-00-00"
-    evidence_rel = "knowledge/03-Modules/MOD-000/evidence"
-    latest_by_path = latest_commit_dates_under(evidence_rel)
-    for p in (ROOT / evidence_rel).rglob("*"):
-        if p.is_file():
-            d = latest_by_path.get(str(p.relative_to(ROOT)))
-            if d and d > latest_evidence_date:
-                latest_evidence_date = d
+    for evidence_rel in evidence_roots:
+        latest_by_path = latest_commit_dates_under(evidence_rel)
+        for p in (ROOT / evidence_rel).rglob("*"):
+            if p.is_file():
+                d = latest_by_path.get(str(p.relative_to(ROOT)))
+                if d and d > latest_evidence_date:
+                    latest_evidence_date = d
+    return latest_evidence_date
+
+def check_staleness(findings: list):
+    latest_evidence_date = latest_date_across_roots(discover_module_evidence_roots())
     for doc in ["knowledge/00-System/CURRENT_STATE.md", "knowledge/00-System/CURRENT_HANDOFF.md"]:
         p = ROOT / doc
         if not p.exists():
@@ -226,7 +260,7 @@ def check_staleness(findings: list):
         if latest_evidence_date > doc_commit_date:
             findings.append(
                 f"STALE: {doc} last committed {doc_commit_date} (updated: field says {doc_date}), "
-                f"but MOD-000 evidence has a later commit dated {latest_evidence_date} — "
+                f"but tracked module evidence (all MOD-*/evidence trees) has a later commit dated {latest_evidence_date} — "
                 f"{doc} may not reflect the most recent evidence."
             )
 

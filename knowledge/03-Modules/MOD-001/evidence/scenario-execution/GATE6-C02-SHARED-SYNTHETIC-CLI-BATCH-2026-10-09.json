@@ -1,0 +1,1320 @@
+{
+  "scope": "Synthetic local CLI evidence only; no live required CI, no independent assurance, no formal scenario PASS",
+  "operationId": "89e36ebd-820e-4b30-8425-cda966b7badc",
+  "validatorSha256": "cffbce58ef956f7005b1df2b829901b34671339ec53b998dc6f26b42c6a1e673",
+  "workflowSha256": "f09f6160235a09297d00722cce9ff5690fb285502d644b14ef186150537bed2b",
+  "caseCount": 9,
+  "localCriteriaMet": 9,
+  "cases": [
+    {
+      "case": "014-disjoint",
+      "scenario": "SCN-MOD001-014",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 0,
+        "status": "PASS",
+        "code": null
+      },
+      "observed": {
+        "exit": 0,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all",
+            "a PASS on this synthetic fixture is fixture-level evidence only; it is not a live gate PASS and does not promote SCN-MOD001-014/015/131 or MOD-001 (ADR-013 D4 addendum P-6)"
+          ],
+          "status": "PASS",
+          "violations": []
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "015-runbook",
+      "scenario": "SCN-MOD001-015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "reused runbook id RB-SHARED",
+              "subject": "DOM-A|DOM-B"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "015-command-inventory",
+      "scenario": "SCN-MOD001-015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "x.create",
+                "x.update"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "x.update",
+                "x.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "identical command inventory, digest a2c23e9441edec3e980f05a8fb5e7049e9c8968a6cab03826560d0a61a92befd",
+              "subject": "DOM-A|DOM-B"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "015-published-event",
+      "scenario": "SCN-MOD001-015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "shared.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "shared.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "reused published event id shared.created",
+              "subject": "DOM-A|DOM-B"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "015-foreign-slo",
+      "scenario": "SCN-MOD001-015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "booking-capacity"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks booking-capacity."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B monitors Booking Capacity nightly."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "DOM-B's slo_text contains DOM-A's declared SLI/SLO-signal term 'booking-capacity', not owned by DOM-B and DOM-A is not listed in DOM-B's dependencies",
+              "subject": "DOM-B|DOM-A"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "six-dimension-entity-denial",
+      "scenario": "SCN-MOD001-014/015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "SharedEntity"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "SharedEntity"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "identical entity set, digest ed3abb09e8ba68661f6cbec43b685f3bc4353a8fdf3552cd06016082382bd581",
+              "subject": "DOM-A|DOM-B"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "six-dimension-failure-denial",
+      "scenario": "SCN-MOD001-014/015",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-A"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "payment-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles payment-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-B"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B escalates on PaymentTimeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "DOM-B's failure_text contains DOM-A's declared failure-vocabulary term 'payment-timeout', not owned by DOM-B and DOM-A is not listed in DOM-B's dependencies",
+              "subject": "DOM-B|DOM-A"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "131-no-exception",
+      "scenario": "SCN-MOD001-131",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": null
+      },
+      "expected": {
+        "exit": 1,
+        "status": "FAIL",
+        "code": "DOMAIN_CONTRACT_COLLISION"
+      },
+      "observed": {
+        "exit": 1,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all"
+          ],
+          "status": "FAIL",
+          "violations": [
+            {
+              "code": "DOMAIN_CONTRACT_COLLISION",
+              "detail": "reused runbook id RB-SHARED",
+              "subject": "DOM-A|DOM-B"
+            }
+          ]
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    },
+    {
+      "case": "131-matching-exception",
+      "scenario": "SCN-MOD001-131",
+      "input": {
+        "domains": {
+          "DOM-A": {
+            "entities": {
+              "value": [
+                "A"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "a.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "a.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "a-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "a-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "A tracks a-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "A handles a-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          },
+          "DOM-B": {
+            "entities": {
+              "value": [
+                "B"
+              ],
+              "provenance": "synthetic"
+            },
+            "commands": {
+              "value": [
+                "b.create"
+              ],
+              "provenance": "synthetic"
+            },
+            "published_events": {
+              "value": [
+                "b.created"
+              ],
+              "provenance": "synthetic"
+            },
+            "runbook_ids": {
+              "value": [
+                "RB-SHARED"
+              ],
+              "provenance": "synthetic"
+            },
+            "dependencies": {
+              "value": [],
+              "provenance": "synthetic"
+            },
+            "slo_signals": {
+              "value": [
+                "b-latency"
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_terms": {
+              "value": [
+                "b-timeout"
+              ],
+              "provenance": "synthetic"
+            },
+            "slo_text": {
+              "value": [
+                "B tracks b-latency."
+              ],
+              "provenance": "synthetic"
+            },
+            "failure_text": {
+              "value": [
+                "B handles b-timeout."
+              ],
+              "provenance": "synthetic"
+            }
+          }
+        },
+        "exceptions": {
+          "exceptions": {
+            "SCE-001": {
+              "pair": [
+                "DOM-A",
+                "DOM-B"
+              ],
+              "dimension": "runbook-id",
+              "artifact": "RB-SHARED",
+              "approval": "OWN-001"
+            }
+          }
+        }
+      },
+      "expected": {
+        "exit": 0,
+        "status": "PASS",
+        "code": null
+      },
+      "observed": {
+        "exit": 0,
+        "report": {
+          "checked": [
+            "DOM-A~DOM-B"
+          ],
+          "gate": "domain-uniqueness",
+          "inventory": [],
+          "notes": [
+            "DOM-A/DOM-B runbook-id collision resolved by exception SCE-001",
+            "All six TSD §24.1 domain-contract comparison dimensions are implemented: command-inventory and runbook-id (ADR-013 D1-D5); published-event-ID collision (gate-6 lead decision D3, plan-backed) with the same exact pair/dimension/artifact exception route as command-inventory/runbook-id (gate-6 lead decision D5, R04-GATE6-EVENT-EXCEPTION-SOURCE-RECONCILIATION-2026-10-09); entity-set collision (gate-6 lead decision D3 §3, mirroring P1's shape); and SLI/SLO-signal/failure-vocabulary ownership (ADR-013 D4 addendum P-1..P-6) -- entity-set and the two D4 prose dimensions have no exception route at all",
+            "a PASS on this synthetic fixture is fixture-level evidence only; it is not a live gate PASS and does not promote SCN-MOD001-014/015/131 or MOD-001 (ADR-013 D4 addendum P-6)"
+          ],
+          "status": "PASS",
+          "violations": []
+        },
+        "stderr": ""
+      },
+      "criterionMetLocal": true
+    }
+  ]
+}

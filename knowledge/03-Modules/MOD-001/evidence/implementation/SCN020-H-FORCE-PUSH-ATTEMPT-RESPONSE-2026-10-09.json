@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-08T22:58:19.989342+00:00",
+  "command": [
+    "git",
+    "push",
+    "--porcelain",
+    "--force-with-lease=refs/heads/scn020-protected-base-20261009:36457b4dbe309355c5fede5f56c451371bcfd1f6",
+    "https://github.com/veyro-labs/Veyro.git",
+    "e516bedabf3d654ad3ae16d948b8f3522739ddc2:refs/heads/scn020-protected-base-20261009"
+  ],
+  "exitCode": 1,
+  "stdout": "To https://github.com/veyro-labs/Veyro.git\n!\te516bedabf3d654ad3ae16d948b8f3522739ddc2:refs/heads/scn020-protected-base-20261009\t[remote rejected] (protected branch hook declined)\nDone\n",
+  "stderr": "remote: error: GH006: Protected branch update failed for refs/heads/scn020-protected-base-20261009.        \nremote: \nremote: - Changes must be made through a pull request.        \nremote: \nremote: - Required status check \"architecture-event-contract-trusted\" is expected.        \nremote: \nremote: - Cannot force-push to this branch        \nerror: failed to push some refs to 'https://github.com/veyro-labs/Veyro.git'\n"
+}

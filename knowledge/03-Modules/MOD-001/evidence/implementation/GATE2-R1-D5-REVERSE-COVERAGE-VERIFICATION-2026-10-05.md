@@ -1,0 +1,9 @@
+# ADR-011 D5.1 reverse coverage reconciliation — bounded verification
+
+- Work unit: MOD-001 / GOV-01-R04 gate 2; affected original finding R1-F04.
+- Runner operation: `ca453277-6c3f-48f0-a544-57349fa70b99`. The prior `a5334426-1a09-4f85-996d-5ce78f5c44a8` operation was reconciled as interrupted with no tracked source/test hash change and no inferred result.
+- Guarded implementation completed with exit 0 and two material checkpoints (source and test). Its sole change is the reverse D5.1 diff: a walked path absent from the independent eligible enumeration now yields `MODULE_DEPS_COVERAGE_UNATTRIBUTED_PATH` at ERROR/exit 2. The forward diff and existing top-level buckets remain.
+- New negative control injects a path under pruned `__pycache__` into the walk and verifies ERROR naming that path; the unpatched fixture PASSES. A benign control spans module, `_shared`, and modules-root buckets and PASSES. The implementer also reported a throwaway mutation drill: removing the reverse loop made the negative test fail with the prior silent PASS.
+- Independent local verification: `backend/.venv/bin/python tools/tests/test_validate_architecture_gates.py` **244/244 PASS**; `backend/.venv/bin/ruff check tools/validate_architecture_gates.py tools/tests/test_validate_architecture_gates.py` **PASS**; `backend/.venv/bin/python -m py_compile` on both files **PASS**.
+- Verified SHA-256: `tools/validate_architecture_gates.py` `d46b7bd271d38db89f33c5e98b2e0c75e2bb5aa7ffd69a7664ac617bbaa6bf5c`; `tools/tests/test_validate_architecture_gates.py` `7621d3a8fe1cce744f5cac064bf934e51d42520ccbe38f2c7e1769ad92a904ad`.
+- Limits: ADR-011 D5.5 ERROR-path bucket counts remain separate. Round-1 formal finding is OPEN pending remaining code/test blockers and combined independent round-2 assurance. U1/U2 B HOLD still forbids live CTE state-3 wiring. No review verdict, scenario promotion, or module certification is inferred.

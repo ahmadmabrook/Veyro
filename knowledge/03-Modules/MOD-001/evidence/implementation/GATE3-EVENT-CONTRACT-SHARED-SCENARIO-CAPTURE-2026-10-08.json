@@ -1,0 +1,130 @@
+{
+  "assertions": "4/4 observed outcomes and exact denial codes passed; synthetic approval lived only in TemporaryDirectory",
+  "authoritativeScenarioPromotion": false,
+  "baseline": {
+    "events": {
+      "membership.member-created.v1": {
+        "classification": "internal",
+        "schema": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "case": "SCN-MOD001-008-registered",
+      "checkedCount": 1,
+      "exitCode": 0,
+      "registryEntry": {
+        "classification": "internal",
+        "schema": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "source": "emit_event(\"membership.member-created.v1\")\n",
+      "status": "PASS",
+      "stderr": "",
+      "syntheticApprovalRow": null,
+      "violations": []
+    },
+    {
+      "case": "SCN-MOD001-019-unregistered",
+      "checkedCount": 1,
+      "exitCode": 1,
+      "registryEntry": {
+        "classification": "internal",
+        "schema": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "source": "emit_event(\"membership.unknown.v1\")\n",
+      "status": "FAIL",
+      "stderr": "",
+      "syntheticApprovalRow": null,
+      "violations": [
+        {
+          "code": "UNREGISTERED_EVENT_CONTRACT",
+          "detail": "membership.unknown.v1",
+          "subject": "/Users/ahmadmabrouk/.openclaw/tmp/veyro_gate3_n6grmyn3/app/flow.py:1"
+        }
+      ]
+    },
+    {
+      "case": "SCN-MOD001-130-unapproved",
+      "checkedCount": 1,
+      "exitCode": 1,
+      "registryEntry": {
+        "classification": "internal",
+        "schema": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      },
+      "source": "emit_event(\"membership.member-created.v1\")\n",
+      "status": "FAIL",
+      "stderr": "",
+      "syntheticApprovalRow": null,
+      "violations": [
+        {
+          "code": "EVENT_CHANGE_UNAPPROVED",
+          "detail": "schema changed; missing OWN-NNN approval",
+          "subject": "membership.member-created.v1"
+        }
+      ]
+    },
+    {
+      "case": "SCN-MOD001-130-synthetic-approved",
+      "checkedCount": 1,
+      "exitCode": 0,
+      "registryEntry": {
+        "classification": "internal",
+        "ownerApproval": "OWN-999",
+        "schema": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      },
+      "source": "emit_event(\"membership.member-created.v1\")\n",
+      "status": "PASS",
+      "stderr": "",
+      "syntheticApprovalRow": "| OWN-999 | membership.member-created.v1 | disposable synthetic test approval |\n",
+      "violations": []
+    }
+  ],
+  "classification": "MANDATORY_NOW",
+  "date": "2026-10-08",
+  "operationId": "1e3b12e6-b565-4e58-9bec-e2eb783e93a9",
+  "scope": "shared SCN-008/019/130 disposable CLI execution, not independent security assurance",
+  "sourceSha256": "28f3c458e2aae6e2243bfc749388e4f1d540dce1c410cc99671d78c9914d0ce4",
+  "testSha256": "de3e64ee9e32fbbafe653a2697fdb91ee9b907b63a2564a1a9ce86c9434e892b"
+}
