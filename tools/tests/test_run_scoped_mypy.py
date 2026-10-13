@@ -218,6 +218,129 @@ class PlanRefusalTest(Base):
         self.assertDenied("interpreter")
 
 
+class ImportClosureTest(Base):
+    """mypy follows imports out of `backend/app`; the followed local modules are scanned too."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.harness = self.root / "backend" / "tests" / "harness"
+        self.harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (self.harness / "__init__.py").write_text("")
+        (self.harness / "pg.py").write_text(CLEAN_MODULE)
+
+    def use(self, line: str) -> None:
+        (self.app / "core" / "uses.py").write_text(line + "\n")
+
+    def test_clean_followed_harness_is_eligible_and_not_counted(self) -> None:
+        self.use("from tests.harness.pg import add")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_import_spellings_all_reach_the_harness(self) -> None:
+        for line in ("import tests.harness.pg", "from tests.harness import pg",
+                     "if True:\n    from tests.harness.pg import add"):
+            with self.subTest(line):
+                self.use(line)
+                before = self.plan().fingerprint
+                (self.harness / "pg.py").write_text(CLEAN_MODULE + "# edit\n")
+                self.assertNotEqual(self.plan().fingerprint, before)
+                (self.harness / "pg.py").write_text(CLEAN_MODULE)
+
+    def test_type_checking_guarded_import_is_followed(self) -> None:
+        self.use("from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from tests.harness import pg")
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.assertDenied("pg.py")
+
+    def test_hiding_constructs_in_followed_harness_denied(self) -> None:
+        self.use("from tests.harness.pg import add")
+        cases = {
+            "file ignore-errors": "# mypy: ignore-errors\n" + CLEAN_MODULE,
+            "inline ignore": "x: int = 'a'  # type: ignore\n",
+            "no_type_check": "from typing import no_type_check\n@no_type_check\ndef f(a): ...\n",
+            "unparseable": "def broken(:\n",
+        }
+        for label, body in cases.items():
+            with self.subTest(label):
+                (self.harness / "pg.py").write_text(body)
+                with self.assertRaises(Denied):
+                    self.plan()
+
+    def test_transitive_edges_are_followed(self) -> None:
+        (self.harness / "pg.py").write_text("from tests.harness import mid\n")
+        (self.harness / "mid.py").write_text("from . import leaf\n")
+        (self.harness / "leaf.py").write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("leaf.py")
+        (self.harness / "leaf.py").write_text(CLEAN_MODULE)
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_relative_import_in_harness_and_cycles(self) -> None:
+        (self.harness / "pg.py").write_text("from .mid import x\n")
+        (self.harness / "mid.py").write_text("from .pg import y\nfrom ..harness import leaf\n")
+        (self.harness / "leaf.py").write_text("x = 1  # type: ignore\n")
+        self.use("import tests.harness.pg")
+        self.assertDenied("leaf.py")
+
+    def test_import_from_app_back_into_app_is_not_an_escape(self) -> None:
+        (self.harness / "pg.py").write_text("from app.core.math import add\n")
+        self.use("from tests.harness.pg import add")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_namespace_directory_modules_are_still_scanned(self) -> None:
+        (self.root / "backend" / "tests" / "__init__.py").unlink()
+        (self.harness / "__init__.py").unlink()
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("pg.py")
+
+    def test_external_and_non_local_imports_are_not_followed(self) -> None:
+        self.use("import os\nimport json.decoder\nfrom collections.abc import Mapping\nimport notlocal.sub")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_unresolved_edge_into_a_claimed_local_package_denied(self) -> None:
+        for line in ("from tests.harness.missing import x", "import tests.nothere",
+                     "import tests.harness.pg.deeper", "from tests.harness.missing.deep import y"):
+            with self.subTest(line):
+                self.use(line)
+                self.assertDenied("")
+
+    def test_relative_import_climbing_above_backend_denied(self) -> None:
+        (self.harness / "pg.py").write_text("from .... import oops\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("climbs above backend")
+
+    def test_symlinked_or_stubbed_local_module_denied(self) -> None:
+        outside = self.root / "outside.py"
+        outside.write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness import linked")
+        (self.harness / "linked.py").symlink_to(outside)
+        self.assertDenied("symlink")
+        (self.harness / "linked.py").unlink()
+        (self.harness / "linked.py").write_text(CLEAN_MODULE)
+        (self.harness / "linked.pyi").write_text("def add(a: int, b: int) -> int: ...\n")
+        self.assertDenied("stub file")
+
+    def test_symlinked_local_package_denied(self) -> None:
+        real = self.root / "realtests"
+        (self.root / "backend" / "tests").rename(real)
+        (self.root / "backend" / "tests").symlink_to(real)
+        self.use("import tests.harness.pg")
+        self.assertDenied("symlink")
+
+    def test_closure_size_is_bounded(self) -> None:
+        self.use("import tests.harness.pg")
+        with mock.patch.object(w, "MAX_CLOSURE_FILES", 3):
+            self.assertDenied("closure exceeds")
+
+    def test_closure_change_between_plans_changes_the_fingerprint(self) -> None:
+        self.use("import tests.harness.pg")
+        before = self.plan().fingerprint
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.assertDenied("pg.py")
+        (self.harness / "pg.py").write_text(CLEAN_MODULE + "\n\n")
+        self.assertNotEqual(self.plan().fingerprint, before)
+
+
 class CacheSideEffectTest(Base):
     """Pre-existing `.mypy_cache` dirs are tolerated only if the run leaves them untouched.
 
@@ -408,6 +531,30 @@ class ExecutedAgainstSyntheticFixturesTest(Base):
         (self.root / "backend" / "migrations").mkdir()
         (self.root / "backend" / "migrations" / "__init__.py").write_text("X: int = 'a'\n")
         (self.app / "core" / "uses.py").write_text("from migrations import X\n\nY: int = X\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_followed_harness_positive_passes_with_app_only_count(self) -> None:
+        harness = self.root / "backend" / "tests" / "harness"
+        harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (harness / "__init__.py").write_text("")
+        (harness / "pg.py").write_text(CLEAN_MODULE)
+        (harness / "mid.py").write_text("from tests.harness.pg import add\n\nTWO: int = add(1, 1)\n")
+        (self.app / "core" / "uses.py").write_text("from tests.harness.mid import TWO\n\nY: int = TWO\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
+
+    def test_followed_harness_hiding_denied_even_when_mypy_would_succeed(self) -> None:
+        harness = self.root / "backend" / "tests" / "harness"
+        harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (harness / "__init__.py").write_text("")
+        (harness / "mid.py").write_text("from tests.harness.pg import add\n\nTWO: int = add(1, 1)\n")
+        (harness / "pg.py").write_text("# mypy: ignore-errors\ndef add(a, b):\n    return a + b\n")
+        (self.app / "core" / "uses.py").write_text("from tests.harness.mid import TWO\n\nY: int = TWO\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        # control: the same tree with the hiding line removed type-checks as errors, proving the
+        # harness module really is followed by mypy (untyped def under strict)
+        (harness / "pg.py").write_text("def add(a, b):\n    return a + b\n")
         self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
 
     def test_probe_rejects_a_non_venv_or_non_isolated_interpreter(self) -> None:
