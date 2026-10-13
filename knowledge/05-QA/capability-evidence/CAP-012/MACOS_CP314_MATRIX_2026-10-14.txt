@@ -5,8 +5,8 @@ Interpreter/platform/mypy:
 macOS-27.0.1-arm64-arm-64bit-Mach-O
 2.3.1
 
-Wrapper SHA-256: 2970a9ad0434db791cdbef3532c6acbbe661fedbbcfe23c54323941d5546388d
-Workflow SHA-256: d004cce28ef7a8c1ff8c77b228dc8e6c05682c93a4bc830f4476c4df55fbf793
+Wrapper SHA-256: 31b650acc68f16637fc758576b8ce64efc1332d3a617d621a699ec1e2ba16787
+Workflow SHA-256: 523b4c4a9d0ab35dbeed6c965c5c367d3d012b72cabc7ee31c6e4c5c76260a32
 Driver command: backend/.venv/bin/python -I driver.py (source below)
 The driver extracts the current workflow Wrapper boundary proof step and runs it on a disposable /private/tmp tree; the tree is removed after output capture.
 
@@ -32,11 +32,11 @@ shutil.rmtree(tmp)
 === observed output ===
 rc=0
 --- stdout ---
-2970a9ad0434db791cdbef3532c6acbbe661fedbbcfe23c54323941d5546388d /private/tmp/cap012-matrix-25vol6lt/head/tools/run_scoped_mypy.py
+31b650acc68f16637fc758576b8ce64efc1332d3a617d621a699ec1e2ba16787 /private/tmp/cap012-matrix-ze15khpm/head/tools/run_scoped_mypy.py
 --- positive: rc=0 (want 0)
 {
   "argv": [
-    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/.venv/bin/python",
+    "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/positive/backend/.venv/bin/python",
     "-I",
     "-m",
     "mypy",
@@ -52,10 +52,10 @@ rc=0
     "PATH",
     "TMPDIR"
   ],
-  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/pyproject.toml",
-  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend",
+  "config": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/positive/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/positive/backend",
   "expected_source_files": 2,
-  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/positive/backend/app",
+  "target": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/positive/backend/app",
   "tool": "tools/run_scoped_mypy.py"
 }
 Success: no issues found in 2 source files
@@ -70,7 +70,7 @@ DENY: MYPYPATH is set in the environment: an ambient mypy setting can redirect i
 --- n4-cache-created: rc=2 (want 2)
 {
   "argv": [
-    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/.venv/bin/python",
+    "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n4-cache-created/backend/.venv/bin/python",
     "-I",
     "-m",
     "mypy",
@@ -86,10 +86,10 @@ DENY: MYPYPATH is set in the environment: an ambient mypy setting can redirect i
     "PATH",
     "TMPDIR"
   ],
-  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/pyproject.toml",
-  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend",
+  "config": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n4-cache-created/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n4-cache-created/backend",
   "expected_source_files": 2,
-  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n4-cache-created/backend/app",
+  "target": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n4-cache-created/backend/app",
   "tool": "tools/run_scoped_mypy.py"
 }
 DENY: a .mypy_cache was created or modified: the cache was not disabled
@@ -97,7 +97,7 @@ Success: no issues found in 2 source files
 --- c5-cache-preexisting: rc=0 (want 0)
 {
   "argv": [
-    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/.venv/bin/python",
+    "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/c5-cache-preexisting/backend/.venv/bin/python",
     "-I",
     "-m",
     "mypy",
@@ -113,10 +113,10 @@ Success: no issues found in 2 source files
     "PATH",
     "TMPDIR"
   ],
-  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/pyproject.toml",
-  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend",
+  "config": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/c5-cache-preexisting/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/c5-cache-preexisting/backend",
   "expected_source_files": 2,
-  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/c5-cache-preexisting/backend/app",
+  "target": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/c5-cache-preexisting/backend/app",
   "tool": "tools/run_scoped_mypy.py"
 }
 Success: no issues found in 2 source files
@@ -124,7 +124,7 @@ run_scoped_mypy: rc=0 — no issues found in exactly 2 source files
 --- n5-cache-mutated: rc=2 (want 2)
 {
   "argv": [
-    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/.venv/bin/python",
+    "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n5-cache-mutated/backend/.venv/bin/python",
     "-I",
     "-m",
     "mypy",
@@ -140,10 +140,10 @@ run_scoped_mypy: rc=0 — no issues found in exactly 2 source files
     "PATH",
     "TMPDIR"
   ],
-  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/pyproject.toml",
-  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend",
+  "config": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n5-cache-mutated/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n5-cache-mutated/backend",
   "expected_source_files": 2,
-  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n5-cache-mutated/backend/app",
+  "target": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n5-cache-mutated/backend/app",
   "tool": "tools/run_scoped_mypy.py"
 }
 DENY: a .mypy_cache was created or modified: the cache was not disabled
@@ -151,7 +151,7 @@ Success: no issues found in 2 source files
 --- n6-count-mismatch: rc=2 (want 2)
 {
   "argv": [
-    "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/.venv/bin/python",
+    "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n6-count-mismatch/backend/.venv/bin/python",
     "-I",
     "-m",
     "mypy",
@@ -167,10 +167,10 @@ Success: no issues found in 2 source files
     "PATH",
     "TMPDIR"
   ],
-  "config": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/pyproject.toml",
-  "cwd": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend",
+  "config": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n6-count-mismatch/backend/pyproject.toml",
+  "cwd": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n6-count-mismatch/backend",
   "expected_source_files": 3,
-  "target": "/private/tmp/cap012-matrix-25vol6lt/wrapper-boundary.y5Z8iotw/n6-count-mismatch/backend/app",
+  "target": "/private/tmp/cap012-matrix-ze15khpm/wrapper-boundary.HWp4YbC0/n6-count-mismatch/backend/app",
   "tool": "tools/run_scoped_mypy.py"
 }
 Success: no issues found in 2 source files
