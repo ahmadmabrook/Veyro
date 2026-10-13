@@ -1,0 +1,141 @@
+# M1-C-09 - GOV-01-R07 mobile CI trigger/gate CANDIDATE (SCN-MOD001-052/055/100/101/128/129).
+# Authored, never run remotely. Not a required status check. Not a scenario PASS.
+#
+# Wiring (statically checked by tools/validate_mobile_ci_workflow.py):
+#   trigger  - pull_request touching mobile/** (covers mobile/TOOLCHAIN_MATRIX.md, the
+#              isolated toolchain-upgrade path, and the common-code path mobile/shared/**).
+#              Every job below runs on every matching change, so a common-code change
+#              triggers BOTH android-regression and ios-regression (SCN-052/100).
+#   android  - ubuntu-24.04 (Linux) pinned in this file (SCN-055/074).
+#   ios      - jobs present with NO runner class committed: runs-on reads a repository
+#              variable that is intentionally unset. No macOS label, no paid runner tier
+#              (SCN-056). With the variable unset these jobs cannot schedule, so they
+#              cannot report green; GitHub's handling of an empty runs-on is UNVERIFIED.
+#   quality  - qualification dimensions build/UI/accessibility/performance (SCN-128).
+#
+# HELD / NOT claimed:
+#   - android-build runs the real matrix-vs-config validator, then DENIES: the repo holds
+#     only non-buildable Gradle stubs and no Gradle wrapper, so no real Android build can
+#     run. This is the recorded blocker, never a green build.
+#   - Every other job is a fail-closed placeholder (DENY). No UI/a11y/perf/regression
+#     harness exists under the DEFERRED mobile profile (SCN-139).
+#   - No action references, no secrets, `permissions: {}`, no credentials, synthetic only.
+
+name: mobile-ci
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+      - 'tools/validate_toolchain_matrix.py'
+      - 'tools/validate_mobile_ci_workflow.py'
+
+permissions: {}
+
+jobs:
+  android-build:
+    name: android-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+
+      - name: Matrix-vs-config validation, then Android build (denies while no Gradle wrapper exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/head"
+          python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' \
+            || { echo "DENY: Python 3.10+ required" >&2; exit 1; }
+          python3 -I tools/validate_toolchain_matrix.py
+          [[ -f mobile/gradlew && ! -L mobile/gradlew ]] \
+            || { echo "DENY: no Gradle wrapper committed; real Android build cannot run (blocker, not a pass)" >&2; exit 1; }
+          echo "DENY: Gradle wrapper present but no build invocation is wired or qualified" >&2
+          exit 1
+
+  android-regression:
+    name: android-regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - no Android regression harness exists)
+        run: |
+          echo "DENY: Android regression suite not wired (DEFERRED mobile profile)" >&2
+          exit 1
+
+  android-ui-qualification:
+    name: android-ui-qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - no UI-test harness exists)
+        run: |
+          echo "DENY: Android UI qualification not wired (no screen source, SCN-139)" >&2
+          exit 1
+
+  android-accessibility-qualification:
+    name: android-accessibility-qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - no accessibility harness exists)
+        run: |
+          echo "DENY: Android accessibility qualification not wired (no screen source, SCN-139)" >&2
+          exit 1
+
+  android-performance-qualification:
+    name: android-performance-qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - no performance harness exists)
+        run: |
+          echo "DENY: Android performance qualification not wired (no app source, SCN-139)" >&2
+          exit 1
+
+  ios-build:
+    name: ios-build
+    runs-on: ${{ vars.VEYRO_IOS_RUNNER_LABEL }}
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - iOS runner class deferred, SCN-056)
+        run: |
+          echo "DENY: iOS build not wired; runner class deliberately uncommitted" >&2
+          exit 1
+
+  ios-regression:
+    name: ios-regression
+    runs-on: ${{ vars.VEYRO_IOS_RUNNER_LABEL }}
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - iOS runner class deferred, SCN-056)
+        run: |
+          echo "DENY: iOS regression suite not wired; runner class deliberately uncommitted" >&2
+          exit 1
+
+  ios-smoke:
+    name: ios-smoke
+    runs-on: ${{ vars.VEYRO_IOS_RUNNER_LABEL }}
+    timeout-minutes: 5
+    steps:
+      - name: Placeholder (denies - iOS runner class deferred, SCN-056)
+        run: |
+          echo "DENY: iOS smoke not wired; runner class deliberately uncommitted" >&2
+          exit 1

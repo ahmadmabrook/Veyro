@@ -1,0 +1,69 @@
+name: architecture-event-contract
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  event-contract:
+    name: architecture-event-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compare candidate events to PR base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$BASE_SHA^{commit}"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/knowledge/00-System"
+          git show "$BASE_SHA:knowledge/00-System/OWNER_APPROVALS.md" > "$work/knowledge/00-System/OWNER_APPROVALS.md"
+          bootstrap=false
+          if git cat-file -e "$BASE_SHA:contracts/events/registry.json" 2>/dev/null; then
+            git show "$BASE_SHA:contracts/events/registry.json" > "$work/baseline.json"
+          else
+            bootstrap=true
+            printf '{"events":{}}\n' > "$work/baseline.json"
+          fi
+          if python3 tools/validate_architecture_gates.py \
+            --gate event-contract --json \
+            --event-baseline "$work/baseline.json" \
+            --event-approval-root "$work" > "$work/report.json"; then
+            status=0
+          else
+            status=$?
+          fi
+          cat "$work/report.json"
+          python3 - "$work/report.json" "$status" "$bootstrap" "$work/baseline.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path(sys.argv[1]).read_text())
+          status = int(sys.argv[2])
+          bootstrap = sys.argv[3] == 'true'
+          current = json.loads(Path('contracts/events/registry.json').read_text())
+          baseline = json.loads(Path(sys.argv[4]).read_text())
+          if status == 0 and report['status'] == 'PASS' and not bootstrap:
+              raise SystemExit(0)
+          empty = current == baseline == {'events': {}}
+          vacuous = (status == 2 and report['status'] == 'INCONCLUSIVE'
+                     and [v['code'] for v in report['violations']]
+                     == ['EVENT_CONTRACT_GATE_VACUOUS'])
+          if empty and vacuous:
+              print('event-contract: NOT_APPLICABLE (empty registry, no emitters)')
+              raise SystemExit(0)
+          raise SystemExit('event-contract: blocking verdict or untrusted bootstrap')
+          PY

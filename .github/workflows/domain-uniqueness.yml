@@ -1,0 +1,162 @@
+# GOV-01-R04 gate 6. This definition and its executable validator must be on
+# the trusted default branch before this job can enforce a PR. Candidate files
+# are read as inert data only; no candidate workflow, script or secret runs.
+# A successful job is not evidence that branch protection requires its status.
+name: architecture-domain-uniqueness
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  domain-uniqueness:
+    name: architecture-domain-uniqueness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check full committed domain contract with trusted validator
+        env:
+          REPO: ${{ github.repository }}
+          TRUSTED_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deny() { printf 'architecture-domain-uniqueness: DENY - %s\n' "$1" >&2; exit 1; }
+          [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || deny 'invalid repository name'
+          for name in TRUSTED_SHA BASE_SHA HEAD_SHA; do
+            [[ "${!name}" =~ ^[0-9a-f]{40}$ ]] || deny "$name is not a commit SHA"
+          done
+          python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' \
+            || deny 'Python 3.10+ required'
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          url="https://github.com/$REPO.git"
+          git init -q "$work/trusted"
+          git -C "$work/trusted" remote add origin "$url"
+          git -C "$work/trusted" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          git -C "$work/trusted" checkout -q --detach FETCH_HEAD
+          [[ "$(git -C "$work/trusted" rev-parse HEAD)" == "$TRUSTED_SHA" ]] \
+            || deny 'trusted checkout mismatch'
+          validator="$work/trusted/tools/validate_architecture_gates.py"
+          mirror="$work/trusted/knowledge/00-System/TSD_MIRROR.md"
+          [[ -f "$validator" && ! -L "$validator" && -f "$mirror" && ! -L "$mirror" ]] \
+            || deny 'trusted validator or domain-ID source missing'
+
+          git init -q "$work/objects"
+          git -C "$work/objects" remote add origin "$url"
+          git -C "$work/objects" fetch -q --no-tags --depth=1 origin "$HEAD_SHA" "$BASE_SHA"
+          for sha in "$HEAD_SHA" "$BASE_SHA"; do
+            git -C "$work/objects" cat-file -e "$sha^{commit}" \
+              || deny "missing commit $sha"
+          done
+
+          # Reject an alternative contract tree that a single-document check
+          # would silently omit. All candidate entries must be regular blobs.
+          git -C "$work/objects" ls-tree -r --full-tree -z "$HEAD_SHA" \
+            -- contracts/domains > "$work/domain-entries.nul"
+          while IFS= read -r -d '' entry; do
+            meta="${entry%%$'\t'*}"
+            path="${entry#*$'\t'}"
+            mode="${meta%% *}"
+            [[ "$mode" == 100644 || "$mode" == 100755 ]] \
+              || deny "irregular candidate contract entry: $path"
+            [[ "$path" == contracts/domains/domain-contract.json || \
+               "$path" == contracts/domains/shared-contract-exceptions.json ]] \
+              || deny "unrecognized candidate domain contract: $path"
+          done < "$work/domain-entries.nul"
+
+          mode_at() {
+            git -C "$work/objects" ls-tree --full-tree "$1" -- "$2" | cut -d' ' -f1
+          }
+          contract='contracts/domains/domain-contract.json'
+          base_mode="$(mode_at "$BASE_SHA" "$contract")"
+          head_mode="$(mode_at "$HEAD_SHA" "$contract")"
+          for mode in "$base_mode" "$head_mode"; do
+            [[ -z "$mode" || "$mode" == 100644 || "$mode" == 100755 ]] \
+              || deny 'domain contract is not a regular blob'
+          done
+          if [[ -z "$base_mode" && -z "$head_mode" ]]; then
+            echo 'architecture-domain-uniqueness: NOT_APPLICABLE (no committed domain contract on base or head; no gate PASS asserted)'
+            exit 0
+          fi
+          [[ -n "$head_mode" ]] || deny 'candidate removed applicable domain contract'
+          git -C "$work/objects" show "$HEAD_SHA:$contract" > "$work/domain-contract.json"
+
+          # The trusted §10 heading inventory gives the exact 57-domain set.
+          # This checks completeness without inventing any domain contents.
+          python3 -E -s - "$mirror" "$work/domain-contract.json" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          headings = re.findall(r'^## 10\.(\d+) ([A-Z0-9]{3}-\d{2}) - ',
+                                Path(sys.argv[1]).read_text(), re.M)
+          if len(headings) != 57 or [int(n) for n, _ in headings] != list(range(1, 58)):
+              raise SystemExit('trusted TSD domain heading inventory is not exactly 10.1–10.57')
+          expected = {domain_id for _, domain_id in headings}
+          if len(expected) != 57:
+              raise SystemExit('trusted TSD domain IDs are not unique')
+          def no_duplicate_keys(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f'duplicate JSON key: {key}')
+                  result[key] = value
+              return result
+          candidate = json.loads(Path(sys.argv[2]).read_text(),
+                                 object_pairs_hook=no_duplicate_keys)
+          domains = candidate.get('domains') if isinstance(candidate, dict) else None
+          if not isinstance(domains, dict) or set(domains) != expected:
+              raise SystemExit('candidate domain IDs differ from the full trusted 57-domain set')
+          for domain_id, fields in domains.items():
+              if not isinstance(fields, dict):
+                  raise SystemExit(f'{domain_id}: malformed domain fields')
+              for name, field in fields.items():
+                  if (isinstance(field, dict)
+                          and isinstance(field.get('provenance'), str)
+                          and field['provenance'].strip().casefold() == 'synthetic'):
+                      raise SystemExit(f'{domain_id}.{name}: synthetic provenance in committed live contract')
+          PY
+
+          # Candidate exceptions are inert data. Approval authority comes
+          # exclusively from the protected PR base commit, never the head.
+          exceptions='contracts/domains/shared-contract-exceptions.json'
+          exception_mode="$(mode_at "$HEAD_SHA" "$exceptions")"
+          [[ -z "$exception_mode" || "$exception_mode" == 100644 || "$exception_mode" == 100755 ]] \
+            || deny 'candidate exception register is not a regular blob'
+          if [[ -n "$exception_mode" ]]; then
+            git -C "$work/objects" show "$HEAD_SHA:$exceptions" > "$work/exceptions.json"
+          fi
+          approvals='knowledge/00-System/OWNER_APPROVALS.md'
+          approval_mode="$(mode_at "$BASE_SHA" "$approvals")"
+          [[ "$approval_mode" == 100644 || "$approval_mode" == 100755 ]] \
+            || deny 'protected-base approval register unavailable'
+          mkdir -p "$work/approval/knowledge/00-System"
+          git -C "$work/objects" show "$BASE_SHA:$approvals" \
+            > "$work/approval/$approvals"
+
+          set +e
+          python3 -E -s "$validator" --gate domain-uniqueness --json \
+            --domain-contract "$work/domain-contract.json" \
+            --domain-exceptions "$work/exceptions.json" \
+            --domain-approval-root "$work/approval" > "$work/report.json"
+          status=$?
+          set -e
+          cat "$work/report.json"
+          python3 -E -s - "$work/report.json" "$status" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          if int(sys.argv[2]) != 0 or report.get('status') != 'PASS':
+              raise SystemExit('architecture-domain-uniqueness: blocking validator verdict')
+          print('architecture-domain-uniqueness: PASS (full committed 57-domain contract)')
+          PY

@@ -1,0 +1,268 @@
+# SCN-020 trusted-anchor gate-3 status check.
+#
+# Authorized by: /Users/ahmadmabrouk/.openclaw/workspace-veyro/control/
+#   SCN020_TRUSTED_STATUS_AUTHORIZATION_2026-10-09.md
+# Root cause: knowledge/03-Modules/MOD-001/evidence/implementation/
+#   SCN020-A-TRUSTED-CHECK-ROOT-CAUSE-2026-10-09.md (facts F1-F15, §4 D1-D6)
+#
+# This file is ONLY correct when it lives on the repository's trusted DEFAULT
+# branch. Per that report's F9, a `pull_request_target` run on github.com takes
+# its workflow definition and `GITHUB_SHA` from the DEFAULT branch, not from the
+# pull request's base branch. Installing this file on a non-default branch makes
+# it inert; the required context would never report.
+#
+# Trust model:
+#   - Workflow definition: default branch (GitHub-enforced for this event).
+#   - Executable validator: fetched by immutable SHA from the same trusted
+#     default-branch snapshot (`github.sha`) that supplied this definition.
+#     Candidate code is NEVER executed, imported, or installed.
+#   - Candidate contribution: inert DATA only - `backend/app/**/*.py` text and
+#     `contracts/events/registry.json` - parsed by the trusted validator with
+#     `ast.parse` (root cause F14), never run.
+#   - Baseline registry and the owner-approval root come from the PROTECTED PR
+#     BASE SHA, not from the candidate head.
+#   - No secrets are referenced. No credentials are persisted or used: the
+#     repository is public (F1), so every fetch below is anonymous.
+#
+# NOT claimed, and deliberately left open:
+#   Same-name candidate check spoofing is NOT solved by this file. The root
+#   cause report's C2 and probe N5 remain open: nothing here proves that a
+#   candidate head cannot publish its own check run named
+#   `architecture-event-contract-trusted` and satisfy the required context.
+#   That requires live negative proof after installation (N1-N6), not a
+#   YAML-level assertion. Do not record this gate as trusted until N5 is run.
+#
+# Deliberate omissions, each a known SCN-020 bypass class:
+#   - no `workflow_dispatch` (bypass class (d))
+#   - no `paths`/`paths-ignore` filter (a path filter lets a PR avoid
+#     triggering the required context at all)
+#   - no `continue-on-error` anywhere (bypass class (a) - the exact live defect)
+#   - no `if: always()`, no step-level failure suppression
+#   - no `uses:` action reference (see below)
+#
+# No `uses:` line is present by design. `.claude/rules/infra/iac.md` control 5
+# requires every action in `.github/workflows/**` to be both pinned to a
+# 40-character commit SHA AND carry an APPROVED `CAP-<NNN>` row in
+# `CAPABILITY_REGISTRY.md`. No GitHub Action holds such a row today (the
+# registry contains CAP-001..CAP-008, none of them an action), so any `uses:`
+# reference would be unmergeable under that rule's fail-closed clause. This
+# workflow therefore uses only runner-image `git` and `python3`, which also
+# removes `actions/checkout`'s credential surface entirely rather than merely
+# setting `persist-credentials: false`.
+
+name: architecture-event-contract-trusted
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - scn020-protected-base-20261009
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-event-contract-trusted:
+    name: architecture-event-contract-trusted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Untrusted values are passed through `env:`, never interpolated into the
+      # script body, so no candidate-controlled string can be parsed as shell.
+      # Only SHAs and `github.repository` are consumed - never a PR title,
+      # branch name, or author-controlled label.
+      - name: Run trusted gate-3 event-contract check against inert candidate data
+        env:
+          REPO: ${{ github.repository }}
+          TRUSTED_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'architecture-event-contract-trusted: DENY - %s\n' "$1" >&2; exit 1; }
+
+          for var in TRUSTED_SHA HEAD_SHA BASE_SHA; do
+            [[ "${!var}" =~ ^[0-9a-f]{40}$ ]] || deny "$var is not a 40-hex commit sha"
+          done
+          printf 'trusted=%s head=%s base=%s\n' "$TRUSTED_SHA" "$HEAD_SHA" "$BASE_SHA"
+
+          # The validator needs Python 3.10+. Assert it rather than assuming the
+          # runner image; a wrong interpreter must deny, never silently pass.
+          python3 -c 'import sys; print(sys.version); raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+            || deny "runner python3 is older than 3.10"
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          trusted="$work/trusted"
+          cand_git="$work/candidate.git"
+          cand="$work/candidate"
+          approval="$work/approval"
+          url="https://github.com/$REPO.git"
+
+          # --- 1. Trusted default-branch snapshot (workflow + validator source) ---
+          git init -q "$trusted"
+          git -C "$trusted" remote add origin "$url"
+          git -C "$trusted" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          git -C "$trusted" checkout -q --detach FETCH_HEAD
+          [[ "$(git -C "$trusted" rev-parse HEAD)" == "$TRUSTED_SHA" ]] \
+            || deny "trusted checkout is not $TRUSTED_SHA"
+          validator="$trusted/tools/validate_architecture_gates.py"
+          [[ -f "$validator" && ! -L "$validator" ]] \
+            || deny "trusted snapshot $TRUSTED_SHA has no regular tools/validate_architecture_gates.py"
+
+          # --- 2. Candidate objects, by immutable SHA, never checked out ---
+          git init -q "$cand_git"
+          git -C "$cand_git" remote add origin "$url"
+          git -C "$cand_git" fetch -q --no-tags --depth=1 origin "$HEAD_SHA" "$BASE_SHA"
+          git -C "$cand_git" cat-file -e "$HEAD_SHA^{commit}" || deny "head $HEAD_SHA is not a commit"
+          git -C "$cand_git" cat-file -e "$BASE_SHA^{commit}" || deny "base $BASE_SHA is not a commit"
+
+          # Single known path, so the first field is the mode and an absent path
+          # yields empty output. Deliberately NOT `-z`: see the NUL note below.
+          blob_mode() { git -C "$cand_git" ls-tree --full-tree "$1" -- "$2" | cut -d' ' -f1; }
+
+          # --- 3. Materialize candidate contribution as inert data ---
+          # Every tree entry is screened BEFORE extraction: regular blobs only,
+          # so symlinks (120000) and submodule gitlinks (160000) are refused,
+          # and every path must be relative, `..`-free, and inside the two
+          # allowed roots.
+          mkdir -p "$cand/backend/app"
+          has_src=false
+          has_reg=false
+          # NUL-delimited listing is written to a file, never through `$(...)`:
+          # bash silently DISCARDS NUL bytes in a command substitution, which
+          # would collapse the listing into one unparseable record, skip this
+          # screening loop entirely, and make every candidate look source-free
+          # and registry-free - a fail-open. Redirecting to a file also keeps
+          # `set -e` able to see a failing `git ls-tree`.
+          git -C "$cand_git" ls-tree -r --full-tree -z "$HEAD_SHA" \
+            -- backend/app contracts/events/registry.json > "$work/entries.nul"
+          while IFS= read -r -d '' record; do
+            meta="${record%%$'\t'*}"
+            path="${record#*$'\t'}"
+            mode="${meta%% *}"
+            rest="${meta#* }"
+            type="${rest%% *}"
+            case "$mode" in
+              100644|100755) ;;
+              *) deny "refused candidate tree entry mode $mode at '$path' (symlink/gitlink/irregular)" ;;
+            esac
+            [[ "$type" == "blob" ]] || deny "refused candidate tree entry type $type at '$path'"
+            [[ "$path" != /* ]] || deny "refused absolute candidate path '$path'"
+            [[ "/$path/" != *"/../"* ]] || deny "refused candidate path traversal in '$path'"
+            case "$path" in
+              backend/app/*) has_src=true ;;
+              contracts/events/registry.json) has_reg=true ;;
+              *) deny "refused out-of-scope candidate path '$path'" ;;
+            esac
+          done < "$work/entries.nul"
+
+          # `if` blocks, not `[[ ... ]] && ...`: under `set -e` a false
+          # short-circuit test would abort the step with no stated reason.
+          pathspecs=()
+          if [[ "$has_src" == "true" ]]; then pathspecs+=("backend/app"); fi
+          if [[ "$has_reg" == "true" ]]; then pathspecs+=("contracts/events/registry.json"); fi
+          if (( ${#pathspecs[@]} > 0 )); then
+            git -C "$cand_git" archive --format=tar "$HEAD_SHA" -- "${pathspecs[@]}" \
+              | tar -xf - -C "$cand"
+          fi
+
+          # Belt-and-braces: nothing extracted may be a symlink. The trusted
+          # validator refuses symlinked event sources too (root cause F14), so
+          # this is the second of three independent layers.
+          if [[ -n "$(find "$cand" -type l -print -quit)" ]]; then
+            deny "symlink present in materialized candidate tree"
+          fi
+          # Keep only Python text from the candidate source root. Nothing in
+          # $cand is ever executed, imported, or installed from.
+          find "$cand/backend/app" -type f ! -name '*.py' -delete
+
+          cand_reg="$cand/contracts/events/registry.json"
+          if [[ "$has_reg" != "true" ]]; then
+            mkdir -p "$cand/contracts/events"
+            printf '{"events":{}}\n' > "$cand_reg"
+            echo "candidate registry absent at $HEAD_SHA; treated as the empty registry"
+          fi
+
+          # --- 4. Baseline registry and owner-approval root: PROTECTED BASE SHA ---
+          mode_approvals="$(blob_mode "$BASE_SHA" knowledge/00-System/OWNER_APPROVALS.md)"
+          case "$mode_approvals" in
+            100644|100755) ;;
+            "") deny "base $BASE_SHA has no knowledge/00-System/OWNER_APPROVALS.md; approval root unresolvable" ;;
+            *) deny "base OWNER_APPROVALS.md tree entry mode $mode_approvals refused" ;;
+          esac
+          mkdir -p "$approval/knowledge/00-System"
+          git -C "$cand_git" show "$BASE_SHA:knowledge/00-System/OWNER_APPROVALS.md" \
+            > "$approval/knowledge/00-System/OWNER_APPROVALS.md"
+
+          bootstrap=false
+          mode_baseline="$(blob_mode "$BASE_SHA" contracts/events/registry.json)"
+          case "$mode_baseline" in
+            100644|100755)
+              git -C "$cand_git" show "$BASE_SHA:contracts/events/registry.json" > "$work/baseline.json"
+              ;;
+            "")
+              bootstrap=true
+              printf '{"events":{}}\n' > "$work/baseline.json"
+              echo "base $BASE_SHA has no registry; empty-registry bootstrap, PASS will not be honoured"
+              ;;
+            *) deny "base registry tree entry mode $mode_baseline refused" ;;
+          esac
+
+          # --- 5. Trusted validator over inert candidate data ---
+          # -E -s: ignore PYTHONPATH and user site-packages. Nothing from $cand
+          # is on sys.path; the only importable directory is the trusted
+          # snapshot's own tools/.
+          set +e
+          python3 -E -s "$validator" \
+            --gate event-contract --json \
+            --event-source-dir "$cand/backend/app" \
+            --event-registry "$cand_reg" \
+            --event-baseline "$work/baseline.json" \
+            --event-approval-root "$approval" > "$work/report.json"
+          status=$?
+          set -e
+          cat "$work/report.json"
+
+          # --- 6. Verdict wrapper (part of the trusted definition) ---
+          # Exit codes: PASS=0, FAIL=1, INCONCLUSIVE=2, ERROR=2. INCONCLUSIVE
+          # and ERROR share exit 2, so the verdict discriminates on the
+          # report's own `status` field, never on the exit code alone.
+          # NOT_APPLICABLE and INCONCLUSIVE are never reported as PASS.
+          python3 -E -s - "$work/report.json" "$status" "$bootstrap" "$work/baseline.json" "$cand_reg" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report_path, raw_status, bootstrap, baseline_path, current_path = sys.argv[1:6]
+          status = int(raw_status)
+          report = json.loads(Path(report_path).read_text())
+          current = json.loads(Path(current_path).read_text())
+          baseline = json.loads(Path(baseline_path).read_text())
+          gate_status = report.get('status')
+          codes = [v.get('code') for v in report.get('violations', [])]
+
+          if status == 0 and gate_status == 'PASS' and bootstrap != 'true':
+              print('architecture-event-contract-trusted: PASS')
+              raise SystemExit(0)
+
+          # The only non-PASS outcome allowed through: an exactly-empty baseline,
+          # an exactly-empty candidate registry, and zero inspected emitters.
+          empty = current == baseline == {'events': {}}
+          vacuous = (status == 2
+                     and gate_status == 'INCONCLUSIVE'
+                     and codes == ['EVENT_CONTRACT_GATE_VACUOUS'])
+          if empty and vacuous:
+              print('architecture-event-contract-trusted: NOT_APPLICABLE '
+                    '(empty baseline, empty candidate registry, no emitters) '
+                    '- explicitly NOT a PASS')
+              raise SystemExit(0)
+
+          raise SystemExit(
+              'architecture-event-contract-trusted: DENY '
+              f'(exit={status} status={gate_status} codes={codes} '
+              f'bootstrap={bootstrap} empty={empty} vacuous={vacuous})'
+          )
+          PY

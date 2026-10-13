@@ -1,0 +1,56 @@
+# R03 NET failure drill (GOV-01-R03 / SCN-MOD001-030 foundation, M1-C-06).
+#
+# Per knowledge/03-Modules/MOD-001/evidence/implementation/
+# M1-C-06-TRUSTED-CI-ROUTING-DECISION-2026-10-09.md sections 1, 2, 5, 8:
+# a zero-authority `pull_request` drill. NOT a gate, NOT a required status
+# check, NOT a trust anchor: this workflow and the script it runs are both
+# candidate-head content (candidate-editable), so the check's conclusion
+# must never be cited as enforcement. Evidence is the inspected run (logs,
+# exit status, elapsed times, pinned head SHA), not the check colour.
+#
+# Authority: `permissions: {}`, no environment, no secret references,
+# no action references; runner-image `git` and `python3` only. The repository
+# is public, so the head commit is fetched tokenless by immutable SHA.
+#
+# Not claimed here: no CI run has occurred; SCN-MOD001-030 stays NOT
+# EXECUTED until an inspected disposable-branch run is reviewed.
+# For the future disposable red run, temporarily append `--invert` to the
+# drill command on a throwaway branch; never on a protected base.
+
+name: r03-failure-drill
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  net-failure-drill:
+    name: r03-net-failure-drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          echo "pinned head sha: $(git -C "$RUNNER_TEMP/head" rev-parse HEAD)"
+      - name: Run NET failure drill
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 -I "$RUNNER_TEMP/head/tools/net_failure_drill.py" --repo "$RUNNER_TEMP/head"
+      - name: Corroborating curl observation (informational)
+        shell: bash
+        run: |
+          set +e
+          curl --silent --max-time 3 http://192.0.2.1:81/ >/dev/null
+          echo "curl exit status: $? (28 expected for timeout; informational only)"

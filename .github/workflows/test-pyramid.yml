@@ -1,0 +1,432 @@
+# M1-C-07 - GOV-01-R01 seven-layer test pyramid + GOV-01-R02 SCN-MOD001-016(a)
+# idempotency-contract lint. CANDIDATE workflow: authored, never run remotely.
+#
+# Layer map (EIP Appendix B / TEST_PLAN.md):
+#   unit, component, contract      -> job backend-layer (matrix), real committed suites
+#   integration                    -> job backend-layer (matrix), disposable-Postgres fixture
+#   end-to-end                     -> job e2e-applicability (applicability check)
+#   mobile UI (Android, iOS)       -> jobs mobile-android-applicability / mobile-ios-applicability
+#   exploratory                    -> NO job, by design: it is genuine manual QA
+#                                     (MANUAL_QA.md, DC-04). A workflow job here would be a
+#                                     fake automated PASS. Recorded as a manual gate only.
+#   regression                     -> job regression (blocking command; see HELD below)
+#   GOV-01-R02 idempotency lint    -> job idempotency-lint (committed declaration + focused tests)
+#
+# Constraints held by construction:
+#   - No action references (no CAP-approved action exists; iac.md control 5). The head commit is
+#     fetched tokenlessly with plain git, exactly as typecheck-qualification-drill.yml does.
+#   - No secrets, `permissions: {}`, no paid service, no Production, synthetic fixtures only.
+#   - Dependencies come ONLY from the committed, hash-locked Linux cp313 lock with
+#     --require-hashes --only-binary=:all: --no-deps. If the lock or interpreter is not as
+#     expected the job denies; there is no unpinned fallback install.
+#   - Untrusted values reach shell only through env:, never interpolated into a script body.
+#   - No pytest invocation takes a path from this file. Both pytest-running steps call
+#     tools/run_scoped_pytest.py with a suite *name* from that file's committed
+#     allowlist (backend/tests/{unit,component,contract,integration}, and the single
+#     file tools/tests/test_validate_idempotency_contract.py); the runner canonicalises
+#     the paths and supplies the explicit -c/--rootdir/--confcutdir/-p no:cacheprovider
+#     shape. CAP-011 is QUALIFIED - NOT APPROVED, so no run through it is a gate result.
+#
+# NOT claimed / HELD (see also the M1-C-07 evidence note):
+#   - This file has not been run. No CI result exists. Nothing here is a scenario PASS or an
+#     assurance claim, and it is not a required status check.
+#   - backend-layer / integration now has a real Linux route (M1-C-07 B6), wired via the
+#     VEYRO_HARNESS_LINUX_CI_POSTGRES marker below, so this layer is no longer structurally
+#     incapable of passing. It is NOT yet qualified and NOT yet a gate:
+#       * The engine it reaches — a hosted runner's own moby engine on linux/amd64 — is
+#         OUTSIDE CAP-008's APPROVED scope, which pins Colima 0.10.3 / Lima 2.2.0 / an arm64
+#         colima-core VM. Per CAPABILITY_POLICY.md that is an unregistered capability
+#         instance (BUG-038's defect class) and needs its own CAP row through the 9-stage
+#         lifecycle: independent Opus evaluation (stage 4) plus positive AND negative
+#         qualification in this exact shape (stage 5).
+#       * No run has occurred. Nothing here is a CI result, a scenario PASS or an assurance
+#         claim, and the route's own controls are so far verified only against a scripted
+#         fake CLI, never a live Linux engine.
+#       * Therefore: integration MUST NOT be designated a required status check (and neither
+#         must this workflow) until that CAP row reads APPROVED. Designating it now is
+#         exactly what B6 forbids.
+#     The route proves properties of the live target rather than pinned version strings (no
+#     invented pins): host is linux/x86_64; no ambient DOCKER_*/libpq variable may repoint
+#     the engine or the database; the CLI resolves to an executable file under /usr; the
+#     socket is a real non-symlinked socket at /var/run/docker.sock; the engine identifies
+#     as this host's own linux/amd64 engine; and the running container is proven to come
+#     from the same digest-pinned postgres image, resolved to that index's linux/amd64
+#     child. Loopback-only publish, random per-run credentials, admin/runtime role
+#     separation, `rm -f -v` teardown and synthetic-fixture-only data are the shared
+#     harness path, unchanged. The local CAP-008 Colima route is untouched: with the marker
+#     unset, not one statement of the Linux route executes.
+#   - regression is a real blocking command whose observed LOCAL result is FAIL (CAP-011/012
+#     and evidence integrity). It is wired as-is; live CI green is NOT claimed.
+#   - Static/lint (ruff) is not in this workflow: ruff is absent from the Linux cp313 lock.
+#   - E2E and mobile jobs are applicability checks only. They report N/A while no app source
+#     exists, and FAIL as soon as app/screen source appears with no runnable harness wired.
+
+name: test-pyramid
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  backend-layer:
+    name: backend-${{ matrix.layer }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [unit, component, contract, integration]
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+
+      - name: Assert CPython 3.13 interpreter, create venv, hash-enforced install of the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          assert="$head/tools/assert_ci_python313.py"
+          lock="$head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          for f in "$assert" "$lock"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+          done
+          shopt -s nullglob
+          candidates=()
+          if found="$(command -v python3.13)"; then candidates+=("$found"); fi
+          candidates+=(/usr/bin/python3.13 /usr/local/bin/python3.13)
+          candidates+=(/opt/hostedtoolcache/Python/3.13.*/x64/bin/python3.13)
+          chosen=""
+          for cand in "${candidates[@]}"; do
+            [[ -f "$cand" && -x "$cand" ]] || continue
+            if "$cand" -I "$assert"; then chosen="$cand"; break; fi
+          done
+          [[ -n "$chosen" ]] || { echo "DENY: no CPython 3.13 linux-x86_64 interpreter; no fallback" >&2; exit 1; }
+          "$chosen" -m venv "$RUNNER_TEMP/venv"
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          "$RUNNER_TEMP/venv/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$lock"
+
+      - name: Run the ${{ matrix.layer }} suite (blocking; skips and empty runs deny)
+        env:
+          LAYER: ${{ matrix.layer }}
+          # B6: opt in to the harness's Linux route for the integration layer only.
+          # This marker selects which route is attempted; it grants nothing. The
+          # harness proves the platform, CLI, socket, engine locality and image
+          # digest itself and raises if any proof fails, so an empty value here
+          # (every other layer) leaves the Colima route to fail closed as before.
+          VEYRO_HARNESS_LINUX_CI_POSTGRES: ${{ matrix.layer == 'integration' && '1' || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$LAYER" =~ ^(unit|component|contract|integration)$ ]] || { echo "DENY: unknown layer" >&2; exit 1; }
+          head="$RUNNER_TEMP/head"
+          runner="$head/tools/run_scoped_pytest.py"
+          [[ -f "$runner" && ! -L "$runner" ]] || { echo "DENY: $runner missing or not a regular file" >&2; exit 1; }
+          [[ -d "$head/backend/tests/$LAYER" ]] || { echo "DENY: backend/tests/$LAYER absent" >&2; exit 1; }
+          # No path reaches pytest from this shell. The runner takes a suite
+          # *name* from its own committed allowlist and canonicalises every path
+          # itself, refusing a symlinked, missing or empty suite and any ambient
+          # PYTEST_*/PYTHONPATH override, because `--rootdir`/`--confcutdir` do
+          # not bound an explicit path argument (CAP-011 target-scope drill §4).
+          log="$RUNNER_TEMP/pytest-$LAYER.log"
+          set +e
+          "$RUNNER_TEMP/venv/bin/python" -I "$runner" "backend-$LAYER" 2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          [[ "$rc" -eq 0 ]] || { echo "DENY: run_scoped_pytest backend-$LAYER rc=$rc" >&2; exit 1; }
+          # A skipped test is green by omission; a layer with zero passes is the same.
+          if grep -Eq '(^|[ ,=])[0-9]+ skipped' "$log"; then
+            echo "DENY: $LAYER suite contains skipped tests" >&2; exit 1
+          fi
+          grep -Eq '[0-9]+ passed' "$log" || { echo "DENY: $LAYER suite reported no passed tests" >&2; exit 1; }
+
+  idempotency-lint:
+    name: idempotency-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+
+      - name: Lint the committed declaration (denies if absent; lint is stdlib-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          lint="$head/tools/validate_idempotency_contract.py"
+          decl="$head/contracts/idempotency/synthetic-widget-create.json"
+          for f in "$lint" "$decl"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f missing or not a regular file" >&2; exit 1; }
+          done
+          python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' \
+            || { echo "DENY: Python 3.10+ required" >&2; exit 1; }
+          cd "$head"
+          python3 -I tools/validate_idempotency_contract.py contracts/idempotency/synthetic-widget-create.json
+
+      - name: Assert CPython 3.13 interpreter, create venv, hash-enforced install of the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          assert="$head/tools/assert_ci_python313.py"
+          lock="$head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          for f in "$assert" "$lock"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+          done
+          shopt -s nullglob
+          candidates=()
+          if found="$(command -v python3.13)"; then candidates+=("$found"); fi
+          candidates+=(/usr/bin/python3.13 /usr/local/bin/python3.13)
+          candidates+=(/opt/hostedtoolcache/Python/3.13.*/x64/bin/python3.13)
+          chosen=""
+          for cand in "${candidates[@]}"; do
+            [[ -f "$cand" && -x "$cand" ]] || continue
+            if "$cand" -I "$assert"; then chosen="$cand"; break; fi
+          done
+          [[ -n "$chosen" ]] || { echo "DENY: no CPython 3.13 linux-x86_64 interpreter; no fallback" >&2; exit 1; }
+          "$chosen" -m venv "$RUNNER_TEMP/venv"
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          "$RUNNER_TEMP/venv/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$lock"
+
+      - name: Run the lint's focused tests (six denials, companion positive, runtime dedup/409)
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          runner="$head/tools/run_scoped_pytest.py"
+          test_file="$head/tools/tests/test_validate_idempotency_contract.py"
+          for f in "$runner" "$test_file"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f missing or not a regular file" >&2; exit 1; }
+          done
+          # Same allowlist runner as backend-layer; the `idempotency-contract`
+          # suite is that one committed file and nothing else.
+          log="$RUNNER_TEMP/pytest-idempotency.log"
+          set +e
+          "$RUNNER_TEMP/venv/bin/python" -I "$runner" idempotency-contract 2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          [[ "$rc" -eq 0 ]] || { echo "DENY: run_scoped_pytest idempotency-contract rc=$rc" >&2; exit 1; }
+          if grep -Eq '(^|[ ,=])[0-9]+ skipped' "$log"; then
+            echo "DENY: focused tests contain skipped tests" >&2; exit 1
+          fi
+          grep -Eq '[0-9]+ passed' "$log" || { echo "DENY: no passed tests reported" >&2; exit 1; }
+
+  regression:
+    name: regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+
+      - name: Assert CPython 3.13 interpreter, create venv, hash-enforced install of the lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          assert="$head/tools/assert_ci_python313.py"
+          lock="$head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          for f in "$assert" "$lock"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+          done
+          shopt -s nullglob
+          candidates=()
+          if found="$(command -v python3.13)"; then candidates+=("$found"); fi
+          candidates+=(/usr/bin/python3.13 /usr/local/bin/python3.13)
+          candidates+=(/opt/hostedtoolcache/Python/3.13.*/x64/bin/python3.13)
+          chosen=""
+          for cand in "${candidates[@]}"; do
+            [[ -f "$cand" && -x "$cand" ]] || continue
+            if "$cand" -I "$assert"; then chosen="$cand"; break; fi
+          done
+          [[ -n "$chosen" ]] || { echo "DENY: no CPython 3.13 linux-x86_64 interpreter; no fallback" >&2; exit 1; }
+          "$chosen" -m venv "$RUNNER_TEMP/venv"
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          "$RUNNER_TEMP/venv/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$lock"
+
+      - name: Run the blocking deterministic regression command (observed local result is FAIL)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/head"
+          script=knowledge/05-QA/tools/run_regression.py
+          [[ -f "$script" && ! -L "$script" ]] || { echo "DENY: $script absent" >&2; exit 1; }
+          "$RUNNER_TEMP/venv/bin/python" "$script"
+
+  e2e-applicability:
+    name: e2e-applicability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+
+      - name: E2E applicability (N/A only while no user-visible app source exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/head"
+          # Product source only: governance docs, the design bundle, CI and agent config are not app source.
+          hits="$(git ls-files -z \
+            | tr '\0' '\n' \
+            | grep -Ev '^(knowledge|veyro-product-experience-design|\.github|\.claude|contracts|tools)/' \
+            | grep -E '^(web|apps?|frontend|admin)/|\.(tsx|jsx|vue|svelte)$|(^|/)(next|vite|nuxt|svelte)\.config\.[cm]?[jt]s$' \
+            || true)"
+          if [[ -z "$hits" ]]; then
+            echo "e2e-applicability: NOT_APPLICABLE (no user-visible web/app source in this commit). No E2E result exists and none is claimed."
+            exit 0
+          fi
+          printf '%s\n' "$hits" | head -20
+          echo "DENY: user-visible app source exists but no runnable E2E harness is wired; wire one before this job may pass" >&2
+          exit 1
+
+  mobile-android-applicability:
+    name: mobile-android-applicability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+
+      - name: Android UI-test applicability (N/A only while no Android app/screen source exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/head"
+          hits="$(git ls-files -z \
+            | tr '\0' '\n' \
+            | grep -Ev '^(knowledge|veyro-product-experience-design|\.github|\.claude|contracts|tools)/' \
+            | grep -E '^mobile/android/|\.kt$|\.kts$|\.gradle$|(^|/)AndroidManifest\.xml$' \
+            || true)"
+          if [[ -z "$hits" ]]; then
+            echo "mobile-android-applicability: NOT_APPLICABLE (no Android app/screen source). No Compose UI-test result exists and none is claimed."
+            exit 0
+          fi
+          printf '%s\n' "$hits" | head -20
+          echo "DENY: Android source exists but no runnable Compose UI-test harness is wired; wire one before this job may pass" >&2
+          exit 1
+
+  mobile-ios-applicability:
+    name: mobile-ios-applicability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          [[ "$HEAD_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$ && "${HEAD_REPO#*/}" != "." && "${HEAD_REPO#*/}" != ".." ]] \
+            || { echo "DENY: head repo is not a safe owner/repo slug" >&2; exit 1; }
+          REPO_URL="${SERVER_URL}/${HEAD_REPO}.git"
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+
+      - name: iOS UI-test applicability (N/A only while no iOS app/screen source exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/head"
+          hits="$(git ls-files -z \
+            | tr '\0' '\n' \
+            | grep -Ev '^(knowledge|veyro-product-experience-design|\.github|\.claude|contracts|tools)/' \
+            | grep -E '^mobile/ios/|\.swift$|\.xcodeproj/|\.xcworkspace/|\.storyboard$|\.xib$|(^|/)(Podfile|Package\.swift)$' \
+            || true)"
+          if [[ -z "$hits" ]]; then
+            echo "mobile-ios-applicability: NOT_APPLICABLE (no iOS app/screen source). No XCUITest result exists and none is claimed."
+            exit 0
+          fi
+          printf '%s\n' "$hits" | head -20
+          echo "DENY: iOS source exists but no runnable XCUITest harness is wired; wire one before this job may pass" >&2
+          exit 1
