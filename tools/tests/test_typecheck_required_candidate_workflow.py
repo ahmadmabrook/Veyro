@@ -9,18 +9,30 @@ Standard library only; no network, no mypy, no Veyro source is type-checked.
 No YAML parser is available in the project venv, so the workflow text is
 parsed line-wise. The tests do not just mirror the file:
 
-  1. `audit(text)` encodes the policy (inert trigger, no PR activation, no
-     secrets/actions/permissions, no direct mypy, one hash-enforced install,
-     env-only expressions, pinned hashes equal to the committed files). The
+  1. `audit(text)` encodes the policy (inert trigger, no PR activation, one
+     job and the exact ordered steps, no secrets/actions/permissions, no
+     direct mypy, one hash-enforced install and no other installer, env-only
+     expressions, the trusted-definition boundary, the load-bearing lines of
+     the wrapper step, pinned hashes equal to the committed files). The
      committed workflow must audit clean AND each deliberate tamper/drift of
-     it (PR trigger, dispatch, wildcard/default branch, stale pin, action
-     reference, secret, interpolation into a script body, direct mypy,
-     weakened install, rc 1/rc 2 treated as success) must be flagged.
-  2. The guard step and the final wrapper step are EXECUTED under bash with
-     stubs: wrong event/ref/sha is denied; a wrong pin is denied; wrapper rc
-     0 with the exact success text passes, while rc 1, rc 2, other codes, rc 0
-     without the success text and rc 0 with a DENY line all fail.
-  3. The candidate branch named in the trigger must not exist in this
+     it must be flagged, including the five BUG-062 mutants (zero-file success
+     regex, removed DENY screen, dropped `env -i`, added `pip3 install`, extra
+     job) and the BUG-061 boundary mutants (wrapper run from source, no
+     tamper compare, executable-mode source blobs, source checkout, ...).
+  2. The extracted steps are EXECUTED under bash with stubs: wrong event/ref/
+     sha is denied before any fetch; a wrong pin is denied; the wrapper step
+     passes only on rc 0 with the exact success text and fails on everything
+     else, runs under a cleared environment, and the install step strips PIP_*
+     settings. Three of the BUG-062 mutants are additionally killed by running
+     the mutated step script, independent of audit().
+  3. The trusted-definition boundary runs against synthetic git repositories
+     where the trusted sha and the source sha DIFFER: app-only changes are
+     composed into the trusted tree; any change to the workflow, wrapper,
+     assertion script, lock or mypy config (edit, delete, mode change, symlink
+     swap, new config file) is denied; symlink, executable or gitlink source
+     entries and a missing backend/app are denied; nothing from the source is
+     executed.
+  4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
 import hashlib
@@ -51,6 +63,45 @@ FORBIDDEN_TRIGGERS = {
     "pull_request", "pull_request_target", "workflow_dispatch", "schedule", "workflow_run",
     "workflow_call", "repository_dispatch", "release", "issue_comment", "merge_group",
 }
+EXPECTED_STEPS = (
+    "Deny unless candidate-only ref",
+    "Guard pinned inputs",
+    "Deny candidate tamper",
+    "Resolve and assert CPython 3.13",
+    "Create venv from asserted interpreter",
+    "Hash-enforced install",
+    "Scoped wrapper on the composed backend/app",
+)
+EXPECTED_ENV = {
+    "Deny unless candidate-only ref": {
+        "EVENT_NAME": "${{ github.event_name }}", "REF": "${{ github.ref }}",
+        "TRUSTED_SHA": "${{ github.sha }}", "SOURCE_SHA": "${{ github.sha }}",
+        "REPO_URL": "${{ github.server_url }}/${{ github.repository }}.git",
+    },
+    "Deny candidate tamper": {"TRUSTED_SHA": "${{ github.sha }}", "SOURCE_SHA": "${{ github.sha }}"},
+}
+# Gate-defining paths whose source copy must equal the trusted entry.
+PROTECTED = (
+    ".github/workflows/typecheck-required-candidate.yml",
+    "tools/run_scoped_mypy.py",
+    "tools/assert_ci_python313.py",
+    "backend/requirements-typecheck-linux-x86_64-cp313.lock.txt",
+    "backend/pyproject.toml",
+    "backend/mypy.ini",
+    "backend/.mypy.ini",
+    "backend/setup.cfg",
+    "backend/tox.ini",
+)
+INSTALLER_RE = re.compile(
+    r"\bpip[0-9.]*\s+(install|download|wheel)\b|-m\s+pip\s+(install|download|wheel)\b|\bensurepip\b|"
+    r"\beasy_install\b|\buv\s+(pip|sync|add)\b|\bget-pip\b|setup\.py\s+(install|develop)|\bpipx\b|"
+    r"\bapt(-get)?\s+install\b|\bnpm\s+(i|install|ci)\b|\bbrew\s+install\b|\bconda\s+install\b"
+)
+EXEC_WORD_RE = re.compile(r"\b(python[0-9.]*|pip[0-9.]*|mypy|exec|eval|chmod|bash|sh|node|ruby|perl)\b")
+SUCCESS_GREP = "grep -E '^Success: no issues found in [1-9][0-9]* source files$' >/dev/null"
+MARKER_GREP = "grep -E '^run_scoped_mypy: rc=0 ' >/dev/null"
+ENV_I_CALL = ('env -i PATH=/usr/bin:/bin HOME="$scratch/home" TMPDIR="$scratch/tmp" NO_COLOR=1 '
+              'LC_ALL=C.UTF-8 \\\n            "$venv/bin/python" -I "$work/tools/run_scoped_mypy.py"')
 
 
 def sha256_of(path):
@@ -111,6 +162,7 @@ def audit(text):
     bad = []
     code = "\n".join(code_lines(text))
     joined = re.sub(r"\\\n\s*", " ", code)  # shell line continuations folded
+    parsed = steps(text)
 
     # --- inert trigger --------------------------------------------------
     tb = trigger_block(text)
@@ -131,6 +183,33 @@ def audit(text):
         bad.append("trigger uses wildcard/tags/paths/ignore")
     if "main" in branches or "master" in branches:
         bad.append("default branch is a trigger")
+
+    # --- structure: one job, exact ordered steps, no flow-control escapes ---
+    top = re.findall(r"^([A-Za-z_-]+):", code, re.MULTILINE)
+    if top != ["name", "on", "permissions", "jobs"]:
+        bad.append(f"top-level keys are {top}")
+    jobs_text = code.split("\njobs:\n", 1)[1] if "\njobs:\n" in code else ""
+    job_ids = re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", jobs_text, re.MULTILINE)
+    if job_ids != ["typecheck-required-candidate"]:
+        bad.append(f"jobs are {job_ids}, expected exactly one")
+    job_keys = re.findall(r"^    ([A-Za-z0-9_-]+):", jobs_text, re.MULTILINE)
+    if job_keys != ["name", "runs-on", "timeout-minutes", "steps"]:
+        bad.append(f"job keys are {job_keys}")
+    if re.findall(r"^      - (?!name: )", jobs_text, re.MULTILINE):
+        bad.append("step list item that does not start with name:")
+    step_keys = re.findall(r"^        ([A-Za-z0-9_-]+):", jobs_text, re.MULTILINE)
+    if not set(step_keys) <= {"env", "shell", "run"}:
+        bad.append(f"unexpected step keys: {sorted(set(step_keys) - {'env', 'shell', 'run'})}")
+    if re.search(r"continue-on-error|\bif\s*:|\|\|\s*true\b|\bneeds\s*:|\bstrategy\s*:", code):
+        bad.append("flow-control escape (continue-on-error/if/|| true/needs/strategy)")
+    names = [n for n, _e, _s in parsed]
+    if len(names) != len(EXPECTED_STEPS) or not all(n.startswith(p) for n, p in zip(names, EXPECTED_STEPS)):
+        bad.append(f"steps are {names}, expected the exact ordered set {list(EXPECTED_STEPS)}")
+    for name, _env, script in parsed:
+        if not script.startswith("set -euo pipefail\n"):
+            bad.append(f"step '{name}' does not start with set -euo pipefail")
+    if code.count("set +e") != 1 or code.count("\n          set -e\n") != 1:
+        bad.append("set +e must appear exactly once, around the wrapper call")
 
     # --- no authority ---------------------------------------------------
     if not re.search(r"^permissions: \{\}\s*$", code, re.MULTILINE):
@@ -155,14 +234,66 @@ def audit(text):
             if not re.match(r"^          [A-Z_]+: \$\{\{ [a-z_.]+ \}\}(/\$\{\{ [a-z_.]+ \}\}\.git)?$", ln) \
                and not re.match(r"^          [A-Z_]+: \$\{\{ [a-z_.]+ \}\}.*$", ln):
                 bad.append(f"expression outside an env mapping: {ln.strip()}")
-    for name, _env, script in steps(text):
+    for name, _env, script in parsed:
         if "${{" in script:
             bad.append(f"expression interpolated into script body of '{name}'")
 
+    # --- trusted-definition boundary (BUG-061) ----------------------------
+    for prefix, want in EXPECTED_ENV.items():
+        match = [env for n, env, _s in parsed if n.startswith(prefix)]
+        got = {}
+        for ln in (match[0] if match else []):
+            m = re.match(r"^          ([A-Z_0-9]+): (.*)$", ln)
+            if m:
+                got[m.group(1)] = m.group(2).strip()
+        if got != want:
+            bad.append(f"env of '{prefix}' is {got}, expected {want}")
+    fetches = re.findall(r'^\s*git -C "\$(\w+)" fetch -q --no-tags --depth=1 "\$REPO_URL" "\$(\w+)"\s*$',
+                         code, re.MULTILINE)
+    if fetches != [("work", "TRUSTED_SHA"), ("src", "SOURCE_SHA")] or len(re.findall(r"\bgit\b[^\n]*\bfetch\b", code)) != 2:
+        bad.append(f"fetches are {fetches}, expected trusted->work then source->bare src only")
+    if len(re.findall(r"\bgit\b[^\n]*\bcheckout\b", code)) != 1 \
+       or '-C "$work" -c advice.detachedHead=false checkout -q FETCH_HEAD' not in code:
+        bad.append("exactly one checkout, of the trusted fetch into $work, is allowed")
+    if re.search(r"\bgit\b[^\n]*\b(archive|worktree|clone|read-tree|restore|reset|merge|submodule|apply|am)\b", code):
+        bad.append("git verb that could materialize or run source content")
+    if 'git init -q --bare "$src"' not in code:
+        bad.append("source objects must live in a bare store")
+    tamper_scripts = [s for n, _e, s in parsed if n.startswith("Deny candidate tamper")]
+    ts = tamper_scripts[0] if tamper_scripts else ""
+    for rel in PROTECTED:
+        if f"            {rel}" not in ts and f" {rel}" not in ts:
+            bad.append(f"tamper compare does not cover {rel}")
+    for needle in ('[[ "$(git -C "$work" rev-parse HEAD)" == "$TRUSTED_SHA" ]] || deny "trusted tree is not $TRUSTED_SHA"',
+                   '[[ "$(git -C "$src" rev-parse "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" ]] \\\n  || deny "source objects are not commit $SOURCE_SHA"',
+                   'want="$(git -C "$work" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")"',
+                   'got="$(git -C "$src" ls-tree --full-tree "$SOURCE_SHA" -- "$rel")"',
+                   '[[ "$got" == "$want" ]]',
+                   '[[ "$mode" == "100644" && "$type" == "blob" ]]',
+                   'git -C "$src" cat-file blob "$oid" > "$stage/$path"',
+                   'rm -rf "$work/backend/app"',
+                   'case "$path" in backend/app/?*) ;;',
+                   '*/../*|*/./*|*//*|*/.git/*) deny'):
+        if needle not in ts:
+            bad.append(f"tamper/materialize step missing: {needle}")
+    for ln in code_lines(text):
+        if re.search(r'\$(src|stage)\b|source-app|source\.git', ln):
+            if EXEC_WORD_RE.search(ln) or re.search(r'cd\s+"?\$(src|stage)', ln) \
+               or re.match(r'^\s*"?\$(src|stage)', ln):
+                bad.append(f"source content reaches an execution word: {ln.strip()}")
+        if re.search(r'\s-I\s', ln) and re.search(r'\$(src|stage)\b|source', ln):
+            bad.append(f"isolated interpreter pointed at source: {ln.strip()}")
+    for tool in ("assert_ci_python313", "run_scoped_mypy"):
+        prefixes = set(re.findall(rf'([^\s"/]*(?:/[^\s"/]+)*/?)tools/{tool}\.py', code))
+        if not prefixes <= {"$RUNNER_TEMP/work/", "$work/", ""}:
+            bad.append(f"{tool}.py referenced outside the trusted tree: {sorted(prefixes)}")
+    if 'assert="$RUNNER_TEMP/work/tools/assert_ci_python313.py"' not in code:
+        bad.append("assertion script is not run from the trusted tree")
+
     # --- exact head fetch, no drift ------------------------------------
-    for needle in ('[[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]', "fetch -q --no-tags --depth=1",
-                   'rev-parse HEAD)" == "$HEAD_SHA"', 'refs/heads/' + CANDIDATE_BRANCH,
-                   '"$EVENT_NAME" == "push"'):
+    for needle in ('[[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]]', '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+                   "fetch -q --no-tags --depth=1", 'rev-parse HEAD)" == "$TRUSTED_SHA"',
+                   'refs/heads/' + CANDIDATE_BRANCH, '"$EVENT_NAME" == "push"'):
         if needle not in code:
             bad.append(f"fetch/ref guard missing: {needle}")
 
@@ -177,21 +308,40 @@ def audit(text):
         if fixed and (not m or m.group(1) != fixed):
             bad.append(f"{env_name} is not the CAP-012 approved value")
 
-    # --- install: exactly one, hash-enforced, lock only -------------------
-    installs = re.findall(r"pip install\b", code)
-    if len(installs) != 1:
-        bad.append(f"expected exactly one pip install, found {len(installs)}")
-    for flag in ("--require-hashes", "--only-binary=:all:", "--no-deps", '-r "$lock"', "--no-cache-dir"):
-        if flag not in code:
-            bad.append(f"install flag missing: {flag}")
+    # --- install: the only installer anywhere, hash-enforced, lock only ----
+    for name, _env, script in parsed:
+        n_inst = len(INSTALLER_RE.findall(script))
+        want_n = 1 if name.startswith("Hash-enforced install") else 0
+        if n_inst != want_n:
+            bad.append(f"step '{name}' has {n_inst} installer invocation(s), expected {want_n}")
+    inst = [s for n, _e, s in parsed if n.startswith("Hash-enforced install")]
+    inst_script = inst[0] if inst else ""
+    for flag in ("--require-hashes", "--only-binary=:all:", "--no-deps", '-r "$lock"', "--no-cache-dir",
+                 "--index-url https://pypi.org/simple", "export PIP_CONFIG_FILE=/dev/null",
+                 'case "$v" in PIP_*) unset "$v" ;; esac'):
+        if flag not in inst_script:
+            bad.append(f"install step missing: {flag}")
     if re.search(r"pip install[^\n]*(--upgrade|-U\b|--pre\b|--extra-index-url|--find-links|-e\b|--no-verify)", joined):
         bad.append("weakened install flag")
 
     # --- never mypy directly; the wrapper is the only entry ---------------
     if re.search(r"-m\s+mypy\b|\bmypy\s+(--|app|backend)|bin/mypy", code):
         bad.append("direct mypy invocation")
-    if code.count('tools/run_scoped_mypy.py"') < 1 or "-I \"$head/tools/run_scoped_mypy.py\"" not in code:
-        bad.append("wrapper not invoked isolated from the fetched head")
+    if len(re.findall(r'-I "\$work/tools/run_scoped_mypy\.py"', code)) != 1 or ENV_I_CALL not in code:
+        bad.append("wrapper is not invoked once, under env -i, from the trusted tree")
+
+    # --- the wrapper step's load-bearing lines (BUG-062) --------------------
+    wrap = [s for n, _e, s in parsed if n.startswith("Scoped wrapper")]
+    ws = wrap[0] if wrap else ""
+    if SUCCESS_GREP not in ws:
+        bad.append("exact non-zero-file success diagnostic grep missing or weakened")
+    if MARKER_GREP not in ws:
+        bad.append("rc=0 marker grep missing or weakened")
+    if not re.search(r"if printf '%s\\n' \"\$out\" \| grep -E '\^DENY:' >/dev/null; then\n"
+                     r"\s+echo \"DENY: [^\n]*\" >&2\n\s+exit 1\n\s*fi\n", ws):
+        bad.append("DENY-line screen missing or weakened")
+    if len(re.findall(r"\|\| \{ echo \"DENY: [^\n]*\" >&2; exit 1; \}", ws)) != 2:
+        bad.append("success/marker greps must each deny on failure")
 
     # --- rc handling: only 0 passes --------------------------------------
     if not re.search(r"^\s+0\) ;;\s*$", code, re.MULTILINE):
@@ -223,11 +373,70 @@ class FakeBash:
                               text=True, timeout=60)
 
 
-def step_script(name_prefix):
-    for name, _env, script in steps(WORKFLOW.read_text(encoding="utf-8")):
+def step_script(name_prefix, text=None):
+    for name, _env, script in steps(text if text is not None else WORKFLOW.read_text(encoding="utf-8")):
         if name.startswith(name_prefix):
             return script
     raise AssertionError(f"step not found: {name_prefix}")
+
+
+POISON = {
+    "PYTHONPATH": "/evil", "PYTHONSTARTUP": "/evil", "MYPYPATH": "/evil", "MYPY_CACHE_DIR": "/evil",
+    "PIP_INDEX_URL": "https://evil.invalid/simple", "SECRET_TOKEN": "x", "LD_PRELOAD": "/evil",
+}
+
+
+class WrapperHarness:
+    """Run the final-step script against a stub interpreter standing in for the wrapper run."""
+
+    SUCCESS = ('{"plan": "json"}\nSuccess: no issues found in 25 source files\n'
+               "run_scoped_mypy: rc=0 — no type errors\n")
+
+    @classmethod
+    def run(cls, script, rc, output, extra_env=None):
+        tmp = Path(tempfile.mkdtemp(prefix="tcrc-wrap-")).resolve()
+        try:
+            (tmp / "work/backend/app").mkdir(parents=True)
+            (tmp / "work/tools").mkdir(parents=True)
+            (tmp / "venv-typecheck/bin").mkdir(parents=True)
+            (tmp / "payload.txt").write_text(output, encoding="utf-8")
+            stub = tmp / "venv-typecheck/bin/python"
+            stub.write_text(f'#!/bin/bash\nenv > "{tmp}/envdump.txt"\ncat "{tmp}/payload.txt"\nexit {rc}\n')
+            stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+            env = {"RUNNER_TEMP": str(tmp)}
+            env.update(extra_env or {})
+            r = FakeBash.run(script, env, tmp)
+            dump = (tmp / "envdump.txt").read_text() if (tmp / "envdump.txt").exists() else ""
+            link = (tmp / "work/backend/.venv").is_symlink()
+            return r, dump, link
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    @classmethod
+    def failures(cls, script):
+        """Labels of expectations the given wrapper-step script violates (empty = behaves)."""
+        bad = []
+        r, _d, _l = cls.run(script, 0, cls.SUCCESS)
+        if r.returncode != 0:
+            bad.append("exact success did not pass")
+        for label, rc, out in (
+            ("rc1", 1, "app/x.py:1: error: boom\n"), ("rc2", 2, "DENY: scope\n"), ("rc3", 3, cls.SUCCESS),
+            ("empty", 0, ""),
+            ("zero files", 0, "Success: no issues found in 0 source files\nrun_scoped_mypy: rc=0 — ok\n"),
+            ("no marker", 0, "Success: no issues found in 25 source files\n"),
+            ("no success line", 0, "run_scoped_mypy: rc=0 — ok\n"),
+            ("DENY line present", 0, cls.SUCCESS + "DENY: something\n"),
+        ):
+            r, _d, _l = cls.run(script, rc, out)
+            if r.returncode == 0:
+                bad.append(f"accepted: {label}")
+        _r, dump, _l = cls.run(script, 0, cls.SUCCESS, POISON)
+        leaked = sorted(k for k in POISON if re.search(rf"^{k}=", dump, re.MULTILINE))
+        if not dump:
+            bad.append("wrapper stub never ran")
+        if leaked:
+            bad.append(f"environment not cleared: {leaked}")
+        return bad
 
 
 class AuditPolicyTest(unittest.TestCase):
@@ -240,32 +449,98 @@ class AuditPolicyTest(unittest.TestCase):
     def test_pinned_wrapper_is_the_cap012_approved_hash(self):
         self.assertEqual(sha256_of(REPO / "tools/run_scoped_mypy.py"), WRAPPER_SHA256)
 
+    def _bug062_mutants(self):
+        t = self.text
+        no_deny = re.sub(r"          if printf '%s\\n' \"\$out\" \| grep -E '\^DENY:'.*?\n          fi\n", "", t,
+                         flags=re.DOTALL)
+        return {
+            "zero-file success regex": tamper(t, "[1-9][0-9]* source files", "[0-9]* source files"),
+            "removed DENY screen": no_deny,
+            "dropped env -i": tamper(t, "env -i PATH=/usr/bin:/bin", "env PATH=/usr/bin:/bin"),
+            "added pip3 install": tamper(
+                t, '          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list',
+                '          pip3 install requests\n          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list'),
+            "extra job": t.rstrip("\n") + "\n\n  extra:\n    runs-on: ubuntu-24.04\n    steps:\n"
+                                          "      - name: extra\n        run: echo hi\n",
+        }
+
+    def test_bug062_mutants_are_flagged_by_audit(self):
+        for label, mutated in self._bug062_mutants().items():
+            with self.subTest(label):
+                self.assertNotEqual(mutated, self.text, "mutant was a no-op")
+                self.assertNotEqual(audit(mutated), [], f"mutant survives audit: {label}")
+
+    def test_wrapper_step_mutants_are_also_killed_by_execution(self):
+        """Independent of audit(): run the mutated wrapper step under the behaviour matrix."""
+        mutants = self._bug062_mutants()
+        self.assertEqual(WrapperHarness.failures(step_script("Scoped wrapper", self.text)), [])
+        for label in ("zero-file success regex", "removed DENY screen", "dropped env -i"):
+            with self.subTest(label):
+                script = step_script("Scoped wrapper", mutants[label])
+                self.assertNotEqual(WrapperHarness.failures(script), [], f"behaviour matrix missed: {label}")
+
     def test_tampers_are_flagged(self):
         t = self.text
         cases = {
             "pull_request trigger": tamper(t, "on:\n  push:", "on:\n  pull_request:\n  push:"),
+            "pull_request_target trigger": tamper(
+                t, "on:\n  push:", "on:\n  pull_request_target:\n    branches:\n      - main\n  push:"),
             "workflow_dispatch": tamper(t, "on:\n  push:", "on:\n  workflow_dispatch:\n  push:"),
+            "schedule": tamper(t, "on:\n  push:", "on:\n  schedule:\n    - cron: '0 0 * * *'\n  push:"),
             "default branch": tamper(t, f"      - {CANDIDATE_BRANCH}", "      - main"),
             "wildcard branch": tamper(t, f"      - {CANDIDATE_BRANCH}", f"      - {CANDIDATE_BRANCH}\n      - '**'"),
             "extra branch": tamper(t, f"      - {CANDIDATE_BRANCH}", f"      - {CANDIDATE_BRANCH}\n      - other"),
             "stale wrapper pin": tamper(t, WRAPPER_SHA256, "0" * 64),
             "stale lock pin": tamper(t, re.search(r"LOCK_SHA256: ([0-9a-f]{64})", t).group(1), "1" * 64),
             "action reference": tamper(t, "    steps:\n", "    steps:\n      - uses: actions/checkout@v4\n"),
-            "secret reference": tamper(t, "HEAD_SHA: ${{ github.sha }}", "HEAD_SHA: ${{ secrets.X }}"),
+            "secret reference": tamper(t, "SOURCE_SHA: ${{ github.sha }}", "SOURCE_SHA: ${{ secrets.X }}"),
             "broad permissions": tamper(t, "\npermissions: {}\n", "\npermissions: write-all\n"),
-            "pr head sha expr": tamper(t, "HEAD_SHA: ${{ github.sha }}",
-                                       "HEAD_SHA: ${{ github.event.pull_request.head.sha }}"),
-            "interpolation into script": tamper(t, 'echo "pinned head sha: $HEAD_SHA"',
-                                                'echo "pinned head sha: ${{ github.head_ref }}"'),
-            "direct mypy": tamper(t, '"$venv/bin/python" -I "$head/tools/run_scoped_mypy.py"',
+            "pr head sha expr as source": tamper(t, "SOURCE_SHA: ${{ github.sha }}",
+                                                 "SOURCE_SHA: ${{ github.event.pull_request.head.sha }}"),
+            "pr head sha expr as trusted": tamper(t, "TRUSTED_SHA: ${{ github.sha }}",
+                                                  "TRUSTED_SHA: ${{ github.event.pull_request.head.sha }}"),
+            "interpolation into script": tamper(t, 'echo "trusted sha: $TRUSTED_SHA"',
+                                                'echo "trusted sha: ${{ github.head_ref }}"'),
+            "direct mypy": tamper(t, '"$venv/bin/python" -I "$work/tools/run_scoped_mypy.py"',
                                   '"$venv/bin/python" -m mypy backend/app'),
             "dropped hash enforcement": tamper(t, "            --require-hashes --only-binary", "            --only-binary"),
             "extra index": tamper(t, "--no-deps \\\n", "--no-deps --extra-index-url https://example.invalid/simple \\\n"),
+            "PIP_ unset loop removed": tamper(t, 'for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done\n', ""),
             "rc2 accepted": re.sub(r"(\n\s+2\) )echo [^\n]*", r"\1;;", t),
             "rc1 accepted": re.sub(r"(\n\s+1\) )echo [^\n]*", r"\1;;", t),
             "default rc accepted": re.sub(r"(\n\s+\*\) )echo [^\n]*", r"\1;;", t),
             "no-gate wording dropped": t.replace("NO GATE CREDIT", "gate"),
+            # structure / flow control
+            "continue-on-error": tamper(t, "        shell: bash\n        run: |\n          set -euo pipefail\n          work=\"$RUNNER_TEMP/work\"\n          check()",
+                                        "        continue-on-error: true\n        shell: bash\n        run: |\n          set -euo pipefail\n          work=\"$RUNNER_TEMP/work\"\n          check()"),
+            "step if": tamper(t, "      - name: Create venv", "      - if: always()\n        name: Create venv"),
+            "or true": tamper(t, "exit 1; }\n          printf '%s\\n' \"$out\" | grep -E '^run_scoped_mypy",
+                              "exit 1; } || true\n          printf '%s\\n' \"$out\" | grep -E '^run_scoped_mypy"),
+            "step removed": tamper(t, "      - name: Create venv from asserted interpreter (bundled pip, not upgraded)\n        shell: bash\n        run: |\n          set -euo pipefail\n          py=",
+                                   "      - name: Create venv from asserted interpreter (bundled pip, not upgraded)\n        shell: bash\n        run: |\n          set -euo pipefail\n          py="
+                                   ).replace("      - name: Resolve and assert CPython 3.13", "      - name: Resolve and assert CPython 3.12", 1),
+            "pipefail dropped": tamper(t, "          set -euo pipefail\n          py=", "          set -eu\n          py="),
+            # BUG-061 trusted-definition boundary
+            "wrapper run from source": tamper(t, '-I "$work/tools/run_scoped_mypy.py"', '-I "$stage/tools/run_scoped_mypy.py"'),
+            "assert script from source": tamper(t, 'assert="$RUNNER_TEMP/work/tools/assert_ci_python313.py"',
+                                                'assert="$RUNNER_TEMP/source-app/tools/assert_ci_python313.py"'),
+            "tamper compare neutered": tamper(t, '[[ "$got" == "$want" ]] \\', 'true \\'),
+            "protected path dropped": tamper(t, "            backend/pyproject.toml backend/mypy.ini", "            backend/mypy.ini"),
+            "executable mode accepted": tamper(t, '[[ "$mode" == "100644" && "$type" == "blob" ]]',
+                                               '[[ "$type" == "blob" ]]'),
+            "path screen dropped": tamper(t, "*/../*|*/./*|*//*|*/.git/*) deny", "*/.git/*) deny"),
+            "scope screen dropped": tamper(t, "case \"$path\" in backend/app/?*) ;; *) deny \"source entry outside backend/app: '$path'\" ;; esac",
+                                           "true"),
+            "source checked out": tamper(t, 'git -C "$src" fetch -q', 'git -C "$src" checkout -q "$SOURCE_SHA"\n          git -C "$src" fetch -q'),
+            "source archived": tamper(t, 'git -C "$src" cat-file blob "$oid" > "$stage/$path"',
+                                      'git -C "$src" archive "$SOURCE_SHA" | tar -x -C "$stage"'),
+            "source run": tamper(t, 'rm -rf "$work/backend/app"', 'python3 "$stage/backend/app/__init__.py"\n          rm -rf "$work/backend/app"'),
+            "source fetched into trusted tree": tamper(t, 'git -C "$src" fetch -q --no-tags --depth=1 "$REPO_URL" "$SOURCE_SHA"',
+                                                       'git -C "$work" fetch -q --no-tags --depth=1 "$REPO_URL" "$SOURCE_SHA"'),
+            "trusted not verified": tamper(t, '[[ "$(git -C "$work" rev-parse HEAD)" == "$TRUSTED_SHA" ]] || deny', 'true || deny'),
+            "app not replaced": tamper(t, 'rm -rf "$work/backend/app"\n', ""),
         }
+        cases.update({f"bug062: {k}": v for k, v in self._bug062_mutants().items()})
         for label, mutated in cases.items():
             with self.subTest(label):
                 self.assertNotEqual(mutated, t, "tamper was a no-op")
@@ -282,6 +557,63 @@ class AuditPolicyTest(unittest.TestCase):
             self.assertNotIn("typecheck-required", ref, f"candidate ref exists: {ref}")
 
 
+def _git(repo, *args, check=True):
+    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=check, env=env)
+
+
+class SyntheticRepo:
+    """A local git repository whose commits stand in for the trusted base and the PR head."""
+
+    def __init__(self, root):
+        self.repo = Path(root) / "src"
+        self.repo.mkdir()
+        _git(self.repo, "init", "-q")
+        for k, v in (("user.email", "t@example.invalid"), ("user.name", "t"), ("commit.gpgsign", "false"),
+                     ("uploadpack.allowAnySHA1InWant", "true"), ("core.symlinks", "true")):
+            _git(self.repo, "config", k, v)
+
+    BASE = {
+        ".github/workflows/typecheck-required-candidate.yml": "workflow-v1\n",
+        "tools/run_scoped_mypy.py": "wrapper-v1\n",
+        "tools/assert_ci_python313.py": "assert-v1\n",
+        "backend/requirements-typecheck-linux-x86_64-cp313.lock.txt": "lock-v1\n",
+        "backend/pyproject.toml": "[tool.mypy]\n",
+        "backend/app/__init__.py": "VALUE = 1\n",
+        "backend/app/pkg/mod.py": "def f() -> int:\n    return 1\n",
+    }
+
+    def commit(self, files=None, drop=(), symlinks=None, execs=(), gitlinks=None, msg="c"):
+        for entry in self.repo.iterdir():
+            if entry.name != ".git":
+                shutil.rmtree(entry) if entry.is_dir() and not entry.is_symlink() else entry.unlink()
+        for rel, body in (self.BASE if files is None else files).items():
+            if rel in drop:
+                continue
+            dest = self.repo / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(body)
+        for rel, target in (symlinks or {}).items():
+            dest = self.repo / rel
+            if dest.exists() or dest.is_symlink():
+                dest.unlink()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(target, dest)
+        for rel in execs:
+            (self.repo / rel).chmod(0o755)
+        _git(self.repo, "add", "-A", "-f")
+        for rel, sha in (gitlinks or {}).items():
+            _git(self.repo, "update-index", "--add", "--cacheinfo", f"160000,{sha},{rel}")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", msg)
+        return _git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+    def variant(self, **kw):
+        files = dict(self.BASE)
+        files.update(kw.pop("set", {}))
+        return self.commit(files=files, **kw)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git required")
 class GuardStepsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-")).resolve()
@@ -289,50 +621,170 @@ class GuardStepsTest(unittest.TestCase):
         self.script = step_script("Deny unless candidate-only ref")
 
     def _env(self, **kw):
-        base = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "HEAD_SHA": "a" * 40,
-                "REPO_URL": "file:///nonexistent-repo.git", "RUNNER_TEMP": str(self.tmp)}
+        base = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": "a" * 40,
+                "SOURCE_SHA": "a" * 40, "REPO_URL": "file:///nonexistent-repo.git", "RUNNER_TEMP": str(self.tmp)}
         base.update(kw)
         return base
 
     def test_wrong_event_ref_or_sha_is_denied_before_any_fetch(self):
         for label, env, msg in (
             ("pull_request event", {"EVENT_NAME": "pull_request"}, "event is not push"),
+            ("pull_request_target event", {"EVENT_NAME": "pull_request_target"}, "event is not push"),
             ("workflow_dispatch event", {"EVENT_NAME": "workflow_dispatch"}, "event is not push"),
             ("main ref", {"REF": "refs/heads/main"}, "not the candidate-only branch"),
             ("pr merge ref", {"REF": "refs/pull/7/merge"}, "not the candidate-only branch"),
             ("prefix-only ref", {"REF": f"refs/heads/{CANDIDATE_BRANCH}-x"}, "not the candidate-only branch"),
-            ("short sha", {"HEAD_SHA": "abc123"}, "not 40-hex"),
-            ("branch name as sha", {"HEAD_SHA": "main"}, "not 40-hex"),
+            ("short trusted sha", {"TRUSTED_SHA": "abc123"}, "trusted sha is not 40-hex"),
+            ("branch name as trusted sha", {"TRUSTED_SHA": "main"}, "trusted sha is not 40-hex"),
+            ("short source sha", {"SOURCE_SHA": "abc123"}, "source sha is not 40-hex"),
+            ("branch name as source sha", {"SOURCE_SHA": "refs/pull/7/head"}, "source sha is not 40-hex"),
+            ("empty source sha", {"SOURCE_SHA": ""}, "source sha is not 40-hex"),
         ):
             with self.subTest(label):
                 r = FakeBash.run(self.script, self._env(**env), self.tmp)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn(msg, r.stderr)
-                self.assertFalse((self.tmp / "head").exists(), "fetch started despite a denial")
+                self.assertFalse((self.tmp / "work").exists(), "fetch started despite a denial")
+                self.assertFalse((self.tmp / "source.git").exists(), "fetch started despite a denial")
 
-    def test_exact_sha_fetch_succeeds_and_other_sha_fails(self):
-        if shutil.which("git") is None:
-            self.skipTest("git unavailable")
-        repo = self.tmp / "src"
-        repo.mkdir()
-        g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, check=True)
-        g("init", "-q")
-        g("config", "user.email", "t@example.invalid")
-        g("config", "user.name", "t")
-        g("config", "uploadpack.allowAnySHA1InWant", "true")
-        (repo / "f").write_text("x")
-        g("add", "f")
-        g("commit", "-q", "-m", "one")
-        sha = g("rev-parse", "HEAD").stdout.strip()
-        r = FakeBash.run(self.script, self._env(HEAD_SHA=sha, REPO_URL=f"file://{repo}"), self.tmp)
+    def test_distinct_trusted_and_source_shas_are_both_fetched_exactly(self):
+        syn = SyntheticRepo(self.tmp)
+        trusted = syn.commit()
+        source = syn.variant(set={"backend/app/pkg/mod.py": "def f() -> int:\n    return 2\n"})
+        self.assertNotEqual(trusted, source)
+        env = self._env(TRUSTED_SHA=trusted, SOURCE_SHA=source, REPO_URL=f"file://{syn.repo}")
+        r = FakeBash.run(self.script, env, self.tmp)
         if r.returncode != 0 and "not our ref" in r.stderr:
             self.skipTest("local git transport refuses fetch by sha")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn(f"pinned head sha: {sha}", r.stdout)
+        self.assertIn(f"trusted sha: {trusted}", r.stdout)
+        self.assertIn(f"source sha (inert backend/app input only): {source}", r.stdout)
         self.assertIn("NO GATE CREDIT", r.stdout)
-        shutil.rmtree(self.tmp / "head")
-        r = FakeBash.run(self.script, self._env(HEAD_SHA="b" * 40, REPO_URL=f"file://{repo}"), self.tmp)
-        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(_git(self.tmp / "work", "rev-parse", "HEAD").stdout.strip(), trusted)
+        # the trusted tree is a checkout of the trusted sha, not of the source
+        self.assertEqual((self.tmp / "work/backend/app/pkg/mod.py").read_text(), "def f() -> int:\n    return 1\n")
+        # the source is object-store only: no work tree, no checked-out files
+        self.assertEqual(_git(self.tmp / "source.git", "rev-parse", "--is-bare-repository").stdout.strip(), "true")
+        self.assertFalse((self.tmp / "source.git/backend").exists())
+
+    def test_unfetchable_source_or_trusted_sha_fails(self):
+        syn = SyntheticRepo(self.tmp)
+        good = syn.commit()
+        for label, over in (("source", {"SOURCE_SHA": "b" * 40}), ("trusted", {"TRUSTED_SHA": "b" * 40})):
+            with self.subTest(label):
+                shutil.rmtree(self.tmp / "work", ignore_errors=True)
+                shutil.rmtree(self.tmp / "source.git", ignore_errors=True)
+                env = self._env(**{"TRUSTED_SHA": good, "SOURCE_SHA": good, "REPO_URL": f"file://{syn.repo}", **over})
+                self.assertNotEqual(FakeBash.run(self.script, env, self.tmp).returncode, 0)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git required")
+class TrustedBoundaryTest(unittest.TestCase):
+    """Run steps 1 and 3 against synthetic repos where the trusted sha and the source sha differ."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-tb-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.rt = self.tmp / "rt"
+        self.rt.mkdir()
+        self.syn = SyntheticRepo(self.tmp)
+        self.step1 = step_script("Deny unless candidate-only ref")
+        self.step3 = step_script("Deny candidate tamper")
+        self.trusted = self.syn.commit()
+
+    def chain(self, source):
+        env = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": self.trusted,
+               "SOURCE_SHA": source, "REPO_URL": f"file://{self.syn.repo}", "RUNNER_TEMP": str(self.rt)}
+        r1 = FakeBash.run(self.step1, env, self.tmp)
+        if r1.returncode != 0 and "not our ref" in r1.stderr:
+            self.skipTest("local git transport refuses fetch by sha")
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        return FakeBash.run(self.step3, env, self.tmp)
+
+    def work(self, rel):
+        return self.rt / "work" / rel
+
+    def assertDenied(self, source, msg):
+        r = self.chain(source)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn(msg, r.stderr)
+        # a denial must leave the trusted app and every trusted gate file as they were
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), SyntheticRepo.BASE["backend/app/pkg/mod.py"])
+        self.assertEqual(self.work("tools/run_scoped_mypy.py").read_text(), "wrapper-v1\n")
+        return r
+
+    def test_app_only_change_is_composed_into_the_trusted_tree(self):
+        source = self.syn.variant(
+            set={"backend/app/pkg/mod.py": "def f() -> int:\n    return 99\n", "backend/app/new.py": "X = 1\n"},
+            drop=("backend/app/__init__.py",))
+        self.assertNotEqual(source, self.trusted)
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), "def f() -> int:\n    return 99\n")
+        self.assertTrue(self.work("backend/app/new.py").is_file())
+        self.assertFalse(self.work("backend/app/__init__.py").exists(), "trusted app file survived replacement")
+        # every executable / config byte is the trusted one
+        for rel in PROTECTED[:5]:
+            self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], rel)
+        self.assertIn("materialized 2 inert source blobs", r.stdout)
+
+    def test_identical_trusted_and_source_sha_works(self):
+        self.assertEqual(self.chain(self.trusted).returncode, 0)
+
+    def test_candidate_edit_of_any_gate_file_is_denied(self):
+        for rel in PROTECTED[:5]:
+            with self.subTest(f"edit {rel}"):
+                shutil.rmtree(self.rt / "work", ignore_errors=True)
+                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+                source = self.syn.variant(set={rel: "TAMPERED\n"})
+                self.assertDenied(source, f"candidate changed {rel}")
+                self.assertNotIn("TAMPERED", self.work(rel).read_text())
+
+    def test_candidate_delete_added_config_mode_or_symlink_of_gate_file_is_denied(self):
+        cases = {
+            "delete workflow": dict(drop=(PROTECTED[0],)),
+            "delete pyproject": dict(drop=("backend/pyproject.toml",)),
+            "add mypy.ini": dict(set={"backend/mypy.ini": "[mypy]\nplugins = evil\n"}),
+            "add .mypy.ini": dict(set={"backend/.mypy.ini": "[mypy]\n"}),
+            "add setup.cfg": dict(set={"backend/setup.cfg": "[mypy]\n"}),
+            "add tox.ini": dict(set={"backend/tox.ini": "[mypy]\n"}),
+            "wrapper made executable": dict(execs=("tools/run_scoped_mypy.py",)),
+            "wrapper replaced by symlink": dict(drop=("tools/run_scoped_mypy.py",),
+                                                symlinks={"tools/run_scoped_mypy.py": "/tmp/evil.py"}),
+            "wrapper replaced by same-bytes symlink": dict(
+                drop=("tools/run_scoped_mypy.py",), symlinks={"tools/run_scoped_mypy.py": "wrapper-v1\n"}),
+        }
+        for label, kw in cases.items():
+            with self.subTest(label):
+                shutil.rmtree(self.rt / "work", ignore_errors=True)
+                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+                self.assertDenied(self.syn.variant(**kw), "candidate changed")
+        self.assertFalse(self.work("backend/mypy.ini").exists())
+
+    def test_irregular_or_unsafe_source_app_entries_are_denied(self):
+        cases = {
+            "symlink inside app": (dict(symlinks={"backend/app/link.py": "../../tools/run_scoped_mypy.py"}),
+                                   "symlink/gitlink/executable"),
+            "executable inside app": (dict(execs=("backend/app/pkg/mod.py",)), "symlink/gitlink/executable"),
+            "gitlink inside app": (dict(gitlinks={"backend/app/sub": "1" * 40}), "symlink/gitlink/executable"),
+            "backend/app itself a symlink": (dict(drop=("backend/app/__init__.py", "backend/app/pkg/mod.py"),
+                                                  symlinks={"backend/app": "../tools"}), "symlink/gitlink/executable"),
+            "no backend/app": (dict(drop=("backend/app/__init__.py", "backend/app/pkg/mod.py")), "no backend/app entries"),
+        }
+        for label, (kw, msg) in cases.items():
+            with self.subTest(label):
+                shutil.rmtree(self.rt / "work", ignore_errors=True)
+                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+                self.assertDenied(self.syn.variant(**kw), msg)
+
+    def test_source_content_is_never_executed(self):
+        marker = self.tmp / "executed.marker"
+        payload = f'open({str(marker)!r}, "w").write("x")\n'
+        source = self.syn.variant(set={"backend/app/__init__.py": payload, "backend/app/conftest.py": payload,
+                                       "backend/app/sitecustomize.py": payload})
+        self.assertEqual(self.chain(source).returncode, 0)
+        self.assertFalse(marker.exists(), "source content was executed")
+        self.assertEqual(self.work("backend/app/__init__.py").read_text(), payload)
 
 
 @unittest.skipUnless(shutil.which("bash"), "bash required")
@@ -340,13 +792,13 @@ class PinGuardStepTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-pin-")).resolve()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        head = self.tmp / "head"
+        work = self.tmp / "work"
         for rel, _ in PINS.values():
-            dest = head / rel
+            dest = work / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / rel, dest)
-        (head / "backend/app").mkdir(parents=True, exist_ok=True)
-        (head / "backend/pyproject.toml").write_text("[tool.mypy]\n")
+        (work / "backend/app").mkdir(parents=True, exist_ok=True)
+        (work / "backend/pyproject.toml").write_text("[tool.mypy]\n")
         # sha256sum may be absent (macOS); provide an equivalent shim when so.
         self.bin = self.tmp / "bin"
         self.bin.mkdir()
@@ -368,7 +820,7 @@ class PinGuardStepTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_drifted_wrapper_bytes_are_denied(self):
-        with open(self.tmp / "head/tools/run_scoped_mypy.py", "ab") as fh:
+        with open(self.tmp / "work/tools/run_scoped_mypy.py", "ab") as fh:
             fh.write(b"# drift\n")
         r = self._run()
         self.assertNotEqual(r.returncode, 0)
@@ -378,7 +830,7 @@ class PinGuardStepTest(unittest.TestCase):
         for var in PINS:
             with self.subTest(var):
                 self.assertNotEqual(self._run(**{var: "0" * 64}).returncode, 0)
-        wrapper = self.tmp / "head/tools/run_scoped_mypy.py"
+        wrapper = self.tmp / "work/tools/run_scoped_mypy.py"
         real = self.tmp / "real_wrapper.py"
         shutil.copy2(wrapper, real)
         wrapper.unlink()
@@ -388,10 +840,10 @@ class PinGuardStepTest(unittest.TestCase):
         self.assertIn("symlink", r.stderr)
 
     def test_committed_venv_dir_or_missing_lock_is_denied(self):
-        (self.tmp / "head/backend/.venv").mkdir()
+        (self.tmp / "work/backend/.venv").mkdir()
         self.assertNotEqual(self._run().returncode, 0)
-        shutil.rmtree(self.tmp / "head/backend/.venv")
-        (self.tmp / "head" / PINS["LOCK_SHA256"][0]).unlink()
+        shutil.rmtree(self.tmp / "work/backend/.venv")
+        (self.tmp / "work" / PINS["LOCK_SHA256"][0]).unlink()
         self.assertNotEqual(self._run().returncode, 0)
 
 
@@ -399,35 +851,19 @@ class PinGuardStepTest(unittest.TestCase):
 class WrapperStepOutcomeTest(unittest.TestCase):
     """Run the real final-step script against a stub interpreter standing in for the wrapper run."""
 
-    SUCCESS = ('{"plan": "json"}\nSuccess: no issues found in 25 source files\n'
-               "run_scoped_mypy: rc=0 — no type errors\n")
+    SUCCESS = WrapperHarness.SUCCESS
 
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-wrap-")).resolve()
-        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        (self.tmp / "head/backend/app").mkdir(parents=True)
-        (self.tmp / "head/tools").mkdir(parents=True)
-        (self.tmp / "venv-typecheck/bin").mkdir(parents=True)
-        self.script = step_script("Scoped wrapper on the fetched backend/app")
-
-    def _stub(self, rc, output):
-        stub = self.tmp / "venv-typecheck/bin/python"
-        (self.tmp / "payload.txt").write_text(output, encoding="utf-8")
-        stub.write_text(f'#!/bin/bash\ncat "{self.tmp}/payload.txt"\nexit {rc}\n')
-        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
-        link = self.tmp / "head/backend/.venv"
-        if link.is_symlink():
-            link.unlink()
+        self.script = step_script("Scoped wrapper on the composed backend/app")
 
     def _run(self, rc, output):
-        self._stub(rc, output)
-        return FakeBash.run(self.script, {"RUNNER_TEMP": str(self.tmp)}, self.tmp)
+        return WrapperHarness.run(self.script, rc, output)[0]
 
     def test_rc0_with_exact_success_passes(self):
-        r = self._run(0, self.SUCCESS)
+        r, _dump, linked = WrapperHarness.run(self.script, 0, self.SUCCESS)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("NO GATE CREDIT", r.stdout)
-        self.assertTrue((self.tmp / "head/backend/.venv").is_symlink())
+        self.assertTrue(linked)
 
     def test_rc1_type_errors_fail(self):
         r = self._run(1, "app/x.py:1: error: boom\nFound 1 error in 1 file\n")
@@ -454,6 +890,50 @@ class WrapperStepOutcomeTest(unittest.TestCase):
         ):
             with self.subTest(label):
                 self.assertNotEqual(self._run(0, out).returncode, 0)
+
+    def test_wrapper_runs_under_a_cleared_environment(self):
+        r, dump, _ = WrapperHarness.run(self.script, 0, self.SUCCESS, POISON)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(dump, "stub did not record its environment")
+        for key in POISON:
+            self.assertNotRegex(dump, rf"(?m)^{key}=", f"{key} leaked into the wrapper run")
+        self.assertRegex(dump, r"(?m)^PATH=/usr/bin:/bin$")
+        self.assertRegex(dump, r"(?m)^LC_ALL=C\.UTF-8$")
+
+    def test_full_behaviour_matrix_is_clean(self):
+        self.assertEqual(WrapperHarness.failures(self.script), [])
+
+
+@unittest.skipUnless(shutil.which("bash"), "bash required")
+class InstallStepTest(unittest.TestCase):
+    """The install step must strip PIP_* settings and run exactly one hash-enforced lock install."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-inst-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        (self.tmp / "venv-typecheck/bin").mkdir(parents=True)
+        (self.tmp / "work/backend").mkdir(parents=True)
+        stub = self.tmp / "venv-typecheck/bin/python"
+        stub.write_text(f'#!/bin/bash\n{{ echo "ARGV: $*"; env | grep "^PIP_" | sed "s/^/ENV: /"; }} >> "{self.tmp}/calls.txt"\n')
+        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+        self.script = step_script("Hash-enforced install")
+
+    def test_pip_environment_is_stripped_and_flags_are_enforced(self):
+        poison = {"PIP_INDEX_URL": "https://evil.invalid/simple", "PIP_EXTRA_INDEX_URL": "https://evil.invalid/x",
+                  "PIP_REQUIRE_VIRTUALENV": "0", "PIP_CONFIG_FILE": "/evil/pip.conf"}
+        r = FakeBash.run(self.script, {"RUNNER_TEMP": str(self.tmp), **poison}, self.tmp)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        calls = (self.tmp / "calls.txt").read_text().splitlines()
+        installs = [c for c in calls if c.startswith("ARGV: -m pip install")]
+        self.assertEqual(len(installs), 1, calls)
+        for flag in ("--require-hashes", "--only-binary=:all:", "--no-deps", "--no-cache-dir",
+                     "--index-url https://pypi.org/simple", "-r " + str(self.tmp / "work/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt")):
+            self.assertIn(flag, installs[0])
+        env_calls = [c for c in calls if c.startswith("ENV: ")]
+        for key in ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_REQUIRE_VIRTUALENV"):
+            self.assertFalse([c for c in env_calls if c.startswith(f"ENV: {key}=")], f"{key} survived")
+        self.assertTrue([c for c in env_calls if c == "ENV: PIP_CONFIG_FILE=/dev/null"])
+        self.assertFalse([c for c in env_calls if "evil" in c])
 
 
 if __name__ == "__main__":
