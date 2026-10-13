@@ -1,0 +1,750 @@
+"""
+Synthetic positive/negative tests for tools/run_scoped_mypy.py (MOD-001, GOV-01-R04).
+
+Written as `unittest.TestCase`; run with the project venv interpreter. CAP-012 is
+`QUALIFIED — NOT APPROVED`: these cases prove the wrapper's refusals and result
+classification, not a mypy gate. Every tree is a disposable repo-shaped fixture
+under the OS temp directory; no Veyro source is read or type-checked. The
+`Executed*` cases start the real mypy from the project venv against those
+fixtures only, and are skipped (loudly) if that venv is absent.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import run_scoped_mypy as w  # noqa: E402
+from run_scoped_mypy import Denied  # noqa: E402
+
+subprocess_run = subprocess.run
+VENV_PYTHON = Path(__file__).resolve().parents[2] / "backend" / ".venv" / "bin" / "python"
+CLEAN_ENV = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8"}
+GOOD_PYPROJECT = '[tool.mypy]\npython_version = "3.13"\nstrict = true\n'
+CLEAN_MODULE = "def add(a: int, b: int) -> int:\n    return a + b\n"
+
+
+def build_tree(root: Path, pyproject: str = GOOD_PYPROJECT) -> Path:
+    """Repo-shaped synthetic tree with a nested, typed `backend/app` package."""
+    app = root / "backend" / "app"
+    (app / "core").mkdir(parents=True)
+    (root / "backend" / "pyproject.toml").write_text(pyproject)
+    (app / "__init__.py").write_text("")
+    (app / "core" / "__init__.py").write_text("")
+    (app / "core" / "math.py").write_text(CLEAN_MODULE)
+    return app
+
+
+def tree_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        digest.update(str(path.relative_to(root)).encode())
+        if path.is_file() and not path.is_symlink():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+class Base(unittest.TestCase):
+    def setUp(self) -> None:
+        # resolve(): macOS /var is a symlink to /private/var and the wrapper
+        # refuses a path that does not canonicalise to itself.
+        self.root = Path(tempfile.mkdtemp(prefix="veyro-gov01r04-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.app = build_tree(self.root)
+        # Plan-only cases never start the interpreter; a synthetic venv layout suffices.
+        self.fake_python = self.root / "fakevenv" / "bin" / "python"
+        self.fake_python.parent.mkdir(parents=True)
+        self.fake_python.write_text("#!/bin/sh\n")
+        self.fake_python.chmod(0o755)
+        (self.fake_python.parent.parent / "pyvenv.cfg").write_text("home = /x\n")
+
+    def plan(self, env=None, python=None):
+        return w.plan(self.root, python or self.fake_python, env if env is not None else CLEAN_ENV)
+
+    def write_config(self, text: str) -> None:
+        (self.root / "backend" / "pyproject.toml").write_text(text)
+
+    def assertDenied(self, fragment: str, **kwargs) -> None:
+        with self.assertRaises(Denied) as caught:
+            self.plan(**kwargs)
+        self.assertIn(fragment, str(caught.exception))
+
+
+class PlanPositiveTest(Base):
+    def test_exact_argv_cwd_and_count(self) -> None:
+        current = self.plan()
+        self.assertEqual(current.expected_sources, 3)
+        self.assertEqual(current.cwd, self.root / "backend")
+        self.assertEqual(
+            current.argv(),
+            [str(self.fake_python), "-I", "-m", "mypy", "--config-file", "pyproject.toml",
+             "--cache-dir=/dev/null", "--no-color-output", "app"],
+        )
+        joined = " ".join(current.argv())
+        for forbidden in ("plugin", "install-types", "--cache-dir=.", "MYPY"):
+            self.assertNotIn(forbidden, joined)
+
+    def test_child_env_is_exactly_three_confined_variables(self) -> None:
+        env = w.child_env(Path("/h"), Path("/t"))
+        self.assertEqual(env, {"PATH": "/usr/bin:/bin", "HOME": "/h", "TMPDIR": "/t"})
+
+    def test_ignore_text_in_a_string_or_docstring_is_not_a_hiding_comment(self) -> None:
+        (self.app / "core" / "doc.py").write_text(
+            '"""Mentions # type: ignore and mypy: ignore-errors in prose."""\n'
+            'X = "# type: ignore"\n'
+        )
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_pycache_without_py_files_is_ignored(self) -> None:
+        (self.app / "__pycache__").mkdir()
+        (self.app / "__pycache__" / "x.cpython-313.pyc").write_bytes(b"\0")
+        self.assertEqual(self.plan().expected_sources, 3)
+
+
+class PlanRefusalTest(Base):
+    def test_scope_missing_or_symlinked(self) -> None:
+        shutil.rmtree(self.app)
+        self.assertDenied("backend/app")
+
+    def test_symlinked_app_dir_refused(self) -> None:
+        real = self.root / "elsewhere"
+        self.app.rename(real)
+        self.app.symlink_to(real)
+        self.assertDenied("symlink refused")
+
+    def test_symlinked_backend_refused(self) -> None:
+        (self.root / "backend").rename(self.root / "backend_real")
+        (self.root / "backend").symlink_to(self.root / "backend_real")
+        self.assertDenied("symlink refused")
+
+    def test_symlinked_file_and_dir_inside_app_refused(self) -> None:
+        outside = self.root / "outside.py"
+        outside.write_text(CLEAN_MODULE)
+        (self.app / "link.py").symlink_to(outside)
+        self.assertDenied("symlink inside backend/app")
+        (self.app / "link.py").unlink()
+        (self.app / "linkdir").symlink_to(self.root / "backend")
+        self.assertDenied("symlinked directory")
+
+    def test_empty_tree_refused(self) -> None:
+        shutil.rmtree(self.app)
+        self.app.mkdir()
+        self.assertDenied("no .py file")
+
+    def test_stub_and_skipped_directory_sources_refused(self) -> None:
+        (self.app / "core" / "math.pyi").write_text("def add(a: int, b: int) -> int: ...\n")
+        self.assertDenied("stub file")
+        (self.app / "core" / "math.pyi").unlink()
+        for hidden in (".hidden", "site-packages", "node_modules"):
+            (self.app / hidden).mkdir()
+            (self.app / hidden / "m.py").write_text(CLEAN_MODULE)
+            self.assertDenied("directory mypy skips")
+            shutil.rmtree(self.app / hidden)
+
+    def test_error_hiding_constructs_refused(self) -> None:
+        cases = {
+            "inline ignore": "x: int = 'a'  # type: ignore\n",
+            "coded ignore": "x: int = 'a'  # type:ignore[assignment]\n",
+            "after other comment": "x: int = 'a'  # noqa  # type: ignore\n",
+            "file ignore-errors": "# mypy: ignore-errors\nx: int = 'a'\n",
+            "inline config": "# mypy: disallow-untyped-defs=False\n",
+            "no_type_check": "from typing import no_type_check\n@no_type_check\ndef f(a): ...\n",
+        }
+        for label, body in cases.items():
+            with self.subTest(label):
+                (self.app / "bad.py").write_text(body)
+                self.assertDenied("bad.py")
+        (self.app / "bad.py").write_text("def broken(:\n  '''unterminated\n")
+        self.assertDenied("cannot tokenize")
+
+    def test_config_must_be_exactly_the_two_expected_keys(self) -> None:
+        extra = {
+            "plugins": 'plugins = ["evil.plugin"]',
+            "mypy_path": 'mypy_path = "../x"',
+            "files": 'files = ["../x"]',
+            "exclude": 'exclude = ["app"]',
+            "follow_imports": 'follow_imports = "skip"',
+            "ignore_errors": "ignore_errors = true",
+            "python_executable": 'python_executable = "/bin/x"',
+            "cache_dir": 'cache_dir = ".mypy_cache"',
+        }
+        for key, line in extra.items():
+            with self.subTest(key):
+                self.write_config(GOOD_PYPROJECT + line + "\n")
+                self.assertDenied("keys are")
+        with self.subTest("overrides"):
+            self.write_config(GOOD_PYPROJECT + '[[tool.mypy.overrides]]\nmodule = "app.*"\nignore_errors = true\n')
+            self.assertDenied("keys are")
+
+    def test_config_missing_keys_wrong_values_or_unparseable(self) -> None:
+        bad = {
+            "no table": '[tool.ruff]\nline-length = 100\n',
+            "no strict": '[tool.mypy]\npython_version = "3.13"\n',
+            "no version": "[tool.mypy]\nstrict = true\n",
+            "old version": '[tool.mypy]\npython_version = "3.12"\nstrict = true\n',
+            "float version": "[tool.mypy]\npython_version = 3.13\nstrict = true\n",
+            "strict false": '[tool.mypy]\npython_version = "3.13"\nstrict = false\n',
+            "strict int": '[tool.mypy]\npython_version = "3.13"\nstrict = 1\n',
+            "bad toml": "[tool.mypy\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                self.write_config(text)
+                with self.assertRaises(Denied):
+                    self.plan()
+        (self.root / "backend" / "pyproject.toml").unlink()
+        self.assertDenied("pyproject.toml")
+
+    def test_ambient_mypy_and_pythonpath_refused(self) -> None:
+        for name in ("MYPYPATH", "MYPY_CACHE_DIR", "MYPY_FORCE_COLOR", "PYTHONPATH"):
+            with self.subTest(name):
+                self.assertDenied(name, env={**CLEAN_ENV, name: "/somewhere"})
+        self.assertEqual(self.plan(env={**CLEAN_ENV, "PYTHONPATH": ""}).expected_sources, 3)
+
+    def test_interpreter_must_be_an_executable_venv_file(self) -> None:
+        self.assertDenied("interpreter", python=self.root / "nope" / "python")
+        (self.fake_python.parent.parent / "pyvenv.cfg").unlink()
+        self.assertDenied("pyvenv.cfg")
+        self.fake_python.chmod(0o644)
+        self.assertDenied("interpreter")
+
+
+class StubPackageTest(Base):
+    """PEP 561 top-level `backend/*-stubs` entries can shadow modules mypy follows: denied."""
+
+    def test_clean_backend_without_stubs_plans(self) -> None:
+        (self.root / "backend" / "stubs").mkdir()  # not a `-stubs` name: unaffected
+        (self.root / "backend" / "my-stub").mkdir()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_any_top_level_stubs_entry_denied(self) -> None:
+        backend = self.root / "backend"
+        for name in ("tests-stubs", "app-stubs", "unrelated-stubs", "Tests-Stubs", "x-STUBS"):
+            for kind in ("dir", "file"):
+                with self.subTest(f"{name} {kind}"):
+                    path = backend / name
+                    path.mkdir() if kind == "dir" else path.write_text("")
+                    self.assertDenied("stub package")
+                    shutil.rmtree(path) if kind == "dir" else path.unlink()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_symlink_and_broken_symlink_stubs_denied(self) -> None:
+        link = self.root / "backend" / "tests-stubs"
+        real = self.root / "real-stubs"
+        real.mkdir()
+        link.symlink_to(real)
+        self.assertDenied("stub package")
+        link.unlink()
+        link.symlink_to(self.root / "does-not-exist")
+        self.assertFalse(link.exists())
+        self.assertDenied("stub package")
+
+    def test_nested_stubs_directory_is_not_top_level(self) -> None:
+        (self.app / "core" / "x-stubs").mkdir()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_unlistable_backend_denied(self) -> None:
+        with mock.patch.object(w.os, "scandir", side_effect=PermissionError("nope")):
+            self.assertDenied("cannot list backend")
+
+
+class ImportClosureTest(Base):
+    """mypy follows imports out of `backend/app`; the followed local modules are scanned too."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.harness = self.root / "backend" / "tests" / "harness"
+        self.harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (self.harness / "__init__.py").write_text("")
+        (self.harness / "pg.py").write_text(CLEAN_MODULE)
+
+    def use(self, line: str) -> None:
+        (self.app / "core" / "uses.py").write_text(line + "\n")
+
+    def test_clean_followed_harness_is_eligible_and_not_counted(self) -> None:
+        self.use("from tests.harness.pg import add")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_import_spellings_all_reach_the_harness(self) -> None:
+        for line in ("import tests.harness.pg", "from tests.harness import pg",
+                     "if True:\n    from tests.harness.pg import add"):
+            with self.subTest(line):
+                self.use(line)
+                before = self.plan().fingerprint
+                (self.harness / "pg.py").write_text(CLEAN_MODULE + "# edit\n")
+                self.assertNotEqual(self.plan().fingerprint, before)
+                (self.harness / "pg.py").write_text(CLEAN_MODULE)
+
+    def test_type_checking_guarded_import_is_followed(self) -> None:
+        self.use("from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from tests.harness import pg")
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.assertDenied("pg.py")
+
+    def test_hiding_constructs_in_followed_harness_denied(self) -> None:
+        self.use("from tests.harness.pg import add")
+        cases = {
+            "file ignore-errors": "# mypy: ignore-errors\n" + CLEAN_MODULE,
+            "inline ignore": "x: int = 'a'  # type: ignore\n",
+            "no_type_check": "from typing import no_type_check\n@no_type_check\ndef f(a): ...\n",
+            "unparseable": "def broken(:\n",
+        }
+        for label, body in cases.items():
+            with self.subTest(label):
+                (self.harness / "pg.py").write_text(body)
+                with self.assertRaises(Denied):
+                    self.plan()
+
+    def test_transitive_edges_are_followed(self) -> None:
+        (self.harness / "pg.py").write_text("from tests.harness import mid\n")
+        (self.harness / "mid.py").write_text("from . import leaf\n")
+        (self.harness / "leaf.py").write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("leaf.py")
+        (self.harness / "leaf.py").write_text(CLEAN_MODULE)
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_relative_import_in_harness_and_cycles(self) -> None:
+        (self.harness / "pg.py").write_text("from .mid import x\n")
+        (self.harness / "mid.py").write_text("from .pg import y\nfrom ..harness import leaf\n")
+        (self.harness / "leaf.py").write_text("x = 1  # type: ignore\n")
+        self.use("import tests.harness.pg")
+        self.assertDenied("leaf.py")
+
+    def test_import_from_app_back_into_app_is_not_an_escape(self) -> None:
+        (self.harness / "pg.py").write_text("from app.core.math import add\n")
+        self.use("from tests.harness.pg import add")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_namespace_directory_modules_are_still_scanned(self) -> None:
+        (self.root / "backend" / "tests" / "__init__.py").unlink()
+        (self.harness / "__init__.py").unlink()
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("pg.py")
+
+    def test_external_and_non_local_imports_are_not_followed(self) -> None:
+        self.use("import os\nimport json.decoder\nfrom collections.abc import Mapping\nimport notlocal.sub")
+        self.assertEqual(self.plan().expected_sources, 4)
+
+    def test_unresolved_edge_into_a_claimed_local_package_denied(self) -> None:
+        for line in ("from tests.harness.missing import x", "import tests.nothere",
+                     "import tests.harness.pg.deeper", "from tests.harness.missing.deep import y"):
+            with self.subTest(line):
+                self.use(line)
+                self.assertDenied("")
+
+    def test_relative_import_climbing_above_backend_denied(self) -> None:
+        (self.harness / "pg.py").write_text("from .... import oops\n")
+        self.use("from tests.harness.pg import add")
+        self.assertDenied("climbs above backend")
+
+    def test_symlinked_or_stubbed_local_module_denied(self) -> None:
+        outside = self.root / "outside.py"
+        outside.write_text("# mypy: ignore-errors\n")
+        self.use("from tests.harness import linked")
+        (self.harness / "linked.py").symlink_to(outside)
+        self.assertDenied("symlink")
+        (self.harness / "linked.py").unlink()
+        (self.harness / "linked.py").write_text(CLEAN_MODULE)
+        (self.harness / "linked.pyi").write_text("def add(a: int, b: int) -> int: ...\n")
+        self.assertDenied("stub file")
+
+    def test_symlinked_local_package_denied(self) -> None:
+        real = self.root / "realtests"
+        (self.root / "backend" / "tests").rename(real)
+        (self.root / "backend" / "tests").symlink_to(real)
+        self.use("import tests.harness.pg")
+        self.assertDenied("symlink")
+
+    def test_closure_size_is_bounded(self) -> None:
+        self.use("import tests.harness.pg")
+        with mock.patch.object(w, "MAX_CLOSURE_FILES", 3):
+            self.assertDenied("closure exceeds")
+
+    def test_closure_change_between_plans_changes_the_fingerprint(self) -> None:
+        self.use("import tests.harness.pg")
+        before = self.plan().fingerprint
+        (self.harness / "pg.py").write_text("# mypy: ignore-errors\n")
+        self.assertDenied("pg.py")
+        (self.harness / "pg.py").write_text(CLEAN_MODULE + "\n\n")
+        self.assertNotEqual(self.plan().fingerprint, before)
+
+
+class CacheSideEffectTest(Base):
+    """Pre-existing `.mypy_cache` dirs are tolerated only if the run leaves them untouched.
+
+    The mypy subprocess is replaced by a stub that optionally mutates the fixture and
+    reports the exact success line; mypy is never invoked here.
+    """
+
+    OK = "Success: no issues found in 3 source files\n"
+
+    def locations(self) -> dict[str, Path]:
+        return {"root": self.root / ".mypy_cache", "backend": self.root / "backend" / ".mypy_cache"}
+
+    def seed(self, where: Path) -> None:
+        (where / "3.13").mkdir(parents=True)
+        (where / "3.13" / "app.meta.json").write_text("{}")
+
+    def run_with(self, effect=None) -> int:
+        def fake_run(*args, **kwargs):
+            if effect is not None:
+                effect()
+            return mock.Mock(returncode=0, stdout=self.OK, stderr="")
+
+        with mock.patch.object(w, "_probe"), mock.patch.object(w.subprocess, "run", side_effect=fake_run), \
+                mock.patch("sys.stdout"), mock.patch("sys.stderr"):
+            return w.run(self.root, self.fake_python)
+
+    def test_no_cache_anywhere_passes(self) -> None:
+        self.assertEqual(self.run_with(), w.EXIT_OK)
+
+    def test_unchanged_preexisting_caches_pass(self) -> None:
+        for where in self.locations().values():
+            self.seed(where)
+        before = tree_digest(self.root)
+        self.assertEqual(self.run_with(), w.EXIT_OK)
+        self.assertEqual(tree_digest(self.root), before)
+
+    def test_each_preexisting_location_alone_passes(self) -> None:
+        for name, where in self.locations().items():
+            with self.subTest(name):
+                self.seed(where)
+                self.assertEqual(self.run_with(), w.EXIT_OK)
+                shutil.rmtree(where)
+
+    def test_newly_created_cache_denied_in_each_location(self) -> None:
+        for name, where in self.locations().items():
+            with self.subTest(name):
+                with self.assertRaises(Denied) as caught:
+                    self.run_with(lambda where=where: self.seed(where))
+                self.assertIn(".mypy_cache", str(caught.exception))
+                shutil.rmtree(where)
+
+    def test_modified_preexisting_cache_denied_in_each_location(self) -> None:
+        effects = {
+            "new file": lambda d: (d / "3.13" / "new.json").write_text("{}"),
+            "rewritten file": lambda d: (d / "3.13" / "app.meta.json").write_text('{"a": 1}'),
+            "deleted file": lambda d: (d / "3.13" / "app.meta.json").unlink(),
+            "new directory": lambda d: (d / "3.14").mkdir(),
+            "removed cache": lambda d: shutil.rmtree(d),
+        }
+        for name, where in self.locations().items():
+            for label, effect in effects.items():
+                with self.subTest(f"{name}: {label}"):
+                    self.seed(where)
+                    with self.assertRaises(Denied) as caught:
+                        self.run_with(lambda where=where, effect=effect: effect(where))
+                    self.assertIn(".mypy_cache", str(caught.exception))
+                    shutil.rmtree(where, ignore_errors=True)
+
+    def test_cache_replaced_by_symlink_denied(self) -> None:
+        where = self.locations()["backend"]
+        self.seed(where)
+        elsewhere = self.root / "elsewhere"
+        elsewhere.mkdir()
+
+        def swap() -> None:
+            shutil.rmtree(where)
+            where.symlink_to(elsewhere)
+
+        with self.assertRaises(Denied):
+            self.run_with(swap)
+
+    def test_stub_package_appearing_during_the_run_denied(self) -> None:
+        stubs = self.root / "backend" / "tests-stubs"
+        with self.assertRaises(Denied) as caught:
+            self.run_with(stubs.mkdir)
+        self.assertIn("stub package", str(caught.exception))
+        stubs.rmdir()
+        broken = self.root / "backend" / "app-stubs"
+        with self.assertRaises(Denied):
+            self.run_with(lambda: broken.symlink_to(self.root / "does-not-exist"))
+
+    def test_stub_package_present_before_the_run_never_starts_mypy(self) -> None:
+        (self.root / "backend" / "tests-stubs").mkdir()
+        with mock.patch.object(w.subprocess, "run") as spawned, self.assertRaises(Denied):
+            w.run(self.root, self.fake_python)
+        spawned.assert_not_called()
+
+
+class ClassifyResultTest(unittest.TestCase):
+    def test_only_exact_success_line_with_exact_count_passes(self) -> None:
+        ok = "Success: no issues found in 3 source files\n"
+        self.assertEqual(w.classify_result(0, ok, "", 3)[0], w.EXIT_OK)
+        self.assertEqual(
+            w.classify_result(0, "Success: no issues found in 1 source file\n", "", 1)[0], w.EXIT_OK
+        )
+
+    def test_everything_else_is_not_a_pass(self) -> None:
+        ok = "Success: no issues found in 3 source files\n"
+        cases = {
+            "fewer sources": (0, "Success: no issues found in 2 source files\n", "", 3),
+            "more sources": (0, "Success: no issues found in 4 source files\n", "", 3),
+            "no output": (0, "", "", 3),
+            "extra line": (0, "note: something\n" + ok, "", 3),
+            "stderr noise": (0, ok, "warning\n", 3),
+            "singular for plural": (0, "Success: no issues found in 3 source file\n", "", 3),
+            "plural for one": (0, "Success: no issues found in 1 source files\n", "", 1),
+            "syntax error rc 2": (2, "", "x.py:1: error: invalid syntax\n", 3),
+            "crash rc 130": (130, "", "", 3),
+            "negative rc": (-9, "", "", 3),
+        }
+        for label, (rc, out, err, n) in cases.items():
+            with self.subTest(label):
+                self.assertEqual(w.classify_result(rc, out, err, n)[0], w.EXIT_DENIED)
+
+    def test_rc_1_is_type_errors_not_denial(self) -> None:
+        self.assertEqual(w.classify_result(1, "Found 2 errors in 1 file\n", "", 3)[0], w.EXIT_TYPE_ERRORS)
+
+
+class MainBoundaryTest(Base):
+    """A non-Denied crash must not leave CPython's rc 1, which means "type errors"."""
+
+    def test_unexpected_exception_is_a_denial_not_type_errors(self) -> None:
+        for target, argv in (("run", []), ("plan", ["--plan"])):  # both mocked: the real tree is never read
+            with self.subTest(target), mock.patch.object(w, target, side_effect=RuntimeError("boom")), \
+                    mock.patch("sys.stdout"), mock.patch("sys.stderr") as err:
+                self.assertEqual(w.main(argv), w.EXIT_DENIED)
+                self.assertIn("RuntimeError", "".join(c.args[0] for c in err.write.call_args_list))
+        self.assertNotEqual(w.EXIT_DENIED, w.EXIT_TYPE_ERRORS)
+
+    def test_denied_still_denied_and_base_exceptions_propagate(self) -> None:
+        with mock.patch.object(w, "run", side_effect=Denied("x")), mock.patch("sys.stderr"):
+            self.assertEqual(w.main([]), w.EXIT_DENIED)
+        for exc in (KeyboardInterrupt, SystemExit):
+            with self.subTest(exc.__name__), mock.patch.object(w, "run", side_effect=exc), self.assertRaises(exc):
+                w.main([])
+
+
+@unittest.skipUnless(VENV_PYTHON.is_file(), f"project venv python absent: {VENV_PYTHON}")
+class ExecutedAgainstSyntheticFixturesTest(Base):
+    """Real mypy, real wrapper, synthetic tree outside the repository only."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.assertNotIn(Path(__file__).resolve().parents[2], self.root.parents)
+        self.fake_python = VENV_PYTHON
+        patch = mock.patch.dict(os.environ)
+        patch.start()
+        self.addCleanup(patch.stop)
+        for name in [n for n in os.environ if n == "MYPYPATH" or n.startswith(("MYPY_", "PYTEST_"))]:
+            os.environ.pop(name)
+
+    def run_wrapper(self) -> int:
+        with mock.patch("sys.stdout"), mock.patch("sys.stderr"):
+            try:
+                return w.run(self.root, VENV_PYTHON)
+            except Denied:
+                return w.EXIT_DENIED
+
+    def test_positive_clean_strict_package_passes_with_exact_count(self) -> None:
+        before = tree_digest(self.root)
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
+        self.assertEqual(tree_digest(self.root), before, "fixture mutated")
+        self.assertFalse((self.root / "backend" / ".mypy_cache").exists())
+        self.assertFalse((self.root / ".mypy_cache").exists())
+
+    def test_positive_preexisting_root_and_backend_caches_do_not_deny(self) -> None:
+        for where in (self.root / ".mypy_cache", self.root / "backend" / ".mypy_cache"):
+            (where / "3.13").mkdir(parents=True)
+            (where / "3.13" / "keep.json").write_text("{}")
+        before = tree_digest(self.root)
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
+        self.assertEqual(tree_digest(self.root), before, "pre-existing caches or fixture mutated")
+
+    def test_negative_type_error_is_exit_1(self) -> None:
+        (self.app / "core" / "bad.py").write_text("def f(a: int) -> str:\n    return a\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_negative_strict_is_live(self) -> None:
+        (self.app / "core" / "untyped.py").write_text("def f(a):\n    return a\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_negative_syntax_error_is_denied_not_ok(self) -> None:
+        (self.app / "core" / "syn.py").write_text("def f(:\n    pass\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+
+    def test_decoy_ambient_configs_do_not_relax_the_check(self) -> None:
+        (self.root / "backend" / "mypy.ini").write_text("[mypy]\nignore_errors = True\n")
+        (self.root / "backend" / "setup.cfg").write_text("[mypy]\nignore_errors = True\n")
+        home = self.root / "decoyhome"
+        home.mkdir()
+        (home / ".mypy.ini").write_text("[mypy]\nignore_errors = True\n")
+        (self.app / "core" / "bad.py").write_text("def f(a: int) -> str:\n    return a\n")
+        with mock.patch.dict(os.environ, {"HOME": str(home)}):
+            self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_plugin_in_config_is_refused_before_it_can_execute(self) -> None:
+        marker = self.root / "PLUGIN_RAN"
+        (self.root / "backend" / "evil_plugin.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('ran')\n"
+            "def plugin(version):\n    from mypy.plugin import Plugin\n    return Plugin\n"
+        )
+        self.write_config(GOOD_PYPROJECT + 'plugins = ["evil_plugin"]\n')
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        self.assertFalse(marker.exists(), "plugin executed")
+
+    def test_ambient_mypypath_refused_before_run(self) -> None:
+        with mock.patch.dict(os.environ, {"MYPYPATH": str(self.root)}):
+            self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+
+    def test_imports_escaping_app_still_surface_their_errors(self) -> None:
+        """Documents mypy's follow-imports: an outside module's errors are reported, not hidden."""
+        (self.root / "backend" / "migrations").mkdir()
+        (self.root / "backend" / "migrations" / "__init__.py").write_text("X: int = 'a'\n")
+        (self.app / "core" / "uses.py").write_text("from migrations import X\n\nY: int = X\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_followed_harness_positive_passes_with_app_only_count(self) -> None:
+        harness = self.root / "backend" / "tests" / "harness"
+        harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (harness / "__init__.py").write_text("")
+        (harness / "pg.py").write_text(CLEAN_MODULE)
+        (harness / "mid.py").write_text("from tests.harness.pg import add\n\nTWO: int = add(1, 1)\n")
+        (self.app / "core" / "uses.py").write_text("from tests.harness.mid import TWO\n\nY: int = TWO\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
+
+    def test_followed_harness_hiding_denied_even_when_mypy_would_succeed(self) -> None:
+        harness = self.root / "backend" / "tests" / "harness"
+        harness.mkdir(parents=True)
+        (self.root / "backend" / "tests" / "__init__.py").write_text("")
+        (harness / "__init__.py").write_text("")
+        (harness / "mid.py").write_text("from tests.harness.pg import add\n\nTWO: int = add(1, 1)\n")
+        (harness / "pg.py").write_text("# mypy: ignore-errors\ndef add(a, b):\n    return a + b\n")
+        (self.app / "core" / "uses.py").write_text("from tests.harness.mid import TWO\n\nY: int = TWO\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        # control: the same tree with the hiding line removed type-checks as errors, proving the
+        # harness module really is followed by mypy (untyped def under strict)
+        (harness / "pg.py").write_text("def add(a, b):\n    return a + b\n")
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def raw_mypy_rc(self) -> int:
+        """The wrapper's exact argv run directly, bypassing every wrapper check (control)."""
+        home = self.root / "rawhome"
+        home.mkdir(exist_ok=True)
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "TMPDIR": str(home)}
+        argv = w.Plan(self.root, self.root / "backend", self.app, Path(), VENV_PYTHON, 0, "").argv()
+        return subprocess_run(argv, cwd=self.root / "backend", env=env, capture_output=True,
+                              text=True, check=False, timeout=300).returncode
+
+    def test_stub_package_shadow_hides_real_errors_from_mypy_but_wrapper_denies(self) -> None:
+        backend = self.root / "backend"
+        (backend / "tests" / "harness").mkdir(parents=True)
+        (backend / "tests" / "__init__.py").write_text("X: int = 'err'\n")
+        (backend / "tests" / "harness" / "__init__.py").write_text("")
+        (backend / "tests" / "harness" / "p.py").write_text(CLEAN_MODULE)
+        (self.app / "main.py").write_text("import tests.harness.p\n")
+        # control: without stubs the follow-imported error is real and the wrapper agrees
+        self.assertEqual(self.raw_mypy_rc(), 1)
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+        # the shadow: a top-level `tests-stubs` makes the SAME mypy invocation succeed
+        stubs = backend / "tests-stubs"
+        (stubs / "harness").mkdir(parents=True)
+        for rel in ("__init__.pyi", "harness/__init__.pyi", "harness/p.pyi"):
+            (stubs / rel).write_text("")
+        self.assertEqual(self.raw_mypy_rc(), 0, "mypy no longer honours top-level *-stubs here")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        # symlink and broken-symlink forms of the same shadow are denied too
+        shutil.rmtree(stubs)
+        stubs.symlink_to(self.root / "does-not-exist")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        stubs.unlink()
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_positive_clean_tree_without_stubs_still_passes_after_stub_check(self) -> None:
+        (self.root / "backend" / "stubs").mkdir()
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
+
+    def test_probe_rejects_a_non_venv_or_non_isolated_interpreter(self) -> None:
+        current = w.plan(self.root, VENV_PYTHON, CLEAN_ENV)
+        for stdout in ("0 1\n", "1 0\n", ""):
+            fake = mock.Mock(returncode=0, stdout=stdout, stderr="")
+            with self.subTest(stdout), mock.patch.object(w.subprocess, "run", return_value=fake):
+                with self.assertRaises(Denied):
+                    w._probe(current, {})
+
+    def test_probe_rejects_an_unpinned_mypy(self) -> None:
+        current = w.plan(self.root, VENV_PYTHON, CLEAN_ENV)
+        replies = [mock.Mock(returncode=0, stdout="1 1\n"), mock.Mock(returncode=0, stdout="mypy 2.3.2 (compiled: yes)\n")]
+        with mock.patch.object(w.subprocess, "run", side_effect=replies):
+            with self.assertRaises(Denied):
+                w._probe(current, {})
+
+
+class SelfContainedTest(Base):
+    """CAP-012 must not depend on CAP-011's private containment code (review B5)."""
+
+    WRAPPER = Path(w.__file__).resolve()
+
+    def test_no_run_scoped_pytest_import_anywhere(self) -> None:
+        import ast
+
+        for node in ast.walk(ast.parse(self.WRAPPER.read_text())):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            for name in names:
+                self.assertNotIn("run_scoped_pytest", name)
+        self.assertEqual(w.Denied.__module__, "run_scoped_mypy")
+        self.assertEqual(w._canonical.__module__, "run_scoped_mypy")
+
+    def test_imports_and_plans_with_only_the_wrapper_file_present(self) -> None:
+        """The wrapper copied ALONE into an empty dir still imports and fail-closes."""
+        alone = self.root / "alone"
+        alone.mkdir()
+        shutil.copy(self.WRAPPER, alone / "run_scoped_mypy.py")
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); import run_scoped_mypy as m, pathlib;"
+            "assert 'run_scoped_pytest' not in sys.modules;"
+            "\ntry:\n m.plan(pathlib.Path(sys.argv[2]), None, {})\nexcept m.Denied as e: print('DENIED', e)"
+        )
+        proc = subprocess_run([sys.executable, "-I", "-c", code, str(alone), str(self.root / "no-such-root")],
+                              capture_output=True, text=True, check=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("DENIED", proc.stdout)
+
+    def test_canonical_accepts_a_plain_path_and_refuses_each_unsafe_one(self) -> None:
+        self.assertEqual(w._canonical(self.root, "backend/app"), self.app)
+        for rel in ("", ".", "..", "backend/../backend", "/backend/app", "backend//app", "backend/./app"):
+            with self.subTest(rel), self.assertRaises(Denied):
+                w._canonical(self.root, rel)
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "backend/missing")
+
+    def test_canonical_refuses_a_symlink_in_any_component_and_escapes(self) -> None:
+        outside = Path(tempfile.mkdtemp(prefix="veyro-outside-")).resolve()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        (self.root / "escape").symlink_to(outside)
+        with self.assertRaises(Denied) as caught:
+            w._canonical(self.root, "escape")
+        self.assertIn("symlink refused", str(caught.exception))
+        (self.app / "core" / "up").symlink_to(self.root)
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "backend/app/core/up/backend")
+        # a root that is itself reached through a non-canonical spelling is refused
+        with self.assertRaises(Denied):
+            w._canonical(self.root / "backend" / "app" / ".." / "..", "backend")
+
+    def test_canonical_refuses_a_symlink_loop_without_crashing(self) -> None:
+        (self.root / "loop").symlink_to(self.root / "loop")
+        with self.assertRaises(Denied):
+            w._canonical(self.root, "loop")
+
+
+if __name__ == "__main__":
+    unittest.main()

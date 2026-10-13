@@ -1,0 +1,520 @@
+# M1-C-06 - synthetic-only Linux/CPython 3.13 type-check qualification drill.
+#
+# Authored per `knowledge/03-Modules/MOD-001/evidence/implementation/
+# M1-C-06-MYPY-CI-LOCK-ARCHITECTURE-2026-10-09.md` section 9 Step B (with the
+# section 12 correction). Route and authority are the zero-authority drill
+# route of `M1-C-06-TRUSTED-CI-ROUTING-DECISION-2026-10-09.md`.
+#
+# What this does, in order: fetch the PR head tokenlessly; resolve and assert
+# a CPython 3.13 linux-x86_64 64-bit interpreter (deny, never fall back); guard
+# the additive Linux lock as a regular non-symlink; create a venv from the
+# asserted interpreter with the bundled, unupgraded pip; hash-enforced install
+# of the lock; run mypy ONCE, against a fixture this job creates in a
+# disposable directory; then two negatives (a mismatched macOS mypy digest
+# derived programmatically from the existing dev lock, and a resolvable
+# non-3.13 python3 - the runner's default python3 when it is not 3.13). A
+# further step proves the CAP-012 wrapper's enforcement boundary
+# (M1C-R04-CAP012-WRAPPER-CI-20261013): the ACTUAL tools/run_scoped_mypy.py
+# (self-contained; copied ALONE, no CAP-011 file), copied byte-for-byte from
+# the fetched head into job-created disposable checkouts shaped backend/app +
+# backend/pyproject.toml + tools/, run with the pinned cp313 venv: one
+# positive, one control and seven fail-closed negatives, each asserting its
+# exit code, its exact diagnostic, and whether mypy was reached. The final
+# step (M1C-R04-CAP012-R3B7-CI-20261014) copies the ACTUAL wrapper and its
+# ACTUAL test module tools/tests/test_run_scoped_mypy.py into a disposable
+# repo-shaped tree under RUNNER_TEMP, points that tree's backend/.venv at the
+# pinned cp313 venv, and runs the whole module there - including the
+# followed-import closure positive and negative tests (ImportClosureTest and
+# the two followed-harness cases that start real mypy on synthetic fixtures).
+# It fails closed on any failure, error, skip, deselection or missing
+# expected test, and prints every closure test outcome into the log.
+#
+# Constraints held by construction:
+#   - No action references of any kind (no CAP-approved action exists; see
+#     `.claude/rules/infra/iac.md` control 5). Plain runner-image tooling only.
+#   - No secret references; `permissions: {}`; tokenless fetch (public repo).
+#   - Untrusted values reach shell only through `env:`, never interpolated
+#     into a script body.
+#   - No Veyro path is ever a mypy target, cwd, config or search path (the
+#     wrapper proof's checkouts live under RUNNER_TEMP; only the two wrapper
+#     files are copied in, never the real backend tree).
+#   - The backend dev lock is read-only input; nothing writes to the checkout.
+#
+# NOT claimed:
+#   - Whether these exact bytes ran in CI must be verified against a pinned
+#     head/run/log record, not inferred from this header. Any run is synthetic
+#     only, NOT a required CI typecheck or capability approval.
+#   - Not a required status check and not GOV-01-R04's non-bypassable gate.
+#     Its value, once run, is the inspected run record, not the conclusion.
+#   - CAP-012 stays QUALIFIED - NOT APPROVED. No real-code type-check exists.
+#   - Red-job control: this workflow contains no inverted assertion and is
+#     expected to be green. The historic red control is a separate disposable
+#     branch, draft PR #5 (head 87a34a3, run 38462384172), whose one inverted
+#     assertion turned the job red as intended; PR #5 must never merge and is
+#     not evidence about the current bytes. The current candidate runs on
+#     draft PR #7; a PR #7 run is the only record that can speak for these
+#     bytes, and only once inspected against its pinned head, run and log.
+
+name: typecheck-qualification-drill
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  typecheck-qualification-drill:
+    name: typecheck-qualification-drill
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Fetch pinned head commit (tokenless, public repository)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "DENY: head sha is not 40-hex" >&2; exit 1; }
+          git init -q "$RUNNER_TEMP/head"
+          git -C "$RUNNER_TEMP/head" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA"
+          git -C "$RUNNER_TEMP/head" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$RUNNER_TEMP/head" rev-parse HEAD)" == "$HEAD_SHA" ]] \
+            || { echo "DENY: checkout is not $HEAD_SHA" >&2; exit 1; }
+          echo "pinned head sha: $HEAD_SHA"
+
+      - name: Resolve and assert CPython 3.13 linux-x86_64 interpreter (deny, no fallback)
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          assert="$head/tools/assert_ci_python313.py"
+          [[ -f "$assert" && ! -L "$assert" ]] \
+            || { echo "DENY: tools/assert_ci_python313.py is not a regular file" >&2; exit 1; }
+
+          shopt -s nullglob
+          candidates=()
+          if found="$(command -v python3.13)"; then candidates+=("$found"); fi
+          candidates+=(/usr/bin/python3.13 /usr/local/bin/python3.13)
+          candidates+=(/opt/hostedtoolcache/Python/3.13.*/x64/bin/python3.13)
+
+          chosen=""
+          for cand in "${candidates[@]}"; do
+            [[ -f "$cand" && -x "$cand" ]] || continue
+            echo "--- candidate: $cand"
+            if "$cand" -I "$assert"; then
+              chosen="$cand"
+              break
+            fi
+          done
+          if [[ -z "$chosen" ]]; then
+            echo "DENY: no CPython 3.13 linux-x86_64 64-bit interpreter resolvable; not falling back to default python3" >&2
+            exit 1
+          fi
+          printf '%s\n' "$chosen" > "$RUNNER_TEMP/interpreter.path"
+          echo "asserted interpreter: $chosen"
+
+      - name: Guard additive Linux lock (regular file, not a symlink)
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock="$RUNNER_TEMP/head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          [[ -e "$lock" ]] || { echo "DENY: lock file absent" >&2; exit 1; }
+          [[ ! -L "$lock" ]] || { echo "DENY: lock file is a symlink" >&2; exit 1; }
+          [[ -f "$lock" ]] || { echo "DENY: lock file is not a regular file" >&2; exit 1; }
+          sha256sum "$lock"
+
+      - name: Create venv from asserted interpreter (bundled pip, not upgraded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$(cat "$RUNNER_TEMP/interpreter.path")"
+          "$py" -m venv "$RUNNER_TEMP/venv-typecheck"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -I "$RUNNER_TEMP/head/tools/assert_ci_python313.py" \
+            || { echo "DENY: venv interpreter fails assertion" >&2; exit 1; }
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip --version
+
+      - name: Hash-enforced install of the Linux cp313 lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          lock="$RUNNER_TEMP/head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$lock"
+          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list --disable-pip-version-check --format=freeze
+
+      - name: Positive proof - mypy against a job-created synthetic fixture only
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d "$RUNNER_TEMP/synthetic-typecheck.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/home" "$work/tmp" "$work/synthetic_pkg"
+          : > "$work/synthetic_pkg/__init__.py"
+          cat > "$work/synthetic_pkg/calc.py" <<'PY'
+          def add(a: int, b: int) -> int:
+              return a + b
+
+
+          VALUE: int = add(1, 2)
+          PY
+          cat > "$work/pyproject.toml" <<'TOML'
+          [tool.mypy]
+          python_version = "3.13"
+          strict = true
+          TOML
+
+          cd "$work"
+          set +e
+          out="$(env -i PATH=/usr/bin:/bin HOME="$work/home" TMPDIR="$work/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \
+            "$RUNNER_TEMP/venv-typecheck/bin/python" -I -m mypy \
+            --config-file pyproject.toml --cache-dir=/dev/null --no-color-output synthetic_pkg 2>&1)"
+          rc=$?
+          set -e
+          printf 'mypy rc=%s\n%s\n' "$rc" "$out"
+          [[ "$rc" -eq 0 ]] || { echo "DENY: mypy rc is not 0" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -Fx 'Success: no issues found in 2 source files' >/dev/null \
+            || { echo "DENY: expected success diagnostic absent" >&2; exit 1; }
+          echo "positive proof observed: rc=0 and exact success diagnostic"
+
+      - name: Negative proof 1 - mismatched macOS mypy digest must fail install
+        shell: bash
+        run: |
+          set -euo pipefail
+          py="$(cat "$RUNNER_TEMP/interpreter.path")"
+          head="$RUNNER_TEMP/head"
+          dev_lock="$head/backend/requirements-dev.lock.txt"
+          linux_lock="$head/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"
+          for f in "$dev_lock" "$linux_lock"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+          done
+          work="$(mktemp -d "$RUNNER_TEMP/negative-hash.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+
+          # Derive the mismatched requirement from the existing dev lock (read
+          # only); the digest is never hand-transcribed.
+          "$py" -I - "$dev_lock" "$linux_lock" "$work/mismatch.txt" <<'PY'
+          import re
+          import sys
+
+          dev_lock, linux_lock, out = sys.argv[1:4]
+          pattern = re.compile(
+              r"^mypy==([0-9][^\s\\]*)\s*\\\s*\n\s*--hash=sha256:([0-9a-f]{64})\s*$",
+              re.MULTILINE,
+          )
+
+
+          def mypy_pin(path):
+              with open(path, encoding="utf-8") as handle:
+                  found = pattern.findall(handle.read())
+              if len(found) != 1:
+                  raise SystemExit(f"DENY: expected exactly one mypy pin in {path}, found {len(found)}")
+              return found[0]
+
+
+          dev_version, dev_digest = mypy_pin(dev_lock)
+          linux_version, linux_digest = mypy_pin(linux_lock)
+          if dev_version != linux_version:
+              raise SystemExit(f"DENY: mypy version differs: {dev_version} vs {linux_version}")
+          if dev_digest == linux_digest:
+              raise SystemExit("DENY: dev-lock digest equals Linux digest; not a mismatch")
+          with open(out, "w", encoding="utf-8") as handle:
+              handle.write(f"mypy=={dev_version} --hash=sha256:{dev_digest}\n")
+          print(f"mismatch requirement written: mypy=={dev_version} dev digest {dev_digest} "
+                f"(Linux digest {linux_digest})")
+          PY
+          cat "$work/mismatch.txt"
+
+          "$py" -m venv "$work/venv"
+          for v in $(compgen -e); do case "$v" in PIP_*) unset "$v" ;; esac; done
+          export PIP_CONFIG_FILE=/dev/null
+          set +e
+          out="$("$work/venv/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: --no-deps \
+            --index-url https://pypi.org/simple \
+            --no-cache-dir --no-input --disable-pip-version-check \
+            -r "$work/mismatch.txt" 2>&1)"
+          rc=$?
+          set -e
+          printf 'pip rc=%s\n%s\n' "$rc" "$out"
+          [[ "$rc" -ne 0 ]] || { echo "DENY: mismatched-digest install unexpectedly succeeded" >&2; exit 1; }
+          # pip prints this diagnostic upper-case ("THESE PACKAGES DO NOT MATCH THE
+          # HASHES ..."); match case-insensitively.
+          printf '%s\n' "$out" | grep -Ei 'do not match the hashes|No matching distribution' >/dev/null \
+            || { echo "DENY: no hash-mismatch or no-matching-distribution diagnostic" >&2; exit 1; }
+          "$work/venv/bin/python" -I -c 'import importlib.util, sys; sys.exit(1 if importlib.util.find_spec("mypy") else 0)' \
+            || { echo "DENY: mypy is importable in the negative venv" >&2; exit 1; }
+          echo "negative 1 observed: install refused (rc=$rc) and mypy absent"
+
+      - name: Negative proof 2 - a resolvable non-3.13 python3 must be denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Prefer the runner's default python3, but if that default is itself
+          # 3.13 (runner-image change) fall through to the next resolvable
+          # non-3.13 interpreter so this negative stays deterministic. If none
+          # resolves, deny: a negative that cannot run is not a pass.
+          neg=""
+          for name in python3 python3.12 python3.14 python3.11 python3.10; do
+            cand="$(command -v "$name" || true)"
+            [[ -n "$cand" && -x "$cand" ]] || continue
+            ver="$("$cand" -I -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || continue
+            if [[ "$ver" == "3.13" ]]; then
+              echo "skip $cand: reports 3.13, cannot serve as the non-3.13 negative"
+              continue
+            fi
+            neg="$cand"
+            echo "negative interpreter: $neg (python $ver)"
+            break
+          done
+          [[ -n "$neg" ]] || { echo "DENY: no resolvable non-3.13 python to exercise the negative" >&2; exit 1; }
+          set +e
+          out="$("$neg" -I "$RUNNER_TEMP/head/tools/assert_ci_python313.py" 2>&1)"
+          rc=$?
+          set -e
+          printf 'assert rc=%s\n%s\n' "$rc" "$out"
+          [[ "$rc" -ne 0 ]] || { echo "DENY: non-3.13 python unexpectedly satisfies the 3.13 assertion" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -Fx 'RESULT: DENY' >/dev/null \
+            || { echo "DENY: assertion did not report RESULT: DENY" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -F 'version_is_3_13: FAIL' >/dev/null \
+            || { echo "DENY: denial was not attributed to the version check" >&2; exit 1; }
+          echo "negative 2 observed: non-3.13 python denied on the version check"
+
+      - name: Wrapper boundary proof - actual run_scoped_mypy.py on disposable synthetic checkouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          venv="$RUNNER_TEMP/venv-typecheck"
+          for f in "$head/tools/run_scoped_mypy.py"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+            "$venv/bin/python" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(), sys.argv[1])' "$f"
+          done
+          work="$(mktemp -d "$RUNNER_TEMP/wrapper-boundary.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/home" "$work/tmp"
+
+          fail() { echo "DENY: $*" >&2; exit 1; }
+          expect_in() { printf '%s\n' "$out" | grep -F -- "$1" >/dev/null || fail "$label: expected text absent: $1"; }
+          expect_not_in() { if printf '%s\n' "$out" | grep -F -- "$1" >/dev/null; then fail "$label: unexpected text present: $1"; fi; }
+
+          # A disposable checkout shaped like the repository subset the wrapper
+          # resolves from its own location. The wrapper files are copied (never
+          # symlinked); the interpreter is the pinned venv, reached through a
+          # symlink the wrapper never inspects (it only walks backend, app and
+          # pyproject.toml).
+          build_tree() {
+            root="$work/$1"
+            mkdir -p "$root/backend/app" "$root/tools"
+            cp "$head/tools/run_scoped_mypy.py" "$root/tools/"
+            ln -s "$venv" "$root/backend/.venv"
+            cat > "$root/backend/pyproject.toml" <<'TOML'
+          [tool.mypy]
+          python_version = "3.13"
+          strict = true
+          TOML
+            : > "$root/backend/app/__init__.py"
+            cat > "$root/backend/app/calc.py" <<'PY'
+          def add(a: int, b: int) -> int:
+              return a + b
+
+
+          VALUE: int = add(1, 2)
+          PY
+          }
+
+          # Fault injection for the cache negatives only: the real venv python
+          # behind a shim that, when mypy is started with the wrapper's
+          # --cache-dir=/dev/null, first writes into backend/.mypy_cache (cwd).
+          # mypy itself still runs for real; the wrapper must notice the write.
+          install_cache_shim() {
+            rm "$1/backend/.venv"
+            mkdir -p "$1/backend/.venv/bin"
+            cp "$venv/pyvenv.cfg" "$1/backend/.venv/pyvenv.cfg"
+            cat > "$1/backend/.venv/bin/python" <<SHIM
+          #!/bin/bash
+          case " \$* " in *" --cache-dir=/dev/null "*) mkdir -p .mypy_cache; echo injected >> .mypy_cache/injected ;; esac
+          exec "$venv/bin/python" "\$@"
+          SHIM
+            chmod +x "$1/backend/.venv/bin/python"
+          }
+
+          # run_case LABEL ROOT WANT_RC [ENV=VALUE]: run the copied wrapper under
+          # a cleared environment and keep its combined output in $out.
+          run_case() {
+            label="$1"
+            croot="$2"
+            want="$3"
+            set +e
+            out="$(cd "$work" && env -i PATH=/usr/bin:/bin HOME="$work/home" TMPDIR="$work/tmp" ${4:+"$4"} \
+              "$venv/bin/python" "$croot/tools/run_scoped_mypy.py" 2>&1)"
+            rc=$?
+            set -e
+            printf -- '--- %s: rc=%s (want %s)\n%s\n' "$label" "$rc" "$want" "$out"
+            [[ "$rc" -eq "$want" ]] || fail "$label: wrapper rc is $rc, expected $want"
+          }
+
+          # Denied before mypy starts: rc 2, exactly one DENY line with the
+          # targeted message, no plan JSON and no mypy output.
+          expect_predenial() {
+            expect_in "DENY: $1"
+            [[ "$(printf '%s\n' "$out" | grep -c '^DENY:')" -eq 1 ]] || fail "$label: expected exactly one DENY line"
+            expect_not_in '"expected_source_files"'
+            expect_not_in 'Success: no issues found'
+            expect_not_in 'run_scoped_mypy: rc='
+          }
+
+          # Denied after a real mypy run: the plan was accepted and mypy printed
+          # its own success line, so the targeted post-run check is what denied.
+          expect_postdenial() {
+            expect_in "DENY: $1"
+            [[ "$(printf '%s\n' "$out" | grep -c '^DENY:')" -eq 1 ]] || fail "$label: expected exactly one DENY line"
+            expect_in '"expected_source_files": 2'
+            expect_in 'Success: no issues found in 2 source files'
+            expect_not_in 'run_scoped_mypy: rc='
+          }
+
+          # Positive: two synthetic files, exact success.
+          build_tree positive
+          run_case positive "$root" 0
+          expect_in '"expected_source_files": 2'
+          printf '%s\n' "$out" | grep -Fx 'Success: no issues found in 2 source files' >/dev/null || fail "positive: exact mypy success line absent"
+          expect_in 'no issues found in exactly 2 source files'
+          expect_not_in 'DENY:'
+          [[ ! -e "$root/backend/.mypy_cache" && ! -e "$root/.mypy_cache" ]] || fail "positive: a .mypy_cache exists"
+          echo "positive observed: rc=0, exact success line, count 2, no cache"
+
+          # Negative 1: a symlink inside backend/app.
+          build_tree n1-symlink
+          ln -s calc.py "$root/backend/app/linked.py"
+          run_case n1-symlink "$root" 2
+          expect_predenial "symlink inside backend/app: linked.py"
+
+          # Negative 2: one extra [tool.mypy] key.
+          build_tree n2-config-key
+          printf 'ignore_errors = true\n' >> "$root/backend/pyproject.toml"
+          run_case n2-config-key "$root" 2
+          expect_predenial "[tool.mypy] keys are ['ignore_errors', 'python_version', 'strict']"
+
+          # Negative 3: ambient MYPYPATH.
+          build_tree n3-mypypath
+          mkdir -p "$work/elsewhere"
+          run_case n3-mypypath "$root" 2 "MYPYPATH=$work/elsewhere"
+          expect_predenial "MYPYPATH is set in the environment"
+
+          # Negative 4: .mypy_cache created during the run (absent beforehand).
+          build_tree n4-cache-created
+          install_cache_shim "$root"
+          run_case n4-cache-created "$root" 2
+          expect_postdenial "a .mypy_cache was created or modified"
+          [[ -f "$root/backend/.mypy_cache/injected" ]] || fail "n4-cache-created: the injected write never happened"
+
+          # Control for negative 5: a pre-existing, untouched cache is tolerated.
+          build_tree c5-cache-preexisting
+          mkdir "$root/backend/.mypy_cache"
+          echo seed > "$root/backend/.mypy_cache/seed"
+          run_case c5-cache-preexisting "$root" 0
+          expect_in 'no issues found in exactly 2 source files'
+
+          # Negative 5: the same pre-existing cache mutated during the run.
+          build_tree n5-cache-mutated
+          mkdir "$root/backend/.mypy_cache"
+          echo seed > "$root/backend/.mypy_cache/seed"
+          install_cache_shim "$root"
+          run_case n5-cache-mutated "$root" 2
+          expect_postdenial "a .mypy_cache was created or modified"
+          [[ -f "$root/backend/.mypy_cache/injected" ]] || fail "n5-cache-mutated: the injected write never happened"
+
+          # Negative 6: source-count mismatch. A dot-prefixed file passes the
+          # wrapper's count (only directories are checked for the dot rule) but
+          # mypy skips it, so mypy reports 2 files where the wrapper counted 3.
+          build_tree n6-count-mismatch
+          cp "$root/backend/app/calc.py" "$root/backend/app/.extra.py"
+          run_case n6-count-mismatch "$root" 2
+          expect_in 'DENY: mypy checked 2 source files, expected exactly 3'
+          [[ "$(printf '%s\n' "$out" | grep -c '^DENY:')" -eq 1 ]] || fail "n6-count-mismatch: expected exactly one DENY line"
+          expect_in '"expected_source_files": 3'
+          expect_in 'Success: no issues found in 2 source files'
+
+          # Negative 7: vacuous source tree (no .py at all).
+          build_tree n7-vacuous
+          rm "$root/backend/app/__init__.py" "$root/backend/app/calc.py"
+          echo "not python" > "$root/backend/app/NOTE.txt"
+          run_case n7-vacuous "$root" 2
+          expect_predenial "backend/app holds no .py file"
+
+          echo "wrapper boundary proof observed: 1 positive, 1 control, 7 fail-closed negatives"
+
+      - name: Wrapper test suite - actual run_scoped_mypy tests (incl. followed-import closure) on pinned cp313
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          venv="$RUNNER_TEMP/venv-typecheck"
+          for f in "$head/tools/run_scoped_mypy.py" "$head/tools/tests/test_run_scoped_mypy.py"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+            "$venv/bin/python" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(), sys.argv[1])' "$f"
+          done
+          work="$(mktemp -d "$RUNNER_TEMP/wrapper-tests.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/home" "$work/tmp" "$work/repo/tools/tests" "$work/repo/backend"
+          cp "$head/tools/run_scoped_mypy.py" "$work/repo/tools/"
+          cp "$head/tools/tests/test_run_scoped_mypy.py" "$work/repo/tools/tests/"
+          # The test module resolves the interpreter as <repo>/backend/.venv/bin/python
+          # from its own location; the fetched head is never written to.
+          ln -s "$venv" "$work/repo/backend/.venv"
+          test_file="$work/repo/tools/tests/test_run_scoped_mypy.py"
+          [[ -x "$work/repo/backend/.venv/bin/python" ]] || { echo "DENY: disposable tree has no executable backend/.venv/bin/python" >&2; exit 1; }
+
+          expected_count="$(grep -c '^    def test_' "$test_file")"
+          [[ "$expected_count" -ge 57 ]] || { echo "DENY: test module defines only $expected_count tests, expected at least 57" >&2; exit 1; }
+
+          set +e
+          out="$(cd "$work" && env -i PATH=/usr/bin:/bin HOME="$work/home" TMPDIR="$work/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \
+            "$venv/bin/python" -I "$test_file" -v 2>&1)"
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          [[ "$rc" -eq 0 ]] || { echo "DENY: wrapper test module rc is $rc, expected 0" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -E "^Ran $expected_count tests in " >/dev/null \
+            || { echo "DENY: unittest did not run exactly $expected_count tests" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -Fx 'OK' >/dev/null \
+            || { echo "DENY: unittest did not end with a bare OK (skips or failures present)" >&2; exit 1; }
+          if printf '%s\n' "$out" | grep -E '(\.\.\. (FAIL|ERROR|skipped|expected failure|unexpected success)|^(FAIL|ERROR): |^FAILED|^OK \()' >/dev/null; then
+            echo "DENY: skip, failure or error marker present in unittest output" >&2
+            exit 1
+          fi
+
+          # Every followed-import closure test must appear as an individual ok.
+          closure_tests=(
+            ImportClosureTest.test_clean_followed_harness_is_eligible_and_not_counted
+            ImportClosureTest.test_import_spellings_all_reach_the_harness
+            ImportClosureTest.test_type_checking_guarded_import_is_followed
+            ImportClosureTest.test_hiding_constructs_in_followed_harness_denied
+            ImportClosureTest.test_transitive_edges_are_followed
+            ImportClosureTest.test_relative_import_in_harness_and_cycles
+            ImportClosureTest.test_import_from_app_back_into_app_is_not_an_escape
+            ImportClosureTest.test_namespace_directory_modules_are_still_scanned
+            ImportClosureTest.test_external_and_non_local_imports_are_not_followed
+            ImportClosureTest.test_unresolved_edge_into_a_claimed_local_package_denied
+            ImportClosureTest.test_relative_import_climbing_above_backend_denied
+            ImportClosureTest.test_symlinked_or_stubbed_local_module_denied
+            ImportClosureTest.test_symlinked_local_package_denied
+            ImportClosureTest.test_closure_size_is_bounded
+            ImportClosureTest.test_closure_change_between_plans_changes_the_fingerprint
+            ExecutedAgainstSyntheticFixturesTest.test_followed_harness_positive_passes_with_app_only_count
+            ExecutedAgainstSyntheticFixturesTest.test_followed_harness_hiding_denied_even_when_mypy_would_succeed
+          )
+          for t in "${closure_tests[@]}"; do
+            printf '%s\n' "$out" | grep -F "(__main__.$t) ... ok" >/dev/null \
+              || { echo "DENY: closure test did not report ok: $t" >&2; exit 1; }
+            echo "closure test observed ok: $t"
+          done
+          echo "wrapper test suite observed: $expected_count tests ok on pinned cp313, ${#closure_tests[@]} followed-import closure tests individually ok, no skips"
