@@ -11,14 +11,23 @@
 # asserted interpreter with the bundled, unupgraded pip; hash-enforced install
 # of the lock; run mypy ONCE, against a fixture this job creates in a
 # disposable directory; then two negatives (a mismatched macOS mypy digest
-# derived programmatically from the existing dev lock, and the runner's
-# a resolvable non-3.13 python3). A final step then proves the CAP-012 wrapper's
-# enforcement boundary (M1C-R04-CAP012-WRAPPER-CI-20261013): the ACTUAL
-# tools/run_scoped_mypy.py (self-contained; copied ALONE, no CAP-011 file),
-# copied byte-for-byte from the fetched head into job-created disposable checkouts
-# shaped backend/app + backend/pyproject.toml + tools/, run with the pinned
-# cp313 venv: one positive and seven fail-closed negatives, each asserting its
-# exit code, its exact diagnostic, and whether mypy was reached.
+# derived programmatically from the existing dev lock, and a resolvable
+# non-3.13 python3 - the runner's default python3 when it is not 3.13). A
+# further step proves the CAP-012 wrapper's enforcement boundary
+# (M1C-R04-CAP012-WRAPPER-CI-20261013): the ACTUAL tools/run_scoped_mypy.py
+# (self-contained; copied ALONE, no CAP-011 file), copied byte-for-byte from
+# the fetched head into job-created disposable checkouts shaped backend/app +
+# backend/pyproject.toml + tools/, run with the pinned cp313 venv: one
+# positive, one control and seven fail-closed negatives, each asserting its
+# exit code, its exact diagnostic, and whether mypy was reached. The final
+# step (M1C-R04-CAP012-R3B7-CI-20261014) copies the ACTUAL wrapper and its
+# ACTUAL test module tools/tests/test_run_scoped_mypy.py into a disposable
+# repo-shaped tree under RUNNER_TEMP, points that tree's backend/.venv at the
+# pinned cp313 venv, and runs the whole module there - including the
+# followed-import closure positive and negative tests (ImportClosureTest and
+# the two followed-harness cases that start real mypy on synthetic fixtures).
+# It fails closed on any failure, error, skip, deselection or missing
+# expected test, and prints every closure test outcome into the log.
 #
 # Constraints held by construction:
 #   - No action references of any kind (no CAP-approved action exists; see
@@ -38,8 +47,13 @@
 #   - Not a required status check and not GOV-01-R04's non-bypassable gate.
 #     Its value, once run, is the inspected run record, not the conclusion.
 #   - CAP-012 stays QUALIFIED - NOT APPROVED. No real-code type-check exists.
-#   - Red-job control (a deliberately inverted assertion turning the job red)
-#     is NOT authored here; it needs a separate disposable CI run.
+#   - Red-job control: this workflow contains no inverted assertion and is
+#     expected to be green. The historic red control is a separate disposable
+#     branch, draft PR #5 (head 87a34a3, run 38462384172), whose one inverted
+#     assertion turned the job red as intended; PR #5 must never merge and is
+#     not evidence about the current bytes. The current candidate runs on
+#     draft PR #7; a PR #7 run is the only record that can speak for these
+#     bytes, and only once inspected against its pinned head, run and log.
 
 name: typecheck-qualification-drill
 
@@ -437,3 +451,70 @@ jobs:
           expect_predenial "backend/app holds no .py file"
 
           echo "wrapper boundary proof observed: 1 positive, 1 control, 7 fail-closed negatives"
+
+      - name: Wrapper test suite - actual run_scoped_mypy tests (incl. followed-import closure) on pinned cp313
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$RUNNER_TEMP/head"
+          venv="$RUNNER_TEMP/venv-typecheck"
+          for f in "$head/tools/run_scoped_mypy.py" "$head/tools/tests/test_run_scoped_mypy.py"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "DENY: $f is not a regular file" >&2; exit 1; }
+            "$venv/bin/python" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(), sys.argv[1])' "$f"
+          done
+          work="$(mktemp -d "$RUNNER_TEMP/wrapper-tests.XXXXXXXX")"
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work/home" "$work/tmp" "$work/repo/tools/tests" "$work/repo/backend"
+          cp "$head/tools/run_scoped_mypy.py" "$work/repo/tools/"
+          cp "$head/tools/tests/test_run_scoped_mypy.py" "$work/repo/tools/tests/"
+          # The test module resolves the interpreter as <repo>/backend/.venv/bin/python
+          # from its own location; the fetched head is never written to.
+          ln -s "$venv" "$work/repo/backend/.venv"
+          test_file="$work/repo/tools/tests/test_run_scoped_mypy.py"
+          [[ -x "$work/repo/backend/.venv/bin/python" ]] || { echo "DENY: disposable tree has no executable backend/.venv/bin/python" >&2; exit 1; }
+
+          expected_count="$(grep -c '^    def test_' "$test_file")"
+          [[ "$expected_count" -ge 57 ]] || { echo "DENY: test module defines only $expected_count tests, expected at least 57" >&2; exit 1; }
+
+          set +e
+          out="$(cd "$work" && env -i PATH=/usr/bin:/bin HOME="$work/home" TMPDIR="$work/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \
+            "$venv/bin/python" -I "$test_file" -v 2>&1)"
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          [[ "$rc" -eq 0 ]] || { echo "DENY: wrapper test module rc is $rc, expected 0" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -E "^Ran $expected_count tests in " >/dev/null \
+            || { echo "DENY: unittest did not run exactly $expected_count tests" >&2; exit 1; }
+          printf '%s\n' "$out" | grep -Fx 'OK' >/dev/null \
+            || { echo "DENY: unittest did not end with a bare OK (skips or failures present)" >&2; exit 1; }
+          if printf '%s\n' "$out" | grep -E '(\.\.\. (FAIL|ERROR|skipped|expected failure|unexpected success)|^(FAIL|ERROR): |^FAILED|^OK \()' >/dev/null; then
+            echo "DENY: skip, failure or error marker present in unittest output" >&2
+            exit 1
+          fi
+
+          # Every followed-import closure test must appear as an individual ok.
+          closure_tests=(
+            ImportClosureTest.test_clean_followed_harness_is_eligible_and_not_counted
+            ImportClosureTest.test_import_spellings_all_reach_the_harness
+            ImportClosureTest.test_type_checking_guarded_import_is_followed
+            ImportClosureTest.test_hiding_constructs_in_followed_harness_denied
+            ImportClosureTest.test_transitive_edges_are_followed
+            ImportClosureTest.test_relative_import_in_harness_and_cycles
+            ImportClosureTest.test_import_from_app_back_into_app_is_not_an_escape
+            ImportClosureTest.test_namespace_directory_modules_are_still_scanned
+            ImportClosureTest.test_external_and_non_local_imports_are_not_followed
+            ImportClosureTest.test_unresolved_edge_into_a_claimed_local_package_denied
+            ImportClosureTest.test_relative_import_climbing_above_backend_denied
+            ImportClosureTest.test_symlinked_or_stubbed_local_module_denied
+            ImportClosureTest.test_symlinked_local_package_denied
+            ImportClosureTest.test_closure_size_is_bounded
+            ImportClosureTest.test_closure_change_between_plans_changes_the_fingerprint
+            ExecutedAgainstSyntheticFixturesTest.test_followed_harness_positive_passes_with_app_only_count
+            ExecutedAgainstSyntheticFixturesTest.test_followed_harness_hiding_denied_even_when_mypy_would_succeed
+          )
+          for t in "${closure_tests[@]}"; do
+            printf '%s\n' "$out" | grep -F "(__main__.$t) ... ok" >/dev/null \
+              || { echo "DENY: closure test did not report ok: $t" >&2; exit 1; }
+            echo "closure test observed ok: $t"
+          done
+          echo "wrapper test suite observed: $expected_count tests ok on pinned cp313, ${#closure_tests[@]} followed-import closure tests individually ok, no skips"
