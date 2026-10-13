@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Focused behavioral tests for two assertions in
+Focused behavioral tests for assertions in
 .github/workflows/typecheck-qualification-drill.yml (MOD-001, CAP-012
-synthetic Linux CI drill; authored-only, no live run exists).
+synthetic Linux CI drill; local tests only, never evidence about a CI run).
 
 Synthetic only: no network, no mypy, no Veyro source is type-checked. Each
 test extracts the real step script from the workflow text (no YAML parser is
@@ -24,6 +24,14 @@ here:
      and the local backend/.venv (macOS, CPython 3.14: a stand-in for the
      Linux cp313 venv), and then re-run with one deliberate sabotage each to
      prove every assertion can actually turn the step red (no false-green).
+
+  4. The "Wrapper test suite" step (CAP-012 R3-B7) copies the ACTUAL wrapper
+     and the ACTUAL tools/tests/test_run_scoped_mypy.py (including the
+     followed-import closure positive/negative tests) into a disposable
+     repo-shaped tree under RUNNER_TEMP, links its backend/.venv to the pinned
+     cp313 venv and runs the module there. It must fail closed on any failure,
+     skip, short count or missing named closure test. Static tests pin the
+     wiring; behavior tests execute the step locally and sabotage it.
 
 Run with the project venv interpreter. A local run is NOT evidence about
 GitHub-hosted runner behaviour (host bash and pip versions differ).
@@ -284,6 +292,155 @@ class WrapperBoundaryBehaviorTests(unittest.TestCase):
                 [BASH, "-c", script], capture_output=True, text=True, cwd=tmp, check=False,
                 env={"PATH": "/usr/bin:/bin", "RUNNER_TEMP": str(tmp)},
             )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("is not a regular file", proc.stderr)
+
+
+SUITE_STEP = "Wrapper test suite"
+SUITE_TEST = REPO / "tools" / "tests" / "test_run_scoped_mypy.py"
+CLOSURE_TESTS = (
+    "ImportClosureTest.test_clean_followed_harness_is_eligible_and_not_counted",
+    "ImportClosureTest.test_hiding_constructs_in_followed_harness_denied",
+    "ImportClosureTest.test_closure_size_is_bounded",
+    "ExecutedAgainstSyntheticFixturesTest.test_followed_harness_positive_passes_with_app_only_count",
+    "ExecutedAgainstSyntheticFixturesTest.test_followed_harness_hiding_denied_even_when_mypy_would_succeed",
+)
+
+
+class WrapperSuiteStaticTests(unittest.TestCase):
+    def setUp(self):
+        self.text = WORKFLOW.read_text(encoding="utf-8")
+        self.script = step_script(SUITE_STEP)
+
+    def test_step_runs_after_the_boundary_proof_in_the_same_job(self):
+        self.assertLess(self.text.index(f"- name: {WRAPPER_STEP}"), self.text.index(f"- name: {SUITE_STEP}"))
+        self.assertEqual(len(re.findall(r"(?m)^  [a-z-]+:\n    name:", self.text)), 1)
+        self.assertIn("timeout-minutes: 15", self.text)
+
+    def test_runs_the_copied_actual_module_in_a_disposable_tree(self):
+        self.assertIn('cp "$head/tools/run_scoped_mypy.py" "$work/repo/tools/"', self.script)
+        self.assertIn('cp "$head/tools/tests/test_run_scoped_mypy.py" "$work/repo/tools/tests/"', self.script)
+        self.assertIn('mktemp -d "$RUNNER_TEMP/wrapper-tests.XXXXXXXX"', self.script)
+        self.assertIn('ln -s "$venv" "$work/repo/backend/.venv"', self.script)
+        self.assertIn('"$venv/bin/python" -I "$test_file" -v', self.script)
+        self.assertNotIn("GITHUB_WORKSPACE", self.script)
+        self.assertNotIn("$head/backend", self.script)
+
+    def test_never_runs_mypy_or_pytest_on_veyro_source(self):
+        self.assertNotIn("-m mypy", self.script)
+        self.assertNotIn("pytest", self.script)
+
+    def test_fails_closed_on_count_ok_markers_and_every_named_closure_test(self):
+        self.assertIn("grep -c '^    def test_'", self.script)
+        self.assertIn('"^Ran $expected_count tests in "', self.script)
+        self.assertIn("grep -Fx 'OK'", self.script)
+        self.assertIn("skip, failure or error marker present", self.script)
+        self.assertIn("closure test did not report ok", self.script)
+        for name in CLOSURE_TESTS:
+            with self.subTest(name=name):
+                self.assertIn(name, self.script)
+        self.assertEqual(self.script.count("ImportClosureTest.test_"), 15)
+        self.assertEqual(self.script.count("ExecutedAgainstSyntheticFixturesTest.test_followed_harness"), 2)
+
+    def test_every_listed_closure_test_exists_in_the_committed_module(self):
+        source = SUITE_TEST.read_text(encoding="utf-8")
+        for name in re.findall(r"^\s+((?:ImportClosureTest|ExecutedAgainstSyntheticFixturesTest)\.test_\w+)$", self.script, re.M):
+            cls, meth = name.split(".")
+            with self.subTest(name=name):
+                self.assertRegex(source, rf"(?s)class {cls}\b.*?def {meth}\(")
+
+    def test_log_prints_the_outcome_summary(self):
+        self.assertIn("closure test observed ok: $t", self.script)
+        self.assertIn("wrapper test suite observed:", self.script)
+
+
+@unittest.skipUnless(LOCAL_VENV.joinpath("bin", "python").is_file(), "backend/.venv absent")
+class WrapperSuiteBehaviorTests(unittest.TestCase):
+    """Executes the step locally against the committed bytes. Not CI evidence."""
+
+    def run_step(self, script_edit=None, test_text=None, test_symlink=False):
+        script = step_script(SUITE_STEP)
+        if script_edit:
+            for old, new in script_edit:
+                self.assertIn(old, script, "sabotage target not found: test would be vacuous")
+                script = script.replace(old, new, 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            tools = tmp / "head" / "tools"
+            (tools / "tests").mkdir(parents=True)
+            shutil.copy(REPO / "tools" / "run_scoped_mypy.py", tools / "run_scoped_mypy.py")
+            target = tools / "tests" / "test_run_scoped_mypy.py"
+            if test_symlink:
+                shutil.copy(SUITE_TEST, tmp / "real_test.py")
+                os.symlink(tmp / "real_test.py", target)
+            else:
+                text = SUITE_TEST.read_text(encoding="utf-8") if test_text is None else test_text
+                target.write_text(text, encoding="utf-8")
+            os.symlink(LOCAL_VENV, tmp / "venv-typecheck")
+            env = {"PATH": "/usr/bin:/bin", "RUNNER_TEMP": str(tmp), "HOME": str(tmp)}
+            proc = subprocess.run(
+                [BASH, "-c", script], capture_output=True, text=True, env=env, cwd=tmp, check=False,
+            )
+            self.assertFalse(list(tmp.glob("wrapper-tests.*")), "disposable tree was not cleaned up")
+            return proc
+
+    def test_unmodified_step_passes_and_logs_every_closure_test(self):
+        proc = self.run_step()
+        self.assertEqual(proc.returncode, 0, proc.stdout[-1500:] + proc.stderr)
+        self.assertRegex(proc.stdout, r"(?m)^Ran \d+ tests in ")
+        self.assertRegex(proc.stdout, r"(?m)^OK$")
+        self.assertEqual(proc.stdout.count("closure test observed ok: "), 17)
+        for name in CLOSURE_TESTS:
+            self.assertIn(f"closure test observed ok: {name}", proc.stdout)
+        self.assertIn("wrapper test suite observed:", proc.stdout)
+
+    def test_a_failing_test_turns_the_step_red(self):
+        text = SUITE_TEST.read_text(encoding="utf-8").replace(
+            "    def test_closure_size_is_bounded(self) -> None:\n",
+            "    def test_closure_size_is_bounded(self) -> None:\n        self.fail('sabotage')\n",
+            1,
+        )
+        self.assertIn("sabotage", text)
+        proc = self.run_step(test_text=text)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("wrapper test module rc is 1", proc.stderr)
+
+    def test_a_skipped_closure_test_is_not_accepted(self):
+        marker = "    def test_closure_size_is_bounded(self) -> None:\n"
+        text = SUITE_TEST.read_text(encoding="utf-8").replace(
+            marker, "    @unittest.skip('sabotage')\n" + marker, 1
+        )
+        self.assertIn("sabotage", text)
+        proc = self.run_step(test_text=text)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("bare OK", proc.stderr)
+
+    def test_a_missing_venv_cannot_silently_skip_the_executed_tests(self):
+        proc = self.run_step(script_edit=[
+            ('ln -s "$venv" "$work/repo/backend/.venv"', ":"),
+            ('[[ -x "$work/repo/backend/.venv/bin/python" ]]', "[[ -d / ]]"),
+        ])
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertTrue(
+            "bare OK" in proc.stderr or "skip, failure or error marker" in proc.stderr
+            or "rc is" in proc.stderr, proc.stderr,
+        )
+
+    def test_a_renamed_closure_test_is_not_accepted(self):
+        text = SUITE_TEST.read_text(encoding="utf-8").replace(
+            "def test_closure_size_is_bounded(", "def test_closure_size_is_bounded_renamed(", 1
+        )
+        proc = self.run_step(test_text=text)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("closure test did not report ok: ImportClosureTest.test_closure_size_is_bounded", proc.stderr)
+
+    def test_a_shrunken_module_is_not_accepted(self):
+        proc = self.run_step(test_text="import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        pass\n\n\nif __name__ == '__main__':\n    unittest.main()\n")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("expected at least 57", proc.stderr)
+
+    def test_a_symlinked_test_module_is_refused(self):
+        proc = self.run_step(test_symlink=True)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("is not a regular file", proc.stderr)
 
