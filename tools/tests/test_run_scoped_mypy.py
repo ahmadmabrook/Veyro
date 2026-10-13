@@ -218,6 +218,45 @@ class PlanRefusalTest(Base):
         self.assertDenied("interpreter")
 
 
+class StubPackageTest(Base):
+    """PEP 561 top-level `backend/*-stubs` entries can shadow modules mypy follows: denied."""
+
+    def test_clean_backend_without_stubs_plans(self) -> None:
+        (self.root / "backend" / "stubs").mkdir()  # not a `-stubs` name: unaffected
+        (self.root / "backend" / "my-stub").mkdir()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_any_top_level_stubs_entry_denied(self) -> None:
+        backend = self.root / "backend"
+        for name in ("tests-stubs", "app-stubs", "unrelated-stubs", "Tests-Stubs", "x-STUBS"):
+            for kind in ("dir", "file"):
+                with self.subTest(f"{name} {kind}"):
+                    path = backend / name
+                    path.mkdir() if kind == "dir" else path.write_text("")
+                    self.assertDenied("stub package")
+                    shutil.rmtree(path) if kind == "dir" else path.unlink()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_symlink_and_broken_symlink_stubs_denied(self) -> None:
+        link = self.root / "backend" / "tests-stubs"
+        real = self.root / "real-stubs"
+        real.mkdir()
+        link.symlink_to(real)
+        self.assertDenied("stub package")
+        link.unlink()
+        link.symlink_to(self.root / "does-not-exist")
+        self.assertFalse(link.exists())
+        self.assertDenied("stub package")
+
+    def test_nested_stubs_directory_is_not_top_level(self) -> None:
+        (self.app / "core" / "x-stubs").mkdir()
+        self.assertEqual(self.plan().expected_sources, 3)
+
+    def test_unlistable_backend_denied(self) -> None:
+        with mock.patch.object(w.os, "scandir", side_effect=PermissionError("nope")):
+            self.assertDenied("cannot list backend")
+
+
 class ImportClosureTest(Base):
     """mypy follows imports out of `backend/app`; the followed local modules are scanned too."""
 
@@ -422,6 +461,22 @@ class CacheSideEffectTest(Base):
         with self.assertRaises(Denied):
             self.run_with(swap)
 
+    def test_stub_package_appearing_during_the_run_denied(self) -> None:
+        stubs = self.root / "backend" / "tests-stubs"
+        with self.assertRaises(Denied) as caught:
+            self.run_with(stubs.mkdir)
+        self.assertIn("stub package", str(caught.exception))
+        stubs.rmdir()
+        broken = self.root / "backend" / "app-stubs"
+        with self.assertRaises(Denied):
+            self.run_with(lambda: broken.symlink_to(self.root / "does-not-exist"))
+
+    def test_stub_package_present_before_the_run_never_starts_mypy(self) -> None:
+        (self.root / "backend" / "tests-stubs").mkdir()
+        with mock.patch.object(w.subprocess, "run") as spawned, self.assertRaises(Denied):
+            w.run(self.root, self.fake_python)
+        spawned.assert_not_called()
+
 
 class ClassifyResultTest(unittest.TestCase):
     def test_only_exact_success_line_with_exact_count_passes(self) -> None:
@@ -451,6 +506,25 @@ class ClassifyResultTest(unittest.TestCase):
 
     def test_rc_1_is_type_errors_not_denial(self) -> None:
         self.assertEqual(w.classify_result(1, "Found 2 errors in 1 file\n", "", 3)[0], w.EXIT_TYPE_ERRORS)
+
+
+class MainBoundaryTest(Base):
+    """A non-Denied crash must not leave CPython's rc 1, which means "type errors"."""
+
+    def test_unexpected_exception_is_a_denial_not_type_errors(self) -> None:
+        for target, argv in (("run", []), ("plan", ["--plan"])):  # both mocked: the real tree is never read
+            with self.subTest(target), mock.patch.object(w, target, side_effect=RuntimeError("boom")), \
+                    mock.patch("sys.stdout"), mock.patch("sys.stderr") as err:
+                self.assertEqual(w.main(argv), w.EXIT_DENIED)
+                self.assertIn("RuntimeError", "".join(c.args[0] for c in err.write.call_args_list))
+        self.assertNotEqual(w.EXIT_DENIED, w.EXIT_TYPE_ERRORS)
+
+    def test_denied_still_denied_and_base_exceptions_propagate(self) -> None:
+        with mock.patch.object(w, "run", side_effect=Denied("x")), mock.patch("sys.stderr"):
+            self.assertEqual(w.main([]), w.EXIT_DENIED)
+        for exc in (KeyboardInterrupt, SystemExit):
+            with self.subTest(exc.__name__), mock.patch.object(w, "run", side_effect=exc), self.assertRaises(exc):
+                w.main([])
 
 
 @unittest.skipUnless(VENV_PYTHON.is_file(), f"project venv python absent: {VENV_PYTHON}")
@@ -556,6 +630,43 @@ class ExecutedAgainstSyntheticFixturesTest(Base):
         # harness module really is followed by mypy (untyped def under strict)
         (harness / "pg.py").write_text("def add(a, b):\n    return a + b\n")
         self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def raw_mypy_rc(self) -> int:
+        """The wrapper's exact argv run directly, bypassing every wrapper check (control)."""
+        home = self.root / "rawhome"
+        home.mkdir(exist_ok=True)
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "TMPDIR": str(home)}
+        argv = w.Plan(self.root, self.root / "backend", self.app, Path(), VENV_PYTHON, 0, "").argv()
+        return subprocess_run(argv, cwd=self.root / "backend", env=env, capture_output=True,
+                              text=True, check=False, timeout=300).returncode
+
+    def test_stub_package_shadow_hides_real_errors_from_mypy_but_wrapper_denies(self) -> None:
+        backend = self.root / "backend"
+        (backend / "tests" / "harness").mkdir(parents=True)
+        (backend / "tests" / "__init__.py").write_text("X: int = 'err'\n")
+        (backend / "tests" / "harness" / "__init__.py").write_text("")
+        (backend / "tests" / "harness" / "p.py").write_text(CLEAN_MODULE)
+        (self.app / "main.py").write_text("import tests.harness.p\n")
+        # control: without stubs the follow-imported error is real and the wrapper agrees
+        self.assertEqual(self.raw_mypy_rc(), 1)
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+        # the shadow: a top-level `tests-stubs` makes the SAME mypy invocation succeed
+        stubs = backend / "tests-stubs"
+        (stubs / "harness").mkdir(parents=True)
+        for rel in ("__init__.pyi", "harness/__init__.pyi", "harness/p.pyi"):
+            (stubs / rel).write_text("")
+        self.assertEqual(self.raw_mypy_rc(), 0, "mypy no longer honours top-level *-stubs here")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        # symlink and broken-symlink forms of the same shadow are denied too
+        shutil.rmtree(stubs)
+        stubs.symlink_to(self.root / "does-not-exist")
+        self.assertEqual(self.run_wrapper(), w.EXIT_DENIED)
+        stubs.unlink()
+        self.assertEqual(self.run_wrapper(), w.EXIT_TYPE_ERRORS)
+
+    def test_positive_clean_tree_without_stubs_still_passes_after_stub_check(self) -> None:
+        (self.root / "backend" / "stubs").mkdir()
+        self.assertEqual(self.run_wrapper(), w.EXIT_OK)
 
     def test_probe_rejects_a_non_venv_or_non_isolated_interpreter(self) -> None:
         current = w.plan(self.root, VENV_PYTHON, CLEAN_ENV)
