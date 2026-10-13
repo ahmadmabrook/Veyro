@@ -1,0 +1,23 @@
+{
+  "command": "synthetic.widget.create",
+  "externally_retryable": true,
+  "financial_path": false,
+  "idempotency_key_tuple": {
+    "key_field": "idempotency_key",
+    "scope_fields": ["tenant_id", "command_name"]
+  },
+  "retention_window_hours": 24,
+  "stored_request_hash_field": "request_payload_sha256",
+  "stored_result_field": "stored_response",
+  "conflict_http_status": 409,
+  "conflict_error_code": "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD",
+  "command_id_propagation": {
+    "field": "command_id",
+    "targets": ["outbox", "provider_dispatch"]
+  },
+  "provider_idempotency_derivative": {
+    "field": "provider_idempotency_reference",
+    "derived_from": ["tenant_id", "command_id"],
+    "deterministic": true
+  }
+}
