@@ -194,6 +194,20 @@ def is_exempted(review_status: str) -> bool:
     return bool(_EXEMPTION_RE.search(review_status))
 
 
+# Hardened 2026-10-04 (round 16 segment 3, surfaced while fixing finding
+# R16-3) — the same bug this port carried over from validate_capabilities.py's
+# own check 3 (a bare `"approved" not in review_status.lower()` substring
+# test, defeated by any honest row whose own text says "QUALIFIED, not
+# APPROVED" or "never APPROVED," both of which contain the literal word).
+# See validate_capabilities.py's own matching comment for the full history;
+# this is the identical fix, ported the same way the original check was.
+_APPROVED_RE = re.compile(r"^\*{0,2}\s*APPROVED\b", re.IGNORECASE)
+
+
+def is_approved(review_status: str) -> bool:
+    return bool(_APPROVED_RE.match(review_status.strip()))
+
+
 # ---------------------------------------------------------------------------
 # New: generalized ID discovery (replaces parse_manifest_capability_ids).
 # ---------------------------------------------------------------------------
@@ -518,9 +532,10 @@ def main() -> int:
         review_status = row.get("review_status", "")
         exempt = is_exempted(review_status)
 
-        if "approved" not in review_status.lower():
+        if not is_approved(review_status):
             errors.append(
-                f"{cid}: review_status '{review_status}' does not contain APPROVED — "
+                f"BLOCKED: CAPABILITY_NOT_APPROVED — {cid}: review_status "
+                f"'{review_status[:80]}' does not start with APPROVED — "
                 f"cannot satisfy a module dependency (QUALIFIED/BLOCKED-only is "
                 f"insufficient per CAPABILITY_POLICY.md's fail-closed reminder)."
             )
