@@ -30,6 +30,34 @@ missing any of them, or using a `phase` value outside the 4 listed above,
 fails closed (`MISSING_REQUIRED_FIELD`/`INVALID_PHASE`), naming the exact
 file and field/value.
 
+The filename must end in `.yaml` and the file must sit **directly** in
+`records/` — not `.yml`, not `.md` (this template's own extension), and
+not inside a subdirectory such as `records/2026q4/`. Any other file in
+that tree fails closed as `UNRECOGNIZED_RECORD_FILE` naming its relative
+path, rather than being silently skipped (hardened 2026-10-04 after the
+SCN-MOD001-070 round-1 independent review proved all three spellings
+previously let a genuinely out-of-order destructive record set pass with
+exit 0). Only `.gitkeep` and `.DS_Store` are exempt.
+
+Two authoring rules added 2026-10-04 after the round-2 independent review
+found each one passing a destructive out-of-order record with exit 0:
+declare every field **exactly once** — a repeated key (e.g. two `phase:`
+lines) fails closed as `DUPLICATE_FRONT_MATTER_KEY` rather than silently
+taking the last one, because the phase a reader sees must be the phase
+enforced; and put no **symlink** inside `records/` — symlinks are not
+followed, so anything beneath or behind one would go unchecked, and each is
+reported as `SYMLINK_IN_RECORDS_TREE`. (A symlink *to* the whole records
+directory, passed as `--records-dir`, is fine and still works.) A
+`--records-dir` that exists but is not a directory fails closed as
+`RECORDS_PATH_NOT_A_DIRECTORY`, with or without `--require-dir`.
+
+Two further operational notes on the lint, same hardening pass:
+`--require-dir` makes a missing/typo'd `--records-dir` fail closed
+(`MISSING_RECORDS_DIR`) instead of passing vacuously — any future CI
+wiring should pass it. And a pass that checked **zero** records now prints
+a grep-able `NOTICE: ... vacuous pass` line, so an empty `records/` is
+never mistaken for a pass over real records.
+
 Large backfills (the `migrate` phase) must be online/resumable jobs with
 progress and throttling, per TSD §24.2 — never a single deployment
 transaction. Record that throttling approach in `lock_impact` for the

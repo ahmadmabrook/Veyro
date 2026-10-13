@@ -35,6 +35,15 @@ from tests.harness.tenant_isolation import (
 
 RLS_LOG_LINE = 'new row violates row-level security policy for table "access_grant"'
 _POLICY_EXPR = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+# BUG-048: Postgres rewrites a table's ACL on every owner change, so an owner
+# round-trip silently drops the runtime role's DML entry. Re-granted on restore,
+# same statement `create_tenant_table` provisions it with.
+_RUNTIME_GRANT = f"GRANT SELECT, INSERT, UPDATE, DELETE ON harness.access_grant TO {RUNTIME_ROLE}"
+# The post-restore expectation, deliberately NOT derived from `_RUNTIME_GRANT`: a
+# future narrowing edit to that statement has to be caught by this list, not
+# silently followed by it. Checked one privilege at a time — `has_table_privilege`
+# with a comma-separated list is ANY/OR in Postgres, not ALL.
+_RUNTIME_DML: list[str] = ["SELECT", "INSERT", "UPDATE", "DELETE"]
 
 
 def _evidence(tag: str, payload: Any) -> None:
@@ -82,43 +91,45 @@ def test_missing_tenant_context_sees_no_rows(
     assert visible_without_tenant_context(runtime, ACCESS_GRANT) == 0
 
 
-# (id, break, restore, posture codes the harness must raise, behavioural leak expected)
-BREAKAGES = [
+# (id, break, restore statements, posture codes the harness must raise, behavioural leak expected)
+BREAKAGES: list[tuple[str, str, list[str], set[str], bool]] = [
     (
         "rls_disabled",
         "ALTER TABLE harness.access_grant DISABLE ROW LEVEL SECURITY",
-        "ALTER TABLE harness.access_grant ENABLE ROW LEVEL SECURITY",
+        ["ALTER TABLE harness.access_grant ENABLE ROW LEVEL SECURITY"],
         {"RLS_NOT_ENABLED"},
         True,
     ),
     (
         "permissive_policy",  # posture looks fine; only the behavioural probe can catch it
         "ALTER POLICY tenant_isolation ON harness.access_grant USING (true) WITH CHECK (true)",
-        (
-            f"ALTER POLICY tenant_isolation ON harness.access_grant"
-            f" USING ({_POLICY_EXPR}) WITH CHECK ({_POLICY_EXPR})"
-        ),
+        [
+            (
+                f"ALTER POLICY tenant_isolation ON harness.access_grant"
+                f" USING ({_POLICY_EXPR}) WITH CHECK ({_POLICY_EXPR})"
+            )
+        ],
         set(),
         True,
     ),
     (
         "rls_not_forced",
         "ALTER TABLE harness.access_grant NO FORCE ROW LEVEL SECURITY",
-        "ALTER TABLE harness.access_grant FORCE ROW LEVEL SECURITY",
+        ["ALTER TABLE harness.access_grant FORCE ROW LEVEL SECURITY"],
         {"RLS_NOT_FORCED"},
         False,
     ),
     (
         "tenant_id_nullable",
         "ALTER TABLE harness.access_grant ALTER COLUMN tenant_id DROP NOT NULL",
-        "ALTER TABLE harness.access_grant ALTER COLUMN tenant_id SET NOT NULL",
+        ["ALTER TABLE harness.access_grant ALTER COLUMN tenant_id SET NOT NULL"],
         {"TENANT_ID_NULLABLE_OR_MISSING"},
         False,
     ),
     (
         "runtime_owns_table",
         f"ALTER TABLE harness.access_grant OWNER TO {RUNTIME_ROLE}",
-        f"ALTER TABLE harness.access_grant OWNER TO {OWNER_ROLE}",
+        [f"ALTER TABLE harness.access_grant OWNER TO {OWNER_ROLE}", _RUNTIME_GRANT],
         {"RUNTIME_ROLE_OWNS_TABLE"},
         False,
     ),
@@ -134,7 +145,7 @@ def test_scn067_negative_harness_detects_broken_fixture(
     tenants: tuple[UUID, UUID],
     name: str,
     break_sql: str,
-    restore_sql: str,
+    restore_sql: list[str],
     codes: set[str],
     leaks: bool,
 ) -> None:
@@ -143,7 +154,8 @@ def test_scn067_negative_harness_detects_broken_fixture(
     try:
         probe = probe_cross_tenant(runtime, admin, ACCESS_GRANT, a, b, access_grant_row(97))
     finally:
-        admin.execute(restore_sql)
+        for stmt in restore_sql:
+            admin.execute(stmt)
     _evidence(f"SCN-MOD001-067-NEGATIVE[{name}]", {"failures": probe.failures, **asdict(probe)})
 
     assert probe.failures, f"harness PASSED a deliberately broken fixture ({name})"
@@ -151,6 +163,17 @@ def test_scn067_negative_harness_detects_broken_fixture(
     behavioural = [f for f in probe.failures if not f.startswith("POSTURE:")]
     assert bool(behavioural) is leaks
     assert read_posture(runtime, ACCESS_GRANT).violations == [], "fixture not restored"
+    # BUG-048: posture is role/table flags only — it cannot see a dropped ACL entry.
+    # `bool_and` over the unnested list asserts ALL four privileges: one
+    # `has_table_privilege(role, table, 'SELECT, INSERT, UPDATE, DELETE')` call is
+    # satisfied by ANY one of them, so a partial re-grant would pass it.
+    assert one_row(
+        admin.execute(
+            "SELECT bool_and(has_table_privilege(%s, 'harness.access_grant', p))"
+            " FROM unnest(%s::text[]) AS p",
+            (RUNTIME_ROLE, _RUNTIME_DML),
+        )
+    )[0] is True, f"runtime role lost part of its DML grant after restoring {name}"
 
 
 def test_harness_rejects_bypassrls_connection(

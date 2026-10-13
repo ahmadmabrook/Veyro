@@ -264,7 +264,14 @@ def assert_rejected_without_side_effects(
         problems.append("RAW_CREDENTIAL_IN_AUDIT")
     if problems:
         raise AssertionError(f"negative credential {case.name!r} not cleanly rejected: {problems}")
-    return {"case": case.name, "reason": result.reason, "state_unchanged": True, "audit": audit}
+    return {
+        "case": case.name,
+        "reason": result.reason,
+        "state_unchanged": True,
+        "state_before": before,
+        "state_after": after,
+        "audit": audit,
+    }
 
 
 def assert_authenticated(
