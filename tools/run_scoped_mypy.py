@@ -51,16 +51,27 @@ so N would diverge) are refused; and so are the comments/decorators that
 silently hide real errors — `# type: ignore`, inline `# mypy:` config and
 `no_type_check`. The tree and config are fingerprinted before and after the run.
 
+Import closure: mypy follows imports out of `backend/app` into other
+in-repository modules (e.g. `backend/tests/harness`), so those are scanned too.
+Every import is resolved statically against `backend` (mypy's search root),
+transitively; each followed file outside `app` gets the same hiding checks and is
+added to the fingerprint. An import that a regular local package claims but that
+does not resolve, a symlink, a `.pyi` shadow, an unparseable file, or a closure
+over 2000 files is a denial. Stdlib and installed third-party packages are not in
+the repository and are NOT scanned.
+
 Not proven, and not pretended to be: no plugin or `--install-types` flag is
 ever passed, but mypy's own network/plugin behaviour is not sandboxed — the
 absence of those flags and of a config that could enable them is the control.
-Other soft-hiding constructs (`cast`, `Any`, stubs outside the tree reached by
-imports) are not policed. The run is drilled on the macOS CPython 3.14 venv only.
+Other soft-hiding constructs (`cast`, `Any`, installed third-party stubs) are not
+policed. Synthetic runs on Linux CPython 3.13 and macOS CPython 3.14 venvs are
+qualification evidence only, not an approval.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import io
 import json
@@ -96,6 +107,7 @@ RUN_TIMEOUT_SECONDS = 900
 _SKIPPED_DIR_NAMES = {"site-packages", "node_modules"}
 _HIDING_COMMENT = re.compile(r"type:\s*ignore|\bmypy\s*:")
 _SUCCESS = re.compile(r"Success: no issues found in (\d+) source files?")
+MAX_CLOSURE_FILES = 2000
 
 
 class Denied(Exception):
@@ -147,9 +159,10 @@ def _check_source(path: Path, rel: str) -> bytes:
     return data
 
 
-def scan_app(app: Path) -> tuple[int, str]:
+def scan_app(app: Path) -> tuple[int, str, list[Path]]:
     """Count the `.py` files mypy will check; refuse anything the count can't vouch for."""
     count = 0
+    files: list[Path] = []
     digest = hashlib.sha256()
     for dirpath, dirnames, filenames in os.walk(app, followlinks=False):
         dirnames.sort()
@@ -173,10 +186,116 @@ def scan_app(app: Path) -> tuple[int, str]:
             if not path.is_file():
                 raise Denied(f"{rel} is not a regular file")
             _hash_file(digest, rel, _check_source(path, rel))
+            files.append(path)
             count += 1
     if count == 0:
         raise Denied("backend/app holds no .py file: an empty target exits 0 without checking anything")
-    return count, digest.hexdigest()
+    return count, digest.hexdigest(), files
+
+
+def _candidate_exists(backend: Path, parts: list[str]) -> bool:
+    base = backend.joinpath(*parts)
+    return base.is_dir() or base.with_name(base.name + ".py").exists() or base.with_name(base.name + ".pyi").exists()
+
+
+def _resolve_local(backend: Path, parts: list[str]) -> list[Path]:
+    """Files mypy would load for the dotted module `parts`, if it lives under `backend`.
+
+    mypy's search roots here are `backend` (cwd and the target's base dir). A name
+    whose first component is not under `backend` is external (stdlib / installed
+    packages) and yields nothing. Once a regular package or module under `backend`
+    has claimed a prefix, any component that does not resolve is a denial (an
+    unresolved in-repository edge); symlinks and `.pyi` shadows are denials.
+    Namespace directories (no `__init__.py`) are walked but claim nothing.
+    """
+    files: list[Path] = []
+    cur = backend
+    claimed = False
+    for index, part in enumerate(parts):
+        pkg, mod, stub = cur / part, cur / (part + ".py"), cur / (part + ".pyi")
+        init = pkg / "__init__.py"
+        for path in (pkg, mod, stub, init, pkg / "__init__.pyi"):
+            if path.is_symlink():
+                raise Denied(f"symlink in an import closure path: {path}")
+            if path.suffix == ".pyi" and path.exists():
+                raise Denied(f"stub file shadows its module in the import closure: {path}")
+        if mod.exists() and not mod.is_file():
+            raise Denied(f"{mod} is not a regular file")
+        if pkg.is_dir() and init.is_file():
+            files.append(init)
+            claimed = True
+            if mod.is_file():
+                files.append(mod)
+        elif mod.is_file():
+            files.append(mod)
+            if index < len(parts) - 1:
+                raise Denied(f"import {'.'.join(parts)}: {mod} is a module, not a package")
+            return files
+        elif pkg.is_dir():
+            pass  # namespace directory
+        elif claimed:
+            raise Denied(f"unresolved in-repository import edge: {'.'.join(parts)} (missing {part!r})")
+        else:
+            return []
+        cur = pkg
+    return files
+
+
+def _import_edges(tree: ast.AST, path: Path, backend: Path) -> list[list[str]]:
+    edges: list[list[str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            edges.extend(alias.name.split(".") for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base: list[str] = []
+            if node.level:
+                package = list(path.parent.relative_to(backend).parts)
+                if node.level - 1 > len(package):
+                    raise Denied(f"{path}: relative import climbs above backend")
+                base = package[: len(package) - (node.level - 1)]
+            parts = base + (node.module.split(".") if node.module else [])
+            if parts:
+                edges.append(parts)
+            for alias in node.names:
+                if alias.name != "*" and _candidate_exists(backend, parts + [alias.name]):
+                    edges.append(parts + [alias.name])
+    return edges
+
+
+def scan_import_closure(backend: Path, app: Path, seeds: list[Path]) -> str:
+    """Scan the in-repository modules mypy will follow from the `app` sources.
+
+    Static, bounded resolution of every import (any nesting, incl. TYPE_CHECKING)
+    against `backend`, transitively. Each followed file outside `app` gets the same
+    anti-hiding checks as `app` and is fingerprinted. Not covered: stdlib and
+    installed third-party packages (not in the repository, never scanned).
+    """
+    visited = set(seeds)
+    queue = list(seeds)
+    digest = hashlib.sha256()
+    outside: dict[str, bytes] = {}
+    while queue:
+        path = queue.pop()
+        rel = str(path.relative_to(backend))
+        if app in path.parents:
+            data = path.read_bytes()
+        else:
+            data = _check_source(path, rel)
+            outside[rel] = data
+        try:
+            tree = ast.parse(data)
+        except (SyntaxError, ValueError) as exc:
+            raise Denied(f"{rel}: cannot parse, so its imports cannot be followed: {exc}")
+        for parts in _import_edges(tree, path, backend):
+            for found in _resolve_local(backend, parts):
+                if found not in visited:
+                    visited.add(found)
+                    if len(visited) > MAX_CLOSURE_FILES:
+                        raise Denied(f"import closure exceeds {MAX_CLOSURE_FILES} files")
+                    queue.append(found)
+    for rel in sorted(outside):
+        _hash_file(digest, rel, outside[rel])
+    return digest.hexdigest()
 
 
 def check_config(pyproject: Path) -> str:
@@ -279,7 +398,8 @@ def plan(
     if not (interpreter.parent.parent / "pyvenv.cfg").is_file():
         raise Denied(f"{interpreter} is not laid out as a venv interpreter (no pyvenv.cfg)")
     config_hash = check_config(config)
-    count, tree_hash = scan_app(target)
+    count, tree_hash, app_files = scan_app(target)
+    closure_hash = scan_import_closure(cwd, target, app_files)
     return Plan(
         root=root,
         cwd=cwd,
@@ -287,7 +407,7 @@ def plan(
         config=config,
         python=interpreter,
         expected_sources=count,
-        fingerprint=f"{config_hash}:{tree_hash}",
+        fingerprint=f"{config_hash}:{tree_hash}:{closure_hash}",
     )
 
 
