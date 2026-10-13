@@ -37,6 +37,13 @@ parsed line-wise. The tests do not just mirror the file:
      step-3 (post-pin cp/cat of source bytes over a pinned trusted file) are
      EXECUTED against throwaway files/git repos to show the mutant lets the
      drift/overwrite through while the committed step denies or leaves it.
+  3c. BUG-062 round 3 (closed world): the whole workflow file is pinned by SHA-256
+     (`WORKFLOW_SHA256`) and every region - the preamble and each of the seven steps -
+     has insert / reorder / whitespace mutants that must change the digest. A bounded
+     write-surface inventory (`write_surface`) of the committed model is also frozen.
+     The exact-bytes pin is a CHANGE TRIPWIRE for the reviewed bytes, NOT runtime
+     protection: a coordinated edit of workflow + this test (new digest) passes it, and
+     the write-surface inventory is a text heuristic, not a shell parser.
   4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
@@ -186,6 +193,113 @@ TAMPER_STEP_LINES = (
     '  || deny "materialized file count differs from the source listing"',
     'echo "materialized $count inert source blobs from $SOURCE_SHA into the trusted $TRUSTED_SHA tree"',
 )
+
+
+# Closed-world snapshot (BUG-062 round 3). Changing the workflow deliberately means
+# re-reviewing it and updating this digest (and, if needed, WRITE_SURFACE below).
+# This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
+WORKFLOW_SHA256 = "3e3194e22fd27812973403fb6e51fa311e7f0f5430e58f79713d3e377c3c7bb7"
+
+REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
+WRITE_VERB_RE = re.compile(
+    r"(?<![\w$./-])(rm|mv|cp|ln|mkdir|tee|touch|chmod|chown|dd|truncate|install|rsync|tar|sed|awk|"
+    r"perl|ruby|node|eval)\s|(?<![\w$./-])git\s+(-[Cc]\s+\S+\s+)*(init|fetch|checkout|clone|archive|apply|am|"
+    r"reset|restore|merge|worktree|read-tree)\b|-m\s+(venv|pip\s+(install|download|wheel))\b")
+CHANNEL_RE = re.compile(r"GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)\b")
+# Redirect targets must stay in runner scratch space and never name a gate-defining path.
+SAFE_TARGET_RE = re.compile(r'^"\$(RUNNER_TEMP|stage)[/"]')
+GATE_PATH_RE = re.compile(r"/tools/|\.github|requirements-typecheck|pyproject|mypy\.ini|setup\.cfg|tox\.ini")
+
+# Frozen write inventory of the committed workflow: (step number, folded command line).
+WRITE_SURFACE = (
+    (1, 'git init -q "$work"'),
+    (1, 'git -C "$work" fetch -q --no-tags --depth=1 "$REPO_URL" "$TRUSTED_SHA"'),
+    (1, 'git -C "$work" -c advice.detachedHead=false checkout -q FETCH_HEAD'),
+    (1, 'git init -q --bare "$src"'),
+    (1, 'git -C "$src" fetch -q --no-tags --depth=1 "$REPO_URL" "$SOURCE_SHA"'),
+    (3, 'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"'),
+    (3, 'rm -rf "$stage"'),
+    (3, 'mkdir -p "$stage"'),
+    (3, 'mkdir -p "$stage/$(dirname "$path")"'),
+    (3, 'git -C "$src" cat-file blob "$oid" > "$stage/$path"'),
+    (3, 'rm -rf "$work/backend/app"'),
+    (3, 'mv "$stage/backend/app" "$work/backend/app"'),
+    (4, 'printf \'%s\\n\' "$chosen" > "$RUNNER_TEMP/interpreter.path"'),
+    (5, '"$py" -m venv "$RUNNER_TEMP/venv-typecheck"'),
+    (6, '"$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install --require-hashes --only-binary=:all: --no-deps '
+        '--index-url https://pypi.org/simple --no-cache-dir --no-input --disable-pip-version-check -r "$lock"'),
+    (7, 'ln -s "$venv" "$work/backend/.venv"'),
+    (7, "trap 'rm -rf \"$scratch\"' EXIT"),
+    (7, 'mkdir -p "$scratch/home" "$scratch/tmp"'),
+)
+
+
+def snapshot_violations(data):
+    """Closed-world check: the workflow bytes (all steps, preamble, whitespace, EOLs) equal the reviewed snapshot."""
+    got = hashlib.sha256(data).hexdigest()
+    return [] if got == WORKFLOW_SHA256 else [f"workflow sha256 {got} != reviewed snapshot {WORKFLOW_SHA256}"]
+
+
+def write_surface(text):
+    """Bounded, fail-closed write-surface read of the committed model. Returns (inventory, violations).
+
+    A line-wise text heuristic, NOT a shell parser: it flags file-mutating verbs, redirections,
+    GitHub env/path/output channels and redirect targets outside runner scratch or onto gate paths.
+    Writes through anything it does not recognise (interpreters, eval'd strings) are not seen -
+    the exact-bytes pin, not this function, is what freezes the committed behaviour.
+    """
+    inventory, bad = [], []
+    for idx, (_name, _env, script) in enumerate(steps(text), 1):
+        for ln in re.sub(r"\\\n\s*", " ", script).splitlines():
+            ln = ln.strip()
+            targets = [t for t in REDIRECT_RE.findall(ln) if t != "/dev/null"]
+            if WRITE_VERB_RE.search(ln) or targets:
+                inventory.append((idx, re.sub(r"\s+", " ", ln)))
+            for t in targets:
+                if not SAFE_TARGET_RE.match(t) or GATE_PATH_RE.search(t):
+                    bad.append(f"step {idx}: redirect target outside runner scratch or onto a gate path: {t}")
+            if CHANNEL_RE.search(ln):
+                bad.append(f"step {idx}: GitHub env/path/output channel: {ln}")
+    if tuple(inventory) != WRITE_SURFACE:
+        added = [e for e in inventory if e not in WRITE_SURFACE]
+        removed = [e for e in WRITE_SURFACE if e not in inventory]
+        bad.append(f"write inventory differs from the frozen model: added {added}, removed {removed}"
+                   if added or removed else "write inventory reordered/duplicated")
+    return inventory, bad
+
+
+def regions(data):
+    """Split workflow bytes into (label, [lines]) for the preamble and each step, in file order."""
+    lines = data.decode("utf-8").splitlines(keepends=True)
+    starts = [i for i, ln in enumerate(lines) if ln.startswith("      - name: ")]
+    bounds = [0] + starts + [len(lines)]
+    out = [("preamble", lines[:starts[0]])]
+    out += [(f"step {n}", lines[a:b]) for n, (a, b) in enumerate(zip(starts, bounds[2:]), 1)]
+    return out
+
+
+def region_mutants(data):
+    """{label: mutated bytes}: insertion, reorder, whitespace (trailing, blank-line, CRLF) per region."""
+    regs = regions(data)
+    assert len(regs) == 1 + len(EXPECTED_STEPS), [label for label, _ in regs]
+    out = {}
+    for k, (label, lines) in enumerate(regs):
+        def put(new_lines, k=k):
+            return "".join("".join(new_lines if j == k else r[1]) for j, r in enumerate(regs)).encode("utf-8")
+        last = max(i for i, ln in enumerate(lines) if ln.strip())
+        pair = next(i for i in range(1, len(lines) - 1)
+                    if lines[i].strip() and lines[i + 1].strip() and lines[i] != lines[i + 1])
+        body = "          echo tripwire\n" if label != "preamble" else "# tripwire\n"
+        out[f"{label}: insert line"] = put(lines[:last + 1] + [body] + lines[last + 1:])
+        out[f"{label}: insert line first"] = put(lines[:1] + [body] + lines[1:]) if label != "preamble" \
+            else put([body] + lines)
+        swapped = list(lines)
+        swapped[pair], swapped[pair + 1] = swapped[pair + 1], swapped[pair]
+        out[f"{label}: reorder adjacent lines"] = put(swapped)
+        out[f"{label}: trailing space"] = put(lines[:last] + [lines[last].rstrip("\n") + " \n"] + lines[last + 1:])
+        out[f"{label}: extra blank line"] = put(lines + ["\n"])
+        out[f"{label}: CRLF"] = put([ln.replace("\n", "\r\n") for ln in lines])
+    return out
 
 
 def sha256_of(path):
@@ -670,6 +784,75 @@ class AuditPolicyTest(unittest.TestCase):
             self.skipTest("not a git checkout")
         for ref in out.stdout.split():
             self.assertNotIn("typecheck-required", ref, f"candidate ref exists: {ref}")
+
+
+class ClosedWorldSnapshotTest(unittest.TestCase):
+    """BUG-062 round 3: exact-current-snapshot pin over all seven steps + preamble, and a bounded write surface.
+
+    Tripwire for reviewed bytes only: it does not defend against a coordinated workflow+test edit,
+    and it is not CI evidence or gate credit.
+    """
+
+    def setUp(self):
+        self.data = WORKFLOW.read_bytes()
+
+    def test_committed_workflow_is_the_exact_reviewed_snapshot(self):
+        self.assertEqual(snapshot_violations(self.data), [])
+        self.assertEqual(len(regions(self.data)), 1 + len(EXPECTED_STEPS))
+
+    def test_every_region_mutant_changes_bytes_and_is_denied_by_the_snapshot(self):
+        mutants = region_mutants(self.data)
+        for label in ("preamble", *(f"step {n}" for n in range(1, len(EXPECTED_STEPS) + 1))):
+            for kind in ("insert line", "insert line first", "reorder adjacent lines", "trailing space",
+                         "extra blank line", "CRLF"):
+                self.assertIn(f"{label}: {kind}", mutants)
+        for label, mutated in mutants.items():
+            with self.subTest(label):
+                self.assertNotEqual(mutated, self.data, "mutant was a no-op")
+                self.assertNotEqual(snapshot_violations(mutated), [], f"snapshot missed: {label}")
+
+    def test_committed_write_surface_matches_the_frozen_model(self):
+        inventory, bad = write_surface(self.data.decode("utf-8"))
+        self.assertEqual(bad, [])
+        self.assertEqual(tuple(inventory), WRITE_SURFACE)
+
+    def test_write_surface_flags_added_writes_in_any_step(self):
+        text = self.data.decode("utf-8")
+        injected = (
+            'cp "$work/backend/app/__init__.py" "$work/tools/run_scoped_mypy.py"',
+            'printf x > "$RUNNER_TEMP/work/tools/assert_ci_python313.py"',
+            'echo "PATH=/evil:$PATH" >> "$GITHUB_PATH"',
+            'echo x | tee "$RUNNER_TEMP/work/backend/requirements-typecheck-linux-x86_64-cp313.lock.txt"',
+            'sed -i s/a/b/ "$work/backend/pyproject.toml"',
+            'echo x > /etc/passwd',
+            'echo x > "$RUNNER_TEMP/anything"',
+            'chmod +x "$work/backend/app/__init__.py"',
+        )
+        names = [n for n, _e, _s in steps(text)]
+        for step_no, name in enumerate(names, 1):
+            for cmd in injected:
+                with self.subTest(f"step {step_no}: {cmd}"):
+                    mutated = tamper(text, "        run: |\n          set -euo pipefail\n",
+                                     f"        run: |\n          set -euo pipefail\n          {cmd}\n",
+                                     count=1) if step_no == 1 else self._insert_in_step(text, name, cmd)
+                    self.assertNotEqual(mutated, text)
+                    self.assertNotEqual(write_surface(mutated)[1], [], "write surface missed the injected write")
+
+    @staticmethod
+    def _insert_in_step(text, name, cmd):
+        head = f"      - name: {name}\n"
+        start = text.index(head)
+        marker = "          set -euo pipefail\n"
+        at = text.index(marker, start) + len(marker)
+        return text[:at] + f"          {cmd}\n" + text[at:]
+
+    def test_write_surface_flags_removed_or_reordered_writes(self):
+        text = self.data.decode("utf-8")
+        removed = tamper(text, '          rm -rf "$stage"\n', "")
+        self.assertNotEqual(write_surface(removed)[1], [])
+        a, b = '          mkdir -p "$stage"\n', '          rm -rf "$stage"\n'
+        reordered = tamper(text, b + a, a + b)
+        self.assertNotEqual(write_surface(reordered)[1], [])
 
 
 def _git(repo, *args, check=True):
