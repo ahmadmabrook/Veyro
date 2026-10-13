@@ -67,6 +67,11 @@ ROOT = Path(subprocess.run(
 ).stdout.strip())
 assert (ROOT / ".git").exists(), f"expected repo root, got {ROOT}"
 
+# Repaired 2026-10-14 (GOV-01-R04, OWN-008/ADR-009): MOD-001's manifest now
+# lives at its canonical contracts/engineering/ location (the old
+# MOD-001/evidence/ path was deleted and must not be recreated), and uses
+# `required_tool_ids: - id: CAP-NNN` rather than `capability_id:` entries.
+#
 # Extended 2026-10-04 (round 16 segment 3, finding R16-5, P2): this was a
 # single hardcoded MOD-000 path. CAP-008 is MOD-001's own live capability
 # dependency (its GOV-01-R02 harness's Postgres fixture) and appeared in no
@@ -83,7 +88,7 @@ assert (ROOT / ".git").exists(), f"expected repo root, got {ROOT}"
 # change.
 MANIFESTS = [
     ROOT / "knowledge/03-Modules/MOD-000/evidence/module-capabilities.yaml",
-    ROOT / "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml",
+    ROOT / "contracts/engineering/module-capabilities.yaml",
 ]
 REGISTRY = ROOT / "knowledge/00-System/CAPABILITY_REGISTRY.md"
 
@@ -96,9 +101,60 @@ REGISTRY_COLUMNS = [
 
 
 def parse_manifest_capability_ids(text: str) -> list[str]:
-    """Every `capability_id: CAP-NNN` occurrence, in order, duplicates
-    included (duplicate detection is the caller's job — this just extracts)."""
-    return re.findall(r"capability_id:\s*(CAP-\d+)", text)
+    """Every capability dependency ID in a manifest, in order, duplicates
+    included (duplicate detection is the caller's job — this just extracts).
+
+    Two shapes are recognized: `capability_id: CAP-NNN` (MOD-000) and
+    `- id: CAP-NNN` entries inside the top-level `required_tool_ids:` block
+    (MOD-001's canonical manifest). Free-text mentions (blockers, notes) are
+    deliberately not dependencies."""
+    ids = re.findall(r"capability_id:\s*(CAP-\d+)", text)
+    in_block = False
+    for line in text.splitlines():
+        if re.match(r"required_tool_ids:\s*(#.*)?$", line):
+            in_block = True
+            continue
+        if in_block:
+            if line.strip() and not line.startswith((" ", "\t", "#")):
+                in_block = False  # next top-level key
+                continue
+            m = re.match(r"\s+-\s+id:\s*(CAP-\d+)\b", line)
+            if m:
+                ids.append(m.group(1))
+    return ids
+
+
+def read_manifest(path: Path, root: Path = ROOT) -> tuple[str | None, str | None]:
+    """Strictly read one required manifest. Returns (text, None) or
+    (None, reason). Fails closed on absent, symlinked (the file or any
+    parent below `root`), non-regular, unreadable, non-UTF-8, NUL-bearing,
+    empty, or dependency-free manifests."""
+    try:
+        rel_parts = path.relative_to(root).parts
+    except ValueError:
+        return None, f"{path} is outside the repository root"
+    cur = root
+    for part in rel_parts:
+        cur = cur / part
+        if cur.is_symlink():
+            return None, f"{cur} is a symlink"
+    if not path.exists():
+        return None, f"{path} does not exist"
+    if not path.is_file():
+        return None, f"{path} is not a regular file"
+    try:
+        text = path.read_bytes().decode("utf-8")  # strict: no replacement
+    except OSError as exc:
+        return None, f"{path} is unreadable ({exc.__class__.__name__})"
+    except UnicodeDecodeError:
+        return None, f"{path} is not valid UTF-8"
+    if "\x00" in text:
+        return None, f"{path} contains NUL bytes"
+    if not text.strip():
+        return None, f"{path} is empty"
+    if not parse_manifest_capability_ids(text):
+        return None, f"{path} declares no capability dependencies (malformed or unrecognized shape; would validate zero IDs)"
+    return text, None
 
 
 def parse_registry_rows(text: str) -> dict:
@@ -162,36 +218,40 @@ def is_approved(review_status: str) -> bool:
 
 
 def main():
+    manifest_texts = []
     for manifest in MANIFESTS:
-        if not manifest.exists():
-            print(f"BLOCKED: CAPABILITY_MANIFEST_UNREADABLE — {manifest} does not exist.")
+        text, reason = read_manifest(manifest)
+        if reason:
+            print(f"BLOCKED: CAPABILITY_MANIFEST_UNREADABLE — {reason}.")
             return 1
+        manifest_texts.append(text)
     if not REGISTRY.exists():
         print(f"BLOCKED: CAPABILITY_REGISTRY_UNREADABLE — {REGISTRY} does not exist.")
         return 1
 
-    manifest_text = "\n".join(
-        m.read_text(encoding="utf-8", errors="replace") for m in MANIFESTS
-    )
     registry_text = REGISTRY.read_text(encoding="utf-8", errors="replace")
 
-    manifest_ids = parse_manifest_capability_ids(manifest_text)
     registry_rows = parse_registry_rows(registry_text)
 
     errors = []
     info = []
 
-    # 1. Duplicate capability_id in the manifest
+    # 1. Duplicate capability_id within any single manifest. Two different
+    #    modules legitimately depend on the same capability, so duplicates are
+    #    checked per manifest, never across manifests.
     seen = set()
     duplicates = set()
-    for cid in manifest_ids:
-        if cid in seen:
-            duplicates.add(cid)
-        seen.add(cid)
+    for text in manifest_texts:
+        in_manifest = set()
+        for cid in parse_manifest_capability_ids(text):
+            if cid in in_manifest:
+                duplicates.add(cid)
+            in_manifest.add(cid)
+        seen |= in_manifest
     if duplicates:
-        errors.append(f"Duplicate capability_id in module-capabilities.yaml (scope-expansion-under-existing-ID risk, or corrupted manifest): {sorted(duplicates)}")
+        errors.append(f"Duplicate capability_id within a module-capabilities.yaml (scope-expansion-under-existing-ID risk, or corrupted manifest): {sorted(duplicates)}")
     else:
-        info.append(f"{len(seen)} distinct capability_id(s) in manifest, no duplicates.")
+        info.append(f"{len(seen)} distinct capability_id(s) across manifests, no per-manifest duplicates.")
 
     today = date.today().isoformat()
 
