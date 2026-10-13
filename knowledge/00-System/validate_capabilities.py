@@ -67,7 +67,24 @@ ROOT = Path(subprocess.run(
 ).stdout.strip())
 assert (ROOT / ".git").exists(), f"expected repo root, got {ROOT}"
 
-MANIFEST = ROOT / "knowledge/03-Modules/MOD-000/evidence/module-capabilities.yaml"
+# Extended 2026-10-04 (round 16 segment 3, finding R16-5, P2): this was a
+# single hardcoded MOD-000 path. CAP-008 is MOD-001's own live capability
+# dependency (its GOV-01-R02 harness's Postgres fixture) and appeared in no
+# manifest this script read, so this check PASSed while MOD-001 depended
+# on a capability whose review_status is QUALIFIED, not APPROVED, with no
+# mechanical gate noticing — the exact defect CAPABILITY_POLICY.md's
+# fail-closed rule exists to catch. Generalized from a single hardcoded
+# path to this explicit list of the two module manifests that exist
+# today. **Corrected 2026-10-04, round 17/R17-4 (originally overstated):
+# this is a hardcoded list, not a directory scan — a future MOD-002
+# manifest must be added here explicitly, or it is silently unread,
+# recreating R16-5's exact gap class for that module.** Whoever adds a
+# new module's manifest must add its path to this list in the same
+# change.
+MANIFESTS = [
+    ROOT / "knowledge/03-Modules/MOD-000/evidence/module-capabilities.yaml",
+    ROOT / "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml",
+]
 REGISTRY = ROOT / "knowledge/00-System/CAPABILITY_REGISTRY.md"
 
 REGISTRY_COLUMNS = [
@@ -122,15 +139,40 @@ def is_exempted(review_status: str) -> bool:
     return bool(_EXEMPTION_RE.search(review_status))
 
 
+# Hardened 2026-10-04 (round 16 segment 3, surfaced while fixing finding
+# R16-3): check 3 below was `"approved" not in review_status.lower()` — a
+# bare substring test, the identical bypass class the exemption check
+# above was already hardened against (RR-3). Any honest row whose own
+# text explains it is NOT approved — e.g. "QUALIFIED, not APPROVED" or
+# "never APPROVED" — contains the literal word "approved" and silently
+# PASSed this check. CAP-008's own corrected scope/review_status text
+# (R16-3's fix) tripped this exact bug the moment CAP-008 was registered
+# in a manifest this validator reads (R16-5's fix) — an honest correction
+# defeating an inaccurate check is the same species of false-clean defect
+# this whole project's governance exists to catch. Every genuinely
+# APPROVED row in this registry starts with "APPROVED" (optionally after
+# markdown bold markers), by this project's own established convention —
+# requiring that anchors the match to the field's own verdict rather than
+# to any substring appearing anywhere in surrounding prose.
+_APPROVED_RE = re.compile(r"^\*{0,2}\s*APPROVED\b", re.IGNORECASE)
+
+
+def is_approved(review_status: str) -> bool:
+    return bool(_APPROVED_RE.match(review_status.strip()))
+
+
 def main():
-    if not MANIFEST.exists():
-        print(f"BLOCKED: CAPABILITY_MANIFEST_UNREADABLE — {MANIFEST} does not exist.")
-        return 1
+    for manifest in MANIFESTS:
+        if not manifest.exists():
+            print(f"BLOCKED: CAPABILITY_MANIFEST_UNREADABLE — {manifest} does not exist.")
+            return 1
     if not REGISTRY.exists():
         print(f"BLOCKED: CAPABILITY_REGISTRY_UNREADABLE — {REGISTRY} does not exist.")
         return 1
 
-    manifest_text = MANIFEST.read_text(encoding="utf-8", errors="replace")
+    manifest_text = "\n".join(
+        m.read_text(encoding="utf-8", errors="replace") for m in MANIFESTS
+    )
     registry_text = REGISTRY.read_text(encoding="utf-8", errors="replace")
 
     manifest_ids = parse_manifest_capability_ids(manifest_text)
@@ -165,8 +207,8 @@ def main():
         exempt = is_exempted(review_status)
 
         # 3. Must be APPROVED, not merely QUALIFIED, to satisfy a dependency.
-        if "approved" not in review_status.lower():
-            errors.append(f"{cid}: review_status '{review_status}' does not contain APPROVED — cannot satisfy a module dependency (QUALIFIED-only is insufficient per CAPABILITY_POLICY.md's fail-closed reminder).")
+        if not is_approved(review_status):
+            errors.append(f"BLOCKED: CAPABILITY_NOT_APPROVED — {cid}: review_status '{review_status[:80]}' does not start with APPROVED — cannot satisfy a module dependency (QUALIFIED-only is insufficient per CAPABILITY_POLICY.md's fail-closed reminder).")
 
         # 4. approved_by required unless exempted.
         approved_by = row.get("approved_by", "")
@@ -192,9 +234,9 @@ def main():
             info.append(f"{cid}: registered, {review_status[:60]}{'...' if len(review_status) > 60 else ''}")
 
     print("=" * 70)
-    print("MOD-000 CAPABILITY SUPPLY-CHAIN VALIDATOR")
+    print("CAPABILITY SUPPLY-CHAIN VALIDATOR (all module manifests)")
     print("=" * 70)
-    print(f"\nManifest: {MANIFEST}\nRegistry: {REGISTRY}")
+    print(f"\nManifests: {', '.join(str(m) for m in MANIFESTS)}\nRegistry: {REGISTRY}")
     print(f"\n--- INFO ({len(info)}) ---")
     for i in info:
         print(f"  [i] {i}")

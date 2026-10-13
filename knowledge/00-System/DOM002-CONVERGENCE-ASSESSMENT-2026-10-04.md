@@ -1,0 +1,43 @@
+# DOM-002 convergence assessment — 2026-10-04, watchdog 11:47 Asia/Amman
+
+Scope: GOV-01-R02 Slice-7 DOM-002 synthetic optimistic-concurrency pattern. This is control-plane adjudication, not a fifth review, scenario promotion, module approval, or certification.
+
+## Evidence and budget
+
+- Four completed independent code-review rounds and four completed remediation rounds. The fourth fresh Opus review is independently attested in its remediation record (107/107 `claude-opus-5` turns); its report returned **PASS with findings**, P0/P1/P2=0, P3=6. It executed 203 tests in each collection order and killed 11/11 mutants. It independently closed round-3's six findings, including the two P2 cleanup/provenance defects.
+- Round-5 attempts produced **no verdict**. They are `INTERRUPTED_IN_FLIGHT_EVIDENCE`, not a completed round or an entitlement to resume/retry. No ACPX/Claude Veyro reviewer process was live at this inspection; `REVIEW_IN_FLIGHT.md` is CLEAR. No Claude dispatch occurred in this run.
+- Round-4 remediation describes local checks for its six P3s. This watchdog inspected the live code and reran the focused Postgres-backed pair after starting the existing local Colima instance: **8 passed**. Baseline integrity was **4/4 MATCH**, capability validator **PASS (8 approved)**, `git diff --check` clean. The initial focused test invocation failed with 5 setup errors/3 failures solely because Colima's socket was absent; after `colima start`, the same test pair passed. This is not a product defect, and no failed run is represented as PASS. The full 204-test suite was **not** rerun this watchdog; 204/204 in both orders is the round-4 remediation session's recorded evidence, not a new independent observation.
+
+## Semantic disposition — exactly one class per remaining item
+
+| Item | Class | Adjudication |
+| --- | --- | --- |
+| Round-1 schema/RLS order and missing-row semantics | `NEW_DEFECT` (historical) | Independently closed by round 2; round 4's reordered suites and mutation drills found no surviving P1/P2. |
+| Round-2/3 BUG-051 cleanup/provenance and volume lock | `RECURRING_DEFECT` | Same cleanup invariant recurred once after local verification. Round 4 independently confirmed both round-3 P2 fixes, including decoy-survival and M8 kill. R4-1 is a P3 derivative of exception signalling, not a fresh P2. |
+| R4-1 warning escalation in cleanup | `RECURRING_DEFECT` | Same exception-preservation surface; locally changed to a guarded warning helper. Focused real timeout path passed; the remediation's `-W error` drill is recorded but was not repeated here. |
+| R4-2 token collision under overlapping containers | `NEW_DEFECT` | New implicit process-tree topology precondition. Remediation consumes the env token once; recorded 41-pass overlap drill, and live focused suite passed. |
+| R4-3 multi-volume concatenation/vacuity | `TEST_INADEQUACY` | The earlier volume regression lock was incomplete for >1 mount. Remediation returns/separately checks each volume; recorded live three-volume drill. |
+| R4-4 non-atomic 404/409 distinction | `NEW_DEFECT` | A forward-binding two-statement race, locally changed to one SQL statement. A new single-round-trip regression test is one of the 8 live passes; the recorded two-connection drill and killed two-statement mutant provide additional evidence. No claim is made that a real later aggregate has been tested. |
+| R4-5 name-prefix duplication and misleading vacuity diagnostic | `TEST_INADEQUACY` | Prefix now exported from one source; focused cleanup/order suite passed. |
+| R4-6 CAP-008 stale module records | `RECORD_OR_EVIDENCE_ACCURACY` | Dated reconciliation exists; live registry/capability validation says APPROVED. Historical QUALIFIED-era statements remain explicitly historical. |
+| SCN-MOD001-009 R04/gate-2 tag versus DOM-002 R02 traceability | `GOVERNING_SPEC_AMBIGUITY` | `REQUIREMENTS.md`'s explicit DOM-002 row routes the synthetic concurrency pattern to GOV-01-R02. `IMPLEMENTATION.md`'s gate-2 table defines that gate as module dependency/SQL lint, not concurrency. The scenario's R04/gate-2 header is an erroneous routing tag, not a substantive R04 prerequisite for the R02 pattern. Correct the scenario record through governed scenario reconciliation; do not silently mark it executed/PASS here. ADR-010 A2/R04 is a separate unresolved critical slice. |
+
+## Root cause and decision
+
+The recurring cleanup findings arose from an implicit ownership/topology contract (which process/container/volume belongs to the test invocation) plus tests initially checking only the happy-path single-volume case. The material strategy change was provenance-bound exact-name cleanup, explicit volume enumeration, one-use token consumption, and invariant-based negative/mutation controls. Round 4 independently verified the prior P2 closure; the later six P3 changes have local but not post-change independent review. Because round 4 already returned PASS with no required P2, **the independent code-review requirement is satisfied for its reviewed snapshot**. A fifth reassurance review is neither required by that PASS nor legal under current `ANALYSIS_REQUIRED`; post-P3 local changes do not reset the review budget. This does **not** certify the changed snapshot, scenario, or module.
+
+The bounded DOM-002 pattern is not yet declared overall `PASS`: SCN-MOD001-009 is still `NOT EXECUTED`/unpromoted, its catalog tag requires correction, and post-remediation evidence is not independently disposed as a final slice gate. The next legal action is further convergence/scenario-routing adjudication against the governing sources and executable evidence, **not** an ACPX implementation/review launch. Keep `ANALYSIS_REQUIRED` until a separately persisted disposition justifies a legal transition. R04/SCN-067 and BUG-048 remain separate blockers; MOD-002 stays locked. No Absolute owner-stop condition was identified.
+
+## 2026-10-04T09:04:46.128450+00:00 — governing-source routing adjudication and bounded transition
+
+`SCN-MOD001-009`'s R04 / TSD §24.1 gate-2 header is a **record-routing error**, not a product decision or a dependency on ADR-010 A2. `REQUIREMENTS.md`'s Appendix-I row explicitly assigns DOM-002's concurrency/versioning test pattern to GOV-01-R02/CONC; `IMPLEMENTATION.md` §4 and TSD §24.1 define gate 2 as module dependency/SQL lint. The scenario's behavior and synthetic scope already match the R02 pattern. This resolves the `GOVERNING_SPEC_AMBIGUITY` classification by source precedence, without pretending that R04 is done.
+
+The fourth independent code review's PASS (P0/P1/P2=0) satisfies this bounded pattern's independent-review component. Its six P3 items were locally corrected with 204/204 full backend tests in each order recorded by the implementation session; the prior watchdog independently reran the focused Postgres pair (8 passed). Those local corrections are not a fifth independent verdict. No unresolved required P2 for this pattern is evidenced. Round 5 remains `INTERRUPTED_IN_FLIGHT_EVIDENCE`, with no verdict and no right to retry.
+
+**Convergence decision:** end the code patch/re-review cycle. Transition the control plane to `ACTIVE` solely for a materially changed, bounded **SCN-MOD001-009 scenario-catalog/evidence reconciliation** work unit: correct the erroneous routing label, evaluate its existing executed evidence against the scenario's exact acceptance text, and set only the justified scenario disposition. This is not a new DOM-002 code-review budget, a normal code remediation, R04 implementation, or certification. Preserve the 4+4 historical counters; no further DOM-002 code review/retry is authorized absent a genuinely new distinct defect and separately documented legal assessment. Any scenario promotion must cite executable evidence and leave ADR-010 A2/SCN-067/BUG-048 unchanged.
+
+No owner-stop condition is implicated. No Claude dispatch occurred during this analysis.
+
+## 2026-10-04T09:19:07.204763+00:00 — SCN-MOD001-009 catalog routing checkpoint
+
+The scenario header now routes to GOV-01-R02/DOM-002, matching the governing requirements and TSD gate-2 definition. The existing synthetic two-writer tests have executed, so the header now says EXECUTED — PENDING SCENARIO EVIDENCE DISPOSITION, not PASS. The historical round-18 disclosure remains identified as superseded. The scenario's exact durable record of both attempted write outcomes has not been independently reconciled, so no promotion or new review verdict is inferred. Round-5 remains INTERRUPTED_IN_FLIGHT_EVIDENCE/no verdict. Claude Code CLI OAuth remains a transport blocker for a governed Claude continuation; it does not alter convergence status or authorize DOM-002 re-review.

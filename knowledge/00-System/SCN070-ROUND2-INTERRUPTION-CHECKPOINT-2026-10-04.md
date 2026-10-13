@@ -1,0 +1,3 @@
+# SCN-070 independent review round-2 interruption
+
+At 2026-10-04T12:25:22.001960+00:00 the watchdog found no live ACPX/Veyro reviewer process and no completed round-2 report. The raw ACPX output ends mid negative-input probes, without verdict or model attestation. This is interrupted evidence, not a completed review round. The partial probes suggest a regular-file records directory can vacuously PASS even with `--require-dir`, and a symlinked child directory can hide a destructive record; those observations require final independent classification. No SCN-070 scenario promotion or review PASS is inferred. Historical DOM-002 round 5 remains interrupted and non-resumable.

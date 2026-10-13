@@ -20,23 +20,38 @@ report `BLOCKED: BASELINE_INTEGRITY_FAILURE` and do not proceed. (Corrected
 baselines, silently skipping the design bundle, which is exactly the
 artifact BUG-001 was found in.)
 
-**Primary, guard-compatible check (corrected 2026-09-13, Phase 9 fifth
-Gatekeeper pass P2-2):**
+**Primary check (corrected 2026-09-30, session-restore reconciliation —
+this section previously said the command was "allowlisted by the live
+`.claude/security/bash_guard.py` PreToolUse guard (CAP-007, active since
+2026-09-08)"; **CAP-007 was RETIRED 2026-09-28** per `OWN-006`/`ADR-007`
+— `bash_guard.py` is now an inert, unregistered stub and
+`.claude/settings.json` permits unrestricted local Bash execution
+(`Bash(*)` allow, empty deny, `defaultMode: bypassPermissions`) for
+routine development. Module certification gates, WIP=1, and the 4
+owner-reserved absolute restrictions are unaffected by that retirement —
+see `.claude/rules/global/owner-reserved-restrictions.md`. There is no
+PreToolUse guard to be "allowlisted by" anymore; the command below just
+runs directly.**
+
+**Also corrected this session: system `python3` (3.9.6 on this host)
+fails this script outright** (`TypeError` on the `str | None` PEP 604
+syntax, which needs Python 3.10+) — confirmed by direct execution, not
+assumed. Use the project's own venv interpreter instead:
 
 ```bash
-python3 knowledge/00-System/verify_baselines.py
+backend/.venv/bin/python knowledge/00-System/verify_baselines.py
 ```
 
-This is a single command, allowlisted by the live `.claude/security/bash_guard.py`
-PreToolUse guard (CAP-007, active since 2026-09-08), and covers all 4
-baselines including the design bundle manifest — hash-diffed directly
-against `PROJECT_INDEX.md`. Prefer this over the raw shell commands
-below.
+If `backend/.venv/` does not exist on a given machine, use any local
+Python 3.10+ interpreter; do not use bare `python3` without first
+confirming its version. This covers all 4 baselines including the
+design bundle manifest — hash-diffed directly against `PROJECT_INDEX.md`.
+Prefer this over the raw shell commands below.
 
-**Reference/offline alternative** (the guard denies the multi-command
-and piped forms below as `UNSUPPORTED_SHELL_COMPOSITION` — run only if
-`verify_baselines.py` itself is unavailable or under suspicion, one
-command at a time, not chained):
+**Reference/offline alternative** (run only if `verify_baselines.py`
+itself is unavailable or under suspicion; nothing technically prevents
+chaining these now that CAP-007 is retired, but running one command at a
+time keeps output attributable to a single check):
 
 ```bash
 shasum -a 256 Gym_OS_Master_Product_Blueprint_v1_English.docx
@@ -64,6 +79,8 @@ Read `knowledge/00-System/CURRENT_STATE.md`. It names the active module, its gat
 ## 4. Handoff
 
 Read `knowledge/00-System/CURRENT_HANDOFF.md` for exactly what the previous session left unfinished and the next legally allowed action.
+
+**Before dispatching any fresh independent review round** (security, scenario-catalog, code, or gatekeeper), read `knowledge/00-System/REVIEW_IN_FLIGHT.md` and follow its protocol — check its `current_claim` field, and if `CLEAR`, write an `IN_FLIGHT` claim before the dispatch call returns, not after. If the claim already reads `IN_FLIGHT`, do not dispatch a second review for the same bug/module/round class; follow that file's crash-recovery section instead of assuming either that the claim is live or that it is stale. This exists because round 11 of MOD-001's Slice-7/BUG-050 remediation had exactly this collision — two orchestrating sessions, neither aware of the other, each dispatched the same round-11 review (`knowledge/03-Modules/MOD-001/evidence/implementation/SLICE-7-ROUND11-COLLISION-CHECKPOINT-2026-10-03.md`).
 
 ## 5. Fail-closed rule
 

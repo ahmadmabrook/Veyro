@@ -1,0 +1,1234 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Operational orchestration state; repository engineering evidence remains authoritative.",
+  "activeModule": "MOD-001",
+  "activeSlice": "MOD-001 / GOV-01-R04 / C05 trusted dependency-vulnerability CI and remaining R04 integrated pipeline",
+  "totalReviewRoundsForSlice": 2,
+  "totalRemediationRoundsForSlice": 0,
+  "roundCounting": {
+    "workUnit": "MOD-001 / GOV-01-R04 / C05 trusted dependency-vulnerability CI and remaining R04 integrated pipeline",
+    "reviewRoundsCompleted": 2,
+    "reviewRoundsInFlight": 0,
+    "reviewRoundDispatched": 2,
+    "remediationRoundsCompleted": 0,
+    "note": "C05 terminal review consumed; no third C05 independent review. C03 counters 0/0 held in its prior distinct unit."
+  },
+  "findings": [
+    {
+      "id": "DOM002-SCHEMA-RLS-ORDER",
+      "fingerprint": "GOV-01-R02/RLS isolation|cross-suite order independence|backend/tests/harness/concurrency.py and Postgres schema/catalog|schema ownership and unclassified persistent relation|round-1 order/RLS negative drills",
+      "recurrenceCount": 0,
+      "remediationCount": 1,
+      "firstSeenRound": 1,
+      "lastSeenRound": 2,
+      "currentClassification": "NEW_DEFECT",
+      "status": "CLOSED_BY_ROUND2_EVIDENCE",
+      "support": "Round 1 P1-1/P1-2; round 2 sections 4.3-4.4 verify both fixes and mutation controls."
+    },
+    {
+      "id": "DOM002-POSTGRES-CLEANUP",
+      "fingerprint": "BUG-051/test isolation|bounded synthetic Postgres cleanup|order-independence timeout path and backend/tests/harness/postgres.py|anonymous-volume leak then provenance-unsafe over-reap|round-2 timeout drill and round-3 R3-1/R3-2 mutants",
+      "recurrenceCount": 1,
+      "remediationCount": 3,
+      "firstSeenRound": 2,
+      "lastSeenRound": 4,
+      "currentClassification": "RECURRING_DEFECT",
+      "status": "ROUND4_P2_CLOSED; P3_DERIVATIVE_REMEDIATED_LOCALLY; ROUND5_UNVERIFIED",
+      "support": "Round 2 R2-1; round 3 R3-1/R3-2; round 4 confirms P2 fixes and raises P3 cleanup/volume edge cases. Round-4 remediation records local checks."
+    },
+    {
+      "id": "DOM002-CONCURRENCY-ERROR-SEMANTICS",
+      "fingerprint": "DOM-002 optimistic concurrency|404-vs-409 typed error|backend/tests/harness/concurrency.py update_versioned|non-atomic disambiguation race|round-4 R4-4 two-connection negative drill",
+      "recurrenceCount": 0,
+      "remediationCount": 1,
+      "firstSeenRound": 4,
+      "lastSeenRound": 4,
+      "currentClassification": "NEW_DEFECT",
+      "status": "P3_REMEDIATED_LOCALLY; ROUND5_UNVERIFIED",
+      "support": "Round 4 R4-4 and DOM002-ROUND4-REMEDIATION-2026-10-04.md."
+    },
+    {
+      "id": "DOM002-RECORD-ACCURACY",
+      "fingerprint": "GOV-01-R02 evidence integrity|accurate current capability and scenario state|MOD-001 status/capability records|stale or overstated live claims|round-1 P2-2, round-2 R2-5, round-4 R4-6 record comparison",
+      "recurrenceCount": 0,
+      "remediationCount": 4,
+      "firstSeenRound": 1,
+      "lastSeenRound": 4,
+      "currentClassification": "RECORD_OR_EVIDENCE_ACCURACY",
+      "status": "ROUND4_RECORD_DRIFT_REMEDIATED_LOCALLY; ROUND5_UNVERIFIED",
+      "support": "Round 1 P2-2, round 2 R2-5, round 4 R4-6; these are related accuracy class, not asserted identical individual document defects."
+    },
+    {
+      "id": "BUG-054",
+      "fingerprint": "GOV-01-R03/SCN032|synthetic offline snapshot fail-closed DENY|tools/offline_snapshot_fixture.py validate_snapshot|non-ASCII signature hmac.compare_digest TypeError and mixed-type extra-key sort TypeError|post-implementation direct negative probes",
+      "recurrenceCount": 0,
+      "remediationCount": 0,
+      "firstSeenRound": 0,
+      "lastSeenRound": 0,
+      "currentClassification": "NEW_DEFECT",
+      "status": "OPEN_P2_LOCAL",
+      "support": "knowledge/03-Modules/MOD-001/evidence/bugs/BUG-054-offline-snapshot-malformed-signature-exception.md"
+    }
+  ],
+  "lastMaterialProgress": {
+    "at": "2026-10-09T23:18:44.348155+00:00",
+    "result": "C05 N1 option-a disclosure and activation precondition pinned locally at bfc18e2; 16 comment-only additions verified; no executable change or activation",
+    "evidence": ".github/workflows/dependency-vulnerability-gate.yml; commit bfc18e2"
+  },
+  "noProgressIterations": 0,
+  "strategyChanges": [
+    {
+      "afterRound": 3,
+      "from": "time-window/substr container cleanup",
+      "to": "provenance-bound cleanup and volume-specific mutation lock",
+      "evidence": "DOM002 review round 3 R3-1/R3-2; review round 4 sections 3-4"
+    },
+    {
+      "afterRound": 4,
+      "from": "per-finding local patch and ordinary re-review",
+      "to": "mandatory semantic finding reconciliation and governing-pass termination assessment before any further review",
+      "evidence": "this convergence policy"
+    },
+    {
+      "afterRound": "round-5 timeout",
+      "from": "broad fix/re-review cycling and repeating completed drills",
+      "to": "bounded closure adjudication in the existing round-5 session: finish missing verdict/report/model-attestation, map findings to invariants, then stop on governed PASS or select a root-cause strategy",
+      "evidence": "evidence/implementation/DOM002-ROUND5-TIMEOUT-CONVERGENCE-CHECKPOINT-2026-10-04.md"
+    },
+    {
+      "afterRound": "round-5 interrupted recovery",
+      "from": "unrecoverable broad reviewer transcript with no verdict",
+      "to": "single final fresh round-5 reviewer, bounded to invariant-based closure and decisive tests; write report within one ACPX budget",
+      "evidence": "DOM002-ROUND5-TIMEOUT-CONVERGENCE-CHECKPOINT-2026-10-04.md addendum and REVIEW_IN_FLIGHT.md recovery claim"
+    },
+    {
+      "afterRound": "second round-5 interruption",
+      "from": "foreground watchdog-bound review with potentially blocking Docker probe",
+      "to": "detached bounded evidence-first fresh reviewer, immediate report, no Docker/long tests",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/DOM002-R5-SECOND-INTERRUPTION-CHECKPOINT-2026-10-04.md"
+    },
+    {
+      "afterRound": "control-plane correction 2026-10-04",
+      "from": "incorrect recovery/retry entitlement after interrupted round-5 and OAuth failure",
+      "to": "strict ANALYSIS_REQUIRED dispatch denial; interrupted round-5 is non-resumable evidence; analyze completed rounds 1-4 without Claude authentication",
+      "evidence": "knowledge/00-System/DOM002-CONVERGENCE-DISPATCH-CONTROL-2026-10-04.md"
+    },
+    {
+      "afterRound": "completed convergence assessment 2026-10-04",
+      "from": "ordinary DOM-002 patch/re-review cycle",
+      "to": "distinct scenario-catalog routing/evidence reconciliation with no further DOM-002 code review",
+      "evidence": "knowledge/00-System/DOM002-CONVERGENCE-ASSESSMENT-2026-10-04.md"
+    },
+    {
+      "afterRound": "SCN-070 round 4",
+      "from": "enumerator-only hardening with Boolean pathlib entry/notice probes",
+      "to": "Single tri-state error-propagating metadata acquisition shared by traversal and CLI notices; prove unreadable ancestor/default CLI with negative and mutation controls; correct false fail-closed record",
+      "evidence": "knowledge/00-System/SCN070-ROUND4-ROOT-CAUSE-ASSESSMENT-2026-10-04.md"
+    },
+    {
+      "afterRound": "SCN-070 review 5",
+      "from": "tri-state implementation with shape-focused tests and mutants",
+      "to": "total stat/lstat outcome classification table, asymmetric branch negative/mutation controls, truthful round-4 evidence reconciliation; no sixth ordinary review",
+      "evidence": "knowledge/00-System/SCN070-ROUND5-CONVERGENCE-ASSESSMENT-2026-10-05.md",
+      "executedAt": "2026-10-05T00:50:00+03:00",
+      "executionResult": "EXECUTED_IN_FULL_AS_AUTHORIZED",
+      "executionEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND5-ROOTCAUSE-IMPLEMENTATION-2026-10-05.md",
+      "executionNote": "All four authorized items done: (1) total classification table implemented, with the additional decision-level AST lock requiring every `return RECORDS_PATH_ABSENT` in acquire_records_dir to be reached only from an `except FileNotFoundError` handler, which is the anti-relocation control five rounds of shape-specific guards failed to provide; (2) asymmetric injected negative tests plus mutants M21/M22; (3) R5-2 evidence reconciliation; (4) R5-3 severity adjudication. Strategy effectiveness is NOT established — the same caveat that defeated rounds 1-4 applies: a mutation battery is enumerated from the fixes that were written. Only independent assurance could establish effectiveness, and the absolute review cap forecloses it by ordinary means."
+    },
+    {
+      "afterRound": 2,
+      "from": "R1 form-specific remediation under ADR-011 D6.1/D6.3 zero-identifier backstop",
+      "to": "ADR-011 D6.7 per-position monotone extraction contract, negative/positive/mutation corpus before another review",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/GATE2-R2-N01-N02-QUALIFIED-ROOT-CAUSE-2026-10-06.md",
+      "at": "2026-10-05T23:35:24.003859+00:00",
+      "status": "QUALIFIED_DECISION_COMPLETE; IMPLEMENTATION_PENDING"
+    },
+    {
+      "afterRound": 2,
+      "from": "D6.7 first FROM-list comma-continuation subcase locally verified after guarded soft stop",
+      "to": "Shared per-position signal inventory and D3.2 attribution accounting; first bounded N3 REFERENCES proof with P4 JOIN USING column-list control, no keyword-only patch",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/GATE2-R2-N01-D67-POST-INCREMENT-CONVERGENCE-ANALYSIS-2026-10-06.md",
+      "at": "2026-10-06T00:07:53.173089+00:00",
+      "status": "ANALYSIS_COMPLETE_NEXT_BOUNDED_IMPLEMENTATION_PENDING",
+      "findingId": "R1-F01",
+      "nextSubgoal": "R04-GATE2-R2-N01-D67-POSITION-SIGNAL-ACCOUNTING-N3"
+    },
+    {
+      "afterRound": "R04 D6.7 14 completed operations since last blocker reduction",
+      "from": "serial keyword/context-source implementation increments",
+      "to": "P0-first positively bounded REVOKE grantee-FROM exclusion, then separate ADR D6.8 privilege decision",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/GATE2-R2-N01-D67-REMAINING-SIGNAL-ROOT-CAUSE-2026-10-06.md"
+    }
+  ],
+  "convergenceStatus": "ACTIVE",
+  "analysis": {
+    "reason": "Four completed independent reviews and four remediation rounds exceed normal three-round budgets. Round 5 stopped without verdict and is INTERRUPTED_IN_FLIGHT_EVIDENCE, not a resumable review. Round-4 PASS satisfies the independent review requirement for its reviewed snapshot, but post-remediation disposition and scenario/gate reconciliation remain unresolved.",
+    "currentOperation": "SCN-070 mandatory root-cause work after fifth blocked independent review",
+    "nextAutonomousAction": "The authorized root-cause strategy work is DONE (2026-10-05, see scn070WorkUnitState.rootCauseStrategyWork). R5-1 is remediated-pending-independent-assurance, R5-2 structurally closed, R5-3 adjudicated P3. SCN-070 stays NON_CONVERGING and EXECUTED — NOT PROMOTED. There is no next autonomous SCN-070 action: the five-review absolute cap is reached, so no sixth ordinary, replacement, or reassurance review is legal, and the outstanding independent-assurance gate on the new snapshot cannot be satisfied by self-executed evidence. Do NOT mark PASS, promote the scenario, or certify the module from local tests alone. This is an OWNER/GOVERNANCE DECISION POINT: either a separately justified, legally distinct assurance path is authorized for the post-R5-1 snapshot, or SCN-070 is accepted as non-converging with its open P3 set (R5-3 through R5-9, R4-6) recorded. Autonomous work should move to a distinct MOD-001 unit; do not reopen SCN-070 for reassurance.",
+    "anotherReviewCurrentlyAllowed": false,
+    "interruptedRound5ContinuationAllowed": false,
+    "round5Disposition": "INTERRUPTED_IN_FLIGHT_EVIDENCE; NO_VERDICT; NOT_RESUMABLE",
+    "authenticationRequiredForNextLegalAction": false,
+    "authenticationRestorationChangesStatus": false,
+    "continuationRecoveryResult": "NOT_RECOVERABLE_2026-10-04",
+    "checkpoint": "knowledge/00-System/DOM002-CONVERGENCE-DISPATCH-CONTROL-2026-10-04.md",
+    "latestAssessment": "knowledge/00-System/DOM002-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+    "latestAssessmentAt": "2026-10-04T09:04:46.128450+00:00",
+    "latestAssessmentDecision": "SPEC_ROUTING_RESOLVED_TO_R02; ROUND4_REVIEW_COMPONENT_SATISFIED; ACTIVE_ONLY_FOR_DISTINCT_SCN009_RECORD_RECONCILIATION; DOM002_CODE_REVIEW_CYCLE_CLOSED",
+    "scenario009Route": "GOV-01-R02/CONC; R04/TSD gate 2 header is a catalog error, not prerequisite",
+    "scenario009Disposition": "PASS — PROMOTED 2026-10-04 for synthetic GOV-01-R02/CONC scenario only; independently reviewed evidence, no DOM-002 round-5 review or module certification",
+    "normalDom002ReviewOrRemediationAllowed": false,
+    "transportBlocked": null,
+    "failedScenarioDispatchAt": "2026-10-04T09:06:50.440986+00:00",
+    "scenario009RoutingCorrectionAt": "2026-10-04T09:19:07.204763+00:00",
+    "scenario009EvidenceClosureAt": "2026-10-04T09:42:16Z",
+    "scenario009BlockingReasons": [],
+    "scenario009EvidenceRecord": "knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md (+ SCN-MOD001-009-TWO-WRITER-OUTCOME-RUNLOG-2026-10-04.txt)",
+    "scenario009ReviewAdjudication": {
+      "at": "2026-10-04T09:44:28.501876+00:00",
+      "classification": "NEW_DEFECT",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-009 / missing durable two-writer outcome evidence / backend/tests/integration/test_concurrency_harness.py instrumentation and run log",
+      "decision": "ALLOW_ONE_FRESH_INDEPENDENT_SCENARIO_EVIDENCE_REVIEW_ONLY",
+      "reason": "The completed convergence assessment transitioned ACTIVE for a distinct scenario-evidence unit. The newly exposed missing durable two-outcome record and count/type assertions are materially distinct from the four DOM-002 code-review rounds, which reviewed harness correctness before this instrumentation existed. DC-06 requires fresh review before scenario promotion. This is not a replacement, retry, recovery, or resumption of interrupted DOM-002 round 5; reviewer scope must exclude renewed harness/production code assurance and other findings. Any new review counts against this separate evidence unit and may not reset historical DOM-002 4+4 counters.",
+      "evidence": [
+        "knowledge/00-System/DOM002-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/SCENARIOS.md:418",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN-MOD001-009-EVIDENCE-RECONCILIATION-2026-10-04.md"
+      ]
+    },
+    "scenario009ReviewResult": {
+      "at": "2026-10-04T09:56:20.934798+00:00",
+      "verdict": "PASS",
+      "findings": {
+        "P0": 0,
+        "P1": 0,
+        "P2": 0,
+        "P3": 3
+      },
+      "independentExecution": "5/5 focused, 204/204 backend, 2/2 evidence mutants killed",
+      "modelAttestation": "mr_verify.py PASS 51/51 turns claude-opus-5",
+      "report": "knowledge/03-Modules/MOD-001/evidence/code-review/SCN-MOD001-009-EVIDENCE-INSTRUMENTATION-INDEPENDENT-REVIEW-2026-10-04.md",
+      "scope": "distinct scenario-evidence instrumentation only, not DOM-002 round 5"
+    }
+  },
+  "controlPlaneEnforcement": {
+    "defect": "Watchdog run 2026-10-04T10:47:24.332+03:00 launched a fresh round-5 recovery review despite convergenceStatus ANALYSIS_REQUIRED and anotherReviewCurrentlyAllowed false. Timeout/non-counting and unrecoverable reviewer context were incorrectly treated as dispatch exceptions; no immediately-before-ACPX status assertion with persisted decision blocked launch.",
+    "classification": "CONTROL_PLANE_ENFORCEMENT_DEFECT",
+    "dispatchDecision": "DENY_NORMAL_DOM002_REVIEW_AND_REMEDIATION",
+    "decisionReason": "ANALYSIS_REQUIRED permits convergence/root-cause analysis only; prior interrupted/OAuth-failed attempts are not live grandfathered operations.",
+    "decisionAt": "2026-10-04T08:36:17Z",
+    "source": "knowledge/00-System/DOM002-CONVERGENCE-DISPATCH-CONTROL-2026-10-04.md"
+  },
+  "slice7HistoricalReconciliation": {
+    "workUnit": "GOV-01-R02 Slice-7 financial invariant / BUG-050 (separate from active DOM-002 bounded sub-slice)",
+    "round7": "NR7-1/NR7-2/NR7-3 concern record and registry accuracy; NR7-1 continues NR6-2's stale-claim class. Runtime financial invariant had no false-clean finding.",
+    "round8": "Round 7 findings were evidenced closed. NR8-1 is another live-document stale-current-state occurrence in TEST_RESULTS.md: same record-accuracy root-cause family, different surface, not a fresh product defect.",
+    "round9": "NR9-1 is another stale present-tense record in the same family. NR9-2 is materially distinct test-self-check detection inadequacy; NR9-3 is formatting brittleness of that self-check; NR9-4 is derivation-record accuracy. Do not reset record-accuracy recurrence based on labels.",
+    "semanticFindingFamilies": [
+      {
+        "fingerprint": "GOV-01-R02 Slice-7/BUG-050|accurate live current-state claims|MOD-001 live status/test/implementation evidence set|incomplete inventory of present-tense claims|round-7/8/9 source-to-execution comparison",
+        "firstSeenRound": 7,
+        "lastSeenRound": 9,
+        "recurrenceCount": 2,
+        "classification": "RECURRING_DEFECT",
+        "evidence": "NR7-2 in STATUS.md; NR8-1 in TEST_RESULTS.md; NR9-1 in the implementation record. The affected documents differ but the substantive stale-live-claim root cause recurs."
+      },
+      {
+        "fingerprint": "GOV-01-R02 Slice-7/BUG-050|negative-test detection completeness|financial-invariant structural self-check|regex/format-coupled enforcement overclaims|round-9 NR9-2/NR9-3 mutation and formatter probes",
+        "firstSeenRound": 9,
+        "lastSeenRound": 9,
+        "recurrenceCount": 0,
+        "classification": "TEST_INADEQUACY",
+        "evidence": "NR9-2 and NR9-3 are materially distinct from the stale-live-record family."
+      }
+    ],
+    "laterDisposition": "Round 16 independent security report records PASS; CAP-008 post-round-16 assurance and subsequent repository records govern actual BUG-050/SCN-132 closure. This historical unit must not be reopened for reassurance.",
+    "reviewArtifactCount": 16,
+    "reviewArtifactCountNote": "Sixteen visible Slice-7 security review artifacts: initial report, rounds 3-16, plus 11B. Round 2 is referenced by later reports but has no matching named artifact in the inspected directory; do not infer its execution count from filename alone."
+  },
+  "updatedAt": "2026-10-09T22:59:34.077907+00:00",
+  "updatedBy": "sole mission executor cf85ceaa-96af-4768-8888-44f68ec7e339",
+  "statusTransition": {
+    "at": "2026-10-09T20:15:22.507942+00:00",
+    "from": "M1-C-06",
+    "to": "M1-C-08",
+    "reason": "C06 exact CI pin/qualified-review entry held; independent mandatory R06 local code can advance under existing C08 without C05 live pipeline"
+  },
+  "nextDistinctWorkUnitInFlight": {
+    "workUnit": "MOD-001 / BUG-048 / Slice-5 ACL restore / independent code-review closure",
+    "operation": "Fresh independent Opus read-only review of distinct BUG-048 closure fix, no DOM-002 review or remediation",
+    "status": "COMPLETE_WITH_FINDINGS",
+    "startedAt": "2026-10-04T10:20:14.933383+00:00",
+    "claim": "knowledge/00-System/REVIEW_IN_FLIGHT.md",
+    "reviewResult": "PASS_WITH_P2_FINDINGS",
+    "historicalDom002CountersUnchanged": {
+      "reviewRounds": 4,
+      "remediationRounds": 4
+    }
+  },
+  "distinctWorkUnitState": {
+    "workUnit": "MOD-001 / BUG-048 / Slice-5 ACL restore assertion + evidence accuracy",
+    "reviewRoundsCompleted": 2,
+    "remediationRoundsCompleted": 2,
+    "reviewVerdict": "PASS_P0_P1_P2_ZERO_P3_NONBLOCKING",
+    "findings": [
+      {
+        "id": "BUG048-R1",
+        "classification": "TEST_INADEQUACY",
+        "priority": "P2",
+        "fingerprint": "Slice-5 ACL restore|all DML privileges|has_table_privilege list ANY semantics|partial-grant mutant survives",
+        "status": "CLOSED_BY_INDEPENDENT_ROUND2_EVIDENCE",
+        "support": "BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md R1"
+      },
+      {
+        "id": "BUG048-R2",
+        "classification": "RECORD_OR_EVIDENCE_ACCURACY",
+        "priority": "P2",
+        "fingerprint": "Slice-5 ACL restore evidence|post-condition proof scope|record overstates full DML lock",
+        "status": "CLOSED_BY_INDEPENDENT_ROUND2_EVIDENCE",
+        "support": "same report R2"
+      }
+    ],
+    "noProgressIterations": 0,
+    "nextAutonomousAction": "Advance to distinct MOD-001 work; inspect R04/ADR-010 A2 model assurance and open module gates. Do not re-review BUG-048 for reassurance.",
+    "reviewReport": "knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND1-2026-10-04.md",
+    "modelAttestation": "mr_verify.py PASS 46/46 claude-opus-5 reviewer turns",
+    "lastMaterialProgress": {
+      "at": "2026-10-04T11:18:19.833072+00:00",
+      "result": "R1/R2 P2 findings independently closed by execution; BUG-048 closure criteria met; five P3 observations explicitly nonblocking",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND2-2026-10-04.md"
+    },
+    "reviewRoundsInFlight": 0,
+    "lastInterruptedAttempt": {
+      "at": "2026-10-04T11:00:20.098808+00:00",
+      "operation": "BUG-048 independent code review round 2",
+      "status": "INTERRUPTED_IN_FLIGHT_EVIDENCE",
+      "reason": "No live ACPX/Claude reviewer process and no round-2 report/verdict; retained round-1 and remediation evidence preserved",
+      "countsAsCompletedRound": false
+    },
+    "reviewReportRound2": "knowledge/03-Modules/MOD-001/evidence/code-review/BUG048-SLICE5-ACL-RESTORE-CODE-REVIEW-ROUND2-2026-10-04.md",
+    "reviewerModelAttestationRound2": "mr_verify.py PASS 108/108 claude-opus-5 (agent-aec7a32cd18d0dcdf.jsonl)"
+  },
+  "dispatchIntent": null,
+  "pendingDistinctWorkUnit": {
+    "workUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint / independent remediation review round 2",
+    "reviewRoundsCompleted": 2,
+    "remediationRoundsCompleted": 1,
+    "reviewRoundsInFlight": 0,
+    "status": "BLOCKED_P2_3",
+    "claim": "knowledge/00-System/REVIEW_IN_FLIGHT.md",
+    "lastInterruptedAttempt": {
+      "at": "2026-10-04T12:25:22.001960+00:00",
+      "reason": "No live ACPX/Veyro reviewer process or completed round-2 report; partial raw ACPX output ends in negative-input probes. No verdict inferred.",
+      "countsAsCompletedRound": false,
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-ROUND2-ACPX-RAW-2026-10-04.txt"
+    },
+    "reviewVerdict": "BLOCKED_P0_0_P1_0_P2_3_P3_4",
+    "reviewReport": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md",
+    "modelAttestation": "mr_verify.py PASS 52/52 claude-opus-5",
+    "findings": [
+      {
+        "id": "SCN070-R2-1",
+        "classification": "RECURRING_DEFECT",
+        "fingerprint": "GOV-01-R06 discovery completeness|symlinked child directory hides out-of-order destructive record|tools/validate_migration_ordering.py discover_records|rglob skips symlink subtree while is_dir silently ignores link|round-2 mixed/real-dir controls",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 1,
+        "lastSeenRound": 2,
+        "recurrenceCount": 1,
+        "remediationCount": 1
+      },
+      {
+        "id": "SCN070-R2-2",
+        "classification": "NEW_DEFECT",
+        "fingerprint": "GOV-01-R06 destructive contract rejection|duplicate phase key last-wins masks contract as expand|parse_front_matter flat dict overwrite|round-2 transposed duplicate-key controls",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 2,
+        "lastSeenRound": 2,
+        "recurrenceCount": 0,
+        "remediationCount": 0
+      },
+      {
+        "id": "SCN070-R2-3",
+        "classification": "RECURRING_DEFECT",
+        "fingerprint": "GOV-01-R06 fail-closed records path|existing regular file --records-dir vacuous PASS despite --require-dir|validate_directory uses exists not is_dir|round-2 file-path CLI controls",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 1,
+        "lastSeenRound": 2,
+        "recurrenceCount": 1,
+        "remediationCount": 1
+      }
+    ],
+    "lastMaterialProgress": {
+      "at": "2026-10-04T12:34:28.905768+00:00",
+      "result": "Round-1 P1 and exit-code mutant closed; 8/8 mutation kills independently confirmed; round-2 found three remaining P2 fail-open paths",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md"
+    },
+    "noProgressIterations": 0,
+    "nextAutonomousAction": "Retained SCN-070 implementation session remediates three P2 fail-opens with decisive controls, then one fresh independent round-3 review within normal budget.",
+    "writerStatus": "IN_FLIGHT",
+    "writerStartedAt": "2026-10-04T12:36:18.631161+00:00"
+  },
+  "dispatchHistory": [
+    {
+      "at": "2026-10-04T12:35:46.693768+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Ensure named retained SCN-070 implementation session by resuming prior Claude implementation context; no code change in this invocation",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / R2-1, R2-2, R2-3 fail-open remediation",
+      "decision": "ALLOW",
+      "reason": "Two substantive independent reviews and one remediation within 3-round budgets; three new P2 fail-open findings require bounded remediation; no review in flight; DOM-002 excluded",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND1-REMEDIATION-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T12:36:18.631161+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Retained named Claude implementation session scn070-implementation remediates R2-1/R2-2/R2-3 with negative controls",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint / second remediation round",
+      "decision": "ALLOW",
+      "reason": "ACTIVE distinct unit; two substantive review and one remediation rounds, material progress, within 3 normal round budgets; three verified P2 fail-opens; no writer/reviewer live; DOM-002 excluded",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md",
+        "knowledge/00-System/SCN070-ROUND2-INTERRUPTION-CHECKPOINT-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T12:49:55.767096+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Fresh independent Opus SCN-070 security/scenario evidence review round 3",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint / review round 3",
+      "decision": "ALLOW",
+      "reason": "Distinct SCN-070 unit, two completed reviews and two completed remediation rounds within normal 3-round budgets; three P2s locally remediated with 29/29 tests and 11/11 mutant kills; global claim CLEAR and no live ACPX process; DOM-002 round-5 remains interrupted/non-resumable and excluded",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T13:05:36.452509+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Fresh independent Opus SCN-070 round-3 security/scenario review after interrupted no-verdict attempt",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint / round-3 review",
+      "decision": "ALLOW",
+      "reason": "SCN-070 distinct work unit ACTIVE, 2 completed reviews/2 remediations within normal three-round budgets; prior round-3 attempt has no live ACPX process or report, recent Veyro transcript writes ceased at 12:52 local; attempt interrupted without verdict. DOM-002 review cycle remains closed and excluded.",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND2-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND2-REMEDIATION-2026-10-04.md",
+        "knowledge/00-System/REVIEW_IN_FLIGHT.md",
+        "ps: no ACPX process; round-3 report absent"
+      ]
+    },
+    {
+      "at": "2026-10-04T13:21:11.120473+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Retained SCN-070 implementation session: one architectural root-cause remediation of unreadable-directory traversal fail-open",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint",
+      "decision": "ALLOW",
+      "reason": "Completed mandatory three-review root-cause assessment and material enumerator-strategy change; only one bounded architectural remediation permitted, no live writer",
+      "evidence": [
+        "knowledge/00-System/SCN070-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND3-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T13:29:52.790637+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Fresh independent Opus SCN-070 exceptional post-analysis review round 4",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint",
+      "decision": "ALLOW",
+      "reason": "Completed mandatory convergence assessment plus material enumerator replacement; three prior reviews and three remediations, fourth exceptional review within five absolute; no live reviewer, DOM-002 excluded",
+      "evidence": [
+        "knowledge/00-System/SCN070-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND3-REMEDIATION-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T13:44:08.312137+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "New fresh independent Opus SCN-070 exceptional post-analysis review round 4, following interrupted no-verdict launch",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint",
+      "decision": "ALLOW",
+      "reason": "Completed convergence assessment and material enumerator strategy change; three substantive reviews/remediations; prior fourth attempt interrupted without verdict, not a completed round; no live Veyro ACPX process or report; distinct from barred DOM-002. One exceptional review remains within five absolute.",
+      "evidence": [
+        "knowledge/00-System/SCN070-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND3-REMEDIATION-2026-10-04.md",
+        "knowledge/00-System/SCN070-ROUND4-INTERRUPTION-CHECKPOINT-2026-10-04.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T14:28:20.387612+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "Fresh independent Opus security/scenario review of SCN-070 changed tri-state root-cause correction; fifth and final ordinary same-slice review within absolute cap",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint / exceptional fifth independent review",
+      "decision": "ALLOW",
+      "reason": "Completed round-4 convergence assessment and materially changed strategy; watchdog independently verified 55 tests, 20 mutation kills, mypy and baseline integrity. Four reviews complete; one fifth remains within absolute cap. No live ACPX or global claim. DOM-002 excluded.",
+      "evidence": [
+        "knowledge/00-System/SCN070-ROUND4-ROOT-CAUSE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND4-ROOTCAUSE-WATCHDOG-CHECKPOINT-2026-10-04.md",
+        "knowledge/00-System/REVIEW_IN_FLIGHT.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T21:20:07.545698+00:00",
+      "status": "NON_CONVERGING",
+      "intendedOperation": "One-shot Claude implementation of persisted SCN-070 round-5 root-cause strategy only; no review",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 / R5-1 and R5-2 root-cause/evidence work",
+      "decision": "ALLOW",
+      "reason": "NON_CONVERGING permits persisted strategy-change/root-cause work. Fifth review complete and absolute review cap reached; operation is not a reviewer. Prior retained implementation context unavailable after prior ACPX session-not-found; no live Veyro ACPX process.",
+      "evidence": [
+        "knowledge/00-System/SCN070-ROUND5-CONVERGENCE-ASSESSMENT-2026-10-05.md",
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND5-2026-10-04.md",
+        "knowledge/00-System/REVIEW_IN_FLIGHT.md"
+      ]
+    },
+    {
+      "at": "2026-10-04T21:34:04.945079+00:00",
+      "status": "NON_CONVERGING",
+      "intendedOperation": "Claude ACPX one-shot persisted SCN-070 R5 root-cause strategy work only; no reviewer, promotion, or normal remediation cycle",
+      "boundedWorkUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 / R5-1 metadata classification and R5-2 evidence accuracy",
+      "decision": "ALLOW",
+      "reason": "Completed round-5 convergence assessment permits only persisted strategy-change/root-cause work. Prior writer PID absent without result, no live duplicate; five-review absolute cap forbids another ordinary review. This is the same permitted root-cause strategy, not a new ordinary cycle.",
+      "evidence": [
+        "knowledge/00-System/SCN070-ROUND5-CONVERGENCE-ASSESSMENT-2026-10-05.md",
+        "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND5-2026-10-04.md",
+        "knowledge/00-System/REVIEW_IN_FLIGHT.md"
+      ]
+    },
+    {
+      "at": "2026-10-09T16:16:49.699877+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "M1-C-06-v30 one final audited ARCHITECTURE_CRITICAL code correction for C09-X .git-vs-CI checkout contradiction",
+      "boundedWorkUnit": "MOD-001 / GOV-01-R03/R04 / security scanners and R03 foundations / 126,030,031,032,033,039,040,043,065,068,069,122,123",
+      "decision": "ALLOW_ONE_CHANGED_STRATEGY_IMPLEMENTATION",
+      "reason": "Final audited C06 dispatch (46/47 used). v29 left a real .git checkout refusal; v30 must replace the direct gitleaks target with an exact committed git-free snapshot while preserving prior-grant denial. No real Veyro scan, capability approval or scenario PASS. Loop STAGNANT requires materially changed v30; bloat SPLIT budget allows one call.",
+      "evidence": [
+        "control/OPERATION_BLOAT_AUDITS.json",
+        "tools/governed_scanner_preflight.py",
+        ".github/workflows/c06-real-tree-scanner-candidate.yml",
+        "knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAP-REAL-SCOPE-EXTENSION-DETERMINATION-2026-10-09.md"
+      ]
+    },
+    {
+      "at": "2026-10-09T16:36:10.653678+00:00",
+      "status": "ACTIVE",
+      "intendedOperation": "M1-C-06-v31 ARCHITECTURE_CRITICAL mandatory snapshot failure-cleanup correction",
+      "boundedWorkUnit": "MOD-001 / GOV-01-R03/R04 / security scanners and R03 foundations / 126,030,031,032,033,039,040,043,065,068,069,122,123",
+      "decision": "ALLOW_ONE_REAUDITED_CHANGED_STRATEGY_IMPLEMENTATION",
+      "reason": "Synthetic two-file Git fixture proves v30 materialization leaves a copied earlier file after later blob mismatch. This new security/data-handling defect blocks CAP-009 scope extension. Re-audit at 47 records a 2-call SPLIT ceiling: one narrow fix now, one mandatory scoped assurance later; no CI/live scan or scenario promotion.",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-C09-GITDIR-SNAPSHOT-2026-10-09.md",
+        "control/OPERATION_BLOAT_AUDITS.json",
+        "tools/governed_scanner_preflight.py"
+      ]
+    }
+  ],
+  "scn070WorkUnitState": {
+    "workUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 migration-ordering lint",
+    "reviewRoundsCompleted": 5,
+    "remediationRoundsCompleted": 4,
+    "reviewRoundsInFlight": 0,
+    "lastMaterialProgress": {
+      "at": "2026-10-05T00:50:00+03:00",
+      "result": "R5-1 corrected by a total stat/lstat classification table (6 outcome rows, ABSENT reachable by exactly one route). Self-executed: 61/61 focused tests, 22/22 mutants killed including new M21/M22 which restore the fold by two different routes, a decision-level AST lock on absent-returning handlers, and a 10-row pre-fix/post-fix injection drill in which the three indeterminate rows flip from exit 0/PASS/false-absence to exit 1/named error in both flag modes while the two legitimate rows stay byte-identical. M21 in isolation kills exactly the 4 new controls while all 55 pre-existing tests still pass under it, empirically confirming R5-1's zero-coverage claim. R5-2 structurally closed; R5-3 adjudicated P3 with conditional escalation.",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND5-ROOTCAUSE-IMPLEMENTATION-2026-10-05.md",
+      "independentlyReviewed": false,
+      "note": "Self-executed implementation evidence only. This is material progress, NOT a PASS, NOT a closure of R5-1, and NOT grounds for promotion or for a sixth review."
+    },
+    "priorMaterialProgress": {
+      "at": "2026-10-04T14:26:52.839924+00:00",
+      "result": "Cross-layer tri-state records-path acquisition and single-result CLI notice implemented; watchdog independently verified 55/55 tests, 20/20 mutant kills, mypy PASS, baseline 4/4 MATCH",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND4-ROOTCAUSE-WATCHDOG-CHECKPOINT-2026-10-04.md"
+    },
+    "openFindings": [
+      "R5-1 P2 root-cause architectural: CORRECTED 2026-10-05 by total stat/lstat classification table (6 outcome rows); REMEDIATED_PENDING_INDEPENDENT_ASSURANCE, not closed — no independent review exists for this snapshot and the five-review absolute cap is reached",
+      "R5-2 P2 record/evidence accuracy: STRUCTURALLY_CLOSED 2026-10-05 — implementation-tier record created, reviewed bytes pinned, round-3 dangling citations corrected append-only. Residual historical gap (round-4 authorial intent) is irrecoverable and named, not reconstructed",
+      "R5-3 P3 FIFO hang: ADJUDICATED 2026-10-05 — P3 correct at current scope (not a fail-open; no repository-mediated reachability; no CI runner exists), with recorded conditional escalation to >=P2 on CI wiring (R3-4). NOT FIXED",
+      "R5-4, R5-5, R5-6, R5-7, R5-8, R5-9 P3 and round-4 R4-6: OPEN, untouched. No PASS claimed for the GOV-01-R06 lint gate"
+    ],
+    "noProgressIterations": 0,
+    "rootCauseStrategyWork": {
+      "at": "2026-10-05",
+      "status": "COMPLETED",
+      "operation": "Persisted SCN-070 round-5 root-cause strategy work authorized by the round-5 convergence assessment: total metadata-classification table, asymmetric negative tests and mutants, R5-2 evidence reconciliation, R5-3 severity adjudication",
+      "countsAsOrdinaryRemediationRound": false,
+      "countsAsReviewRound": false,
+      "countingNote": "remediationRoundsCompleted deliberately stays 4 and reviewRoundsCompleted stays 5. The round-5 assessment permitted strategy-change/root-cause work only and stated explicitly that it 'does not authorize a normal patch/re-review cycle or override the absolute review cap'. Recording this as a fifth ordinary remediation round would imply an entitlement to a sixth review that does not exist; recording it nowhere would hide real material change. It is therefore counted here, separately and explicitly.",
+      "executed": [
+        "backend/.venv/bin/python -m pytest tools/tests/test_validate_migration_ordering.py -q -> 55 passed (pre-change baseline, hashes match round-5 review section 1 exactly) then 61 passed (post-change)",
+        "backend/.venv/bin/python knowledge/03-Modules/MOD-001/evidence/implementation/scn070_ordering_lint_mutation_killcheck.py -> sane baseline 61/61, M1..M22 all KILLED, survivors=[], exit 0",
+        "M21 (literal R5-1 fold restored) in isolation on a /tmp mirror -> 4 failed, 57 passed; killed by exactly the 4 new controls while all 55 pre-existing tests PASS under the mutant, empirically confirming R5-1's zero-coverage claim",
+        "Asymmetric stat/lstat fault-injection CLI drill, pre-fix vs fixed, 10 rows -> 3 indeterminate rows flip from exit 0/PASS/false-absence-NOTICE to exit 1/UNREADABLE_RECORDS_PATH in BOTH flag modes; genuine-absence and broken-symlink rows byte-identical (discriminating control)",
+        "backend/.venv/bin/python -m mypy tools/validate_migration_ordering.py -> Success, no issues",
+        "backend/.venv/bin/python -m ruff check (two scoped files) -> 4 errors, the SAME pre-existing R5-9 set (2x EXE001, 2x FLY002); none added, none adjudicated",
+        "backend/.venv/bin/python tools/validate_migration_ordering.py (the automated caller's invocation, real in-repo tree) -> exit 0, empty-dir notice, unchanged",
+        "mkfifo record + timeout 15 CLI -> exit 124, no output (R5-3 reproduced); git ls-files -s confirms the only automated caller's target tree holds one mode-100644 entry and git cannot represent a FIFO"
+      ],
+      "selfExecutedOnly": true,
+      "independentAssurance": "NONE for this snapshot. All evidence above is self-executed implementation evidence.",
+      "hashesBefore": {
+        "tools/validate_migration_ordering.py": "8f3d166bd7e647d678b6b5f2ba8ec97be3849c14e6b058d5cbb907a12abb6881",
+        "tools/tests/test_validate_migration_ordering.py": "2ad9dc35e9bb6001865eb9603071b206c6fd9343d2911543abf5029c9a410154",
+        "scn070_ordering_lint_mutation_killcheck.py": "90b7c3ef0cc030bef2f87f191dc3207d4518f8ac8e1a832fbc24dd8311efc251"
+      },
+      "hashesAfter": {
+        "tools/validate_migration_ordering.py": "86aad0755c51684eb99d50dd332738e5e316836ca23f9cf1fa6360e0a7336639",
+        "tools/tests/test_validate_migration_ordering.py": "708ac1d986a1c258c076d163b19bf4d0054f1faf927f8c309bb3d2d12dff955c",
+        "scn070_ordering_lint_mutation_killcheck.py": "7100e7ef50e8c7982ec5a95722b18a5a1ee744ec94a57583c302fa93a4177eb6"
+      },
+      "dispatchesMade": "NONE — no reviewer, subagent, or ACPX operation was dispatched, so the assessment's pre-dispatch allow/deny requirement had no dispatch to gate. Pre-flight verification was still performed and recorded: REVIEW_IN_FLIGHT.md current_claim CLEAR, and no live Veyro-rooted claude/acpx process other than this session itself.",
+      "workingTreePreserved": "git status --porcelain 346 -> 348, upward only (+1 drill log, +1 implementation record). No deletions, renames, commits, pushes, stashes, resets, checkouts, or branch changes.",
+      "evidence": [
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND5-ROOTCAUSE-IMPLEMENTATION-2026-10-05.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-R5-1-ASYMMETRIC-INJECTION-DRILL-2026-10-05.txt",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND3-REMEDIATION-2026-10-04.md (appended CORRECTION 2026-10-05)"
+      ]
+    },
+    "lastInterruptedAttempt": {
+      "at": "2026-10-04T21:34:04.945079+00:00",
+      "operation": "2026-10-04T21:20Z one-shot root-cause writer PID 90822",
+      "status": "INTERRUPTED_NO_RESULT",
+      "reason": "PID 90822 is absent; no new SCN070 implementation report or ACPX result captured; exit cause unknown. Preserve prior uncommitted work. No completed remediation round counted. Superseded 2026-10-05: the same authorized root-cause strategy work was subsequently completed in-session, see rootCauseStrategyWork.",
+      "countsAsCompletedRound": false,
+      "evidence": "live ps at watchdog 2026-10-04T21:33Z and unchanged SCN070 evidence directory"
+    },
+    "convergenceStatus": "NON_CONVERGING",
+    "analysisCompletedAt": "2026-10-04T13:20:20.096524+00:00",
+    "analysisRecord": "knowledge/00-System/SCN070-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+    "strategyChange": "Explicit error-reporting tree traversal plus invariant negative/mutation controls; one bounded architectural remediation, not another shape-by-shape patch",
+    "fourthReviewAllowedNow": false,
+    "fourthReviewDecision": {
+      "at": "2026-10-04T13:29:08.535265+00:00",
+      "decision": "ALLOW_ONE_EXCEPTIONAL_INDEPENDENT_REVIEW_AFTER_CONVERGENCE",
+      "reason": "Completed assessment persisted materially changed architecture rather than shape patch; orchestrator independently reran 36 tests and 13 mutants with no survivors. Three completed reviews have reached normal budget; this is one post-analysis exception within five-review absolute cap. Only SCN-070 root-cause fix, not DOM-002.",
+      "evidence": [
+        "knowledge/00-System/SCN070-CONVERGENCE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND3-REMEDIATION-2026-10-04.md"
+      ],
+      "result": "COMPLETED_BLOCKED_P2_2",
+      "reviewReport": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND4-2026-10-04.md"
+    },
+    "nextAutonomousAction": "The authorized root-cause strategy work is DONE (2026-10-05, see scn070WorkUnitState.rootCauseStrategyWork). R5-1 is remediated-pending-independent-assurance, R5-2 structurally closed, R5-3 adjudicated P3. SCN-070 stays NON_CONVERGING and EXECUTED — NOT PROMOTED. There is no next autonomous SCN-070 action: the five-review absolute cap is reached, so no sixth ordinary, replacement, or reassurance review is legal, and the outstanding independent-assurance gate on the new snapshot cannot be satisfied by self-executed evidence. Do NOT mark PASS, promote the scenario, or certify the module from local tests alone. This is an OWNER/GOVERNANCE DECISION POINT: either a separately justified, legally distinct assurance path is authorized for the post-R5-1 snapshot, or SCN-070 is accepted as non-converging with its open P3 set (R5-3 through R5-9, R4-6) recorded. Autonomous work should move to a distinct MOD-001 unit; do not reopen SCN-070 for reassurance.",
+    "findings": [
+      {
+        "id": "SCN070-R4-1",
+        "classification": "ROOT_CAUSE_ARCHITECTURAL",
+        "fingerprint": "GOV-01-R06 exhaustive discovery|unreadable ancestor of real destructive record|validate_directory Path.is_dir/exists and main exists before enumerate_tree|pathlib suppresses OSError as False; default no --require-dir yields false PASS|round-4 parent-mode-000 readable/unreadable control",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 1,
+        "lastSeenRound": 4,
+        "recurrenceCount": 3,
+        "remediationCount": 3,
+        "evidence": "SCN070 round-4 report §5-9; orchestrator independent backend/.venv Python reproduction"
+      },
+      {
+        "id": "SCN070-R4-2",
+        "classification": "RECORD_OR_EVIDENCE_ACCURACY",
+        "fingerprint": "GOV-01-R06 evidence accuracy|fail-closed claim for Path.is_dir/exists OSError|SCN070 round-3 remediation §7|inferred traceback contradicted by exit-0 false PASS|round-4 reviewer and orchestrator reproduction",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 4,
+        "lastSeenRound": 4,
+        "recurrenceCount": 0,
+        "remediationCount": 0,
+        "evidence": "SCN070 round-4 report §8"
+      },
+      {
+        "id": "SCN070-R5-1",
+        "classification": "ROOT_CAUSE_ARCHITECTURAL",
+        "fingerprint": "GOV-01-R06 exhaustive discovery|stat FileNotFoundError then lstat indeterminate OSError|tools/validate_migration_ordering.py acquire_records_dir|unknown-to-absent fold in inner exception|round-5 asymmetric injected stat/lstat drill",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 1,
+        "lastSeenRound": 5,
+        "recurrenceCount": 4,
+        "remediationCount": 4,
+        "evidence": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND5-2026-10-04.md"
+      },
+      {
+        "id": "SCN070-R5-2",
+        "classification": "RECORD_OR_EVIDENCE_ACCURACY",
+        "fingerprint": "GOV-01-R06 implementation evidence|round-4 changed bytes and limitations|round-3 correction and missing round-4 implementation record|dangling citation and unpinned reviewed snapshot|round-5 file/hash audit",
+        "priority": "P2",
+        "status": "OPEN",
+        "firstSeenRound": 5,
+        "lastSeenRound": 5,
+        "recurrenceCount": 0,
+        "remediationCount": 0,
+        "evidence": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND5-2026-10-04.md"
+      }
+    ],
+    "reviewVerdict": "BLOCKED_P0_0_P1_0_P2_2_P3_6",
+    "reviewReportRound4": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND4-2026-10-04.md",
+    "reviewerModelAttestationRound4": "mr_verify.py PASS 61/61 claude-opus-5",
+    "analysisRecordRound4": "knowledge/00-System/SCN070-ROUND4-ROOT-CAUSE-ASSESSMENT-2026-10-04.md",
+    "analysisCompletedAtRound4": "2026-10-04T14:01:20.164039+00:00",
+    "strategyChangeRound4": "Single tri-state error-propagating metadata acquisition shared by traversal and CLI notices; prove unreadable ancestor/default CLI with negative and mutation controls; correct false fail-closed record",
+    "writerStatus": "COMPLETED_ROOT_CAUSE_STRATEGY_WORK",
+    "writerCompletedAt": "2026-10-05T00:50:00+03:00",
+    "writerIdentityReconciliation": "The 2026-10-04T21:38:49Z ledger write registered this writer as IN_FLIGHT_ROOT_CAUSE while the operation was already running, so a later reader could mistake it for a second, competing writer. It is not: PID 95337 is this operation's own acpx wrapper (cwd /Users/ahmadmabrouk/Desktop/Veyro, ancestor of the claude process that did the work) and the raw capture it names was actively growing during the work. Repeated process checks throughout found no Veyro-rooted claude/acpx process other than this one, and REVIEW_IN_FLIGHT.md current_claim read CLEAR at start and was not changed.",
+    "writerResult": "Completed the authorized root-cause strategy work. See rootCauseStrategyWork for executed commands and results and openFindings for per-finding disposition. No PASS claimed, no scenario promoted, no review dispatched, no sixth review authorized.",
+    "fifthReviewDecision": {
+      "at": "2026-10-04T14:26:52.839924+00:00",
+      "decision": "ALLOW_ONE_EXCEPTIONAL_FIFTH_INDEPENDENT_REVIEW",
+      "reason": "Four completed reviews reached the normal limit, but the separately persisted round-4 convergence assessment authorized a materially distinct cross-layer tri-state strategy. The implementation has substantive local negative and mutation evidence (55 tests, 20 killed), and one fifth review remains within the absolute cap. This is not a retry of the interrupted DOM-002 review. No sixth ordinary review is authorized.",
+      "evidence": [
+        "knowledge/00-System/SCN070-ROUND4-ROOT-CAUSE-ASSESSMENT-2026-10-04.md",
+        "knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-ROUND4-ROOTCAUSE-WATCHDOG-CHECKPOINT-2026-10-04.md"
+      ]
+    },
+    "reviewRoundDispatched": 5,
+    "reviewReportRound5": "knowledge/03-Modules/MOD-001/evidence/security/SCN070-MIGRATION-ORDERING-LINT-SECURITY-REVIEW-ROUND5-2026-10-04.md",
+    "reviewerModelAttestationRound5": "mr_verify.py PASS 61/61 claude-opus-5 (agent-a3797d1556c1901a8.jsonl)",
+    "analysisRecordRound5": "knowledge/00-System/SCN070-ROUND5-CONVERGENCE-ASSESSMENT-2026-10-05.md",
+    "analysisCompletedAtRound5": "2026-10-04T21:19:34.605523+00:00",
+    "writerOperation": "2026-10-05 permitted SCN070 R5 root-cause ACPX one-shot; PID 95337; raw capture SCN070-ROUND5-ROOTCAUSE-ACPX-RAW-2026-10-05.txt",
+    "writerStartedAt": "2026-10-04T21:34:04.945079+00:00"
+  },
+  "priorNonConvergingSlice": {
+    "workUnit": "MOD-001 / SCN-MOD001-070 / GOV-01-R06 / round-5 convergence/root-cause work",
+    "status": "NON_CONVERGING",
+    "reviewRoundsCompleted": 5,
+    "assurance": "BLOCKED_POST_FIX_UNASSURED",
+    "decision": "No further autonomous SCN-070 action; no sixth ordinary review",
+    "source": "scn070WorkUnitState and SCN070-ROUND5-CONVERGENCE-ASSESSMENT-2026-10-05.md"
+  },
+  "activeDistinctUnit": {
+    "workUnit": "MOD-001 / GOV-01-R04 / C05 trusted dependency-vulnerability CI and remaining R04 integrated pipeline",
+    "status": "M1_C05_N1_LOCAL_COMMENT_CORRECTED_N2_PENDING_TERMINAL_REVIEW_CONSUMED",
+    "reviewRoundsCompleted": 2,
+    "remediationRoundsCompleted": 0,
+    "reviewRoundsInFlight": 0,
+    "requirements": [
+      "GOV-01-R04"
+    ],
+    "coveredScenarios": [
+      "SCN-MOD001-094"
+    ],
+    "reason": "N1 option-a local comment correction pinned at bfc18e2; N2 fixture remains. No live CI, scenario promotion or third review.",
+    "reviewDispatch": false,
+    "scenarioPromotion": false
+  },
+  "historicalRoundCountSnapshots": {
+    "DOM002_AND_SCN070_PRE_GATE2_SCOPE_CORRECTION_2026-10-06": {
+      "topLevelReview": 5,
+      "topLevelRemediation": 4,
+      "roundCounting": {
+        "reviewRoundsCompleted": 4,
+        "reviewRoundsInFlight": 0,
+        "reviewRoundDispatched": 5,
+        "round5Status": "INTERRUPTED_IN_FLIGHT_EVIDENCE",
+        "round5Verdict": null,
+        "round5Resumable": false,
+        "remediationRoundsCompleted": 4,
+        "reviewEvidence": "evidence/code-review/DOM002-CONCURRENCY-PATTERN-CODE-REVIEW-ROUND1..ROUND4-2026-10-04.md; round-5 ACPX process and REVIEW_IN_FLIGHT.md claim",
+        "remediationEvidence": "evidence/implementation/DOM002-ROUND1..ROUND4-REMEDIATION-2026-10-04.md",
+        "note": "Four substantive review rounds complete. Round-5 attempts stopped without a verdict; the last bounded ACPX invocation exited before a Claude turn due expired OAuth. All are INTERRUPTED_IN_FLIGHT_EVIDENCE, not a fifth completed review and not resumable or replaceable while ANALYSIS_REQUIRED.",
+        "scn070ReviewRoundsCompleted": 5,
+        "scn070RemediationRoundsCompleted": 4,
+        "scn070ReviewRoundsInFlight": 0
+      }
+    },
+    "GATE2_F14_CLOSED_SCENARIOS_PENDING_2026_10_08": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gate-2 module-dependency and SQL import lint / SCN-MOD001-006,007,095,096",
+      "reviewRoundsCompleted": 3,
+      "remediationRoundsCompleted": 1,
+      "reviewVerdictHistorical": "BLOCKED",
+      "status": "GATE2_COMPLETE_SCENARIO_ASSURANCE_PENDING",
+      "f14FormalStatus": "CLOSED",
+      "originalFindingsClosed": 14,
+      "oneOffF14OperationId": "59125db5-fd4a-4020-b170-58aa4d362015",
+      "priorReplacementConsumed": true,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/GATE2_DISTINCT_UNIT_ARCHIVE_2026-10-08.json",
+      "archiveSha256": "61fb9272a6e04acce48009d9eadceacc8566a4a874af882ebeef3df5d15468fd",
+      "archivedAt": "2026-10-08T20:31:26.380618+00:00"
+    },
+    "GATE3_REVIEW_CONSUMED_P2_4_HELD_2026_10_09": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gate-3 event-contract lint / SCN-MOD001-008,019,130",
+      "reviewRoundsCompleted": 1,
+      "remediationRoundsCompleted": 2,
+      "reviewVerdictHistorical": "BLOCKED_P1_2_P2_4",
+      "status": "P2_4_UPSTREAM_PR_READY_APPROVAL_AND_ASSURANCE_HOLD",
+      "reviewAuthorizationConsumed": true,
+      "scenarioPromotion": false,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/GATE3_DISTINCT_UNIT_ARCHIVE_2026-10-09.json",
+      "archiveSha256": "3cb6126aa554f8f95bde446e2ea222aafece4c98de971dc164ccbfac72eb8bb7",
+      "archivedAt": "2026-10-09T02:28:42.551641+00:00"
+    },
+    "GATE5_HELD_SOURCE_AUTHORITY_2026_10_09": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gate-5 screen-contract lint / SCN-MOD001-012,013,110",
+      "reviewRoundsCompleted": 0,
+      "remediationRoundsCompleted": 0,
+      "status": "HELD_SOURCE_AUTHORITY_MISSING_NO_SCENARIO_PROMOTION",
+      "scenarioPromotion": false,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/GATE5_DISTINCT_UNIT_ARCHIVE_2026-10-09.json",
+      "archiveSha256": "434d2f240e4a1f8cc62b6471048e7738441c7da509e8f28414fd06ceb655217a",
+      "archivedAt": "2026-10-09T04:26:47.838626+00:00",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/R04-GATE6-DOMAIN-UNIQUENESS-SELECTION-ACTIVATION-2026-10-09.md"
+    },
+    "GATE6_C02_CANDIDATE_HELD_2026_10_09": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gate-6 domain-contract uniqueness lint / SCN-MOD001-014,015,131",
+      "reviewRoundsCompleted": 0,
+      "remediationRoundsCompleted": 0,
+      "status": "C02_CANDIDATE_COMPLETE_LIVE_CI_AND_ASSURANCE_HELD_AT_M1-C-13",
+      "scenarioPromotion": false,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/GATE6_DISTINCT_UNIT_ARCHIVE_2026-10-09.json",
+      "archiveSha256": "5fb9f493f53c6a4d8e77adc011e5364542e0f2d3a41b2ed03f9b52b782c68da2",
+      "archivedAt": "2026-10-09T07:17:32.556027+00:00",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/R04-GATE6-C02-REVIEW-READY-SEQUENCING-2026-10-09.md"
+    },
+    "GATE5_C03_SOURCE_INPUT_HELD_2026_10_09": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gate-5 screen-contract lint / SCN-MOD001-012,013,110",
+      "reviewRoundsCompleted": 0,
+      "remediationRoundsCompleted": 0,
+      "status": "HELD_SOURCE_AUTHORITY_NO_SCENARIO_PROMOTION",
+      "scenarioPromotion": false,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/GATE5_C03_DISTINCT_UNIT_ARCHIVE_2026-10-09.json",
+      "archiveSha256": "85b6205ace0739b5953a641d2be182b24bea42300633d48a66d56a9718bb6e4b",
+      "archivedAt": "2026-10-09T07:36:29.174159+00:00",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/R04-GATE5-C03-SOURCE-INPUT-CANDIDATE-AND-HOLD-2026-10-09.md"
+    },
+    "C04_HELD_C06_SELECTED_2026_10_09": {
+      "workUnit": "MOD-001 / GOV-01-R04 / gates-1-4 and ADR-005 seventh gate; gate-2 scenario reuse / SCN-MOD001-004,005,006,007,010,011,067,095,096",
+      "reviewRoundsCompleted": 0,
+      "remediationRoundsCompleted": 0,
+      "status": "M1_C04_HELD_RLS_A2_MODEL_ASSURANCE_AND_PERMISSION_REAL_INPUT",
+      "scenarioPromotion": false,
+      "archive": "/Users/ahmadmabrouk/.openclaw/workspace-veyro/control/C04_DISTINCT_UNIT_ARCHIVE_2026-10-09.json",
+      "archiveSha256": "e1e980cd48f8b0351366f409c70227e247d1dd31f7ad736ca4b29b32e90704b0",
+      "archivedAt": "2026-10-09T08:21:30.958484+00:00",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/R04-C04-RLS-PERMISSION-SOURCE-BOUNDARY-2026-10-09.md"
+    },
+    "C06_CAPABILITY_HELD_2026_10_09": {
+      "at": "2026-10-09T16:50:36.973463+00:00",
+      "status": "BLOCKED_EXACT_COMMITTED_SNAPSHOT_LINUX_PIN",
+      "unit": {
+        "workUnit": "MOD-001 / GOV-01-R03/R04 / security scanners and R03 foundations / 126,030,031,032,033,039,040,043,065,068,069,122,123",
+        "status": "M1_C06_BLOCKED_EXACT_COMMITTED_SNAPSHOT_LINUX_PIN",
+        "reviewRoundsCompleted": 2,
+        "remediationRoundsCompleted": 0,
+        "reviewVerdict": "CAP009_CAP010_REAL_TREE_CI_EXTENSION_BLOCKED",
+        "requirements": [
+          "GOV-01-R03",
+          "GOV-01-R04"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-126",
+          "SCN-MOD001-030",
+          "SCN-MOD001-031",
+          "SCN-MOD001-032",
+          "SCN-MOD001-033",
+          "SCN-MOD001-039",
+          "SCN-MOD001-040",
+          "SCN-MOD001-043",
+          "SCN-MOD001-065",
+          "SCN-MOD001-068",
+          "SCN-MOD001-069",
+          "SCN-MOD001-122",
+          "SCN-MOD001-123"
+        ],
+        "surface": [
+          "tools/",
+          "backend/tests/",
+          ".github/workflows/"
+        ],
+        "reason": "GOV-01-R03 mandatory scanner, exposure/logging/a11y/RTL, NET/PART/OFF and smoke-load foundations; C05 integrates CI stages. No C06 scenario executed or promoted.",
+        "selectedAt": "2026-10-09T08:21:30.958484+00:00",
+        "selectedByOperationId": "575b2df5-b613-4fa9-9a96-fb7642317608",
+        "selectionEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-R03-SOURCE-BOUNDARY-2026-10-09.md",
+        "reviewDispatch": false,
+        "scenarioPromotion": false,
+        "lastEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-C09-GITDIR-SNAPSHOT-2026-10-09.md",
+        "capabilityReviewVerdict": "CAP-009_APPROVED_BOUNDED_SYNTHETIC_ONLY;CAP-010_APPROVED_BOUNDED_SYNTHETIC_ONLY_CONDITIONAL_LOCAL_LINT_FORMAT;REAL_TREE_SAST_SECRET_CI_HELD",
+        "capabilityReviewEvidence": "knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAPABILITY-SECURITY-DETERMINATION-2026-10-09.md",
+        "capabilityExtensionReviewEvidence": "knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAP-REAL-SCOPE-EXTENSION-DETERMINATION-2026-10-09.md",
+        "capabilityExtensionReviewSha256": "02f531afee0804a4b5c76225c8e4422e25f122037b3fb05f15fe56fcccd9d117",
+        "capabilityExtensionReviewModelAttestation": "mr_verify.py PASS 60/60 claude-opus-5 on fde3e7e5-664e-462a-93cd-7ed2c66cd197.jsonl",
+        "boundedRegistrationEvidence": {
+          "registry": "knowledge/00-System/CAPABILITY_REGISTRY.md",
+          "manifest": "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml",
+          "hashes": {
+            "knowledge/00-System/CAPABILITY_REGISTRY.md": "5254830509a47af8984eac0785605d1320423718eae3e2c52598d3ed2f939450",
+            "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml": "71bacb36d32dca6a504238887ba8838ccf83934d070bd25e0084f20a23d2b244"
+          },
+          "validator": "6 errors, CAP-011/012 only; CAP-009/010 approved bounded scopes"
+        }
+      },
+      "bloatAudit": "control/OPERATION_BLOAT_AUDITS.json#M1-C-06",
+      "dispatchesPreserved": 48,
+      "reviewRoundsPreserved": 2,
+      "scenarioPromotion": false
+    },
+    "M1-C-07-HELD-2026-10-09": {
+      "activeSlice": "MOD-001 / GOV-01-R01/R02 / shared test-workflow harness / 036,061,071,009,016,132,133",
+      "activeDistinctUnit": {
+        "workUnit": "MOD-001 / GOV-01-R01/R02 / shared test-workflow harness / 036,061,071,009,016,132,133",
+        "status": "M1_C07_CAP011_LOCAL_APPROVED_ONLY__CI_AND_TEST_CODE_HELD",
+        "reviewRoundsCompleted": 2,
+        "remediationRoundsCompleted": 1,
+        "reviewRoundsInFlight": 0,
+        "requirements": [
+          "GOV-01-R01",
+          "GOV-01-R02"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-036",
+          "SCN-MOD001-061",
+          "SCN-MOD001-071",
+          "SCN-MOD001-009",
+          "SCN-MOD001-016",
+          "SCN-MOD001-132",
+          "SCN-MOD001-133"
+        ],
+        "surface": [
+          "backend/tests/",
+          "tools/",
+          ".github/workflows/"
+        ],
+        "reason": "Mandatory R01/R02 test-pyramid and critical-workflow harness batch. Reuse prior promoted 009/132/133; no new scenario PASS inferred.",
+        "selectedAt": "2026-10-09T16:50:36.973463+00:00",
+        "selectedByOperationId": "a9d83c6b-07e2-4ffe-82c0-f487a410107d",
+        "reviewDispatch": false,
+        "scenarioPromotion": false,
+        "capabilityReviewEvidence": "knowledge/03-Modules/MOD-001/evidence/security/M1-C-07-CAP011-LOCAL-REDETERMINATION-2026-10-09.md",
+        "localCapabilityVerdict": "APPROVED_LOCAL_SCOPE_ONLY",
+        "ciCapabilityVerdict": "BLOCKED_B4_B6"
+      },
+      "totalReviewRoundsForSlice": 2,
+      "totalRemediationRoundsForSlice": 3,
+      "reason": "C07 local candidate commit pinned; IaC reviewed-commit rule and C14/live CI hold final C07 closure. Preserve all C07 counters and existing review verdict; no new PASS."
+    },
+    "M1-C-09-HELD-2026-10-09": {
+      "activeSlice": "MOD-001 / GOV-01-R07/R08 / mobile release-version and release lifecycle / C09 21-scenario batch",
+      "activeDistinctUnit": {
+        "workUnit": "MOD-001 / GOV-01-R07/R08 / mobile release-version and release lifecycle / C09 21-scenario batch",
+        "status": "M1_C09_SELECTED_MANDATORY_INDEPENDENT_INCREMENT",
+        "reviewRoundsCompleted": 0,
+        "remediationRoundsCompleted": 0,
+        "reviewRoundsInFlight": 0,
+        "requirements": [
+          "GOV-01-R07",
+          "GOV-01-R08"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-127",
+          "SCN-MOD001-128",
+          "SCN-MOD001-129",
+          "SCN-MOD001-050",
+          "SCN-MOD001-051",
+          "SCN-MOD001-052",
+          "SCN-MOD001-053",
+          "SCN-MOD001-054",
+          "SCN-MOD001-055",
+          "SCN-MOD001-056",
+          "SCN-MOD001-074",
+          "SCN-MOD001-099",
+          "SCN-MOD001-100",
+          "SCN-MOD001-101",
+          "SCN-MOD001-115",
+          "SCN-MOD001-117",
+          "SCN-MOD001-021b",
+          "SCN-MOD001-125",
+          "SCN-MOD001-057",
+          "SCN-MOD001-107",
+          "SCN-MOD001-108"
+        ],
+        "surface": [
+          "mobile/",
+          "tools/",
+          "knowledge/03-Modules/MOD-001/",
+          ".github/workflows/"
+        ],
+        "reason": "Existing C09 bounded operation; start only mandatory controls independent of held C07 and unfinished R05; no review/CI/scenario claim.",
+        "selectedAt": "2026-10-09T18:53:58.829709+00:00",
+        "selectedByOperationId": "33a8b801-c89f-4d19-9c98-f6eee66daa79",
+        "reviewDispatch": false,
+        "scenarioPromotion": false,
+        "dispatchIntent": {
+          "at": "2026-10-09T18:55:54.535181+00:00",
+          "subgoal": "M1-C-09-R08-RELEASE-LIFECYCLE",
+          "classification": "IMPLEMENTATION",
+          "model": "claude-sonnet-5-5",
+          "reason": "Mandatory R08 acceptance artifact and executable lint; independent of unfinished R05 release evidence and unreviewed C07 workflow; loop/size CLEAR and review claim CLEAR."
+        }
+      },
+      "totalReviewRoundsForSlice": 0,
+      "totalRemediationRoundsForSlice": 0,
+      "reason": "C09 local candidate preserved, no live build/CI or scenario PASS; 6/6 audit exhausted; C04 mandatory prerequisite selected."
+    },
+    "M1-C-04-HELD-2026-10-09": {
+      "activeSlice": "MOD-001 / GOV-01-R04 / gates-1-4 and ADR-005 seventh gate; gate-2 scenario reuse / SCN-MOD001-004,005,006,007,010,011,067,095,096",
+      "activeDistinctUnit": {
+        "workUnit": "MOD-001 / GOV-01-R04 / gates-1-4 and ADR-005 seventh gate; gate-2 scenario reuse / SCN-MOD001-004,005,006,007,010,011,067,095,096",
+        "status": "M1_C04_ACTIVE_PERMISSION_API_PREREQUISITE_A2_HELD",
+        "reviewRoundsCompleted": 0,
+        "remediationRoundsCompleted": 0,
+        "reviewRoundsInFlight": 0,
+        "requirements": [
+          "GOV-01-R04"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-004",
+          "SCN-MOD001-005",
+          "SCN-MOD001-010",
+          "SCN-MOD001-011",
+          "SCN-MOD001-067",
+          "SCN-MOD001-006",
+          "SCN-MOD001-007",
+          "SCN-MOD001-095",
+          "SCN-MOD001-096"
+        ],
+        "surface": [
+          "tools/validate_architecture_gates.py",
+          "backend/app/",
+          "contracts/"
+        ],
+        "reason": "C09 audited budget exhausted; C04 owns mandatory source-backed permission/API prerequisite. ADR-010 A2 safeguard and qualified-model boundary remain held; no scenario PASS or review entitlement inferred.",
+        "selectedAt": "2026-10-09T19:49:16.845377+00:00",
+        "selectedByOperationId": "d9e56bea-add8-4876-903f-cc3e746c74eb",
+        "reviewDispatch": false,
+        "scenarioPromotion": false
+      },
+      "totalReviewRoundsForSlice": 0,
+      "totalRemediationRoundsForSlice": 0,
+      "reason": "C04 real permission/API source absent and ADR-010 A2 qualified-model safeguard unresolved. No new review or scenario PASS."
+    },
+    "M1-C-05-LOCAL-CANDIDATE-PINNED-2026-10-09": {
+      "at": "2026-10-09T20:10:52.658550+00:00",
+      "unit": {
+        "workUnit": "MOD-001 / GOV-01-R04 / full CI pipeline and dependency-vulnerability gate / C05 remaining R04 scenario batch",
+        "status": "M1_C05_ACTIVE_OSV_CI_EARLY_START",
+        "reviewRoundsCompleted": 0,
+        "remediationRoundsCompleted": 0,
+        "reviewRoundsInFlight": 0,
+        "requirements": [
+          "GOV-01-R04"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-017",
+          "SCN-MOD001-018",
+          "SCN-MOD001-023",
+          "SCN-MOD001-024",
+          "SCN-MOD001-029",
+          "SCN-MOD001-034",
+          "SCN-MOD001-037",
+          "SCN-MOD001-038",
+          "SCN-MOD001-041",
+          "SCN-MOD001-042",
+          "SCN-MOD001-062",
+          "SCN-MOD001-063",
+          "SCN-MOD001-064",
+          "SCN-MOD001-073",
+          "SCN-MOD001-075",
+          "SCN-MOD001-085",
+          "SCN-MOD001-086",
+          "SCN-MOD001-087",
+          "SCN-MOD001-088",
+          "SCN-MOD001-089",
+          "SCN-MOD001-090",
+          "SCN-MOD001-091",
+          "SCN-MOD001-092",
+          "SCN-MOD001-093",
+          "SCN-MOD001-094",
+          "SCN-MOD001-098",
+          "SCN-MOD001-102",
+          "SCN-MOD001-103",
+          "SCN-MOD001-104",
+          "SCN-MOD001-105",
+          "SCN-MOD001-109",
+          "SCN-MOD001-111",
+          "SCN-MOD001-112",
+          "SCN-MOD001-119",
+          "SCN-MOD001-134",
+          "SCN-MOD001-135",
+          "SCN-MOD001-136",
+          "SCN-MOD001-138",
+          "SCN-MOD001-139"
+        ],
+        "surface": [
+          "tools/scan_dependency_advisories.py",
+          "backend/requirements-dev.lock.txt",
+          ".github/workflows/"
+        ],
+        "reason": "Independent mandatory OSV dependency-vulnerability CI prerequisite was already assigned from C06 to C05. Other C05 dependencies remain held; no integrated stage or scenario PASS inferred.",
+        "selectedAt": "2026-10-09T19:50:54.933711+00:00",
+        "selectedByOperationId": "cf85ceaa-96af-4768-8888-44f68ec7e339",
+        "reviewDispatch": false,
+        "scenarioPromotion": false
+      },
+      "localCommit": "2931933814018697c01b2965ffc79cd4fddf8dac",
+      "reviewRoundsPreserved": 0,
+      "scenarioPromotion": false
+    },
+    "M1-C-06-LOCAL-PIN-HELD-2026-10-09": {
+      "at": "2026-10-09T20:15:22.507942+00:00",
+      "unit": {
+        "workUnit": "MOD-001 / GOV-01-R03/R04 / security scanners and R03 foundations / 126,030,031,032,033,039,040,043,065,068,069,122,123",
+        "status": "M1_C06_ACTIVE_DETERMINISTIC_PIN_PREREQUISITE_ONLY",
+        "reviewRoundsCompleted": 2,
+        "remediationRoundsCompleted": 0,
+        "reviewVerdict": "CAP009_CAP010_REAL_TREE_CI_EXTENSION_BLOCKED",
+        "requirements": [
+          "GOV-01-R03",
+          "GOV-01-R04"
+        ],
+        "coveredScenarios": [
+          "SCN-MOD001-126",
+          "SCN-MOD001-030",
+          "SCN-MOD001-031",
+          "SCN-MOD001-032",
+          "SCN-MOD001-033",
+          "SCN-MOD001-039",
+          "SCN-MOD001-040",
+          "SCN-MOD001-043",
+          "SCN-MOD001-065",
+          "SCN-MOD001-068",
+          "SCN-MOD001-069",
+          "SCN-MOD001-122",
+          "SCN-MOD001-123"
+        ],
+        "surface": [
+          "tools/",
+          "backend/tests/",
+          ".github/workflows/"
+        ],
+        "reason": "GOV-01-R03 mandatory scanner, exposure/logging/a11y/RTL, NET/PART/OFF and smoke-load foundations; C05 integrates CI stages. No C06 scenario executed or promoted.",
+        "selectedAt": "2026-10-09T20:10:52.658550+00:00",
+        "selectedByOperationId": "f45472d7-d2eb-4436-b79e-4a718633d9c3",
+        "selectionEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-R03-SOURCE-BOUNDARY-2026-10-09.md",
+        "reviewDispatch": false,
+        "scenarioPromotion": false,
+        "lastEvidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-C09-GITDIR-SNAPSHOT-2026-10-09.md",
+        "capabilityReviewVerdict": "CAP-009_APPROVED_BOUNDED_SYNTHETIC_ONLY;CAP-010_APPROVED_BOUNDED_SYNTHETIC_ONLY_CONDITIONAL_LOCAL_LINT_FORMAT;REAL_TREE_SAST_SECRET_CI_HELD",
+        "capabilityReviewEvidence": "knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAPABILITY-SECURITY-DETERMINATION-2026-10-09.md",
+        "capabilityExtensionReviewEvidence": "knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAP-REAL-SCOPE-EXTENSION-DETERMINATION-2026-10-09.md",
+        "capabilityExtensionReviewSha256": "02f531afee0804a4b5c76225c8e4422e25f122037b3fb05f15fe56fcccd9d117",
+        "capabilityExtensionReviewModelAttestation": "mr_verify.py PASS 60/60 claude-opus-5 on fde3e7e5-664e-462a-93cd-7ed2c66cd197.jsonl",
+        "boundedRegistrationEvidence": {
+          "registry": "knowledge/00-System/CAPABILITY_REGISTRY.md",
+          "manifest": "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml",
+          "hashes": {
+            "knowledge/00-System/CAPABILITY_REGISTRY.md": "5254830509a47af8984eac0785605d1320423718eae3e2c52598d3ed2f939450",
+            "knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml": "71bacb36d32dca6a504238887ba8838ccf83934d070bd25e0084f20a23d2b244"
+          },
+          "validator": "6 errors, CAP-011/012 only; CAP-009/010 approved bounded scopes"
+        }
+      },
+      "reviewRoundsPreserved": 2,
+      "dispatchesPreserved": 48,
+      "localCommit": "dde6f925df1d6c1f38316220c57166da1ad89463",
+      "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-06-COMMITTED-CANDIDATE-LINUX-DIGEST-2026-10-09.md",
+      "scenarioPromotion": false
+    }
+  },
+  "counterReconciliation": {
+    "at": "2026-10-09T16:50:36.973463+00:00",
+    "activeSlice": "MOD-001 / GOV-01-R01/R02 / shared test-workflow harness / 036,061,071,009,016,132,133",
+    "reason": "Archive C06 held counters 2 reviews/48 calls and select distinct C07 0/0; no gate2/gate3/SCN070 counter changes.",
+    "evidence": "control/OPERATION_BLOAT_AUDITS.json#M1-C-06"
+  },
+  "strategyReconciliation": {
+    "at": "2026-10-06T00:29:16.137260+00:00",
+    "operationId": "1e44882c-afaf-4e89-b940-d6b28a627266",
+    "findingId": "R1-F01",
+    "classification": "ROOT_CAUSE_ARCHITECTURAL",
+    "result": "CHANGED_IMPLEMENTATION_STRATEGY_NO_BLOCKER_REDUCTION",
+    "nextSubgoal": "R04-GATE2-R2-N01-D67-SHARED-SIGNAL-ACCOUNTING-N4",
+    "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/GATE2-R2-N01-D67-N4-STRATEGY-RECONCILIATION-2026-10-06.md",
+    "reviewCountersUnchanged": true
+  },
+  "nextLegalAction": "One separate guarded Sonnet N2 P2 fixture correction under remaining C05 audit budget (1 call), then verify and re-audit/hold. No third C05 review, remote activation, or scenario PASS.",
+  "dispatchDecision": "N1 option-a single Sonnet implementation completed and independently verified as 16 comment-only lines, commit bfc18e2. Reviewer N1 not independently closed; terminal C05 review consumed. Next distinct N2 fixture correction, one C05 audit call left.",
+  "status": "M1_C06_BOUNDED_CAP_REGISTRATION_RECORDED_ASSURANCE_HELD",
+  "lastReviewResult": "M1-C-06 CAP-009/010 terminal independent Opus BLOCKED/BLOCKED, no grant; knowledge/03-Modules/MOD-001/evidence/security/M1-C-06-CAP009010-TERMINAL-DECISION-2026-10-09.md",
+  "c05ReviewRound1": {
+    "status": "BLOCKED",
+    "snapshot": "2931933814018697c01b2965ffc79cd4fddf8dac",
+    "report": "knowledge/03-Modules/MOD-001/evidence/code-review/M1-C-05-TRUSTED-DEPENDENCY-CI-REVIEW-2026-10-10.md",
+    "reportSha256": "d3597d1f1e92344a36be1634f3690cb05126f9b51faa617a71a4ca76e87a1389",
+    "runtimeAttestation": "mr_verify.py PASS 42/42 claude-opus-5",
+    "sessionId": "458d82bb-dbc3-44e7-8a01-4252bd0f0c8a",
+    "findingCount": {
+      "P0": 1,
+      "P1": 3,
+      "P2": 4,
+      "P3": 7
+    },
+    "noRemoteEffect": true,
+    "noScenarioPromotion": true,
+    "C13IntegratedAssurance": false
+  },
+  "c05ReviewRound2": {
+    "status": "BLOCKED",
+    "snapshot": "706be091cccfd5cc5f18cc3ec5e3c1f1a80103b4",
+    "report": "knowledge/03-Modules/MOD-001/evidence/code-review/M1-C-05-CORRECTED-SNAPSHOT-REVIEW-2026-10-10.md",
+    "reportSha256": "125a1ac1f2178bce4cf2dce6463e7bc345eff896b2cbb05de35639f19233bcab",
+    "findingCount": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 2,
+      "P3": 1
+    },
+    "criterionI": "SATISFIED",
+    "priorEightFindings": "CLOSED_OR_DISPOSITIONED",
+    "remoteEffect": false,
+    "scenarioPromotion": false,
+    "C13IntegratedAssurance": false,
+    "terminalReviewConsumed": true
+  },
+  "c05FinalCounters": {
+    "reviewRoundsCompleted": 2,
+    "remediationRoundsCompleted": 0,
+    "terminalReviewConsumed": true,
+    "status": "PRECISE_DEPENDENCY_HOLD"
+  },
+  "c03SourceBoundary": {
+    "status": "TECHNICAL_CONTAINER_AUTHORIZED_ROWS_ABSENT",
+    "report": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-03-TECHNICAL-SOURCE-BOUNDARY-2026-10-10.md",
+    "reportSha256": "a608b92097e2d5763de23a1bb1c0256d32d8135e9bb222cd7568e1bdba3d2871",
+    "runnerOperationId": "4c09c9a9-94cf-441f-8fe2-ca76a3bc3a7f",
+    "noScenarioPromotion": true,
+    "noGatePass": true
+  },
+  "c03AuthorityInputCommit": {
+    "commit": "03162e3c6f2346fa5b75a6c79ffd3d44f8d5a721",
+    "cleanExportDirectTests": "38/38 PASS",
+    "routeRows": 0,
+    "apiOperations": 0,
+    "gate5Pass": false,
+    "scenarioPromotion": false,
+    "cleanExportGateCliPresent": false
+  },
+  "c03RegistryTraceCommit": {
+    "commit": "af5644fbc07fe8ec9d54ff132e5d22e50691dbf0",
+    "at": "2026-10-09T23:02:49.360721+00:00",
+    "cleanExportDirectTests": "19/19 PASS",
+    "canonicalScreenIds": 170,
+    "source": "veyro-product-experience-design/project/veyro-registry-data.js",
+    "committedRegistryByteEqual": true,
+    "gate5Pass": false,
+    "scenarioPromotion": false,
+    "routeRows": 0,
+    "apiOperations": 0
+  },
+  "c03OwnerResolution": {
+    "at": "2026-10-09T23:14:22.342594+00:00",
+    "operationStatus": "SOFT_NO_PROGRESS_NO_VERDICT",
+    "runnerOperationId": "01cee627-5915-400b-ac22-08090fb2bd64",
+    "evidence": "knowledge/03-Modules/MOD-001/evidence/implementation/M1-C-03-TECHNICAL-SOURCE-BOUNDARY-2026-10-10.md",
+    "evidenceCommit": "952c429b5438488fe153486f18d3b2037b36665c",
+    "exactScreenIdsInAppendixB": 0,
+    "exactScreenIdsInAppendixF": 0,
+    "routeRows": 0,
+    "apiOperations": 0,
+    "emptyMappingMissingBindings": 170,
+    "ownerAssignmentPromoted": false,
+    "gate5Pass": false,
+    "scenarioPromotion": false,
+    "decision": "PRECISE_DEPENDENCY_HOLD; no equivalent owner-map redispatch"
+  }
+}
