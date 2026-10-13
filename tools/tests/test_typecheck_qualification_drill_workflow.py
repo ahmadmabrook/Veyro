@@ -187,7 +187,7 @@ class WrapperBoundaryStaticTests(unittest.TestCase):
         self.assertNotIn("persist-credentials", self.text)
 
     def test_runs_the_copied_wrapper_not_an_inline_mimic(self):
-        self.assertIn('cp "$head/tools/run_scoped_mypy.py" "$head/tools/run_scoped_pytest.py"', self.script)
+        self.assertIn('cp "$head/tools/run_scoped_mypy.py" "$root/tools/"', self.script)
         self.assertIn('"$croot/tools/run_scoped_mypy.py"', self.script)
         self.assertNotIn("-m mypy", self.script)
         self.assertNotIn("mypy --", self.script)
@@ -219,7 +219,7 @@ class WrapperBoundaryBehaviorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             (tmp / "head" / "tools").mkdir(parents=True)
-            for name in ("run_scoped_mypy.py", "run_scoped_pytest.py"):
+            for name in ("run_scoped_mypy.py",):
                 shutil.copy(REPO / "tools" / name, tmp / "head" / "tools" / name)
             if wrapper_replacement is not None:
                 (tmp / "head" / "tools" / "run_scoped_mypy.py").write_text(wrapper_replacement)
@@ -279,7 +279,6 @@ class WrapperBoundaryBehaviorTests(unittest.TestCase):
             (tmp / "head" / "tools").mkdir(parents=True)
             (tmp / "real.py").write_text("")
             os.symlink(tmp / "real.py", tmp / "head" / "tools" / "run_scoped_mypy.py")
-            (tmp / "head" / "tools" / "run_scoped_pytest.py").write_text("")
             os.symlink(LOCAL_VENV, tmp / "venv-typecheck")
             proc = subprocess.run(
                 [BASH, "-c", script], capture_output=True, text=True, cwd=tmp, check=False,
