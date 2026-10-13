@@ -7,11 +7,11 @@ independent determination or `approved_by` exists, so no mypy result may be
 relied on and no run through this file is a gate, scenario or assurance
 result. It supplies the "unwritten/unqualified wrapper" the CAP-012 row lists
 as a precondition, in reviewable form, and has been exercised only against
-disposable synthetic trees outside the repository: the current self-contained
-candidate ran locally on macOS CPython 3.14. Draft PR #6 ran the earlier
-CAP-011-dependent bytes on Linux CPython 3.13; this revised file has not yet
-run in CI. The drill is NOT a required CI typecheck and confers no capability
-approval. This file imports nothing from CAP-011's `run_scoped_pytest`.
+disposable synthetic trees outside the repository. A synthetic CI drill
+exists, but whether these exact bytes ran is established only by a pinned
+head/run/log record, never this docstring. The drill is NOT a required CI
+typecheck and confers no capability approval. This file imports nothing from
+CAP-011's `run_scoped_pytest`.
 
 The caller supplies nothing. There is no path, flag or config argument; the one
 invocation this file can ever start is the CAP-012 INTENDED shape, with cwd

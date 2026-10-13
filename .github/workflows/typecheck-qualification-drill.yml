@@ -32,9 +32,9 @@
 #   - The backend dev lock is read-only input; nothing writes to the checkout.
 #
 # NOT claimed:
-#   - The prior wrapper-dependent revision ran on draft PR #6 (Linux CPython
-#     3.13, synthetic fixtures only). This self-contained revision has NOT yet
-#     run in CI. It is NOT a required CI typecheck or capability approval.
+#   - Whether these exact bytes ran in CI must be verified against a pinned
+#     head/run/log record, not inferred from this header. Any run is synthetic
+#     only, NOT a required CI typecheck or capability approval.
 #   - Not a required status check and not GOV-01-R04's non-bypassable gate.
 #     Its value, once run, is the inspected run record, not the conclusion.
 #   - CAP-012 stays QUALIFIED - NOT APPROVED. No real-code type-check exists.
