@@ -1,9 +1,0 @@
-{
-  "at": "2026-10-08T22:55:38.148932+00:00",
-  "target": "veyro-labs/Veyro/pulls/1/merge",
-  "candidateSha": "db04cecf62f812bd7ebd28abc4d094cfd75d52d7",
-  "method": "merge",
-  "exitCode": 1,
-  "stdout": "{\"message\":\"Required status check \\\"architecture-event-contract-trusted\\\" is failing.\",\"documentation_url\":\"https://docs.github.com/articles/about-protected-branches\",\"status\":\"405\"}",
-  "stderr": "gh: Required status check \"architecture-event-contract-trusted\" is failing. (HTTP 405)\n"
-}

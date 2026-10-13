@@ -1,7 +1,0 @@
-# R1-F10 ADR-011 D6.4 docstring-position exclusion — local verification (2026-10-05)
-
-- Work unit: MOD-001 GOV-01-R04 gate 2, SCN-MOD001-006. Guarded operation `5649e9bb-6d08-4559-be06-dd7750e84c8b` completed exit 0 with material code/test checkpoints.
-- The scanner excludes only module, class, synchronous-function and asynchronous-function `body[0]` docstring `Expr Constant` AST positions from SQL scanning. It counts and discloses exclusions on text/JSON reports, including a partial count when an input error interrupts scanning. The coverage note explicitly states the residual: SQL obtained through `__doc__` is not covered by the dynamic-construct rule.
-- Tests distinguish English prose in true docstrings from byte-identical non-leading/executable string statements; executable SQL and cross-domain Python imports still produce findings. Nested positions, f-string, `.sql` files, zero-count and ERROR disclosure, and continued CTE state-3 prohibition are covered.
-- Independent orchestrator verification: **387/387 tools tests PASS**, Ruff PASS, `py_compile` PASS. Source SHA-256 `1130035237f7162f5f1758d729d1a42f82fb3b0e0fad1e0b152a0699b7d596aa`; tests SHA-256 `e63cb59e8a2e59795cc9e3b63976d18509f9a9dcc7f7bdaa0f6f08f5809de31e`.
-- Fixture-scoped; real-tree domain ownership **DEFERRED**. R1-F10 is locally fixed, not formally closed. Combined independent round-2 code review awaits remaining gate-2 blockers. No scenario promotion, live CTE state-3 wiring, or independent assurance verdict occurred.

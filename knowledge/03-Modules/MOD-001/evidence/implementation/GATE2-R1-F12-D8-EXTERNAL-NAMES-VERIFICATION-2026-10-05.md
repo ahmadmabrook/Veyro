@@ -1,9 +1,0 @@
-# Gate 2 R1-F12 — D8 declared external names (2026-10-05)
-
-Work unit: MOD-001 / GOV-01-R04 / gate-2, SCN-MOD001-006/007/095/096. Runner operation `fd381d38-2f5c-4c6e-9704-7b7895b19a4b` completed with guarded Claude exit 0 and durable source/test budget checkpoints. This is one bounded code/test increment, not a gate, review, or scenario verdict.
-
-The module-dependency report now lists every parsed manifest `external_table_references` declaration by `(module, name)` with a count on text and JSON PASS/FAIL/ERROR surfaces. A run that aborts before a valid manifest exists reports UNKNOWN, not a false zero. After parsing, later scan ERROR retains the complete declaration inventory. The listing is distinct from the D3.2 state-5 count of references actually encountered in SQL; it does not assert that a declared table exists or was used. The existing attribution and edge decisions are unchanged.
-
-Independent deterministic verification after the guarded operation: `backend/.venv/bin/python -m pytest tools/tests -q` **480 passed**; `backend/.venv/bin/ruff check tools/validate_architecture_gates.py tools/tests/test_validate_architecture_gates.py` **PASS**; `backend/.venv/bin/python -m py_compile` on both files **PASS**. The worker also reported 407 focused tests passed and four in-memory mutation checks; these are worker observations, not independent assurance. Post-run SHA-256 matches `ACTIVE_OPERATION.json.lastHashes`: source `febc2bb322e5ce43084c79e08a7d2802511d2bd755a9a3ec7d6aba39a7b65ee0`, test `22be22caa213a90aead234f2ef7e4251fe8117ba11239fb5c20d1a8dafcc1c54`.
-
-R1-F12 remains formally **OPEN**. ADR-011 D8 still requires a distinct zero-table triggered-statement count, remaining file/coverage disclosures, and bounded positive evidence-set reconciliation. Combined independent round-2 code review and scenario assurance have not occurred; no scenario PASS is inferred. Live CTE state-3 wiring remains forbidden under the qualified U1/U2 B HOLD.

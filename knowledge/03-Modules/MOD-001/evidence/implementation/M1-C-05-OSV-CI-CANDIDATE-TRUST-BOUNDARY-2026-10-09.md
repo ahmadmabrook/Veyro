@@ -1,9 +1,0 @@
-# M1-C-05 OSV CI candidate — trust-boundary hold (2026-10-09)
-
-One guarded Sonnet implementation produced `.github/workflows/dependency-vulnerability-gate.yml` and `tools/tests/test_dependency_vulnerability_gate_workflow.py`. The parent independently replayed 53/53 focused tests (scanner, new workflow test, workflow-trust test module). This is local candidate evidence only: no live CI run, required status, real known-published-CVE/clean companion run, independent assurance, or SCN-MOD001-094 PASS.
-
-**Blocking defect:** the `pull_request` workflow fetches the candidate head and executes `$head/tools/scan_dependency_advisories.py`. A candidate can replace that executable with one that returns zero, suppressing the vulnerability gate; tokenless fetch and `permissions: {}` do not protect the check result. The new static test asserts this exact unsafe command, so its green result cannot establish trusted enforcement. The candidate must not be activated as a required check or cited for certification.
-
-**Minimum mandatory correction in the same C05 operation:** execute the scanner from a trusted reviewed base/default-branch snapshot while treating the PR's pinned lock as inert input; ensure a candidate cannot modify the workflow, rename/spoof the required context, or supply executable gate logic. Use no secrets or write token. Commit/review before any workflow effect per the IaC boundary, then run the actual known-published-CVE denial and patched clean companion through the governed CI path before disposing SCN-MOD001-094.
-
-The worker used new paths different from the wrapper's `--track` list and did not record an `operation_budget.py` material checkpoint; do not infer one. The guarded call exited 0 and the parent verified the resulting files/tests directly. C06's CAP-009/010 review budget and OSV/typecheck-CI split are unchanged.

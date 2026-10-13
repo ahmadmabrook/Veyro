@@ -1,7 +1,0 @@
-# R1-F09 ADR-011 D7.2 mixed-report increment — local verification (2026-10-05)
-
-- Work unit: MOD-001 GOV-01-R04 gate 2, SCN-MOD001-007/096. Guarded operation `2b32e023-6a3b-483c-a174-03d0902f1624` completed exit 0 with durable code/test checkpoints.
-- A mixed run now retains already-found FAIL-class `CROSS_DOMAIN_SQL_IMPORT` violations alongside ERROR-class `MODULE_DEPS_SOURCE_UNINSPECTABLE` findings in one partitioned report. Status remains ERROR, exit 2; text and JSON surfaces carry both. The report notes partition counts and that found FAIL-class results are a lower bound when scanning is incomplete. A FAIL-only control stays FAIL/1, an uninspectable-only control stays ERROR/2, and checked/coverage disclosure remains intact.
-- New fixture tests cover mixed Python-import and SQL-sourced cross-domain violations, both CLI surfaces, single-cause controls, and continued live CTE state-3 prohibition. No scanner semantics or CTE wiring were changed.
-- Independent orchestrator verification: **366/366 tools tests PASS**, Ruff PASS, `py_compile` PASS. Source SHA-256 `769faea037a9bf300f3319f329d8934af64cad0d28af24135b38e17877798b6a`; tests SHA-256 `a73bf60640f6af9ac64662cf6b870bfdfe9b772476fc05b0965ccc52b31e8362`.
-- Fixture-scoped; real-tree domain ownership **DEFERRED**. R1-F09 is locally fixed, not formally closed. Combined independent round-2 code review awaits remaining gate-2 code/test blockers; no scenario promoted and no review verdict inferred.

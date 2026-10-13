@@ -1,9 +1,0 @@
-# Gate-3 R1 P2-4 — fully indexed context residual
-
-Date: 2026-10-09. Sole runner operation `f48b88db-22e0-4898-9b04-00d562deb3fc`.
-
-The guarded implementation completed one bounded correction in `tools/validate_workflow_trust.py` and `tools/tests/test_validate_workflow_trust.py`. It added fail-closed nonliteral `secrets[...]` handling and `github.event.pull_request['head']` detection. Its material source/test checkpoints are in `ACTIVE_OPERATION.json` (COMPLETED, exit 0). Independent local replay confirms the two previously observed false greens now return `PULL_REQUEST_TARGET_SECRET_FORKHEAD_HAZARD`; focused tests **19/19**, scoped Ruff and compile pass.
-
-One equivalent valid GitHub Actions index form still returns `[]` (ALLOW) under `pull_request_target` with a synthetic non-token secret: `${{ github['event']['pull_request']['head']['sha'] }} ${{ secrets.DEPLOY_KEY }}`. GitHub's [contexts reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts) documents index syntax as an alternative to property dereference. This is a concrete false-green in the same P2-4 predicate, not optional parser hardening. The narrow source regex begins with literal `github.event`, so it does not see the first indexed segment.
-
-Disposition: **TWO TARGETED DEFECTS FIXED; P2-4 LOCAL COMPLETION BLOCKED BY FULL-INDEX RESIDUAL.** Do not install or require the current lint on GitHub. No remote mutation, reviewer dispatch, scenario promotion, or module-exit credit occurred. Historical gate-2 F14 remains CLOSED; the consumed gate-3 review authorization is unchanged. Next legal action after contract refresh: one bounded correction normalizing or conservatively denying literal-index variants along this exact `github.event.pull_request.head` path, with a negative control for the fully indexed fixture and the existing clean-workflow positives; then focused deterministic verification. Do not build a generic expression engine.
