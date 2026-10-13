@@ -6,8 +6,9 @@ Fixed-scope mypy runner for `backend/app` (MOD-001, GOV-01-R04; CAP-012 wrapper)
 independent determination or `approved_by` exists, so no mypy result may be
 relied on and no run through this file is a gate, scenario or assurance
 result. It supplies the "unwritten/unqualified wrapper" the CAP-012 row lists
-as a precondition, in reviewable form, and has been exercised only against
-disposable synthetic trees outside the repository. A synthetic CI drill
+as a precondition, in reviewable form. Its mypy runs have been made only
+against disposable synthetic trees outside the repository; the read-only `plan()`
+validation (no mypy) has also been run on the real tree. A synthetic CI drill
 exists, but whether these exact bytes ran is established only by a pinned
 head/run/log record, never this docstring. The drill is NOT a required CI
 typecheck and confers no capability approval. This file imports nothing from
@@ -50,6 +51,14 @@ vacuous package exits 0) is refused; `.pyi` files (they shadow `.py`) and any
 so N would diverge) are refused; and so are the comments/decorators that
 silently hide real errors — `# type: ignore`, inline `# mypy:` config and
 `no_type_check`. The tree and config are fingerprinted before and after the run.
+
+Stub packages: PEP 561 `<name>-stubs` packages found at the top level of `backend`
+(mypy's search root) shadow the real module of that name, including the in-repository
+modules in the import closure, and would make mypy skip its errors. Any top-level
+`backend` entry whose name ends in `-stubs` (any case; file, directory, symlink or
+broken symlink) is a denial, deliberately over-broad rather than parsed. `plan()`
+re-runs after mypy, so one appearing during the run is also refused. Only the host
+platform's behaviour has been exercised; other platforms' mypy lookup is not evidenced.
 
 Import closure: mypy follows imports out of `backend/app` into other
 in-repository modules (e.g. `backend/tests/harness`), so those are scanned too.
@@ -191,6 +200,21 @@ def scan_app(app: Path) -> tuple[int, str, list[Path]]:
     if count == 0:
         raise Denied("backend/app holds no .py file: an empty target exits 0 without checking anything")
     return count, digest.hexdigest(), files
+
+
+def check_no_stub_packages(backend: Path) -> None:
+    """Refuse any top-level `backend/*-stubs` entry (PEP 561 stub packages shadow modules).
+
+    `os.scandir` names are used so a broken symlink is seen; nothing is followed.
+    """
+    try:
+        with os.scandir(backend) as entries:
+            names = sorted(entry.name for entry in entries)
+    except OSError as exc:
+        raise Denied(f"cannot list backend to rule out stub packages: {exc}")
+    for name in names:
+        if name.lower().endswith("-stubs"):
+            raise Denied(f"PEP 561 stub package at the top level of backend can shadow modules: {name}")
 
 
 def _candidate_exists(backend: Path, parts: list[str]) -> bool:
@@ -397,6 +421,7 @@ def plan(
         raise Denied(f"interpreter is not an absolute, executable file: {interpreter}")
     if not (interpreter.parent.parent / "pyvenv.cfg").is_file():
         raise Denied(f"{interpreter} is not laid out as a venv interpreter (no pyvenv.cfg)")
+    check_no_stub_packages(cwd)
     config_hash = check_config(config)
     count, tree_hash, app_files = scan_app(target)
     closure_hash = scan_import_closure(cwd, target, app_files)
@@ -519,6 +544,9 @@ def main(argv: list[str] | None = None) -> int:
         return run()
     except Denied as exc:
         print(f"DENY: {exc}", file=sys.stderr)
+        return EXIT_DENIED
+    except Exception as exc:  # not BaseException: Ctrl-C must propagate; bare rc 1 means type errors
+        print(f"DENY: unexpected {type(exc).__name__}: {exc}", file=sys.stderr)
         return EXIT_DENIED
 
 
