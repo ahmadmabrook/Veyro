@@ -215,3 +215,40 @@ Fresh-context independent Opus review `M1C-R04-CAP012-OPUS-REVIEW-R5-20261014` r
 The reviewer required two P2 record/disclosure corrections in the same commit that records approval. R5-P2-1: registry scope now names the current wrapper/test commit/hashes and exact Linux run, replacing a stale 57-test candidate. R5-P2-2: registry explicitly discloses that an installed `<name>-stubs` distribution in the venv, matching a top-level in-repo backend package, could shadow followed source without wrapper denial; none was observed at review and the risk was **not reproduced**, so no false negative-test claim is made. The existing wrapper docstring accurately says installed third-party stubs are not policed; its reviewed bytes are unchanged. This qualified approval excludes unverified venv site-packages. Independently verify the current installed-tree hashes before the first local real-source invocation.
 
 **Scope:** exact local `tools/run_scoped_mypy.py` wrapper and fixed `backend/app` invocation only, on a verified venv; no direct mypy, CI gate, alternate target/config/flags, or other mypy tool. No mypy was run on Veyro source during review. The synthetic CI is not a required status check; no GOV-01-R04 or MOD-001 requirement is certified. The canonical and registry capability validators must PASS on the recorded approval fields before reliance. This is the fifth and absolute-final normal independent CAP-012 review; no ordinary sixth review is authorized.
+
+## 13. 2026-10-14 first approved local scoped invocation (not a required CI gate)
+
+After round-5 bounded approval and both registry/manifest validators PASS, current `backend/.venv` CPython 3.14.5 installed-tree integrity was independently checked before use: SHA-256 `RECORD` verification matched mypy 1470, ast_serialize 11, librt 22, mypy_extensions 6, pathspec 37, typing_extensions 6 entries, each with **zero missing and zero mismatches** and the registered versions. This check permits mypy’s five `bin/` entrypoints in the RECORD to resolve within the same venv; an initial site-packages-only path restriction falsely marked those five valid hashed files, not their bytes, as failures. No installed top-level `*-stubs` entries were found. This is current installed-file integrity, not a new upstream signature or network provenance claim.
+
+The exact approved wrapper SHA-256 `1a5df02b6c0ddd69a90c46adb62c81e3adb0b2ba162484fa2180b14ec665399c` was then invoked **once** with `backend/.venv/bin/python -I tools/run_scoped_mypy.py` on the real `backend/app` checkout; config SHA-256 `039332c96ab93d82de930d1c84e3351a160829604126868da3a2a8fdfdd40695`, dev lock SHA-256 `5b9383fe128cb1d7d8b8442c82fe305988980915140215f4a4f5e3adcbe2d698`. Exit **0**, `Success: no issues found in 25 source files`; wrapper reports exactly 25 expected sources. Raw stdout/stderr SHA-256 `c3c4bd50e613e1f9b8939d826c2d0394b829374bde3d754a40e961e32baa492d` (743 bytes) is reproduced below. The wrapper’s immutable reviewed bytes still print the historically stale informational label `CAP-012 QUALIFIED - NOT APPROVED`; the authoritative round-5 registry approves this exact local invocation, and the same label correctly warns that **no gate credit** follows. Changing the wrapper solely to edit this label would change approved bytes and require re-evaluation; it was not changed here.
+
+```text
+{
+  "argv": [
+    "/Users/ahmadmabrouk/Desktop/Veyro/backend/.venv/bin/python",
+    "-I",
+    "-m",
+    "mypy",
+    "--config-file",
+    "pyproject.toml",
+    "--cache-dir=/dev/null",
+    "--no-color-output",
+    "app"
+  ],
+  "capability_status": "CAP-012 QUALIFIED - NOT APPROVED; no result here is a gate",
+  "child_env_keys": [
+    "HOME",
+    "PATH",
+    "TMPDIR"
+  ],
+  "config": "/Users/ahmadmabrouk/Desktop/Veyro/backend/pyproject.toml",
+  "cwd": "/Users/ahmadmabrouk/Desktop/Veyro/backend",
+  "expected_source_files": 25,
+  "target": "/Users/ahmadmabrouk/Desktop/Veyro/backend/app",
+  "tool": "tools/run_scoped_mypy.py"
+}
+Success: no issues found in 25 source files
+run_scoped_mypy: rc=0 — no issues found in exactly 25 source files
+```
+
+This is one **local real-source typecheck result**, not a GitHub Actions required status check, full GOV-01-R04 gate PASS, independent Gatekeeper approval, or MOD-001 certification. Required blocking CI typecheck wiring and other R04 stages remain.
