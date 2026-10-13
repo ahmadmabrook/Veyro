@@ -89,7 +89,7 @@ EXIT_CODES = {PASS: 0, FAIL: 1, INCONCLUSIVE: 2, ERROR: 2}
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SOURCE_DIR = REPO_ROOT
 DEFAULT_CAPABILITIES_MANIFEST = (
-    REPO_ROOT / "knowledge" / "03-Modules" / "MOD-001" / "evidence" / "module-capabilities.yaml"
+    REPO_ROOT / "contracts" / "engineering" / "module-capabilities.yaml"
 )
 
 # ADR-005 Decision 2 Part 3's own dividing line, closed not open-ended

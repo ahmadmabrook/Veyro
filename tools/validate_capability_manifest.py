@@ -19,7 +19,7 @@ extracts dependency IDs with one hardcoded pattern:
 `capability_id:\s*(CAP-\d+)`. That is MOD-000's manifest shape only — a
 flat `capabilities:` list of `- capability_id: CAP-NNN` entries. MOD-001's
 own real manifest
-(`knowledge/03-Modules/MOD-001/evidence/module-capabilities.yaml`) has no
+(`contracts/engineering/module-capabilities.yaml` under OWN-008/ADR-009) has no
 `capability_id:` field anywhere: it references capability/Rule IDs three
 different ways (`required_rule_ids`, a list of `{id: RULE-NNN, path: ...,
 status: ...}` objects; `capability_evidence_ids`, free-text prose

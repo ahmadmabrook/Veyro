@@ -71,10 +71,11 @@ Read `knowledge/00-System/CURRENT_STATE.md`. It names the active module, its gat
 
 ## 3. Open defects, decisions, approvals
 
-- Defects: `knowledge/03-Modules/<active MOD>/evidence/bugs/`
+- Defects: `knowledge/05-QA/BUG_REGISTRY.md` (current MOD-001 through MOD-074); historical module-local records are not current gate proof.
 - Decisions/ADRs: `knowledge/04-Decisions/`
 - External gates: `knowledge/00-System/EXTERNAL_GATES.md` (+ detail records in `knowledge/00-System/external-gates-evidence/`)
 - Owner approvals: `knowledge/00-System/OWNER_APPROVALS.md`
+- Current module evidence/certificate index: `knowledge/03-Modules/<active MOD>/<active MOD>.md`; verify every claimed gate against its referenced immutable CI/ACP artifact or approved `knowledge/05-QA/` record, stable run/commit identity and SHA-256 where applicable (OWN-008/ADR-009). No module-local `evidence/` directory or routine report Markdown is required for MOD-001 through MOD-074.
 
 ## 4. Handoff
 

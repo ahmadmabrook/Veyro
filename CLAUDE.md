@@ -6,7 +6,7 @@ Durable memory lives in `knowledge/` (Obsidian-compatible). Notion is a live mir
 
 Every new session: read `knowledge/00-System/SESSION_BOOTSTRAP.md` first, then `CURRENT_STATE.md` and `CURRENT_HANDOFF.md`, before taking any action.
 
-WIP=1. Work exclusively on the active module recorded in `CURRENT_STATE.md`. Do not start the next module until the current one has a signed Module Approval Certificate in `knowledge/03-Modules/<MOD>/evidence/`.
+WIP=1. Work exclusively on the active module recorded in `CURRENT_STATE.md`. Do not start the next module until the current one has a genuine, independently signed Module Approval Certificate recorded in `knowledge/03-Modules/<MOD>/<MOD>.md` under OWN-008/ADR-009. An index or placeholder is not a certificate.
 
 Owner-reserved (absolute, no exceptions): no paid services, no spend, no real member data, no deploys/promotion to Production, no material product/pricing/business/architecture/scope change without explicit owner approval.
 

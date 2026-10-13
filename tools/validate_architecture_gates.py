@@ -9573,8 +9573,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.add_argument("--source-dir", type=Path, default=REPO_ROOT,
                             help="surface-profile: root of the tree to scan")
         parser.add_argument("--capabilities-manifest", type=Path,
-                            default=(REPO_ROOT / "knowledge" / "03-Modules" / "MOD-001"
-                                      / "evidence" / "module-capabilities.yaml"),
+                            default=(REPO_ROOT / "contracts" / "engineering" / "module-capabilities.yaml"),
                             help="surface-profile: module-capabilities.yaml to read "
                                  "repository_paths_surfaces from")
         args = parser.parse_args(argv)

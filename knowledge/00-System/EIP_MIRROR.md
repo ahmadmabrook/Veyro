@@ -17771,6 +17771,18 @@ explicitly.
 
 # Appendix D. Obsidian Vault Schema
 
+> **Post-baseline operational annotation (2026-10-13; OWN-008/ADR-009):**
+> The Appendix D schema below is preserved as the approved EIP v1.4.1 text;
+> this mirror does not amend the frozen EIP DOCX. For active MOD-001 through
+> MOD-074 only, the owner expressly approved a DC-09 location deviation:
+> one `MOD-XXX.md` operational document and eventual Gatekeeper certificate/
+> index replaces the separately named per-module Markdown locations below.
+> Mandatory evidence remains in immutable CI/ACP artifacts or existing
+> approved `knowledge/05-QA/` records, linked by stable run/commit identity
+> and SHA-256 where applicable; current defects use `BUG_REGISTRY.md`. No
+> test, review, model, manual-QA, security, integrity, or certification gate
+> is waived. See the recorded owner decision and ADR for the precise scope.
+
   ------------------------------------------------------------------------------------------------------
   **Path**                                          **Purpose / required update**
   ------------------------------------------------- ----------------------------------------------------
