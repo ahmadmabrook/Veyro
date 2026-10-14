@@ -44,15 +44,25 @@ parsed line-wise. The tests do not just mirror the file:
      The exact-bytes pin is a CHANGE TRIPWIRE for the reviewed bytes, NOT runtime
      protection: a coordinated edit of workflow + this test (new digest) passes it, and
      the write-surface inventory is a text heuristic, not a shell parser.
+  3d. BUG-064 (followed-module composition): every .py/.pyi under backend/ in the composed
+     tree must be the SOURCE entry (additions, modifications, deletions; non-Python files
+     keep trusted bytes). Synthetic repos with trusted != source show an out-of-app edit
+     is materialized, an unchanged tree is allowed, and symlink/gitlink/executable/.venv
+     entries and gate-config edits are denied before the trusted tree is touched. Mutants
+     of the new lines are EXECUTED to show each check is load-bearing (reverting the fix
+     reproduces the poisoning: the real wrapper's `scan_import_closure` then fingerprints
+     trusted bytes), and the composed tree is compared with an independent git oracle.
   4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -186,19 +196,58 @@ TAMPER_STEP_LINES = (
     '  count=$((count + 1))',
     'done < "$RUNNER_TEMP/app.lst"',
     '[[ "$count" -ge 1 ]] || deny "no source blobs materialized"',
+    'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend > "$RUNNER_TEMP/backend.lst"',
+    'outstage="$RUNNER_TEMP/source-backend"',
+    'rm -rf "$outstage"',
+    'mkdir -p "$outstage"',
+    ': > "$RUNNER_TEMP/outside.lst"',
+    'outside=0',
+    "while IFS= read -r -d '' rec; do",
+    '  meta="${rec%%$\'\\t\'*}"',
+    '  path="${rec#*$\'\\t\'}"',
+    '  read -r mode type oid <<<"$meta"',
+    '  case "$path" in backend/app|backend/app/*) continue ;; backend/?*) ;; *) deny "source entry outside backend: \'$path\'" ;; esac',
+    '  case "/$path/" in',
+    '    */../*|*/./*|*//*|*/.git/*|/backend/.venv/*) deny "unsafe source path \'$path\'" ;;',
+    '  esac',
+    '  case "$mode" in 120000|160000) deny "refused source entry mode $mode at \'$path\' (symlink/gitlink under backend)" ;; esac',
+    '  case "$path" in',
+    '    *.py|*.pyi)',
+    '      [[ "$mode" == "100644" && "$type" == "blob" ]] \\',
+    '        || deny "refused source module entry mode $mode type $type at \'$path\' (executable or irregular)"',
+    '      mkdir -p "$outstage/$(dirname "$path")"',
+    '      git -C "$src" cat-file blob "$oid" > "$outstage/$path"',
+    '      printf \'%s\\t%s\\0\' "$oid" "$path" >> "$RUNNER_TEMP/outside.lst"',
+    '      outside=$((outside + 1)) ;;',
+    '  esac',
+    'done < "$RUNNER_TEMP/backend.lst"',
     'rm -rf "$work/backend/app"',
     'mv "$stage/backend/app" "$work/backend/app"',
     '[[ -z "$(find "$work/backend/app" ! -type f ! -type d)" ]] || deny "non-regular entry in materialized backend/app"',
     '[[ "$(find "$work/backend/app" -type f | wc -l | tr -d \' \')" == "$count" ]] \\',
     '  || deny "materialized file count differs from the source listing"',
     'echo "materialized $count inert source blobs from $SOURCE_SHA into the trusted $TRUSTED_SHA tree"',
+    'find "$work/backend" -path "$work/backend/app" -prune -o \\( -name \'*.py\' -o -name \'*.pyi\' \\) \\( -type f -o -type l \\) -print0 > "$RUNNER_TEMP/trusted-modules.lst"',
+    'while IFS= read -r -d \'\' f; do rm -f "$f"; done < "$RUNNER_TEMP/trusted-modules.lst"',
+    "while IFS= read -r -d '' rec; do",
+    '  oid="${rec%%$\'\\t\'*}"',
+    '  path="${rec#*$\'\\t\'}"',
+    '  mkdir -p "$work/$(dirname "$path")"',
+    '  mv "$outstage/$path" "$work/$path"',
+    '  [[ -f "$work/$path" && ! -L "$work/$path" ]] || deny "followed module \'$path\' is not a regular file after composition"',
+    '  [[ "$(git -C "$work" hash-object --no-filters -- "$work/$path")" == "$oid" ]] \\',
+    '    || deny "followed module \'$path\' is not the source blob $oid"',
+    'done < "$RUNNER_TEMP/outside.lst"',
+    '[[ "$(find "$work/backend" -path "$work/backend/app" -prune -o \\( -name \'*.py\' -o -name \'*.pyi\' \\) \\( -type f -o -type l \\) -print | wc -l | tr -d \' \')" == "$outside" ]] \\',
+    '  || deny "composed backend/ holds .py/.pyi files that are not in the source listing"',
+    'echo "composed $outside followed backend/ .py/.pyi modules from $SOURCE_SHA (add, modify, delete); no trusted copy remains"',
 )
 
 
 # Closed-world snapshot (BUG-062 round 3). Changing the workflow deliberately means
 # re-reviewing it and updating this digest (and, if needed, WRITE_SURFACE below).
 # This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
-WORKFLOW_SHA256 = "3e3194e22fd27812973403fb6e51fa311e7f0f5430e58f79713d3e377c3c7bb7"
+WORKFLOW_SHA256 = "d51186bda63d6bf67c0bd7107ede2477d1723885ad49ca612be0f53a0c4436f2"
 
 REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
 WRITE_VERB_RE = re.compile(
@@ -207,7 +256,7 @@ WRITE_VERB_RE = re.compile(
     r"reset|restore|merge|worktree|read-tree)\b|-m\s+(venv|pip\s+(install|download|wheel))\b")
 CHANNEL_RE = re.compile(r"GITHUB_(ENV|PATH|OUTPUT|STATE|STEP_SUMMARY)\b")
 # Redirect targets must stay in runner scratch space and never name a gate-defining path.
-SAFE_TARGET_RE = re.compile(r'^"\$(RUNNER_TEMP|stage)[/"]')
+SAFE_TARGET_RE = re.compile(r'^"\$(RUNNER_TEMP|stage|outstage)[/"]')
 GATE_PATH_RE = re.compile(r"/tools/|\.github|requirements-typecheck|pyproject|mypy\.ini|setup\.cfg|tox\.ini")
 
 # Frozen write inventory of the committed workflow: (step number, folded command line).
@@ -222,14 +271,24 @@ WRITE_SURFACE = (
     (3, 'mkdir -p "$stage"'),
     (3, 'mkdir -p "$stage/$(dirname "$path")"'),
     (3, 'git -C "$src" cat-file blob "$oid" > "$stage/$path"'),
+    (3, 'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend > "$RUNNER_TEMP/backend.lst"'),
+    (3, 'rm -rf "$outstage"'),
+    (3, 'mkdir -p "$outstage"'),
+    (3, ': > "$RUNNER_TEMP/outside.lst"'),
+    (3, 'mkdir -p "$outstage/$(dirname "$path")"'),
+    (3, 'git -C "$src" cat-file blob "$oid" > "$outstage/$path"'),
+    (3, 'printf \'%s\\t%s\\0\' "$oid" "$path" >> "$RUNNER_TEMP/outside.lst"'),
     (3, 'rm -rf "$work/backend/app"'),
     (3, 'mv "$stage/backend/app" "$work/backend/app"'),
+    (3, 'find "$work/backend" -path "$work/backend/app" -prune -o \\( -name \'*.py\' -o -name \'*.pyi\' \\) \\( -type f -o -type l \\) -print0 > "$RUNNER_TEMP/trusted-modules.lst"'),
+    (3, 'while IFS= read -r -d \'\' f; do rm -f "$f"; done < "$RUNNER_TEMP/trusted-modules.lst"'),
+    (3, 'mkdir -p "$work/$(dirname "$path")"'),
+    (3, 'mv "$outstage/$path" "$work/$path"'),
     (4, 'printf \'%s\\n\' "$chosen" > "$RUNNER_TEMP/interpreter.path"'),
     (5, '"$py" -m venv "$RUNNER_TEMP/venv-typecheck"'),
-    (6, '"$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install --require-hashes --only-binary=:all: --no-deps '
-        '--index-url https://pypi.org/simple --no-cache-dir --no-input --disable-pip-version-check -r "$lock"'),
+    (6, '"$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install --require-hashes --only-binary=:all: --no-deps --index-url https://pypi.org/simple --no-cache-dir --no-input --disable-pip-version-check -r "$lock"'),
     (7, 'ln -s "$venv" "$work/backend/.venv"'),
-    (7, "trap 'rm -rf \"$scratch\"' EXIT"),
+    (7, 'trap \'rm -rf "$scratch"\' EXIT'),
     (7, 'mkdir -p "$scratch/home" "$scratch/tmp"'),
 )
 
@@ -1105,6 +1164,281 @@ class TrustedBoundaryTest(unittest.TestCase):
         self.assertEqual(self.chain(source).returncode, 0)
         self.assertFalse(marker.exists(), "source content was executed")
         self.assertEqual(self.work("backend/app/__init__.py").read_text(), payload)
+
+
+def load_wrapper():
+    """The approved CAP-012 wrapper as a module, or None where it cannot import (needs Python 3.11+)."""
+    try:
+        spec = importlib.util.spec_from_file_location("run_scoped_mypy_under_test", REPO / "tools/run_scoped_mypy.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod  # @dataclass resolves its own module at class-creation time
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:  # noqa: BLE001 - any import failure means the observation test is skipped
+        return None
+
+
+# Exact spans of the BUG-064 composition lines in step 3, used to build executable mutants.
+STAGE_BLOCK_START = "          # Followed in-repository modules outside backend/app (BUG-064)."
+STAGE_BLOCK_END = '          rm -rf "$work/backend/app"\n'
+APPLY_BLOCK_START = "          # Replace every trusted .py/.pyi under backend/ outside app by the staged source\n"
+APPLY_BLOCK_LAST = 'no trusted copy remains"\n'
+REMOVE_LOOP = "          while IFS= read -r -d '' f; do rm -f \"$f\"; done < \"$RUNNER_TEMP/trusted-modules.lst\"\n"
+COUNT_CHECK = (
+    "          [[ \"$(find \"$work/backend\" -path \"$work/backend/app\" -prune -o \\( -name '*.py' -o -name '*.pyi' \\) "
+    "\\( -type f -o -type l \\) -print | wc -l | tr -d ' ')\" == \"$outside\" ]] \\\n"
+    "            || deny \"composed backend/ holds .py/.pyi files that are not in the source listing\"\n")
+HASH_CHECK = (
+    "            [[ \"$(git -C \"$work\" hash-object --no-filters -- \"$work/$path\")\" == \"$oid\" ]] \\\n"
+    "              || deny \"followed module '$path' is not the source blob $oid\"\n")
+MODE_SCREEN = (
+    "                [[ \"$mode\" == \"100644\" && \"$type\" == \"blob\" ]] \\\n"
+    "                  || deny \"refused source module entry")
+LINK_SCREEN = (
+    "            case \"$mode\" in 120000|160000) deny \"refused source entry mode $mode at '$path' "
+    "(symlink/gitlink under backend)\" ;; esac\n")
+
+
+def without_module_composition(text):
+    """The workflow as it was before BUG-064: backend/app composed from the source, everything else trusted."""
+    a = text.index(STAGE_BLOCK_START)
+    b = text.index(STAGE_BLOCK_END, a)
+    text = text[:a] + text[b:]
+    a = text.index(APPLY_BLOCK_START)
+    end = text.index(APPLY_BLOCK_LAST, a) + len(APPLY_BLOCK_LAST)
+    return text[:a].rstrip("\n") + "\n" + text[end:]
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git required")
+class FollowedModuleCompositionTest(unittest.TestCase):
+    """BUG-064: .py/.pyi under backend/ outside app are composed from the SOURCE sha, with trusted != source."""
+
+    UTIL = "backend/shared/util.py"
+    TRUSTED_UTIL = "def u() -> int:\n    return 1\n"
+    PR_UTIL = "def u() -> str:\n    return 'pr'\n"
+    EXTRA_BASE = {
+        "backend/shared/__init__.py": "",
+        "backend/shared/util.py": TRUSTED_UTIL,
+        "backend/notes.txt": "trusted notes\n",
+        "backend/app/uses.py": "from shared.util import u\n",
+    }
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-fm-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.rt = self.tmp / "rt"
+        self.rt.mkdir()
+        self.syn = SyntheticRepo(self.tmp)
+        self.syn.BASE = {**SyntheticRepo.BASE, **self.EXTRA_BASE}
+        self.text = WORKFLOW.read_text(encoding="utf-8")
+        self.step1 = step_script("Deny unless candidate-only ref")
+        self.step3 = step_script("Deny candidate tamper")
+        self.trusted = self.syn.commit()
+
+    def fresh(self):
+        shutil.rmtree(self.rt / "work", ignore_errors=True)
+        shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+
+    def chain(self, source, step3=None):
+        env = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": self.trusted,
+               "SOURCE_SHA": source, "REPO_URL": f"file://{self.syn.repo}", "RUNNER_TEMP": str(self.rt)}
+        r1 = FakeBash.run(self.step1, env, self.tmp)
+        if r1.returncode != 0 and "not our ref" in r1.stderr:
+            self.skipTest("local git transport refuses fetch by sha")
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        return FakeBash.run(step3 or self.step3, env, self.tmp)
+
+    def work(self, rel):
+        return self.rt / "work" / rel
+
+    def mutant_step3(self, mutated_text):
+        self.assertNotEqual(mutated_text, self.text, "mutant was a no-op")
+        self.assertNotEqual(audit(mutated_text), [], "audit missed the mutant")
+        self.assertNotEqual(snapshot_violations(mutated_text.encode("utf-8")), [], "snapshot missed the mutant")
+        return step_script("Deny candidate tamper", mutated_text)
+
+    def assert_trusted_tree_untouched(self):
+        self.assertEqual(self.work(self.UTIL).read_text(), self.TRUSTED_UTIL)
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), SyntheticRepo.BASE["backend/app/pkg/mod.py"])
+        self.assertEqual(self.work("tools/run_scoped_mypy.py").read_text(), "wrapper-v1\n")
+
+    def test_out_of_app_followed_module_edit_is_materialized_not_trusted(self):
+        source = self.syn.variant(set={self.UTIL: self.PR_UTIL, "backend/notes.txt": "PR notes\n"})
+        self.assertNotEqual(source, self.trusted)
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), self.PR_UTIL)
+        self.assertEqual(self.work("backend/notes.txt").read_text(), "trusted notes\n", "non-Python file left trusted")
+        for rel in PROTECTED[:5]:
+            self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], rel)
+        self.assertIn("composed 2 followed backend/ .py/.pyi modules", r.stdout)
+
+    def test_additions_pyi_and_nested_package_are_materialized(self):
+        source = self.syn.variant(set={"backend/shared/extra.py": "E = 1\n", "backend/shared/util.pyi": "def u() -> int: ...\n",
+                                       "backend/newpkg/__init__.py": "", "backend/newpkg/deep/mod.py": "D = 1\n"})
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for rel in ("backend/shared/extra.py", "backend/shared/util.pyi", "backend/newpkg/__init__.py", "backend/newpkg/deep/mod.py"):
+            self.assertTrue(self.work(rel).is_file(), rel)
+        self.assertIn("composed 6 followed", r.stdout)
+
+    def test_deletions_remove_the_trusted_copy(self):
+        r = self.chain(self.syn.variant(drop=(self.UTIL,)))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(self.work(self.UTIL).exists(), "deleted followed module survived from the trusted tree")
+        self.assertTrue(self.work("backend/shared/__init__.py").is_file())
+        self.fresh()
+        r = self.chain(self.syn.variant(drop=(self.UTIL, "backend/shared/__init__.py")))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(self.work("backend/shared/__init__.py").exists())
+        self.assertIn("composed 0 followed", r.stdout)
+
+    def test_unchanged_followed_modules_are_allowed_and_identical(self):
+        source = self.syn.variant(set={"backend/app/pkg/mod.py": "def f() -> int:\n    return 7\n"})
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), self.TRUSTED_UTIL)
+        self.assertEqual(self.work("backend/shared/__init__.py").read_text(), "")
+        self.fresh()
+        self.assertEqual(self.chain(self.trusted).returncode, 0)
+
+    def test_composed_modules_equal_an_independent_git_oracle(self):
+        source = self.syn.variant(set={self.UTIL: self.PR_UTIL, "backend/lib/a.py": "A = 1\n", "backend/lib/b.pyi": "B: int\n",
+                                       "backend/top.py": "T = 1\n", "backend/notes.txt": "x\n"},
+                                  drop=("backend/shared/__init__.py",))
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        listing = _git(self.syn.repo, "ls-tree", "-r", "--name-only", source, "--", "backend").stdout.split("\n")
+        want = sorted(p for p in listing if p.endswith((".py", ".pyi")) and not p.startswith("backend/app/"))
+        rels = [str(p.relative_to(self.rt / "work")) for p in (self.rt / "work/backend").rglob("*") if p.is_file()]
+        got = sorted(p for p in rels if p.endswith((".py", ".pyi")) and not p.startswith("backend/app/"))
+        self.assertEqual(got, want)
+        for rel in want:
+            self.assertEqual(self.work(rel).read_text(), _git(self.syn.repo, "show", f"{source}:{rel}").stdout, rel)
+
+    def test_unsafe_entries_outside_app_are_denied_before_the_trusted_tree_is_touched(self):
+        cases = {
+            "symlink module": (dict(symlinks={"backend/shared/link.py": "util.py"}), "mode 120000"),
+            "symlink with a non-module name": (dict(symlinks={"backend/shared/data": "/tmp/evil"}), "mode 120000"),
+            "symlink replacing a package": (dict(drop=("backend/shared/__init__.py", self.UTIL),
+                                                 symlinks={"backend/shared": "../tools"}), "mode 120000"),
+            "gitlink under backend": (dict(gitlinks={"backend/vendor": "1" * 40}), "mode 160000"),
+            "executable module": (dict(set={self.UTIL: self.PR_UTIL}, execs=(self.UTIL,)), "executable or irregular"),
+            "executable stub": (dict(set={"backend/shared/x.pyi": "x: int\n"}, execs=("backend/shared/x.pyi",)),
+                                "executable or irregular"),
+            "module under backend/.venv": (dict(set={"backend/.venv/lib/evil.py": "X = 1\n"}), "unsafe source path"),
+        }
+        for label, (kw, msg) in cases.items():
+            with self.subTest(label):
+                self.fresh()
+                r = self.chain(self.syn.variant(**kw))
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn(msg, r.stderr)
+                self.assert_trusted_tree_untouched()
+
+    def test_gate_config_edit_is_still_denied_alongside_a_module_edit(self):
+        source = self.syn.variant(set={self.UTIL: self.PR_UTIL, "backend/pyproject.toml": "[tool.mypy]\nplugins = ['evil']\n"})
+        r = self.chain(source)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("candidate changed backend/pyproject.toml", r.stderr)
+        self.assert_trusted_tree_untouched()
+
+    def test_followed_module_source_is_never_executed(self):
+        marker = self.tmp / "executed.marker"
+        payload = f'open({str(marker)!r}, "w").write("x")\n'
+        source = self.syn.variant(set={self.UTIL: payload, "backend/conftest.py": payload,
+                                       "backend/sitecustomize.py": payload, "backend/setup.py": payload})
+        self.assertEqual(self.chain(source).returncode, 0)
+        self.assertFalse(marker.exists(), "followed source was executed")
+        self.assertEqual(self.work(self.UTIL).read_text(), payload)
+
+    def test_directory_named_like_a_module_does_not_break_composition(self):
+        source = self.syn.variant(drop=(self.UTIL,), set={"backend/shared/util.py/inner.py": "I = 1\n"})
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(self.work("backend/shared/util.py/inner.py").is_file())
+
+    # --- executable mutants: each new check must be load-bearing --------------------------------
+
+    def test_reverting_the_fix_reproduces_the_poisoning_and_is_flagged(self):
+        reverted = self.mutant_step3(without_module_composition(self.text))
+        r = self.chain(self.syn.variant(set={self.UTIL: self.PR_UTIL}), step3=reverted)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), self.TRUSTED_UTIL, "mutant should leave trusted bytes (BUG-064)")
+
+    def test_trusted_removal_is_load_bearing_and_defence_in_depth_catches_its_absence(self):
+        source = self.syn.variant(drop=(self.UTIL,))
+        no_removal = self.mutant_step3(tamper(self.text, REMOVE_LOOP, ""))
+        r = self.chain(source, step3=no_removal)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not in the source listing", r.stderr)
+        self.fresh()
+        both = self.mutant_step3(tamper(tamper(self.text, REMOVE_LOOP, ""), COUNT_CHECK, ""))
+        r = self.chain(source, step3=both)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), self.TRUSTED_UTIL, "stale trusted module survived a source deletion")
+
+    def test_corrupt_staging_is_denied_by_the_hash_check_and_accepted_without_it(self):
+        corrupt = tamper(self.text, 'git -C "$src" cat-file blob "$oid" > "$outstage/$path"',
+                         'printf corrupt > "$outstage/$path"')
+        source = self.syn.variant(set={self.UTIL: self.PR_UTIL})
+        r = self.chain(source, step3=self.mutant_step3(corrupt))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("is not the source blob", r.stderr)
+        self.fresh()
+        r = self.chain(source, step3=self.mutant_step3(tamper(corrupt, HASH_CHECK, "")))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), "corrupt")
+
+    def test_dropped_screens_let_unsafe_entries_through(self):
+        cases = {
+            "link screen dropped": (tamper(self.text, LINK_SCREEN, ""), dict(symlinks={"backend/shared/data": "/tmp/evil"})),
+            "module mode screen dropped": (
+                tamper(self.text, MODE_SCREEN, MODE_SCREEN.replace('[[ "$mode" == "100644" && "$type" == "blob" ]]', "true")),
+                dict(set={self.UTIL: self.PR_UTIL}, execs=(self.UTIL,))),
+            "venv screen dropped": (tamper(self.text, "|*/.git/*|/backend/.venv/*) deny", "|*/.git/*) deny"),
+                                    dict(set={"backend/.venv/lib/evil.py": "X = 1\n"})),
+        }
+        for label, (mutated, kw) in cases.items():
+            with self.subTest(label):
+                self.fresh()
+                source = self.syn.variant(**kw)
+                committed = self.chain(source)
+                self.assertNotEqual(committed.returncode, 0, "committed step must deny")
+                self.fresh()
+                r = self.chain(source, step3=self.mutant_step3(mutated))
+                self.assertEqual(r.returncode, 0, f"mutant is not load-bearing: {label}: {r.stderr}")
+
+    # --- observation against the approved wrapper's own import-closure fingerprint --------------
+
+    def test_wrapper_closure_fingerprint_sees_pr_bytes_only_with_the_fix(self):
+        wrapper = load_wrapper()
+        if wrapper is None:
+            self.skipTest("wrapper not importable (needs Python 3.11+)")
+
+        def closure(root):
+            backend = Path(root) / "backend"
+            _count, _digest, files = wrapper.scan_app(backend / "app")
+            return wrapper.scan_import_closure(backend, backend / "app", files)
+
+        def write_tree(root, files):
+            for rel, body in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(body)
+            return root
+
+        source = self.syn.variant(set={self.UTIL: self.PR_UTIL})
+        reference = write_tree(self.tmp / "reference", {**self.syn.BASE, self.UTIL: self.PR_UTIL})
+        self.assertEqual(self.chain(source).returncode, 0)
+        fixed = closure(self.rt / "work")
+        self.assertEqual(fixed, closure(reference), "composed closure fingerprint differs from the source tree's")
+        # the pre-fix composition (BUG-064) fingerprints the trusted bytes of the followed module
+        self.fresh()
+        reverted = self.mutant_step3(without_module_composition(self.text))
+        self.assertEqual(self.chain(source, step3=reverted).returncode, 0)
+        old = closure(self.rt / "work")
+        self.assertNotEqual(old, fixed, "pre-fix composition should not see the PR's edit")
+        self.assertEqual(old, closure(write_tree(self.tmp / "trusted-reference", self.syn.BASE)))
 
 
 @unittest.skipUnless(shutil.which("bash"), "bash required")

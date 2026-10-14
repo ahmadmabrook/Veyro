@@ -26,11 +26,22 @@
 #     cp313 lock, backend/pyproject.toml (the [tool.mypy] table, which could
 #     otherwise load a plugin) - comes from a checkout of TRUSTED_SHA.
 #   - SOURCE_SHA: the PR head. It supplies ONE inert input: the bytes of the
-#     backend/app blobs to be type-checked. It is fetched into a bare object
-#     store, never checked out, and each blob is screened (mode 100644 blob
-#     only, no symlink/gitlink/executable, safe path under backend/app/) and
-#     written as data into the trusted tree. Nothing from SOURCE_SHA is
-#     executed, imported, installed or placed on a search path.
+#     Python sources to be type-checked, i.e. the backend/app blobs and every
+#     other .py/.pyi under backend/ (the wrapper resolves imports against
+#     backend/, so those are the in-repository modules mypy can follow). It is
+#     fetched into a bare object store, never checked out, and each blob is
+#     screened (mode 100644 blob only, no symlink/gitlink/executable, safe
+#     path) and written as data into the trusted tree. Nothing from SOURCE_SHA
+#     is executed, imported, installed or placed on a search path.
+#   - Followed-module composition (BUG-064): in the composed tree every .py and
+#     .pyi under backend/ is the SOURCE_SHA entry. Trusted copies outside
+#     backend/app are removed and the source ones written (additions,
+#     modifications and deletions alike), and the result is verified against the
+#     source listing; there is no fallback to trusted bytes for a followed
+#     module. Anything under backend/ that is a symlink or gitlink, a .py/.pyi
+#     that is not a plain 100644 blob, or a path under backend/.venv denies the
+#     job. Non-Python files under backend/ keep their trusted bytes (mypy does
+#     not read them), except that the gate-defining paths named above must be equal.
 #   - Tamper deny: the SOURCE_SHA copies of this workflow, the wrapper, the
 #     assertion script, the lock, backend/pyproject.toml and the other mypy
 #     config-discovery files must be byte- and mode-identical to the trusted
@@ -48,7 +59,7 @@
 # bare store and prove it is that commit; regular-file, non-symlink and
 # pinned-SHA-256 checks on the wrapper, the interpreter assertion script and
 # the Linux cp313 lock in the trusted tree; tamper deny and inert
-# materialization of the source backend/app; resolve a CPython 3.13
+# materialization of the source backend/app and backend/ modules; resolve a CPython 3.13
 # linux-x86_64 64-bit interpreter with tools/assert_ci_python313.py (deny,
 # never fall back to python3); venv from it with the bundled, unupgraded pip;
 # hash-enforced install of the lock only (--require-hashes --only-binary=:all:
@@ -66,9 +77,11 @@
 #     a script body. The one inline Python reads them from argv.
 #   - Nothing is installed or fetched outside the pinned lock. No other
 #     artifact, cache, download or upload step exists.
-#   - Nothing is written to the composed tree except the screened backend/app
-#     blobs and one symlink, backend/.venv -> the pinned venv, which the
-#     wrapper requires and never walks.
+#   - Nothing is written to the composed tree except the screened source
+#     .py/.pyi blobs under backend/ (app included) and one symlink,
+#     backend/.venv -> the pinned venv, which the wrapper requires and never
+#     walks. The only deletions are the trusted .py/.pyi under backend/, which
+#     the source blobs replace.
 #
 # NOT claimed:
 #   - NO GATE CREDIT. CAP-012 is independently approved for BOUNDED LOCAL use
@@ -88,9 +101,15 @@
 #     repository is assumed for the tokenless fetches; (5) CI-scope assurance
 #     of the composed design and of CAP-012 for CI use.
 #   - KNOWN RESIDUALS: the wrapper follows imports from backend/app into other
-#     in-repository modules; those resolve against the TRUSTED tree, so a PR's
-#     edits outside backend/app are not type-checked by this check. Crafted
-#     source could still stress mypy itself (bounded by timeout-minutes). That
+#     in-repository modules under backend/; the composed tree now carries the
+#     PR head's bytes for all of them (BUG-064), but a PR edit that changes
+#     what mypy resolves from outside backend/ (installed packages, the lock)
+#     is out of scope. The composition is head-as-is: a PR not rebased onto the
+#     trusted sha has its older copy of a newer trusted module checked. An
+#     emptied directory may remain after a deleted package (mypy and the
+#     wrapper treat it like an absent one). A symlink or gitlink anywhere
+#     under backend/, or an executable-mode .py/.pyi, denies the job even if it
+#     is unrelated to the import closure. Crafted source could still stress mypy itself (bounded by timeout-minutes). That
 #     mypy never executes analysed source and that inline comments cannot load
 #     plugins is not independently re-verified here.
 #   - The hash pins below must be re-derived (and the static test updated)
@@ -169,7 +188,7 @@ jobs:
           [[ ! -e "$work/backend/.venv" && ! -L "$work/backend/.venv" ]] \
             || { echo "DENY: backend/.venv is committed in the trusted tree" >&2; exit 1; }
 
-      - name: Deny candidate tamper; materialize source backend/app as inert data
+      - name: Deny candidate tamper; materialize source backend/app and backend/ modules as inert data
         env:
           TRUSTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.sha }}
@@ -223,12 +242,63 @@ jobs:
           done < "$RUNNER_TEMP/app.lst"
           [[ "$count" -ge 1 ]] || deny "no source blobs materialized"
 
+          # Followed in-repository modules outside backend/app (BUG-064). The wrapper
+          # resolves imports against backend/ and mypy follows them, so every .py/.pyi
+          # under backend/ outside app must be the SOURCE bytes, never the trusted
+          # ones: all entries are screened and staged here, before the trusted tree is
+          # touched. A symlink or gitlink anywhere under backend/, a .py/.pyi entry
+          # that is not a plain 100644 blob, and anything under backend/.venv is
+          # denied. Non-Python files are not read by mypy and keep their trusted bytes.
+          git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend > "$RUNNER_TEMP/backend.lst"
+          outstage="$RUNNER_TEMP/source-backend"
+          rm -rf "$outstage"
+          mkdir -p "$outstage"
+          : > "$RUNNER_TEMP/outside.lst"
+          outside=0
+          while IFS= read -r -d '' rec; do
+            meta="${rec%%$'\t'*}"
+            path="${rec#*$'\t'}"
+            read -r mode type oid <<<"$meta"
+            case "$path" in backend/app|backend/app/*) continue ;; backend/?*) ;; *) deny "source entry outside backend: '$path'" ;; esac
+            case "/$path/" in
+              */../*|*/./*|*//*|*/.git/*|/backend/.venv/*) deny "unsafe source path '$path'" ;;
+            esac
+            case "$mode" in 120000|160000) deny "refused source entry mode $mode at '$path' (symlink/gitlink under backend)" ;; esac
+            case "$path" in
+              *.py|*.pyi)
+                [[ "$mode" == "100644" && "$type" == "blob" ]] \
+                  || deny "refused source module entry mode $mode type $type at '$path' (executable or irregular)"
+                mkdir -p "$outstage/$(dirname "$path")"
+                git -C "$src" cat-file blob "$oid" > "$outstage/$path"
+                printf '%s\t%s\0' "$oid" "$path" >> "$RUNNER_TEMP/outside.lst"
+                outside=$((outside + 1)) ;;
+            esac
+          done < "$RUNNER_TEMP/backend.lst"
+
           rm -rf "$work/backend/app"
           mv "$stage/backend/app" "$work/backend/app"
           [[ -z "$(find "$work/backend/app" ! -type f ! -type d)" ]] || deny "non-regular entry in materialized backend/app"
           [[ "$(find "$work/backend/app" -type f | wc -l | tr -d ' ')" == "$count" ]] \
             || deny "materialized file count differs from the source listing"
           echo "materialized $count inert source blobs from $SOURCE_SHA into the trusted $TRUSTED_SHA tree"
+
+          # Replace every trusted .py/.pyi under backend/ outside app by the staged source
+          # ones (add, modify and delete alike), then prove the result equals the source
+          # listing: each placed file hashes to its source blob and no other .py/.pyi exists.
+          find "$work/backend" -path "$work/backend/app" -prune -o \( -name '*.py' -o -name '*.pyi' \) \( -type f -o -type l \) -print0 > "$RUNNER_TEMP/trusted-modules.lst"
+          while IFS= read -r -d '' f; do rm -f "$f"; done < "$RUNNER_TEMP/trusted-modules.lst"
+          while IFS= read -r -d '' rec; do
+            oid="${rec%%$'\t'*}"
+            path="${rec#*$'\t'}"
+            mkdir -p "$work/$(dirname "$path")"
+            mv "$outstage/$path" "$work/$path"
+            [[ -f "$work/$path" && ! -L "$work/$path" ]] || deny "followed module '$path' is not a regular file after composition"
+            [[ "$(git -C "$work" hash-object --no-filters -- "$work/$path")" == "$oid" ]] \
+              || deny "followed module '$path' is not the source blob $oid"
+          done < "$RUNNER_TEMP/outside.lst"
+          [[ "$(find "$work/backend" -path "$work/backend/app" -prune -o \( -name '*.py' -o -name '*.pyi' \) \( -type f -o -type l \) -print | wc -l | tr -d ' ')" == "$outside" ]] \
+            || deny "composed backend/ holds .py/.pyi files that are not in the source listing"
+          echo "composed $outside followed backend/ .py/.pyi modules from $SOURCE_SHA (add, modify, delete); no trusted copy remains"
 
       - name: Resolve and assert CPython 3.13 linux-x86_64 interpreter (deny, no fallback)
         shell: bash
