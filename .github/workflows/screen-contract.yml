@@ -104,7 +104,8 @@ jobs:
                       Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx \
                       Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx \
                       veyro-product-experience-design \
-                      knowledge/00-System/EIP_MIRROR.md; do
+                      knowledge/00-System/EIP_MIRROR.md \
+                      knowledge/00-System/PROJECT_INDEX.md; do
             want="$(git -C "$trusted" rev-parse --verify -q "HEAD:$path")" \
               || deny "trusted snapshot lacks $path"
             got="$(git -C "$objects" rev-parse --verify -q "$HEAD_SHA:$path")" \
@@ -136,7 +137,7 @@ jobs:
           status=$?
           set -e
           cat "$work/report.json"
-          python3 -E -s - "$work/report.json" "$status" <<'PY'
+          python3 -I - "$work/report.json" "$status" <<'PY'
           import json
           import sys
           from pathlib import Path

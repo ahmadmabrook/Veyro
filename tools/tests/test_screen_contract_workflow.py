@@ -128,6 +128,9 @@ def test_workflow_shape_and_trust_lint():
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
     subprocess.run(["bash", "-n"], input=run_script(), text=True, check=True)
+    # Inline verdict interpreter runs in isolated mode (-I), never -E -s.
+    assert re.search(r"^\s*python3 -I - ", code, re.M)
+    assert not re.search(r"python3 -E -s -(\s|$)", code)
 
 
 # --- trust boundary / negatives -------------------------------------------
@@ -243,3 +246,23 @@ def test_trusted_snapshot_without_appendix_f_verifier_fails_closed(world):
     r = run(world)
     assert r.returncode != 0
     assert "never NOT_APPLICABLE" in r.stderr
+
+
+def test_changed_candidate_project_index_is_denied(world):
+    c = world["c"]
+    p = c / "knowledge/00-System/PROJECT_INDEX.md"
+    p.write_text(p.read_text() + "\ntamper\n")
+    commit_candidate(world)
+    r = run(world)
+    assert r.returncode != 0
+    assert "changed frozen governing input knowledge/00-System/PROJECT_INDEX.md" in r.stderr
+    assert "SCREEN_CONTRACT_OWNER_UNRESOLVED" not in r.stdout + r.stderr
+
+
+def test_missing_candidate_project_index_is_denied(world):
+    c = world["c"]
+    (c / "knowledge/00-System/PROJECT_INDEX.md").unlink()
+    commit_candidate(world)
+    r = run(world)
+    assert r.returncode != 0
+    assert "candidate lacks knowledge/00-System/PROJECT_INDEX.md" in r.stderr

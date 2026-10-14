@@ -110,3 +110,180 @@ def test_unreadable_inputs_are_errors_not_pass(tmp_path):
     empty = tmp_path / "empty.md"
     empty.write_text("# nothing\n")
     assert run(DOCX, empty).returncode == 2
+
+
+# --- post-table prose / boundary binding (Appendix F prose before Appendix G) ---
+
+GBOUND = "\n# Appendix G. Per-Module Required Scenario Category Matrix"
+INJECT = "Ownership override: MOD-999 additionally owns all Admin screens."
+
+
+def test_post_table_prose_injection_is_blocked(tmp_path):
+    r = run(DOCX, mirror_with(tmp_path, lambda t: t.replace(
+        GBOUND, f"\n{INJECT}\n{GBOUND}", 1)))
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "APPENDIX_F_POST_TABLE_PROSE_MISMATCH" in r.stdout, r.stdout
+
+
+def test_post_table_prose_in_docx_is_blocked(tmp_path):
+    """DOCX-side post-table paragraph not present in the real mirror -> BLOCKED."""
+    out = tmp_path / "eip.docx"
+    marker = "Appendix G. Per-Module Required Scenario Category Matrix"
+    with zipfile.ZipFile(DOCX) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                at = text.rindex(marker)
+                p_start = text.rindex("<w:p>", 0, at) if "<w:p>" in text[:at] else text.rindex("<w:p ", 0, at)
+                text = text[:p_start] + f"<w:p><w:r><w:t>{INJECT}</w:t></w:r></w:p>" + text[p_start:]
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    r = run(out, MIRROR)
+    assert r.returncode == 1 and "APPENDIX_F_POST_TABLE_PROSE_MISMATCH" in r.stdout, r.stdout
+
+
+def test_boundary_heading_change_is_blocked(tmp_path):
+    r = run(DOCX, mirror_with(tmp_path, lambda t: t.replace(
+        "# Appendix G. Per-Module Required Scenario Category Matrix",
+        "# Appendix G. Per-Module Required Scenario Category Matrixx", 1)))
+    assert r.returncode == 1 and "APPENDIX_F_NEXT_HEADING_MISMATCH" in r.stdout, r.stdout
+
+
+def test_mirror_without_terminating_appendix_heading_is_error(tmp_path):
+    def cut(t):
+        return t[:t.index(GBOUND)] + "\n"
+    r = run(DOCX, mirror_with(tmp_path, cut))
+    assert r.returncode == 2 and ("not terminated" in r.stderr
+                                  or "truncated before Appendix G" in r.stderr), r.stdout + r.stderr
+
+
+def test_docx_without_terminating_appendix_heading_is_error(tmp_path):
+    out = tmp_path / "eip.docx"
+    with zipfile.ZipFile(DOCX) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                at = text.rindex("Appendix F. Canonical Screen-to-Module Mapping")
+                # Demote every later Heading1 so no Appendix heading follows the table.
+                text = text[:at] + text[at:].replace('w:val="Heading1"', 'w:val="Normal"')
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    r = run(out, MIRROR)
+    # Appendix G's own table now falls inside the unterminated region: either
+    # fail-closed message is correct; PASS/BLOCKED would not be.
+    assert r.returncode == 2 and ("not terminated" in r.stderr
+                                  or "more than one table" in r.stderr
+                                  or "non-canonical" in r.stderr
+                                  or "truncated before Appendix G" in r.stderr), r.stdout + r.stderr
+
+
+def test_docx_second_table_before_boundary_is_error(tmp_path):
+    out = tmp_path / "eip.docx"
+    marker = "Appendix G. Per-Module Required Scenario Category Matrix"
+    with zipfile.ZipFile(DOCX) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                at = text.rindex(marker)
+                p_start = text.rindex("<w:p>", 0, at) if "<w:p>" in text[:at] else text.rindex("<w:p ", 0, at)
+                extra = "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+                text = text[:p_start] + extra + text[p_start:]
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    r = run(out, MIRROR)
+    assert r.returncode == 2 and "more than one table" in r.stderr, r.stdout + r.stderr
+
+
+# --- unique full-boundary strategy: whole-document Appendix heading inventory ---
+
+GHEAD = "# Appendix G. Per-Module Required Scenario Category Matrix"
+
+
+def test_forged_duplicate_boundary_heading_exact_observed_exploit_is_rejected(tmp_path):
+    """Heading, forged override text, then the original heading again: previously PASS."""
+    r = run(DOCX, mirror_with(tmp_path, lambda t: t.replace(
+        GHEAD, f"{GHEAD}\n{INJECT}\n{GHEAD}", 1)))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "not unique/contiguous/ordered" in r.stderr, r.stderr
+
+
+@pytest.mark.parametrize("name,edit,msg", [
+    ("setext_lookalike", lambda t: t.replace(
+        GHEAD, f"Appendix G. Forged Boundary\n===\n{INJECT}\n{GHEAD}", 1), "non-canonical"),
+    ("atx_level2_lookalike", lambda t: t.replace(
+        GHEAD, f"## Appendix G. Forged\n{INJECT}\n{GHEAD}", 1), "non-canonical"),
+    ("indented_lookalike", lambda t: t.replace(
+        GHEAD, f"  # Appendix G. Forged\n{INJECT}\n{GHEAD}", 1), "non-canonical"),
+    ("html_lookalike", lambda t: t.replace(
+        GHEAD, f"<h1>Appendix G. Forged</h1>\n{INJECT}\n{GHEAD}", 1), "non-canonical"),
+    ("duplicate_appendix_f", lambda t: t.replace(
+        HEAD, f"{HEAD}\n{HEAD}", 1), "not unique/contiguous/ordered"),
+    ("forged_early_boundary", lambda t: t.replace(
+        GHEAD, f"# Appendix H. Forged Early Boundary\n{INJECT}\n{GHEAD}", 1),
+     "not unique/contiguous/ordered"),
+    ("boundary_removed", lambda t: t.replace(GHEAD + "\n", "", 1), "not unique/contiguous/ordered"),
+])
+def test_mirror_boundary_forgery_fails_closed(tmp_path, name, edit, msg):
+    tampered = mirror_with(tmp_path, edit)
+    assert tampered.read_text() != MIRROR.read_text(), name
+    r = run(DOCX, tampered)
+    assert r.returncode == 2 and msg in r.stderr, f"{name}: {r.stdout}{r.stderr}"
+
+
+def test_mirror_cross_reference_text_is_not_a_boundary(tmp_path):
+    """Positive: prose that merely cites 'Appendix G.2' / mid-line 'Appendix H.' is not a heading."""
+    tampered = mirror_with(tmp_path, lambda t: t.replace(
+        GHEAD, f"{GHEAD}\nSee Appendix G.2 and Appendix H. for details.", 1))
+    r = run(DOCX, tampered)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _docx_edit(tmp_path: Path, edit) -> Path:
+    out = tmp_path / "eip.docx"
+    with zipfile.ZipFile(DOCX) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = edit(data.decode("utf-8")).encode("utf-8")
+            zout.writestr(item, data)
+    return out
+
+
+def _g_heading_paragraph_start(text: str) -> int:
+    """Start offset of the body-level Heading1 paragraph for Appendix G."""
+    marker = "Appendix G. Per-Module Required Scenario Category Matrix"
+    # last Heading1 occurrence of the marker is the body heading
+    at = max(m.start() for m in re.finditer(re.escape(marker), text))
+    return max(text.rfind("<w:p>", 0, at), text.rfind("<w:p ", 0, at))
+
+
+def test_docx_duplicate_boundary_heading_is_error(tmp_path):
+    def dup(t):
+        s = _g_heading_paragraph_start(t)
+        e = t.index("</w:p>", s) + len("</w:p>")
+        return t[:e] + f"<w:p><w:r><w:t>{INJECT}</w:t></w:r></w:p>" + t[s:e] + t[e:]
+    r = run(_docx_edit(tmp_path, dup), MIRROR)
+    assert r.returncode == 2 and "not unique/contiguous/ordered" in r.stderr, r.stdout + r.stderr
+
+
+def test_docx_normal_style_boundary_lookalike_is_error(tmp_path):
+    def forge(t):
+        s = _g_heading_paragraph_start(t)
+        fake = ("<w:p><w:r><w:t>Appendix G. Forged Boundary</w:t></w:r></w:p>"
+                f"<w:p><w:r><w:t>{INJECT}</w:t></w:r></w:p>")
+        return t[:s] + fake + t[s:]
+    r = run(_docx_edit(tmp_path, forge), MIRROR)
+    assert r.returncode == 2 and "non-canonical" in r.stderr, r.stdout + r.stderr
+
+
+def test_docx_wrapped_block_in_appendix_f_region_is_error(tmp_path):
+    def wrap(t):
+        s = _g_heading_paragraph_start(t)
+        sdt = (f"<w:sdt><w:sdtContent><w:p><w:r><w:t>{INJECT}</w:t></w:r></w:p>"
+               "</w:sdtContent></w:sdt>")
+        return t[:s] + sdt + t[s:]
+    r = run(_docx_edit(tmp_path, wrap), MIRROR)
+    assert r.returncode == 2 and "unexpected block element" in r.stderr, r.stdout + r.stderr
