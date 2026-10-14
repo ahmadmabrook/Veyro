@@ -38,7 +38,7 @@ parsed line-wise. The tests do not just mirror the file:
      EXECUTED against throwaway files/git repos to show the mutant lets the
      drift/overwrite through while the committed step denies or leaves it.
   3c. BUG-062 round 3 (closed world): the whole workflow file is pinned by SHA-256
-     (`WORKFLOW_SHA256`) and every region - the preamble and each of the seven steps -
+     (`WORKFLOW_SHA256`) and every region - the preamble and each of the eight steps -
      has insert / reorder / whitespace mutants that must change the digest. A bounded
      write-surface inventory (`write_surface`) of the committed model is also frozen.
      The exact-bytes pin is a CHANGE TRIPWIRE for the reviewed bytes, NOT runtime
@@ -52,6 +52,16 @@ parsed line-wise. The tests do not just mirror the file:
      of the new lines are EXECUTED to show each check is load-bearing (reverting the fix
      reproduces the poisoning: the real wrapper's `scan_import_closure` then fingerprints
      trusted bytes), and the composed tree is compared with an independent git oracle.
+  3e. BUG-063 prerequisite (trusted test execution): the workflow runs THIS file from the
+     trusted checkout, as a required fail-closed step before the scoped wrapper, under the
+     asserted venv interpreter (`-I`, cleared environment). The step pins the file's exact
+     SHA-256 (`TEST_SHA256`) immediately before executing it and denies on an absent,
+     symlinked, non-regular or tampered file, a nonzero exit, zero tests, or anything other
+     than a plain `OK` (skips and expected failures included). Hash cycle: the workflow pins
+     this file's digest and this file pins the workflow's, so `WORKFLOW_SHA256` is computed
+     over the workflow with the 64-hex `TEST_SHA256` value masked (`masked_workflow`); the
+     pin value itself is verified against the file on disk by audit() and at run time.
+     Behaviour is executed against stub interpreters and synthetic trusted trees.
   4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
@@ -78,6 +88,8 @@ PINS = {
     "ASSERT_SHA256": ("tools/assert_ci_python313.py", None),
     "LOCK_SHA256": ("backend/requirements-typecheck-linux-x86_64-cp313.lock.txt", None),
 }
+# Guard-step pins (PINS) plus the trusted-test step's own pin; audit() checks all four against disk.
+AUDITED_PINS = {**PINS, "TEST_SHA256": ("tools/tests/test_typecheck_required_candidate_workflow.py", None)}
 ALLOWED_EXPRESSIONS = {
     "github.event_name", "github.ref", "github.sha", "github.server_url", "github.repository",
 }
@@ -92,6 +104,7 @@ EXPECTED_STEPS = (
     "Resolve and assert CPython 3.13",
     "Create venv from asserted interpreter",
     "Hash-enforced install",
+    "Execute trusted closed-world workflow test",
     "Scoped wrapper on the composed backend/app",
 )
 EXPECTED_ENV = {
@@ -151,6 +164,33 @@ GUARD_STEP_LINES = (
     '  || { echo "DENY: backend/pyproject.toml is not a regular file" >&2; exit 1; }',
     '[[ ! -e "$work/backend/.venv" && ! -L "$work/backend/.venv" ]] \\',
     '  || { echo "DENY: backend/.venv is committed in the trusted tree" >&2; exit 1; }',
+)
+
+# The trusted-test step (BUG-063 prerequisite) is frozen line-for-line as well.
+TEST_STEP_LINES = (
+    'set -euo pipefail',
+    'deny() { echo "DENY: $1" >&2; exit 1; }',
+    'work="$RUNNER_TEMP/work"',
+    'venv="$RUNNER_TEMP/venv-typecheck"',
+    'tfile="$work/tools/tests/test_typecheck_required_candidate_workflow.py"',
+    '[[ -e "$tfile" ]] || deny "$tfile absent"',
+    '[[ ! -L "$tfile" ]] || deny "$tfile is a symlink"',
+    '[[ -f "$tfile" ]] || deny "$tfile is not a regular file"',
+    'got="$(sha256sum "$tfile" | cut -d\' \' -f1)"',
+    '[[ "$got" == "$TEST_SHA256" ]] || deny "$tfile sha256 $got, expected $TEST_SHA256"',
+    'echo "pinned ok: $TEST_SHA256 $tfile"',
+    'scratch="$(mktemp -d "$RUNNER_TEMP/trusted-test.XXXXXXXX")"',
+    'trap \'rm -rf "$scratch"\' EXIT',
+    'mkdir -p "$scratch/home" "$scratch/tmp"',
+    'if out="$(cd "$scratch" && env -i PATH=/usr/bin:/bin HOME="$scratch/home" TMPDIR="$scratch/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \\',
+    '  "$venv/bin/python" -I "$tfile" 2>&1)"; then rc=0; else rc=$?; fi',
+    'printf \'trusted test rc=%s\\n%s\\n\' "$rc" "$out"',
+    '[[ "$rc" == "0" ]] || deny "trusted workflow test rc $rc is not 0"',
+    'printf \'%s\\n\' "$out" | grep -E \'^Ran [1-9][0-9]* tests? in \' >/dev/null \\',
+    '  || deny "trusted test ran zero or an unreported number of tests"',
+    'printf \'%s\\n\' "$out" | grep -E \'^OK$\' >/dev/null \\',
+    '  || deny "trusted test final status is not a plain OK (skips or expected failures are not allowed)"',
+    'echo "trusted workflow test observed: rc=0, at least one test, plain OK."',
 )
 
 TAMPER_STEP_LINES = (
@@ -247,7 +287,10 @@ TAMPER_STEP_LINES = (
 # Closed-world snapshot (BUG-062 round 3). Changing the workflow deliberately means
 # re-reviewing it and updating this digest (and, if needed, WRITE_SURFACE below).
 # This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
-WORKFLOW_SHA256 = "d51186bda63d6bf67c0bd7107ede2477d1723885ad49ca612be0f53a0c4436f2"
+# Computed over the workflow with the TEST_SHA256 value masked (see `masked_workflow`), because
+# the workflow pins this file's digest and this file pins the workflow's.
+WORKFLOW_SHA256 = "c08d9d537796f57231e052fb30c1f65f3752fe42b374d5efd6a3a20f6ac3f776"
+TEST_PIN_RE = re.compile(rb"(?m)^(          TEST_SHA256: )[0-9a-f]{64}$")
 
 REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
 WRITE_VERB_RE = re.compile(
@@ -287,15 +330,25 @@ WRITE_SURFACE = (
     (4, 'printf \'%s\\n\' "$chosen" > "$RUNNER_TEMP/interpreter.path"'),
     (5, '"$py" -m venv "$RUNNER_TEMP/venv-typecheck"'),
     (6, '"$RUNNER_TEMP/venv-typecheck/bin/python" -m pip install --require-hashes --only-binary=:all: --no-deps --index-url https://pypi.org/simple --no-cache-dir --no-input --disable-pip-version-check -r "$lock"'),
-    (7, 'ln -s "$venv" "$work/backend/.venv"'),
     (7, 'trap \'rm -rf "$scratch"\' EXIT'),
     (7, 'mkdir -p "$scratch/home" "$scratch/tmp"'),
+    (8, 'ln -s "$venv" "$work/backend/.venv"'),
+    (8, 'trap \'rm -rf "$scratch"\' EXIT'),
+    (8, 'mkdir -p "$scratch/home" "$scratch/tmp"'),
 )
 
 
+def masked_workflow(data):
+    """Workflow bytes with the one 64-hex `TEST_SHA256` pin value zeroed (breaks the workflow<->test hash cycle)."""
+    return TEST_PIN_RE.sub(rb"\g<1>" + b"0" * 64, data)
+
+
 def snapshot_violations(data):
-    """Closed-world check: the workflow bytes (all steps, preamble, whitespace, EOLs) equal the reviewed snapshot."""
-    got = hashlib.sha256(data).hexdigest()
+    """Closed-world check: the workflow bytes (all steps, preamble, whitespace, EOLs) equal the reviewed snapshot.
+
+    Only the `TEST_SHA256` pin value is masked; audit() and the run-time step verify it against the test file.
+    """
+    got = hashlib.sha256(masked_workflow(data)).hexdigest()
     return [] if got == WORKFLOW_SHA256 else [f"workflow sha256 {got} != reviewed snapshot {WORKFLOW_SHA256}"]
 
 
@@ -548,13 +601,25 @@ def audit(text):
         bad.append("assertion script is not run from the trusted tree")
 
     # --- steps 2 and 3 are frozen line-for-line (BUG-062 round 2) ----------
-    for prefix, frozen in (("Guard pinned inputs", GUARD_STEP_LINES), ("Deny candidate tamper", TAMPER_STEP_LINES)):
+    for prefix, frozen in (("Guard pinned inputs", GUARD_STEP_LINES), ("Deny candidate tamper", TAMPER_STEP_LINES),
+                           ("Execute trusted closed-world workflow test", TEST_STEP_LINES)):
         got_lines = [ln.rstrip() for n, _e, s in parsed if n.startswith(prefix) for ln in s.splitlines() if ln.strip()]
         if tuple(got_lines) != frozen:
             extra = [ln for ln in got_lines if ln not in frozen]
             missing = [ln for ln in frozen if ln not in got_lines]
             bad.append(f"step '{prefix}' differs from the frozen script: added {extra}, removed {missing}"
                        if extra or missing else f"step '{prefix}' lines reordered/duplicated")
+
+    # --- trusted test step (BUG-063 prerequisite): pinned, trusted-tree only, before the wrapper ---
+    ttest = [(e, s) for n, e, s in parsed if n.startswith("Execute trusted closed-world workflow test")]
+    if len(ttest) != 1:
+        bad.append("exactly one trusted workflow test step is required")
+    elif [ln.strip().split(":")[0] for ln in ttest[0][0] if ln.strip()] != ["TEST_SHA256"]:
+        bad.append("trusted test step env must be exactly TEST_SHA256")
+    if len(re.findall(r"tools/tests/test_typecheck_required_candidate_workflow\.py", code)) != 1:
+        bad.append("trusted test file must be referenced exactly once, from the trusted tree")
+    if 'tfile="$work/tools/tests/test_typecheck_required_candidate_workflow.py"' not in code:
+        bad.append("trusted test is not executed from the trusted tree")
 
     # --- exact head fetch, no drift ------------------------------------
     for needle in ('[[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]]', '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
@@ -564,7 +629,7 @@ def audit(text):
             bad.append(f"fetch/ref guard missing: {needle}")
 
     # --- pinned hashes equal the committed files -------------------------
-    for env_name, (rel, fixed) in PINS.items():
+    for env_name, (rel, fixed) in AUDITED_PINS.items():
         m = re.search(rf"^\s+{env_name}: ([0-9a-f]{{64}})\s*$", code, re.MULTILINE)
         actual = sha256_of(REPO / rel)
         if not m:
@@ -737,7 +802,7 @@ class AuditPolicyTest(unittest.TestCase):
         return {
             "zero-file success regex": tamper(t, "[1-9][0-9]* source files", "[0-9]* source files"),
             "removed DENY screen": no_deny,
-            "dropped env -i": tamper(t, "env -i PATH=/usr/bin:/bin", "env PATH=/usr/bin:/bin"),
+            "dropped env -i": tamper(t, ENV_I_CALL, ENV_I_CALL.replace("env -i ", "env ", 1)),
             "added pip3 install": tamper(
                 t, '          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list',
                 '          pip3 install requests\n          "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list'),
@@ -1604,6 +1669,211 @@ class InstallStepTest(unittest.TestCase):
             self.assertFalse([c for c in env_calls if c.startswith(f"ENV: {key}=")], f"{key} survived")
         self.assertTrue([c for c in env_calls if c == "ENV: PIP_CONFIG_FILE=/dev/null"])
         self.assertFalse([c for c in env_calls if "evil" in c])
+
+
+@unittest.skipUnless(shutil.which("bash"), "bash required")
+class TrustedTestStepTest(unittest.TestCase):
+    """BUG-063 prerequisite: the trusted-checkout test step, executed against a stub interpreter.
+
+    The stub stands in for the asserted venv python; it records how it was called and replays a
+    canned unittest output and exit code. Nothing here runs the real suite recursively.
+    """
+
+    PREFIX = "Execute trusted closed-world workflow test"
+    TEST_REL = "tools/tests/test_typecheck_required_candidate_workflow.py"
+    OK = "...\n----------------------------------------------------------------------\nRan 3 tests in 0.010s\n\nOK\n"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-ttest-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.script = step_script(self.PREFIX)
+        self.text = WORKFLOW.read_text(encoding="utf-8")
+        # sha256sum may be absent (macOS); keep an equivalent shim outside the per-case tree.
+        self.shim = Path(tempfile.mkdtemp(prefix="tcrc-ttest-bin-")).resolve()
+        self.addCleanup(shutil.rmtree, self.shim, ignore_errors=True)
+        if shutil.which("sha256sum") is None:
+            tool = self.shim / "sha256sum"
+            tool.write_text('#!/bin/bash\nexec shasum -a 256 "$@"\n')
+            tool.chmod(tool.stat().st_mode | stat.S_IXUSR)
+
+    def _stage(self, rc, output, body=b"# trusted test bytes\n"):
+        for d in ("work/tools/tests", "venv-typecheck/bin"):
+            (self.tmp / d).mkdir(parents=True, exist_ok=True)
+        (self.tmp / "payload.txt").write_text(output, encoding="utf-8")
+        (self.tmp / "work" / self.TEST_REL).write_bytes(body)
+        stub = self.tmp / "venv-typecheck/bin/python"
+        stub.write_text(f'#!/bin/bash\necho "$@" > "{self.tmp}/argv.txt"\npwd > "{self.tmp}/cwd.txt"\n'
+                        f'env > "{self.tmp}/envdump.txt"\ncat "{self.tmp}/payload.txt"\nexit {rc}\n')
+        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+        return hashlib.sha256(body).hexdigest()
+
+    def env_for(self, pin):
+        return {"RUNNER_TEMP": str(self.tmp), "TEST_SHA256": pin, "PATH": f"{self.shim}:{os.environ['PATH']}"}
+
+    def run_step(self, rc=0, output=None, pin=None, script=None, extra_env=None, tamper_to=None):
+        good = self._stage(rc, self.OK if output is None else output)
+        if tamper_to is not None:
+            (self.tmp / "work" / self.TEST_REL).write_bytes(tamper_to)
+        env = {"RUNNER_TEMP": str(self.tmp), "TEST_SHA256": pin or good, "PATH": f"{self.shim}:{os.environ['PATH']}"}
+        env.update(extra_env or {})
+        return FakeBash.run(script or self.script, env, self.tmp)
+
+    def ran(self):
+        return (self.tmp / "argv.txt").exists()
+
+    def test_pinned_trusted_test_with_plain_ok_passes_and_is_invoked_isolated(self):
+        r = self.run_step(extra_env=POISON)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("pinned ok:", r.stdout)
+        self.assertEqual((self.tmp / "argv.txt").read_text().split(),
+                         ["-I", str(self.tmp / "work" / self.TEST_REL)])
+        self.assertRegex((self.tmp / "cwd.txt").read_text().strip(), r"/trusted-test\.[A-Za-z0-9]+$")
+        dump = (self.tmp / "envdump.txt").read_text()
+        for key in POISON:
+            self.assertNotRegex(dump, rf"(?m)^{key}=", f"{key} leaked into the test run")
+        self.assertRegex(dump, r"(?m)^PATH=/usr/bin:/bin$")
+        self.assertEqual(list(self.tmp.glob("trusted-test.*")), [], "scratch dir left behind")
+
+    def test_tampered_absent_symlinked_or_irregular_test_file_is_denied_before_execution(self):
+        r = self.run_step(tamper_to=b"# tampered\n")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("sha256", r.stderr)
+        self.assertFalse(self.ran(), "tampered test file was executed")
+        for label in ("absent", "symlink", "directory"):
+            with self.subTest(label):
+                shutil.rmtree(self.tmp)
+                self.tmp.mkdir()
+                good = self._stage(0, self.OK)
+                target = self.tmp / "work" / self.TEST_REL
+                if label == "absent":
+                    target.unlink()
+                elif label == "symlink":
+                    real = self.tmp / "real_test.py"
+                    real.write_bytes(target.read_bytes())
+                    target.unlink()
+                    target.symlink_to(real)
+                else:
+                    target.unlink()
+                    target.mkdir()
+                r = FakeBash.run(self.script, self.env_for(good), self.tmp)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertFalse(self.ran(), f"{label} test file was executed")
+
+    def test_wrong_or_malformed_pin_is_denied(self):
+        for pin in ("0" * 64, "", "not-a-hash"):
+            with self.subTest(pin=pin):
+                shutil.rmtree(self.tmp, ignore_errors=True)
+                self.tmp.mkdir()
+                good = self._stage(0, self.OK)
+                self.assertNotEqual(good, pin)
+                r = FakeBash.run(self.script, self.env_for(pin), self.tmp)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertFalse(self.ran())
+
+    def test_nonzero_exit_fails_even_with_ok_looking_output(self):
+        for rc in (1, 2, 5, 127):
+            with self.subTest(rc=rc):
+                shutil.rmtree(self.tmp, ignore_errors=True)
+                self.tmp.mkdir()
+                r = self.run_step(rc=rc)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn(f"rc {rc}", r.stderr)
+
+    def test_zero_skipped_or_unreported_tests_fail_at_rc_zero(self):
+        cases = {
+            "empty output": "",
+            "zero tests": "\n" + "-" * 70 + "\nRan 0 tests in 0.000s\n\nOK\n",
+            "skipped": "s..\n" + "-" * 70 + "\nRan 3 tests in 0.010s\n\nOK (skipped=1)\n",
+            "expected failure": ".x.\n" + "-" * 70 + "\nRan 3 tests in 0.010s\n\nOK (expected failures=1)\n",
+            "no Ran line": "OK\n",
+            "no OK line": "Ran 3 tests in 0.010s\n",
+            "failed status": "Ran 3 tests in 0.010s\n\nFAILED (failures=1)\n",
+            "OK only inside a line": "Ran 3 tests in 0.010s\n\nnot OK\n",
+        }
+        for label, out in cases.items():
+            with self.subTest(label):
+                shutil.rmtree(self.tmp, ignore_errors=True)
+                self.tmp.mkdir()
+                self.assertNotEqual(self.run_step(output=out).returncode, 0, f"accepted: {label}")
+
+    def test_single_test_singular_wording_passes(self):
+        out = "." + "\n" + "-" * 70 + "\nRan 1 test in 0.001s\n\nOK\n"
+        self.assertEqual(self.run_step(output=out).returncode, 0)
+
+    def test_step_is_ordered_before_the_wrapper_and_never_touches_source_objects(self):
+        names = [n for n, _e, _s in steps(self.text)]
+        self.assertEqual(sum(n.startswith(self.PREFIX) for n in names), 1)
+        self.assertEqual(names.index(next(n for n in names if n.startswith(self.PREFIX))),
+                         len(names) - 2, "test step must be immediately before the wrapper step")
+        self.assertTrue(names[-1].startswith("Scoped wrapper"))
+        self.assertNotRegex(self.script, r"\$(src|stage|outstage)\b|source|SOURCE_SHA")
+
+    def _mutants(self):
+        t = self.text
+        return {
+            "hash check neutered": tamper(t, '[[ "$got" == "$TEST_SHA256" ]] || deny', 'true || deny'),
+            "rc check removed": tamper(t, '          [[ "$rc" == "0" ]] || deny "trusted workflow test rc $rc is not 0"\n', ""),
+            "zero-test regex": tamper(t, "Ran [1-9][0-9]* tests?", "Ran [0-9]* tests?"),
+            "plain OK relaxed": tamper(t, "grep -E '^OK$'", "grep -E '^OK'"),
+            "env -i dropped": tamper(t, "env -i PATH=/usr/bin:/bin HOME=\"$scratch/home\"", "env PATH=/usr/bin:/bin HOME=\"$scratch/home\""),
+            "failure swallowed": tamper(t, "then rc=0; else rc=$?; fi", "then rc=0; else rc=0; fi"),
+        }
+
+    def test_each_mutant_is_flagged_by_audit_and_the_load_bearing_ones_are_killed_by_execution(self):
+        for label, mutated in self._mutants().items():
+            with self.subTest(label):
+                self.assertNotEqual(mutated, self.text, "mutant was a no-op")
+                self.assertNotEqual(audit(mutated), [], f"audit missed: {label}")
+                self.assertNotEqual(snapshot_violations(mutated.encode("utf-8")), [], f"snapshot missed: {label}")
+        # Execution: each mutated step lets its specific defect through where the committed step denies it.
+        survives = {
+            "hash check neutered": dict(tamper_to=b"# tampered\n"),
+            "rc check removed": dict(rc=1),
+            "zero-test regex": dict(output="Ran 0 tests in 0.000s\n\nOK\n"),
+            "plain OK relaxed": dict(output="Ran 3 tests in 0.010s\n\nOK (skipped=1)\n"),
+            "failure swallowed": dict(rc=1),
+        }
+        mutants = self._mutants()
+        for label, kw in survives.items():
+            with self.subTest(f"execution: {label}"):
+                shutil.rmtree(self.tmp, ignore_errors=True)
+                self.tmp.mkdir()
+                self.assertEqual(self.run_step(script=step_script(self.PREFIX, mutants[label]), **kw).returncode, 0,
+                                 f"mutant is not load-bearing: {label}")
+                shutil.rmtree(self.tmp, ignore_errors=True)
+                self.tmp.mkdir()
+                self.assertNotEqual(self.run_step(**kw).returncode, 0, f"committed step accepted: {label}")
+
+    def test_step_removed_moved_or_sourced_elsewhere_is_flagged(self):
+        t = self.text
+        start = t.index(f"      - name: {self.PREFIX}")
+        end = t.index("      - name: Scoped wrapper")
+        block = t[start:end]
+        cases = {
+            "step removed": t[:start] + t[end:],
+            "step after wrapper": t[:start] + t[end:].rstrip("\n") + "\n\n" + block.rstrip("\n") + "\n",
+            "test run from stage": tamper(t, 'tfile="$work/tools/tests/', 'tfile="$stage/tools/tests/'),
+            "continue-on-error": tamper(t, "        env:\n          TEST_SHA256",
+                                        "        continue-on-error: true\n        env:\n          TEST_SHA256"),
+            "or true": tamper(t, 'then rc=0; else rc=$?; fi', 'then rc=0; else rc=$?; fi || true'),
+            "pin dropped": tamper(t, "          TEST_SHA256: " + re.search(r"TEST_SHA256: ([0-9a-f]{64})", t).group(1) + "\n", ""),
+        }
+        for label, mutated in cases.items():
+            with self.subTest(label):
+                self.assertNotEqual(mutated, t, "mutant was a no-op")
+                self.assertNotEqual(audit(mutated), [], f"audit missed: {label}")
+
+    def test_pin_value_is_masked_in_the_snapshot_but_verified_against_the_file_by_audit(self):
+        pin = re.search(r"TEST_SHA256: ([0-9a-f]{64})", self.text).group(1)
+        self.assertEqual(pin, sha256_of(REPO / self.TEST_REL))
+        stale = tamper(self.text, pin, "f" * 64)
+        self.assertEqual(snapshot_violations(stale.encode("utf-8")), [], "pin value must be masked in the digest")
+        self.assertNotEqual(audit(stale), [], "a stale pin must still fail audit()")
+        for bad in (pin[:-1], pin.upper(), pin + "0"):
+            with self.subTest(bad=bad[-6:]):
+                mutated = tamper(self.text, pin, bad)
+                self.assertNotEqual(snapshot_violations(mutated.encode("utf-8")), [])
+                self.assertNotEqual(audit(mutated), [])
 
 
 if __name__ == "__main__":

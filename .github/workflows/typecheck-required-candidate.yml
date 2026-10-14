@@ -63,7 +63,11 @@
 # linux-x86_64 64-bit interpreter with tools/assert_ci_python313.py (deny,
 # never fall back to python3); venv from it with the bundled, unupgraded pip;
 # hash-enforced install of the lock only (--require-hashes --only-binary=:all:
-# --no-deps); then ONE invocation of the wrapper, with a cleared environment,
+# --no-deps); then the closed-world workflow test, executed from the TRUSTED
+# checkout under the asserted venv interpreter with its exact SHA-256 verified
+# immediately before execution (absent, symlinked, tampered, nonzero, skipped or
+# zero-test runs deny; no source PR object supplies any byte of it); then ONE
+# invocation of the wrapper, with a cleared environment,
 # on the composed tree. mypy is never invoked directly; the wrapper owns the
 # one allowlisted mypy command. Only wrapper rc 0 plus its exact success
 # markers passes: rc 1 (type errors) and rc 2 (denial) both fail the job, as
@@ -349,6 +353,35 @@ jobs:
             --no-cache-dir --no-input --disable-pip-version-check \
             -r "$lock"
           "$RUNNER_TEMP/venv-typecheck/bin/python" -m pip list --disable-pip-version-check --format=freeze
+
+      - name: Execute trusted closed-world workflow test (pinned bytes, asserted venv; failure, skip or zero tests deny)
+        env:
+          TEST_SHA256: 56218d50ef81ac2c88a567b14c8dad1da65c400a816d6c3079f463a529b127ac
+        shell: bash
+        run: |
+          set -euo pipefail
+          deny() { echo "DENY: $1" >&2; exit 1; }
+          work="$RUNNER_TEMP/work"
+          venv="$RUNNER_TEMP/venv-typecheck"
+          tfile="$work/tools/tests/test_typecheck_required_candidate_workflow.py"
+          [[ -e "$tfile" ]] || deny "$tfile absent"
+          [[ ! -L "$tfile" ]] || deny "$tfile is a symlink"
+          [[ -f "$tfile" ]] || deny "$tfile is not a regular file"
+          got="$(sha256sum "$tfile" | cut -d' ' -f1)"
+          [[ "$got" == "$TEST_SHA256" ]] || deny "$tfile sha256 $got, expected $TEST_SHA256"
+          echo "pinned ok: $TEST_SHA256 $tfile"
+          scratch="$(mktemp -d "$RUNNER_TEMP/trusted-test.XXXXXXXX")"
+          trap 'rm -rf "$scratch"' EXIT
+          mkdir -p "$scratch/home" "$scratch/tmp"
+          if out="$(cd "$scratch" && env -i PATH=/usr/bin:/bin HOME="$scratch/home" TMPDIR="$scratch/tmp" NO_COLOR=1 LC_ALL=C.UTF-8 \
+            "$venv/bin/python" -I "$tfile" 2>&1)"; then rc=0; else rc=$?; fi
+          printf 'trusted test rc=%s\n%s\n' "$rc" "$out"
+          [[ "$rc" == "0" ]] || deny "trusted workflow test rc $rc is not 0"
+          printf '%s\n' "$out" | grep -E '^Ran [1-9][0-9]* tests? in ' >/dev/null \
+            || deny "trusted test ran zero or an unreported number of tests"
+          printf '%s\n' "$out" | grep -E '^OK$' >/dev/null \
+            || deny "trusted test final status is not a plain OK (skips or expected failures are not allowed)"
+          echo "trusted workflow test observed: rc=0, at least one test, plain OK."
 
       - name: Scoped wrapper on the composed backend/app (rc 0 only; rc 1 and rc 2 fail)
         shell: bash
