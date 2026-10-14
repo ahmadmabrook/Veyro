@@ -23,9 +23,11 @@
 #
 # Residual limitations (explicit, not solved here):
 #   - validate_baseline_binding.py hashes the three docx files and the design
-#     bundle only. It does NOT bind knowledge/00-System/EIP_MIRROR.md to the
-#     EIP docx, so the mirror's authenticity is only "same bytes as the
-#     trusted default branch", not proven against the docx.
+#     bundle only. EIP_MIRROR.md is bound to the (hash-verified) EIP docx by
+#     validate_eip_appendix_f_binding.py, which extracts Appendix F from the
+#     docx with stdlib zip/XML and compares the mapping prose and every
+#     module-table cell (domain, surface, mapping rule) before gate 5. That
+#     covers Appendix F only, not the rest of the mirror.
 #   - Same-name check spoofing and the branch-protection required-check entry
 #     are out of scope: nothing here edits remote GitHub settings, and a
 #     green job is not evidence that `architecture-screen-contract` is
@@ -78,9 +80,11 @@ jobs:
             || deny 'trusted checkout mismatch'
           validator="$trusted/tools/validate_architecture_gates.py"
           baseline="$trusted/tools/validate_baseline_binding.py"
+          appendix_f="$trusted/tools/validate_eip_appendix_f_binding.py"
+          eip_docx="$trusted/Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx"
           source_js="$trusted/veyro-product-experience-design/project/veyro-registry-data.js"
           eip="$trusted/knowledge/00-System/EIP_MIRROR.md"
-          for f in "$validator" "$baseline" \
+          for f in "$validator" "$baseline" "$appendix_f" "$eip_docx" \
                    "$trusted/tools/generate_screen_contract_manifest.py" \
                    "$trusted/tools/generate_screen_registry.py" "$source_js" "$eip"; do
             [[ -f "$f" && ! -L "$f" ]] \
@@ -118,8 +122,10 @@ jobs:
             git -C "$objects" cat-file blob "$HEAD_SHA:$path" > "$work/cand/$name"
           done
 
-          # --- 3. Trusted baseline binding (trusted tree) ---
+          # --- 3. Trusted baseline binding + Appendix F source authenticity (trusted tree) ---
           python3 -E -s "$baseline" || deny 'baseline-artifact binding failed on the trusted snapshot'
+          python3 -E -s "$appendix_f" --docx "$eip_docx" --mirror "$eip" \
+            || deny 'EIP Appendix F mirror does not match the EIP docx on the trusted snapshot'
 
           # --- 4. Trusted gate 5 over inert candidate data ---
           set +e

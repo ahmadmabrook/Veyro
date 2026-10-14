@@ -36,6 +36,7 @@ COPY = DOCX + [
     "contracts/ui/screen-contracts.yaml",
     "tools/validate_architecture_gates.py",
     "tools/validate_baseline_binding.py",
+    "tools/validate_eip_appendix_f_binding.py",
     "tools/generate_screen_contract_manifest.py",
     "tools/generate_screen_registry.py",
 ]
@@ -213,3 +214,32 @@ def test_verdict_wrapper_passes_only_on_live_pass(world, status, code, passes):
     world["trusted"] = git(t, "rev-parse", "HEAD")
     r = run(world)
     assert (r.returncode == 0) is passes, r.stdout + r.stderr
+
+
+def test_trusted_mirror_diverging_from_docx_is_denied_before_gate_5(world):
+    """Trusted snapshot whose mirror owner_domain/surface was altered: DENY, gate 5 never runs."""
+    t = world["t"]
+    p = t / "knowledge/00-System/EIP_MIRROR.md"
+    text = p.read_text()
+    at = text.index("# Appendix F. Canonical Screen-to-Module Mapping")
+    assert "GOV-01  " in text[at:]
+    p.write_text(text[:at] + text[at:].replace("GOV-01  ", "GOV-09  ", 1))
+    git(t, "add", "-A")
+    git(t, "commit", "-q", "-m", "diverged mirror")
+    world["trusted"] = git(t, "rev-parse", "HEAD")
+    git(world["c"], "pull", "-q")  # candidate carries the same (diverged) mirror
+    r = run(world)
+    assert r.returncode != 0
+    assert "Appendix F mirror does not match the EIP docx" in r.stderr
+    assert "SCREEN_CONTRACT_OWNER_UNRESOLVED" not in r.stdout + r.stderr
+
+
+def test_trusted_snapshot_without_appendix_f_verifier_fails_closed(world):
+    t = world["t"]
+    (t / "tools/validate_eip_appendix_f_binding.py").unlink()
+    git(t, "add", "-A")
+    git(t, "commit", "-q", "-m", "no verifier")
+    world["trusted"] = git(t, "rev-parse", "HEAD")
+    r = run(world)
+    assert r.returncode != 0
+    assert "never NOT_APPLICABLE" in r.stderr
