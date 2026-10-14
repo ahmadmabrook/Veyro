@@ -15,15 +15,23 @@ and `contracts/ui/frontend-route-registry.json`
 V1 row -- the existing file shape has no per-row phase marker. No route is
 inferred or derived from a Screen ID.
 
-Source binding: the screen-registry is not trusted on its own. The full
-ordered Screen ID list is compared to the one the canonical generator
-(`generate_screen_registry.build_registry`) derives from the frozen UX
-export `veyro-product-experience-design/project/veyro-registry-data.js`.
-Any difference is a release-stage `SCREEN_REGISTRY_SOURCE_MISMATCH`; a
-missing, symlinked, unreadable or malformed source is exit 2. A count of
-170 over fabricated IDs therefore cannot pass. The route-registry has no
-frozen source to bind to (no route inventory exists yet), so only its count
-and uniqueness are checked -- not that any path is correct.
+Source binding: the screen-registry is not trusted on its own. The source
+bytes (the default frozen UX export
+`veyro-product-experience-design/project/veyro-registry-data.js`, or any
+`--source` override) must hash to the pinned approved digest
+`APPROVED_SOURCE_SHA256`; any other bytes are exit 2
+(`SOURCE_DIGEST_MISMATCH`), at every stage, before anything is derived from
+them. The full ordered Screen ID list the canonical generator
+(`generate_screen_registry.build_registry`) derives from those bytes is then
+compared to the screen-registry; any difference is a release-stage
+`SCREEN_REGISTRY_SOURCE_MISMATCH`. A missing, symlinked, unreadable or
+malformed source is also exit 2. A fabricated but self-consistent
+source+registry+routes triple therefore cannot pass. The pin is only as
+strong as the digest recorded here: deliberately changing the approved UX
+export requires an owner-approved baseline change and a matching edit of
+this constant. The route-registry has no frozen source to bind to (no route
+inventory exists yet), so only its count and uniqueness are checked -- not
+that any path is correct.
 
 Stages (ADR-014 D2.7: enforced at feature freeze/release):
 
@@ -33,14 +41,18 @@ Stages (ADR-014 D2.7: enforced at feature freeze/release):
   pass.
 * `pre-release`: the equality is not enforced. The counts are still
   reported, with the shortfall stated; the result is `NOT ENFORCED`, never
-  a PASS.
+  a PASS, and it exits 3 (not 0) with a machine-readable first line
+  `ROUTE_COUNT_STATE=NOT_ENFORCED reason=PRE_RELEASE_STAGE` so no consumer
+  keying on exit status can mistake it for a PASS.
 
-Exit codes: 0 = PASS (release) or NOT ENFORCED (pre-release); 1 = FAIL
-(release-stage count violation); 2 = unreadable/malformed input.
+Exit codes: 0 = PASS (release stage only); 1 = FAIL (release-stage count
+violation); 2 = unreadable/malformed/unapproved input; 3 = NOT_ENFORCED
+(pre-release stage; neither PASS nor FAIL).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -55,6 +67,13 @@ DEFAULT_ROUTE_REGISTRY = REPO_ROOT / "contracts" / "ui" / "frontend-route-regist
 # EIP Appendix F: Admin 85 + Front Desk & POS 16 + Coach 19 + Member 35 +
 # Internal SaaS Console 15 = 170.
 EXPECTED_V1_COUNT = 170
+
+# SHA-256 of the frozen, approved UX export (PROJECT_INDEX.md design-bundle
+# baseline). Pinned in the lint so `--source` cannot point at a fabricated,
+# shape-valid substitute.
+APPROVED_SOURCE_SHA256 = "0736902dfb285cb57e2f370c0918df0b8f2aeeefbd24b3e5198fa03ed185b8f5"
+
+EXIT_PASS, EXIT_FAIL, EXIT_INPUT_ERROR, EXIT_NOT_ENFORCED = 0, 1, 2, 3
 
 STAGES = ("release", "pre-release")
 
@@ -87,8 +106,18 @@ def load_canonical_ids(source: Path) -> list[str]:
     if source.is_symlink() or not source.is_file():
         raise RouteCountInputError(f"canonical source {source} not found or is a symlink")
     try:
-        text = source.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
+        data = source.read_bytes()
+    except OSError as exc:
+        raise RouteCountInputError(
+            f"canonical source {source}: unreadable ({type(exc).__name__}: {exc})") from exc
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != APPROVED_SOURCE_SHA256:
+        raise RouteCountInputError(
+            f"SOURCE_DIGEST_MISMATCH: canonical source {source} sha256 {digest} != "
+            f"approved {APPROVED_SOURCE_SHA256}")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
         raise RouteCountInputError(
             f"canonical source {source}: unreadable ({type(exc).__name__}: {exc})") from exc
     try:
@@ -110,13 +139,13 @@ def check_source_binding(screens: list[str], canonical: list[str]) -> list[tuple
     return [("SCREEN_REGISTRY_SOURCE_MISMATCH", detail)]
 
 
-def check_counts(screen_count: int, route_count: int) -> list[tuple[str, str]]:
+def check_counts(canonical_count: int, route_count: int) -> list[tuple[str, str]]:
     """Release-stage violations as `(code, detail)`; empty means equality holds."""
     violations: list[tuple[str, str]] = []
-    if screen_count != EXPECTED_V1_COUNT:
+    if canonical_count != EXPECTED_V1_COUNT:
         violations.append((
             "CANONICAL_COUNT_MISMATCH",
-            f"canonical V1 Screen ID count is {screen_count}, expected exactly {EXPECTED_V1_COUNT}",
+            f"canonical V1 Screen ID count (from the pinned source) is {canonical_count}, expected exactly {EXPECTED_V1_COUNT}",
         ))
     if route_count == 0:
         violations.append((
@@ -124,10 +153,10 @@ def check_counts(screen_count: int, route_count: int) -> list[tuple[str, str]]:
             f"frontend route registry has 0 V1 rows; {EXPECTED_V1_COUNT} required -- an empty "
             "registry is not a pass",
         ))
-    elif route_count != screen_count:
+    elif route_count != canonical_count:
         violations.append((
             "ROUTE_COUNT_MISMATCH",
-            f"frontend route-registry V1 count {route_count} != canonical V1 Screen ID count {screen_count}",
+            f"frontend route-registry V1 count {route_count} != canonical V1 Screen ID count {canonical_count}",
         ))
     return violations
 
@@ -137,9 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--screen-registry", type=Path, default=DEFAULT_SCREEN_REGISTRY)
     parser.add_argument("--route-registry", type=Path, default=DEFAULT_ROUTE_REGISTRY)
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE,
-                        help="frozen canonical UX export the screen-registry must match")
+                        help="canonical UX export the screen-registry must match; must hash to the pinned approved digest")
     parser.add_argument("--stage", choices=STAGES, default="release",
-                        help="release (default, enforced, fail-closed) or pre-release (reported, not enforced)")
+                        help="release (default, enforced, fail-closed) or pre-release (reported, not enforced, exit 3)")
     args = parser.parse_args(argv)
 
     try:
@@ -148,27 +177,29 @@ def main(argv: list[str] | None = None) -> int:
         canonical = load_canonical_ids(args.source)
     except RouteCountInputError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_INPUT_ERROR
 
-    violations = check_source_binding(screens, canonical) + check_counts(len(screens), len(routes))
-    summary = f"canonical V1 screens={len(screens)}, route-registry V1 rows={len(routes)}, required={EXPECTED_V1_COUNT}"
+    violations = check_source_binding(screens, canonical) + check_counts(len(canonical), len(routes))
+    summary = (f"canonical V1 screens={len(canonical)}, screen-registry rows={len(screens)}, "
+               f"route-registry V1 rows={len(routes)}, required={EXPECTED_V1_COUNT}")
 
     if args.stage == "pre-release":
+        print("ROUTE_COUNT_STATE=NOT_ENFORCED reason=PRE_RELEASE_STAGE")
         print(f"ROUTE COUNT NOT ENFORCED (pre-release stage): {summary}. "
               f"{len(violations)} release-stage violation(s) would apply. This is not a PASS.")
         for code, detail in violations:
             print(f"  would-fail: {code}: {detail}")
-        return 0
+        return EXIT_NOT_ENFORCED
 
     if violations:
         for code, detail in violations:
             print(f"error: {code}: {detail}", file=sys.stderr)
         print(f"ROUTE COUNT FAIL (release stage): {summary}", file=sys.stderr)
-        return 1
+        return EXIT_FAIL
 
     print(f"ROUTE COUNT PASS (release stage): {summary}. Count-equality lint only; "
           "not a gate-5 certification.")
-    return 0
+    return EXIT_PASS
 
 
 if __name__ == "__main__":

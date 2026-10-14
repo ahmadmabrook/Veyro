@@ -8,6 +8,7 @@ zero-row registry is an explicit FAIL at release, never a PASS.
 Run directly (`python3 tools/tests/test_validate_route_registry_count.py`)
 or with pytest.
 """
+import hashlib
 import json
 import os
 import sys
@@ -19,6 +20,7 @@ sys.path.insert(0, str(TOOLS))
 from generate_screen_registry import DEFAULT_SOURCE, build_registry
 from validate_route_registry_count import (
     DEFAULT_ROUTE_REGISTRY,
+    APPROVED_SOURCE_SHA256,
     DEFAULT_SCREEN_REGISTRY,
     EXPECTED_V1_COUNT,
     check_counts,
@@ -93,7 +95,7 @@ def test_reordered_ids_fail_at_release(capsys):
 
 def test_fabricated_ids_not_a_pass_at_pre_release(capsys):
     fake = [f"FAKE-{i:03d}" for i in range(EXPECTED_V1_COUNT)]
-    assert _run(fake, ROUTES_170, "--stage", "pre-release") == 0
+    assert _run(fake, ROUTES_170, "--stage", "pre-release") == 3
     out = capsys.readouterr().out
     assert "would-fail: SCREEN_REGISTRY_SOURCE_MISMATCH" in out and "PASS (" not in out
 
@@ -133,20 +135,61 @@ def test_malformed_source_exits_2():
         assert _run_with_source(bad) == 2
 
 
-def test_mutated_source_cannot_be_matched_by_old_registry():
-    """A source with a changed V1 ID no longer matches the committed registry."""
+def test_pinned_digest_matches_frozen_source():
+    assert hashlib.sha256(DEFAULT_SOURCE.read_bytes()).hexdigest() == APPROVED_SOURCE_SHA256
+    assert APPROVED_SOURCE_SHA256 == "0736902dfb285cb57e2f370c0918df0b8f2aeeefbd24b3e5198fa03ed185b8f5"
+
+
+def test_mutated_source_is_rejected_by_digest_pin(capsys):
+    """A source with a changed V1 ID is not the approved export: exit 2."""
     text = DEFAULT_SOURCE.read_text(encoding="utf-8")
     assert "'ADM-CC-01'" in text
     with tempfile.TemporaryDirectory() as d:
         mutated = Path(d) / "mutated.js"
         mutated.write_text(text.replace("'ADM-CC-01'", "'ADM-CC-98'", 1), encoding="utf-8")
-        assert _run_with_source(mutated) == 1
+        assert _run_with_source(mutated) == 2
+    assert "SOURCE_DIGEST_MISMATCH" in capsys.readouterr().err
+
+
+def test_aligned_fabricated_source_registry_and_routes_are_denied(capsys):
+    """Fabricated shape-valid source + matching 170 IDs + 170 routes must not
+    pass via `--source` (the registry==source check alone would accept it)."""
+    fabricated = DEFAULT_SOURCE.read_text(encoding="utf-8").replace("'ADM-CC-", "'ADM-QQ-")
+    fake_ids = build_registry(fabricated)["screens"]
+    assert len(fake_ids) == EXPECTED_V1_COUNT and fake_ids != SCREENS_170
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        src = tmp / "fabricated.js"
+        src.write_text(fabricated, encoding="utf-8")
+        s = _write(tmp, "screens.json", "screens", fake_ids)
+        r = _write(tmp, "routes.json", "routes", ROUTES_170)
+        for stage in ("release", "pre-release"):
+            assert main(["--screen-registry", str(s), "--route-registry", str(r),
+                         "--source", str(src), "--stage", stage]) == 2
+    captured = capsys.readouterr()
+    assert "SOURCE_DIGEST_MISMATCH" in captured.err and "PASS" not in captured.out
 
 
 def test_pre_release_reports_but_does_not_enforce(capsys):
-    assert _run(SCREENS_170, [], "--stage", "pre-release") == 0
+    assert _run(SCREENS_170, [], "--stage", "pre-release") == 3
     out = capsys.readouterr().out
+    assert out.splitlines()[0] == "ROUTE_COUNT_STATE=NOT_ENFORCED reason=PRE_RELEASE_STAGE"
     assert "NOT ENFORCED" in out and "not a PASS" in out and "PASS (" not in out
+
+
+def test_pre_release_never_exits_zero_even_when_counts_conform(capsys):
+    assert _run(SCREENS_170, ROUTES_170, "--stage", "pre-release") == 3
+    assert "ROUTE_COUNT_STATE=NOT_ENFORCED" in capsys.readouterr().out
+
+
+def test_canonical_count_diagnostic_reports_source_count_not_registry_count(capsys):
+    """A 169-row registry must not make the 'canonical' count read 169."""
+    assert _run(SCREENS_170[:-1], ROUTES_170) == 1
+    err = capsys.readouterr().err
+    assert "SCREEN_REGISTRY_SOURCE_MISMATCH" in err
+    assert "CANONICAL_COUNT_MISMATCH" not in err
+    assert "canonical V1 screens=170, screen-registry rows=169" in err
+    assert "canonical V1 Screen ID count (from the pinned source) is 169" in check_counts(169, 169)[0][1]
 
 
 def test_malformed_inputs_exit_2():
