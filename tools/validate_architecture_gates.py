@@ -179,39 +179,144 @@ Inputs, stdlib only (no PyYAML or other new dependency):
   remains out of scope.
 
 * `--screen-contracts` (default `contracts/ui/screen-contracts.yaml`): the
-  generated manifest mapping each screen to its BFF/read-model or
-  typed-command target. Generating this file is explicitly out of scope
-  here (`IMPLEMENTATION.md` §10); this gate only reads it, and reads it as
-  a small fixed line-exact subset chosen here — never general YAML syntax,
-  so no YAML library is needed:
+  generated manifest. Writing it is out of scope here
+  (`IMPLEMENTATION.md` §10) — this gate reads it and, per check 8 below,
+  regenerates it from the two sources below to compare. Its shape is the one
+  `tools/generate_screen_contract_manifest.py` actually writes under
+  ADR-014 D2 — a JSON document, which is a strict subset of YAML 1.2, so
+  the `.yaml` file parses with any YAML reader and with stdlib `json` here
+  and still no YAML library is needed:
 
-      version: 1
-      screens:
-        - id: SCR-001
-          target: bff:members.profile_read
+      {
+        "version": 1,
+        "generated_from": {<the six declared-provenance fields>},
+        "counts": {"total": 170, "by_surface": {<the five UI surfaces>}},
+        "module_screens": {"MOD-001": [], ...},
+        "screens": [{"screen_id": "ADM-CC-01", "surface": "Admin", ...}]
+      }
 
-  Any deviation from this exact shape — wrong indentation, extra/missing
-  keys, a duplicate id, a target not matching `_SCREEN_TARGET_RE`
-  (`bff:<dotted>` or `command:<dotted>`), or trailing content — is
-  `SCREEN_CONTRACT_GATE_INPUT_INVALID` ERROR; a row is never silently
-  dropped or defaulted.
+  Each row carries exactly `_SCREEN_ROW_KEYS`: the identity/ownership
+  fields (`screen_id`, `surface`, `registry_module`, `owning_module`,
+  `wave`, `owner_domain`, `owner_resolution`, `binding_status`) and all
+  thirteen TSD Appendix F binding fields (`TSD_MIRROR.md:17344-17347` —
+  `route`, `primary_read_model`, `queries`, `commands`,
+  `realtime_channels`, `permissions`, `assurance`, `masking_variant`,
+  `offline_mode`, `expected_error_codes` and the empty/loading/error
+  states). With `screen_id`, `surface` and `owner_domain` that is Appendix
+  F's full mandatory set.
 
-Gate, once both inputs parse:
+  The pre-ADR-014 two-line form (`version: 1` / `screens:` then
+  `- id:`/`target:` pairs) is **no longer accepted**. It is not merely an
+  older spelling: it structurally cannot carry Appendix F's mandatory
+  fields, and a four-field synthetic subset passing this gate as PASS was
+  itself found to be a false-completeness affordance (see
+  `tools/generate_screen_contracts.py`'s
+  `R04-GATE5-PARTIAL-CANONICAL-OUTPUT-DENIAL` note). Keeping a second,
+  weaker accepted shape for the same CI-blocking artifact would leave that
+  affordance open, so it is refused as ERROR like any other non-conforming
+  document.
+
+  Any deviation from the generated shape is
+  `SCREEN_CONTRACT_GATE_INPUT_INVALID` ERROR — unparseable JSON, a
+  duplicate JSON key, a top-level/row/`generated_from`/`counts` key set
+  that is not exactly the expected one, a row key order that is not
+  exactly `_SCREEN_ROW_KEYS`, a duplicate Screen ID, a surface outside the
+  ADR-014 D2.3 mapping, a declared provenance path other than the
+  generator's own, a digest that is not a lowercase hex SHA-256, declared
+  `counts` that disagree with the rows, an `owner_resolution` that
+  disagrees with the row's own `owning_module`/`wave`/`owner_domain`, or a
+  binding field that is empty or disagrees with `binding_status`. A row, a
+  binding field or a provenance field is never silently dropped,
+  defaulted, or read in whichever direction would pass.
+
+* `--screen-source` (default
+  `veyro-product-experience-design/project/veyro-registry-data.js`) and
+  `--screen-eip` (default `knowledge/00-System/EIP_MIRROR.md`): the two
+  artifacts ADR-014 D2.1/D2.4 make the manifest a *generated* product of —
+  the checked-in canonical registry export, and the EIP Appendix F module
+  table that is the only ownership authority. They are real inputs here,
+  read and used (check 8), not merely paths the manifest declares. A
+  missing, symlinked, unreadable or unparseable source is
+  `SCREEN_CONTRACT_GATE_INPUT_INVALID` ERROR — the gate never falls back to
+  judging the manifest by its own internal agreement alone, which is the
+  shape that returned PASS for a manifest whose 170 rows all carried a
+  fabricated resolved owner and fabricated bindings.
+
+Gate, once all inputs parse:
 
 1. `SCREEN_CONTRACT_COUNT_MISMATCH`: the registry's screen count must equal
-   the generated manifest's row count, citing both counts — else FAIL
+   the manifest's row count, citing both counts — else FAIL
    (closes the generator silently dropping a screen, SCN-MOD001-110).
 2. `UNMAPPED_SCREEN_CONTRACT`: every canonical Screen ID must appear as a
-   row in the generated manifest, citing the ID — else FAIL
-   (SCN-MOD001-013).
+   row in the manifest, citing the ID — else FAIL (SCN-MOD001-013).
+3. `SCREEN_CONTRACT_INVENTED_SCREEN_ID`: every manifest row's Screen ID
+   must exist in the canonical registry, citing the ID — else FAIL
+   (EIP Appendix F's forbidden-placeholder rule, `EIP_MIRROR.md:18015`).
+4. `SCREEN_CONTRACT_PROVENANCE_MISMATCH`: the manifest's declared
+   `generated_from.screen_registry_json_ids_sha256` must equal the SHA-256
+   of this run's canonical registry Screen IDs joined by newlines (the
+   generator's own formula) — else FAIL, because the manifest under test
+   was not generated from the registry it is being checked against.
+5. `SCREEN_CONTRACT_OWNER_UNRESOLVED`: every row's owner must resolve,
+   citing the ID — else FAIL. ADR-014 D2.4 requires the identity check,
+   including owner resolution, to pass *now*. The manifest the generator
+   writes today records `owner_resolution.status: UNRESOLVED` for every
+   row, because the registry source carries no TSD domain code and no
+   repository artifact maps its UX words or ID prefixes to one. This gate
+   therefore FAILs on the live tree, and deliberately does not infer an
+   owner to avoid that: an inferred owner would be exactly the hand
+   assignment ADR-014 D2.4 forbids.
+6. `SCREEN_CONTRACT_MOD_001_ENTRY_INVALID` /
+   `SCREEN_CONTRACT_MODULE_INDEX_MISMATCH`: `module_screens` must carry an
+   explicit `"MOD-001": []` (MOD-001 owns zero canonical screens,
+   `REQUIREMENTS.md` §4) and must equal the per-row `owning_module`
+   grouping — else FAIL.
+7. `SCREEN_CONTRACT_ROW_UNBOUND`: an `UNBOUND` row whose owning module is
+   named in `--screen-implemented-modules` FAILs, citing the ID (ADR-014
+   D2.6). While that module is not named, the row's binding check is
+   staged, reported as a note with its count, and never counted as proof
+   of binding. The repository has no machine-readable implemented-module
+   marker yet, so the flag defaults to empty — the same honest staging
+   `tools/generate_screen_contract_manifest.py check` uses.
+8. `SCREEN_CONTRACT_SOURCE_DRIFT`: the manifest must be byte-identical to
+   what `tools/generate_screen_contract_manifest.py` regenerates from
+   `--screen-source` and `--screen-eip` — else FAIL, citing both digests and
+   the first differing line. Checks 1-7 are a parser: they verify that a
+   row's fields agree with *each other*. This is the only check that binds
+   each row's identity, ownership and binding state to a source, so a
+   hand-assigned owner or a hand-written binding cannot pass even when the
+   document is wholly self-consistent. The generator is called rather than
+   reimplemented — duplicating its identity logic is exactly what let the
+   two disagree (see `_screen_regenerate`).
+
+9. `SCREEN_CONTRACT_SOURCE_COUNT_MISMATCH` /
+   `SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH`: the rows the registry source
+   itself yields, and the manifest's rows, must number the generator's
+   EXPECTED_TOTAL (170) split EXPECTED_BY_SURFACE (85/16/19/35/15) — else
+   FAIL. Source, registry and manifest agreeing with one another is not
+   enough: a row deleted consistently from all three still fails.
+10. `SCREEN_CONTRACT_REGISTRY_SOURCE_MISMATCH`: the registry's Screen IDs must
+   equal the source-derived canonical IDs in source order — else FAIL.
+   Check 8 compares raw on-disk manifest bytes (a CRLF-only manifest is
+   drift) and prints the on-disk SHA-256.
 
 Zero canonical screens (MOD-001 owns no real screens, `REQUIREMENTS.md`
 §4) is `SCREEN_CONTRACT_GATE_VACUOUS` INCONCLUSIVE, not PASS — unless the
-generated manifest is non-empty, which is a count mismatch instead.
+manifest is non-empty, which is a count mismatch instead. Gate 5 is never
+NOT_APPLICABLE (ADR-014 D2.4); the INCONCLUSIVE/vacuous leg here is the
+pre-existing empty-registry disposition, not a per-row binding skip.
 
-What this gate does not prove: that the generator actually derived its
-rows from the real UX registry, or that a served screen matches its
-committed contract at runtime.
+What this gate does not prove: that an `UNBOUND` row's eventual binding is
+correct; that a `BOUND` row's route/read-model/command target resolves
+anywhere — no repository artifact defines the bound-value grammar, so
+checks 1-7 verify a `BOUND` row only for non-empty non-`UNBOUND` values and
+disclose it as recorded-not-verified, and today check 8 denies it outright,
+because the generator emits `UNBOUND` for every row until the owning module
+is implemented (ADR-014 D2.5), so no `BOUND` row can regenerate; or that a
+served screen matches its committed contract at runtime. What it does now
+prove, and did not before, is that the rows are the ones the canonical
+source and the Appendix F module table yield (check 8), not merely rows
+that agree with themselves.
 
 ## Module dependency/SQL gate (`--gate module-deps`)
 
@@ -538,7 +643,8 @@ DEFERRED_GATES = (
     "toolchain-qualification",
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+TOOLS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TOOLS_DIR.parent
 DSN_ENV = "VEYRO_RLS_GATE_DSN"
 
 
@@ -2795,12 +2901,80 @@ _SCREEN_ID_RE = re.compile(
     r"|(?:FD|POS|CCH|MBR|CON)-[0-9]{2}"
     r"|ADM-[A-Z]{2,4}-[0-9]{2}"
 )
+# Retained as the shared constant `tools/generate_screen_contracts.py:191`
+# mirrors. It is no longer part of gate 5's *manifest* input contract: the
+# ADR-014 D2 manifest carries the thirteen TSD Appendix F binding fields, not a
+# single `bff:`/`command:` target string, and no repository artifact defines the
+# grammar of a bound value (see the module docstring's gate-5 section).
 _SCREEN_TARGET_RE = re.compile(rf"(?:bff|command):{_SEGMENT}(?:\.{_SEGMENT})*")
-_SCREEN_CONTRACT_ID_LINE_RE = re.compile(r"  - id: (.+)")
-_SCREEN_CONTRACT_TARGET_LINE_RE = re.compile(r"    target: (.+)")
+
+_SCREEN_MODULE_ID_RE = re.compile(r"MOD-[0-9]{3}")
+_SCREEN_SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 DEFAULT_SCREEN_REGISTRY = REPO_ROOT / "contracts" / "ui" / "screen-registry.json"
 DEFAULT_SCREEN_CONTRACTS = REPO_ROOT / "contracts" / "ui" / "screen-contracts.yaml"
+# The two generation sources ADR-014 D2.1/D2.4 bind the manifest to. They are
+# gate inputs now, not merely names the manifest declares: see
+# `_screen_regenerate`. `tools/tests/` pins these against the generator's own
+# defaults and against `_SCREEN_PROVENANCE_PATHS`.
+DEFAULT_SCREEN_SOURCE = (
+    REPO_ROOT / "veyro-product-experience-design" / "project" / "veyro-registry-data.js")
+DEFAULT_SCREEN_EIP = REPO_ROOT / "knowledge" / "00-System" / "EIP_MIRROR.md"
+
+# The five V1 UI surfaces of the EIP count model, in ADR-014 D2.3's explicit
+# mapping target vocabulary. `tools/tests/` pins these against the generator's
+# own constants, so the two cannot drift apart silently; they are restated here
+# rather than imported so this gate keeps its self-contained stdlib-only import
+# surface (the generator imports the registry parser in turn).
+SCREEN_SURFACES = ("Admin", "Front Desk & POS", "Coach", "Member", "Internal SaaS Console")
+# TSD Appendix F's mandatory binding fields (`TSD_MIRROR.md:17344-17347`), in
+# the generator's emission order. With screen_id/surface/owner_domain below,
+# this is Appendix F's full mandatory set.
+SCREEN_BINDING_FIELDS = (
+    "route", "primary_read_model", "queries", "commands", "realtime_channels",
+    "permissions", "assurance", "masking_variant", "offline_mode",
+    "expected_error_codes", "empty_state", "loading_state", "error_state",
+)
+_SCREEN_ROW_KEYS = (
+    "screen_id", "surface", "registry_module", "owning_module", "wave",
+    "owner_domain", "owner_resolution", "binding_status",
+) + SCREEN_BINDING_FIELDS
+_SCREEN_MANIFEST_KEYS = frozenset(
+    {"version", "generated_from", "counts", "module_screens", "screens"})
+# `generated_from` declares which artifacts the manifest was generated from.
+# The path fields must declare the generator's own relative paths verbatim --
+# a manifest that claims a different source is refused rather than read as if
+# it had been generated from this gate's inputs.
+_SCREEN_PROVENANCE_PATHS = {
+    "registry_source": "veyro-product-experience-design/project/veyro-registry-data.js",
+    "screen_registry_json": "contracts/ui/screen-registry.json",
+    "eip_appendix_f_module_table": "knowledge/00-System/EIP_MIRROR.md",
+}
+_SCREEN_PROVENANCE_DIGESTS = (
+    "registry_source_sha256", "screen_registry_json_ids_sha256",
+    "eip_appendix_f_module_table_sha256",
+)
+SCREEN_UNBOUND = "UNBOUND"
+SCREEN_BOUND = "BOUND"
+SCREEN_OWNER_STATUSES = ("RESOLVED", "UNRESOLVED")
+
+
+@dataclass(frozen=True)
+class ScreenRow:
+    """One manifest row, reduced to what the gate decides on. The parser has
+    already refused any row whose fields disagree with each other."""
+    screen_id: str
+    surface: str
+    owning_module: str | None
+    owner_status: str
+    binding_status: str
+
+
+@dataclass(frozen=True)
+class ScreenContractManifest:
+    rows: tuple[ScreenRow, ...]
+    module_screens: dict[str, list[str]]
+    registry_ids_sha256: str
 
 
 def parse_screen_registry(raw: Any) -> list[str]:
@@ -2818,37 +2992,269 @@ def parse_screen_registry(raw: Any) -> list[str]:
     return screens
 
 
-def parse_screen_contracts(text: str) -> dict[str, str]:
-    """The fixed line-exact subset documented in the module docstring — never
-    general YAML syntax. Returns `{Screen ID: target}`."""
-    lines = text.splitlines()
-    if len(lines) < 2 or lines[0] != "version: 1" or lines[1] != "screens:":
-        raise GateInputError("screen-contracts must start with 'version: 1' then 'screens:'")
-    rest = lines[2:]
-    if len(rest) % 2 != 0:
-        raise GateInputError("screen-contracts: truncated entry (id with no target line)")
-    out: dict[str, str] = {}
-    for i in range(0, len(rest), 2):
-        id_match = _SCREEN_CONTRACT_ID_LINE_RE.fullmatch(rest[i])
-        target_match = _SCREEN_CONTRACT_TARGET_LINE_RE.fullmatch(rest[i + 1])
-        if not id_match or not target_match:
-            raise GateInputError(f"screen-contracts: malformed entry at line {i + 3}")
-        screen_id, target = id_match.group(1), target_match.group(1)
-        if not _SCREEN_ID_RE.fullmatch(screen_id):
-            raise GateInputError(f"screen-contracts: {screen_id!r} is not a Screen ID")
-        if not _SCREEN_TARGET_RE.fullmatch(target):
+def _screen_provenance(block: Any) -> str:
+    """`generated_from`: exactly the generator's six declared-provenance fields,
+    the three path fields declaring the generator's own paths verbatim and the
+    three digests well-formed. Returns the registry-ID digest, the only one this
+    gate holds the input to verify."""
+    expected = set(_SCREEN_PROVENANCE_PATHS) | set(_SCREEN_PROVENANCE_DIGESTS)
+    if not isinstance(block, dict) or set(block) != expected:
+        raise GateInputError(
+            f"screen-contracts: generated_from must carry exactly {sorted(expected)}")
+    for name, declared in _SCREEN_PROVENANCE_PATHS.items():
+        if block[name] != declared:
             raise GateInputError(
-                f"screen-contracts: {screen_id!r} target {target!r} is not bff:<dotted> "
-                f"or command:<dotted>"
-            )
-        if screen_id in out:
+                f"screen-contracts: generated_from.{name} must declare {declared!r}, "
+                f"found {block[name]!r}")
+    for name in _SCREEN_PROVENANCE_DIGESTS:
+        value = block[name]
+        if not isinstance(value, str) or not _SCREEN_SHA256_RE.fullmatch(value):
+            raise GateInputError(
+                f"screen-contracts: generated_from.{name} must be a lowercase hex "
+                f"SHA-256 digest, found {value!r}")
+    return block["screen_registry_json_ids_sha256"]
+
+
+def _screen_row_owner(screen_id: str, row: Mapping[str, Any]) -> str:
+    """`owner_resolution` and the row's own ownership fields must agree. A row
+    claiming RESOLVED without a resolved owner, or UNRESOLVED while carrying
+    one, is refused -- never read in whichever direction would pass."""
+    resolution = row["owner_resolution"]
+    if (not isinstance(resolution, dict) or set(resolution) != {"status", "reason"}
+            or resolution["status"] not in SCREEN_OWNER_STATUSES
+            or not (resolution["reason"] is None
+                    or (isinstance(resolution["reason"], str) and resolution["reason"]))):
+        raise GateInputError(
+            f"screen-contracts: {screen_id} owner_resolution must be "
+            f'{{"status": one of {list(SCREEN_OWNER_STATUSES)}, '
+            f'"reason": a non-empty string or null}}')
+    status, owner = resolution["status"], row["owning_module"]
+    wave, domain = row["wave"], row["owner_domain"]
+    if status == "RESOLVED":
+        if not (isinstance(owner, str) and _SCREEN_MODULE_ID_RE.fullmatch(owner)):
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is RESOLVED but owning_module {owner!r} "
+                f"is not a MOD-NNN id")
+        if not all(isinstance(x, str) and x for x in (wave, domain)):
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is RESOLVED but wave {wave!r} and "
+                f"owner_domain {domain!r} are not both non-empty strings")
+        if resolution["reason"] is not None:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is RESOLVED and must carry a null "
+                f"owner_resolution.reason")
+    else:
+        if (owner, wave, domain) != (None, None, None):
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is UNRESOLVED and must carry null "
+                f"owning_module, wave and owner_domain (found {owner!r}, {wave!r}, {domain!r})")
+        if resolution["reason"] is None:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is UNRESOLVED and must state a reason")
+    return status
+
+
+def _screen_row_binding(screen_id: str, row: Mapping[str, Any]) -> str:
+    """ADR-014 D2.5: an UNBOUND row carries the literal `UNBOUND` in every TSD
+    Appendix F binding field -- never an empty or invented value -- and a BOUND
+    row carries none. The *content* of a bound value is not checked: no
+    repository artifact defines its grammar (see the module docstring)."""
+    status = row["binding_status"]
+    if status not in (SCREEN_UNBOUND, SCREEN_BOUND):
+        raise GateInputError(
+            f"screen-contracts: {screen_id} binding_status must be {SCREEN_UNBOUND!r} "
+            f"or {SCREEN_BOUND!r}, found {status!r}")
+    values = {f: row[f] for f in SCREEN_BINDING_FIELDS}
+    empty = sorted(f for f, val in values.items() if not isinstance(val, str) or not val)
+    if empty:
+        raise GateInputError(
+            f"screen-contracts: {screen_id} binding field(s) {empty} must be non-empty strings")
+    if status == SCREEN_UNBOUND:
+        wrong = sorted(f for f, val in values.items() if val != SCREEN_UNBOUND)
+        if wrong:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is {SCREEN_UNBOUND} but binding field(s) "
+                f"{wrong} are not the literal {SCREEN_UNBOUND!r}")
+    else:
+        wrong = sorted(f for f, val in values.items() if val == SCREEN_UNBOUND)
+        if wrong:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} is {SCREEN_BOUND} but binding field(s) "
+                f"{wrong} are still {SCREEN_UNBOUND!r}")
+    return status
+
+
+def _screen_rows(raw_rows: Any) -> tuple[ScreenRow, ...]:
+    if not isinstance(raw_rows, list):
+        raise GateInputError("screen-contracts: 'screens' must be a list of row objects")
+    rows: list[ScreenRow] = []
+    seen: set[str] = set()
+    for i, row in enumerate(raw_rows):
+        if not isinstance(row, dict) or tuple(row) != _SCREEN_ROW_KEYS:
+            raise GateInputError(
+                f"screen-contracts: screens[{i}] keys must be exactly {list(_SCREEN_ROW_KEYS)}")
+        screen_id = row["screen_id"]
+        if not isinstance(screen_id, str) or not _SCREEN_ID_RE.fullmatch(screen_id):
+            raise GateInputError(
+                f"screen-contracts: screens[{i}] screen_id {screen_id!r} is not a Screen ID")
+        if screen_id in seen:
             raise GateInputError(f"screen-contracts: duplicate Screen ID {screen_id!r}")
-        out[screen_id] = target
+        seen.add(screen_id)
+        if row["surface"] not in SCREEN_SURFACES:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} surface {row['surface']!r} is outside the "
+                f"ADR-014 D2.3 mapping {list(SCREEN_SURFACES)}")
+        if not isinstance(row["registry_module"], str) or not row["registry_module"]:
+            raise GateInputError(
+                f"screen-contracts: {screen_id} registry_module must be a non-empty string")
+        rows.append(ScreenRow(
+            screen_id, row["surface"], row["owning_module"],
+            _screen_row_owner(screen_id, row), _screen_row_binding(screen_id, row),
+        ))
+    return tuple(rows)
+
+
+def _screen_counts(counts: Any, rows: tuple[ScreenRow, ...]) -> None:
+    """The manifest's declared totals must agree with its own rows: a document
+    whose header contradicts its body is refused, not read either way."""
+    if not isinstance(counts, dict) or set(counts) != {"total", "by_surface"}:
+        raise GateInputError(
+            'screen-contracts: counts must be exactly {"total": ..., "by_surface": {...}}')
+    if type(counts["total"]) is not int or counts["total"] != len(rows):
+        raise GateInputError(
+            f"screen-contracts: counts.total {counts['total']!r} is not the row count {len(rows)}")
+    tally = {s: sum(1 for r in rows if r.surface == s) for s in SCREEN_SURFACES}
+    by_surface = counts["by_surface"]
+    if (not isinstance(by_surface, dict) or set(by_surface) != set(SCREEN_SURFACES)
+            or any(type(by_surface[s]) is not int for s in SCREEN_SURFACES)
+            or by_surface != tally):
+        raise GateInputError(
+            f"screen-contracts: counts.by_surface must be the per-surface row tally "
+            f"{tally}, found {by_surface!r}")
+
+
+def _screen_module_index(index: Any) -> dict[str, list[str]]:
+    if not isinstance(index, dict):
+        raise GateInputError("screen-contracts: module_screens must be an object keyed by MOD-NNN")
+    out: dict[str, list[str]] = {}
+    for module, listed in index.items():
+        if not _SCREEN_MODULE_ID_RE.fullmatch(module):
+            raise GateInputError(
+                f"screen-contracts: module_screens key {module!r} is not a MOD-NNN id")
+        if (not isinstance(listed, list)
+                or not all(isinstance(s, str) and _SCREEN_ID_RE.fullmatch(s) for s in listed)):
+            raise GateInputError(
+                f"screen-contracts: module_screens[{module}] must be a list of Screen IDs")
+        if len(set(listed)) != len(listed):
+            raise GateInputError(
+                f"screen-contracts: module_screens[{module}] has duplicate Screen ID(s)")
+        out[module] = list(listed)
     return out
 
 
+def parse_screen_contracts(text: str) -> ScreenContractManifest:
+    """The ADR-014 D2 generated manifest, parsed as JSON (a strict subset of
+    YAML 1.2) with duplicate keys refused. Every deviation from the shape
+    `tools/generate_screen_contract_manifest.py` writes raises
+    `GateInputError`, which the gate reports as
+    `SCREEN_CONTRACT_GATE_INPUT_INVALID` ERROR. The pre-ADR-014 two-line
+    `id`/`target` form is not accepted (see the module docstring)."""
+    try:
+        raw = json.loads(text, object_pairs_hook=_no_duplicate_keys)
+    except (ValueError, RecursionError) as exc:
+        raise GateInputError(
+            f"screen-contracts: unparseable manifest, expected the ADR-014 D2 generated "
+            f"JSON document ({type(exc).__name__}: {exc})") from None
+    if not isinstance(raw, dict) or set(raw) != _SCREEN_MANIFEST_KEYS:
+        raise GateInputError(
+            f"screen-contracts: manifest must be a JSON object with exactly "
+            f"{sorted(_SCREEN_MANIFEST_KEYS)}")
+    if type(raw["version"]) is not int or raw["version"] != 1:
+        raise GateInputError(
+            f"screen-contracts: manifest version must be the integer 1, found {raw['version']!r}")
+    registry_sha = _screen_provenance(raw["generated_from"])
+    rows = _screen_rows(raw["screens"])
+    _screen_counts(raw["counts"], rows)
+    return ScreenContractManifest(rows, _screen_module_index(raw["module_screens"]), registry_sha)
+
+
+def _screen_first_diff_line(actual: bytes, expected: bytes) -> int:
+    """1-based line number of the first byte-level difference, for the drift
+    message. Lines split on `\n` only, so a CRLF-only difference is line 1."""
+    left, right = actual.split(b"\n"), expected.split(b"\n")
+    for lineno, (a, b) in enumerate(zip(left, right), start=1):
+        if a != b:
+            return lineno
+    return min(len(left), len(right)) + 1
+
+
+def _screen_regenerate(source_text: str, registry_ids: list[str], eip_text: str
+                       ) -> tuple[str, list[str], list[str], int, dict[str, int]]:
+    """Regenerate the manifest with the canonical generator, for byte comparison.
+
+    Returns `(regenerated_text, source_ids, source_surfaces, expected_total,
+    expected_by_surface)`: the regeneration, the canonical V1 UI rows the
+    generator derives from the source itself (Screen ID and surface, in source
+    order), and the generator's own EXPECTED_TOTAL / EXPECTED_BY_SURFACE. The
+    gate compares those absolutes against the *source-derived* rows, so a
+    coordinated deletion from source, registry and manifest cannot make the
+    gate's inputs agree their way past 170 and 85/16/19/35/15.
+
+    ADR-014 D2.1/D2.4: the manifest is *generated* from the checked-in registry
+    source and the EIP Appendix F module table, and every row's identity,
+    ownership (owning module, wave, owner_domain) and binding state follow from
+    those sources alone. This gate therefore calls
+    `tools/generate_screen_contract_manifest.py` -- the same tool that writes
+    the committed manifest -- instead of restating its rules here.
+
+    Why it is not restated: the structural checks below are a *parser*. They
+    verify a row's fields agree with each other, not that they agree with the
+    sources the row claims to be generated from, so a manifest whose 170 rows
+    all carried a fabricated resolved owner (`MOD-020`/`W2`/`MBR-01`) and
+    fabricated `BOUND` bindings satisfied every one of them and read as PASS,
+    while `generate_screen_contract_manifest.check_manifest` rejected the same
+    document with `BINDING_FIELD_INVALID`, `OWNER_MISMATCH` and
+    `MANIFEST_DRIFT`. Duplicating the identity logic is what let the two
+    disagree; reusing the generator is what stops them.
+
+    `enforce=False` leaves the generator's own 170-count and
+    registry-equality assertions out of the *regeneration*: those are separate
+    gate checks (`SCREEN_CONTRACT_SOURCE_COUNT_MISMATCH`,
+    `SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH`,
+    `SCREEN_CONTRACT_REGISTRY_SOURCE_MISMATCH`), each with its own citable
+    violation code, and a count or order deviation must stay FAIL rather than
+    become ERROR here. A byte comparison alone does not cover them: a row
+    deleted consistently from source, registry and manifest regenerates
+    byte-identically.
+    """
+    if str(TOOLS_DIR) not in sys.path:
+        sys.path.insert(0, str(TOOLS_DIR))
+    try:
+        import generate_screen_contract_manifest as generator
+    except ImportError as exc:  # pragma: no cover -- a broken checkout, never a pass
+        raise GateInputError(
+            f"screen-contracts: the canonical generator "
+            f"tools/generate_screen_contract_manifest.py is not importable, so the "
+            f"manifest cannot be checked against its sources "
+            f"({type(exc).__name__}: {exc})") from None
+    try:
+        text = generator.generate_manifest_text(
+            source_text, list(registry_ids), eip_text, enforce=False)
+        canonical_rows = generator.build_canonical_rows(source_text)
+        return (text, [r.screen_id for r in canonical_rows],
+                [r.surface for r in canonical_rows],
+                generator.EXPECTED_TOTAL, dict(generator.EXPECTED_BY_SURFACE))
+    except generator.GenerationError as exc:
+        raise GateInputError(
+            f"screen-contracts: cannot regenerate the manifest from the canonical "
+            f"registry source / EIP Appendix F module table ({exc})") from None
+
+
 def run_screen_contract_gate(screen_registry_path: Path,
-                             screen_contracts_path: Path) -> GateReport:
+                             screen_contracts_path: Path,
+                             implemented_modules: frozenset[str] = frozenset(),
+                             screen_source_path: Path = DEFAULT_SCREEN_SOURCE,
+                             screen_eip_path: Path = DEFAULT_SCREEN_EIP) -> GateReport:
     try:
         if screen_registry_path.is_symlink() or not screen_registry_path.is_file():
             raise GateInputError(
@@ -2856,16 +3262,47 @@ def run_screen_contract_gate(screen_registry_path: Path,
         if screen_contracts_path.is_symlink() or not screen_contracts_path.is_file():
             raise GateInputError(
                 f"screen-contracts {screen_contracts_path} not found or is a symlink")
+        bad_modules = sorted(m for m in implemented_modules
+                             if not _SCREEN_MODULE_ID_RE.fullmatch(m))
+        if bad_modules:
+            raise GateInputError(
+                f"--screen-implemented-modules entries {bad_modules} are not MOD-NNN ids")
         canonical = parse_screen_registry(_load_json(screen_registry_path))
-        text = _read_gate_text(screen_contracts_path, str(screen_contracts_path),
-                               "screen-contracts manifest")
-        generated = parse_screen_contracts(text)
+        # Raw bytes, not `read_text`: universal-newline decoding would turn a
+        # CRLF-only manifest into the generator's LF text and let it claim
+        # byte-identity (and print the normalized text's digest).
+        try:
+            manifest_bytes = screen_contracts_path.read_bytes()
+            text = manifest_bytes.decode("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise GateInputError(
+                f"{screen_contracts_path}: cannot read screen-contracts manifest "
+                f"({type(exc).__name__}: {exc})") from None
+        manifest = parse_screen_contracts(text)
+        # The generation sources are read after the manifest parses, so a
+        # malformed manifest keeps being reported as the manifest's own ERROR.
+        for path, what in ((screen_source_path, "canonical registry source"),
+                           (screen_eip_path, "EIP Appendix F module table")):
+            if path.is_symlink() or not path.is_file():
+                raise GateInputError(f"{what} {path} not found or is a symlink")
+        (regenerated, source_ids, source_surfaces, expected_total,
+         expected_by_surface) = _screen_regenerate(
+            _read_gate_text(screen_source_path, str(screen_source_path),
+                            "canonical registry source"),
+            canonical,
+            _read_gate_text(screen_eip_path, str(screen_eip_path),
+                            "EIP Appendix F module table"),
+        )
     except GateInputError as exc:
         return GateReport("screen-contract", ERROR,
                           [Violation("SCREEN_CONTRACT_GATE_INPUT_INVALID", "-", str(exc))])
 
     violations: list[Violation] = []
-    expected, actual = len(canonical), len(generated)
+    rows = manifest.rows
+    row_ids = {r.screen_id for r in rows}
+    registered = set(canonical)
+
+    expected, actual = len(canonical), len(rows)
     if expected != actual:
         violations.append(Violation(
             "SCREEN_CONTRACT_COUNT_MISMATCH", "-",
@@ -2873,14 +3310,140 @@ def run_screen_contract_gate(screen_registry_path: Path,
             f"{actual}: expected {expected}, actual {actual}",
         ))
     for screen_id in canonical:
-        if screen_id not in generated:
+        if screen_id not in row_ids:
             violations.append(Violation(
                 "UNMAPPED_SCREEN_CONTRACT", screen_id,
                 f"{screen_id} has no mapped BFF/read-model or typed-command row in "
                 f"screen-contracts",
             ))
+    for r in rows:
+        if r.screen_id not in registered:
+            violations.append(Violation(
+                "SCREEN_CONTRACT_INVENTED_SCREEN_ID", r.screen_id,
+                f"{r.screen_id} is a manifest row with no entry in the canonical registry; "
+                f"a Screen ID is never invented (EIP Appendix F)",
+            ))
+
+    # ADR-014 D2.4: 170 rows and the 85/16/19/35/15 split, asserted on the rows
+    # the registry source itself yields and on the manifest -- not merely that
+    # source, registry and manifest agree with each other, which a consistent
+    # deletion from all three preserves. FAIL, never ERROR.
+    source_split = {s: source_surfaces.count(s) for s in expected_by_surface}
+    if len(source_ids) != expected_total or source_split != expected_by_surface:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_SOURCE_COUNT_MISMATCH", "-",
+            f"canonical registry source yields {len(source_ids)} V1 UI row(s) split "
+            f"{list(source_split.values())}, expected {expected_total} split "
+            f"{list(expected_by_surface.values())}",
+        ))
+    manifest_split = {s: sum(1 for r in rows if r.surface == s) for s in expected_by_surface}
+    if len(rows) != expected_total or manifest_split != expected_by_surface:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH", "-",
+            f"screen-contracts has {len(rows)} row(s) split {list(manifest_split.values())}, "
+            f"expected {expected_total} split {list(expected_by_surface.values())}",
+        ))
+    if canonical != source_ids:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_REGISTRY_SOURCE_MISMATCH",
+            ", ".join(sorted(set(canonical) ^ set(source_ids))) or "order",
+            "canonical registry Screen IDs are not the registry source's V1 UI Screen "
+            "IDs in source order (membership or order differs)",
+        ))
+
+    declared = hashlib.sha256("\n".join(canonical).encode("utf-8")).hexdigest()
+    if manifest.registry_ids_sha256 != declared:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_PROVENANCE_MISMATCH", "-",
+            f"generated_from.screen_registry_json_ids_sha256 "
+            f"{manifest.registry_ids_sha256} is not the SHA-256 of this run's canonical "
+            f"registry Screen IDs ({declared}): the manifest was not generated from the "
+            f"registry it is being checked against",
+        ))
+
+    # ADR-014 D2.1/D2.4: the manifest must be exactly what the canonical
+    # generator derives from the registry source and the EIP Appendix F module
+    # table. This is the one check that binds every row's ownership and binding
+    # state to a source instead of to the document's own internal agreement, so
+    # a hand-assigned owner or a hand-written binding cannot pass -- not even a
+    # wholly self-consistent one.
+    regenerated_bytes = regenerated.encode("utf-8")
+    if regenerated_bytes != manifest_bytes:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_SOURCE_DRIFT", "-",
+            f"manifest is not byte-identical to regeneration from the canonical registry "
+            f"source and the EIP Appendix F module table: on-disk sha256 "
+            f"{hashlib.sha256(manifest_bytes).hexdigest()}, regenerated sha256 "
+            f"{hashlib.sha256(regenerated_bytes).hexdigest()}, first difference "
+            f"at line {_screen_first_diff_line(manifest_bytes, regenerated_bytes)}. Every row's "
+            f"identity, ownership and binding state must be what the generator derives from "
+            f"those sources; a value that is merely self-consistent is hand assignment, which "
+            f"ADR-014 D2.4 forbids",
+        ))
+
+    # ADR-014 D2.4: owner resolution is part of the identity check and must pass
+    # now. An owner is never inferred here -- that is the hand assignment D2.4
+    # forbids -- so an UNRESOLVED row fails closed instead.
+    for r in rows:
+        if r.owner_status != "RESOLVED":
+            violations.append(Violation(
+                "SCREEN_CONTRACT_OWNER_UNRESOLVED", r.screen_id,
+                f"owner_resolution is {r.owner_status}: no owning module/owner_domain "
+                f"resolves for {r.screen_id} and this gate never guesses one",
+            ))
+    if manifest.module_screens.get("MOD-001") != []:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_MOD_001_ENTRY_INVALID", "MOD-001",
+            'module_screens must carry an explicit "MOD-001": [] -- MOD-001 owns zero '
+            "canonical screens and that must be stated, not left absent",
+        ))
+    grouped = {m: sorted(r.screen_id for r in rows if r.owning_module == m)
+               for m in {r.owning_module for r in rows if r.owning_module}
+               | set(manifest.module_screens)}
+    drifted = sorted(m for m, ids in grouped.items()
+                     if sorted(manifest.module_screens.get(m, [])) != ids)
+    for module in drifted:
+        violations.append(Violation(
+            "SCREEN_CONTRACT_MODULE_INDEX_MISMATCH", module,
+            f"module_screens[{module}] {manifest.module_screens.get(module)!r} is not the "
+            f"per-row owning_module grouping {grouped[module]!r}",
+        ))
+
+    # ADR-014 D2.6: binding is mandatory once the owning module is implemented,
+    # and staged until then. Staged rows are disclosed in the notes below, never
+    # counted as proof of binding.
+    unbound = [r for r in rows if r.binding_status == SCREEN_UNBOUND]
+    for r in unbound:
+        if r.owning_module is not None and r.owning_module in implemented_modules:
+            violations.append(Violation(
+                "SCREEN_CONTRACT_ROW_UNBOUND", r.screen_id,
+                f"binding_status is {SCREEN_UNBOUND} but its owning module "
+                f"{r.owning_module} is marked implemented: ADR-014 D2.6 makes binding "
+                f"mandatory for that row",
+            ))
+
+    notes = [
+        (f"{len(unbound)} of {len(rows)} manifest row(s) carry binding_status "
+         f"{SCREEN_UNBOUND}; per-row binding is staged per ADR-014 D2.6 and bites when the "
+         f"owning module is named in --screen-implemented-modules (this run: "
+         f"{sorted(implemented_modules) or 'none'}). A staged row proves no binding."),
+        (f"{sum(1 for r in rows if r.owner_status != 'RESOLVED')} of {len(rows)} row(s) "
+         f"carry owner_resolution UNRESOLVED"),
+        ("provenance verified here: generated_from.screen_registry_json_ids_sha256 against "
+         "this run's canonical registry, and the whole manifest against byte-identical "
+         "regeneration from the canonical registry source and the EIP Appendix F module "
+         "table via tools/generate_screen_contract_manifest.py (which is also what pins "
+         "registry_source_sha256 and eip_appendix_f_module_table_sha256 to real digests "
+         "rather than only to their hex shape)."),
+    ]
+    if any(r.binding_status == SCREEN_BOUND for r in rows):
+        notes.append(
+            f"{SCREEN_BOUND} row(s) present: this gate checks only that every TSD Appendix F "
+            f"binding field is a non-empty value other than {SCREEN_UNBOUND!r}. No repository "
+            f"artifact defines the bound-value grammar, so a {SCREEN_BOUND} row's "
+            f"route/read-model/command target is recorded here, not verified.")
     vacuous = None if canonical else "no canonical Screen ID registered; an empty registry proves nothing"
-    return _finish("screen-contract", violations, canonical, vacuous, [])
+    return _finish("screen-contract", violations, canonical, vacuous, notes)
 
 
 # --- module-deps gate (TSD §24.1 / §6.3; input contract fixed by ADR-011) ----------
@@ -9551,7 +10114,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.add_argument("--screen-registry", type=Path, default=DEFAULT_SCREEN_REGISTRY,
                             help="screen-contract: canonical Screen ID registry")
         parser.add_argument("--screen-contracts", type=Path, default=DEFAULT_SCREEN_CONTRACTS,
-                            help="screen-contract: generated Screen-ID-to-target manifest")
+                            help="screen-contract: ADR-014 D2 generated screen-contract manifest")
+        parser.add_argument("--screen-source", type=Path, default=DEFAULT_SCREEN_SOURCE,
+                            help="screen-contract: canonical registry source the manifest "
+                                 "must regenerate from (ADR-014 D2.1)")
+        parser.add_argument("--screen-eip", type=Path, default=DEFAULT_SCREEN_EIP,
+                            help="screen-contract: EIP Appendix F module-table mirror the "
+                                 "manifest's ownership must regenerate from (ADR-014 D2.4)")
+        parser.add_argument("--screen-implemented-modules", default="",
+                            help="screen-contract: comma-separated MOD-NNN ids marked "
+                                 "implemented, for which ADR-014 D2.6 makes row binding "
+                                 "mandatory (no machine-readable marker exists in the "
+                                 "repository yet; default none)")
         parser.add_argument("--modules-dir", type=Path, default=DEFAULT_MODULES_DIR,
                             help="module-deps: root package directory to scan")
         parser.add_argument("--module-manifest", type=Path, default=DEFAULT_MODULE_MANIFEST,
@@ -9584,7 +10158,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.gate == "permission":
             report = run_permission_gate(args.openapi_dir, args.registry)
         elif args.gate == "screen-contract":
-            report = run_screen_contract_gate(args.screen_registry, args.screen_contracts)
+            report = run_screen_contract_gate(
+                args.screen_registry, args.screen_contracts,
+                frozenset(m for m in args.screen_implemented_modules.split(",") if m),
+                args.screen_source, args.screen_eip)
         elif args.gate == "module-deps":
             report = run_module_deps_gate(args.modules_dir, args.module_manifest)
         elif args.gate == "event-contract":

@@ -16,6 +16,7 @@ backend/tests/integration/test_architecture_gate_rls.py.
 Run directly (`python3 tools/tests/test_validate_architecture_gates.py`) or
 with pytest.
 """
+import hashlib
 import json
 import os
 import re
@@ -29,13 +30,24 @@ TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS))
 from validate_architecture_gates import (
     _SCREEN_ID_RE,
+    _SCREEN_PROVENANCE_PATHS,
+    _SCREEN_ROW_KEYS,
     CANONICAL_TENANT_PREDICATE,
+    DEFAULT_SCREEN_CONTRACTS,
+    DEFAULT_SCREEN_EIP,
+    DEFAULT_SCREEN_REGISTRY,
+    DEFAULT_SCREEN_SOURCE,
     DEFERRED_GATES,
     ERROR,
     FAIL,
     INCONCLUSIVE,
     PASS,
     PINNED_SEARCH_PATH,
+    SCREEN_BINDING_FIELDS,
+    SCREEN_BOUND,
+    SCREEN_OWNER_STATUSES,
+    SCREEN_SURFACES,
+    SCREEN_UNBOUND,
     AclGrant,
     GateInputError,
     Policy,
@@ -16409,52 +16421,304 @@ def test_d74_dedupe_order_preserves_the_first_seen_row_within_a_key():
 
 # --- screen-contract gate (TSD §24.1 gate 5; SCN-MOD001-012/013/110) ----------
 
-SCR1 = "SCR-001"
-SCR2 = "SCR-002"
-SC_BFF_TARGET = "bff:members.profile_read"
-SC_CMD_TARGET = "command:billing.refund_create"
+# Real canonical Screen ID shapes, not the legacy synthetic `SCR-NNN` form.
+# Gate check 8 regenerates the manifest from the canonical registry source, and
+# the generator derives a row's surface from the ID prefix -- `SCR-` maps to
+# backend/no-UI, which is never a manifest row at all, so no `SCR-NNN` row can
+# be generated. `SCR-NNN` stays accepted by `_SCREEN_ID_RE` and by the manifest
+# parser (see the `_SCREEN_ID_RE` tests and the malformed-document fixtures
+# below, which still use it); it just cannot reach a source-bound PASS.
+# `SCR1`'s surface is `SC_SURFACE` (`_sc_row`'s default); `SCR2`'s is Member, so
+# a fixture carrying it passes `surface="Member"`.
+SCR1 = "ADM-CC-01"
+SCR2 = "MBR-01"
+SC_OWNER = "MOD-020"
+SC_WAVE = "W2"
+SC_DOMAIN = "MBR-01"
+SC_REGISTRY_MODULE = "Members"
+SC_UNRESOLVED_REASON = "NO_TSD_OWNER_DOMAIN_IN_SOURCE_METADATA"
+# Surface of a synthetic row; any of the five ADR-014 D2.3 targets will do.
+SC_SURFACE = "Admin"
+
+# --- source-bound fixtures (ADR-014 D2.1/D2.4, gate check 8) -----------------
+# The gate regenerates the manifest from the canonical registry source and the
+# EIP Appendix F module table and requires byte identity, so a synthetic run has
+# to supply synthetic versions of *those* two inputs as well -- otherwise every
+# fixture would be compared against the real 170-row tree. `_sc_run` therefore
+# derives both from what the fixture asked for: a conforming fixture regenerates
+# byte-identically, so PASS stays reachable (ADR-014 D1.3's fixture self-test
+# needs a conforming fixture that passes), while every deliberate deviation now
+# also drifts.
+#
+# One deliberate consequence: a `BOUND` row is no longer reachable as a PASS.
+# ADR-014 D2.5 has the generator emit `UNBOUND` in every binding field until the
+# owning module is implemented, so a BOUND row cannot regenerate from any source.
+# The two former BOUND-PASS positives below are now source-drift negatives.
+
+SC_SYS_ROWS = 8  # `build_canonical_rows` requires exactly the eight SYS-* rows
+
+# The module table speaks EIP Appendix F's *module*-surface vocabulary, which
+# the generator's `MODULE_SURFACE_MAP` translates into the five count-model
+# surfaces -- all five here, so a synthetic owner can own a row on any surface.
+SC_EIP_SURFACES = "Admin Web, Front Desk, Coach App, Member App, Internal SaaS Console"
+# Fixed-width columns of the Appendix F module table, in `parse_module_table`'s
+# header-token order. The header line is built from these same widths, so the
+# column offsets it reads are exactly the ones the data rows were padded to.
+_SC_EIP_COLUMNS = (
+    ("**Module**", 14),
+    ("**Wave**", 14),
+    ("**TSD domain(s)**", 20),
+    ("**UI / surface ownership**", 72),
+    ("**Canonical screen mapping rule**", 36),
+    ("**Ready-state requirement**", 0),  # last column, unpadded
+)
 
 
-def _sc_contracts_text(entries):
-    """`entries`: `[(screen_id, target), ...]` -> the gate's fixed line-exact
-    `screen-contracts.yaml` subset (never general YAML)."""
-    lines = ["version: 1", "screens:"]
-    for screen_id, target in entries:
-        lines.append(f"  - id: {screen_id}")
-        lines.append(f"    target: {target}")
-    return "\n".join(lines) + "\n"
+def _sc_module_table_digest(eip_text):
+    """`generated_from.eip_appendix_f_module_table_sha256` as the generator
+    computes it (a digest of the parsed table, not of the file), so a conforming
+    fixture declares the same provenance the regeneration will."""
+    import generate_screen_contract_manifest as gen
+
+    return gen.module_table_digest(gen.parse_module_table(eip_text))
 
 
-def _sc_run(screens=None, entries=(), registry_raw=None, contracts_text=None):
+def _sc_source_text(screen_ids, unresolved=()):
+    """A `veyro-registry-data.js` body in the frozen export's exact 8-field row
+    shape. A row carries a TSD domain code in its last field only when that
+    screen is meant to resolve to an owner -- the real export carries none for
+    any row, which is why the live tree's 170 rows are all UNRESOLVED."""
+    unresolved = set(unresolved)
+    rows = [f"  ['{sid}','{SC_REGISTRY_MODULE}','Synthetic','V1','OK','role','ar',"
+            f"'{'-' if sid in unresolved else SC_DOMAIN}'],"
+            for sid in screen_ids]
+    rows += [f"  ['SYS-0{n}','Sys','Backend','V1','OK','role','ar','-'],"
+             for n in range(1, SC_SYS_ROWS + 1)]
+    return "export const R = [\n" + "\n".join(rows) + "\n];\n"
+
+
+def _sc_eip_row(cells):
+    line = ""
+    for (_, width), text in zip(_SC_EIP_COLUMNS, cells):
+        assert width == 0 or len(text) < width, (text, width)
+        line += text if width == 0 else text.ljust(width)
+    return line.rstrip()
+
+
+def _sc_eip_text(owners=()):
+    """A minimal EIP Appendix F module table in the mirror's own fixed-width
+    layout. MOD-001 is always present and always Non-UI -- it owns zero
+    canonical screens -- and each owning module carries the domain and surfaces
+    that make the Appendix F rule resolve its rows to it."""
+    dashes = " ".join("-" * 12 for _ in _SC_EIP_COLUMNS)
+    lines = [
+        "# Appendix F. Canonical Screen-to-Module Mapping",
+        "",
+        _sc_eip_row([token for token, _ in _SC_EIP_COLUMNS]),
+        dashes,
+        _sc_eip_row(["MOD-001", "Foundation", "Program gate", "Non-UI / none", "-", "-"]),
+    ]
+    lines += [_sc_eip_row([owner, SC_WAVE, SC_DOMAIN, SC_EIP_SURFACES, "-", "-"])
+              for owner in owners]
+    lines += [dashes, ""]
+    return "\n".join(lines)
+
+
+def _sc_row(screen_id, surface=SC_SURFACE, owner=SC_OWNER, bound=False, **overrides):
+    """One ADR-014 D2 manifest row, in `_SCREEN_ROW_KEYS` order. `owner=None`
+    builds the UNRESOLVED shape the generator actually emits today; `bound=True`
+    builds the staged-binding-complete shape of a future owning module."""
+    resolved = owner is not None
+    row = {
+        "screen_id": screen_id,
+        "surface": surface,
+        "registry_module": "Members",
+        "owning_module": owner,
+        "wave": SC_WAVE if resolved else None,
+        "owner_domain": SC_DOMAIN if resolved else None,
+        "owner_resolution": {
+            "status": "RESOLVED" if resolved else "UNRESOLVED",
+            "reason": None if resolved else SC_UNRESOLVED_REASON,
+        },
+        "binding_status": SCREEN_BOUND if bound else SCREEN_UNBOUND,
+    }
+    for name in SCREEN_BINDING_FIELDS:
+        row[name] = f"bound:{name}" if bound else SCREEN_UNBOUND
+    row.update(overrides)
+    return row
+
+
+def _sc_manifest(rows=(), *, registry_ids=None, module_screens=None,
+                 source_sha256="a" * 64, eip_sha256="b" * 64, **overrides):
+    """The generated manifest object. `registry_ids` is what the *registry* holds
+    (the provenance digest is taken over those, not over the manifest's rows), so
+    a count-mismatch fixture still carries honest provenance. `source_sha256` and
+    `eip_sha256` default to well-shaped placeholders for the parser-only
+    fixtures; `_sc_run` passes the real digests of the synthetic source and
+    module table so a conforming fixture can regenerate byte-identically."""
+    rows = list(rows)
+    if registry_ids is None:
+        registry_ids = [r["screen_id"] for r in rows]
+    if module_screens is None:
+        module_screens = {"MOD-001": []}
+        for row in rows:
+            if row["owning_module"]:
+                module_screens.setdefault(row["owning_module"], []).append(row["screen_id"])
+    manifest = {
+        "version": 1,
+        "generated_from": {
+            "registry_source": _SCREEN_PROVENANCE_PATHS["registry_source"],
+            "registry_source_sha256": source_sha256,
+            "screen_registry_json": _SCREEN_PROVENANCE_PATHS["screen_registry_json"],
+            "screen_registry_json_ids_sha256": hashlib.sha256(
+                "\n".join(registry_ids).encode("utf-8")).hexdigest(),
+            "eip_appendix_f_module_table":
+                _SCREEN_PROVENANCE_PATHS["eip_appendix_f_module_table"],
+            "eip_appendix_f_module_table_sha256": eip_sha256,
+        },
+        "counts": {
+            "total": len(rows),
+            "by_surface": {s: sum(1 for r in rows if r["surface"] == s) for s in SCREEN_SURFACES},
+        },
+        "module_screens": module_screens,
+        "screens": rows,
+    }
+    manifest.update(overrides)
+    return manifest
+
+
+def _sc_contracts_text(rows=(), **kwargs):
+    # `ensure_ascii=False` matches `render_manifest`, so a conforming fixture is
+    # byte-identical to regeneration rather than merely equal as data.
+    return json.dumps(_sc_manifest(rows, **kwargs), indent=2, ensure_ascii=False) + "\n"
+
+
+def _sc_sources(ids, rows):
+    """The synthetic generation sources for a fixture: a registry source whose
+    rows are exactly the registry's Screen IDs (carrying a TSD domain code only
+    for the rows the fixture means to resolve), and a module table holding
+    MOD-001 plus whichever owners the fixture's rows name."""
+    unresolved = [r["screen_id"] for r in rows if not r["owning_module"]]
+    owners = list(dict.fromkeys(r["owning_module"] for r in rows if r["owning_module"]))
+    return _sc_source_text(ids, unresolved), _sc_eip_text(owners)
+
+
+import contextlib as _sc_contextlib
+from unittest import mock as _sc_mock
+
+import generate_screen_contract_manifest as _sc_gen
+
+
+@_sc_contextlib.contextmanager
+def _sc_expect_surfaces(surfaces):
+    """Scope the generator's canonical EXPECTED_TOTAL / EXPECTED_BY_SURFACE to a
+    small synthetic fixture. The gate reads them from the generator at call time,
+    so the 170 / 85-16-19-35-15 absolutes stay the generator's own and are never
+    restated in the gate; real-tree and disposable-copy tests do not use this."""
+    surfaces = list(surfaces)
+    with _sc_mock.patch.object(_sc_gen, "EXPECTED_TOTAL", len(surfaces)), \
+            _sc_mock.patch.object(_sc_gen, "EXPECTED_BY_SURFACE",
+                                  {s: surfaces.count(s) for s in _sc_gen.EXPECTED_BY_SURFACE}):
+        yield
+
+
+def _sc_expect_source(source_text):
+    try:
+        surfaces = [r.surface for r in _sc_gen.build_canonical_rows(source_text)]
+    except _sc_gen.GenerationError:
+        surfaces = []  # unparseable: the run ERRORs before the count check
+    return _sc_expect_surfaces(surfaces)
+
+
+def _sc_synthetic_single_admin(fn):
+    """Decorator for direct-call tests built on the one-row `SCR1` fixture."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        with _sc_expect_surfaces([SC_SURFACE]):
+            return fn(*a, **kw)
+    return wrapper
+
+
+def _sc_run(screens=None, rows=(), registry_raw=None, contracts_text=None,
+            implemented=(), source_text=None, eip_text=None, **manifest_kwargs):
+    ids = list(screens or [])
+    rows = list(rows)
+    synth_source, synth_eip = _sc_sources(ids, rows)
+    source_text = synth_source if source_text is None else source_text
+    eip_text = synth_eip if eip_text is None else eip_text
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         reg_path = root / "screen-registry.json"
         reg_path.write_text(json.dumps(
-            registry_raw if registry_raw is not None
-            else {"version": 1, "screens": list(screens or [])}
+            registry_raw if registry_raw is not None else {"version": 1, "screens": ids}
         ))
+        source_path = root / "veyro-registry-data.js"
+        source_path.write_text(source_text)
+        eip_path = root / "EIP_MIRROR.md"
+        eip_path.write_text(eip_text)
         contracts_path = root / "screen-contracts.yaml"
         contracts_path.write_text(
-            contracts_text if contracts_text is not None else _sc_contracts_text(entries)
+            contracts_text if contracts_text is not None
+            else _sc_contracts_text(
+                rows, registry_ids=ids,
+                source_sha256=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+                eip_sha256=_sc_module_table_digest(eip_text),
+                **manifest_kwargs)
         )
-        return run_screen_contract_gate(reg_path, contracts_path)
+        with _sc_expect_source(source_text):
+            return run_screen_contract_gate(reg_path, contracts_path, frozenset(implemented),
+                                            source_path, eip_path)
 
+
+# --- positive controls. Note what a PASS here does and does not mean: ADR-014
+# D2.6 stages per-row binding, so an UNBOUND row whose owner is not marked
+# implemented does not block. The gate discloses the UNBOUND count in its notes
+# on every run so a PASS can never be read as "binding proven". ---------------
 
 def test_screen_contract_mapped_screen_passes():
-    """SCN-MOD001-012: a synthetic Screen ID mapped to a BFF/command row passes."""
-    report = _sc_run([SCR1], [(SCR1, SC_BFF_TARGET)])
+    """SCN-MOD001-012: a canonical Screen ID carried as a conforming manifest row
+    with a resolved owner passes."""
+    report = _sc_run([SCR1], [_sc_row(SCR1)])
     assert report.status == PASS, report.render()
     assert report.checked == [SCR1]
 
 
-def test_screen_contract_typed_command_target_passes():
-    report = _sc_run([SCR1, SCR2], [(SCR1, SC_BFF_TARGET), (SCR2, SC_CMD_TARGET)])
+def test_screen_contract_pass_discloses_staged_unbound_rows():
+    report = _sc_run([SCR1], [_sc_row(SCR1)])
+    assert report.status == PASS, report.render()
+    notes = " ".join(report.notes)
+    assert "1 of 1 manifest row(s) carry binding_status UNBOUND" in notes, notes
+    assert "proves no binding" in notes, notes
+    assert "0 of 1 row(s) carry owner_resolution UNRESOLVED" in notes, notes
+
+
+def test_screen_contract_multiple_rows_pass():
+    report = _sc_run([SCR1, SCR2], [_sc_row(SCR1), _sc_row(SCR2, surface="Member")])
     assert report.status == PASS, report.render()
 
 
+def test_screen_contract_bound_row_is_source_drift_not_pass():
+    """A BOUND row is accepted *structurally* (checks 1-7 only verify that the
+    binding fields agree with `binding_status`; no repository artifact defines
+    the bound-value grammar, which the notes must keep saying). Under check 8 it
+    can no longer reach PASS: ADR-014 D2.5 has the generator emit UNBOUND in
+    every binding field until the owning module is implemented, so no BOUND row
+    regenerates from any source. Hand-written bindings fail closed."""
+    report = _sc_run([SCR1], [_sc_row(SCR1, bound=True)])
+    assert report.status == FAIL, report.render()
+    assert "SCREEN_CONTRACT_SOURCE_DRIFT" in report.codes(), report.render()
+    notes = " ".join(report.notes)
+    assert "BOUND row(s) present" in notes, notes
+    assert "recorded here, not verified" in notes, notes
+
+
+# --- identity (FAIL) --------------------------------------------------------
+
 def test_screen_contract_unmapped_id_fails_citing_id():
-    """SCN-MOD001-013: a Screen ID with no mapped BFF/command row denies, citing it."""
-    report = _sc_run([SCR1, SCR2], [(SCR1, SC_BFF_TARGET)])
+    """SCN-MOD001-013: a canonical Screen ID with no manifest row denies, citing it."""
+    report = _sc_run([SCR1, SCR2], [_sc_row(SCR1)])
     assert report.status == FAIL, report.render()
     unmapped = [v for v in report.violations if v.code == "UNMAPPED_SCREEN_CONTRACT"]
     assert len(unmapped) == 1, report.render()
@@ -16463,20 +16727,116 @@ def test_screen_contract_unmapped_id_fails_citing_id():
 
 def test_screen_contract_count_mismatch_fails_citing_expected_and_actual():
     """SCN-MOD001-110: canonical registry count vs. generated manifest count."""
-    report = _sc_run([SCR1, SCR2], [(SCR1, SC_BFF_TARGET)])
+    report = _sc_run([SCR1, SCR2], [_sc_row(SCR1)])
     assert report.status == FAIL, report.render()
     mismatches = [v for v in report.violations if v.code == "SCREEN_CONTRACT_COUNT_MISMATCH"]
     assert len(mismatches) == 1, report.render()
     assert "expected 2" in mismatches[0].detail and "actual 1" in mismatches[0].detail
 
 
-def test_screen_contract_extra_generated_row_is_count_mismatch():
+def test_screen_contract_extra_generated_row_is_count_mismatch_and_invented():
     """A generator emitting an extra row with no corresponding canonical screen
-    must not vacuously pass merely because every canonical ID is mapped."""
-    report = _sc_run([SCR1], [(SCR1, SC_BFF_TARGET), (SCR2, SC_CMD_TARGET)])
+    must not vacuously pass merely because every canonical ID is mapped. The row
+    is now also cited individually as invented (EIP Appendix F's
+    forbidden-placeholder rule), which the count mismatch alone did not do, and
+    as source drift, since the extra row is in no source."""
+    report = _sc_run([SCR1], [_sc_row(SCR1), _sc_row(SCR2, surface="Member")])
     assert report.status == FAIL, report.render()
-    assert report.codes() == {"SCREEN_CONTRACT_COUNT_MISMATCH"}
+    assert report.codes() == {"SCREEN_CONTRACT_COUNT_MISMATCH",
+                              "SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH",
+                              "SCREEN_CONTRACT_INVENTED_SCREEN_ID",
+                              "SCREEN_CONTRACT_SOURCE_DRIFT"}, report.render()
+    invented = [v for v in report.violations if v.code == "SCREEN_CONTRACT_INVENTED_SCREEN_ID"]
+    assert [v.subject for v in invented] == [SCR2], report.render()
 
+
+def test_screen_contract_provenance_digest_mismatch_fails():
+    """The manifest declares which registry's Screen IDs it was generated from.
+    A manifest generated against a different registry must not be read as if it
+    had been generated against this run's."""
+    text = _sc_contracts_text([_sc_row(SCR1)], registry_ids=[SCR1, SCR2])
+    report = _sc_run(screens=[SCR1], contracts_text=text)
+    assert report.status == FAIL, report.render()
+    assert "SCREEN_CONTRACT_PROVENANCE_MISMATCH" in report.codes(), report.render()
+    mismatch = next(v for v in report.violations
+                    if v.code == "SCREEN_CONTRACT_PROVENANCE_MISMATCH")
+    assert "not generated from the registry it is being checked against" in mismatch.detail
+
+
+def test_screen_contract_unresolved_owner_fails_citing_id():
+    """ADR-014 D2.4: every row's owner must resolve now. The gate must fail
+    closed rather than infer an owner -- inference is the hand assignment D2.4
+    forbids -- and must cite each unresolved Screen ID."""
+    report = _sc_run([SCR1, SCR2], [_sc_row(SCR1, owner=None), _sc_row(SCR2)])
+    assert report.status == FAIL, report.render()
+    unresolved = [v for v in report.violations if v.code == "SCREEN_CONTRACT_OWNER_UNRESOLVED"]
+    assert [v.subject for v in unresolved] == [SCR1], report.render()
+    assert "never guesses one" in unresolved[0].detail
+
+
+def test_screen_contract_missing_mod_001_entry_fails():
+    """ADR-014 D2.4 requires the explicit `"MOD-001": []` entry: MOD-001 owning
+    zero canonical screens has to be stated, not left absent."""
+    report = _sc_run([SCR1], [_sc_row(SCR1)], module_screens={SC_OWNER: [SCR1]})
+    assert report.status == FAIL, report.render()
+    assert "SCREEN_CONTRACT_MOD_001_ENTRY_INVALID" in report.codes(), report.render()
+
+
+def test_screen_contract_module_index_mismatch_fails_citing_module():
+    report = _sc_run([SCR1], [_sc_row(SCR1)],
+                     module_screens={"MOD-001": [], SC_OWNER: []})
+    assert report.status == FAIL, report.render()
+    drift = [v for v in report.violations if v.code == "SCREEN_CONTRACT_MODULE_INDEX_MISMATCH"]
+    assert [v.subject for v in drift] == [SC_OWNER], report.render()
+
+
+def test_screen_contract_module_index_omitting_an_owner_fails():
+    """An owner that appears on a row but nowhere in `module_screens` must be
+    caught too, not only an owner whose listed IDs differ."""
+    report = _sc_run([SCR1], [_sc_row(SCR1)], module_screens={"MOD-001": []})
+    assert report.status == FAIL, report.render()
+    drift = [v for v in report.violations if v.code == "SCREEN_CONTRACT_MODULE_INDEX_MISMATCH"]
+    assert [v.subject for v in drift] == [SC_OWNER], report.render()
+
+
+# --- ADR-014 D2.6 staged binding --------------------------------------------
+
+def test_screen_contract_unbound_row_with_implemented_owner_fails():
+    report = _sc_run([SCR1], [_sc_row(SCR1)], implemented=[SC_OWNER])
+    assert report.status == FAIL, report.render()
+    unbound = [v for v in report.violations if v.code == "SCREEN_CONTRACT_ROW_UNBOUND"]
+    assert [v.subject for v in unbound] == [SCR1], report.render()
+    assert "ADR-014 D2.6" in unbound[0].detail
+
+
+def test_screen_contract_unbound_row_with_unimplemented_owner_is_staged():
+    """The other half of D2.6: while the owning module is not marked implemented
+    the row's binding check is staged, so it must not FAIL -- and the run must
+    still disclose that nothing about binding was proven."""
+    report = _sc_run([SCR1], [_sc_row(SCR1)], implemented=["MOD-099"])
+    assert report.status == PASS, report.render()
+    assert "SCREEN_CONTRACT_ROW_UNBOUND" not in report.codes(), report.render()
+    assert "['MOD-099']" in " ".join(report.notes), report.notes
+
+
+def test_screen_contract_bound_row_with_implemented_owner_is_source_drift_not_pass():
+    """D2.6's satisfied half must not become a way in either: naming the owning
+    module implemented clears `SCREEN_CONTRACT_ROW_UNBOUND`, but the bindings
+    still have to come from the generator, so the row drifts instead of passing.
+    Until the generator can emit a bound row for an implemented module, a
+    hand-written binding is not proof of binding."""
+    report = _sc_run([SCR1], [_sc_row(SCR1, bound=True)], implemented=[SC_OWNER])
+    assert report.status == FAIL, report.render()
+    assert report.codes() == {"SCREEN_CONTRACT_SOURCE_DRIFT"}, report.render()
+
+
+def test_screen_contract_malformed_implemented_module_flag_is_error():
+    report = _sc_run([SCR1], [_sc_row(SCR1)], implemented=["mod-020"])
+    assert report.status == ERROR, report.render()
+    assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}
+
+
+# --- vacuous / missing inputs -----------------------------------------------
 
 def test_screen_contract_empty_registry_is_inconclusive_not_pass():
     """MOD-001 owns zero real screens (`REQUIREMENTS.md` §4) -- that disclosed
@@ -16491,9 +16851,12 @@ def test_screen_contract_empty_registry_with_generated_rows_is_count_mismatch():
     """Zero canonical screens is only vacuous when the generated manifest is also
     empty -- a nonempty manifest against zero canonical screens is a real
     mismatch, not a silent pass."""
-    report = _sc_run([], [(SCR1, SC_BFF_TARGET)])
+    report = _sc_run([], [_sc_row(SCR1)])
     assert report.status == FAIL, report.render()
-    assert report.codes() == {"SCREEN_CONTRACT_COUNT_MISMATCH"}
+    assert report.codes() == {"SCREEN_CONTRACT_COUNT_MISMATCH",
+                              "SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH",
+                              "SCREEN_CONTRACT_INVENTED_SCREEN_ID",
+                              "SCREEN_CONTRACT_SOURCE_DRIFT"}, report.render()
 
 
 def test_screen_contract_missing_inputs_are_error():
@@ -16516,12 +16879,30 @@ def test_screen_contract_malformed_registry_is_error_not_vacuous_pass():
         [],
     ]
     for raw in bad_registries:
-        report = _sc_run(registry_raw=raw, entries=[])
+        report = _sc_run(registry_raw=raw, rows=[])
         assert report.status == ERROR, (raw, report.render())
         assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, (raw, report.render())
 
 
+def test_screen_contract_legacy_two_field_shape_is_rejected():
+    """The pre-ADR-014 `id`/`target` form -- including the body that used to be
+    the gate's one accepted PASS shape -- is no longer a second, weaker accepted
+    shape for the same CI-blocking artifact. It cannot carry TSD Appendix F's
+    mandatory fields, and a four-field synthetic subset reading as PASS was
+    itself found to be a false-completeness affordance
+    (`R04-GATE5-PARTIAL-CANONICAL-OUTPUT-DENIAL`)."""
+    legacy = ("version: 1\nscreens:\n"
+              "  - id: SCR-001\n    target: bff:members.profile_read\n")
+    report = _sc_run(screens=[SCR1], contracts_text=legacy)
+    assert report.status == ERROR, report.render()
+    assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}
+    assert "unparseable manifest" in report.violations[0].detail
+
+
 def test_screen_contract_malformed_contracts_file_is_error_not_vacuous_pass():
+    """Every pre-ADR-014 body that was already refused stays refused (these are
+    not JSON, so they never reach the manifest schema), alongside the real
+    shape's own malformed cases."""
     bad_bodies = [
         "",
         "version: 2\nscreens:\n",
@@ -16532,11 +16913,83 @@ def test_screen_contract_malformed_contracts_file_is_error_not_vacuous_pass():
         "version: 1\nscreens:\n  - id: SCR-001\n    target: rest:a\n",
         "version: 1\nscreens:\n  - id: SCR-001\n    target: bff:a\n  - id: SCR-001\n    target: bff:b\n",
         "version: 1\nscreens:\n  - id: SCR-001\n    target: bff:a\ntrailing garbage\n",
+        "[]",
+        "null",
+        "{}",
+        '{"version": 1, "screens": []}',
+        json.dumps(_sc_manifest([_sc_row(SCR1)])) + "\ntrailing garbage\n",
+        # duplicate JSON key: `json.loads` would silently keep the last one.
+        ('{"version": 1, "version": 1, "generated_from": {}, "counts": {},'
+         ' "module_screens": {}, "screens": []}'),
     ]
     for body in bad_bodies:
         report = _sc_run(screens=["SCR-001"], contracts_text=body)
         assert report.status == ERROR, (body, report.render())
         assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, (body, report.render())
+
+
+def test_screen_contract_manifest_schema_deviations_are_error():
+    """Schema/provenance deviations fail closed as ERROR: a row, a binding field
+    or a provenance field is never dropped, defaulted, or read in whichever
+    direction would pass."""
+    row_without_a_binding_field = _sc_row(SCR1)
+    del row_without_a_binding_field["masking_variant"]
+    reordered = _sc_row(SCR1)
+    reordered["screen_id"] = reordered.pop("screen_id")  # moves the key to the end
+    bad_manifests = [
+        # top level
+        _sc_manifest([_sc_row(SCR1)], version=2),
+        _sc_manifest([_sc_row(SCR1)], version=True),
+        _sc_manifest([_sc_row(SCR1)], screens={}),
+        # provenance
+        _sc_manifest([_sc_row(SCR1)], generated_from={}),
+        _sc_manifest([_sc_row(SCR1)], generated_from=dict(
+            _sc_manifest()["generated_from"], registry_source="somewhere/else.js")),
+        _sc_manifest([_sc_row(SCR1)], generated_from=dict(
+            _sc_manifest()["generated_from"], registry_source_sha256="A" * 64)),
+        _sc_manifest([_sc_row(SCR1)], generated_from=dict(
+            _sc_manifest()["generated_from"], screen_registry_json_ids_sha256="deadbeef")),
+        # counts disagreeing with the rows
+        _sc_manifest([_sc_row(SCR1)], counts={"total": 2, "by_surface": {
+            s: (1 if s == SC_SURFACE else 0) for s in SCREEN_SURFACES}}),
+        _sc_manifest([_sc_row(SCR1)], counts={"total": 1, "by_surface": {
+            s: 0 for s in SCREEN_SURFACES}}),
+        _sc_manifest([_sc_row(SCR1)], counts={"total": 1}),
+        # rows
+        _sc_manifest([row_without_a_binding_field]),
+        _sc_manifest([reordered]),
+        _sc_manifest([_sc_row(SCR1), _sc_row(SCR1)]),
+        _sc_manifest([_sc_row(SCR1, surface="Veyro Admin")]),
+        _sc_manifest([_sc_row("scr-001")]),
+        _sc_manifest([_sc_row(SCR1, registry_module="")]),
+        # owner_resolution disagreeing with the ownership fields
+        _sc_manifest([_sc_row(SCR1, owner=None, owning_module=SC_OWNER)]),
+        _sc_manifest([_sc_row(SCR1, owner=None, owner_resolution={
+            "status": "UNRESOLVED", "reason": None})]),
+        _sc_manifest([_sc_row(SCR1, owning_module=None)]),
+        _sc_manifest([_sc_row(SCR1, wave=None)]),
+        _sc_manifest([_sc_row(SCR1, owner_domain=None)]),
+        _sc_manifest([_sc_row(SCR1, owner_resolution={
+            "status": "RESOLVED", "reason": "why"})]),
+        _sc_manifest([_sc_row(SCR1, owner_resolution={"status": "PARTIAL", "reason": None})]),
+        _sc_manifest([_sc_row(SCR1, owner_resolution={"status": "RESOLVED"})]),
+        # binding fields disagreeing with binding_status
+        _sc_manifest([_sc_row(SCR1, binding_status="PENDING")]),
+        _sc_manifest([_sc_row(SCR1, route="bff:members.profile_read")]),
+        _sc_manifest([_sc_row(SCR1, bound=True, route=SCREEN_UNBOUND)]),
+        _sc_manifest([_sc_row(SCR1, bound=True, route="")]),
+        _sc_manifest([_sc_row(SCR1, route=None)]),
+        # module index
+        _sc_manifest([_sc_row(SCR1)], module_screens={"mod-020": [SCR1]}),
+        _sc_manifest([_sc_row(SCR1)], module_screens={"MOD-001": [], SC_OWNER: [SCR1, SCR1]}),
+        _sc_manifest([_sc_row(SCR1)], module_screens={"MOD-001": [], SC_OWNER: "SCR-001"}),
+        _sc_manifest([_sc_row(SCR1)], module_screens=[]),
+    ]
+    for manifest in bad_manifests:
+        report = _sc_run(screens=[SCR1],
+                         contracts_text=json.dumps(manifest, indent=2) + "\n")
+        assert report.status == ERROR, (manifest, report.render())
+        assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, (manifest, report.render())
 
 
 def test_screen_contract_symlinked_inputs_are_error():
@@ -16568,13 +17021,336 @@ def test_screen_contract_parse_registry_rejects_bad_entries():
         raise AssertionError("accepted a non-string Screen ID")
 
 
-def test_screen_contract_parse_contracts_rejects_malformed_target():
+def test_screen_contract_parse_contracts_rejects_bound_row_with_unbound_field():
     try:
-        parse_screen_contracts("version: 1\nscreens:\n  - id: SCR-001\n    target: bff:\n")
+        parse_screen_contracts(_sc_contracts_text(
+            [_sc_row(SCR1, bound=True, primary_read_model=SCREEN_UNBOUND)]))
     except GateInputError:
         pass
     else:
-        raise AssertionError("accepted a target with no dotted segment")
+        raise AssertionError("accepted a BOUND row still carrying an UNBOUND field")
+
+
+def test_screen_contract_parse_contracts_accepts_the_generated_shape():
+    manifest = parse_screen_contracts(_sc_contracts_text([_sc_row(SCR1)]))
+    assert [r.screen_id for r in manifest.rows] == [SCR1]
+    assert manifest.rows[0].owning_module == SC_OWNER
+    assert manifest.rows[0].binding_status == SCREEN_UNBOUND
+    assert manifest.module_screens == {"MOD-001": [], SC_OWNER: [SCR1]}
+
+
+def test_screen_contract_row_keys_are_the_appendix_f_mandatory_set():
+    """TSD Appendix F (`TSD_MIRROR.md:17344-17347`) mandatory fields: the gate's
+    row contract must require all of them, so a manifest cannot omit one."""
+    appendix_f = {
+        "screen_id", "surface", "route", "primary_read_model", "queries", "commands",
+        "realtime_channels", "permissions", "assurance", "masking_variant",
+        "offline_mode", "expected_error_codes", "empty_state", "loading_state",
+        "error_state", "owner_domain",
+    }
+    assert appendix_f <= set(_SCREEN_ROW_KEYS), appendix_f - set(_SCREEN_ROW_KEYS)
+
+
+def test_screen_contract_constants_match_the_generator():
+    """The gate restates the generator's manifest vocabulary rather than
+    importing it, to keep its stdlib-only import surface. Pin the two together
+    so they cannot drift apart silently."""
+    sys.path.insert(0, str(TOOLS))
+    import generate_screen_contract_manifest as gen
+
+    assert tuple(gen.EXPECTED_BY_SURFACE) == SCREEN_SURFACES
+    assert gen.BINDING_FIELDS == SCREEN_BINDING_FIELDS
+    assert gen.ROW_KEYS == _SCREEN_ROW_KEYS
+    assert gen.UNBOUND == SCREEN_UNBOUND
+    assert gen.OWNER_STATUSES == SCREEN_OWNER_STATUSES
+    assert _SCREEN_PROVENANCE_PATHS == {
+        "registry_source": gen.SOURCE_REL,
+        "screen_registry_json": gen.REGISTRY_REL,
+        "eip_appendix_f_module_table": gen.EIP_REL,
+    }
+    # Check 8's two generation sources are the generator's own inputs, so the
+    # gate cannot end up regenerating from a different pair of files than the
+    # one the manifest declares.
+    assert DEFAULT_SCREEN_SOURCE == gen.DEFAULT_SOURCE
+    assert DEFAULT_SCREEN_EIP == gen.DEFAULT_EIP
+    assert DEFAULT_SCREEN_REGISTRY == gen.DEFAULT_REGISTRY
+    assert DEFAULT_SCREEN_CONTRACTS == gen.DEFAULT_MANIFEST
+
+
+def test_screen_contract_reads_the_committed_generated_manifest():
+    """The defect this repair closes: the committed canonical manifest
+    (`contracts/ui/screen-contracts.yaml`, generated under ADR-014 D2) was
+    reported as `SCREEN_CONTRACT_GATE_INPUT_INVALID` ERROR because the gate only
+    accepted the obsolete two-line form. It must now parse, and its disclosed
+    UNRESOLVED owners must read as FAIL -- never as ERROR and never as PASS."""
+    assert DEFAULT_SCREEN_REGISTRY.is_file(), DEFAULT_SCREEN_REGISTRY
+    assert DEFAULT_SCREEN_CONTRACTS.is_file(), DEFAULT_SCREEN_CONTRACTS
+    report = run_screen_contract_gate(DEFAULT_SCREEN_REGISTRY, DEFAULT_SCREEN_CONTRACTS)
+    assert report.status != ERROR, report.render()
+    assert "SCREEN_CONTRACT_GATE_INPUT_INVALID" not in report.codes(), report.render()
+    registered = json.loads(DEFAULT_SCREEN_REGISTRY.read_text())["screens"]
+    assert report.checked == sorted(registered), report.render()
+    manifest = parse_screen_contracts(DEFAULT_SCREEN_CONTRACTS.read_text())
+    unresolved = [r.screen_id for r in manifest.rows if r.owner_status != "RESOLVED"]
+    if unresolved:
+        assert report.status == FAIL, report.render()
+        cited = [v.subject for v in report.violations
+                 if v.code == "SCREEN_CONTRACT_OWNER_UNRESOLVED"]
+        assert cited == unresolved, (set(cited) ^ set(unresolved))
+    # Check 8's positive control on the real tree: the committed manifest IS
+    # what the generator regenerates from the canonical source and the Appendix
+    # F module table, so source-binding costs no false FAIL here. The gate still
+    # denies, on the disclosed unresolved owners alone.
+    assert "SCREEN_CONTRACT_SOURCE_DRIFT" not in report.codes(), report.render()
+
+
+# --- check 8: the manifest must regenerate from its sources (ADR-014 D2.1/D2.4)
+# This is the defect the parser-only checks 1-7 could not see. --------------
+
+def test_screen_contract_fabricated_resolved_owner_over_the_real_manifest_is_not_pass():
+    """The exact fail-open this repair closes, pinned permanently.
+
+    Take the committed 170-row manifest, leave its provenance block untouched,
+    and give every row a fabricated but wholly self-consistent resolved owner
+    (`MOD-020` / `W2` / `MBR-01`) with fabricated `BOUND` bindings and a
+    coherent `module_screens` index. Checks 1-7 are then satisfied by
+    construction -- the counts still agree with the rows, every Screen ID is
+    still canonical and registered, the registry-ID digest still matches, no row
+    is UNRESOLVED, the index still groups correctly, no row is a staged UNBOUND
+    -- and the gate returned **PASS with zero violations**, while
+    `generate_screen_contract_manifest.check_manifest` rejected the same
+    document (`BINDING_FIELD_INVALID`, `OWNER_MISMATCH`, `MANIFEST_DRIFT`).
+
+    The assertion is deliberately an exact code set: source drift must be the
+    *only* thing that catches this, which is what makes it proof that checks 1-7
+    alone are not sufficient assurance and that check 8 is load-bearing.
+
+    The committed manifest is never written to: the mutation lives in a temp
+    directory, and the real file's digest is asserted unchanged afterwards.
+    """
+    import generate_screen_contract_manifest as gen
+
+    before = hashlib.sha256(DEFAULT_SCREEN_CONTRACTS.read_bytes()).hexdigest()
+    real = json.loads(DEFAULT_SCREEN_CONTRACTS.read_text())
+    assert len(real["screens"]) == 170, len(real["screens"])
+    for row in real["screens"]:
+        row["owning_module"] = SC_OWNER
+        row["wave"] = SC_WAVE
+        row["owner_domain"] = SC_DOMAIN
+        row["owner_resolution"] = {"status": "RESOLVED", "reason": None}
+        row["binding_status"] = SCREEN_BOUND
+        for name in SCREEN_BINDING_FIELDS:
+            row[name] = f"bound:{name}"
+    real["module_screens"] = {m: [] for m in real["module_screens"]}
+    real["module_screens"]["MOD-001"] = []
+    real["module_screens"][SC_OWNER] = [r["screen_id"] for r in real["screens"]]
+    mutated = json.dumps(real, indent=2, ensure_ascii=False) + "\n"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "screen-contracts.yaml"
+        path.write_text(mutated)
+        report = run_screen_contract_gate(DEFAULT_SCREEN_REGISTRY, path)
+        assert report.status != PASS, report.render()
+        assert report.codes() == {"SCREEN_CONTRACT_SOURCE_DRIFT"}, report.render()
+
+        # The gate and the canonical generator must now agree on this document;
+        # them disagreeing is what the fail-open was.
+        generator_report = gen.check_manifest(
+            mutated,
+            DEFAULT_SCREEN_SOURCE.read_text(encoding="utf-8"),
+            gen.load_registry_ids(DEFAULT_SCREEN_REGISTRY),
+            DEFAULT_SCREEN_EIP.read_text(encoding="utf-8"),
+        )
+        assert generator_report.state != "PASS", generator_report.state
+
+    assert hashlib.sha256(DEFAULT_SCREEN_CONTRACTS.read_bytes()).hexdigest() == before
+
+
+def test_screen_contract_fabricated_resolved_owner_on_a_synthetic_fixture_drifts():
+    """The same shape as the fixture self-test ADR-014 D1.3 asks for: the
+    manifest claims a resolved owner for a screen whose source row carries no
+    TSD domain code, so the generator would emit UNRESOLVED for it. Nothing in
+    the document itself is inconsistent -- only the source disagrees."""
+    report = _sc_run([SCR1], [_sc_row(SCR1)],
+                     source_text=_sc_source_text([SCR1], unresolved=[SCR1]))
+    assert report.status == FAIL, report.render()
+    assert report.codes() == {"SCREEN_CONTRACT_SOURCE_DRIFT"}, report.render()
+
+
+def test_screen_contract_wrong_owner_for_the_appendix_f_rule_drifts():
+    """An owner that is not what the Appendix F rule yields (its module table
+    row owns no surface this screen is on) cannot be smuggled in by naming it
+    consistently in every row field and in `module_screens`."""
+    report = _sc_run([SCR1], [_sc_row(SCR1, owner="MOD-030")],
+                     eip_text=_sc_eip_text([SC_OWNER]))
+    assert report.status == FAIL, report.render()
+    assert "SCREEN_CONTRACT_SOURCE_DRIFT" in report.codes(), report.render()
+
+
+@_sc_synthetic_single_admin
+def test_screen_contract_missing_or_symlinked_generation_sources_are_error():
+    """The two generation sources are real inputs: absent or symlinked, the gate
+    reports ERROR rather than falling back to judging the manifest on its own
+    internal agreement -- which is the posture that passed fabricated owners."""
+    rows = [_sc_row(SCR1)]
+    source_text, eip_text = _sc_sources([SCR1], rows)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        reg = root / "screen-registry.json"
+        reg.write_text(json.dumps({"version": 1, "screens": [SCR1]}))
+        contracts = root / "screen-contracts.yaml"
+        contracts.write_text(_sc_contracts_text(
+            rows, registry_ids=[SCR1],
+            source_sha256=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            eip_sha256=_sc_module_table_digest(eip_text)))
+        source = root / "veyro-registry-data.js"
+        source.write_text(source_text)
+        eip = root / "EIP_MIRROR.md"
+        eip.write_text(eip_text)
+
+        # control: with both sources present this is the conforming fixture
+        assert run_screen_contract_gate(
+            reg, contracts, frozenset(), source, eip).status == PASS
+
+        for pair in ((root / "nope.js", eip), (source, root / "nope.md")):
+            report = run_screen_contract_gate(reg, contracts, frozenset(), *pair)
+            assert report.status == ERROR, (pair, report.render())
+            assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, report.render()
+
+        link_source = root / "source-link.js"
+        link_source.symlink_to(source)
+        assert run_screen_contract_gate(
+            reg, contracts, frozenset(), link_source, eip).status == ERROR
+        link_eip = root / "eip-link.md"
+        link_eip.symlink_to(eip)
+        assert run_screen_contract_gate(
+            reg, contracts, frozenset(), source, link_eip).status == ERROR
+
+
+def test_screen_contract_unparseable_generation_sources_are_error():
+    """A source or module table the generator cannot parse is ERROR -- never a
+    pass by skipping check 8, and never FAIL, which would misattribute a broken
+    input to the manifest."""
+    # The manifest text is built with placeholder provenance digests here: a
+    # conforming one cannot be built against a source the generator refuses,
+    # and the run never gets far enough for its digests to matter.
+    conforming = _sc_contracts_text([_sc_row(SCR1)], registry_ids=[SCR1])
+    for kwargs in ({"source_text": "not a registry export\n"},
+                   {"source_text": "export const R = [\n  ['bad','row'],\n];\n"},
+                   {"eip_text": "no Appendix F module table here\n"}):
+        report = _sc_run([SCR1], contracts_text=conforming, **kwargs)
+        assert report.status == ERROR, (kwargs, report.render())
+        assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, report.render()
+        assert "regenerate" in report.violations[0].detail, report.render()
+
+
+# --- coordinated-mutation regressions (reviewer-proven gaps): disposable copies
+# of the real source / registry / manifest, each regenerated consistently so that
+# the inputs agree with one another and only an absolute or source-bound check
+# can see the mutation. The committed files are never written. -----------------
+
+def _sc_real_disposable(root):
+    """Copy the real source and EIP mirror into `root`; return their paths and
+    the source-derived canonical rows."""
+    src = root / "veyro-registry-data.js"
+    src.write_bytes(DEFAULT_SCREEN_SOURCE.read_bytes())
+    eip = root / "EIP_MIRROR.md"
+    eip.write_bytes(DEFAULT_SCREEN_EIP.read_bytes())
+    return src, eip
+
+
+def _sc_run_disposable(root, source_text, registry_ids, eip, manifest_bytes=None):
+    """Regenerate the manifest against `registry_ids`, write registry and
+    manifest, and run the gate. Returns (report, manifest_text)."""
+    manifest_text = _sc_gen.generate_manifest_text(
+        source_text, registry_ids, eip.read_text(encoding="utf-8"), enforce=False)
+    reg = root / "screen-registry.json"
+    reg.write_text(json.dumps({"version": 1, "screens": registry_ids}))
+    contracts = root / "screen-contracts.yaml"
+    contracts.write_bytes(manifest_text.encode("utf-8") if manifest_bytes is None
+                          else manifest_bytes)
+    src = root / "veyro-registry-data.js"
+    return run_screen_contract_gate(reg, contracts, frozenset(), src, eip), manifest_text
+
+
+def test_screen_contract_coordinated_deletion_of_a_canonical_row_fails_absolute_counts():
+    """Delete one canonical V1 Admin row from the source, then regenerate the
+    registry and manifest consistently. Source, registry and manifest now all
+    agree on 169 rows, so the relative checks pass; only the absolute 170 and
+    85/16/19/35/15 comparison against the source-derived rows sees it. It must
+    be FAIL (not ERROR) and must not depend on `enforce=True` regeneration."""
+    before = hashlib.sha256(DEFAULT_SCREEN_SOURCE.read_bytes()).hexdigest()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        src, eip = _sc_real_disposable(root)
+        text = src.read_text(encoding="utf-8")
+        victim = _sc_gen.build_canonical_rows(text)[0]
+        assert victim.surface == "Admin", victim
+        lines = text.splitlines(keepends=True)
+        kept = [ln for ln in lines if not ln.lstrip().startswith(f"['{victim.screen_id}',")]
+        assert len(kept) == len(lines) - 1
+        text = "".join(kept)
+        src.write_text(text, encoding="utf-8")
+        ids = [r.screen_id for r in _sc_gen.build_canonical_rows(text)]
+        assert len(ids) == 169
+        report, _ = _sc_run_disposable(root, text, ids, eip)
+        assert report.status == FAIL, report.render()
+        codes = report.codes()
+        assert "SCREEN_CONTRACT_SOURCE_COUNT_MISMATCH" in codes, report.render()
+        assert "SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH" in codes, report.render()
+        assert "SCREEN_CONTRACT_GATE_INPUT_INVALID" not in codes, report.render()
+        detail = " ".join(v.detail for v in report.violations)
+        assert "169" in detail and "170" in detail and "[84, 16, 19, 35, 15]" in detail, detail
+        # the generator's own check reaches the same verdict on the same inputs
+        generator_report = _sc_gen.check_manifest(
+            (root / "screen-contracts.yaml").read_text(encoding="utf-8"), text, ids,
+            eip.read_text(encoding="utf-8"))
+        assert generator_report.state != "PASS", generator_report.state
+    assert hashlib.sha256(DEFAULT_SCREEN_SOURCE.read_bytes()).hexdigest() == before
+
+
+def test_screen_contract_reversed_registry_order_fails_source_binding():
+    """Reverse the registry's ID order and regenerate the manifest against it:
+    the manifest, registry digest and unresolved owners all stay self-consistent.
+    Only binding the registry to the source-derived canonical order sees it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        src, eip = _sc_real_disposable(root)
+        text = src.read_text(encoding="utf-8")
+        ids = [r.screen_id for r in _sc_gen.build_canonical_rows(text)]
+        assert len(ids) == 170
+        report, _ = _sc_run_disposable(root, text, list(reversed(ids)), eip)
+        assert report.status == FAIL, report.render()
+        assert "SCREEN_CONTRACT_REGISTRY_SOURCE_MISMATCH" in report.codes(), report.render()
+        assert "SCREEN_CONTRACT_GATE_INPUT_INVALID" not in report.codes(), report.render()
+        # control: the unreversed registry raises no source-binding or count code
+        control, _ = _sc_run_disposable(root, text, ids, eip)
+        assert not {c for c in control.codes()
+                    if c.endswith(("REGISTRY_SOURCE_MISMATCH", "COUNT_MISMATCH"))}, control.render()
+
+
+def test_screen_contract_crlf_only_manifest_is_source_drift_with_true_disk_digest():
+    """A manifest identical to regeneration except for CRLF line endings is not
+    byte-identical. `read_text` normalizes newlines, so the gate used to pass the
+    byte check and print the digest of the normalized text; it must compare raw
+    bytes and report the true on-disk SHA-256."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        src, eip = _sc_real_disposable(root)
+        text = src.read_text(encoding="utf-8")
+        ids = [r.screen_id for r in _sc_gen.build_canonical_rows(text)]
+        _, manifest_text = _sc_run_disposable(root, text, ids, eip)
+        crlf = manifest_text.replace("\n", "\r\n").encode("utf-8")
+        assert crlf != manifest_text.encode("utf-8")
+        report, _ = _sc_run_disposable(root, text, ids, eip, manifest_bytes=crlf)
+        assert report.status == FAIL, report.render()
+        drift = [v for v in report.violations if v.code == "SCREEN_CONTRACT_SOURCE_DRIFT"]
+        assert len(drift) == 1, report.render()
+        assert hashlib.sha256(crlf).hexdigest() in drift[0].detail, drift[0].detail
+        assert "at line 1" in drift[0].detail, drift[0].detail
+        # control: LF bytes are byte-identical, so no drift
+        ok, _ = _sc_run_disposable(root, text, ids, eip)
+        assert "SCREEN_CONTRACT_SOURCE_DRIFT" not in ok.codes(), ok.render()
 
 
 # --- real canonical Screen ID shapes (R04-GATE5-CANONICAL-UX-INPUT-ADAPTER,
@@ -16615,22 +17391,28 @@ def test_screen_id_re_rejects_real_prefix_with_legacy_three_digit_width():
 def test_screen_contract_real_canonical_id_mapped_screen_passes():
     """Positive control: a real canonical ID (`ADM-CC-01`), previously
     rejected by the parser with 'must be a list of Screen IDs', now passes
-    the full gate when mapped."""
+    the full gate when carried as a conforming manifest row."""
     real_id = "ADM-CC-01"
-    report = _sc_run([real_id], [(real_id, SC_BFF_TARGET)])
+    report = _sc_run([real_id], [_sc_row(real_id)])
     assert report.status == PASS, report.render()
     assert report.checked == [real_id]
 
 
 def test_screen_contract_mixed_real_ids_across_surfaces_pass():
-    ids = ["ADM-CC-01", "FD-01", "POS-01", "CCH-01", "MBR-01", "CON-01"]
-    report = _sc_run(ids, [(i, SC_BFF_TARGET) for i in ids])
+    rows = [_sc_row("ADM-CC-01", surface="Admin"),
+            _sc_row("FD-01", surface="Front Desk & POS"),
+            _sc_row("POS-01", surface="Front Desk & POS"),
+            _sc_row("CCH-01", surface="Coach"),
+            _sc_row("MBR-01", surface="Member"),
+            _sc_row("CON-01", surface="Internal SaaS Console")]
+    ids = [r["screen_id"] for r in rows]
+    report = _sc_run(ids, rows)
     assert report.status == PASS, report.render()
     assert sorted(report.checked) == sorted(ids)
 
 
 def test_screen_contract_malformed_real_shaped_id_in_registry_is_error():
-    report = _sc_run(registry_raw={"version": 1, "screens": ["adm-cc-01"]}, entries=[])
+    report = _sc_run(registry_raw={"version": 1, "screens": ["adm-cc-01"]}, rows=[])
     assert report.status == ERROR, report.render()
     assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}
 
@@ -16640,13 +17422,13 @@ def test_screen_contract_real_prefix_with_legacy_three_digit_width_in_registry_i
     rejected at gate-registry parsing, not silently accepted via the generic
     legacy shape (R04-GATE5-REAL-PREFIX-WIDTH-DENIAL)."""
     for bad_id in ("CON-017", "FD-001"):
-        report = _sc_run(registry_raw={"version": 1, "screens": [bad_id]}, entries=[])
+        report = _sc_run(registry_raw={"version": 1, "screens": [bad_id]}, rows=[])
         assert report.status == ERROR, (bad_id, report.render())
         assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}, (bad_id, report.render())
 
 
 def test_screen_contract_duplicate_real_id_in_registry_is_error():
-    report = _sc_run(registry_raw={"version": 1, "screens": ["ADM-CC-01", "ADM-CC-01"]}, entries=[])
+    report = _sc_run(registry_raw={"version": 1, "screens": ["ADM-CC-01", "ADM-CC-01"]}, rows=[])
     assert report.status == ERROR, report.render()
     assert report.codes() == {"SCREEN_CONTRACT_GATE_INPUT_INVALID"}
 
@@ -16661,28 +17443,55 @@ def test_screen_contract_cli_exit_codes():
         root = Path(tmp)
         reg = root / "screen-registry.json"
         contracts = root / "screen-contracts.yaml"
+        source = root / "veyro-registry-data.js"
+        eip = root / "EIP_MIRROR.md"
 
-        def cli():
+        # The one-row fixture scopes the generator's canonical absolutes the same
+        # way `_sc_expect_surfaces` does in-process.
+        shim = ("import sys; sys.path.insert(0, sys.argv[1]); "
+                "import generate_screen_contract_manifest as g; g.EXPECTED_TOTAL = 1; "
+                "g.EXPECTED_BY_SURFACE = {s: int(s == 'Admin') for s in g.EXPECTED_BY_SURFACE}; "
+                "import validate_architecture_gates as v; sys.exit(v.main(sys.argv[2:]))")
+
+        def cli(*extra):
             return subprocess.run(
-                [sys.executable, str(TOOLS / "validate_architecture_gates.py"), "--gate",
+                [sys.executable, "-c", shim, str(TOOLS), "--gate",
                  "screen-contract", "--screen-registry", str(reg), "--screen-contracts",
-                 str(contracts), "--json"],
+                 str(contracts), "--screen-source", str(source), "--screen-eip", str(eip),
+                 "--json", *extra],
                 capture_output=True, text=True, check=False,
             )
 
+        rows = [_sc_row(SCR1)]
+        source_text, eip_text = _sc_sources([SCR1], rows)
+        source.write_text(source_text)
+        eip.write_text(eip_text)
         reg.write_text(json.dumps({"version": 1, "screens": [SCR1]}))
-        contracts.write_text(_sc_contracts_text([(SCR1, SC_BFF_TARGET)]))
+        contracts.write_text(_sc_contracts_text(
+            rows, registry_ids=[SCR1],
+            source_sha256=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            eip_sha256=_sc_module_table_digest(eip_text)))
         ok = cli()
         assert ok.returncode == 0, ok.stdout + ok.stderr
         assert json.loads(ok.stdout)["status"] == PASS
 
-        contracts.write_text(_sc_contracts_text([]))
+        # ADR-014 D2.6 through the CLI: the same inputs, with the owning module
+        # named as implemented, must block.
+        staged = cli("--screen-implemented-modules", SC_OWNER)
+        assert staged.returncode == 1, staged.stdout + staged.stderr
+        staged_body = json.loads(staged.stdout)
+        assert staged_body["status"] == FAIL
+        assert {v["code"] for v in staged_body["violations"]} == {"SCREEN_CONTRACT_ROW_UNBOUND"}
+
+        contracts.write_text(_sc_contracts_text([], registry_ids=[SCR1]))
         bad = cli()
         assert bad.returncode == 1
         body = json.loads(bad.stdout)
         assert body["status"] == FAIL
         codes = {v["code"] for v in body["violations"]}
-        assert codes == {"SCREEN_CONTRACT_COUNT_MISMATCH", "UNMAPPED_SCREEN_CONTRACT"}
+        assert codes == {"SCREEN_CONTRACT_COUNT_MISMATCH", "UNMAPPED_SCREEN_CONTRACT",
+                         "SCREEN_CONTRACT_CANONICAL_COUNT_MISMATCH",
+                         "SCREEN_CONTRACT_SOURCE_DRIFT"}
 
 
 # --- domain-uniqueness gate (TSD §24.1 gate 6, ADR-013 P1-P5 plus the D4
