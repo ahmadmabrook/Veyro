@@ -1,0 +1,145 @@
+# M1-C-08 - GOV-01-R04 CI candidate: minimal feature-branch push + pull_request
+# wiring for the real, already-committed MOD-001 repository-skeleton check
+# (`tools/validate_repo_skeleton.py`, GOV-01-R01/SCN-MOD001-003).
+#
+# STATUS: UNREVIEWED CANDIDATE. Not a required
+# status check, not a gate, not CI/Gatekeeper/R04/module credit. Adding this
+# file alone does not make a check required on `main`; that is a separate
+# owner-executed branch-protection action, not taken here.
+#
+# Trust model (deliberately simpler than the `pull_request_target` gates in
+# this directory, and simpler on purpose):
+#   This check has nothing worth protecting from the code it inspects - it
+#   only asks "does the exact pushed/candidate commit contain these required
+#   paths as genuine files", read-only, no secrets, no privileged token, no
+#   trusted/candidate byte split. There is therefore no reason to reach for
+#   `pull_request_target` (which exists only to run a *trusted* definition
+#   against *untrusted* code, typically to protect a secret or a write-scoped
+#   token neither of which exist here). Plain `pull_request` and `push` are
+#   the correct, smaller-blast-radius events for this job, matching
+#   `test-pyramid.yml`'s own precedent of using plain `pull_request` for
+#   checks that need no elevated trust split.
+#
+#   Both the workflow definition at trigger time and the validator it runs
+#   come from the SAME commit: the pushed commit for `push`, the PR head
+#   commit for `pull_request`. There is nothing to compare against a
+#   trusted snapshot, because nothing here is trusted differently from
+#   anything else - the whole point is to check the candidate's own tree.
+#
+#   `permissions: {}` and a tokenless `git fetch` by exact SHA: no action
+#   reference (`iac.md` control 5 - no `uses:` line anywhere, matching every
+#   other candidate in this directory), no `secrets.` reference of any kind.
+#   The fetch is anonymous, so it requires the remote to be fetchable without
+#   credentials. The live GitHub repository is PUBLIC (verified 2026-10-15),
+#   but exact-SHA fetch reachability is not proven until a real run.
+#
+# SHA resolution without untrusted shell interpolation: `HEAD_SHA` is chosen
+# by a GitHub Actions expression evaluated BEFORE the shell ever runs,
+# selecting `github.event.pull_request.head.sha` for `pull_request` (never
+# `github.sha`, which for that event is a synthetic merge commit, not the
+# candidate's own head) and `github.sha` for `push` (the exact pushed
+# commit). The chosen value then reaches the shell only via `env:`, never
+# spliced into the script body - the same untrusted-value convention every
+# other workflow in this directory uses.
+#
+# Fail-closed by construction:
+#   - malformed `REPO`/`HEAD_SHA` (anything not a well-formed `owner/name` /
+#     exact 40-hex commit sha) denies before any fetch is attempted.
+#   - wrong checkout: the checked-out `HEAD` is compared back against the
+#     exact requested `HEAD_SHA`; a mismatch denies instead of silently
+#     validating the wrong tree.
+#   - absent/symlinked validator: the candidate commit's own tree entry for
+#     `tools/validate_repo_skeleton.py` must be a regular-file blob
+#     (mode 100644/100755); a missing path or a symlink/gitlink/irregular
+#     entry denies by name, and the materialized on-disk path is checked
+#     the same way as a second, independent confirmation.
+#   - any other nonzero (old/missing Python 3.10+, the validator's own
+#     `MISSING_REQUIRED_PATH` exit 1) ends the job under `set -euo pipefail`,
+#     with no masking of any kind (no `|| true`, no `continue-on-error`,
+#     no `if: always()`).
+#
+# NOT claimed:
+#   - This source file grants no CI result, SCN-MOD001-003-live evidence,
+#     required status check or certification input. Any run must be verified
+#     separately against its exact head, run ID and logs.
+#   - Branch protection on `main`, every other committed workflow, the
+#     Gradle/OSV dependency gate, and the governance dashboard/tooling are
+#     untouched by this file.
+#   - Fork-PR fetch reachability (whether GitHub.com serves a bare 40-hex
+#     fork head SHA to an anonymous fetch) is the same open, undischarged
+#     precondition every tokenless-fetch gate in this directory already
+#     carries, and is not resolved here.
+
+name: foundation-skeleton-ci
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+
+permissions: {}
+
+jobs:
+  foundation-skeleton-ci:
+    name: foundation-skeleton-ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the exact candidate head tokenlessly and run the real repo-skeleton validator
+        env:
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'foundation-skeleton-ci: DENY - %s\n' "$1" >&2; exit 1; }
+
+          [[ "$REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ && "${REPO#*/}" != "." && "${REPO#*/}" != ".." ]] \
+            || deny "github.repository '$REPO' is not a well-formed owner/name"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || deny "head sha '$HEAD_SHA' is not a 40-hex commit sha"
+
+          repo_url="$SERVER_URL/$REPO.git"
+          validator_rel="tools/validate_repo_skeleton.py"
+
+          work="${RUNNER_TEMP:?RUNNER_TEMP is required}/foundation-skeleton-ci"
+          rm -rf "$work"
+          mkdir -p "$work"
+          head_dir="$work/head"
+
+          # --- 1. Fetch and check out the exact candidate commit, by SHA only ---
+          git init -q "$head_dir"
+          git -C "$head_dir" remote add origin "$repo_url"
+          git -C "$head_dir" fetch -q --no-tags --depth=1 origin "$HEAD_SHA"
+          git -C "$head_dir" checkout -q --detach FETCH_HEAD
+
+          actual_sha="$(git -C "$head_dir" rev-parse HEAD)"
+          [[ "$actual_sha" == "$HEAD_SHA" ]] \
+            || deny "checked-out HEAD $actual_sha does not match requested $HEAD_SHA"
+          printf 'checked out exact head: %s\n' "$HEAD_SHA"
+
+          # --- 2. The validator itself must be a genuine, regular file ---
+          mode="$(git -C "$head_dir" ls-tree --full-tree "$HEAD_SHA" -- "$validator_rel" | cut -d' ' -f1)"
+          case "$mode" in
+            100644|100755) ;;
+            "") deny "head $HEAD_SHA has no $validator_rel" ;;
+            *) deny "refused head tree entry mode $mode at '$validator_rel' (symlink/gitlink/irregular)" ;;
+          esac
+          [[ -f "$head_dir/$validator_rel" && ! -L "$head_dir/$validator_rel" ]] \
+            || deny "materialized $validator_rel is missing or a symlink on disk"
+
+          # --- 3. Runner interpreter must support the validator's PEP 604 syntax ---
+          python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+            || deny "runner python3 is older than 3.10 (validate_repo_skeleton.py needs 3.10+ for its 'str | None' syntax)"
+
+          # --- 4. Execute the real validator against the exact fetched head ---
+          # No `--root` override: the validator resolves its own repo root via
+          # `git rev-parse --show-toplevel` relative to its own file location,
+          # which is `$head_dir` here since that is a genuine checkout with its
+          # own `.git`. Its exit code ends the job directly under `set -e`;
+          # nothing wraps or reinterprets it.
+          printf 'executing %s from head %s\n' "$validator_rel" "$HEAD_SHA"
+          python3 "$head_dir/$validator_rel"
