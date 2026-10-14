@@ -41,13 +41,20 @@
 #     module. Anything under backend/ that is a symlink or gitlink, a .py/.pyi
 #     that is not a plain 100644 blob, or a path under backend/.venv denies the
 #     job. Non-Python files under backend/ keep their trusted bytes (mypy does
-#     not read them), except that the gate-defining paths named above must be equal.
-#   - Tamper deny: the SOURCE_SHA copies of this workflow, the wrapper, the
-#     assertion script, the lock, backend/pyproject.toml and the other mypy
-#     config-discovery files must be byte- and mode-identical to the trusted
-#     entries (absent on both sides counts as equal). A PR that edits any of
-#     them fails its own check instead of landing a weakened gate; changing
-#     them takes a separate reviewed default-branch change.
+#     not read them); none of them is ever copied, and a followed module may not
+#     lie beneath a protected path.
+#   - Protected-path change reporting (BUG-063 preactivation design, not a gate):
+#     the mode, type and object id (or an explicit ABSENT) of this workflow, the
+#     wrapper, the assertion script, the lock, backend/pyproject.toml, the other
+#     mypy config-discovery files and the trusted workflow test are listed for
+#     TRUSTED_SHA and SOURCE_SHA. Each path prints PROTECTED_PATH_UNCHANGED or
+#     PROTECTED_PATH_CHANGE with both entries, then one PROTECTED_PATH_SUMMARY. A
+#     difference is REPORTED, not denied, and the source bytes are never copied
+#     or executed: every gate-defining byte still comes from TRUSTED_SHA only, so a
+#     PR edit cannot weaken the run that checks it. A failed, empty-root or
+#     malformed listing denies the job. Reporting is not approval; a governed
+#     review route and the GitHub protection settings for changes to these paths
+#     are separate work and are not claimed here.
 # Switching it on is NOT done here. It needs, at minimum: replacing the
 # trigger with `pull_request_target` (types opened/synchronize/reopened,
 # branches main), allowing event `pull_request_target`, setting SOURCE_SHA to
@@ -58,7 +65,7 @@
 # trusted sha tokenlessly and prove HEAD equals it, fetch the source sha into a
 # bare store and prove it is that commit; regular-file, non-symlink and
 # pinned-SHA-256 checks on the wrapper, the interpreter assertion script and
-# the Linux cp313 lock in the trusted tree; tamper deny and inert
+# the Linux cp313 lock in the trusted tree; protected-path change report and inert
 # materialization of the source backend/app and backend/ modules; resolve a CPython 3.13
 # linux-x86_64 64-bit interpreter with tools/assert_ci_python313.py (deny,
 # never fall back to python3); venv from it with the bundled, unupgraded pip;
@@ -104,6 +111,13 @@
 #     proof, which are repository settings outside this file; (4) a public
 #     repository is assumed for the tokenless fetches; (5) CI-scope assurance
 #     of the composed design and of CAP-012 for CI use.
+#   - PROTECTED-PATH ROUTE NOT DONE: a reported PROTECTED_PATH_CHANGE does not by
+#     itself stop a PR that edits a gate-defining path from merging. A separate
+#     governed review route for those paths (no CODEOWNERS file exists and only one
+#     GitHub collaborator is present, so a code-owner review cannot be claimed
+#     viable) and the GitHub protection settings still have to be designed and
+#     verified. A listing that silently returns empty for a single path query is
+#     indistinguishable from an absent path.
 #   - KNOWN RESIDUALS: the wrapper follows imports from backend/app into other
 #     in-repository modules under backend/; the composed tree now carries the
 #     PR head's bytes for all of them (BUG-064), but a PR edit that changes
@@ -192,7 +206,7 @@ jobs:
           [[ ! -e "$work/backend/.venv" && ! -L "$work/backend/.venv" ]] \
             || { echo "DENY: backend/.venv is committed in the trusted tree" >&2; exit 1; }
 
-      - name: Deny candidate tamper; materialize source backend/app and backend/ modules as inert data
+      - name: Report protected-path changes (trusted bytes only); materialize source backend/app and backend/ modules as inert data
         env:
           TRUSTED_SHA: ${{ github.sha }}
           SOURCE_SHA: ${{ github.sha }}
@@ -209,20 +223,50 @@ jobs:
           [[ "$(git -C "$src" rev-parse "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" ]] \
             || deny "source objects are not commit $SOURCE_SHA"
 
-          # Tamper deny: mode, type and object id of each gate-defining path
-          # must match the trusted entry; absent on both sides is equal.
-          for rel in \
-            .github/workflows/typecheck-required-candidate.yml \
-            tools/run_scoped_mypy.py \
-            tools/assert_ci_python313.py \
-            backend/requirements-typecheck-linux-x86_64-cp313.lock.txt \
-            backend/pyproject.toml backend/mypy.ini backend/.mypy.ini backend/setup.cfg backend/tox.ini
-          do
-            want="$(git -C "$work" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")"
-            got="$(git -C "$src" ls-tree --full-tree "$SOURCE_SHA" -- "$rel")"
-            [[ "$got" == "$want" ]] \
-              || deny "candidate changed $rel; gate bytes must come from the reviewed trusted sha"
+          # Protected-path change report (BUG-063 preactivation design): list the mode, type
+          # and object id of each gate-defining path at the trusted and the source sha and
+          # REPORT every difference (ABSENT where the path does not exist). Reporting copies
+          # nothing and approves nothing; gate bytes come from the trusted tree only. A failed,
+          # empty-root or malformed listing denies instead of passing silently.
+          protected=(
+            .github/workflows/typecheck-required-candidate.yml
+            tools/run_scoped_mypy.py
+            tools/assert_ci_python313.py
+            backend/requirements-typecheck-linux-x86_64-cp313.lock.txt
+            backend/pyproject.toml
+            backend/mypy.ini
+            backend/.mypy.ini
+            backend/setup.cfg
+            backend/tox.ini
+            tools/tests/test_typecheck_required_candidate_workflow.py
+          )
+          ent=""
+          entry_of() {
+            local repo="$1" sha="$2" rel="$3" raw meta listed
+            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"
+            raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny "listing failed for $rel at $sha"
+            if [[ -z "$raw" ]]; then ent="ABSENT"; return 0; fi
+            [[ "$raw" != *$'\n'* ]] || deny "more than one listing entry for $rel at $sha"
+            meta="${raw%%$'\t'*}"
+            listed="${raw#*$'\t'}"
+            [[ "$listed" == "$rel" ]] || deny "listing entry for $rel at $sha names another path"
+            [[ "$meta" =~ ^[0-7]{6}\ (blob|tree|commit)\ [0-9a-f]{40}$ ]] || deny "malformed listing entry for $rel at $sha"
+            ent="$meta"
+          }
+          changed=0
+          for rel in "${protected[@]}"; do
+            entry_of "$work" "$TRUSTED_SHA" "$rel"
+            want="$ent"
+            entry_of "$src" "$SOURCE_SHA" "$rel"
+            got="$ent"
+            if [[ "$got" == "$want" ]]; then
+              echo "PROTECTED_PATH_UNCHANGED: $rel [$want]"
+            else
+              echo "PROTECTED_PATH_CHANGE: $rel trusted=[$want] source=[$got]"
+              changed=$((changed + 1))
+            fi
           done
+          echo "PROTECTED_PATH_SUMMARY: checked=${#protected[@]} changed=$changed trusted=$TRUSTED_SHA source=$SOURCE_SHA (reported only; never copied, never approval)"
 
           # Source backend/app: blobs only, screened, written as data.
           git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"
@@ -272,6 +316,9 @@ jobs:
               *.py|*.pyi)
                 [[ "$mode" == "100644" && "$type" == "blob" ]] \
                   || deny "refused source module entry mode $mode type $type at '$path' (executable or irregular)"
+                for p in "${protected[@]}"; do
+                  case "$path" in "$p"/*) deny "source module '$path' lies under protected path $p" ;; esac
+                done
                 mkdir -p "$outstage/$(dirname "$path")"
                 git -C "$src" cat-file blob "$oid" > "$outstage/$path"
                 printf '%s\t%s\0' "$oid" "$path" >> "$RUNNER_TEMP/outside.lst"
@@ -356,7 +403,7 @@ jobs:
 
       - name: Execute trusted closed-world workflow test (pinned bytes, asserted venv; failure, skip or zero tests deny)
         env:
-          TEST_SHA256: 56218d50ef81ac2c88a567b14c8dad1da65c400a816d6c3079f463a529b127ac
+          TEST_SHA256: 323068996a4f0ee79848f43a4c548e24792c552263cae129795c1577b0609aed
         shell: bash
         run: |
           set -euo pipefail

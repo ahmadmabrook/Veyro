@@ -18,7 +18,7 @@ parsed line-wise. The tests do not just mirror the file:
      it must be flagged, including the five BUG-062 mutants (zero-file success
      regex, removed DENY screen, dropped `env -i`, added `pip3 install`, extra
      job) and the BUG-061 boundary mutants (wrapper run from source, no
-     tamper compare, executable-mode source blobs, source checkout, ...).
+     report compare, executable-mode source blobs, source checkout, ...).
   2. The extracted steps are EXECUTED under bash with stubs: wrong event/ref/
      sha is denied before any fetch; a wrong pin is denied; the wrapper step
      passes only on rc 0 with the exact success text and fails on everything
@@ -27,11 +27,11 @@ parsed line-wise. The tests do not just mirror the file:
      the mutated step script, independent of audit().
   3. The trusted-definition boundary runs against synthetic git repositories
      where the trusted sha and the source sha DIFFER: app-only changes are
-     composed into the trusted tree; any change to the workflow, wrapper,
-     assertion script, lock or mypy config (edit, delete, mode change, symlink
-     swap, new config file) is denied; symlink, executable or gitlink source
-     entries and a missing backend/app are denied; nothing from the source is
-     executed.
+     composed into the trusted tree; any change to a protected path (the workflow, wrapper,
+     assertion script, lock, mypy config or the trusted workflow test: edit, delete, mode
+     change, symlink swap, new config file) is REPORTED (see 3f) and never copied; symlink,
+     executable or gitlink source entries and a missing backend/app are denied; nothing
+     from the source is executed.
   3b. BUG-062 round 2: steps 2 and 3 are frozen line-for-line in audit(); the
      mutated step-2 pin guard (got==got, wrapper check removed) and mutated
      step-3 (post-pin cp/cat of source bytes over a pinned trusted file) are
@@ -62,6 +62,18 @@ parsed line-wise. The tests do not just mirror the file:
      over the workflow with the 64-hex `TEST_SHA256` value masked (`masked_workflow`); the
      pin value itself is verified against the file on disk by audit() and at run time.
      Behaviour is executed against stub interpreters and synthetic trusted trees.
+  3f. BUG-063 protected-path reporting (preactivation design candidate, not a gate): the former
+     blanket deny of nine protected-path edits is replaced by deterministic fail-closed
+     reporting over ten paths (the nine plus the newly executable trusted workflow test).
+     Each path prints PROTECTED_PATH_UNCHANGED or PROTECTED_PATH_CHANGE with the exact
+     trusted and source mode/type/object id (or ABSENT); a PROTECTED_PATH_SUMMARY follows.
+     Differences never deny and never copy source bytes: every gate-defining byte stays
+     from TRUSTED_SHA. A failed, empty-root or malformed listing, a source module beneath a
+     protected path, and the existing symlink/gitlink/executable screens still deny.
+     Synthetic repos with trusted != source and a git stub exercise changed/deleted/added/
+     mode/type differences, unchanged paths, no source gate bytes materialized or executed,
+     malformed-listing denials and executable mutants of the new lines. Reporting is not a
+     review route: CODEOWNERS and GitHub protection settings are not claimed.
   4. The candidate branch named in the trigger must not exist in this
      repository (no accidental activation).
 """
@@ -100,7 +112,7 @@ FORBIDDEN_TRIGGERS = {
 EXPECTED_STEPS = (
     "Deny unless candidate-only ref",
     "Guard pinned inputs",
-    "Deny candidate tamper",
+    "Report protected-path changes",
     "Resolve and assert CPython 3.13",
     "Create venv from asserted interpreter",
     "Hash-enforced install",
@@ -113,7 +125,7 @@ EXPECTED_ENV = {
         "TRUSTED_SHA": "${{ github.sha }}", "SOURCE_SHA": "${{ github.sha }}",
         "REPO_URL": "${{ github.server_url }}/${{ github.repository }}.git",
     },
-    "Deny candidate tamper": {"TRUSTED_SHA": "${{ github.sha }}", "SOURCE_SHA": "${{ github.sha }}"},
+    "Report protected-path changes": {"TRUSTED_SHA": "${{ github.sha }}", "SOURCE_SHA": "${{ github.sha }}"},
 }
 # Gate-defining paths whose source copy must equal the trusted entry.
 PROTECTED = (
@@ -126,7 +138,11 @@ PROTECTED = (
     "backend/.mypy.ini",
     "backend/setup.cfg",
     "backend/tox.ini",
+    "tools/tests/test_typecheck_required_candidate_workflow.py",
 )
+# Protected paths present in the synthetic base commit, and those absent there (candidate-added config files).
+BASE_PROTECTED = PROTECTED[:5] + PROTECTED[9:]
+ABSENT_PROTECTED = PROTECTED[5:9]
 INSTALLER_RE = re.compile(
     r"\bpip[0-9.]*\s+(install|download|wheel)\b|-m\s+pip\s+(install|download|wheel)\b|\bensurepip\b|"
     r"\beasy_install\b|\buv\s+(pip|sync|add)\b|\bget-pip\b|setup\.py\s+(install|develop)|\bpipx\b|"
@@ -204,18 +220,45 @@ TAMPER_STEP_LINES = (
     '[[ "$(git -C "$work" rev-parse HEAD)" == "$TRUSTED_SHA" ]] || deny "trusted tree is not $TRUSTED_SHA"',
     '[[ "$(git -C "$src" rev-parse "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" ]] \\',
     '  || deny "source objects are not commit $SOURCE_SHA"',
-    'for rel in \\',
-    '  .github/workflows/typecheck-required-candidate.yml \\',
-    '  tools/run_scoped_mypy.py \\',
-    '  tools/assert_ci_python313.py \\',
-    '  backend/requirements-typecheck-linux-x86_64-cp313.lock.txt \\',
-    '  backend/pyproject.toml backend/mypy.ini backend/.mypy.ini backend/setup.cfg backend/tox.ini',
-    'do',
-    '  want="$(git -C "$work" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")"',
-    '  got="$(git -C "$src" ls-tree --full-tree "$SOURCE_SHA" -- "$rel")"',
-    '  [[ "$got" == "$want" ]] \\',
-    '    || deny "candidate changed $rel; gate bytes must come from the reviewed trusted sha"',
+    'protected=(',
+    '  .github/workflows/typecheck-required-candidate.yml',
+    '  tools/run_scoped_mypy.py',
+    '  tools/assert_ci_python313.py',
+    '  backend/requirements-typecheck-linux-x86_64-cp313.lock.txt',
+    '  backend/pyproject.toml',
+    '  backend/mypy.ini',
+    '  backend/.mypy.ini',
+    '  backend/setup.cfg',
+    '  backend/tox.ini',
+    '  tools/tests/test_typecheck_required_candidate_workflow.py',
+    ')',
+    'ent=""',
+    'entry_of() {',
+    '  local repo="$1" sha="$2" rel="$3" raw meta listed',
+    '  [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"',
+    '  raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny "listing failed for $rel at $sha"',
+    '  if [[ -z "$raw" ]]; then ent="ABSENT"; return 0; fi',
+    '  [[ "$raw" != *$\'\\n\'* ]] || deny "more than one listing entry for $rel at $sha"',
+    '  meta="${raw%%$\'\\t\'*}"',
+    '  listed="${raw#*$\'\\t\'}"',
+    '  [[ "$listed" == "$rel" ]] || deny "listing entry for $rel at $sha names another path"',
+    '  [[ "$meta" =~ ^[0-7]{6}\\ (blob|tree|commit)\\ [0-9a-f]{40}$ ]] || deny "malformed listing entry for $rel at $sha"',
+    '  ent="$meta"',
+    '}',
+    'changed=0',
+    'for rel in "${protected[@]}"; do',
+    '  entry_of "$work" "$TRUSTED_SHA" "$rel"',
+    '  want="$ent"',
+    '  entry_of "$src" "$SOURCE_SHA" "$rel"',
+    '  got="$ent"',
+    '  if [[ "$got" == "$want" ]]; then',
+    '    echo "PROTECTED_PATH_UNCHANGED: $rel [$want]"',
+    '  else',
+    '    echo "PROTECTED_PATH_CHANGE: $rel trusted=[$want] source=[$got]"',
+    '    changed=$((changed + 1))',
+    '  fi',
     'done',
+    'echo "PROTECTED_PATH_SUMMARY: checked=${#protected[@]} changed=$changed trusted=$TRUSTED_SHA source=$SOURCE_SHA (reported only; never copied, never approval)"',
     'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"',
     '[[ -s "$RUNNER_TEMP/app.lst" ]] || deny "source has no backend/app entries"',
     'rm -rf "$stage"',
@@ -255,6 +298,9 @@ TAMPER_STEP_LINES = (
     '    *.py|*.pyi)',
     '      [[ "$mode" == "100644" && "$type" == "blob" ]] \\',
     '        || deny "refused source module entry mode $mode type $type at \'$path\' (executable or irregular)"',
+    '      for p in "${protected[@]}"; do',
+    '        case "$path" in "$p"/*) deny "source module \'$path\' lies under protected path $p" ;; esac',
+    '      done',
     '      mkdir -p "$outstage/$(dirname "$path")"',
     '      git -C "$src" cat-file blob "$oid" > "$outstage/$path"',
     '      printf \'%s\\t%s\\0\' "$oid" "$path" >> "$RUNNER_TEMP/outside.lst"',
@@ -289,7 +335,7 @@ TAMPER_STEP_LINES = (
 # This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
 # Computed over the workflow with the TEST_SHA256 value masked (see `masked_workflow`), because
 # the workflow pins this file's digest and this file pins the workflow's.
-WORKFLOW_SHA256 = "c08d9d537796f57231e052fb30c1f65f3752fe42b374d5efd6a3a20f6ac3f776"
+WORKFLOW_SHA256 = "626317585c3e234ad6132be78c2eb38a1a8b9ab5913ac9805108ea83604679f0"
 TEST_PIN_RE = re.compile(rb"(?m)^(          TEST_SHA256: )[0-9a-f]{64}$")
 
 REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
@@ -569,16 +615,22 @@ def audit(text):
         bad.append("git verb that could materialize or run source content")
     if 'git init -q --bare "$src"' not in code:
         bad.append("source objects must live in a bare store")
-    tamper_scripts = [s for n, _e, s in parsed if n.startswith("Deny candidate tamper")]
+    if re.search(r"candidate changed|gate bytes must come from the reviewed trusted sha", code):
+        bad.append("protected-path difference is denied instead of reported")
+    tamper_scripts = [s for n, _e, s in parsed if n.startswith("Report protected-path changes")]
     ts = tamper_scripts[0] if tamper_scripts else ""
     for rel in PROTECTED:
-        if f"            {rel}" not in ts and f" {rel}" not in ts:
-            bad.append(f"tamper compare does not cover {rel}")
+        if f"\n  {rel}\n" not in ts:
+            bad.append(f"protected-path report does not cover {rel}")
     for needle in ('[[ "$(git -C "$work" rev-parse HEAD)" == "$TRUSTED_SHA" ]] || deny "trusted tree is not $TRUSTED_SHA"',
                    '[[ "$(git -C "$src" rev-parse "$SOURCE_SHA^{commit}")" == "$SOURCE_SHA" ]] \\\n  || deny "source objects are not commit $SOURCE_SHA"',
-                   'want="$(git -C "$work" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")"',
-                   'got="$(git -C "$src" ls-tree --full-tree "$SOURCE_SHA" -- "$rel")"',
-                   '[[ "$got" == "$want" ]]',
+                   'entry_of "$work" "$TRUSTED_SHA" "$rel"',
+                   'entry_of "$src" "$SOURCE_SHA" "$rel"',
+                   'raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny',
+                   '[[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny',
+                   'if [[ "$got" == "$want" ]]; then',
+                   'echo "PROTECTED_PATH_CHANGE: $rel trusted=[$want] source=[$got]"',
+                   'case "$path" in "$p"/*) deny',
                    '[[ "$mode" == "100644" && "$type" == "blob" ]]',
                    'git -C "$src" cat-file blob "$oid" > "$stage/$path"',
                    'rm -rf "$work/backend/app"',
@@ -601,7 +653,7 @@ def audit(text):
         bad.append("assertion script is not run from the trusted tree")
 
     # --- steps 2 and 3 are frozen line-for-line (BUG-062 round 2) ----------
-    for prefix, frozen in (("Guard pinned inputs", GUARD_STEP_LINES), ("Deny candidate tamper", TAMPER_STEP_LINES),
+    for prefix, frozen in (("Guard pinned inputs", GUARD_STEP_LINES), ("Report protected-path changes", TAMPER_STEP_LINES),
                            ("Execute trusted closed-world workflow test", TEST_STEP_LINES)):
         got_lines = [ln.rstrip() for n, _e, s in parsed if n.startswith(prefix) for ln in s.splitlines() if ln.strip()]
         if tuple(got_lines) != frozen:
@@ -616,8 +668,9 @@ def audit(text):
         bad.append("exactly one trusted workflow test step is required")
     elif [ln.strip().split(":")[0] for ln in ttest[0][0] if ln.strip()] != ["TEST_SHA256"]:
         bad.append("trusted test step env must be exactly TEST_SHA256")
-    if len(re.findall(r"tools/tests/test_typecheck_required_candidate_workflow\.py", code)) != 1:
-        bad.append("trusted test file must be referenced exactly once, from the trusted tree")
+    # two references only: the protected-path report entry and the trusted-tree execution path
+    if len(re.findall(r"tools/tests/test_typecheck_required_candidate_workflow\.py", code)) != 2:
+        bad.append("trusted test file must be referenced exactly twice: protected-path report and trusted-tree execution")
     if 'tfile="$work/tools/tests/test_typecheck_required_candidate_workflow.py"' not in code:
         bad.append("trusted test is not executed from the trusted tree")
 
@@ -876,8 +929,13 @@ class AuditPolicyTest(unittest.TestCase):
             "wrapper run from source": tamper(t, '-I "$work/tools/run_scoped_mypy.py"', '-I "$stage/tools/run_scoped_mypy.py"'),
             "assert script from source": tamper(t, 'assert="$RUNNER_TEMP/work/tools/assert_ci_python313.py"',
                                                 'assert="$RUNNER_TEMP/source-app/tools/assert_ci_python313.py"'),
-            "tamper compare neutered": tamper(t, '[[ "$got" == "$want" ]] \\', 'true \\'),
-            "protected path dropped": tamper(t, "            backend/pyproject.toml backend/mypy.ini", "            backend/mypy.ini"),
+            "report compare neutered": tamper(t, 'if [[ "$got" == "$want" ]]; then', 'if true; then'),
+            "protected path dropped": tamper(t, "            backend/pyproject.toml\n", ""),
+            "trusted test path dropped": tamper(t, "            tools/tests/test_typecheck_required_candidate_workflow.py\n          )", "          )"),
+            "difference denied again": tamper(t, 'changed=$((changed + 1))', 'deny "candidate changed $rel"'),
+            "listing failure ignored": tamper(t, '"$sha" -- "$rel")" || deny "listing failed for $rel at $sha"', '"$sha" -- "$rel")" || true'),
+            "malformed listing accepted": tamper(t, '[[ "$meta" =~ ^[0-7]{6}\\ (blob|tree|commit)\\ [0-9a-f]{40}$ ]] || deny', 'true || deny'),
+            "root sanity dropped": tamper(t, '            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"\n', ""),
             "executable mode accepted": tamper(t, '[[ "$mode" == "100644" && "$type" == "blob" ]]',
                                                '[[ "$type" == "blob" ]]'),
             "path screen dropped": tamper(t, "*/../*|*/./*|*//*|*/.git/*) deny", "*/.git/*) deny"),
@@ -1001,6 +1059,7 @@ class SyntheticRepo:
         "tools/assert_ci_python313.py": "assert-v1\n",
         "backend/requirements-typecheck-linux-x86_64-cp313.lock.txt": "lock-v1\n",
         "backend/pyproject.toml": "[tool.mypy]\n",
+        "tools/tests/test_typecheck_required_candidate_workflow.py": "test-v1\n",
         "backend/app/__init__.py": "VALUE = 1\n",
         "backend/app/pkg/mod.py": "def f() -> int:\n    return 1\n",
     }
@@ -1033,6 +1092,33 @@ class SyntheticRepo:
         files = dict(self.BASE)
         files.update(kw.pop("set", {}))
         return self.commit(files=files, **kw)
+
+
+def git_entry(repo, sha, rel):
+    """Independent git oracle for one report entry: 'mode type oid', or ABSENT where the path does not exist."""
+    out = _git(repo, "ls-tree", "--full-tree", sha, "--", rel).stdout.strip()
+    return out.split("\t")[0] if out else "ABSENT"
+
+
+def assert_protected_report(case, stdout, syn, trusted, source, changed):
+    """The step-3 report names exactly the paths in `changed`, with both entries, against a git oracle."""
+    lines = stdout.splitlines()
+    n_changed = 0
+    for rel in PROTECTED:
+        want, got = git_entry(syn.repo, trusted, rel), git_entry(syn.repo, source, rel)
+        reported = [ln for ln in lines if ln.startswith(("PROTECTED_PATH_UNCHANGED: ", "PROTECTED_PATH_CHANGE: "))
+                    and ln.split(" ")[1] == rel]
+        case.assertEqual(len(reported), 1, f"{rel} must be reported exactly once: {reported}")
+        if rel in changed:
+            case.assertNotEqual(want, got, f"test setup: {rel} does not differ")
+            case.assertEqual(reported[0], f"PROTECTED_PATH_CHANGE: {rel} trusted=[{want}] source=[{got}]")
+            n_changed += 1
+        else:
+            case.assertEqual(want, got, f"test setup: {rel} differs")
+            case.assertEqual(reported[0], f"PROTECTED_PATH_UNCHANGED: {rel} [{want}]")
+    summary = [ln for ln in lines if ln.startswith("PROTECTED_PATH_SUMMARY: ")]
+    case.assertEqual(summary, [f"PROTECTED_PATH_SUMMARY: checked={len(PROTECTED)} changed={n_changed} "
+                               f"trusted={trusted} source={source} (reported only; never copied, never approval)"])
 
 
 @unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git required")
@@ -1111,8 +1197,12 @@ class TrustedBoundaryTest(unittest.TestCase):
         self.rt.mkdir()
         self.syn = SyntheticRepo(self.tmp)
         self.step1 = step_script("Deny unless candidate-only ref")
-        self.step3 = step_script("Deny candidate tamper")
+        self.step3 = step_script("Report protected-path changes")
         self.trusted = self.syn.commit()
+
+    def fresh(self):
+        shutil.rmtree(self.rt / "work", ignore_errors=True)
+        shutil.rmtree(self.rt / "source.git", ignore_errors=True)
 
     def chain(self, source, step3=None):
         env = {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": self.trusted,
@@ -1125,6 +1215,13 @@ class TrustedBoundaryTest(unittest.TestCase):
 
     def work(self, rel):
         return self.rt / "work" / rel
+
+    def assertReported(self, r, source, changed):
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, changed)
+        for rel in BASE_PROTECTED:
+            self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], f"gate bytes not trusted: {rel}")
+        for rel in ABSENT_PROTECTED:
+            self.assertFalse(self.work(rel).exists(), f"source-only config copied: {rel}")
 
     def assertDenied(self, source, msg):
         r = self.chain(source)
@@ -1146,7 +1243,7 @@ class TrustedBoundaryTest(unittest.TestCase):
         self.assertTrue(self.work("backend/app/new.py").is_file())
         self.assertFalse(self.work("backend/app/__init__.py").exists(), "trusted app file survived replacement")
         # every executable / config byte is the trusted one
-        for rel in PROTECTED[:5]:
+        for rel in BASE_PROTECTED:
             self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], rel)
         self.assertIn("materialized 2 inert source blobs", r.stdout)
 
@@ -1166,7 +1263,7 @@ class TrustedBoundaryTest(unittest.TestCase):
             with self.subTest(label):
                 shutil.rmtree(self.rt / "work", ignore_errors=True)
                 shutil.rmtree(self.rt / "source.git", ignore_errors=True)
-                r = self.chain(source, step3=step_script("Deny candidate tamper", mutants[label]))
+                r = self.chain(source, step3=step_script("Report protected-path changes", mutants[label]))
                 self.assertEqual(r.returncode, 0, r.stderr)  # the mutant step still "succeeds"
                 self.assertEqual(self.work(rel).read_text(), evil, f"mutant is not load-bearing: {label}")
                 self.assertNotEqual(self.work(rel).read_text(), original)
@@ -1175,35 +1272,46 @@ class TrustedBoundaryTest(unittest.TestCase):
     def test_identical_trusted_and_source_sha_works(self):
         self.assertEqual(self.chain(self.trusted).returncode, 0)
 
-    def test_candidate_edit_of_any_gate_file_is_denied(self):
-        for rel in PROTECTED[:5]:
+    def test_candidate_edit_of_any_protected_path_is_reported_not_copied(self):
+        for rel in BASE_PROTECTED:
             with self.subTest(f"edit {rel}"):
-                shutil.rmtree(self.rt / "work", ignore_errors=True)
-                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+                self.fresh()
                 source = self.syn.variant(set={rel: "TAMPERED\n"})
-                self.assertDenied(source, f"candidate changed {rel}")
+                r = self.chain(source)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertReported(r, source, {rel})
                 self.assertNotIn("TAMPERED", self.work(rel).read_text())
+                self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel])
 
-    def test_candidate_delete_added_config_mode_or_symlink_of_gate_file_is_denied(self):
+    def test_candidate_delete_added_config_mode_or_symlink_of_protected_path_is_reported(self):
         cases = {
-            "delete workflow": dict(drop=(PROTECTED[0],)),
-            "delete pyproject": dict(drop=("backend/pyproject.toml",)),
-            "add mypy.ini": dict(set={"backend/mypy.ini": "[mypy]\nplugins = evil\n"}),
-            "add .mypy.ini": dict(set={"backend/.mypy.ini": "[mypy]\n"}),
-            "add setup.cfg": dict(set={"backend/setup.cfg": "[mypy]\n"}),
-            "add tox.ini": dict(set={"backend/tox.ini": "[mypy]\n"}),
-            "wrapper made executable": dict(execs=("tools/run_scoped_mypy.py",)),
-            "wrapper replaced by symlink": dict(drop=("tools/run_scoped_mypy.py",),
-                                                symlinks={"tools/run_scoped_mypy.py": "/tmp/evil.py"}),
-            "wrapper replaced by same-bytes symlink": dict(
+            "delete workflow": (dict(drop=(PROTECTED[0],)), PROTECTED[0]),
+            "delete pyproject": (dict(drop=("backend/pyproject.toml",)), "backend/pyproject.toml"),
+            "delete trusted test": (dict(drop=(PROTECTED[9],)), PROTECTED[9]),
+            "add mypy.ini": (dict(set={"backend/mypy.ini": "[mypy]\nplugins = evil\n"}), "backend/mypy.ini"),
+            "add .mypy.ini": (dict(set={"backend/.mypy.ini": "[mypy]\n"}), "backend/.mypy.ini"),
+            "add setup.cfg": (dict(set={"backend/setup.cfg": "[mypy]\n"}), "backend/setup.cfg"),
+            "add tox.ini": (dict(set={"backend/tox.ini": "[mypy]\n"}), "backend/tox.ini"),
+            "wrapper made executable": (dict(execs=("tools/run_scoped_mypy.py",)), "tools/run_scoped_mypy.py"),
+            "trusted test made executable": (dict(execs=(PROTECTED[9],)), PROTECTED[9]),
+            "wrapper replaced by symlink": (dict(drop=("tools/run_scoped_mypy.py",),
+                                                 symlinks={"tools/run_scoped_mypy.py": "/tmp/evil.py"}),
+                                            "tools/run_scoped_mypy.py"),
+            "wrapper replaced by same-bytes symlink": (dict(
                 drop=("tools/run_scoped_mypy.py",), symlinks={"tools/run_scoped_mypy.py": "wrapper-v1\n"}),
+                "tools/run_scoped_mypy.py"),
+            "trusted test replaced by a directory": (dict(drop=(PROTECTED[9],), set={PROTECTED[9] + "/x.txt": "x\n"}),
+                                                     PROTECTED[9]),
         }
-        for label, kw in cases.items():
+        for label, (kw, rel) in cases.items():
             with self.subTest(label):
-                shutil.rmtree(self.rt / "work", ignore_errors=True)
-                shutil.rmtree(self.rt / "source.git", ignore_errors=True)
-                self.assertDenied(self.syn.variant(**kw), "candidate changed")
+                self.fresh()
+                source = self.syn.variant(**kw)
+                r = self.chain(source)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertReported(r, source, {rel})
         self.assertFalse(self.work("backend/mypy.ini").exists())
+        self.assertFalse(self.work("backend/tox.ini").exists())
 
     def test_irregular_or_unsafe_source_app_entries_are_denied(self):
         cases = {
@@ -1297,7 +1405,7 @@ class FollowedModuleCompositionTest(unittest.TestCase):
         self.syn.BASE = {**SyntheticRepo.BASE, **self.EXTRA_BASE}
         self.text = WORKFLOW.read_text(encoding="utf-8")
         self.step1 = step_script("Deny unless candidate-only ref")
-        self.step3 = step_script("Deny candidate tamper")
+        self.step3 = step_script("Report protected-path changes")
         self.trusted = self.syn.commit()
 
     def fresh(self):
@@ -1320,7 +1428,7 @@ class FollowedModuleCompositionTest(unittest.TestCase):
         self.assertNotEqual(mutated_text, self.text, "mutant was a no-op")
         self.assertNotEqual(audit(mutated_text), [], "audit missed the mutant")
         self.assertNotEqual(snapshot_violations(mutated_text.encode("utf-8")), [], "snapshot missed the mutant")
-        return step_script("Deny candidate tamper", mutated_text)
+        return step_script("Report protected-path changes", mutated_text)
 
     def assert_trusted_tree_untouched(self):
         self.assertEqual(self.work(self.UTIL).read_text(), self.TRUSTED_UTIL)
@@ -1334,9 +1442,10 @@ class FollowedModuleCompositionTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.work(self.UTIL).read_text(), self.PR_UTIL)
         self.assertEqual(self.work("backend/notes.txt").read_text(), "trusted notes\n", "non-Python file left trusted")
-        for rel in PROTECTED[:5]:
+        for rel in BASE_PROTECTED:
             self.assertEqual(self.work(rel).read_text(), SyntheticRepo.BASE[rel], rel)
         self.assertIn("composed 2 followed backend/ .py/.pyi modules", r.stdout)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, set())
 
     def test_additions_pyi_and_nested_package_are_materialized(self):
         source = self.syn.variant(set={"backend/shared/extra.py": "E = 1\n", "backend/shared/util.pyi": "def u() -> int: ...\n",
@@ -1392,6 +1501,10 @@ class FollowedModuleCompositionTest(unittest.TestCase):
             "executable stub": (dict(set={"backend/shared/x.pyi": "x: int\n"}, execs=("backend/shared/x.pyi",)),
                                 "executable or irregular"),
             "module under backend/.venv": (dict(set={"backend/.venv/lib/evil.py": "X = 1\n"}), "unsafe source path"),
+            "module under a protected config path": (dict(set={"backend/mypy.ini/evil.py": "X = 1\n"}),
+                                                     "lies under protected path backend/mypy.ini"),
+            "stub under a protected config path": (dict(drop=("backend/pyproject.toml",), set={"backend/pyproject.toml/evil.pyi": "X: int\n"}),
+                                                   "lies under protected path backend/pyproject.toml"),
         }
         for label, (kw, msg) in cases.items():
             with self.subTest(label):
@@ -1401,12 +1514,13 @@ class FollowedModuleCompositionTest(unittest.TestCase):
                 self.assertIn(msg, r.stderr)
                 self.assert_trusted_tree_untouched()
 
-    def test_gate_config_edit_is_still_denied_alongside_a_module_edit(self):
+    def test_gate_config_edit_is_reported_while_the_module_edit_is_still_composed(self):
         source = self.syn.variant(set={self.UTIL: self.PR_UTIL, "backend/pyproject.toml": "[tool.mypy]\nplugins = ['evil']\n"})
         r = self.chain(source)
-        self.assertNotEqual(r.returncode, 0)
-        self.assertIn("candidate changed backend/pyproject.toml", r.stderr)
-        self.assert_trusted_tree_untouched()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, {"backend/pyproject.toml"})
+        self.assertEqual(self.work(self.UTIL).read_text(), self.PR_UTIL)
+        self.assertEqual(self.work("backend/pyproject.toml").read_text(), "[tool.mypy]\n", "config bytes must stay trusted")
 
     def test_followed_module_source_is_never_executed(self):
         marker = self.tmp / "executed.marker"
@@ -1463,6 +1577,9 @@ class FollowedModuleCompositionTest(unittest.TestCase):
                 dict(set={self.UTIL: self.PR_UTIL}, execs=(self.UTIL,))),
             "venv screen dropped": (tamper(self.text, "|*/.git/*|/backend/.venv/*) deny", "|*/.git/*) deny"),
                                     dict(set={"backend/.venv/lib/evil.py": "X = 1\n"})),
+            "protected-prefix screen dropped": (
+                tamper(self.text, 'case "$path" in "$p"/*) deny', 'case "$path" in "$p"/*) true'),
+                dict(set={"backend/mypy.ini/evil.py": "X = 1\n"})),
         }
         for label, (mutated, kw) in cases.items():
             with self.subTest(label):
@@ -1504,6 +1621,278 @@ class FollowedModuleCompositionTest(unittest.TestCase):
         old = closure(self.rt / "work")
         self.assertNotEqual(old, fixed, "pre-fix composition should not see the PR's edit")
         self.assertEqual(old, closure(write_tree(self.tmp / "trusted-reference", self.syn.BASE)))
+
+
+GIT_STUB = """#!/bin/bash
+# Test stub: replays canned output for ONE kind of non-recursive ls-tree query on one sha; real git otherwise.
+args=("$@"); is_ls=0; recursive=0; has_sep=0; sha=""; rel=""
+for ((i = 0; i < ${#args[@]}; i++)); do
+  a="${args[$i]}"
+  [[ "$a" == "ls-tree" ]] && is_ls=1
+  [[ "$a" == "-r" ]] && recursive=1
+  [[ "$a" == "--" ]] && { has_sep=1; rel="${args[$((i + 1))]}"; }
+  [[ "$a" == "--full-tree" ]] && sha="${args[$((i + 1))]}"
+done
+if [[ $is_ls == 1 && $recursive == 0 && "$sha" == "$FAKE_LS_SHA" ]]; then
+  kind=root; [[ $has_sep == 1 ]] && kind=path
+  if [[ "$kind" == "$FAKE_LS_KIND" && ( -z "${FAKE_LS_REL:-}" || "$rel" == "$FAKE_LS_REL" ) ]]; then
+    printf '%b' "$FAKE_LS_OUT"
+    exit "${FAKE_LS_RC:-0}"
+  fi
+fi
+exec "$REAL_GIT" "$@"
+"""
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git"), "bash and git required")
+class ProtectedPathReportTest(unittest.TestCase):
+    """BUG-063 preactivation design candidate: protected-path differences are REPORTED, never denied or copied.
+
+    Trusted sha != source sha throughout. Local synthetic repositories only: this is neither CI evidence
+    nor proof of any review route or GitHub protection setting, and it is no gate credit.
+    """
+
+    REL = "tools/run_scoped_mypy.py"
+    OID = "a" * 40
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="tcrc-pp-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.rt = self.tmp / "rt"
+        self.rt.mkdir()
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        stub = self.bin / "git"
+        stub.write_text(GIT_STUB)
+        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+        self.syn = SyntheticRepo(self.tmp)
+        self.text = WORKFLOW.read_text(encoding="utf-8")
+        self.step1 = step_script("Deny unless candidate-only ref")
+        self.step3 = step_script("Report protected-path changes")
+        self.trusted = self.syn.commit()
+
+    def fresh(self):
+        shutil.rmtree(self.rt / "work", ignore_errors=True)
+        shutil.rmtree(self.rt / "source.git", ignore_errors=True)
+
+    def env(self, source):
+        return {"EVENT_NAME": "push", "REF": f"refs/heads/{CANDIDATE_BRANCH}", "TRUSTED_SHA": self.trusted,
+                "SOURCE_SHA": source, "REPO_URL": f"file://{self.syn.repo}", "RUNNER_TEMP": str(self.rt)}
+
+    def chain(self, source, step3=None, fake=None):
+        env = self.env(source)
+        r1 = FakeBash.run(self.step1, env, self.tmp)
+        if r1.returncode != 0 and "not our ref" in r1.stderr:
+            self.skipTest("local git transport refuses fetch by sha")
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        if fake:
+            env = {**env, "PATH": f"{self.bin}:{os.environ['PATH']}", "REAL_GIT": shutil.which("git"), **fake}
+        return FakeBash.run(step3 or self.step3, env, self.tmp)
+
+    def work(self, rel):
+        return self.rt / "work" / rel
+
+    def mutant_step3(self, mutated_text):
+        self.assertNotEqual(mutated_text, self.text, "mutant was a no-op")
+        self.assertNotEqual(audit(mutated_text), [], "audit missed the mutant")
+        self.assertNotEqual(snapshot_violations(mutated_text.encode("utf-8")), [], "snapshot missed the mutant")
+        return step_script("Report protected-path changes", mutated_text)
+
+    def source_with_app_edit(self, **kw):
+        set_ = {"backend/app/pkg/mod.py": "def f() -> int:\n    return 5\n", **kw.pop("set", {})}
+        return self.syn.variant(set=set_, **kw)
+
+    # --- positives: unchanged and changed paths ---------------------------------------------------
+
+    def test_identical_trusted_and_source_report_every_path_unchanged(self):
+        r = self.chain(self.trusted)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, self.trusted, set())
+        self.assertEqual(len(PROTECTED), 10)
+        self.assertEqual(r.stdout.count("PROTECTED_PATH_UNCHANGED: "), 10)
+        self.assertNotIn("PROTECTED_PATH_CHANGE", r.stdout)
+        for rel in ABSENT_PROTECTED:
+            self.assertIn(f"PROTECTED_PATH_UNCHANGED: {rel} [ABSENT]", r.stdout)
+
+    def test_app_only_change_leaves_every_protected_path_unchanged(self):
+        source = self.source_with_app_edit()
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, set())
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), "def f() -> int:\n    return 5\n")
+
+    def test_changed_deleted_added_mode_and_type_changes_are_each_named_with_both_entries(self):
+        cases = {
+            "changed": (dict(set={self.REL: "wrapper-v2\n"}), self.REL, "100644 blob", "100644 blob"),
+            "deleted": (dict(drop=(self.REL,)), self.REL, "100644 blob", "ABSENT"),
+            "added": (dict(set={"backend/mypy.ini": "[mypy]\n"}), "backend/mypy.ini", "ABSENT", "100644 blob"),
+            "mode": (dict(execs=(self.REL,)), self.REL, "100644 blob", "100755 blob"),
+            "type symlink": (dict(drop=(self.REL,), symlinks={self.REL: "elsewhere"}), self.REL, "100644 blob", "120000 blob"),
+            "type directory": (dict(drop=(PROTECTED[9],), set={PROTECTED[9] + "/x.txt": "x\n"}), PROTECTED[9],
+                               "100644 blob", "040000 tree"),
+        }
+        for label, (kw, rel, was, now) in cases.items():
+            with self.subTest(label):
+                self.fresh()
+                source = self.source_with_app_edit(**kw)
+                r = self.chain(source)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                assert_protected_report(self, r.stdout, self.syn, self.trusted, source, {rel})
+                line = next(ln for ln in r.stdout.splitlines() if ln.startswith(f"PROTECTED_PATH_CHANGE: {rel} "))
+                self.assertTrue(line.split("trusted=[")[1].startswith(was) or was == "ABSENT", line)
+                self.assertIn(f"trusted=[{was}" if was != "ABSENT" else "trusted=[ABSENT]", line)
+                self.assertIn(f"source=[{now}" if now != "ABSENT" else "source=[ABSENT]", line)
+                self.assertIn(" changed=1 ", r.stdout)
+
+    def test_every_protected_path_including_the_trusted_test_file_is_reported_when_changed(self):
+        self.assertIn("tools/tests/test_typecheck_required_candidate_workflow.py", PROTECTED)
+        edits = {rel: f"edited {i}\n" for i, rel in enumerate(PROTECTED)}
+        source = self.syn.variant(set=edits)
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, set(PROTECTED))
+        self.assertIn(f"changed={len(PROTECTED)} ", r.stdout)
+        self.assertEqual(r.stdout.count("PROTECTED_PATH_CHANGE: "), len(PROTECTED))
+
+    # --- trusted bytes only: nothing from a changed protected path is materialized or executed -------
+
+    def test_changed_protected_paths_are_never_copied_or_executed(self):
+        marker = self.tmp / "executed.marker"
+        token = "SOURCE_GATE_PAYLOAD_7f3a"
+        payload = f'# {token}\nopen({str(marker)!r}, "w").write("x")\n'
+        edits = {rel: payload for rel in BASE_PROTECTED}
+        edits.update({rel: payload for rel in ABSENT_PROTECTED})
+        source = self.source_with_app_edit(set=edits)
+        r = self.chain(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, set(PROTECTED))
+        self.assertFalse(marker.exists(), "source content was executed")
+        for rel in BASE_PROTECTED:
+            blob = _git(self.syn.repo, "show", f"{self.trusted}:{rel}").stdout
+            self.assertEqual(self.work(rel).read_text(), blob, f"{rel} is not the trusted blob")
+            self.assertEqual(_git(self.rt / "work", "hash-object", "--no-filters", "--", str(self.work(rel))).stdout.strip(),
+                             git_entry(self.syn.repo, self.trusted, rel).split(" ")[2])
+        for rel in ABSENT_PROTECTED:
+            self.assertFalse(self.work(rel).exists(), f"{rel} was copied from the source")
+        self.assertEqual(_git(self.rt / "source.git", "rev-parse", "--is-bare-repository").stdout.strip(), "true")
+        seen = [q for q in self.rt.rglob("*") if q.is_file() and ".git" not in q.parts and "source.git" not in q.parts]
+        self.assertTrue(seen)
+        for q in seen:
+            self.assertNotIn(token.encode(), q.read_bytes(), f"source gate bytes found in {q}")
+        # the source app edit is still composed: only gate paths are withheld
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), "def f() -> int:\n    return 5\n")
+
+    # --- fail closed: failed, empty or malformed listings and missing prerequisites deny -------------
+
+    def _denied(self, label, source, fake, step3=None):
+        self.fresh()
+        r = self.chain(source, step3=step3, fake=fake)
+        return r
+
+    def test_failed_empty_or_malformed_listings_deny_instead_of_passing(self):
+        source = self.source_with_app_edit()
+        oid = self.OID
+        path_cases = {
+            "garbage": "garbage\n",
+            "short oid": f"100644 blob abc123\t{self.REL}\n",
+            "bad type": f"100644 file {oid}\t{self.REL}\n",
+            "bad mode": f"999999 blob {oid}\t{self.REL}\n",
+            "short mode": f"10064 blob {oid}\t{self.REL}\n",
+            "uppercase oid": f"100644 blob {oid.upper()}\t{self.REL}\n",
+            "no tab": f"100644 blob {oid} {self.REL}\n",
+            "other path": f"100644 blob {oid}\ttools/other.py\n",
+            "two entries": f"100644 blob {oid}\t{self.REL}\n100644 blob {oid}\t{self.REL}\n",
+            "extra field": f"100644 blob {oid} 12\t{self.REL}\n",
+        }
+        for side, sha in (("trusted", self.trusted), ("source", source)):
+            for label, out in path_cases.items():
+                with self.subTest(f"{side}: {label}"):
+                    r = self._denied(label, source, {"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "path",
+                                                     "FAKE_LS_REL": self.REL, "FAKE_LS_OUT": out})
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn("DENY:", r.stderr)
+                    self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
+                    self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(),
+                                     SyntheticRepo.BASE["backend/app/pkg/mod.py"], "denial left source bytes in the tree")
+            with self.subTest(f"{side}: listing command fails"):
+                r = self._denied("rc", source, {"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "path", "FAKE_LS_REL": self.REL,
+                                                "FAKE_LS_OUT": "", "FAKE_LS_RC": "128"})
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("listing failed", r.stderr)
+            for rc in ("0", "1"):
+                with self.subTest(f"{side}: root listing empty or failed rc {rc}"):
+                    r = self._denied("root", source, {"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "root", "FAKE_LS_OUT": "",
+                                                      "FAKE_LS_RC": rc})
+                    self.assertNotEqual(r.returncode, 0)
+                    self.assertIn("root listing", r.stderr)
+                    self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
+
+    def test_stub_for_another_sha_is_a_pass_through_control(self):
+        source = self.source_with_app_edit()
+        r = self.chain(source, fake={"FAKE_LS_SHA": "c" * 40, "FAKE_LS_KIND": "path", "FAKE_LS_OUT": "garbage\n"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        assert_protected_report(self, r.stdout, self.syn, self.trusted, source, set())
+
+    def test_missing_trusted_tree_or_source_objects_deny(self):
+        env = self.env(self.trusted)
+        r = FakeBash.run(self.step3, env, self.tmp)  # step 1 never ran: no trusted checkout, no source store
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
+        source = self.source_with_app_edit()
+        self.assertEqual(FakeBash.run(self.step1, self.env(source), self.tmp).returncode, 0)
+        shutil.rmtree(self.rt / "source.git")
+        r = FakeBash.run(self.step3, self.env(source), self.tmp)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), SyntheticRepo.BASE["backend/app/pkg/mod.py"])
+
+    def test_report_does_not_hide_a_later_screen_denial(self):
+        """A symlink at a protected backend path is reported, and the existing backend screen still denies the job."""
+        source = self.syn.variant(symlinks={"backend/mypy.ini": "elsewhere"})
+        r = self.chain(source)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("PROTECTED_PATH_CHANGE: backend/mypy.ini trusted=[ABSENT] source=[120000 blob ", r.stdout)
+        self.assertIn("mode 120000", r.stderr)
+        self.assertEqual(self.work("backend/app/pkg/mod.py").read_text(), SyntheticRepo.BASE["backend/app/pkg/mod.py"])
+
+    # --- executable mutants: each new check is load-bearing --------------------------------------------
+
+    def test_mutants_survive_only_where_the_committed_step_denies_or_reports(self):
+        source = self.source_with_app_edit()
+        edited = self.source_with_app_edit(set={self.REL: "wrapper-v2\n"})
+        t = self.text
+        path_fake = lambda sha, out, rc="0": {"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "path", "FAKE_LS_REL": self.REL,
+                                              "FAKE_LS_OUT": out, "FAKE_LS_RC": rc}
+        bad_type = f"100644 file {self.OID}\t{self.REL}\n"
+        survivors = {
+            "listing failure ignored": (tamper(t, '"$sha" -- "$rel")" || deny "listing failed for $rel at $sha"',
+                                        '"$sha" -- "$rel")" || true'), source, path_fake(source, "", "128")),
+            "malformed listing accepted": (tamper(t, '[[ "$meta" =~ ^[0-7]{6}\\ (blob|tree|commit)\\ [0-9a-f]{40}$ ]] || deny',
+                                                  'true || deny'), source, path_fake(source, bad_type)),
+            "root sanity dropped": (tamper(t, '            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"\n', ""),
+                                    source, {"FAKE_LS_SHA": source, "FAKE_LS_KIND": "root", "FAKE_LS_OUT": ""}),
+        }
+        for label, (mutated, src, fake) in survivors.items():
+            with self.subTest(label):
+                self.fresh()
+                self.assertNotEqual(self.chain(src, fake=fake).returncode, 0, "committed step must deny")
+                self.fresh()
+                r = self.chain(src, step3=self.mutant_step3(mutated), fake=fake)
+                self.assertEqual(r.returncode, 0, f"mutant is not load-bearing: {label}: {r.stderr}")
+        # a neutered comparison reports a changed path as unchanged
+        self.fresh()
+        neutered = self.mutant_step3(tamper(t, 'if [[ "$got" == "$want" ]]; then', 'if true; then'))
+        r = self.chain(edited, step3=neutered)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("PROTECTED_PATH_CHANGE", r.stdout, "mutant is not load-bearing: compare neutered")
+        self.fresh()
+        self.assertIn("PROTECTED_PATH_CHANGE", self.chain(edited).stdout)
+        # a restored blanket deny turns the reported change back into a failed job (the pre-BUG-063 behaviour)
+        self.fresh()
+        blanket = self.mutant_step3(tamper(t, 'changed=$((changed + 1))', 'deny "candidate changed $rel"'))
+        r = self.chain(edited, step3=blanket)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("candidate changed", r.stderr)
 
 
 @unittest.skipUnless(shutil.which("bash"), "bash required")
