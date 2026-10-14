@@ -1,0 +1,473 @@
+# M1C-R04-PERMISSION-D1-TRUSTED-CI - GOV-01-R04 / TSD §24.1 gate 4 (permission
+# lint) ADR-014 D1 four-state CI gate CANDIDATE (MOD-001, epoch
+# MOD001-20261013-FRESH-1). INERT: authored locally, never committed to a
+# trusted branch, never run, never a required check.
+#
+# What this is: the smallest workflow that runs the ADR-014 D1 disposition
+# adapter `tools/validate_permission_gate_d1.py` in ONE job together with the
+# in-process conforming/violating fixture self-test that D1 condition 3
+# requires, and converts its four states into a CI verdict. The prior bounded
+# implementation built and locally verified the adapter core; nothing invoked
+# it. This file is that invocation, shaped so it could become a genuine
+# required PR check after separate independent assurance plus the owner
+# actions listed under "Activation preconditions". It is NOT that check today.
+#
+# ## Why the adapter and not `validate_architecture_gates.py --gate permission`
+#
+# The gate alone maps ADR-009 D2's INCONCLUSIVE (vacuous) onto exit 2, the same
+# code as ERROR, so a valid zero-operation registry is indistinguishable from
+# an unreadable one. ADR-014 D1 requires gate 4 to report exactly one of
+# PASS | FAIL | ERROR | NOT_APPLICABLE. The adapter is that mapping and
+# nothing else; this workflow neither re-implements nor relaxes any ADR-009
+# check, and touches no other gate.
+#
+# ## Trust model (self-contained; this file inherits no prior review)
+#
+#   - Workflow definition: the repository's DEFAULT branch. GitHub takes a
+#     `pull_request_target` workflow's definition and `GITHUB_SHA` from the
+#     default branch, never from the pull request's branch. `pull_request`
+#     cannot provide that, because under it the definition comes from the PR
+#     head - a candidate could then rewrite the gate that judges it.
+#   - Trusted executable + evidence set, fetched by immutable SHA
+#     (`github.sha`) from that same default-branch snapshot:
+#       .github/workflows/permission-gate-d1.yml   (this definition)
+#       tools/validate_permission_gate_d1.py       (the D1 adapter)
+#       tools/validate_architecture_gates.py       (the gate it calls)
+#       tools/fixtures/permission-gate-d1/conforming/registry.json
+#       tools/fixtures/permission-gate-d1/conforming/openapi/api.json
+#       tools/fixtures/permission-gate-d1/violating/registry.json
+#       tools/fixtures/permission-gate-d1/violating/openapi/api.json
+#     The self-test fixtures are part of the TRUSTED set on purpose: D1
+#     condition 3's proof is only worth what its fixtures are worth, so they
+#     come from the reviewed default branch, never from the candidate.
+#     `python3 -I` is isolated mode, so neither `PYTHONPATH`, user
+#     site-packages, nor the invoking directory can inject an importable
+#     module into the adapter's process.
+#   - Candidate contribution: inert DATA only - the bytes of
+#     `contracts/permissions/registry.json` and of every tracked path under
+#     `contracts/openapi/` at the PR head. Each is screened as a regular blob
+#     (mode 100644/100755; symlink, gitlink or any other tree entry mode
+#     denies) and materialized under a scratch directory that is never on
+#     `sys.path`. Candidate bytes are never executed, imported, or installed.
+#   - Candidate tamper check: the PR head's copies of all seven trusted paths
+#     must be byte-identical to the trusted default-branch bytes. A candidate
+#     that edits or deletes any of them fails the check instead of silently
+#     landing a weakened gate. Changing them intentionally therefore requires a
+#     separate reviewed default-branch commit - exactly
+#     `.claude/rules/infra/iac.md` control 1 (commit and review before effect).
+#   - Input shadowing: gate 4's input contract (ADR-009 D1, ADR-014 D1
+#     condition 1) names exactly one registry path and one OpenAPI root. Any
+#     other directory named `openapi`, or any other `permissions/registry.json`,
+#     anywhere in the candidate tree is unscanned gate-4 input and DENIES.
+#
+# ## Disposition contract (ADR-014 D1, as enforced in step 6)
+#
+#   exit 0  PASS            -> green, only with reason=REAL_OPERATIONS_CONFORM,
+#                              a satisfied self-test, and >= 1 real operation.
+#   exit 4  NOT_APPLICABLE  -> NON-BLOCKING, and only when fully qualified:
+#                              reason=ZERO_REAL_OPERATIONS, real_operations=0,
+#                              self_test.satisfied=true,
+#                              conforming_status=PASS, violating_status=FAIL,
+#                              and UNREGISTERED_PERMISSION among the violating
+#                              codes. Any one of those missing is a DENY, not a
+#                              downgrade to green.
+#   exit 1  FAIL            -> DENY.
+#   exit 2  ERROR           -> DENY.
+#   any other exit          -> DENY.
+#   missing / empty / non-JSON report, or an exit code that disagrees with the
+#   reported state                                 -> DENY.
+#
+# NOT_APPLICABLE is never reported as, or collapsed into, PASS. It is not
+# gate-4 credit; it records only that gate 4 had zero real operations in scope
+# on that run and still caught a planted violation in the same job.
+#
+# `permissions: {}` - every fetch below is anonymous against the public
+# repository, so the job needs no `GITHUB_TOKEN` scope at all. This matters
+# more under `pull_request_target`, where the token would otherwise default to
+# write. No `secrets.` reference of any kind, not even `GITHUB_TOKEN`.
+#
+# No `uses:` line, by design. `.claude/rules/infra/iac.md` control 5 requires
+# every action to be pinned to a 40-character SHA AND to carry an APPROVED
+# `CAP-<NNN>` row in `CAPABILITY_REGISTRY.md`; no GitHub Action holds one
+# today, so any `uses:` reference would be unmergeable. This job uses only
+# runner-image `git` and `python3`, which also removes `actions/checkout`'s
+# credential surface entirely rather than merely disabling it.
+#
+# Deliberate omissions, each a known bypass class: no `workflow_dispatch`; no
+# `paths`/`paths-ignore` filter (a path filter lets a PR avoid triggering the
+# required context at all); no `continue-on-error`, no `if: always()`, no
+# step-level failure suppression, no `set +e`, no `|| true`. The disposition
+# verifier is the final command of the final step under `set -euo pipefail`,
+# so its exit status is the job result with nothing between the two. The one
+# tolerated-nonzero command is the adapter itself, captured with `|| rc=$?`
+# (which records the code rather than discarding it) precisely because exit 4
+# must be told apart from exit 1/2 - discarding it is what the verifier then
+# refuses to allow.
+#
+# ## NOT claimed
+#
+#   - This file has never run. There is no CI result, no required status, no
+#     gate-4 PASS, no architecture-gate credit, no C05 aggregate consumption,
+#     no Gatekeeper approval and no MOD-001 certification.
+#   - It is correct only once it, the adapter, the shared gate module and the
+#     four fixtures live on the trusted DEFAULT branch. All seven are
+#     UNTRACKED local candidates today; installed anywhere else a
+#     `pull_request_target` run would not pick this up and the required
+#     context would never report.
+#   - The gate-4 input skeletons `contracts/permissions/registry.json` and
+#     `contracts/openapi/.gitkeep` are likewise untracked today. Until they are
+#     on the candidate head this job denies at step 4, which is the correct
+#     fail-closed behaviour, not a passing gate.
+#   - Same-name candidate check-run spoofing is NOT solved here. Nothing in
+#     this YAML proves a candidate head cannot publish its own check run named
+#     `permission-gate-d1`. That needs live negative proof after installation.
+#   - UNVERIFIED DEPENDENCY, anonymous fetch: with `permissions: {}` both
+#     fetches are tokenless, so the repository MUST be public. If it is private
+#     every run denies at the fetch and the required check can never go green.
+#     Not verified from this file.
+#   - UNVERIFIED DEPENDENCY, fork-PR fetch: both fetches request a bare 40-hex
+#     SHA. For a fork PR the head commit is reachable in the base repository
+#     only via `refs/pull/N/head`; whether GitHub.com serves that want is not
+#     established here, and a local `file://` fixture cannot establish it. A
+#     single observed green dry-run on a throwaway fork PR is a PRECONDITION of
+#     adding `permission-gate-d1` to `main`'s required checks.
+#   - Gate 1's own four-state wrapper, the C05 aggregate that must consume the
+#     four states, and ADR-014's noted unreconciled NOT_APPLICABLE emitters in
+#     `event-contract.yml`, `domain-uniqueness.yml` and `test-pyramid.yml` are
+#     all untouched by this file.
+#   - The pre-existing duplicate-`ADR-009`-record approval-resolution defect
+#     (which blocks any non-`authenticated` registry entry) is untouched. The
+#     trusted fixtures deliberately use only `authenticated`, so this gate
+#     neither triggers nor hides it.
+#   - The shared `tools/validate_architecture_gates.py` is in the tamper set,
+#     so while this check is required EVERY pull request that edits any
+#     architecture gate fails it. That is a real, intended merge-friction cost
+#     of trusting those bytes; see "Updating this gate" below.
+#   - No OpenAPI document that lives entirely outside `contracts/` is covered
+#     by this gate. The shadowing check in step 3a denies a second `openapi`
+#     directory or a second `permissions/registry.json`; it is not a repo-wide
+#     inventory of API surfaces.
+#
+# ## Activation preconditions (all owner-executed, none done here)
+#
+#   1. A reviewed trusted default-branch commit carrying all seven trusted
+#      paths plus the two input skeletons.
+#   2. Confirmation the repository is public (anonymous fetch) and one observed
+#      green fork-PR dry-run (`refs/pull/N/head` reachability).
+#   3. A separate owner action adding the check-run name `permission-gate-d1`
+#      to `main`'s required status checks - after 1 and 2, never before.
+#
+# ## Updating this gate once it is a required check
+#
+# The byte comparison in step 3 is deliberate and is NOT to be weakened, so a
+# PR that edits this workflow, the adapter, the shared gate module or a fixture
+# fails its own check. The owner-executed procedure is: (1) temporarily remove
+# `permission-gate-d1` from `main`'s required status checks; (2) land the
+# independently reviewed change through a pull request; (3) re-add the check.
+# Consequence: `github.sha` is the base tip at trigger time, so after a gate
+# update every open PR must rebase onto the new `main` before its check can go
+# green.
+
+name: permission-gate-d1
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  permission-gate-d1:
+    name: permission-gate-d1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Untrusted values reach the shell only through `env:`, never
+      # interpolated into the script body, so no candidate-controlled string
+      # can be parsed as shell. Only SHAs and GitHub-supplied repository
+      # identity are consumed - never a PR title, branch name, or label.
+      - name: Run trusted gate 4 plus its D1 self-test over inert candidate contracts
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          TRUSTED_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'permission-gate-d1: DENY - %s\n' "$1" >&2; exit 1; }
+
+          workflow=".github/workflows/permission-gate-d1.yml"
+          adapter_rel="tools/validate_permission_gate_d1.py"
+          gates_rel="tools/validate_architecture_gates.py"
+          fixture_rel="tools/fixtures/permission-gate-d1"
+          registry_rel="contracts/permissions/registry.json"
+          openapi_rel="contracts/openapi"
+
+          # Every path whose BYTES must come from the reviewed default branch:
+          # the definition, the two executables, and the four self-test
+          # fixtures D1 condition 3's proof rests on.
+          trusted_set="$workflow $adapter_rel $gates_rel
+            $fixture_rel/conforming/registry.json
+            $fixture_rel/conforming/openapi/api.json
+            $fixture_rel/violating/registry.json
+            $fixture_rel/violating/openapi/api.json"
+          # Same list, whitespace-normalized and sentinel-padded, so step 3a
+          # can ask "is this exact path one of the trusted seven?".
+          trusted_flat=" $(printf '%s' "$trusted_set" | tr -s ' \n\t' ' ') "
+
+          for var in TRUSTED_SHA HEAD_SHA; do
+            [[ "${!var}" =~ ^[0-9a-f]{40}$ ]] || deny "$var is not a 40-hex commit sha"
+          done
+          printf 'trusted=%s head=%s\n' "$TRUSTED_SHA" "$HEAD_SHA"
+
+          # The adapter and the gate module need Python 3.11+ (PEP 604 unions
+          # in runtime positions). Assert it rather than assuming the runner
+          # image; a wrong interpreter must deny, never silently pass.
+          python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+            || deny "runner python3 is older than 3.11"
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          trusted="$work/trusted"
+          cand_git="$work/candidate.git"
+          cand="$work/candidate"
+
+          # --- 1. Trusted default-branch snapshot (definition + executables + fixtures) ---
+          git init -q "$trusted"
+          git -C "$trusted" remote add origin "$REPO_URL"
+          git -C "$trusted" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          git -C "$trusted" checkout -q --detach FETCH_HEAD
+          [[ "$(git -C "$trusted" rev-parse HEAD)" == "$TRUSTED_SHA" ]] \
+            || deny "trusted checkout is not $TRUSTED_SHA"
+          for f in $trusted_set; do
+            [[ -f "$trusted/$f" && ! -L "$trusted/$f" ]] \
+              || deny "trusted snapshot $TRUSTED_SHA has no regular $f"
+          done
+
+          # The self-test fixture tree must be EXACTLY the four files above. An
+          # extra file would change what the conforming/violating pair proves,
+          # and a symlink would let it reach outside the snapshot.
+          [[ -z "$(find "$trusted/$fixture_rel" -type l)" ]] \
+            || deny "trusted self-test fixture tree contains a symlink"
+          found="$(cd "$trusted/$fixture_rel" && find . -type f | sed 's|^\./||' \
+            | LC_ALL=C sort | tr '\n' ' ')"
+          expected="conforming/openapi/api.json conforming/registry.json "
+          expected="${expected}violating/openapi/api.json violating/registry.json "
+          [[ "$found" == "$expected" ]] \
+            || deny "trusted self-test fixture tree is not exactly the four expected files (found: $found)"
+
+          # --- 2. Candidate objects, by immutable SHA, never checked out ---
+          git init -q "$cand_git"
+          git -C "$cand_git" remote add origin "$REPO_URL"
+          git -C "$cand_git" fetch -q --no-tags --depth=1 origin "$HEAD_SHA"
+          git -C "$cand_git" cat-file -e "$HEAD_SHA^{commit}" || deny "head $HEAD_SHA is not a commit"
+
+          # Single known path, so the first field is the mode and an absent
+          # path yields empty output.
+          blob_mode() { git -C "$cand_git" ls-tree --full-tree "$HEAD_SHA" -- "$1" | cut -d' ' -f1; }
+
+          require_regular_blob() {
+            local mode
+            mode="$(blob_mode "$1")"
+            case "$mode" in
+              100644|100755) ;;
+              "") deny "head $HEAD_SHA has no $1" ;;
+              *) deny "refused head tree entry mode $mode at '$1' (symlink/gitlink/irregular)" ;;
+            esac
+          }
+
+          # --- 3. Candidate tamper check: gate bytes must match trusted bytes ---
+          # A candidate must not weaken or delete the gate it is subject to,
+          # nor the fixtures that prove the gate still bites. Compared as inert
+          # blobs; the candidate copies are never executed, and no candidate
+          # byte reaches the command run in step 5.
+          for f in $trusted_set; do
+            require_regular_blob "$f"
+            git -C "$cand_git" cat-file blob "$HEAD_SHA:$f" | cmp -s - "$trusted/$f" \
+              || deny "candidate changed $f; the gate's own bytes must come from the reviewed default branch"
+          done
+
+          # --- 3a. No shadow gate-4 input may exist unscanned ---
+          # ADR-009 D1 / ADR-014 D1 condition 1 name exactly one registry and
+          # one OpenAPI root. Paths are listed NUL-delimited and never
+          # executed; `$entry` only ever reaches `printf '%s'`.
+          git -C "$cand_git" ls-tree -r -z --name-only "$HEAD_SHA" > "$work/tree.lst"
+          [[ -s "$work/tree.lst" ]] || deny "head $HEAD_SHA has an empty or unreadable tree listing"
+          : > "$work/openapi.lst"
+          openapi_count=0
+          while IFS= read -r -d '' entry; do
+            case "$entry" in
+              "$registry_rel") continue ;;
+              "$openapi_rel"/*)
+                printf '%s\0' "$entry" >> "$work/openapi.lst"
+                openapi_count=$((openapi_count + 1))
+                continue ;;
+              # The self-test fixtures deliberately contain an `openapi/`
+              # directory of their own. They are not gate-4 input: step 3
+              # already pinned each of them byte-for-byte to the trusted
+              # snapshot, and the adapter reads them only through
+              # `--fixture-dir "$trusted/..."`, so they cannot shadow anything.
+              # Without this exemption the gate would deny every pull request.
+              # Any OTHER path under the fixture root is unpinned and denies.
+              "$fixture_rel"/*)
+                case "$trusted_flat" in
+                  *" $entry "*) continue ;;
+                esac
+                deny "unexpected self-test fixture entry '$entry' in head $HEAD_SHA; the fixture tree must be exactly the four trusted files" ;;
+            esac
+            case "$entry" in
+              openapi/*|*/openapi/*)
+                deny "unscanned OpenAPI directory entry '$entry' in head $HEAD_SHA; gate 4 reads only $openapi_rel/" ;;
+              permissions/registry.json|*/permissions/registry.json)
+                deny "shadow permission registry '$entry' in head $HEAD_SHA; gate 4 reads only $registry_rel" ;;
+            esac
+          done < "$work/tree.lst"
+
+          # --- 4. Candidate gate-4 inputs, materialized as inert data only ---
+          # D1 condition 1: both inputs must EXIST. A candidate that deletes
+          # the OpenAPI root (git tracks no empty directory) must deny here,
+          # not slide into a vacuous NOT_APPLICABLE.
+          [[ "$openapi_count" -gt 0 ]] \
+            || deny "head $HEAD_SHA has no $openapi_rel/ entries; ADR-014 D1 condition 1 requires the OpenAPI input to exist"
+
+          require_regular_blob "$registry_rel"
+          mkdir -p "$cand/$(dirname "$registry_rel")"
+          git -C "$cand_git" cat-file blob "$HEAD_SHA:$registry_rel" > "$cand/$registry_rel"
+          [[ ! -L "$cand/$registry_rel" ]] || deny "materialized candidate registry is a symlink"
+
+          while IFS= read -r -d '' entry; do
+            case "$entry" in
+              *..*) deny "refused candidate path '$entry'" ;;
+            esac
+            require_regular_blob "$entry"
+            mkdir -p "$cand/$(dirname "$entry")"
+            git -C "$cand_git" cat-file blob "$HEAD_SHA:$entry" > "$cand/$entry"
+            [[ ! -L "$cand/$entry" ]] || deny "materialized candidate $entry is a symlink"
+          done < "$work/openapi.lst"
+          printf 'materialized inert candidate %s plus %s entry/entries under %s/\n' \
+            "$registry_rel" "$openapi_count" "$openapi_rel"
+
+          # --- 5. Trusted adapter: real-input disposition AND D1 condition 3,
+          #        in ONE process, in THIS job ---
+          # The adapter runs the unmodified gate over the inert candidate
+          # inputs and, before emitting any PASS or NOT_APPLICABLE, runs the
+          # conforming (must PASS) and violating (must FAIL with
+          # UNREGISTERED_PERMISSION) fixtures in the same process. `--fixture-dir`
+          # is pinned to the TRUSTED snapshot, so condition 3's evidence can
+          # never come from the candidate. Exit 4 is a legitimate state, so the
+          # code is CAPTURED (`|| rc=$?`) rather than discarded; step 6 then
+          # refuses every code and every report shape D1 does not license.
+          rc=0
+          python3 -I "$trusted/$adapter_rel" \
+            --registry "$cand/$registry_rel" \
+            --openapi-dir "$cand/$openapi_rel" \
+            --fixture-dir "$trusted/$fixture_rel" \
+            --json > "$work/report.json" || rc=$?
+          printf 'adapter exit=%s\n' "$rc"
+          [[ -s "$work/report.json" ]] \
+            || deny "the adapter produced no report (exit $rc); a missing or empty report blocks"
+          cat "$work/report.json"
+
+          # --- 6. ADR-014 D1 disposition. Last command of the last step. ---
+          # Trusted bytes from this default-branch definition. Reads only the
+          # adapter's own JSON and the captured exit code; compares against
+          # fixed enums and never echoes an unvalidated field back out.
+          python3 -I - "$work/report.json" "$rc" <<'PY'
+          import json
+          import sys
+
+          REPORT_PATH, RC_TEXT = sys.argv[1], sys.argv[2]
+          STATE_EXIT = {"PASS": 0, "FAIL": 1, "ERROR": 2, "NOT_APPLICABLE": 4}
+          VIOLATION_CODE = "UNREGISTERED_PERMISSION"
+
+
+          def deny(message):
+              print("permission-gate-d1: DENY - " + message, file=sys.stderr)
+              raise SystemExit(1)
+
+
+          def count(value):
+              """An int that is not a bool. JSON `false` must not read as 0."""
+              return isinstance(value, int) and not isinstance(value, bool)
+
+
+          try:
+              rc = int(RC_TEXT)
+          except ValueError:
+              deny("adapter exit code %r is not an integer" % (RC_TEXT,))
+
+          try:
+              with open(REPORT_PATH, encoding="utf-8") as handle:
+                  report = json.load(handle)
+          except Exception as exc:  # noqa: BLE001 - any unreadable report blocks
+              deny("adapter report is unreadable or not JSON: %s: %s"
+                   % (type(exc).__name__, exc))
+
+          if not isinstance(report, dict):
+              deny("adapter report is not a JSON object")
+
+          state = report.get("state")
+          if state not in STATE_EXIT:
+              deny("reported state %r is outside the ADR-014 D1 four-state set" % (state,))
+          if rc != STATE_EXIT[state]:
+              deny("adapter exit %d contradicts reported state %s (D1 exit code %d)"
+                   % (rc, state, STATE_EXIT[state]))
+
+          self_test = report.get("self_test")
+          if not isinstance(self_test, dict):
+              deny("adapter report carries no self_test object; "
+                   "ADR-014 D1 condition 3 cannot be confirmed")
+
+          real = report.get("real_operations")
+          reason = report.get("reason")
+          codes = self_test.get("violating_codes")
+
+          if state == "PASS":
+              problems = []
+              if reason != "REAL_OPERATIONS_CONFORM":
+                  problems.append("reason is %r, expected REAL_OPERATIONS_CONFORM" % (reason,))
+              if not count(real) or real < 1:
+                  problems.append("real_operations is %r, expected at least 1" % (real,))
+              if self_test.get("satisfied") is not True:
+                  problems.append("self_test.satisfied is not true")
+              if problems:
+                  deny("unqualified PASS: " + "; ".join(problems))
+              print("PERMISSION_GATE_D1_STATE=PASS reason=REAL_OPERATIONS_CONFORM "
+                    "real_operations=%d" % real)
+              print("permission-gate-d1: PASS - gate 4 checked every real operation "
+                    "in scope and its fixture self-test bit in the same job.")
+              raise SystemExit(0)
+
+          if state == "NOT_APPLICABLE":
+              problems = []
+              if reason != "ZERO_REAL_OPERATIONS":
+                  problems.append("reason is %r, expected ZERO_REAL_OPERATIONS" % (reason,))
+              if not count(real) or real != 0:
+                  problems.append("real_operations is %r, expected 0" % (real,))
+              if self_test.get("satisfied") is not True:
+                  problems.append("self_test.satisfied is not true")
+              if self_test.get("conforming_status") != "PASS":
+                  problems.append("self_test.conforming_status is %r, expected PASS"
+                                  % (self_test.get("conforming_status"),))
+              if self_test.get("violating_status") != "FAIL":
+                  problems.append("self_test.violating_status is %r, expected FAIL"
+                                  % (self_test.get("violating_status"),))
+              if not isinstance(codes, list) or VIOLATION_CODE not in codes:
+                  problems.append("self_test.violating_codes does not cite " + VIOLATION_CODE)
+              if problems:
+                  deny("unqualified NOT_APPLICABLE is never non-blocking: "
+                       + "; ".join(problems))
+              print("PERMISSION_GATE_D1_STATE=NOT_APPLICABLE reason=ZERO_REAL_OPERATIONS "
+                    "real_operations=0")
+              print("permission-gate-d1: NON-BLOCKING under ADR-014 D1 conditions 1-3. "
+                    "This is NOT a gate-4 PASS and NOT architecture-gate credit: gate 4 "
+                    "had zero real operations in scope and proved on this run that it "
+                    "still catches a planted violation.")
+              raise SystemExit(0)
+
+          deny("gate 4 reported %s; only PASS or a fully qualified NOT_APPLICABLE "
+               "is non-blocking" % (state,))
+          PY

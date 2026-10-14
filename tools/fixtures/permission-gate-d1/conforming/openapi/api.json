@@ -1,0 +1,27 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ADR-014 D1 gate-4 conforming self-test fixture (synthetic)",
+    "version": "0"
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {"type": "http", "scheme": "bearer"}
+    }
+  },
+  "security": [{"session": []}],
+  "paths": {
+    "/members/{id}/profile": {
+      "get": {
+        "operationId": "getMemberProfile",
+        "x-veyro-permission": {
+          "action": "read",
+          "resource": "members.profile",
+          "scope": "self"
+        },
+        "x-veyro-authentication": "authenticated",
+        "responses": {"200": {"description": "ok"}}
+      }
+    }
+  }
+}

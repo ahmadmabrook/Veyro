@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "permissions": {
+    "members.profile.read": {
+      "scopes": ["self"],
+      "authentication": "authenticated"
+    }
+  }
+}
