@@ -287,3 +287,38 @@ def test_docx_wrapped_block_in_appendix_f_region_is_error(tmp_path):
         return t[:s] + sdt + t[s:]
     r = run(_docx_edit(tmp_path, wrap), MIRROR)
     assert r.returncode == 2 and "unexpected block element" in r.stderr, r.stdout + r.stderr
+
+
+# --- residue accounting: text outside every consumed window must fail closed ---
+
+HEADER_LINE = re.compile(r"^.*\*\*Module\*\*.*\*\*Wave\*\*.*$", re.M)
+
+
+@pytest.mark.parametrize("name,payload,msg", [
+    ("single_line_gap", INJECT, "unconsumed text between"),
+    ("multiline_bulleted_gap", f"- {INJECT}\n- second line\n\n{INJECT}", "unconsumed text between"),
+])
+def test_text_between_opening_rule_and_header_is_blocked(tmp_path, name, payload, msg):
+    """Exact first reviewer mutation: payload immediately before the **Module** header."""
+    def edit(t):
+        m = HEADER_LINE.search(t)
+        return t[:m.start()] + payload + "\n" + t[m.start():]
+    tampered = mirror_with(tmp_path, edit)
+    r = run(DOCX, tampered)
+    assert r.returncode == 2 and msg in r.stderr, f"{name}: {r.stdout}{r.stderr}"
+
+
+@pytest.mark.parametrize("name,edit", [
+    ("left_margin_chunk", lambda t, ls: t.replace(ls, "Ow" + ls[2:], 1)),
+    ("left_margin_header_row", lambda t, ls: t.replace(ls, "Ow" + ls[2:], 1)),
+])
+def test_left_margin_text_in_table_rows_is_blocked(tmp_path, name, edit):
+    """Non-whitespace left of the first column (two-char chunks of a sentence) must not pass."""
+    def go(t):
+        m = HEADER_LINE.search(t) if name.endswith("header_row") else re.search(r"^  MOD-001 ", t, re.M)
+        ls = t[m.start():t.index("\n", m.start())]
+        return edit(t, ls)
+    tampered = mirror_with(tmp_path, go)
+    assert tampered.read_text() != MIRROR.read_text(), name
+    r = run(DOCX, tampered)
+    assert r.returncode == 2 and "left of the first column" in r.stderr, f"{name}: {r.stdout}{r.stderr}"

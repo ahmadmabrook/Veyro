@@ -221,6 +221,10 @@ def extract_mirror(mirror_text: str) -> tuple[str, list[list[str]], str, str]:
     open_rule = head - 1
     while open_rule > start and not re.fullmatch(r"\s*-{3,}\s*", lines[open_rule]):
         open_rule -= 1
+    # Residue check: nothing but blank lines may sit between that rule and the
+    # header row, or it would be consumed by neither prose nor table.
+    if open_rule <= start or any(l.strip() for l in lines[open_rule + 1:head]):
+        raise Error("mirror Appendix F has unconsumed text between the grid opening rule and the table header")
     prose_lines = []
     for l in lines[start + 1:open_rule]:
         l = re.sub(r"^(#|-)\s+", "", l.strip())
@@ -259,6 +263,8 @@ def extract_mirror(mirror_text: str) -> tuple[str, list[list[str]], str, str]:
             continue
         if not line.strip():
             continue
+        if line[:cols[0]].strip():
+            raise Error("mirror Appendix F table row has text left of the first column")
         if in_header:
             if cur is None:
                 cur = [""] * 6
