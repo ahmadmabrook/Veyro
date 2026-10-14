@@ -260,6 +260,8 @@ TAMPER_STEP_LINES = (
     '  fi',
     'done',
     'echo "PROTECTED_PATH_SUMMARY: checked=${#protected[@]} changed=$changed trusted=$TRUSTED_SHA source=$SOURCE_SHA (reported only; never copied, never approval)"',
+    'trusted_links="$(find "$work/backend" -type l -print)" || deny "trusted backend/ symlink scan failed"',
+    '[[ -z "$trusted_links" ]] || deny "trusted backend/ tree contains a symlink: $trusted_links"',
     'git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"',
     '[[ -s "$RUNNER_TEMP/app.lst" ]] || deny "source has no backend/app entries"',
     'rm -rf "$stage"',
@@ -336,7 +338,7 @@ TAMPER_STEP_LINES = (
 # This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
 # Computed over the workflow with the TEST_SHA256 value masked (see `masked_workflow`), because
 # the workflow pins this file's digest and this file pins the workflow's.
-WORKFLOW_SHA256 = "a6372ac05930674b0729fd92613b4ac20e6330201b3ab3dc9e22faa3bb95f16d"
+WORKFLOW_SHA256 = "2a90c2ea67e461e40ef6dc52ee6282fb52b9371c1d76f09827cb54ba65955377"
 TEST_PIN_RE = re.compile(rb"(?m)^(          TEST_SHA256: )[0-9a-f]{64}$")
 
 REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
@@ -1373,6 +1375,11 @@ MODE_SCREEN = (
 LINK_SCREEN = (
     "            case \"$mode\" in 120000|160000) deny \"refused source entry mode $mode at '$path' "
     "(symlink/gitlink under backend)\" ;; esac\n")
+# The trusted-backend symlink precheck (BUG-064 hardening, round 2): must run before any blob is
+# written into the trusted tree's backend/ directory.
+TRUSTED_SYMLINK_SCREEN = (
+    '          trusted_links="$(find "$work/backend" -type l -print)" || deny "trusted backend/ symlink scan failed"\n'
+    '          [[ -z "$trusted_links" ]] || deny "trusted backend/ tree contains a symlink: $trusted_links"\n')
 
 
 def without_module_composition(text):
@@ -1539,6 +1546,36 @@ class FollowedModuleCompositionTest(unittest.TestCase):
         r = self.chain(source)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(self.work("backend/shared/util.py/inner.py").is_file())
+
+    def test_trusted_backend_symlink_is_denied_before_any_out_of_tree_write(self):
+        """BUG-064 round 2: a symlinked directory in the TRUSTED backend/ tree (not the source
+        side, already covered above) must be denied before this step's mkdir -p/mv composition
+        can follow it and write a PR-supplied file outside the trusted tree."""
+        sentinel = Path(tempfile.mkdtemp(prefix="tcrc-sentinel-")).resolve()
+        self.addCleanup(shutil.rmtree, sentinel, ignore_errors=True)
+
+        # Clean-tree positive control: an ordinary followed-module addition, against the plain
+        # (non-symlinked) trusted tree from setUp, still composes normally.
+        control = self.chain(self.syn.variant(set={self.UTIL: self.PR_UTIL}))
+        self.assertEqual(control.returncode, 0, control.stderr)
+        self.assertEqual(self.work(self.UTIL).read_text(), self.PR_UTIL)
+        self.fresh()
+
+        # Trusted tree (not the PR head) has backend/evil_link symlinked out to `sentinel`; the
+        # PR head adds a followed module underneath that same path.
+        self.trusted = self.syn.commit(symlinks={"backend/evil_link": str(sentinel)})
+        source = self.syn.variant(set={"backend/evil_link/pwned.py": "PWNED = 1\n"})
+        r = self.chain(source)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("trusted backend/ tree contains a symlink", r.stderr)
+        self.assertEqual(list(sentinel.iterdir()), [], "out-of-tree write occurred before the job denied")
+
+        # Load-bearing mutant: removing only the new precheck reproduces the out-of-tree write.
+        self.fresh()
+        no_check = self.mutant_step3(tamper(self.text, TRUSTED_SYMLINK_SCREEN, ""))
+        self.chain(source, step3=no_check)
+        self.assertEqual((sentinel / "pwned.py").read_text(), "PWNED = 1\n",
+                          "mutant is not load-bearing: out-of-tree write did not reproduce")
 
     # --- executable mutants: each new check must be load-bearing --------------------------------
 

@@ -269,6 +269,13 @@ jobs:
           done
           echo "PROTECTED_PATH_SUMMARY: checked=${#protected[@]} changed=$changed trusted=$TRUSTED_SHA source=$SOURCE_SHA (reported only; never copied, never approval)"
 
+          # Reject any symlink anywhere under the trusted backend/ tree (BUG-064 hardening): a
+          # symlinked directory or file there could redirect a later mkdir -p/mv in this step's
+          # composition to write outside the trusted tree, before the final count check below
+          # could deny the job. Checked here, before any blob is written.
+          trusted_links="$(find "$work/backend" -type l -print)" || deny "trusted backend/ symlink scan failed"
+          [[ -z "$trusted_links" ]] || deny "trusted backend/ tree contains a symlink: $trusted_links"
+
           # Source backend/app: blobs only, screened, written as data.
           git -C "$src" ls-tree -r -z --full-tree "$SOURCE_SHA" -- backend/app > "$RUNNER_TEMP/app.lst"
           [[ -s "$RUNNER_TEMP/app.lst" ]] || deny "source has no backend/app entries"
@@ -404,7 +411,7 @@ jobs:
 
       - name: Execute trusted closed-world workflow test (pinned bytes, asserted venv; failure, skip or zero tests deny)
         env:
-          TEST_SHA256: c1320a8208134950a68e121c30666bd1dc15a98816d0d78682704c11fa1152de
+          TEST_SHA256: 99d8867b4c72e7c66f793608f68114d7f3b07d6d4fb952d6d1936c3743890dd6
         shell: bash
         run: |
           set -euo pipefail
