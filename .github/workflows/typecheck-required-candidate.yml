@@ -242,8 +242,9 @@ jobs:
           )
           ent=""
           entry_of() {
-            local repo="$1" sha="$2" rel="$3" raw meta listed
-            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"
+            local repo="$1" sha="$2" rel="$3" root raw meta listed
+            root="$(git -C "$repo" ls-tree --full-tree "$sha")" || deny "root listing of $sha failed"
+            [[ -n "$root" ]] || deny "root listing of $sha is empty or failed"
             raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny "listing failed for $rel at $sha"
             if [[ -z "$raw" ]]; then ent="ABSENT"; return 0; fi
             [[ "$raw" != *$'\n'* ]] || deny "more than one listing entry for $rel at $sha"
@@ -403,7 +404,7 @@ jobs:
 
       - name: Execute trusted closed-world workflow test (pinned bytes, asserted venv; failure, skip or zero tests deny)
         env:
-          TEST_SHA256: 323068996a4f0ee79848f43a4c548e24792c552263cae129795c1577b0609aed
+          TEST_SHA256: c1320a8208134950a68e121c30666bd1dc15a98816d0d78682704c11fa1152de
         shell: bash
         run: |
           set -euo pipefail

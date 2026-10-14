@@ -234,8 +234,9 @@ TAMPER_STEP_LINES = (
     ')',
     'ent=""',
     'entry_of() {',
-    '  local repo="$1" sha="$2" rel="$3" raw meta listed',
-    '  [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"',
+    '  local repo="$1" sha="$2" rel="$3" root raw meta listed',
+    '  root="$(git -C "$repo" ls-tree --full-tree "$sha")" || deny "root listing of $sha failed"',
+    '  [[ -n "$root" ]] || deny "root listing of $sha is empty or failed"',
     '  raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny "listing failed for $rel at $sha"',
     '  if [[ -z "$raw" ]]; then ent="ABSENT"; return 0; fi',
     '  [[ "$raw" != *$\'\\n\'* ]] || deny "more than one listing entry for $rel at $sha"',
@@ -335,7 +336,7 @@ TAMPER_STEP_LINES = (
 # This pins reviewed bytes; it does not stop someone who edits workflow AND test together.
 # Computed over the workflow with the TEST_SHA256 value masked (see `masked_workflow`), because
 # the workflow pins this file's digest and this file pins the workflow's.
-WORKFLOW_SHA256 = "626317585c3e234ad6132be78c2eb38a1a8b9ab5913ac9805108ea83604679f0"
+WORKFLOW_SHA256 = "a6372ac05930674b0729fd92613b4ac20e6330201b3ab3dc9e22faa3bb95f16d"
 TEST_PIN_RE = re.compile(rb"(?m)^(          TEST_SHA256: )[0-9a-f]{64}$")
 
 REDIRECT_RE = re.compile(r'(?<![<>&\w])\d*>{1,2}(?!&)\s*("[^"]*"|[^\s;|&)]+)')
@@ -627,7 +628,8 @@ def audit(text):
                    'entry_of "$work" "$TRUSTED_SHA" "$rel"',
                    'entry_of "$src" "$SOURCE_SHA" "$rel"',
                    'raw="$(git -C "$repo" ls-tree --full-tree "$sha" -- "$rel")" || deny',
-                   '[[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny',
+                   'root="$(git -C "$repo" ls-tree --full-tree "$sha")" || deny "root listing of $sha failed"',
+                   '[[ -n "$root" ]] || deny "root listing of $sha is empty or failed"',
                    'if [[ "$got" == "$want" ]]; then',
                    'echo "PROTECTED_PATH_CHANGE: $rel trusted=[$want] source=[$got]"',
                    'case "$path" in "$p"/*) deny',
@@ -935,7 +937,8 @@ class AuditPolicyTest(unittest.TestCase):
             "difference denied again": tamper(t, 'changed=$((changed + 1))', 'deny "candidate changed $rel"'),
             "listing failure ignored": tamper(t, '"$sha" -- "$rel")" || deny "listing failed for $rel at $sha"', '"$sha" -- "$rel")" || true'),
             "malformed listing accepted": tamper(t, '[[ "$meta" =~ ^[0-7]{6}\\ (blob|tree|commit)\\ [0-9a-f]{40}$ ]] || deny', 'true || deny'),
-            "root sanity dropped": tamper(t, '            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"\n', ""),
+            "root sanity dropped": tamper(t, '            [[ -n "$root" ]] || deny "root listing of $sha is empty or failed"\n', ""),
+            "root status ignored": tamper(t, 'root="$(git -C "$repo" ls-tree --full-tree "$sha")" || deny "root listing of $sha failed"', 'root="$(git -C "$repo" ls-tree --full-tree "$sha")" || true'),
             "executable mode accepted": tamper(t, '[[ "$mode" == "100644" && "$type" == "blob" ]]',
                                                '[[ "$type" == "blob" ]]'),
             "path screen dropped": tamper(t, "*/../*|*/./*|*//*|*/.git/*) deny", "*/.git/*) deny"),
@@ -1827,6 +1830,30 @@ class ProtectedPathReportTest(unittest.TestCase):
                     self.assertIn("root listing", r.stderr)
                     self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
 
+    def test_root_listing_partial_output_with_nonzero_exit_denies(self):
+        # BUG-063 root status: nonempty partial stdout must not be accepted when git exits nonzero.
+        source = self.source_with_app_edit()
+        partial = "100644 blob " + "a" * 40 + "\\tREADME.md\\n"
+        for side, sha in (("trusted", self.trusted), ("source", source)):
+            for rc in ("1", "128"):
+                with self.subTest(f"{side}: partial root output, rc {rc}"):
+                    r = self._denied("partial", source, {"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "root",
+                                                         "FAKE_LS_OUT": partial, "FAKE_LS_RC": rc})
+                    self.assertNotEqual(r.returncode, 0, r.stdout)
+                    self.assertIn("root listing", r.stderr)
+                    self.assertNotIn("PROTECTED_PATH_SUMMARY", r.stdout)
+            with self.subTest(f"{side}: positive control, same stub with rc 0 and real listing passes"):
+                self.fresh()
+                real = subprocess.run(["git", "-C", str(self.syn.repo), "ls-tree", "--full-tree", sha],
+                                      capture_output=True, text=True)
+                self.assertEqual(real.returncode, 0, real.stderr)
+                self.assertTrue(real.stdout.strip())
+                canned = real.stdout.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
+                r = self.chain(source, fake={"FAKE_LS_SHA": sha, "FAKE_LS_KIND": "root",
+                                             "FAKE_LS_OUT": canned, "FAKE_LS_RC": "0"})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("PROTECTED_PATH_SUMMARY", r.stdout)
+
     def test_stub_for_another_sha_is_a_pass_through_control(self):
         source = self.source_with_app_edit()
         r = self.chain(source, fake={"FAKE_LS_SHA": "c" * 40, "FAKE_LS_KIND": "path", "FAKE_LS_OUT": "garbage\n"})
@@ -1869,8 +1896,10 @@ class ProtectedPathReportTest(unittest.TestCase):
                                         '"$sha" -- "$rel")" || true'), source, path_fake(source, "", "128")),
             "malformed listing accepted": (tamper(t, '[[ "$meta" =~ ^[0-7]{6}\\ (blob|tree|commit)\\ [0-9a-f]{40}$ ]] || deny',
                                                   'true || deny'), source, path_fake(source, bad_type)),
-            "root sanity dropped": (tamper(t, '            [[ -n "$(git -C "$repo" ls-tree --full-tree "$sha")" ]] || deny "root listing of $sha is empty or failed"\n', ""),
+            "root sanity dropped": (tamper(t, '            [[ -n "$root" ]] || deny "root listing of $sha is empty or failed"\n', ""),
                                     source, {"FAKE_LS_SHA": source, "FAKE_LS_KIND": "root", "FAKE_LS_OUT": ""}),
+            "root status ignored": (tamper(t, 'root="$(git -C "$repo" ls-tree --full-tree "$sha")" || deny "root listing of $sha failed"', 'root="$(git -C "$repo" ls-tree --full-tree "$sha")" || true'),
+                                    source, {"FAKE_LS_SHA": source, "FAKE_LS_KIND": "root", "FAKE_LS_OUT": "100644 blob " + "a" * 40 + "\\tREADME.md\\n", "FAKE_LS_RC": "128"}),
         }
         for label, (mutated, src, fake) in survivors.items():
             with self.subTest(label):
