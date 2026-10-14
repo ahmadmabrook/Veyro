@@ -1,0 +1,144 @@
+# GOV-01-R04 gate 5 (TSD §24.1 screen-contract lint) + baseline-artifact
+# binding, as one trusted PR status check. LOCAL, UNMERGED CANDIDATE: no gate
+# or certification credit; ADR-014 D2 / OWN-008.
+#
+# Trust model (same pattern as domain-uniqueness.yml / scn020-trusted-...):
+#   - `pull_request_target` takes this definition and GITHUB_SHA from the
+#     default branch. Executable code (gate, generator, baseline validator)
+#     comes ONLY from that trusted snapshot. No candidate code is checked out,
+#     imported or run; no secrets are referenced; no `uses:` action.
+#   - Candidate head contributes inert regular blobs only, read by immutable
+#     head SHA: contracts/ui/screen-registry.json and
+#     contracts/ui/screen-contracts.yaml.
+#   - Generation sources (design registry export, EIP Appendix F mirror) are
+#     read from the trusted snapshot. The candidate's copies must be
+#     tree/blob-identical to the trusted ones, as must the three governing
+#     docx files: a PR cannot swap the sources the manifest is regenerated
+#     from.
+#
+# Fail closed, never NOT_APPLICABLE: ADR-014 D2.4 says gate 5 is never
+# NOT_APPLICABLE. If the trusted default branch does not yet contain the gate
+# 5 implementation, generator or baseline validator, this job DENIES. It
+# never simulates enforcement and never passes without a live gate run.
+#
+# Residual limitations (explicit, not solved here):
+#   - validate_baseline_binding.py hashes the three docx files and the design
+#     bundle only. It does NOT bind knowledge/00-System/EIP_MIRROR.md to the
+#     EIP docx, so the mirror's authenticity is only "same bytes as the
+#     trusted default branch", not proven against the docx.
+#   - Same-name check spoofing and the branch-protection required-check entry
+#     are out of scope: nothing here edits remote GitHub settings, and a
+#     green job is not evidence that `architecture-screen-contract` is
+#     required on main.
+
+name: architecture-screen-contract
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  screen-contract:
+    name: architecture-screen-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run trusted baseline binding and gate 5 over inert candidate data
+        env:
+          REPO: ${{ github.repository }}
+          TRUSTED_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deny() { printf 'architecture-screen-contract: DENY - %s\n' "$1" >&2; exit 1; }
+          [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || deny 'invalid repository name'
+          for name in TRUSTED_SHA HEAD_SHA; do
+            [[ "${!name}" =~ ^[0-9a-f]{40}$ ]] || deny "$name is not a commit SHA"
+          done
+          python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))' \
+            || deny 'Python 3.10+ required'
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          url="https://github.com/$REPO.git"
+          trusted="$work/trusted"
+          objects="$work/objects"
+
+          # --- 1. Trusted default-branch snapshot: all executable code ---
+          git init -q "$trusted"
+          git -C "$trusted" remote add origin "$url"
+          git -C "$trusted" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          git -C "$trusted" checkout -q --detach FETCH_HEAD
+          [[ "$(git -C "$trusted" rev-parse HEAD)" == "$TRUSTED_SHA" ]] \
+            || deny 'trusted checkout mismatch'
+          validator="$trusted/tools/validate_architecture_gates.py"
+          baseline="$trusted/tools/validate_baseline_binding.py"
+          source_js="$trusted/veyro-product-experience-design/project/veyro-registry-data.js"
+          eip="$trusted/knowledge/00-System/EIP_MIRROR.md"
+          for f in "$validator" "$baseline" \
+                   "$trusted/tools/generate_screen_contract_manifest.py" \
+                   "$trusted/tools/generate_screen_registry.py" "$source_js" "$eip"; do
+            [[ -f "$f" && ! -L "$f" ]] \
+              || deny "trusted snapshot $TRUSTED_SHA lacks regular ${f#"$trusted"/}; gate 5 is not enforceable and is never NOT_APPLICABLE (ADR-014 D2.4)"
+          done
+          grep -q -- '"screen-contract"' "$validator" \
+            || deny 'trusted validator has no screen-contract gate'
+
+          # --- 2. Candidate objects by immutable SHA, never checked out ---
+          git init -q "$objects"
+          git -C "$objects" remote add origin "$url"
+          git -C "$objects" fetch -q --no-tags --depth=1 origin "$HEAD_SHA"
+          git -C "$objects" cat-file -e "$HEAD_SHA^{commit}" || deny "missing commit $HEAD_SHA"
+
+          # Frozen governing inputs: candidate object ids must equal trusted.
+          for path in Gym_OS_Master_Product_Blueprint_v1_English.docx \
+                      Veyro_Technical_System_Design_v1.4.1_English_FINAL.docx \
+                      Veyro_Engineering_Implementation_Plan_v1.4.1_English_FINAL_APPROVED_GOVERNING_BASELINE.docx \
+                      veyro-product-experience-design \
+                      knowledge/00-System/EIP_MIRROR.md; do
+            want="$(git -C "$trusted" rev-parse --verify -q "HEAD:$path")" \
+              || deny "trusted snapshot lacks $path"
+            got="$(git -C "$objects" rev-parse --verify -q "$HEAD_SHA:$path")" \
+              || deny "candidate lacks $path"
+            [[ "$got" == "$want" ]] || deny "candidate changed frozen governing input $path"
+          done
+
+          # Candidate screen artifacts: regular blobs only, inert data.
+          mkdir -p "$work/cand"
+          for name in screen-registry.json screen-contracts.yaml; do
+            path="contracts/ui/$name"
+            meta="$(git -C "$objects" ls-tree --full-tree "$HEAD_SHA" -- "$path" | cut -d' ' -f1,2)"
+            [[ "$meta" == '100644 blob' || "$meta" == '100755 blob' ]] \
+              || deny "candidate $path absent or not a regular blob"
+            git -C "$objects" cat-file blob "$HEAD_SHA:$path" > "$work/cand/$name"
+          done
+
+          # --- 3. Trusted baseline binding (trusted tree) ---
+          python3 -E -s "$baseline" || deny 'baseline-artifact binding failed on the trusted snapshot'
+
+          # --- 4. Trusted gate 5 over inert candidate data ---
+          set +e
+          python3 -E -s "$validator" --gate screen-contract --json \
+            --screen-registry "$work/cand/screen-registry.json" \
+            --screen-contracts "$work/cand/screen-contracts.yaml" \
+            --screen-source "$source_js" --screen-eip "$eip" > "$work/report.json"
+          status=$?
+          set -e
+          cat "$work/report.json"
+          python3 -E -s - "$work/report.json" "$status" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          if int(sys.argv[2]) != 0 or report.get('status') != 'PASS' \
+                  or report.get('gate') != 'screen-contract':
+              codes = sorted({v.get('code') for v in report.get('violations', [])})
+              raise SystemExit('architecture-screen-contract: DENY '
+                               f"(exit={sys.argv[2]} status={report.get('status')} codes={codes})")
+          print('architecture-screen-contract: PASS (live gate 5 verdict; not certification)')
+          PY
