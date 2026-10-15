@@ -4,8 +4,7 @@ name: veyro-${VEYRO_TARGET:?set VEYRO_TARGET}
 services:
   api:
     image: veyro-api:${VEYRO_RELEASE:?set VEYRO_RELEASE}
-    build:
-      context: ../backend
+    pull_policy: never # images come only from scripts/build.sh; deploy never builds or pulls
     env_file:
       - env/${VEYRO_TARGET}.env
     environment:

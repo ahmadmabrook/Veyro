@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/TestSprite/testsprite-cli/v0.8.0/schemas/plan.schema.json",
+  "projectId": "fcab24ae-d6ce-43ee-9039-b5c1348ad1ba",
+  "type": "frontend",
+  "name": "Local staging health exposes the deployed release",
+  "planSteps": [
+    {"type": "action", "description": "Navigate to /healthz on the tunneled local staging target"},
+    {"type": "assertion", "description": "Verify the response shows status ok, service veyro-api, environment staging, and release demo"}
+  ]
+}

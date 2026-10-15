@@ -56,9 +56,9 @@ jobs:
       - name: Backend container smoke (local staging profile)
         run: |
           set -eu
-          docker run -d --rm --name veyro-ci -p 127.0.0.1:8000:8000 \
+          docker run -d --read-only --name veyro-ci -p 127.0.0.1:8000:8000 \
             --env-file infra/env/staging.env -e VEYRO_RELEASE="$GITHUB_SHA" veyro-api:ci
-          trap 'docker rm -f veyro-ci >/dev/null 2>&1 || true' EXIT
+          trap 'docker logs veyro-ci || true; docker rm -f veyro-ci >/dev/null 2>&1 || true' EXIT
           bash infra/scripts/smoke.sh staging "$GITHUB_SHA"
 
       - name: Negative check - runner fails closed without a source-binding pin

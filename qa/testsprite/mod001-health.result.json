@@ -1,0 +1,11 @@
+{
+  "module": "MOD-001",
+  "projectId": "fcab24ae-d6ce-43ee-9039-b5c1348ad1ba",
+  "testId": "46e61886-eb3f-4ed4-b3ca-3c1241bfab0a",
+  "runId": "d80d3223-cfab-4d03-9d30-8a335122baba",
+  "status": "passed",
+  "targetUrl": "http://127.0.0.1:18080",
+  "steps": {"total": 3, "passed": 3, "failed": 0},
+  "finishedAt": "2026-10-15T09:53:43.338Z",
+  "executionUrl": "https://www.testsprite.com/dashboard-v3/o/6306a3ae-4a06-5d57-bd72-08f62290dda7/projects/fcab24ae-d6ce-43ee-9039-b5c1348ad1ba/execution/01b2fe76-5c13-4b42-acb0-7f06041bd4f6"
+}

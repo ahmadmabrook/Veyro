@@ -1,5 +1,0 @@
-# Rehearsal-only override: simulates a bad release (invalid config -> app refuses to start).
-services:
-  api:
-    environment:
-      VEYRO_ENV: broken
