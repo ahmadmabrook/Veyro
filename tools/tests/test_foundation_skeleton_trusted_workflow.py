@@ -346,6 +346,70 @@ class Fixture:
         self._git("commit", "-q", "-m", f"candidate head, gitlink at {prefix}")
         return self._git("rev-parse", "HEAD")
 
+    def commit_with_duplicate_path_entry(self, rel: str) -> str:
+        """An fsck-invalid tree holding TWO `ls-tree` records for `rel`: a
+        denied 120000 symlink entry followed by an accepted 100644 regular
+        blob entry - the exact order (symlink first, blob last) a last-wins
+        dict assignment would resolve to PASS. Neither the index nor
+        `git mktree` permits a duplicate/unsorted name, so the one directory
+        holding the duplicate is built directly via `git hash-object
+        --literally`; every ancestor above it up to the root is then rebuilt
+        with that subtree's new sha substituted in via ordinary `git mktree`,
+        otherwise unchanged. Confined to this fixture's own tmp git dir."""
+        base = self.commit_skeleton()
+        parent_dir, name = rel.rsplit("/", 1)
+        reg_sha = self._git("rev-parse", f"{base}:{rel}")
+        sym_sha = subprocess.run(
+            ("git", "-C", str(self.origin), "hash-object", "-w", "--stdin"),
+            input=b"/etc/passwd", check=True, capture_output=True,
+        ).stdout.decode().strip()
+
+        def tree_entries(tree_ish: str) -> list[tuple[str, str, str, str]]:
+            out = []
+            for line in self._git("ls-tree", tree_ish).splitlines():
+                meta, entry_name = line.split("\t", 1)
+                mode, otype, sha = meta.split(" ")
+                out.append((mode, otype, sha, entry_name))
+            return out
+
+        body = b"".join(
+            f"{mode} {name}".encode() + b"\0" + bytes.fromhex(sha)
+            for mode, sha in (("120000", sym_sha), ("100644", reg_sha))
+        )
+        for mode, _otype, sha, entry_name in tree_entries(f"{base}:{parent_dir}"):
+            if entry_name != name:
+                body += f"{mode} {entry_name}".encode() + b"\0" + bytes.fromhex(sha)
+        cur_sha = subprocess.run(
+            ("git", "-C", str(self.origin), "hash-object", "-t", "tree",
+             "--literally", "-w", "--stdin"),
+            input=body, check=True, capture_output=True,
+        ).stdout.decode().strip()
+
+        cur_rel = parent_dir
+        while True:
+            up_rel, cur_name = cur_rel.rsplit("/", 1) if "/" in cur_rel else ("", cur_rel)
+            lines = [
+                f"{mode} {otype} {cur_sha if entry_name == cur_name else sha}\t{entry_name}"
+                for mode, otype, sha, entry_name in
+                tree_entries(f"{base}:{up_rel}" if up_rel else base)
+            ]
+            cur_sha = subprocess.run(
+                ("git", "-C", str(self.origin), "mktree"),
+                input="\n".join(lines) + "\n",
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            if not up_rel:
+                break
+            cur_rel = up_rel
+
+        new_head = subprocess.run(
+            ("git", "-C", str(self.origin), "commit-tree", cur_sha, "-p", base,
+             "-m", f"candidate head, duplicate ls-tree record for {rel}"),
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        self._git("update-ref", "refs/heads/main", new_head)
+        return new_head
+
     def commit_tampered_candidate(self) -> str:
         """The candidate rewrites everything it controls: it drops the whole
         `backend/tests` subtree, guts its own validator's manifest, and
@@ -480,6 +544,20 @@ class BehaviorTests(unittest.TestCase):
         self.assertDenied(
             result,
             "backend/tests: ancestor is not a directory (mode 100644 type blob)",
+        )
+
+    def test_duplicate_ls_tree_record_for_a_required_leaf_denies(self):
+        """fsck-invalid tree: a denied 120000 symlink record and an accepted
+        100644 blob record for the SAME required path, symlink first. A
+        last-wins dict assignment over the ls-tree listing would read the
+        later, accepted record and PASS; the fix must deny on the repeated
+        key itself, before either record is judged."""
+        head = self.fx.commit_with_duplicate_path_entry("backend/app/__init__.py")
+        result = self.fx.run(head)
+        self.assertDenied(
+            result,
+            "DUPLICATE_PATH_RECORD",
+            "backend/app/__init__.py",
         )
 
     def test_empty_tree_denies_on_all_seven(self):

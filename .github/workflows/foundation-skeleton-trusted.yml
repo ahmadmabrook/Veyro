@@ -249,7 +249,18 @@ jobs:
                   )
               # Candidate-controlled bytes: decoded defensively and used only
               # as a dict key. Never a path that is opened, never a shell word.
-              entries[raw_path.decode("utf-8", "surrogateescape")] = (
+              key = raw_path.decode("utf-8", "surrogateescape")
+              # A repeated raw path key (fsck-invalid duplicateEntries) must
+              # deny by name, never resolve last-wins: a denied mode (e.g. a
+              # symlink) earlier in the listing could otherwise be shadowed
+              # by an accepted mode later in the same listing, for a required
+              # leaf or for any of its ancestors.
+              if key in entries:
+                  raise SystemExit(
+                      "foundation-skeleton-trusted: DENY - DUPLICATE_PATH_RECORD: "
+                      f"repeated ls-tree entry for path: {key!r}"
+                  )
+              entries[key] = (
                   fields[0].decode("utf-8", "replace"),
                   fields[1].decode("utf-8", "replace"),
               )
