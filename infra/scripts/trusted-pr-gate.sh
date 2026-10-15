@@ -27,7 +27,8 @@ fetched_sha="$(git rev-parse --verify refs/remotes/candidate/head^{commit})"
   || fail "fetched candidate ${fetched_sha} does not match event head ${HEAD_SHA}"
 
 # Compare the candidate's protected gate files to the current protected base. This fails closed
-# on stale branches and prohibits a newly added sibling workflow with a spoofed check name.
+# on stale branches and detects a newly added sibling workflow; enforcement against a same-name
+# emitted check still requires a live protected-PR collision drill.
 merge_base="$(git merge-base "$base_sha" "$fetched_sha")" \
   || fail "no merge base between base ${base_sha} and candidate ${fetched_sha}"
 
@@ -35,13 +36,17 @@ echo "base=${base_sha} merge-base=${merge_base} candidate=${fetched_sha}"
 
 # --no-renames lists both old and new paths of a rename; -z keeps odd file names unambiguous.
 status=0
+paths_file="$(mktemp)"
+trap 'rm -f "$paths_file"' EXIT
+git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$base_sha" "$fetched_sha" > "$paths_file" \
+  || fail "could not enumerate candidate changes"
 while IFS= read -r -d '' changed; do
   if [[ "$changed" == .github/workflows/* || "$changed" == .github/actions/* ||
         "$changed" == infra/scripts/trusted-pr-gate.sh ]]; then
     echo "::error::candidate differs from protected base at a gate file"
     status=1
   fi
-done < <(git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$base_sha" "$fetched_sha")
+done < "$paths_file"
 
 if [[ "$status" -ne 0 ]]; then
   fail "candidate differs from protected base in workflow/action/guard files; use a separately reviewed bootstrap"
