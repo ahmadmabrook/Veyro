@@ -21,5 +21,5 @@ if docker image inspect "veyro-api:$release" >/dev/null 2>&1; then
   echo "build refused: veyro-api:$release already exists (release tags are immutable; use a new tag)" >&2
   exit 1
 fi
-docker build -t "veyro-api:$release" "$context"
+docker build --label "veyro.release=$release" -t "veyro-api:$release" "$context"
 echo "built veyro-api:$release id=$(docker image inspect -f '{{.Id}}' "veyro-api:$release")"

@@ -13,6 +13,11 @@ if ! image_id="$(docker image inspect -f '{{.Id}}' "veyro-api:$release" 2>/dev/n
   echo "deploy refused: image veyro-api:$release not found locally (run build.sh first)" >&2
   exit 1
 fi
+image_release="$(docker image inspect -f '{{ index .Config.Labels "veyro.release" }}' "veyro-api:$release")"
+if [ "$image_release" != "$release" ]; then
+  echo "deploy refused: image release label '$image_release' does not match tag '$release'" >&2
+  exit 1
+fi
 compose=(docker compose -f "$here/../compose.yaml")
 "${compose[@]}" up -d --no-build --pull never --force-recreate
 running_id="$(docker inspect -f '{{.Image}}' "$("${compose[@]}" ps -q api)")"

@@ -61,6 +61,9 @@ jobs:
           trap 'docker logs veyro-ci || true; docker rm -f veyro-ci >/dev/null 2>&1 || true' EXIT
           bash infra/scripts/smoke.sh staging "$GITHUB_SHA"
 
+      - name: Code rollback rehearsal (two distinct local images)
+        run: VEYRO_PORT=18080 bash infra/scripts/rollback-rehearsal.sh staging
+
       - name: Negative check - runner fails closed without a source-binding pin
         run: |
           set -u

@@ -22,13 +22,13 @@ cleanup() {
   for t in ${built[@]+"${built[@]}"}; do docker image rm "veyro-api:$t" >/dev/null 2>&1 || true; done
   rm -rf "$tmp"
 }
-trap cleanup EXIT
 
 # Do not disturb an existing deployment of this target.
 if [ -n "$(VEYRO_RELEASE="$tag_a" "${compose[@]}" ps -aq 2>/dev/null)" ]; then
   echo "rehearsal refused: containers already exist for target '$target'; stop them first" >&2
   exit 1
 fi
+trap cleanup EXIT
 
 mkdir "$tmp/a" "$tmp/b"
 for d in a b; do
@@ -42,10 +42,10 @@ if cmp -s "$tmp/a/app/main.py" "$tmp/b/app/main.py"; then
   exit 1
 fi
 
-built+=("$tag_a")
 bash "$here/build.sh" "$tag_a" "$tmp/a"
-built+=("$tag_b")
+built+=("$tag_a")
 bash "$here/build.sh" "$tag_b" "$tmp/b"
+built+=("$tag_b")
 id_a="$(docker image inspect -f '{{.Id}}' "veyro-api:$tag_a")"
 id_b="$(docker image inspect -f '{{.Id}}' "veyro-api:$tag_b")"
 echo "image A $tag_a $id_a"
