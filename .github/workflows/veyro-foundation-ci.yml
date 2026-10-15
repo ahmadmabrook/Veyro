@@ -1,0 +1,77 @@
+name: Veyro Foundation CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "feature/**"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: veyro-foundation-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: foundation (MOD-000 focused checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out code (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compile / syntax check
+        run: python -m compileall -q tools/mission_runner
+
+      - name: MOD-000 focused unittest suite
+        run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
+
+      - name: Negative check - runner fails closed without a source-binding pin
+        run: |
+          set -u
+          home="$(mktemp -d)"
+
+          # No baseline pin exists: verify-baseline MUST exit non-zero (1) and report NOT_PINNED.
+          rc=0
+          out="$(python tools/mission_runner/runner.py --home "$home" --repo "$PWD" verify-baseline)" || rc=$?
+          echo "$out"
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::verify-baseline exited $rc without a pin; expected fail-closed exit 1"
+            exit 1
+          fi
+          echo "$out" | grep -q '"code": "NOT_PINNED"' || {
+            echo "::error::verify-baseline did not report NOT_PINNED"
+            exit 1
+          }
+
+          # Pinning without an owner-confirmed index hash MUST be refused (exit 2) and write no pin.
+          rc=0
+          python tools/mission_runner/runner.py --home "$home" --repo "$PWD" pin-baseline || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::pin-baseline without --confirm-index-sha256 exited $rc; expected refusal (2)"
+            exit 1
+          fi
+          if find "$home" -name 'baseline-pin.json' | grep -q .; then
+            echo "::error::a baseline pin was written without owner confirmation"
+            exit 1
+          fi
+
+          # A wrong confirmation hash MUST also be refused (exit 2).
+          rc=0
+          python tools/mission_runner/runner.py --home "$home" --repo "$PWD" pin-baseline \
+            --confirm-index-sha256 0000000000000000000000000000000000000000000000000000000000000000 || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::pin-baseline with a wrong hash exited $rc; expected refusal (2)"
+            exit 1
+          fi
+          echo "negative checks passed: runner fails closed without a valid pin"

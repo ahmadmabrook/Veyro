@@ -1,6 +1,7 @@
 # Veyro — durable-authority repo .gitignore
-# Governing baselines, knowledge/, .claude/agents, .claude/rules, and evidence are NEVER
-# ignored by the patterns below. (Corrected 2026-09-04, Phase 5 editorial F5-028: this
+# Governing baselines, knowledge/, .claude/agents, .claude/rules, and evidence are not
+# ignored by the general patterns below; three credential-bearing raw captures
+# have explicit narrow exceptions. (Corrected 2026-09-04, Phase 5 editorial F5-028: this
 # comment previously pointed to "explicit negative-pattern exceptions at the bottom" that
 # don't exist — none have been needed since no broad pattern below actually catches those
 # paths; removed the stale pointer instead of inventing exceptions nothing requires.)
@@ -64,6 +65,12 @@ Pods/
 *.log
 /tmp/
 .cache/
+
+# Raw ACPX captures with locally redacted credentials. Originals are retained
+# outside this repository in the restricted Veyro control archive.
+/knowledge/03-Modules/MOD-001/evidence/code-review/GATE2-R1-F14-FINAL-ADJUDICATION-ACPX-RAW-2026-10-08.txt
+/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-R1-REMEDIATION-ACPX-RAW-2026-10-04.txt
+/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-WATCHDOG-ACPX-RAW-2026-10-04.txt
 
 # Test-run scratch output produced by capability drills (evidence itself lives under knowledge/, not here)
 /scratch/
