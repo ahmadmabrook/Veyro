@@ -1,0 +1,3435 @@
+{
+  "manifest": "veyro-screen-contracts",
+  "format_note": "JSON text, which is valid YAML 1.2 (JSON is a YAML 1.2 subset). Generated; do not edit by hand. Regenerate with: node tools/screen_contracts/screen_contracts.mjs generate",
+  "status": "IDENTITY_ONLY - full screen contracts are UNRESOLVED",
+  "source": {
+    "path": "veyro-product-experience-design/project/veyro-registry-data.js",
+    "sha256": "0736902dfb285cb57e2f370c0918df0b8f2aeeefbd24b3e5198fa03ed185b8f5",
+    "selection": "resolve() rows with isV1 true and surface other than \"Backend / no UI\"",
+    "excluded_backend_no_ui_rows": 8
+  },
+  "counts": {
+    "v1_ui_screens": 170,
+    "by_surface": {
+      "Veyro Admin": 85,
+      "Front Desk & POS": 16,
+      "Veyro Coach": 19,
+      "Veyro Member": 35,
+      "Internal Console": 15
+    }
+  },
+  "unresolved_policy": "A null contract field means the source registry does not supply it. Null is not PASS. No route, owning implementation module, read model, command, permission, realtime, masking, offline or error contract has been inferred. ux_group and source_roles are registry labels, not implementation modules or permissions.",
+  "unresolved_fields": [
+    "route",
+    "owning_module",
+    "read_model",
+    "commands",
+    "permissions",
+    "realtime",
+    "masking",
+    "offline",
+    "error_contract"
+  ],
+  "screens": [
+    {
+      "id": "ADM-CC-01",
+      "surface": "Veyro Admin",
+      "name": "Command Center · Owner, all locations",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "Owner,RM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-02",
+      "surface": "Veyro Admin",
+      "name": "Command Center · Club Manager, branch scope",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-03",
+      "surface": "Veyro Admin",
+      "name": "Command Center · critical exception",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-04",
+      "surface": "Veyro Admin",
+      "name": "Command Center · quiet day",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-05",
+      "surface": "Veyro Admin",
+      "name": "Command Center · degraded data",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-06",
+      "surface": "Veyro Admin",
+      "name": "Attention item detail · side sheet",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CC-07",
+      "surface": "Veyro Admin",
+      "name": "Resolved history · today",
+      "phase": "V1",
+      "ux_group": "Command",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-01",
+      "surface": "Veyro Admin",
+      "name": "Lead pipeline",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-02",
+      "surface": "Veyro Admin",
+      "name": "Lead list · table view",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-03",
+      "surface": "Veyro Admin",
+      "name": "Lead profile · full",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-04",
+      "surface": "Veyro Admin",
+      "name": "Add lead · form",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-05",
+      "surface": "Veyro Admin",
+      "name": "Trial in progress · day N of 7",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-06",
+      "surface": "Veyro Admin",
+      "name": "Convert trial to member",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-CRM-07",
+      "surface": "Veyro Admin",
+      "name": "Lost lead · reason capture",
+      "phase": "V1",
+      "ux_group": "CRM",
+      "source_status": "DONE",
+      "source_roles": "Sales",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-01",
+      "surface": "Veyro Admin",
+      "name": "Member 360 · attention",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-02",
+      "surface": "Veyro Admin",
+      "name": "Member 360 · healthy",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-03",
+      "surface": "Veyro Admin",
+      "name": "Member 360 · receptionist view",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-04",
+      "surface": "Veyro Admin",
+      "name": "Member 360 · frozen + loading",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-05",
+      "surface": "Veyro Admin",
+      "name": "Members list · filter, bulk, saved views",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-06",
+      "surface": "Veyro Admin",
+      "name": "Member · billing tab",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-07",
+      "surface": "Veyro Admin",
+      "name": "Member · attendance tab",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-08",
+      "surface": "Veyro Admin",
+      "name": "Member · documents tab",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-09",
+      "surface": "Veyro Admin",
+      "name": "Member · notes and communication",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-10",
+      "surface": "Veyro Admin",
+      "name": "Add member · manual",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "Recep,Sales",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MEM-11",
+      "surface": "Veyro Admin",
+      "name": "Merge duplicate members",
+      "phase": "V1",
+      "ux_group": "Members",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-01",
+      "surface": "Veyro Admin",
+      "name": "Membership sale · plan selection",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "Sales,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-02",
+      "surface": "Veyro Admin",
+      "name": "Membership · renew",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "CM,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-03",
+      "surface": "Veyro Admin",
+      "name": "Membership · freeze",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-04",
+      "surface": "Veyro Admin",
+      "name": "Membership · resume early",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-05",
+      "surface": "Veyro Admin",
+      "name": "Membership · upgrade",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "Sales,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-06",
+      "surface": "Veyro Admin",
+      "name": "Membership · downgrade",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-07",
+      "surface": "Veyro Admin",
+      "name": "Membership · cancel",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-MSH-09",
+      "surface": "Veyro Admin",
+      "name": "Plans and pricing configuration",
+      "phase": "V1",
+      "ux_group": "Membership",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-01",
+      "surface": "Veyro Admin",
+      "name": "Payments ledger",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Acct,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-02",
+      "surface": "Veyro Admin",
+      "name": "Refund · tier 3+4 confirmation",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "CM,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-03",
+      "surface": "Veyro Admin",
+      "name": "Invoice detail",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Acct,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-04",
+      "surface": "Veyro Admin",
+      "name": "Take payment · modal",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Recep,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-05",
+      "surface": "Veyro Admin",
+      "name": "Failed payment · recovery workspace",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Acct,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-06",
+      "surface": "Veyro Admin",
+      "name": "Dunning configuration",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Owner,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-07",
+      "surface": "Veyro Admin",
+      "name": "Wallet and credits",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Acct,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-08",
+      "surface": "Veyro Admin",
+      "name": "Partial refund",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "CM,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-09",
+      "surface": "Veyro Admin",
+      "name": "Cash reconciliation · shift close",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Recep,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-PAY-10",
+      "surface": "Veyro Admin",
+      "name": "Payment dispute",
+      "phase": "V1",
+      "ux_group": "Payments",
+      "source_status": "DONE",
+      "source_roles": "Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-POS-01",
+      "surface": "Veyro Admin",
+      "name": "Products and pricing",
+      "phase": "V1",
+      "ux_group": "POS admin",
+      "source_status": "DONE",
+      "source_roles": "Owner,Inv",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-POS-02",
+      "surface": "Veyro Admin",
+      "name": "Inventory and stock",
+      "phase": "V1",
+      "ux_group": "POS admin",
+      "source_status": "DONE",
+      "source_roles": "Inv,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-POS-03",
+      "surface": "Veyro Admin",
+      "name": "Discounts and promotions",
+      "phase": "V1",
+      "ux_group": "POS admin",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-01",
+      "surface": "Veyro Admin",
+      "name": "Class schedule · week grid",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-02",
+      "surface": "Veyro Admin",
+      "name": "Class detail and roster",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM,Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-03",
+      "surface": "Veyro Admin",
+      "name": "Create or edit class",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-04",
+      "surface": "Veyro Admin",
+      "name": "Coach availability",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM,Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-05",
+      "surface": "Veyro Admin",
+      "name": "PT session scheduling",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM,Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-06",
+      "surface": "Veyro Admin",
+      "name": "Rooms and resources",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SCH-07",
+      "surface": "Veyro Admin",
+      "name": "Cancel class · notify members",
+      "phase": "V1",
+      "ux_group": "Scheduling",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-ACC-01",
+      "surface": "Veyro Admin",
+      "name": "Access control dashboard",
+      "phase": "V1",
+      "ux_group": "Access",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-ACC-02",
+      "surface": "Veyro Admin",
+      "name": "Access denial log",
+      "phase": "V1",
+      "ux_group": "Access",
+      "source_status": "DONE",
+      "source_roles": "CM,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-ACC-03",
+      "surface": "Veyro Admin",
+      "name": "Member access credentials",
+      "phase": "V1",
+      "ux_group": "Access",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-STF-01",
+      "surface": "Veyro Admin",
+      "name": "Staff list",
+      "phase": "V1",
+      "ux_group": "Staff",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-STF-02",
+      "surface": "Veyro Admin",
+      "name": "Staff profile and permissions",
+      "phase": "V1",
+      "ux_group": "Staff",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-STF-03",
+      "surface": "Veyro Admin",
+      "name": "Invite staff member",
+      "phase": "V1",
+      "ux_group": "Staff",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-STF-04",
+      "surface": "Veyro Admin",
+      "name": "Roles and permission matrix",
+      "phase": "V1",
+      "ux_group": "Staff",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-COM-01",
+      "surface": "Veyro Admin",
+      "name": "WhatsApp conversation",
+      "phase": "V1",
+      "ux_group": "Comms",
+      "source_status": "DONE",
+      "source_roles": "Recep,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-COM-02",
+      "surface": "Veyro Admin",
+      "name": "Message templates",
+      "phase": "V1",
+      "ux_group": "Comms",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-COM-03",
+      "surface": "Veyro Admin",
+      "name": "Broadcast · segment and send",
+      "phase": "V1",
+      "ux_group": "Comms",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-COM-04",
+      "surface": "Veyro Admin",
+      "name": "Notification settings",
+      "phase": "V1",
+      "ux_group": "Comms",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-TSK-01",
+      "surface": "Veyro Admin",
+      "name": "Task list",
+      "phase": "V1",
+      "ux_group": "Tasks",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AUT-01",
+      "surface": "Veyro Admin",
+      "name": "Automation list",
+      "phase": "V1",
+      "ux_group": "Automation",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AUT-02",
+      "surface": "Veyro Admin",
+      "name": "Automation builder",
+      "phase": "V1",
+      "ux_group": "Automation",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AUT-03",
+      "surface": "Veyro Admin",
+      "name": "Automation run history",
+      "phase": "V1",
+      "ux_group": "Automation",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-RPT-01",
+      "surface": "Veyro Admin",
+      "name": "Reports index",
+      "phase": "V1",
+      "ux_group": "Reports",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-RPT-02",
+      "surface": "Veyro Admin",
+      "name": "Revenue report",
+      "phase": "V1",
+      "ux_group": "Reports",
+      "source_status": "DONE",
+      "source_roles": "Owner,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-RPT-03",
+      "surface": "Veyro Admin",
+      "name": "Membership report",
+      "phase": "V1",
+      "ux_group": "Reports",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-RPT-04",
+      "surface": "Veyro Admin",
+      "name": "Attendance report",
+      "phase": "V1",
+      "ux_group": "Reports",
+      "source_status": "DONE",
+      "source_roles": "CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-RPT-05",
+      "surface": "Veyro Admin",
+      "name": "Export · sensitive data gate",
+      "phase": "V1",
+      "ux_group": "Reports",
+      "source_status": "DONE",
+      "source_roles": "Owner,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-01",
+      "surface": "Veyro Admin",
+      "name": "Organization settings",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-02",
+      "surface": "Veyro Admin",
+      "name": "Location settings",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-03",
+      "surface": "Veyro Admin",
+      "name": "Tax and invoicing · JoFotara",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner,Acct",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-04",
+      "surface": "Veyro Admin",
+      "name": "Payment providers · CliQ, cards",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-05",
+      "surface": "Veyro Admin",
+      "name": "Integrations index",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-06",
+      "surface": "Veyro Admin",
+      "name": "White-label branding",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-07",
+      "surface": "Veyro Admin",
+      "name": "Localization",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SET-08",
+      "surface": "Veyro Admin",
+      "name": "Security and audit log",
+      "phase": "V1",
+      "ux_group": "Settings",
+      "source_status": "DONE",
+      "source_roles": "Owner",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AI-01",
+      "surface": "Veyro Admin",
+      "name": "AI insight detail · evidence",
+      "phase": "V1",
+      "ux_group": "AI",
+      "source_status": "DONE",
+      "source_roles": "Owner,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-SRCH-01",
+      "surface": "Veyro Admin",
+      "name": "Command palette · open state",
+      "phase": "V1",
+      "ux_group": "Search",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AUTH-01",
+      "surface": "Veyro Admin",
+      "name": "Admin sign-in",
+      "phase": "V1",
+      "ux_group": "Auth",
+      "source_status": "DONE",
+      "source_roles": "All",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "ADM-AUTH-02",
+      "surface": "Veyro Admin",
+      "name": "Sensitive action re-auth",
+      "phase": "V1",
+      "ux_group": "Auth",
+      "source_status": "DONE",
+      "source_roles": "All admin",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-01",
+      "surface": "Front Desk & POS",
+      "name": "Live check-in · peak",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-02",
+      "surface": "Front Desk & POS",
+      "name": "Member lookup · no scan",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-03",
+      "surface": "Front Desk & POS",
+      "name": "Access denial · resolution",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-04",
+      "surface": "Front Desk & POS",
+      "name": "Guest and day pass",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-05",
+      "surface": "Front Desk & POS",
+      "name": "Walk-in trial signup",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep,Sales",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-06",
+      "surface": "Front Desk & POS",
+      "name": "Class check-in · roster",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-07",
+      "surface": "Front Desk & POS",
+      "name": "Shift open and close",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-08",
+      "surface": "Front Desk & POS",
+      "name": "Scanner and device state",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "FD-09",
+      "surface": "Front Desk & POS",
+      "name": "Front desk offline · whole surface",
+      "phase": "V1",
+      "ux_group": "Front Desk",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-01",
+      "surface": "Front Desk & POS",
+      "name": "Sale · cart and payment",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-02",
+      "surface": "Front Desk & POS",
+      "name": "Payment · card terminal states",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-03",
+      "surface": "Front Desk & POS",
+      "name": "Split payment",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-04",
+      "surface": "Front Desk & POS",
+      "name": "Membership sale at the desk",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep,Sales",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-05",
+      "surface": "Front Desk & POS",
+      "name": "PT package sale",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Sales,Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-06",
+      "surface": "Front Desk & POS",
+      "name": "Refund at the desk",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep,CM",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "POS-07",
+      "surface": "Front Desk & POS",
+      "name": "Receipt · print, WhatsApp, email",
+      "phase": "V1",
+      "ux_group": "POS",
+      "source_status": "DONE",
+      "source_roles": "Recep",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-01",
+      "surface": "Veyro Coach",
+      "name": "Today",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-02",
+      "surface": "Veyro Coach",
+      "name": "Live session · set logger",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-03",
+      "surface": "Veyro Coach",
+      "name": "Nutrition plan generation",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach,Nutr",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-04",
+      "surface": "Veyro Coach",
+      "name": "Client list",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-05",
+      "surface": "Veyro Coach",
+      "name": "Client profile",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-06",
+      "surface": "Veyro Coach",
+      "name": "Session detail · pre-session",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-07",
+      "surface": "Veyro Coach",
+      "name": "Session complete · summary",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-08",
+      "surface": "Veyro Coach",
+      "name": "Programme builder",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-09",
+      "surface": "Veyro Coach",
+      "name": "Exercise picker",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-10",
+      "surface": "Veyro Coach",
+      "name": "Workout assignment",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-11",
+      "surface": "Veyro Coach",
+      "name": "Client progress and measurements",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-12",
+      "surface": "Veyro Coach",
+      "name": "Assessment and goals",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-13",
+      "surface": "Veyro Coach",
+      "name": "Nutrition plan editing",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach,Nutr",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-14",
+      "surface": "Veyro Coach",
+      "name": "Nutrition check-in review",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach,Nutr",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-15",
+      "surface": "Veyro Coach",
+      "name": "Client messaging",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-16",
+      "surface": "Veyro Coach",
+      "name": "Coach schedule",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-17",
+      "surface": "Veyro Coach",
+      "name": "Unverified sessions queue",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-18",
+      "surface": "Veyro Coach",
+      "name": "Coach profile and settings",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CCH-19",
+      "surface": "Veyro Coach",
+      "name": "Sign-in and biometric unlock",
+      "phase": "V1",
+      "ux_group": "Coach",
+      "source_status": "DONE",
+      "source_roles": "Coach",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-01",
+      "surface": "Veyro Member",
+      "name": "Home",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-02",
+      "surface": "Veyro Member",
+      "name": "Meal swap sheet",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-03",
+      "surface": "Veyro Member",
+      "name": "Class booking list",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-04",
+      "surface": "Veyro Member",
+      "name": "Onboarding · first run",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-05",
+      "surface": "Veyro Member",
+      "name": "Sign-in and account creation",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-06",
+      "surface": "Veyro Member",
+      "name": "Workout detail · before starting",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-07",
+      "surface": "Veyro Member",
+      "name": "Member set logger",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-08",
+      "surface": "Veyro Member",
+      "name": "Workout complete",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-09",
+      "surface": "Veyro Member",
+      "name": "Workout history",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-10",
+      "surface": "Veyro Member",
+      "name": "Nutrition · full day",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-11",
+      "surface": "Veyro Member",
+      "name": "Meal detail",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-12",
+      "surface": "Veyro Member",
+      "name": "Food search and manual log",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-13",
+      "surface": "Veyro Member",
+      "name": "Barcode scan",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-14",
+      "surface": "Veyro Member",
+      "name": "Photo meal log",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-15",
+      "surface": "Veyro Member",
+      "name": "Grocery list",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-16",
+      "surface": "Veyro Member",
+      "name": "Weekly check-in",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-17",
+      "surface": "Veyro Member",
+      "name": "Booking confirmation",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-18",
+      "surface": "Veyro Member",
+      "name": "My bookings",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-19",
+      "surface": "Veyro Member",
+      "name": "Waitlist state",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-20",
+      "surface": "Veyro Member",
+      "name": "Cancel booking",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-21",
+      "surface": "Veyro Member",
+      "name": "Book PT with coach",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-22",
+      "surface": "Veyro Member",
+      "name": "Progress",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-23",
+      "surface": "Veyro Member",
+      "name": "Membership details",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-24",
+      "surface": "Veyro Member",
+      "name": "Request freeze",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-25",
+      "surface": "Veyro Member",
+      "name": "Payment history and receipts",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-26",
+      "surface": "Veyro Member",
+      "name": "Pay outstanding balance",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-27",
+      "surface": "Veyro Member",
+      "name": "Payment methods",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-28",
+      "surface": "Veyro Member",
+      "name": "Wallet",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-29",
+      "surface": "Veyro Member",
+      "name": "QR access pass",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-30",
+      "surface": "Veyro Member",
+      "name": "Coach chat",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-31",
+      "surface": "Veyro Member",
+      "name": "Notifications",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-32",
+      "surface": "Veyro Member",
+      "name": "Profile and preferences",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-33",
+      "surface": "Veyro Member",
+      "name": "Security and devices",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-34",
+      "surface": "Veyro Member",
+      "name": "Privacy and consent",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "MBR-38",
+      "surface": "Veyro Member",
+      "name": "Member app offline",
+      "phase": "V1",
+      "ux_group": "Member",
+      "source_status": "DONE",
+      "source_roles": "Member",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-01",
+      "surface": "Internal Console",
+      "name": "Tenant list · live incident",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-02",
+      "surface": "Internal Console",
+      "name": "Tenant onboarding checklist",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-03",
+      "surface": "Internal Console",
+      "name": "Tenant detail",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-04",
+      "surface": "Internal Console",
+      "name": "Tenant provisioning",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-05",
+      "surface": "Internal Console",
+      "name": "Member import · mapping and errors",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-06",
+      "surface": "Internal Console",
+      "name": "SaaS subscription and entitlements",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-07",
+      "surface": "Internal Console",
+      "name": "Usage and metering",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-08",
+      "surface": "Internal Console",
+      "name": "Incident detail",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-09",
+      "surface": "Internal Console",
+      "name": "Safe impersonation · start and audit",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-10",
+      "surface": "Internal Console",
+      "name": "Feature flags and rollout",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-11",
+      "surface": "Internal Console",
+      "name": "System health",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-12",
+      "surface": "Internal Console",
+      "name": "Audit log",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-13",
+      "surface": "Internal Console",
+      "name": "Tenant billing and dunning",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-16",
+      "surface": "Internal Console",
+      "name": "Console sign-in",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    },
+    {
+      "id": "CON-17",
+      "surface": "Internal Console",
+      "name": "Support ticket context",
+      "phase": "V1",
+      "ux_group": "Console",
+      "source_status": "DONE",
+      "source_roles": "Support",
+      "contract": {
+        "route": null,
+        "owning_module": null,
+        "read_model": null,
+        "commands": null,
+        "permissions": null,
+        "realtime": null,
+        "masking": null,
+        "offline": null,
+        "error_contract": null
+      }
+    }
+  ]
+}

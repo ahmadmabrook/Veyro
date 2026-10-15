@@ -36,6 +36,9 @@ jobs:
       - name: MOD-000 focused unittest suite
         run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
 
+      - name: Screen-contract source identity (identity only, not a full-contract gate)
+        run: node tools/screen_contracts/screen_contracts.mjs check-identity
+
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements-dev.txt
 
