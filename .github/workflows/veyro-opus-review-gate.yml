@@ -1,0 +1,111 @@
+name: Veyro Opus Review Gate (DRAFT - opt-in, not a replacement for required review)
+
+# Loaded from the default branch (pull_request_target), so it runs privileged with
+# environment secrets. Safety rests on three things, not on the PR being "inert":
+#   1. Only the base snapshot's script runs; the PR head is never checked out, built,
+#      imported or executed, only read via `git diff` as Git objects.
+#   2. Fork PRs are included: refs/pull/N/head is fetched from THIS repository, so fork
+#      commits arrive as objects with no fork-controlled config or hooks. Git itself still
+#      parses attacker-supplied objects (transfer.fsckObjects is enabled), and the diff
+#      is sent to Anthropic's API, i.e. PR content leaves GitHub by design.
+#   3. Only PRs authored by an OWNER, MEMBER or COLLABORATOR (author_association, set by
+#      GitHub, never the PR title/body/labels) may spend the API key. A public fork PR from
+#      anyone else is skipped here and again refused inside the script: no review, no
+#      approval, so it stays blocked. Per-run spend is bounded by the script's hard limits.
+#   4. Activation is explicit opt-in: the job is skipped unless repository variable
+#      OPUS_REVIEW_GATE_ENABLED is "true". Enabling it makes paid API calls, so it needs
+#      an OWNER_APPROVALS.md entry first (owner-reserved: no paid services). A skipped
+#      job produces no approval, so branch protection / required review stays unsatisfied;
+#      this gate can only ADD an approval and never removes or waives any other check.
+# No `uses:` actions are referenced (see .claude/rules/infra/iac.md control 5).
+# Residual risks and owner setup: infra/scripts/OPUS_REVIEW_GATE.md.
+on:
+  pull_request_target:
+    branches: [main]
+    # `edited` covers a PR being retargeted to main; title/body edits are filtered below.
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+jobs:
+  # Base-owned tests only. No environment, no secrets, and the PR head is never fetched.
+  gate-selftest:
+    name: opus review gate self-test
+    if: >-
+      vars.OPUS_REVIEW_GATE_ENABLED == 'true' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Run the base snapshot's gate tests (offline, no secrets)
+        env:
+          BASE_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          git -C "$work" init -q
+          git -C "$work" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          GIT_TERMINAL_PROMPT=0 git -C "$work" -c transfer.fsckObjects=true fetch -q --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          [[ "$(git -C "$work" rev-parse refs/remotes/origin/main)" == "$BASE_SHA" ]]
+          git -C "$work" checkout -q --detach "$BASE_SHA"
+          # Scrubbed environment: the tests use only fake placeholder credentials.
+          (cd "$work" && env -i PATH="$PATH" HOME="$work" \
+            python3 -I infra/scripts/tests/test_opus_review_gate.py)
+
+  opus-review-gate:
+    name: opus review gate
+    needs: gate-selftest
+    if: >-
+      vars.OPUS_REVIEW_GATE_ENABLED == 'true' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    # Serialize only review jobs that actually run. A title/body edit is skipped above,
+    # so it cannot replace a pending review of a newer push. Never cancel an active job
+    # between review submission and exact-head verification.
+    concurrency:
+      group: opus-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # Owner action: create environment "opus-review", restrict deployment branches
+    # to `main`, and store ANTHROPIC_API_KEY and REVIEWER_GITHUB_TOKEN ONLY here.
+    # Variables: OPUS_REVIEW_GATE_ENABLED=true, OPUS_REVIEWER_LOGIN=<reviewer account>.
+    environment: opus-review
+    steps:
+      - name: Review exact PR head with the base-owned gate
+        env:
+          BASE_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REVIEWER_GITHUB_TOKEN: ${{ secrets.REVIEWER_GITHUB_TOKEN }}
+          REVIEWER_LOGIN: ${{ vars.OPUS_REVIEWER_LOGIN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]{0,9}$ ]]
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          git -C "$work" init -q
+          git -C "$work" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          GIT_TERMINAL_PROMPT=0 git -C "$work" -c transfer.fsckObjects=true fetch -q --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/origin/pr-head"
+          [[ "$(git -C "$work" rev-parse refs/remotes/origin/main)" == "$BASE_SHA" ]]
+          [[ "$(git -C "$work" rev-parse refs/remotes/origin/pr-head)" == "$HEAD_SHA" ]]
+          git -C "$work" checkout -q --detach "$BASE_SHA"
+          # Only the base snapshot's script runs. HEAD_SHA is read as Git objects
+          # (fork PRs included: refs/pull/N/head lives in this repository).
+          (cd "$work" && python3 -I infra/scripts/opus_review_gate.py)

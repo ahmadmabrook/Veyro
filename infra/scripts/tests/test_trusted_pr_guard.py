@@ -72,6 +72,41 @@ class TrustedPRGuardTests(unittest.TestCase):
         result = self.candidate("infra/scripts/trusted-pr-guard.sh", "exit 0\n")
         self.assertNotEqual(result.returncode, 0)
 
+    def test_github_codeowners_fails(self):
+        result = self.candidate(".github/CODEOWNERS", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_github_other_file_fails(self):
+        result = self.candidate(".github/dependabot.yml", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_github_nested_file_fails(self):
+        result = self.candidate(".github/ISSUE_TEMPLATE/bug.md", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_root_codeowners_fails(self):
+        result = self.candidate("CODEOWNERS", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_docs_codeowners_fails(self):
+        result = self.candidate("docs/CODEOWNERS", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_review_gate_script_fails(self):
+        result = self.candidate("infra/scripts/opus_review_gate.py", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
+    def test_review_gate_tests_fails(self):
+        result = self.candidate("infra/scripts/tests/test_opus_review_gate.py", "x = 1\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("protected", result.stderr)
+
     def test_whitespace_error_fails(self):
         result = self.candidate("backend/app.py", "value = 1  \n")
         self.assertNotEqual(result.returncode, 0)

@@ -22,8 +22,8 @@ git diff --no-ext-diff --no-textconv --no-renames --name-only -z \
 
 while IFS= read -r -d '' path; do
   case "$path" in
-    .github|.github/workflows|.github/workflows/*|.github/actions|.github/actions/*|infra/scripts|infra/scripts/trusted-pr-guard.sh)
-      deny 'PR changes a protected workflow, action, or trusted guard script'
+    .github|.github/*|CODEOWNERS|docs/CODEOWNERS|infra/scripts|infra/scripts/trusted-pr-guard.sh|infra/scripts/opus_review_gate.py|infra/scripts/tests/test_opus_review_gate.py)
+      deny 'PR changes protected .github content, CODEOWNERS, or a trusted guard/review-gate script'
       ;;
   esac
 done < "$changes"
