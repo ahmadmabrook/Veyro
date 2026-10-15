@@ -15,3 +15,19 @@ version = "0.1.0-synthetic"
 check(gradle.gradleVersion == "8.14") {
     "Gradle ${gradle.gradleVersion} does not match the pinned 8.14 (mobile/TOOLCHAIN_MATRIX.md)"
 }
+
+android {
+    namespace = "app.veyro.synthetic.shared"
+    compileSdk = 36
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+// Lock the resolved plugin buildscript classpath separately from project dependencies.
+buildscript {
+    configurations.classpath {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}

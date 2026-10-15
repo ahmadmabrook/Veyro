@@ -12,6 +12,7 @@ check(gradle.gradleVersion == "8.14") {
 }
 
 android {
+    compileSdk = 36
     namespace = "app.veyro.synthetic.androidapp"
     flavorDimensions += "brand"
     productFlavors {
@@ -23,5 +24,16 @@ android {
             dimension = "brand"
             applicationId = "app.veyro.synthetic.brandb"
         }
+    }
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+// Lock the resolved plugin buildscript classpath separately from project dependencies.
+buildscript {
+    configurations.classpath {
+        resolutionStrategy.activateDependencyLocking()
     }
 }
