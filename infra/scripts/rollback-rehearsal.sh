@@ -32,7 +32,7 @@ trap cleanup EXIT
 
 mkdir "$tmp/a" "$tmp/b"
 for d in a b; do
-  cp -R "$backend/Dockerfile" "$backend/requirements.txt" "$backend/app" "$tmp/$d/"
+  cp -R "$backend/Dockerfile" "$backend/requirements.lock" "$backend/app" "$tmp/$d/"
   find "$tmp/$d" -name __pycache__ -prune -exec rm -rf {} +
   chmod -R a+rX "$tmp/$d"
 done
