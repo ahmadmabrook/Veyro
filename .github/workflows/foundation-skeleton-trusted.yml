@@ -1,0 +1,302 @@
+# GOV-01-R04 candidate: a SEPARATE trusted status check for the MOD-001
+# repository-skeleton required paths (GOV-01-R01 / SCN-MOD001-003).
+#
+# STATUS: UNREVIEWED CANDIDATE. Not a required status check, not a gate, not
+# CI / Gatekeeper / R04 / module credit. Adding this file does not make any
+# check required on `main`; that is a separate owner-executed
+# branch-protection action, deliberately NOT taken here. No branch protection
+# is created, modified or requested by this file.
+#
+# Relationship to `foundation-skeleton-ci.yml` (unchanged by this file):
+#   That file stays exactly what it is - a NONREQUIRED, candidate-controlled
+#   smoke check that asks whether the candidate's own validator accepts the
+#   candidate's own tree. It is not touched, not renamed, not made required,
+#   and its job name (`foundation-skeleton-ci`) is intentionally different
+#   from this one (`foundation-skeleton-trusted`), so installing a required
+#   context for one never silently satisfies the other.
+#
+#   The two checks answer different questions and may legitimately DISAGREE:
+#   a candidate that empties its own `REQUIRED_PATHS`, or swaps
+#   `tools/validate_repo_skeleton.py` for an always-PASS stub, can still turn
+#   the smoke check green while this trusted check stays RED, because this
+#   check never reads either of those candidate files. Both halves of that
+#   divergence are exercised in
+#   `tools/tests/test_foundation_skeleton_trusted_workflow.py`.
+#
+# WHY THIS FILE IS INERT UNTIL IT LIVES ON THE TRUSTED DEFAULT BRANCH:
+#   `pull_request_target` takes its workflow DEFINITION (and `github.sha`)
+#   from the repository's DEFAULT branch, not from the pull request's head and
+#   not from its base. While this file exists only on an unmerged feature
+#   branch it therefore does not run at all, and nothing here may be read as
+#   a claim that the trigger has fired, or would fire, from this branch. No
+#   live run, no run ID, no logs, no reported context are claimed. Its
+#   behaviour after installation on a published default branch is UNPROVEN;
+#   only the extracted shell/Python body below has been exercised, offline,
+#   against synthetic local Git objects.
+#
+# TRUST MODEL (what is trusted, and what is merely data):
+#   - TRUSTED: this workflow definition, loaded from the default branch. Both
+#     halves of the decision live here and nowhere else - (a) the seven
+#     expected required paths, written out literally below, and (b) the
+#     executable checking logic that screens them. Neither is read from the
+#     PR head. In particular the candidate head's own
+#     `tools/validate_repo_skeleton.py` and its `REQUIRED_PATHS` are NEVER
+#     read, imported, executed or consulted; that file's name does not appear
+#     anywhere in the executed body. The literal path list here is a
+#     deliberate trusted DUPLICATE of that validator's manifest, kept in sync
+#     by a test, not a dependency on it.
+#   - DATA ONLY: the PR head's Git tree. It is fetched by exact immutable
+#     40-hex SHA and is NEVER checked out, extracted, written to disk,
+#     imported, executed, or installed from. The only candidate bytes that
+#     reach the decision are a `git ls-tree` listing - mode, object type and
+#     path strings - parsed as inert text. Candidate path strings are used as
+#     dictionary keys only, never as filesystem paths and never as shell
+#     words.
+#   - NO CREDENTIALS: `permissions: {}` (the GITHUB_TOKEN carries no scope at
+#     all, read included), no `secrets.` reference of any kind, no
+#     `GITHUB_TOKEN` use, and an anonymous tokenless `git fetch`. This is
+#     stricter than `contents: read`, and it is what makes
+#     `pull_request_target` acceptable here: the job holds nothing a
+#     candidate could want to steal, and runs no candidate code that could
+#     try.
+#
+# Fail-closed by construction:
+#   - malformed `github.repository`, `github.sha` or head SHA (anything not a
+#     well-formed `owner/name` / exact 40-hex SHA) denies before any fetch.
+#   - the fetched object is compared back against the exact requested head
+#     SHA, and must be a commit; a mismatch denies rather than screening some
+#     other tree.
+#   - every required path AND every one of its ancestors must be a genuine
+#     tree entry of the right kind: ancestors must be real directories
+#     (mode 040000, type tree), the final component a regular file
+#     (mode 100644/100755, type blob). Missing, symlink (120000), submodule
+#     gitlink (160000), directory-standing-in-for-a-file, and any other
+#     irregular mode or wrong object type each deny BY NAME.
+#   - a missing or too-old `python3`, an unparseable `ls-tree` record, or any
+#     other nonzero ends the job under `set -euo pipefail`. Nothing is
+#     masked: no `|| true`, no `|| :`, no `set +e`, no `continue-on-error`,
+#     no `if: always()`, no step-level failure suppression.
+#
+# Deliberate omissions, each a known bypass class:
+#   - no `workflow_dispatch` (a hand-triggerable run of a required context).
+#   - no `paths`/`paths-ignore` filter (a path filter lets a PR avoid
+#     triggering the required context at all).
+#   - no `continue-on-error`, no `if:` condition anywhere, no retry.
+#   - no `uses:` action reference. `.claude/rules/infra/iac.md` control 5
+#     requires every action under `.github/workflows/**` to be BOTH pinned to
+#     a 40-character commit SHA AND backed by an APPROVED `CAP-<NNN>` row in
+#     `CAPABILITY_REGISTRY.md`. No GitHub Action holds such a row today, so
+#     any `uses:` line would be unmergeable under that rule's fail-closed
+#     clause. Only runner-image `git` and `python3` are used, which also
+#     removes `actions/checkout`'s credential surface entirely rather than
+#     merely setting `persist-credentials: false`.
+#   - the `branches:` filter below is scope, not a skip: it must be kept
+#     EXACTLY equal to the set of protected branches this context is required
+#     on. A narrower filter than the protected set would leave the required
+#     context permanently pending on an unmatched PR, which BLOCKS rather
+#     than bypasses - fail-closed, but it must be noticed and fixed, not
+#     tolerated.
+#   - untrusted values reach the shell only through `env:`. No `${{ ... }}`
+#     expression appears inside any script body, so no candidate-controlled
+#     string can ever be parsed as shell. The Python heredoc is quoted
+#     (`<<'PY'`), so no shell or parameter expansion happens inside it
+#     either.
+#
+# NOT claimed, and deliberately left open:
+#   - SAME-NAME CANDIDATE CHECK SPOOFING IS NOT SOLVED HERE. Nothing in this
+#     file proves that a candidate head cannot publish its own check run
+#     named `foundation-skeleton-trusted` and thereby satisfy a required
+#     context of that name. That needs live negative proof after installation
+#     on a published default branch, not a YAML-level assertion. Do not
+#     record this as a trusted gate until that probe is actually run.
+#   - INSTALLATION ON A PUBLISHED DEFAULT BRANCH IS UNPROVEN. That this file
+#     reports at all, reports under this name, and reports against the right
+#     head once it lives on `main` is untested. So is whether branch
+#     protection then admits it as a required context.
+#   - THE HEAD TREE IS SCREENED, NOT THE MERGE RESULT. `pull_request_target`
+#     gives the PR head SHA, and that is deliberately what is screened here
+#     (screening a synthetic merge commit would reintroduce a mutable,
+#     partly base-derived target). A head that is STALE with respect to its
+#     base therefore passes on its own tree even if the merge result would
+#     not - e.g. the base branch dropped a required path after the PR was
+#     opened. Closing that needs branch protection's "require branches to be
+#     up to date before merging", which is an owner-executed protection
+#     setting, not something this file can assert.
+#   - ANONYMOUS FORK-HEAD FETCH REACHABILITY IS UNPROVEN. Whether github.com
+#     serves a bare 40-hex FORK head SHA to a credential-less fetch is the
+#     same open, undischarged precondition the other two tokenless-fetch
+#     workflows in this directory already carry, and it is not resolved here.
+#     If it does not, this check denies (fail-closed), it does not pass.
+#   - This source file grants no CI result, no live SCN-MOD001-003 evidence,
+#     no required status check, no independent review and no certification
+#     input. Any future run must be verified separately against its exact
+#     head, run ID and logs.
+
+name: foundation-skeleton-trusted
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  foundation-skeleton-trusted:
+    name: foundation-skeleton-trusted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Screen the PR head tree against the trusted required-path manifest
+        env:
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          TRUSTED_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'foundation-skeleton-trusted: DENY - %s\n' "$1" >&2; exit 1; }
+
+          [[ "$REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ && "${REPO#*/}" != "." && "${REPO#*/}" != ".." ]] \
+            || deny "github.repository '$REPO' is not a well-formed owner/name"
+          for var in TRUSTED_SHA HEAD_SHA; do
+            [[ "${!var}" =~ ^[0-9a-f]{40}$ ]] || deny "$var '${!var}' is not a 40-hex commit sha"
+          done
+          printf 'trusted definition from %s; screening candidate head %s\n' "$TRUSTED_SHA" "$HEAD_SHA"
+
+          # The screener below needs 3.8+ (assignment expressions). A missing
+          # or older interpreter must deny by name, never pass quietly.
+          python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' \
+            || deny "runner python3 is missing or older than 3.8"
+
+          work="${RUNNER_TEMP:?RUNNER_TEMP is required}/foundation-skeleton-trusted"
+          rm -rf "$work"
+          mkdir -p "$work"
+          cand_git="$work/candidate.git"
+
+          # --- 1. Candidate objects by exact immutable SHA, never checked out ---
+          # No `git checkout`, no `git archive`, no `tar`: the candidate tree
+          # is never materialized on disk at all, so there is nothing to
+          # accidentally run, import or install from.
+          git init -q "$cand_git"
+          git -C "$cand_git" remote add origin "$SERVER_URL/$REPO.git"
+          git -C "$cand_git" fetch -q --no-tags --depth=1 origin "$HEAD_SHA"
+          fetched="$(git -C "$cand_git" rev-parse FETCH_HEAD)"
+          [[ "$fetched" == "$HEAD_SHA" ]] \
+            || deny "fetched object $fetched is not the requested head $HEAD_SHA"
+          git -C "$cand_git" cat-file -e "$HEAD_SHA^{commit}" \
+            || deny "head $HEAD_SHA is not a commit object"
+
+          # --- 2. The candidate tree as inert, NUL-delimited data ---
+          # `-t` keeps the intermediate tree entries, so ancestor kinds can be
+          # screened too, not just leaves. Redirected to a FILE, never read
+          # through `$(...)`: bash silently discards NUL bytes inside a command
+          # substitution, which would collapse the whole listing into one
+          # unparseable record - a fail-OPEN. Redirecting also keeps `set -e`
+          # able to see a failing `git ls-tree`.
+          git -C "$cand_git" ls-tree -r -t --full-tree -z "$HEAD_SHA" > "$work/entries.nul"
+
+          # --- 3. Trusted manifest + trusted checking logic ---
+          # -E -s: ignore PYTHONPATH and user site-packages. Nothing from the
+          # candidate is on sys.path, and no candidate file is opened - only
+          # the ls-tree listing above.
+          python3 -E -s - "$work/entries.nul" <<'PY'
+          import sys
+          from pathlib import Path
+
+          # TRUSTED EXPECTATIONS. This list is part of the trusted
+          # default-branch workflow definition. It is a deliberate duplicate of
+          # `tools/validate_repo_skeleton.py`'s REQUIRED_PATHS, kept in sync by
+          # `tools/tests/test_foundation_skeleton_trusted_workflow.py` - NOT a
+          # read of that file, which lives in candidate-writable space and is
+          # never consulted here. Extend this list only when a path's topology
+          # becomes mandatory; passing it does not certify the full MOD-001
+          # repository topology or test pyramid.
+          REQUIRED_PATHS = (
+              "backend/pyproject.toml",
+              "backend/app/__init__.py",
+              "backend/app/modules/_shared/__init__.py",
+              "backend/tests/unit/__init__.py",
+              "backend/tests/component/__init__.py",
+              "backend/tests/integration/__init__.py",
+              "backend/tests/contract/__init__.py",
+          )
+
+          DIR_MODE = "040000"
+          FILE_MODES = ("100644", "100755")
+          # Named refusals for the two modes a candidate would most plausibly
+          # use to stand something else in for a required path.
+          NAMED_REFUSALS = {"120000": "symlink", "160000": "gitlink (submodule)"}
+
+          entries = {}
+          for record in Path(sys.argv[1]).read_bytes().split(b"\0"):
+              if not record:
+                  continue
+              meta, tab, raw_path = record.partition(b"\t")
+              if not tab:
+                  raise SystemExit(
+                      "foundation-skeleton-trusted: DENY - unparseable ls-tree "
+                      f"record (no tab): {record[:120]!r}"
+                  )
+              fields = meta.split(b" ")
+              if len(fields) < 2:
+                  raise SystemExit(
+                      "foundation-skeleton-trusted: DENY - unparseable ls-tree "
+                      f"metadata: {meta[:120]!r}"
+                  )
+              # Candidate-controlled bytes: decoded defensively and used only
+              # as a dict key. Never a path that is opened, never a shell word.
+              entries[raw_path.decode("utf-8", "surrogateescape")] = (
+                  fields[0].decode("utf-8", "replace"),
+                  fields[1].decode("utf-8", "replace"),
+              )
+
+          def problem(rel):
+              """None if `rel` is a genuine regular file reached only through
+              genuine directories in the candidate tree, else a named reason.
+              Every ancestor is screened, so a symlinked or gitlinked parent
+              cannot stand in for a whole subtree."""
+              parts = rel.split("/")
+              for i, _ in enumerate(parts):
+                  prefix = "/".join(parts[: i + 1])
+                  entry = entries.get(prefix)
+                  if entry is None:
+                      return f"{prefix}: missing"
+                  mode, otype = entry
+                  named = NAMED_REFUSALS.get(mode)
+                  if named is not None:
+                      return f"{prefix}: refused {named} (mode {mode})"
+                  if i < len(parts) - 1:
+                      if mode != DIR_MODE or otype != "tree":
+                          return (f"{prefix}: ancestor is not a directory "
+                                  f"(mode {mode} type {otype})")
+                  elif mode == DIR_MODE or otype == "tree":
+                      return f"{prefix}: is a directory, required to be a regular file"
+                  elif mode not in FILE_MODES or otype != "blob":
+                      return (f"{prefix}: not a regular file "
+                              f"(mode {mode} type {otype})")
+              return None
+
+          print("=" * 70)
+          print("MOD-001 TRUSTED REPOSITORY-SKELETON REQUIRED-PATH SCREEN")
+          print("=" * 70)
+          print(f"Candidate tree entries read: {len(entries)}")
+          print(f"Trusted required paths checked: {len(REQUIRED_PATHS)}")
+
+          failures = [(rel, why) for rel in REQUIRED_PATHS if (why := problem(rel))]
+          if failures:
+              for rel, why in failures:
+                  print(f"  - {rel} -> {why}")
+              raise SystemExit(
+                  "foundation-skeleton-trusted: DENY - MISSING_REQUIRED_PATH: "
+                  f"{len(failures)} of {len(REQUIRED_PATHS)} trusted required "
+                  "path(s) absent or of the wrong type"
+              )
+
+          print(f"foundation-skeleton-trusted: PASS - all {len(REQUIRED_PATHS)} "
+                "trusted required paths are genuine regular files reached "
+                "through genuine directories")
+          PY
