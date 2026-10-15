@@ -144,19 +144,21 @@ function link(url,text){if(!url)return el('span',0,text==null?NA:String(text));c
 function ciTone(v){return v==='SUCCESS'||v==='success'||v==='pass'||v==='APPROVED'||v==='MERGED'?'ok':v==='FAILURE'||v==='failure'||v==='fail'||v==='CHANGES_REQUESTED'||v==='cancelled'?'bad':'warn'}
 function ciView(ci){
  const n=$('ci');clear(n);
- if(!ci){empty(n,'No CI observation yet. The runner has not recorded one (gh missing, not authenticated, or runner not reloaded). Nothing is reported as passing.');return}
+ if(!ci){empty(n,'No CI observation yet. The runner has not recorded one (observer unavailable, rate limited, or runner not reloaded). Nothing is reported as passing.');return}
  const st=ci.state||'unavailable',obs=ci.observed_at?new Date(ci.observed_at).toLocaleString():null;
  const head=el('div');head.append(pill(st==='fresh'?'CI data fresh':st==='stale'?'CI data STALE':'CI data unavailable',st==='fresh'?'ok':st==='stale'?'warn':'bad'));n.append(head);
+ if(ci.head_matches_local===false)n.append(el('div','empty','Observed remote head '+(ci.head_sha||'').slice(0,12)+' differs from local HEAD '+(ci.local_head||'').slice(0,12)+'. This CI state does not cover unpushed or local work.'));
+ else if(ci.head_matches_local==null)n.append(el('div','empty','Local HEAD could not be compared with the observed remote head; do not read this as status of local work.'));
  const k=el('div');n.append(k);
  kv(k,[['Observed',obs?obs+(ci.age_s!=null?' ('+fmtDur(ci.age_s)+' ago)':''):'never'],['Source',ci.source],['Last fetch error',ci.error||(st==='fresh'?'none':null)],
-  ['Repository',ci.repo],['Branch',ci.branch],['Commit',ci.head_sha?ci.head_sha.slice(0,12):null]]);
+  ['Repository',ci.repo],['Branch',ci.branch],['Observed remote head',ci.head_sha?ci.head_sha.slice(0,12):null],['Local HEAD',ci.local_head?ci.local_head.slice(0,12):null]]);
  const pr=ci.pr,p=el('div');n.append(el('div','mute','Pull request'),p);
  if(!pr)p.append(el('div','empty',ci.observed_at?'No pull request found for this branch.':NA));
  else{const r=el('div');p.append(r);kv(r,[['PR',pr.number!=null?'#'+pr.number:null],['State',pr.state+(pr.draft?' (draft)':'')],['Review',pr.review]]);
   if(pr.url)p.append(link(pr.url,pr.url))}
  n.append(el('div','mute',ci.source==='github-public-api'?'Observed checks (required status not verified)':'Required checks'));
  const cc=el('div');n.append(cc);
- table(cc,['Check','State'],(ci.checks||[]).map(c=>[td(link(c.url,c.name)),td(pill(c.state||NA,st==='fresh'?ciTone(c.state):'warn'))]),'No required checks reported for this branch.');
+ table(cc,['Check','State'],(ci.checks||[]).map(c=>[td(link(c.url,c.name)),td(pill(c.state||NA,st==='fresh'?ciTone(c.state):'warn'))]),ci.source==='github-public-api'?(pr?'No check runs observed for the PR head.':'No check runs read: checks are only read when an open PR exists. Not a pass.'):'No required checks reported for this branch.');
  n.append(el('div','mute','Recent workflow runs'));
  const rr=el('div');n.append(rr);
  table(rr,['Workflow','Result','Commit','Run'],(ci.runs||[]).map(x=>[x.name,x.status==='completed'?x.conclusion:x.status,x.head_sha?x.head_sha.slice(0,8):null,td(link(x.url,'open'))]),'No workflow runs observed.');

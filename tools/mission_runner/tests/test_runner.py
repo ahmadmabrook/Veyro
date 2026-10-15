@@ -1,4 +1,5 @@
 """Focused control-plane safety tests. Run: python3 -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner"""
+import datetime
 import hashlib
 import json
 import os
@@ -120,7 +121,7 @@ class Base(unittest.TestCase):
         self.bin.write_text(FAKE)
         self.bin.chmod(0o755)
         self.cfg = R.Config(home=self.home, repo=self.repo, claude_bin=str(self.bin), tick=0.05,
-                            backoff_base=0, max_attempts=3, baseline_every=0, ci_every=0)
+                            backoff_base=0, max_attempts=3, baseline_every=0, ci_every=0, ci_mode="gh")
         if self.pin:
             R.bootstrap_pin(self.cfg, index_sha(self.repo))
 
@@ -921,6 +922,137 @@ class CIFeed(Base):
         with self.assertRaises(R.CIError) as e:
             R.fetch_ci_public(self.cfg, fail)
         self.assertEqual(str(e.exception), "github-api-unavailable")
+
+    def public_origin(self):
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
+
+    def test_public_rate_limit_needs_proof_and_never_exposes_server_text(self):
+        self.public_origin()
+        def failing(code, hdrs):
+            def open_url(req, timeout):
+                raise urllib.error.HTTPError(req.full_url, code, "SERVER-SECRET-TEXT", hdrs, None)
+            return open_url
+        for code, hdrs, want in ((403, {}, "github-api-unavailable"),
+                                 (403, {"X-RateLimit-Remaining": "0"}, "github-api-rate-limit"),
+                                 (403, {"Retry-After": "60"}, "github-api-rate-limit"),
+                                 (429, {}, "github-api-rate-limit")):
+            with self.assertRaises(R.CIError) as e:
+                R.fetch_ci_public(self.cfg, failing(code, hdrs))
+            self.assertEqual(str(e.exception), want)
+            self.assertNotIn("SECRET", str(e.exception))
+
+    def test_public_bad_and_oversized_output_are_rejected_before_use(self):
+        self.public_origin()
+        class Raw:
+            def __init__(self, data): self.data = data
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self, n=-1): return self.data[:n] if n >= 0 else self.data
+        for data in (b"<html>not json", b" " * (R.CI_MAX_BYTES + 10), b'{"workflow_runs": 3}'):
+            with self.assertRaises(R.CIError) as e:
+                R.fetch_ci_public(self.cfg, lambda req, timeout, d=data: Raw(d))
+            self.assertEqual(str(e.exception), "github-api-bad-output")
+
+    def test_public_no_pr_is_normal_and_reads_no_checks(self):
+        self.public_origin()
+        urls = []
+        class Raw:
+            def __init__(self, obj): self.data = json.dumps(obj).encode()
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self, n=-1): return self.data
+        def open_url(req, timeout):
+            urls.append(req.full_url)
+            return Raw({"workflow_runs": []} if "/actions/runs?" in req.full_url else [])
+        ci = R.fetch_ci_public(self.cfg, open_url)
+        self.assertEqual((ci["pr"], ci["checks"], ci["head_sha"], len(urls)), (None, [], None, 2))
+
+    class FakePopen:
+        """Stands in for the supervised child; never starts a process."""
+        made = []
+
+        def __init__(self, cmd, out=b"", hang=False, returncode=0, **kw):
+            self.cmd, self.kw, self.out, self.hang, self.returncode = cmd, kw, out, hang, returncode
+            self.pid, self.killed = 424242, False
+            type(self).made.append(self)
+
+        def communicate(self, timeout=None):
+            if self.hang and timeout is not None:
+                raise subprocess.TimeoutExpired(self.cmd, timeout)
+            return self.out, None
+
+        def kill(self): self.killed = True
+
+        def wait(self): return self.returncode
+
+    def popen_factory(self, **kw):
+        self.FakePopen.made = []
+        return lambda cmd, **k: self.FakePopen(cmd, **kw, **k)
+
+    def test_public_observer_is_supervised_with_hard_cap_and_no_credentials(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "tok", "GITHUB_TOKEN": "tok", "PATH": os.environ.get("PATH", "")}):
+            with mock.patch.object(R.os, "killpg", side_effect=ProcessLookupError) as killpg:
+                with self.assertRaises(R.CIError) as e:
+                    R.observe_public(self.cfg, self.popen_factory(hang=True))
+        self.assertEqual(str(e.exception), "github-api-timeout")
+        p = self.FakePopen.made[0]
+        killpg.assert_called_once_with(p.pid, R.signal.SIGKILL)
+        self.assertTrue(p.killed)  # falls back to killing the child when the group is already gone
+        self.assertTrue(p.kw["start_new_session"])
+        self.assertLessEqual(set(p.kw["env"]), {"PATH", "HOME"})
+        self.assertIn("ci-observe-public", p.cmd)
+
+    def test_public_observer_maps_child_results_to_fixed_codes(self):
+        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r", "extra": "leak"}).encode()
+        ci = R.observe_public(self.cfg, self.popen_factory(out=ok))
+        self.assertEqual((ci["repo"], "extra" in ci), ("o/r", False))
+        for out, rc, want in ((b'{"error": "github-api-rate-limit"}', 1, "github-api-rate-limit"),
+                              (b'{"error": "Bad <script> text"}', 1, "github-api-failed"),
+                              (b"garbage", 0, "github-api-bad-output"),
+                              (b"garbage", 1, "github-api-failed"),
+                              (b"x" * (2 * R.CI_MAX_BYTES + 1), 0, "github-api-bad-output")):
+            with self.assertRaises(R.CIError) as e:
+                R.observe_public(self.cfg, self.popen_factory(out=out, returncode=rc))
+            self.assertEqual(str(e.exception), want)
+
+    def test_public_refresh_persists_and_suppresses_redundant_polls_across_restart(self):
+        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r"}).encode()
+        r = self.runner(ci_mode="public", ci_every=300)
+        r.ci_popen = self.popen_factory(out=ok)
+        r.refresh_ci()
+        r.refresh_ci()  # inside the cadence window
+        self.assertEqual(len(self.FakePopen.made), 1)
+        saved = json.loads((self.home / "ci.json").read_text())
+        self.assertEqual((saved["repo"], saved["error"]), ("o/r", None))
+        r2 = self.runner()  # LaunchAgent restart: fresh process, last_ci back at 0
+        r2.ci_popen = self.popen_factory(out=ok)
+        r2.refresh_ci()
+        self.assertEqual(self.FakePopen.made, [])
+        for stamp in ("2000-01-01T00:00:00+00:00", "garbage",
+                      (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)).isoformat()):
+            (self.home / "ci.json").write_text(json.dumps(saved | {"last_attempt_at": stamp}))
+            r3 = self.runner()
+            r3.ci_popen = self.popen_factory(out=ok)
+            r3.refresh_ci()
+            self.assertEqual(len(self.FakePopen.made), 1, stamp)
+
+    def test_public_refresh_failure_keeps_last_good_observation_with_error_code(self):
+        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r"}).encode()
+        r = self.runner(ci_mode="public", ci_every=300)
+        r.ci_popen = self.popen_factory(out=ok)
+        r.refresh_ci()
+        r.last_ci = 0.0
+        (self.home / "ci.json").write_text(json.dumps(json.loads((self.home / "ci.json").read_text())
+                                                     | {"last_attempt_at": "2000-01-01T00:00:00+00:00"}))
+        r.ci_popen = self.popen_factory(out=b'{"error": "github-api-rate-limit"}', returncode=1)
+        r.refresh_ci()
+        saved = json.loads((self.home / "ci.json").read_text())
+        self.assertEqual((saved["repo"], saved["error"]), ("o/r", "github-api-rate-limit"))
+
+    def test_unknown_ci_mode_fails_closed(self):
+        with self.assertRaises(ValueError):
+            R.Config(home=self.home, repo=self.repo, ci_mode="pubic")
 
     def fake_gh(self, fail=None, calls=None):
         def run(argv, **kw):

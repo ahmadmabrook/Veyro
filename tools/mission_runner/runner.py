@@ -77,6 +77,8 @@ class Config:
         self.sandbox, self.verify_timeout = sandbox, verify_timeout  # sandbox: auto | off
         self.gh_bin, self.ci_every = gh_bin or os.environ.get("VEYRO_GH_BIN", "gh"), ci_every  # ci_every<=0 disables
         self.ci_mode = ci_mode or os.environ.get("VEYRO_CI_MODE", "gh")
+        if self.ci_mode not in ("gh", "public"):  # a typo must fail closed, never silently fall back to gh
+            raise ValueError(f"ci_mode must be 'gh' or 'public', got {self.ci_mode!r}")
 
 
 # ---------------------------------------------------------------- durable store
@@ -446,6 +448,9 @@ def judge_route(role, parsed):
 CI_CALL_TIMEOUT, CI_BUDGET = 3.0, 7.0  # bounded below the 10s heartbeat-liveness window
 CI_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%?=&#:+-]{0,300}$")
 CI_ENV_KEEP = ("PATH", "HOME", "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
+CI_PUBLIC_ENV_KEEP = ("PATH", "HOME")  # the public observer never needs or inherits a credential
+CI_MAX_BYTES = 512 * 1024  # response cap applied before JSON decode
+CI_CODE_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 
 
 class CIError(Exception):
@@ -588,9 +593,16 @@ def fetch_ci_public(cfg, opener=urllib.request.urlopen):
                                                             "User-Agent": "Veyro-CI-observer"})
         try:
             with opener(req, timeout=left) as response:
-                return json.load(response)
+                raw = response.read(CI_MAX_BYTES + 1)
+            if len(raw) > CI_MAX_BYTES:
+                raise CIError("github-api-bad-output")
+            return json.loads(raw)
         except urllib.error.HTTPError as e:
-            raise CIError("github-api-rate-limit" if e.code == 403 else "github-api-unavailable")
+            hdrs = e.headers if e.headers is not None else {}
+            limited = e.code == 429 or (e.code == 403 and (hdrs.get("X-RateLimit-Remaining") == "0"
+                                                           or hdrs.get("Retry-After") is not None))
+            e.close()
+            raise CIError("github-api-rate-limit" if limited else "github-api-unavailable")
         except (urllib.error.URLError, TimeoutError, OSError):
             raise CIError("github-api-unavailable")
         except (ValueError, TypeError):
@@ -626,6 +638,49 @@ def fetch_ci_public(cfg, opener=urllib.request.urlopen):
                  for x in runs if isinstance(x, dict)]})
 
 
+def observe_public(cfg, popen=subprocess.Popen):
+    """Run fetch_ci_public in a supervised child of this script so a DNS stall or slow trickle cannot exceed
+    CI_BUDGET wall-clock. The child is read-only, gets only PATH/HOME (no tokens), and its whole process
+    group is killed and reaped on timeout. Raises CIError(code); child stdout is size-capped and re-validated."""
+    cmd = [sys.executable, "-I", str(Path(__file__).resolve()), "--repo", str(cfg.repo), "ci-observe-public"]
+    env = {k: os.environ[k] for k in CI_PUBLIC_ENV_KEEP if k in os.environ}
+    try:
+        p = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, env=env,
+                  start_new_session=True)
+    except OSError:
+        raise CIError("github-api-failed")
+    try:
+        out, _ = p.communicate(timeout=CI_BUDGET)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            p.kill()
+        p.communicate()
+        raise CIError("github-api-timeout")
+    except BaseException:
+        p.kill()
+        p.wait()
+        raise
+    if out is None or len(out) > 2 * CI_MAX_BYTES:
+        raise CIError("github-api-bad-output")
+    try:
+        data = json.loads(out)
+    except ValueError:
+        raise CIError("github-api-bad-output" if p.returncode == 0 else "github-api-failed")
+    if not isinstance(data, dict):
+        raise CIError("github-api-bad-output")
+    code = data.get("error")
+    if code is not None:
+        raise CIError(code if isinstance(code, str) and CI_CODE_RE.match(code) else "github-api-failed")
+    if p.returncode != 0:
+        raise CIError("github-api-failed")
+    ci = clean_ci(data)
+    if not ci or ci.get("source") != "github-public-api" or not ci.get("observed_at"):
+        raise CIError("github-api-bad-output")
+    return ci
+
+
 def backoff(cfg, attempts):
     return min(cfg.backoff_cap, cfg.backoff_base * 2 ** max(0, attempts - 1))
 
@@ -637,7 +692,9 @@ class Runner:
         self.rlock = FileLock(cfg.home / "locks" / "runner.lock")
         self.wlock = FileLock(writer_lock_path(cfg.home, cfg.repo))
         self.state, self.sig, self.last_baseline, self.last_hb, self.busy_noted = None, False, 0.0, 0.0, False
-        self.last_ci, self.ci_run = 0.0, subprocess.run  # ci_run: injectable subprocess layer for tests
+        self.last_ci, self.ci_run = 0.0, subprocess.run  # ci_run/ci_popen: injectable subprocess layers for tests
+        self.ci_seeded = False
+        self.ci_popen = subprocess.Popen
 
     # --- lifecycle
     def run(self):
@@ -745,15 +802,26 @@ class Runner:
         raises; on failure the last successful observation is kept and tagged with an error code."""
         if self.cfg.ci_every <= 0 or time.time() - self.last_ci < self.cfg.ci_every:
             return
-        self.heartbeat(force=True)
-        self.last_ci = time.time()
         path = self.cfg.home / "ci.json"
         try:
             prev = clean_ci(json.loads(path.read_text()))
         except (OSError, ValueError):
             prev = None
+        first_poll = not self.ci_seeded
+        self.ci_seeded = True
+        if first_poll and prev and prev.get("source") == ("github-public-api" if self.cfg.ci_mode == "public" else "gh"):
+            # first poll of this process: a recent persisted attempt (e.g. LaunchAgent restart) suppresses a redundant poll
+            try:
+                age = time.time() - datetime.datetime.fromisoformat(prev["last_attempt_at"]).timestamp()
+            except (KeyError, TypeError, ValueError):
+                age = None
+            if age is not None and 0 <= age < self.cfg.ci_every:
+                self.last_ci = time.time() - age
+                return
+        self.heartbeat(force=True)
+        self.last_ci = time.time()
         try:
-            new = fetch_ci_public(self.cfg) if self.cfg.ci_mode == "public" else fetch_ci(self.cfg, self.ci_run)
+            new = observe_public(self.cfg, self.ci_popen) if self.cfg.ci_mode == "public" else fetch_ci(self.cfg, self.ci_run)
             err = None
         except CIError as e:
             new, err = None, str(e.args[0])
@@ -1246,7 +1314,14 @@ def snapshot(cfg):
         ci = clean_ci(json.loads((cfg.home / "ci.json").read_text()))
     except (OSError, ValueError):
         pass
-    if ci is not None:  # fresh = last success recent AND last attempt clean; never green from stale/no data
+    if ci is not None:
+        try:  # local read only: lets the dashboard refuse to imply CI covers unpushed local work
+            local = _git(cfg.repo, "rev-parse", "HEAD", timeout=2).stdout.decode().strip()
+        except (subprocess.SubprocessError, OSError):
+            local = None
+        ci["local_head"] = local
+        ci["head_matches_local"] = None if not local or not ci.get("head_sha") else ci["head_sha"] == local
+        # Fresh requires a recent successful observation and no error on the latest attempt.
         obs = ci.get("observed_at")
         age = None
         try:
@@ -1319,14 +1394,28 @@ def main(argv=None):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
     sub.add_parser("status")
+    sub.add_parser("ci-observe-public", help=argparse.SUPPRESS)  # internal: supervised child of the public observer
     sub.add_parser("verify-baseline", help="check the repo against the out-of-repo pin")
     pb = sub.add_parser("pin-baseline", help="OWNER STEP: pin PROJECT_INDEX.md + source hashes outside the repo (one time)")
     pb.add_argument("--confirm-index-sha256", help="sha256 of the PROJECT_INDEX.md you reviewed (shasum -a 256)")
     la = sub.add_parser("launchagent", help="print (default) or write LaunchAgent plists; never loads them")
     la.add_argument("--write", action="store_true")
     a = ap.parse_args(argv)
-    cfg = Config(home=a.home, repo=a.repo, claude_bin=a.claude_bin, tick=a.tick)
+    try:
+        cfg = Config(home=a.home, repo=a.repo, claude_bin=a.claude_bin, tick=a.tick)
+    except ValueError as ex:
+        print(f"invalid configuration: {ex}", file=sys.stderr)
+        return 2
 
+    if a.cmd == "ci-observe-public":  # read-only; prints one JSON object, never raw server text
+        try:
+            print(json.dumps(fetch_ci_public(cfg)))
+            return 0
+        except CIError as ex:
+            print(json.dumps({"error": str(ex.args[0])}))
+        except Exception:
+            print(json.dumps({"error": "github-api-failed"}))
+        return 1
     if a.cmd == "run":
         return Runner(cfg).run()
     if a.cmd == "dashboard":
