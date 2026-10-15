@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import shutil
+import stat
 import tempfile
 import types
 import unittest
@@ -308,6 +309,153 @@ class HttpGitTests(unittest.TestCase):
             self.assertEqual((cm.exception.verdict, cm.exception.reason), (p.BLOCKED, "git-error"))
 
 
+class TrustedGitTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = os.path.realpath(tmp.name)
+        self.bin = os.path.join(self.base, "git", "bin", "git")
+        self.core = os.path.join(self.base, "git", "libexec", "git-core")
+        os.makedirs(os.path.dirname(self.bin))
+        os.makedirs(self.core)
+        for f in (self.bin, os.path.join(self.core, "git-remote-https")):
+            with open(f, "w") as fh:
+                fh.write("#!/bin/sh\n")
+            os.chmod(f, 0o755)
+        for d in (os.path.dirname(self.bin), self.core):
+            os.chmod(d, 0o755)
+        self.owners = (os.geteuid(),)
+
+    def check(self, **kw):
+        args = dict(binary=self.bin, exec_path=self.core, owners=self.owners, top=self.base)
+        args.update(kw)
+        p.check_trusted_git(**args)
+
+    def refused(self, **kw):
+        with self.assertRaises(p.Gate) as cm:
+            self.check(**kw)
+        self.assertEqual((cm.exception.verdict, cm.exception.reason), (p.BLOCKED, "git-untrusted"))
+
+    def test_constants_are_fixed_production_paths(self):
+        self.assertEqual(p.TRUSTED_GIT_BIN, "/Library/VeyroGate/runtime/git/bin/git")
+        self.assertEqual(p.TRUSTED_GIT_EXEC_PATH, "/Library/VeyroGate/runtime/git/libexec/git-core")
+        self.assertNotEqual(p.TRUSTED_GIT_BIN, p.GIT_BIN)
+
+    def test_good_tree_passes(self):
+        self.check()
+
+    def test_usr_bin_git_and_missing_install_not_trusted_by_default(self):
+        with self.assertRaises(p.Gate) as cm:
+            p.check_trusted_git()  # production defaults: nothing installed here
+        self.assertEqual(cm.exception.reason, "git-untrusted")
+        self.refused(binary="/usr/bin/git")
+
+    def test_foreign_owner_refused(self):
+        self.refused(owners=(os.geteuid() + 1,))
+
+    def test_mutable_binary_helper_or_dirs_refused(self):
+        helper = os.path.join(self.core, "git-remote-https")
+        for path in (self.bin, helper, os.path.dirname(self.bin), self.core):
+            orig = stat.S_IMODE(os.stat(path).st_mode)
+            for bad in (0o20, 0o02):
+                os.chmod(path, orig | bad)
+                self.refused()
+                os.chmod(path, orig)
+            self.check()
+
+    def test_writable_ancestor_refused(self):
+        top = os.path.join(self.base, "git")
+        os.chmod(top, 0o775)
+        self.addCleanup(os.chmod, top, 0o755)
+        self.refused()
+
+    def test_missing_binary_or_helper_refused(self):
+        os.remove(os.path.join(self.core, "git-remote-https"))
+        self.refused()
+        os.remove(self.bin)
+        self.refused()
+
+    def test_symlinked_binary_helper_or_dirs_refused(self):
+        helper = os.path.join(self.core, "git-remote-https")
+        for path in (self.bin, helper):
+            real = path + ".real"
+            os.rename(path, real)
+            os.symlink(real, path)
+            self.refused()
+            os.remove(path)
+            os.rename(real, path)
+        evil = os.path.join(self.base, "evil")
+        os.makedirs(evil)
+        shutil.copy(self.bin, os.path.join(evil, "git"))
+        shutil.copy(helper, os.path.join(evil, "git-remote-https"))
+        link = os.path.join(self.base, "linkcore")
+        os.symlink(evil, link)
+        self.refused(exec_path=link)
+        shutil.rmtree(os.path.join(self.base, "git", "bin"))
+        os.symlink(evil, os.path.join(self.base, "git", "bin"))
+        self.refused()
+
+    def run_fetch(self, **kw):
+        calls = []
+
+        def run(argv, **k):
+            calls.append((argv, k))
+            out = TREE + "\n" if argv[-1].endswith(":.github") else (SHA + "\n" if argv[1:2] == ["rev-parse"] else "")
+            return subprocess.CompletedProcess(argv, 0, out, "")
+        return p.trusted_git_fetch_pr(REPO, 10, run, **kw), calls
+
+    def test_production_fetch_uses_only_fixed_binary_and_exec_path(self):
+        verified = []
+        res, calls = self.run_fetch(verify=lambda: verified.append(1))
+        self.assertEqual(res, (SHA, TREE))
+        self.assertEqual(verified, [1])
+        self.assertTrue(calls)
+        for argv, kw in calls:
+            self.assertEqual(argv[0], p.TRUSTED_GIT_BIN)
+            env = kw["env"]
+            self.assertEqual(env["GIT_EXEC_PATH"], p.TRUSTED_GIT_EXEC_PATH)
+            self.assertEqual(env["PATH"], "/Library/VeyroGate/runtime/git/bin:" + p.TRUSTED_GIT_EXEC_PATH)
+            self.assertEqual((env["GIT_CONFIG_NOSYSTEM"], env["GIT_CONFIG_GLOBAL"], env["GIT_TERMINAL_PROMPT"]),
+                             ("1", "/dev/null", "0"))
+            self.assertFalse({k for k in env if k.upper().endswith("_PROXY") or k.startswith("SSL_")})
+            self.assertNotIn("/usr/bin", env["PATH"])
+        init = [a for a, _ in calls if "init" in a][0]
+        self.assertIn("--template=", init)
+        fetch = [a for a, _ in calls if "fetch" in a][0]
+        for opt in ("http.proxy=", "http.followRedirects=false", "protocol.allow=never"):
+            self.assertIn(opt, fetch)
+
+    def test_production_fetch_has_no_path_parameters(self):
+        import inspect
+        self.assertEqual(list(inspect.signature(p.trusted_git_fetch_pr).parameters),
+                         ["repo", "pr", "run", "verify"])
+
+    def test_production_fetch_refuses_before_running_when_untrusted(self):
+        def refuse():
+            raise p.Gate(p.BLOCKED, "git-untrusted")
+        ran = []
+        with self.assertRaises(p.Gate):
+            p.trusted_git_fetch_pr(REPO, 10, lambda *a, **k: ran.append(1), verify=refuse)
+        self.assertEqual(ran, [])
+        with self.assertRaises(p.Gate) as cm:  # default verifier: nothing installed on this machine
+            p.trusted_git_fetch_pr(REPO, 10, lambda *a, **k: ran.append(1))
+        self.assertEqual((cm.exception.reason, ran), ("git-untrusted", []))
+
+    def test_publish_default_is_production_fetch_and_dry_run_stays_dev(self):
+        import inspect
+        self.assertIs(inspect.signature(p.publish).parameters["fetch"].default, p.trusted_git_fetch_pr)
+        self.assertIs(inspect.signature(p.evaluate).parameters["fetch"].default, p.git_fetch_pr)
+
+    def test_dry_run_is_keyless_and_uses_dev_git(self):
+        calls = []
+
+        def run(argv, **kw):
+            calls.append(argv[0])
+            return subprocess.CompletedProcess(argv, 0, SHA + "\n", "")
+        p.git_fetch_pr(REPO, 10, run)
+        self.assertEqual(set(calls), {"/usr/bin/git"})
+
+
 class CliTests(unittest.TestCase):
     def test_non_dry_run_refused(self):
         with self.assertRaises(SystemExit) as cm:
@@ -391,9 +539,15 @@ class AppWorld:
 
 class PublishTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.state = os.path.join(self.tmp.name, "state", "gate.json")
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        self.tmp = types.SimpleNamespace(name=os.path.realpath(td.name))  # state paths must be real paths
+        euid = os.geteuid()  # the test user stands in for root-owned ancestors
+        for name, value in (("STATE_TOP", self.tmp.name), ("STATE_ANCESTOR_OWNERS", (euid, 0))):
+            patcher = unittest.mock.patch.object(p, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.state =os.path.join(self.tmp.name, "state", "gate.json")
         self.w = AppWorld(self.state)
 
     def test_pass_posts_success(self):
@@ -427,11 +581,11 @@ class PublishTests(unittest.TestCase):
         self.assertIn("conclusion=failure", self.w.checks[1]["external_id"])
 
     def test_head_move_and_job_ambiguity_never_publish_failure(self):
-        w = AppWorld(os.path.join(self.tmp.name, "s5.json"))
+        w = AppWorld(os.path.join(self.tmp.name, "s5", "gate.json"))
         w.gh.fetched = ("e" * 40, TREE)
         r = w.publish()
         self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "head-sha-mismatch", False))
-        w = AppWorld(os.path.join(self.tmp.name, "s6.json"))
+        w = AppWorld(os.path.join(self.tmp.name, "s6", "gate.json"))
         w.gh.jobs[(100, 1)] = [job_doc(), job_doc(id=901)]
         r = w.publish()
         self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "job-ambiguous", False))
@@ -479,7 +633,7 @@ class PublishTests(unittest.TestCase):
                        lambda w: setattr(w.gh, "runs", [run_doc(status="in_progress")]),
                        lambda w: setattr(w.gh, "runs", [run_doc(conclusion="skipped")]),
                        lambda w: setattr(w.gh, "runs", [run_doc(conclusion="neutral")])):
-            w = AppWorld(os.path.join(self.tmp.name, "s2.json"))
+            w = AppWorld(os.path.join(self.tmp.name, "s2", "gate.json"))
             mutate(w)
             r = w.publish()
             if r["published"]:
@@ -528,7 +682,7 @@ class PublishTests(unittest.TestCase):
         self.w.fail_post = "http-422"
         r = self.w.publish()
         self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "http-422", False))
-        w2 = AppWorld(os.path.join(self.tmp.name, "s3.json"))
+        w2 = AppWorld(os.path.join(self.tmp.name, "s3", "gate.json"))
 
         def boom(*a, **k):
             raise RuntimeError(TOKEN + KEY)
@@ -544,7 +698,7 @@ class PublishTests(unittest.TestCase):
                      "repositories": [{"full_name": REPO}, {"full_name": "x/y"}]},
                     {"token": TOKEN, "permissions": {"checks": "write"},
                      "repositories": [{"full_name": "other/Repo"}]}):
-            w = AppWorld(os.path.join(self.tmp.name, "s4.json"))
+            w = AppWorld(os.path.join(self.tmp.name, "s4", "gate.json"))
             w.token_doc = doc
             r = w.publish()
             self.assertEqual((r["reason"], r["published"]), ("token-overscoped", False))
@@ -639,8 +793,8 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(len({c[3]["external_id"] for c in self.w.posts()}), 2)
 
     def test_concurrent_lock_blocks(self):
-        os.makedirs(os.path.dirname(self.state))
-        holder = os.open(self.state + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+        os.makedirs(os.path.dirname(self.state), mode=0o700)
+        holder =os.open(self.state + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
         self.addCleanup(os.close, holder)
         fcntl.flock(holder, fcntl.LOCK_EX)
         r = self.w.publish()
@@ -648,12 +802,84 @@ class PublishTests(unittest.TestCase):
         self.assertEqual(self.w.posts(), [])
 
     def test_corrupt_state_blocks(self):
-        os.makedirs(os.path.dirname(self.state))
-        with open(self.state, "w") as f:
+        os.makedirs(os.path.dirname(self.state), mode=0o700)
+        with open(os.open(self.state, os.O_CREAT | os.O_WRONLY, 0o600), "w") as f:
             f.write("{not json")
         r = self.w.publish()
         self.assertEqual((r["reason"], r["published"]), ("state-corrupt", False))
         self.assertEqual(self.w.posts(), [])
+
+    def state_reason(self, **kw):
+        before = (len(self.w.posts()), self.w.secret_reads, self.w.sign_calls)
+        r = self.w.publish(**kw)
+        self.assertEqual((r["verdict"], r["published"]), (p.BLOCKED, False))
+        self.assertEqual((len(self.w.posts()), self.w.secret_reads, self.w.sign_calls), before)
+        return r["reason"]
+
+    def test_state_dir_must_be_signer_owned_0700(self):
+        d = os.path.dirname(self.state)
+        os.makedirs(d, mode=0o700)
+        for mode in (0o755, 0o770, 0o707, 0o500):
+            os.chmod(d, mode)
+            self.assertEqual(self.state_reason(), "state-unsafe", oct(mode))
+        os.chmod(d, 0o700)
+        with unittest.mock.patch.object(p.os, "geteuid", lambda: os.getuid() + 1):  # not the owner
+            self.assertEqual(self.state_reason(), "state-unsafe")
+
+    def test_state_dir_created_0700_and_ancestor_chain_strict(self):
+        r = self.w.publish()
+        self.assertTrue(r["published"])
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.dirname(self.state)).st_mode), 0o700)
+        os.chmod(self.tmp.name, 0o770)  # mutable ancestor
+        self.addCleanup(os.chmod, self.tmp.name, 0o700)
+        self.assertEqual(self.state_reason(), "state-unsafe")
+        os.chmod(self.tmp.name, 0o700)
+        with unittest.mock.patch.object(p, "STATE_ANCESTOR_OWNERS", (os.geteuid() + 1,)):  # not root-owned
+            self.assertEqual(self.state_reason(), "state-unsafe")
+
+    def test_state_dir_symlink_refused(self):
+        real = os.path.join(self.tmp.name, "real")
+        os.mkdir(real, 0o700)
+        os.symlink(real, os.path.dirname(self.state))
+        self.assertEqual(self.state_reason(), "state-unsafe")
+        self.assertEqual(os.listdir(real), [])
+
+    def test_state_lock_and_file_symlink_and_mode_refused(self):
+        d = os.path.dirname(self.state)
+        os.makedirs(d, mode=0o700)
+        target = os.path.join(self.tmp.name, "elsewhere")
+        open(target, "w").close()
+        os.symlink(target, self.state + ".lock")
+        self.assertEqual(self.state_reason(), "state-unavailable")  # O_NOFOLLOW
+        os.unlink(self.state + ".lock")
+        os.close(os.open(self.state + ".lock", os.O_CREAT | os.O_RDWR, 0o666))
+        os.chmod(self.state + ".lock", 0o644)
+        self.assertEqual(self.state_reason(), "state-unsafe")
+        os.chmod(self.state + ".lock", 0o600)
+        os.symlink(target, self.state)
+        self.assertEqual(self.state_reason(), "state-unavailable")
+        os.unlink(self.state)
+        with open(os.open(self.state, os.O_CREAT | os.O_WRONLY, 0o644), "w") as f:
+            f.write('{"version": 1, "checks": {}}')
+        os.chmod(self.state, 0o644)
+        self.assertEqual(self.state_reason(), "state-unsafe")
+
+    def test_state_is_not_authority_forged_state_cannot_skip_github_lookup(self):
+        os.makedirs(os.path.dirname(self.state), mode=0o700)
+        forged = {"version": 1, "checks": {self.w.ext(): {"status": "published", "check_run_id": 7}}}
+        with open(os.open(self.state, os.O_CREAT | os.O_WRONLY, 0o600), "w") as f:
+            json.dump(forged, f)
+        r = self.w.publish()
+        self.assertEqual((r["published"], r["adopted"]), (True, False))  # GitHub had no check: posted anew
+        self.assertEqual(len(self.w.posts()), 1)
+
+    def test_github_tree_mismatch_is_blocked_no_check_not_published_failure(self):
+        self.w.gh.fetched = (SHA, "c" * 40)
+        r = self.w.publish()
+        self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "no-run-evidence", False))
+        self.assertEqual((self.w.calls, self.w.secret_reads, self.w.sign_calls), ([], 0, 0))
+        self.assertEqual(self.w.checks, [])
+        self.assertFalse(os.path.exists(self.state))
 
     def test_no_secret_in_output_state_or_post_body(self):
         r = self.w.publish()
@@ -1209,7 +1435,9 @@ class InstallContextTests(unittest.TestCase):
     @property
     def trust(self):
         # The test user stands in for root; production defaults (uid 0) are exercised separately.
-        return {"file_owner": os.geteuid(), "dir_owners": (os.geteuid(), 0)}
+        # The runtime guard has its own tests (RuntimeGuardTests); it is stubbed here.
+        return {"file_owner": os.geteuid(), "dir_owners": (os.geteuid(), 0), "runtime": lambda: None,
+                "trusted_git": lambda: None}
 
     def test_installed_copy_outside_worktree_passes(self):
         dest = self.install(os.path.join(self.base, "inst"))
@@ -1219,8 +1447,38 @@ class InstallContextTests(unittest.TestCase):
     def test_default_requires_root_owned_install(self):
         dest = self.install(os.path.join(self.base, "inst"))
         with self.assertRaises(p.Gate) as cm:
-            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__)
+            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__,
+                                    runtime=lambda: None)
         self.assertEqual(cm.exception.reason, "publisher-bad-installation")
+
+    def test_runtime_guard_runs_right_after_isolation_and_before_other_checks(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+
+        def refuse():
+            raise p.Gate(p.BLOCKED, "runtime-bad-interpreter")
+        self.assertEqual(self.reason(path=dest, isolated=True, runtime=refuse, environ={"PYTHONPATH": "x"}),
+                         "runtime-bad-interpreter")
+        self.assertEqual(self.reason(path=dest, isolated=False, runtime=refuse), "not-isolated")
+
+    def test_default_runtime_guard_refuses_this_dev_interpreter(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        with self.assertRaises(p.Gate) as cm:
+            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__, **{
+                k: v for k, v in self.trust.items() if k != "runtime"})
+        self.assertEqual(cm.exception.reason, "runtime-bad-interpreter")
+
+    def test_untrusted_git_refused_in_guard_before_key_network_or_state(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+
+        def refuse():
+            raise p.Gate(p.BLOCKED, "git-untrusted")
+        self.assertEqual(self.reason(path=dest, isolated=True, trusted_git=refuse), "git-untrusted")
+        self.assertEqual(self.reason(path=dest, isolated=True, trusted_git=refuse,
+                                     cafile="/nonexistent/ca.pem"), "git-untrusted")
+
+    def test_default_guard_refuses_when_trusted_git_not_installed(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        self.assertEqual(self.reason(path=dest, isolated=True, trusted_git=None), "git-untrusted")
 
     def test_unisolated_python_refused(self):
         dest = self.install(os.path.join(self.base, "inst"))
@@ -1281,16 +1539,158 @@ class InstallContextTests(unittest.TestCase):
         self.assertEqual((proc.returncode, out.get("reason"), out.get("published")), (3, "not-isolated", False))
         proc, out = self.run_script(dest, isolated=True)  # -I: shadow never imported
         self.assertNotIn("SHADOW-LOADED", proc.stderr)
-        if os.geteuid() != 0:  # a user-owned copy is not a root-owned installation
-            self.assertEqual((proc.returncode, out.get("reason"), out.get("published")),
-                             (3, "publisher-bad-installation", False))
+        # this interpreter is not the root-installed runtime, so the runtime guard refuses first
+        self.assertEqual((proc.returncode, out.get("reason"), out.get("published")),
+                         (3, "runtime-bad-interpreter", False))
         proc, out = self.run_script(dest, "extra", isolated=True)  # inexact argv wins before any check
         self.assertEqual((proc.returncode, out.get("reason"), out.get("published")), (3, "bad-argv", False))
         wt = os.path.join(self.base, "wt")
         os.makedirs(os.path.join(wt, ".git"))
         proc, out = self.run_script(self.install(os.path.join(wt, "tools")), isolated=True)
         self.assertEqual((proc.returncode, out.get("reason"), out.get("published")),
-                         (3, "publisher-in-worktree", False))
+                         (3, "runtime-bad-interpreter", False))
+
+
+class RuntimeGuardTests(unittest.TestCase):
+    """Deterministic runtime-guard cases against an injected 'root-owned' tree owned by the test user."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = os.path.realpath(tmp.name)
+        self.root = os.path.join(self.base, "rt", "Versions", "3.9")
+        self.lib = os.path.join(self.root, "lib", "python3.9")
+        os.makedirs(os.path.join(self.root, "bin"))
+        os.makedirs(self.lib)
+        self.python = os.path.join(self.root, "bin", "python3")
+        self.stdlib = os.path.join(self.lib, "os.py")
+        for f in (self.python, self.stdlib):
+            open(f, "w").close()
+        self.inst = os.path.join(self.base, "inst")
+        os.makedirs(self.inst)
+        self.pub = os.path.join(self.inst, "publisher.py")
+        open(self.pub, "w").close()
+        self.untrusted = os.path.join(self.base, "untrusted")  # stands in for a user-writable tree
+        os.makedirs(self.untrusted)
+        for d in (self.base, self.root, self.inst, self.untrusted):
+            self.addCleanup(os.chmod, d, 0o700)
+
+    def args(self, **over):
+        zip_ = os.path.join(self.root, "lib", "python39.zip")  # absent, as in the real framework
+        base = dict(executable=self.python, prefix=self.root, base_prefix=self.root,
+                    paths=[zip_, self.lib], modules={"os": types.SimpleNamespace(__file__=self.stdlib),
+                                                     "builtin": types.SimpleNamespace(),
+                                                     "__main__": types.SimpleNamespace(__file__=self.pub)},
+                    root=self.root, publisher=self.pub, owners=(os.geteuid(),), top=self.base)
+        base.update(over)
+        return base
+
+    def reason(self, **over):
+        with self.assertRaises(p.Gate) as cm:
+            p.check_runtime(**self.args(**over))
+        self.assertEqual(cm.exception.verdict, p.BLOCKED)
+        return cm.exception.reason
+
+    def test_valid_injected_runtime_passes(self):
+        p.check_runtime(**self.args())
+
+    def test_user_owned_or_foreign_interpreter_path_refused(self):
+        rogue = os.path.join(self.untrusted, "python3")
+        open(rogue, "w").close()
+        self.assertEqual(self.reason(executable=rogue), "runtime-bad-interpreter")
+        self.assertEqual(self.reason(executable="python3"), "runtime-bad-interpreter")
+        self.assertEqual(self.reason(executable=""), "runtime-bad-interpreter")
+        self.assertEqual(self.reason(owners=(os.geteuid() + 1,)), "runtime-bad-interpreter")  # not root-owned
+
+    def test_symlinked_interpreter_to_untrusted_tree_refused(self):
+        rogue = os.path.join(self.untrusted, "python3")
+        open(rogue, "w").close()
+        os.unlink(self.python)
+        os.symlink(rogue, self.python)
+        self.assertEqual(self.reason(), "runtime-bad-interpreter")
+
+    def test_prefix_and_base_prefix_must_equal_runtime(self):
+        self.assertEqual(self.reason(prefix=self.untrusted), "runtime-bad-prefix")
+        self.assertEqual(self.reason(base_prefix=self.untrusted), "runtime-bad-prefix")
+        self.assertEqual(self.reason(prefix=self.root + os.sep), "runtime-bad-prefix")
+
+    def test_mutable_ancestor_or_node_refused_without_sticky_exemption(self):
+        for d in (self.base, self.root, self.lib):
+            os.chmod(d, 0o770)
+            self.assertIn(self.reason(), ("runtime-bad-interpreter", "runtime-untrusted-path"), d)
+            os.chmod(d, 0o1777)  # a sticky bit must not rescue a world-writable directory
+            self.assertIn(self.reason(), ("runtime-bad-interpreter", "runtime-untrusted-path"), d)
+            os.chmod(d, 0o700)
+        os.chmod(self.stdlib, 0o666)
+        self.assertEqual(self.reason(), "runtime-untrusted-module")
+        os.chmod(self.stdlib, 0o600)
+        os.chmod(self.inst, 0o770)  # mutable publisher ancestor
+        self.assertEqual(self.reason(), "runtime-untrusted-module")
+
+    def test_sys_path_injection_refused(self):
+        for entry in (self.untrusted, "", ".", "relative/dir", b"/x", None, self.root + "/lib/missing",
+                      os.path.join(self.untrusted, "python39.zip"), os.path.join(self.inst)):
+            self.assertEqual(self.reason(paths=[self.lib, entry]), "runtime-untrusted-path", repr(entry))
+
+    def test_missing_zip_allowed_only_under_runtime_with_trusted_parent(self):
+        zip_ = os.path.join(self.root, "lib", "python39.zip")
+        p.check_runtime(**self.args(paths=[zip_]))
+        os.chmod(os.path.dirname(zip_), 0o770)
+        self.assertEqual(self.reason(paths=[zip_]), "runtime-untrusted-path")
+        os.chmod(os.path.dirname(zip_), 0o700)
+        self.assertEqual(self.reason(paths=[os.path.join(self.root, "..", "x.zip")]), "runtime-untrusted-path")
+        self.assertEqual(self.reason(paths=[os.path.join(self.root, "lib", "x.so")]), "runtime-untrusted-path")
+
+    def test_sys_path_symlink_into_untrusted_tree_refused(self):
+        link = os.path.join(self.root, "lib", "evil")
+        os.symlink(self.untrusted, link)
+        self.assertEqual(self.reason(paths=[link]), "runtime-untrusted-path")
+        ok = os.path.join(self.root, "lib", "alias")  # a symlink that stays inside the runtime is fine
+        os.symlink(self.lib, ok)
+        p.check_runtime(**self.args(paths=[ok]))
+
+    def test_loaded_module_outside_runtime_refused(self):
+        evil = os.path.join(self.untrusted, "hmac.py")
+        open(evil, "w").close()
+        mods = {"hmac": types.SimpleNamespace(__file__=evil)}
+        self.assertEqual(self.reason(modules=mods), "runtime-untrusted-module")
+        self.assertEqual(self.reason(modules={"x": types.SimpleNamespace(__file__=b"/x")}),
+                         "runtime-untrusted-module")
+        self.assertEqual(self.reason(modules={"x": types.SimpleNamespace(__file__=self.root + "/lib/none.py")}),
+                         "runtime-untrusted-module")
+
+    def test_loaded_module_symlink_into_untrusted_tree_refused(self):
+        evil = os.path.join(self.untrusted, "json.py")
+        open(evil, "w").close()
+        link = os.path.join(self.lib, "json.py")
+        os.symlink(evil, link)
+        self.assertEqual(self.reason(modules={"json": types.SimpleNamespace(__file__=link)}),
+                         "runtime-untrusted-module")
+
+    def test_publisher_must_be_exact_installed_file_not_a_symlink(self):
+        link = os.path.join(self.root, "lib", "pub.py")
+        os.symlink(self.pub, link)
+        self.assertEqual(self.reason(modules={"m": types.SimpleNamespace(__file__=link)}),
+                         "runtime-untrusted-module")
+        other = os.path.join(self.inst, "other.py")
+        open(other, "w").close()
+        self.assertEqual(self.reason(modules={"m": types.SimpleNamespace(__file__=other)}),
+                         "runtime-untrusted-module")
+
+    def test_zip_member_module_requires_trusted_archive(self):
+        arch = os.path.join(self.lib, "py.zip")
+        open(arch, "w").close()
+        p.check_runtime(**self.args(modules={"m": types.SimpleNamespace(__file__=arch + "/m.py")}))
+        rogue = os.path.join(self.untrusted, "x.zip")
+        open(rogue, "w").close()
+        self.assertEqual(self.reason(modules={"m": types.SimpleNamespace(__file__=rogue + "/m.py")}),
+                         "runtime-untrusted-module")
+
+    def test_production_constants_are_the_exact_framework_paths(self):
+        self.assertEqual(p.RUNTIME_ROOT, "/Library/VeyroGate/runtime/Python3.framework/Versions/3.9")
+        with self.assertRaises(p.Gate) as cm:  # nothing installed here: fails closed, never passes
+            p.check_runtime()
+        self.assertEqual(cm.exception.reason, "runtime-bad-interpreter")
 
 
 class TransportTests(unittest.TestCase):

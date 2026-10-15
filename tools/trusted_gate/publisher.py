@@ -14,11 +14,13 @@ posts one completed check run named `veyro-trusted-gate` with conclusion
 ambiguity are BLOCKED). The config is root-owned at one fixed path and pins this
 file's SHA-256.
 
-Production entry is exactly `python -I <installed publisher> publish --config
-/Library/VeyroGate/etc/config.json --pr N`, run as the dedicated non-admin signer
+Production entry is exactly `<RUNTIME_ROOT>/bin/python3 -I <installed publisher> publish
+--config /Library/VeyroGate/etc/config.json --pr N`, run as the dedicated non-admin signer
 account through restricted sudo. Anything else is a fixed `bad-argv`. Before the
 key, network or state are touched, it requires: hardened process (no core dumps,
-umask 077, cwd `/`), a root-owned installed copy outside every git worktree
+umask 077, cwd `/`), the root-installed Python runtime (exact interpreter realpath,
+prefix, every sys.path entry and loaded module root-owned inside the runtime tree),
+a root-owned installed copy outside every git worktree
 under a root-owned directory chain, a clean environment, and a non-root real and
 effective uid equal to both the config `signer_uid` and the uid provisioned into
 `EXPECTED_SIGNER_UID`. No key, path, host, workflow or check name comes from the
@@ -48,7 +50,9 @@ EXIT = {PASS: 0, FAIL: 1, BLOCKED: 3}
 DEFAULT_WORKFLOW = ".github/workflows/veyro-foundation-ci.yml"
 DEFAULT_JOB = "foundation (MOD-000 focused checks)"
 HTTP_TIMEOUT = 10
-GIT_BIN = "/usr/bin/git"
+GIT_BIN = "/usr/bin/git"  # keyless --dry-run development only; never used by `publish`
+TRUSTED_GIT_BIN = "/Library/VeyroGate/runtime/git/bin/git"  # production: root-installed copy
+TRUSTED_GIT_EXEC_PATH = "/Library/VeyroGate/runtime/git/libexec/git-core"
 GIT_TIMEOUT = 60
 MAX_BODY = 1024 * 1024
 _SHA = re.compile(r"[0-9a-f]{40}")
@@ -80,7 +84,10 @@ def http_get(path, opener=None):
         with open_(req, timeout=HTTP_TIMEOUT) as resp:
             body = resp.read(MAX_BODY + 1)
     except urllib.error.HTTPError as e:
-        e.close()
+        try:
+            e.close()
+        except Exception:
+            pass
         raise _blocked(f"http-{e.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise _blocked("http-unreachable") from None
@@ -95,17 +102,16 @@ def http_get(path, opener=None):
     return data
 
 
-def git_fetch_pr(repo, pr, run=subprocess.run):
-    """Fetch refs/pull/N/head as inert objects into a throwaway bare repo.
+def _fetch_pr(repo, pr, run, git_bin, env):
+    """Fetch refs/pull/N/head as inert objects into a throwaway bare repo with the given git and env.
 
-    Returns (fetched_head_sha, head:.github tree oid)."""
-    env = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
-           "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    Private: callers are `git_fetch_pr` (keyless development) and `trusted_git_fetch_pr` (production),
+    each of which fixes its own `git_bin` and `env`."""
     ref = f"refs/pull/{pr}/head"
 
     def git(*args):
         try:
-            p = run([GIT_BIN, *args], cwd=tmp, env=env, capture_output=True, text=True,
+            p = run([git_bin, *args], cwd=tmp, env=env, capture_output=True, text=True,
                     timeout=GIT_TIMEOUT, check=False)
         except (subprocess.TimeoutExpired, OSError):
             raise _blocked("git-error") from None
@@ -114,7 +120,7 @@ def git_fetch_pr(repo, pr, run=subprocess.run):
         return p.stdout.strip()
 
     with tempfile.TemporaryDirectory(prefix="veyro-gate-") as tmp:
-        git("init", "--bare", "-q", ".")
+        git("init", "--bare", "-q", "--template=", ".")
         git("-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
             "-c", "http.proxy=", "-c", "http.followRedirects=false",
             "-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--depth=1", "-q",
@@ -122,6 +128,54 @@ def git_fetch_pr(repo, pr, run=subprocess.run):
         sha = git("rev-parse", "--verify", ref)
         tree = git("rev-parse", "--verify", f"{sha}:.github")
     return sha, tree
+
+
+def git_fetch_pr(repo, pr, run=subprocess.run):
+    """KEYLESS DEVELOPMENT ONLY (`--dry-run`): inert fetch with the system `/usr/bin/git`.
+
+    `/usr/bin/git` is an xcrun shim into an admin-writable Xcode tree, so it is never trusted for
+    production. `publish` uses `trusted_git_fetch_pr`. Returns (fetched_head_sha, head:.github tree oid)."""
+    env = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
+           "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    return _fetch_pr(repo, pr, run, GIT_BIN, env)
+
+
+def trusted_git_fetch_pr(repo, pr, run=subprocess.run, verify=None):
+    """PRODUCTION: inert fetch with only the root-installed `TRUSTED_GIT_BIN` and the fixed
+    `TRUSTED_GIT_EXEC_PATH` helper directory. Neither path is a parameter; the trust check is repeated
+    immediately before use. Returns (fetched_head_sha, head:.github tree oid)."""
+    (check_trusted_git if verify is None else verify)()
+    env = {"PATH": os.path.dirname(TRUSTED_GIT_BIN) + ":" + TRUSTED_GIT_EXEC_PATH, "HOME": "/nonexistent",
+           "GIT_EXEC_PATH": TRUSTED_GIT_EXEC_PATH, "GIT_TERMINAL_PROMPT": "0",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    return _fetch_pr(repo, pr, run, TRUSTED_GIT_BIN, env)
+
+
+def _trusted_git_file(path, owners, top):
+    if os.path.normpath(path) != path or os.path.realpath(path) != path:
+        return False
+    st = os.lstat(path)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid not in owners or st.st_mode & 0o022 \
+            or not st.st_mode & 0o100:
+        return False
+    return _strict_chain(os.path.dirname(path), owners, top)
+
+
+def check_trusted_git(binary=None, exec_path=None, owners=(0,), top="/"):
+    """Pre-secret guard: the production git binary, its `git-remote-https` helper and the helper
+    directory must be real (no symlink anywhere in the path), root-owned and not group/other writable,
+    with a strict root-owned directory chain to `top`. Root ownership of `/usr/bin/git` is not
+    transferable: only the installed copy at the fixed paths is accepted.
+    Defaults are the production constants; only tests relax them."""
+    binary = TRUSTED_GIT_BIN if binary is None else binary
+    exec_path = TRUSTED_GIT_EXEC_PATH if exec_path is None else exec_path
+    try:
+        if not (_trusted_git_file(binary, owners, top)
+                and _trusted_git_file(os.path.join(exec_path, "git-remote-https"), owners, top)
+                and os.path.realpath(exec_path) == exec_path and _strict_chain(exec_path, owners, top)):
+            raise _blocked("git-untrusted")
+    except (OSError, ValueError):
+        raise _blocked("git-untrusted") from None
 
 
 def _need(cond, reason):
@@ -233,6 +287,9 @@ _SELF = os.path.realpath(__file__)
 TLS_CAFILE = "/etc/ssl/cert.pem" if sys.platform == "darwin" else "/etc/ssl/certs/ca-certificates.crt"
 CONFIG_PATH = "/Library/VeyroGate/etc/config.json"
 EXPECTED_SIGNER_UID = 452  # dedicated _veyrogate uid; provisioning must use this exact unused uid
+RUNTIME_ROOT = "/Library/VeyroGate/runtime/Python3.framework/Versions/3.9"  # root-installed interpreter + stdlib
+STATE_ANCESTOR_OWNERS = (0,)  # state directory ancestors; only tests relax these two
+STATE_TOP = "/"
 OPENSSL_BIN = "/usr/bin/openssl"
 TOOL_TIMEOUT = 15
 MAX_KEY = 16 * 1024
@@ -301,6 +358,100 @@ def _chain_ok(start, owners, stat_fn=os.stat):
         cur = parent
 
 
+def _within(path, root):
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def _strict_chain(start, owners, top):
+    """True if `start` and every ancestor up to and including `top` is a real directory (no symlink)
+    owned by `owners` and not group/other writable. No sticky-bit exemption. Raises OSError on a
+    failed lstat."""
+    if not _within(start, top):
+        return False
+    cur = start
+    while True:
+        st = os.lstat(cur)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid not in owners or st.st_mode & 0o022:
+            return False
+        if cur == top:
+            return True
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return False
+        cur = parent
+
+
+def _trusted_node(path, root, publisher, owners, top):
+    """An existing file or directory that is inside the runtime tree both lexically and after symlink
+    resolution (or is exactly the installed publisher), owned by `owners`, not group/other writable,
+    under a strict directory chain."""
+    if not (isinstance(path, str) and os.path.isabs(path)):
+        return False
+    lexical, real = os.path.normpath(path), os.path.realpath(path)
+    if real == publisher:
+        if lexical != publisher:
+            return False
+    elif not (_within(lexical, root) and _within(real, root)):
+        return False
+    st = os.lstat(real)
+    if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+        return False
+    if st.st_uid not in owners or st.st_mode & 0o022:
+        return False
+    return _strict_chain(os.path.dirname(real), owners, top)
+
+
+def _trusted_location(path, root, publisher, owners, top, allow_missing_zip):
+    if not (isinstance(path, str) and os.path.isabs(path)):
+        return False
+    lexical = os.path.normpath(path)
+    if os.path.lexists(lexical):
+        return _trusted_node(path, root, publisher, owners, top)
+    if allow_missing_zip and lexical.endswith(".zip") and _within(lexical, root):
+        parent = os.path.realpath(os.path.dirname(lexical))
+        return _within(parent, root) and _strict_chain(parent, owners, top)
+    return False
+
+
+def check_runtime(executable=None, prefix=None, base_prefix=None, paths=None, modules=None,
+                  root=RUNTIME_ROOT, publisher=None, owners=(0,), top="/"):
+    """Pre-secret guard: the interpreter and standard library must be the root-owned installed runtime.
+
+    The interpreter's realpath must be exactly `<root>/bin/python3`, `sys.prefix` and `sys.base_prefix`
+    must equal `root`, every existing `sys.path` entry and every loaded module file must resolve inside
+    the runtime tree (or be the installed publisher itself), and all of them, plus their directory
+    chains up to `top`, must be owned by `owners` and not group/other writable (no sticky exemption).
+    A missing `.zip` entry under the runtime is tolerated only when its parent chain is trusted.
+    Imports nothing; the defaults are production values and only tests relax them."""
+    executable = sys.executable if executable is None else executable
+    prefix = sys.prefix if prefix is None else prefix
+    base_prefix = sys.base_prefix if base_prefix is None else base_prefix
+    paths = sys.path if paths is None else paths
+    modules = sys.modules if modules is None else modules
+    publisher = _SELF if publisher is None else publisher
+    python = root + "/bin/python3"
+    try:
+        if not (isinstance(executable, str) and os.path.isabs(executable)
+                and os.path.realpath(executable) == python and os.path.realpath(root) == root
+                and _trusted_node(python, root, publisher, owners, top)):
+            raise _blocked("runtime-bad-interpreter")
+        if prefix != root or base_prefix != root:
+            raise _blocked("runtime-bad-prefix")
+        for entry in list(paths):
+            if not _trusted_location(entry, root, publisher, owners, top, True):
+                raise _blocked("runtime-untrusted-path")
+        for mod in list(modules.values()):
+            f = getattr(mod, "__file__", None)
+            if f is None:
+                continue
+            if isinstance(f, str) and not os.path.lexists(f) and ".zip" + os.sep in f:
+                f = f[:f.index(".zip" + os.sep) + 4]  # a member of a zip on the stdlib path
+            if not _trusted_location(f, root, publisher, owners, top, False):
+                raise _blocked("runtime-untrusted-module")
+    except (OSError, ValueError):
+        raise _blocked("runtime-untrusted") from None
+
+
 def check_install(path=_SELF, modules=None, file_owner=0, dir_owners=(0,)):
     """The running publisher must be a root-owned, non-group/world-writable file whose whole
     directory chain is root-owned, outside every git worktree, with no shadowing stdlib modules.
@@ -326,12 +477,14 @@ def check_install(path=_SELF, modules=None, file_owner=0, dir_owners=(0,)):
 
 
 def check_publish_context(environ=None, path=_SELF, isolated=None, modules=None, cafile=TLS_CAFILE,
-                          file_owner=0, dir_owners=(0,)):
+                          file_owner=0, dir_owners=(0,), runtime=check_runtime, trusted_git=None):
     """Run first in `publish`: before key, network or state access."""
     if not (sys.flags.isolated if isolated is None else isolated):
         raise _blocked("not-isolated")
+    runtime()  # trusted interpreter/stdlib before anything else is believed
     check_env(os.environ if environ is None else environ)
     check_install(path, modules, file_owner, dir_owners)
+    (check_trusted_git if trusted_git is None else trusted_git)()  # root-installed git, not /usr/bin/git
     if not os.path.isfile(cafile):
         raise _blocked("tls-trust-unavailable")
 
@@ -432,7 +585,7 @@ def load_config(path, required=CONFIG_PATH, owner_uid=0, dir_owners=(0,)):
     if not _posint(cfg["signer_uid"]):  # root (0) is never a signer
         raise _blocked("config-bad-signer-uid")
     sp = cfg["state_path"]
-    if not (isinstance(sp, str) and os.path.isabs(sp)) or in_git_worktree(sp):
+    if not (_label(sp) and os.path.isabs(sp) and os.path.normpath(sp) == sp) or in_git_worktree(sp):
         raise _blocked("config-bad-state-path")
     return dict(cfg)
 
@@ -559,7 +712,10 @@ def http_api(method, path, bearer, body=None, opener=None):
         with open_(req, timeout=HTTP_TIMEOUT) as resp:
             raw = resp.read(MAX_BODY + 1)
     except urllib.error.HTTPError as e:
-        e.close()
+        try:
+            e.close()
+        except Exception:
+            pass
         raise _blocked(f"http-{e.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise _blocked("http-unreachable") from None
@@ -575,16 +731,40 @@ def http_api(method, path, bearer, body=None, opener=None):
 
 
 class _State:
-    """Out-of-repo intent/result journal under an exclusive non-blocking file lock."""
+    """Out-of-repo intent/result journal under an exclusive non-blocking file lock.
 
-    def __init__(self, path):
+    The state directory must be a real (non-symlink) 0700 directory owned by the signer, under
+    root-owned strict ancestors; its parent is never created. State is a crash-recovery journal, not
+    authority: it never grants a verdict, and idempotence is decided from GitHub's own check runs."""
+
+    def __init__(self, path, uid=None, ancestor_owners=None, top=None):
         self.path, self.fd, self.data = path, None, None
+        self.uid = os.geteuid() if uid is None else uid
+        self.owners = STATE_ANCESTOR_OWNERS if ancestor_owners is None else ancestor_owners
+        self.top = STATE_TOP if top is None else top
+
+    def _own_file_ok(self, st):
+        return stat.S_ISREG(st.st_mode) and st.st_uid == self.uid and st.st_nlink == 1 \
+            and not st.st_mode & 0o077
+
+    def _check_dir(self, d):
+        if not (os.path.normpath(self.path) == self.path and os.path.isabs(self.path)):
+            raise _blocked("state-unsafe")
+        if not _strict_chain(os.path.dirname(d), self.owners, self.top):
+            raise _blocked("state-unsafe")
+        if not os.path.lexists(d):
+            os.mkdir(d, 0o700)
+        st = os.lstat(d)
+        if not (stat.S_ISDIR(st.st_mode) and st.st_uid == self.uid and stat.S_IMODE(st.st_mode) == 0o700):
+            raise _blocked("state-unsafe")
 
     def __enter__(self):
         d = os.path.dirname(self.path)
         try:
-            os.makedirs(d, mode=0o700, exist_ok=True)
-            self.fd = os.open(self.path + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+            self._check_dir(d)
+            self.fd = os.open(self.path + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+            if not self._own_file_ok(os.fstat(self.fd)):
+                raise _blocked("state-unsafe")
             fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             self._close()
@@ -592,6 +772,9 @@ class _State:
         except OSError:
             self._close()
             raise _blocked("state-unavailable") from None
+        except BaseException:
+            self._close()
+            raise
         try:
             self.data = self._load()
         except BaseException:
@@ -610,12 +793,22 @@ class _State:
 
     def _load(self):
         try:
-            with open(self.path, "rb") as f:
-                raw = f.read(MAX_STATE + 1)
+            fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         except FileNotFoundError:
             return {"version": 1, "checks": {}}
         except OSError:
             raise _blocked("state-unavailable") from None
+        try:
+            if not self._own_file_ok(os.fstat(fd)):
+                raise _blocked("state-unsafe")
+            with os.fdopen(fd, "rb") as f:
+                fd = None
+                raw = f.read(MAX_STATE + 1)
+        except OSError:
+            raise _blocked("state-unavailable") from None
+        finally:
+            if fd is not None:
+                os.close(fd)
         try:
             data = json.loads(raw) if len(raw) <= MAX_STATE else None
         except ValueError:
@@ -700,7 +893,7 @@ def _valid_created(cfg, res, sha, ext, conclusion):
             and isinstance(app, dict) and app.get("id") == cfg["app_id"])
 
 
-def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=read_key_file, sign=openssl_sign,
+def publish(cfg, pr, get=http_get, fetch=trusted_git_fetch_pr, read_secret=read_key_file, sign=openssl_sign,
             transport=http_api, now=time.time, publisher_path=_SELF, guard=check_publish_context,
             identity=check_signer_identity):
     """Evaluate then publish. Only PASS->success and FAIL->failure are ever posted."""
@@ -725,6 +918,8 @@ def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=read_key_file
         ev = res["evidence"]
         run_id, attempt, job_id = ev.get("run_id"), ev.get("run_attempt"), ev.get("job_id")
         if not (_posint(run_id) and _posint(attempt)) or not (job_id is None or _posint(job_id)):
+            # e.g. a `.github` tree mismatch is a FAIL verdict reached before any run is looked up:
+            # with no run evidence it is BLOCKED and no check is published (never a false PASS).
             raise _blocked("no-run-evidence")
         ext = external_id(pr, sha, cfg["pinned_github_tree"], cfg["publisher_sha256"], run_id, attempt,
                           "none" if job_id is None else job_id, conclusion)
