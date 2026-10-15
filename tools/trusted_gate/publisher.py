@@ -54,6 +54,7 @@ HTTP_TIMEOUT = 10
 GIT_BIN = "/usr/bin/git"  # keyless --dry-run development only; never used by `publish`
 TRUSTED_GIT_BIN = "/Library/VeyroGate/runtime/git/bin/git"  # production: root-installed copy
 TRUSTED_GIT_EXEC_PATH = "/Library/VeyroGate/runtime/git/libexec/git-core"
+TRUSTED_TMP = "/private/var/tmp"  # production scratch parent (root, 01777); never taken from TMPDIR
 GIT_TIMEOUT = 60
 # Per-invocation overrides on EVERY git command: no hooks, no askpass/credential helper, no fsmonitor,
 # no background gc/maintenance, whatever config a git binary might still read.
@@ -107,11 +108,27 @@ def http_get(path, opener=None):
     return data
 
 
-def _fetch_pr(repo, pr, run, git_bin, env):
+def check_trusted_tmp(path=None, owners=(0,), top="/"):
+    """Pre-secret guard for the production scratch parent: `TRUSTED_TMP` must be its own realpath, a
+    real directory owned by root and either exactly 01777 (sticky: the caller cannot rename or replace a
+    signer-owned child) or not group/other writable, under a strict root-owned chain. Never consults
+    TMPDIR. Defaults are the production constant; only tests relax them."""
+    path = TRUSTED_TMP if path is None else path
+    try:
+        st = os.lstat(path)
+        if not (os.path.realpath(path) == path and stat.S_ISDIR(st.st_mode) and st.st_uid in owners
+                and (stat.S_IMODE(st.st_mode) == 0o1777 or not st.st_mode & 0o022)
+                and _strict_chain(os.path.dirname(path), owners, top)):
+            raise _blocked("tmp-untrusted")
+    except (OSError, ValueError):
+        raise _blocked("tmp-untrusted") from None
+
+
+def _fetch_pr(repo, pr, run, git_bin, env, tmp_parent=None):
     """Fetch refs/pull/N/head as inert objects into a throwaway bare repo with the given git and env.
 
-    Private: callers are `git_fetch_pr` (keyless development) and `trusted_git_fetch_pr` (production),
-    each of which fixes its own `git_bin` and `env`."""
+    Private: callers are `git_fetch_pr` (keyless development, default tempfile) and
+    `trusted_git_fetch_pr` (production, fixed `tmp_parent`), each of which fixes its own arguments."""
     ref = f"refs/pull/{pr}/head"
 
     def git(*args):
@@ -124,7 +141,7 @@ def _fetch_pr(repo, pr, run, git_bin, env):
             raise _blocked("git-error")
         return p.stdout.strip()
 
-    with tempfile.TemporaryDirectory(prefix="veyro-gate-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="veyro-gate-", dir=tmp_parent) as tmp:
         git("init", "--bare", "-q", "--template=", ".")
         git("-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
             "-c", "http.proxy=", "-c", "http.followRedirects=false",
@@ -150,8 +167,9 @@ def trusted_git_fetch_pr(repo, pr, run=subprocess.run, verify=None):
     `TRUSTED_GIT_EXEC_PATH` helper directory. Neither path is a parameter; the trust check is repeated
     immediately before use. Returns (fetched_head_sha, head:.github tree oid)."""
     (check_trusted_git if verify is None else verify)()
+    check_trusted_tmp()
     check_trusted_git_config(run)
-    return _fetch_pr(repo, pr, run, TRUSTED_GIT_BIN, _trusted_git_env())
+    return _fetch_pr(repo, pr, run, TRUSTED_GIT_BIN, _trusted_git_env(), TRUSTED_TMP)
 
 
 def _trusted_git_env():
@@ -167,8 +185,9 @@ def check_trusted_git_config(run=subprocess.run):
     config it reads (system/Xcode, repo discovery) shows up here and blocks. Runs only `config --list`;
     no candidate code is involved. This is a runtime check of the installed binary, not proof of the
     installation itself."""
+    check_trusted_tmp()
     try:
-        with tempfile.TemporaryDirectory(prefix="veyro-gate-probe-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="veyro-gate-probe-", dir=TRUSTED_TMP) as tmp:
             p = run([TRUSTED_GIT_BIN, "config", "--list", "--show-origin", "--show-scope"], cwd=tmp,
                     env=_trusted_git_env(), capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False)
     except (subprocess.TimeoutExpired, OSError):

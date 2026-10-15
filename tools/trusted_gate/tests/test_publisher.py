@@ -325,6 +325,25 @@ class TrustedGitTests(unittest.TestCase):
         for d in (os.path.dirname(self.bin), self.core):
             os.chmod(d, 0o755)
         self.owners = (os.geteuid(),)
+        self.scratch = os.path.join(self.base, "scratch")
+        os.mkdir(self.scratch)
+        os.chmod(self.scratch, 0o1777)
+        orig = p.check_trusted_tmp
+        self.real_tmp_check = orig
+        self.tmp_checks = []
+
+        def tmp_check(path=None, owners=(0,), top="/"):
+            self.tmp_checks.append(path)
+            return orig(self.scratch, self.owners, self.base)
+        for name, value in (("TRUSTED_TMP", self.scratch), ("check_trusted_tmp", tmp_check)):
+            patcher = unittest.mock.patch.object(p, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def tmp_refused(self, path):
+        with self.assertRaises(p.Gate) as cm:
+            self.real_tmp_check(path, self.owners, self.base)
+        self.assertEqual((cm.exception.verdict, cm.exception.reason), (p.BLOCKED, "tmp-untrusted"))
 
     def check(self, **kw):
         args = dict(binary=self.bin, exec_path=self.core, owners=self.owners, top=self.base)
@@ -503,6 +522,76 @@ class TrustedGitTests(unittest.TestCase):
         import inspect
         self.assertIs(inspect.signature(p.publish).parameters["fetch"].default, p.trusted_git_fetch_pr)
         self.assertIs(inspect.signature(p.evaluate).parameters["fetch"].default, p.git_fetch_pr)
+
+    def test_production_constant_is_fixed_private_var_tmp(self):
+        with open(p.__file__) as fh:  # setUp patches the attribute, so read the source constant
+            self.assertIn('\nTRUSTED_TMP = "/private/var/tmp"', fh.read())
+
+    def test_adversarial_tmpdir_ignored_and_fixed_dir_used_for_probe_and_fetch(self):
+        evil = os.path.join(self.base, "evil-tmp")
+        os.mkdir(evil)
+        parents = []
+        real_td = tempfile.TemporaryDirectory
+
+        def td(*a, **k):
+            parents.append(k.get("dir"))
+            return real_td(*a, **k)
+        env = {"TMPDIR": evil, "TEMP": evil, "TMP": evil}
+        with unittest.mock.patch.dict(os.environ, env), unittest.mock.patch.object(p.tempfile, "TemporaryDirectory", td):
+            res, _ = self.run_fetch(verify=lambda: None)
+        self.assertEqual(res, (SHA, TREE))
+        self.assertEqual(parents, [self.scratch, self.scratch])  # probe, then inert fetch
+        self.assertEqual(os.listdir(evil), [])
+
+    def test_production_runs_no_git_when_tmp_unsafe(self):
+        ran = []
+        with unittest.mock.patch.object(p, "check_trusted_tmp",
+                                        lambda *a, **k: (_ for _ in ()).throw(p.Gate(p.BLOCKED, "tmp-untrusted"))):
+            for call in (lambda: p.trusted_git_fetch_pr(REPO, 10, lambda *a, **k: ran.append(1), verify=lambda: None),
+                         lambda: p.check_trusted_git_config(lambda *a, **k: ran.append(1))):
+                with self.assertRaises(p.Gate) as cm:
+                    call()
+                self.assertEqual(cm.exception.reason, "tmp-untrusted")
+        self.assertEqual(ran, [])
+
+    def test_tmp_check_accepts_sticky_and_rejects_unsafe_owner_mode_symlink(self):
+        p.check_trusted_tmp(self.scratch, self.owners, self.base)
+        os.chmod(self.scratch, 0o1777)
+        for mode in (0o777, 0o1773, 0o1776, 0o775, 0o757):
+            os.chmod(self.scratch, mode)
+            self.tmp_refused(self.scratch)
+        os.chmod(self.scratch, 0o755)  # not writable by others: equally safe
+        p.check_trusted_tmp(self.scratch, self.owners, self.base)
+        os.chmod(self.scratch, 0o1777)
+        with self.assertRaises(p.Gate):  # wrong owner
+            self.real_tmp_check(self.scratch, (os.geteuid() + 1,), self.base)
+        link = os.path.join(self.base, "link")
+        os.symlink(self.scratch, link)
+        self.tmp_refused(link)
+        self.tmp_refused(os.path.join(self.base, "missing"))
+        self.tmp_refused("relative")
+
+    def test_tmp_check_rejects_symlink_or_writable_ancestor(self):
+        real = os.path.join(self.base, "real")
+        os.makedirs(os.path.join(real, "t"))
+        os.chmod(os.path.join(real, "t"), 0o1777)
+        os.symlink(real, os.path.join(self.base, "via"))
+        self.tmp_refused(os.path.join(self.base, "via", "t"))
+        p.check_trusted_tmp(os.path.join(real, "t"), self.owners, self.base)
+        os.chmod(real, 0o777)
+        self.tmp_refused(os.path.join(real, "t"))
+
+    def test_dev_dry_run_keeps_default_tempfile(self):
+        parents = []
+        real_td = tempfile.TemporaryDirectory
+
+        def td(*a, **k):
+            parents.append(k.get("dir"))
+            return real_td(*a, **k)
+        with unittest.mock.patch.object(p.tempfile, "TemporaryDirectory", td), \
+                unittest.mock.patch.object(p, "check_trusted_tmp", lambda *a, **k: self.fail("tmp check")):
+            p.git_fetch_pr(REPO, 10, lambda argv, **kw: subprocess.CompletedProcess(argv, 0, SHA + "\n", ""))
+        self.assertEqual(parents, [None])
 
     def test_dry_run_is_keyless_and_uses_dev_git(self):
         calls = []

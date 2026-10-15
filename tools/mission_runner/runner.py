@@ -19,6 +19,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -50,6 +51,11 @@ BASELINE_PREFIXES = ("Gym_OS_Master_Product_Blueprint", "Veyro_Technical_System_
 ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MOD_RE = re.compile(r"^MOD-\d{3}$")
 EXIT_LOCKED, EXIT_CORRUPT = 3, 4
+GATE_PYTHON = "/Library/VeyroGate/runtime/Python3.framework/Versions/3.9/bin/python3"
+GATE_PUBLISHER = "/Library/VeyroGate/bin/publisher.py"
+GATE_CONFIG = "/Library/VeyroGate/etc/config.json"
+GATE_TIMEOUT = 180
+GATE_MAX_OUTPUT = 65536
 
 
 def now_iso():
@@ -67,7 +73,8 @@ def default_home():
 class Config:
     def __init__(self, home=None, repo=REPO, claude_bin=None, timeout=3600.0, tick=1.0,
                  backoff_base=5.0, backoff_cap=300.0, max_attempts=3, baseline_every=30.0,
-                 sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=300.0, ci_mode=None):
+                 sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=300.0, ci_mode=None,
+                 gate_mode=None):
         self.home = Path(home) if home else default_home()
         self.repo = Path(repo)
         self.claude_bin = claude_bin or os.environ.get("VEYRO_CLAUDE_BIN", "claude")
@@ -79,6 +86,9 @@ class Config:
         self.ci_mode = ci_mode or os.environ.get("VEYRO_CI_MODE", "gh")
         if self.ci_mode not in ("gh", "public"):  # a typo must fail closed, never silently fall back to gh
             raise ValueError(f"ci_mode must be 'gh' or 'public', got {self.ci_mode!r}")
+        self.gate_mode = gate_mode or os.environ.get("VEYRO_GATE_MODE", "off")
+        if self.gate_mode not in ("off", "publish"):
+            raise ValueError(f"gate_mode must be 'off' or 'publish', got {self.gate_mode!r}")
 
 
 # ---------------------------------------------------------------- durable store
@@ -794,7 +804,9 @@ class Runner:
             t = self.next_ready()
             if t:
                 self.dispatch(t)
-        self.refresh_ci()
+        ci = self.refresh_ci()
+        if ci is not None and self.cfg.gate_mode == "publish":
+            self.refresh_gate(ci)
         self.store.save(self.state)
 
     def refresh_ci(self):
@@ -837,6 +849,66 @@ class Runner:
             return
         if err and (prev or {}).get("error") != err:
             self.store.event("ci-unavailable", code=err)
+        self.heartbeat(force=True)
+        return new
+
+    def refresh_gate(self, ci, popen=subprocess.Popen):
+        """Ask the separately installed signer to evaluate an observed PR. The runner supplies only a PR
+        number; the signer independently verifies repo, head, pinned tree, workflow run and identity.
+        No key or App token enters this process. A bad/absent signer cannot become a green result."""
+        pr_data = ci.get("pr") if isinstance(ci, dict) else None
+        if not isinstance(pr_data, dict):
+            return
+        pr = pr_data.get("number")
+        if not (type(pr) is int and 0 < pr < 10 ** 9
+                and str(pr_data.get("state", "")).lower() == "open"):
+            return
+        argv = ["/usr/bin/sudo", "-n", "-u", "_veyrogate", "--", GATE_PYTHON, "-I", GATE_PUBLISHER,
+                "publish", "--config", GATE_CONFIG, "--pr", str(pr)]
+        result = {"state": "blocked", "reason": "signer-unavailable", "pr": pr,
+                  "attempted_at": now_iso(), "published": False}
+        proc = None
+        try:
+            with tempfile.TemporaryFile(dir=self.cfg.home) as output:
+                proc = popen(argv, cwd="/", env={"PATH": "/usr/bin:/bin"}, stdin=subprocess.DEVNULL,
+                             stdout=output, stderr=subprocess.DEVNULL, start_new_session=True)
+                deadline = time.monotonic() + GATE_TIMEOUT
+                while True:
+                    try:
+                        code = proc.wait(timeout=min(1, max(0.01, deadline - time.monotonic())))
+                        break
+                    except subprocess.TimeoutExpired:
+                        self.heartbeat(force=True)
+                        if self.sig or time.monotonic() >= deadline or output.tell() > GATE_MAX_OUTPUT:
+                            raise TimeoutError
+                if output.tell() <= GATE_MAX_OUTPUT:
+                    output.seek(0)
+                    payload = json.loads(output.read().decode("utf-8"))
+                    verdict = payload.get("verdict") if isinstance(payload, dict) else None
+                    published = payload.get("published") is True if isinstance(payload, dict) else False
+                    reason = payload.get("reason") if isinstance(payload, dict) else None
+                    expected = {"PASS": 0, "FAIL": 1, "BLOCKED": 3}
+                    check_id = payload.get("check_run_id")
+                    if (verdict in expected and code == expected[verdict]
+                            and ((verdict == "BLOCKED" and not published)
+                                 or (verdict != "BLOCKED" and published and type(check_id) is int and check_id > 0))
+                            and isinstance(reason, str) and CI_CODE_RE.fullmatch(reason)):
+                        result.update(state=verdict.lower(), reason=reason,
+                                      published=published if verdict != "BLOCKED" else False)
+                        if published and type(check_id) is int and check_id > 0:
+                            result["check_run_id"] = check_id
+        except (OSError, ValueError, UnicodeError, TimeoutError, TypeError):
+            pass
+        finally:
+            if proc is not None and proc.poll() is None:
+                self.kill_group(proc.pid, grace=0.5)
+                proc.wait()
+        try:
+            atomic_write(self.cfg.home / "gate.json", json.dumps(result).encode())
+        except OSError:
+            pass
+        if result["state"] == "blocked":
+            self.store.event("gate-blocked", code=result["reason"], pr=pr)
         self.heartbeat(force=True)
 
     def heartbeat(self, force=False):

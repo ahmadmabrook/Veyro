@@ -886,6 +886,54 @@ class DashboardTests(Base):
         self.assertEqual((self.home / "state.json").read_bytes(), before)
 
 
+class TrustedGateInvocation(Base):
+    def test_gate_is_off_by_default_and_rejects_unknown_mode(self):
+        self.assertEqual(self.cfg.gate_mode, "off")
+        with self.assertRaises(ValueError):
+            R.Config(home=self.home, repo=self.repo, gate_mode="maybe")
+        r = self.runner()
+        with mock.patch.object(r, "refresh_ci", return_value={"pr": {"number": 7, "state": "open"}}), \
+                mock.patch.object(r, "refresh_gate") as gate:
+            r.tick()
+        gate.assert_not_called()
+
+    def test_fixed_sudo_command_and_only_valid_published_result_is_green(self):
+        r = self.runner(gate_mode="publish")
+        seen = []
+
+        class Proc:
+            pid = 123
+            def wait(self, timeout=None): return 0
+            def poll(self): return 0
+
+        def popen(argv, **kw):
+            seen.append((argv, kw))
+            kw["stdout"].write(json.dumps({"verdict": "PASS", "reason": "workflow-success",
+                                           "published": True, "check_run_id": 42}).encode())
+            return Proc()
+
+        r.refresh_gate({"pr": {"number": 7, "state": "open"}}, popen)
+        self.assertEqual(seen[0][0], ["/usr/bin/sudo", "-n", "-u", "_veyrogate", "--", R.GATE_PYTHON,
+                                      "-I", R.GATE_PUBLISHER, "publish", "--config", R.GATE_CONFIG,
+                                      "--pr", "7"])
+        self.assertEqual(seen[0][1]["env"], {"PATH": "/usr/bin:/bin"})
+        self.assertEqual(json.loads((self.home / "gate.json").read_text())["state"], "pass")
+        self.assertEqual(json.loads((self.home / "gate.json").read_text())["check_run_id"], 42)
+
+        def malformed(argv, **kw):
+            kw["stdout"].write(b'{"verdict":"PASS","reason":"workflow-success","published":true}')
+            return Proc()
+        r.refresh_gate({"pr": {"number": 7, "state": "OPEN"}}, malformed)
+        self.assertEqual(json.loads((self.home / "gate.json").read_text())["state"], "blocked")
+
+    def test_no_pr_never_invokes_signer(self):
+        r = self.runner(gate_mode="publish")
+        for pr in (None, [], [7], {"number": True, "state": "open"}, {"number": -1, "state": "open"},
+                   {"number": 7, "state": "closed"}):
+            r.refresh_gate({"pr": pr}, lambda *a, **k: self.fail("signer called"))
+        self.assertFalse((self.home / "gate.json").exists())
+
+
 class CIFeed(Base):
     """gh is injected as the subprocess layer; nothing here touches the network."""
     SHA = "a" * 40
