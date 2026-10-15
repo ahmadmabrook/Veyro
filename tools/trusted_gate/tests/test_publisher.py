@@ -282,7 +282,7 @@ class HttpGitTests(unittest.TestCase):
             out = ""
             if argv[-1].endswith(":.github"):
                 out = TREE + "\n"
-            elif argv[1:2] == ["rev-parse"]:
+            elif "rev-parse" in argv:
                 out = SHA + "\n"
             return subprocess.CompletedProcess(argv, 0, out, "")
         self.assertEqual(p.git_fetch_pr(REPO, 10, run), (SHA, TREE))
@@ -400,7 +400,7 @@ class TrustedGitTests(unittest.TestCase):
 
         def run(argv, **k):
             calls.append((argv, k))
-            out = TREE + "\n" if argv[-1].endswith(":.github") else (SHA + "\n" if argv[1:2] == ["rev-parse"] else "")
+            out = TREE + "\n" if argv[-1].endswith(":.github") else (SHA + "\n" if "rev-parse" in argv else "")
             return subprocess.CompletedProcess(argv, 0, out, "")
         return p.trusted_git_fetch_pr(REPO, 10, run, **kw), calls
 
@@ -424,6 +424,64 @@ class TrustedGitTests(unittest.TestCase):
         fetch = [a for a, _ in calls if "fetch" in a][0]
         for opt in ("http.proxy=", "http.followRedirects=false", "protocol.allow=never"):
             self.assertIn(opt, fetch)
+
+    def test_every_git_command_carries_hardening_overrides(self):
+        _, calls = self.run_fetch(verify=lambda: None)
+        want = ["core.hooksPath=/dev/null", "core.askPass=", "credential.helper=", "core.fsmonitor=false",
+                "gc.auto=0", "maintenance.auto=false"]
+        for name in ("init", "fetch", "rev-parse"):
+            argv = [a for a, _ in calls if name in a][0]
+            for opt in want:
+                self.assertIn("-c", argv)
+                self.assertEqual(argv[argv.index(opt) - 1], "-c", (name, opt))
+            self.assertIn("protocol.allow=never" if name == "fetch" else "-q" if name == "init" else name, argv)
+        dev = []
+        p.git_fetch_pr(REPO, 10, lambda argv, **kw: dev.append(argv) or subprocess.CompletedProcess(argv, 0, SHA, ""))
+        for argv in dev:
+            for opt in want:
+                self.assertIn(opt, argv)
+
+    def probe(self, result):
+        calls = []
+
+        def run(argv, **k):
+            calls.append((argv, k))
+            if isinstance(result, BaseException):
+                raise result
+            return result(argv) if callable(result) else result
+        return run, calls
+
+    def test_config_probe_empty_passes_with_production_env_in_empty_dir(self):
+        run, calls = self.probe(lambda argv: subprocess.CompletedProcess(argv, 0, "", ""))
+        p.check_trusted_git_config(run)
+        argv, kw = calls[0]
+        self.assertEqual(argv, [p.TRUSTED_GIT_BIN, "config", "--list", "--show-origin", "--show-scope"])
+        self.assertEqual(kw["env"], p._trusted_git_env())
+        self.assertEqual(kw["env"]["GIT_CONFIG_SYSTEM"], "/dev/null")
+        self.assertEqual(kw["timeout"], p.GIT_TIMEOUT)
+
+    def test_config_probe_blocks_nonempty_error_nonzero_and_timeout(self):
+        cp = subprocess.CompletedProcess
+        for res in (cp([], 0, "file:/Applications/Xcode.app/share/git-core/gitconfig\tsystem\tx.y=z\n", ""),
+                    cp([], 0, "", "warning: unable to access\n"),
+                    cp([], 0, "\n", ""), cp([], 1, "", ""), cp([], 128, "", "fatal"),
+                    subprocess.TimeoutExpired("git", 1), OSError("boom")):
+            run, _ = self.probe(res)
+            with self.assertRaises(p.Gate) as cm:
+                p.check_trusted_git_config(run)
+            self.assertEqual((cm.exception.verdict, cm.exception.reason), (p.BLOCKED, "git-config-untrusted"))
+
+    def test_nonempty_probe_blocks_fetch_before_any_other_git_command(self):
+        calls = []
+
+        def run(argv, **k):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "system\tfoo=bar\n", "")
+        with self.assertRaises(p.Gate) as cm:
+            p.trusted_git_fetch_pr(REPO, 10, run, verify=lambda: None)
+        self.assertEqual(cm.exception.reason, "git-config-untrusted")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1], "config")
 
     def test_production_fetch_has_no_path_parameters(self):
         import inspect
@@ -1419,6 +1477,10 @@ class InstallContextTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.base = os.path.realpath(self.tmp.name)
+        self.ca = os.path.join(self.base, "cert.pem")
+        with open(self.ca, "w") as f:
+            f.write("x")
+        os.chmod(self.ca, 0o644)
 
     def install(self, where, mode=0o600):
         os.makedirs(where, exist_ok=True)
@@ -1429,7 +1491,7 @@ class InstallContextTests(unittest.TestCase):
 
     def reason(self, **kw):
         with self.assertRaises(p.Gate) as cm:
-            p.check_publish_context(**{**self.trust, "cafile": __file__, "environ": {}, **kw})
+            p.check_publish_context(**{**self.trust, "cafile": self.ca, "environ": {}, **kw})
         return cm.exception.reason
 
     @property
@@ -1437,17 +1499,40 @@ class InstallContextTests(unittest.TestCase):
         # The test user stands in for root; production defaults (uid 0) are exercised separately.
         # The runtime guard has its own tests (RuntimeGuardTests); it is stubbed here.
         return {"file_owner": os.geteuid(), "dir_owners": (os.geteuid(), 0), "runtime": lambda: None,
-                "trusted_git": lambda: None}
+                "trusted_git": lambda: None, "ca_top": self.base}
 
     def test_installed_copy_outside_worktree_passes(self):
         dest = self.install(os.path.join(self.base, "inst"))
-        p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__, **self.trust)
+        p.check_publish_context(environ={}, path=dest, isolated=True, cafile=self.ca, **self.trust)
+
+    def test_ca_file_must_be_resolved_owned_nonwritable_with_safe_chain(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        self.assertEqual(p.TLS_CAFILE, "/private/etc/ssl/cert.pem" if sys.platform == "darwin"
+                         else "/etc/ssl/certs/ca-certificates.crt")
+        link = os.path.join(self.base, "link.pem")
+        os.symlink(self.ca, link)
+        self.assertEqual(self.reason(path=dest, isolated=True, cafile=link), "tls-trust-unavailable")
+        os.chmod(self.ca, 0o666)
+        self.assertEqual(self.reason(path=dest, isolated=True), "tls-trust-unavailable")
+        os.chmod(self.ca, 0o644)
+        self.assertEqual(self.reason(path=dest, isolated=True, file_owner=os.geteuid() + 1),
+                         "publisher-bad-installation")
+        sub = os.path.join(self.base, "ca")
+        os.makedirs(sub)
+        inner = os.path.join(sub, "cert.pem")
+        shutil.copy(self.ca, inner)
+        os.chmod(inner, 0o644)
+        os.chmod(sub, 0o777)
+        self.addCleanup(os.chmod, sub, 0o700)
+        self.assertEqual(self.reason(path=dest, isolated=True, cafile=inner), "tls-trust-unavailable")
+        os.chmod(sub, 0o700)
+        self.assertEqual(self.reason(path=dest, isolated=True, cafile=sub), "tls-trust-unavailable")
 
     @unittest.skipIf(os.geteuid() == 0, "needs a non-root test user")
     def test_default_requires_root_owned_install(self):
         dest = self.install(os.path.join(self.base, "inst"))
         with self.assertRaises(p.Gate) as cm:
-            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__,
+            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=self.ca,
                                     runtime=lambda: None)
         self.assertEqual(cm.exception.reason, "publisher-bad-installation")
 
@@ -1463,7 +1548,7 @@ class InstallContextTests(unittest.TestCase):
     def test_default_runtime_guard_refuses_this_dev_interpreter(self):
         dest = self.install(os.path.join(self.base, "inst"))
         with self.assertRaises(p.Gate) as cm:
-            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__, **{
+            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=self.ca, **{
                 k: v for k, v in self.trust.items() if k != "runtime"})
         self.assertEqual(cm.exception.reason, "runtime-bad-interpreter")
 
@@ -1564,7 +1649,10 @@ class RuntimeGuardTests(unittest.TestCase):
         os.makedirs(self.lib)
         self.python = os.path.join(self.root, "bin", "python3")
         self.stdlib = os.path.join(self.lib, "os.py")
-        for f in (self.python, self.stdlib):
+        self.dylib = os.path.join(self.root, "Python3")
+        self.launcher_dir = os.path.join(self.root, "Resources", "Python.app", "Contents", "MacOS")
+        self.launcher = os.path.join(self.launcher_dir, "Python")
+        for f in (self.python, self.stdlib, self.dylib):
             open(f, "w").close()
         self.inst = os.path.join(self.base, "inst")
         os.makedirs(self.inst)
@@ -1593,6 +1681,48 @@ class RuntimeGuardTests(unittest.TestCase):
 
     def test_valid_injected_runtime_passes(self):
         p.check_runtime(**self.args())
+
+    def test_dylib_must_exist_and_be_trusted(self):
+        os.chmod(self.dylib, 0o666)
+        self.assertEqual(self.reason(), "runtime-bad-library")
+        os.chmod(self.dylib, 0o600)
+        rogue = os.path.join(self.untrusted, "Python3")
+        open(rogue, "w").close()
+        os.unlink(self.dylib)
+        os.symlink(rogue, self.dylib)
+        self.assertEqual(self.reason(), "runtime-bad-library")
+        os.unlink(self.dylib)
+        self.assertEqual(self.reason(), "runtime-bad-library")
+
+    def test_launcher_checked_only_if_present(self):
+        p.check_runtime(**self.args())  # absent launcher is fine
+        os.makedirs(self.launcher_dir)
+        open(self.launcher, "w").close()
+        p.check_runtime(**self.args())
+        os.chmod(self.launcher, 0o662)
+        self.assertEqual(self.reason(), "runtime-bad-library")
+        os.chmod(self.launcher, 0o600)
+        rogue = os.path.join(self.untrusted, "Python")
+        open(rogue, "w").close()
+        os.unlink(self.launcher)
+        os.symlink(rogue, self.launcher)
+        self.assertEqual(self.reason(), "runtime-bad-library")
+
+    def test_cached_path_checked_like_file(self):
+        good = os.path.join(self.lib, "os.pyc")
+        open(good, "w").close()
+        mod = lambda c: {"os": types.SimpleNamespace(__file__=self.stdlib, __cached__=c)}
+        p.check_runtime(**self.args(modules=mod(good)))
+        p.check_runtime(**self.args(modules=mod(None)))
+        p.check_runtime(**self.args(modules=mod(os.path.join(self.lib, "missing.pyc"))))  # trusted parent
+        evil = os.path.join(self.untrusted, "os.pyc")
+        open(evil, "w").close()
+        self.assertEqual(self.reason(modules=mod(evil)), "runtime-untrusted-module")
+        self.assertEqual(self.reason(modules=mod(os.path.join(self.untrusted, "none.pyc"))),
+                         "runtime-untrusted-module")
+        self.assertEqual(self.reason(modules=mod("relative.pyc")), "runtime-untrusted-module")
+        os.chmod(good, 0o666)
+        self.assertEqual(self.reason(modules=mod(good)), "runtime-untrusted-module")
 
     def test_user_owned_or_foreign_interpreter_path_refused(self):
         rogue = os.path.join(self.untrusted, "python3")

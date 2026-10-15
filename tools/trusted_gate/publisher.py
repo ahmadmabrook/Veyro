@@ -20,8 +20,9 @@ account through restricted sudo. Anything else is a fixed `bad-argv`. Before the
 key, network or state are touched, it requires: hardened process (no core dumps,
 umask 077, cwd `/`), the root-installed Python runtime (exact interpreter realpath,
 prefix, every sys.path entry and loaded module root-owned inside the runtime tree),
-a root-owned installed copy outside every git worktree
-under a root-owned directory chain, a clean environment, and a non-root real and
+a root-owned installed git whose production-env `config --list` is empty (every git command also
+carries hook/credential/fsmonitor/maintenance-off overrides), a root-owned fixed CA file, a root-owned
+installed copy outside every git worktree under a root-owned directory chain, a clean environment, and a non-root real and
 effective uid equal to both the config `signer_uid` and the uid provisioned into
 `EXPECTED_SIGNER_UID`. No key, path, host, workflow or check name comes from the
 caller. Live account provisioning and sudo rules are outside this repo.
@@ -54,6 +55,10 @@ GIT_BIN = "/usr/bin/git"  # keyless --dry-run development only; never used by `p
 TRUSTED_GIT_BIN = "/Library/VeyroGate/runtime/git/bin/git"  # production: root-installed copy
 TRUSTED_GIT_EXEC_PATH = "/Library/VeyroGate/runtime/git/libexec/git-core"
 GIT_TIMEOUT = 60
+# Per-invocation overrides on EVERY git command: no hooks, no askpass/credential helper, no fsmonitor,
+# no background gc/maintenance, whatever config a git binary might still read.
+GIT_HARDEN = ("-c", "core.hooksPath=/dev/null", "-c", "core.askPass=", "-c", "credential.helper=",
+              "-c", "core.fsmonitor=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false")
 MAX_BODY = 1024 * 1024
 _SHA = re.compile(r"[0-9a-f]{40}")
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -111,7 +116,7 @@ def _fetch_pr(repo, pr, run, git_bin, env):
 
     def git(*args):
         try:
-            p = run([git_bin, *args], cwd=tmp, env=env, capture_output=True, text=True,
+            p = run([git_bin, *GIT_HARDEN, *args], cwd=tmp, env=env, capture_output=True, text=True,
                     timeout=GIT_TIMEOUT, check=False)
         except (subprocess.TimeoutExpired, OSError):
             raise _blocked("git-error") from None
@@ -145,10 +150,31 @@ def trusted_git_fetch_pr(repo, pr, run=subprocess.run, verify=None):
     `TRUSTED_GIT_EXEC_PATH` helper directory. Neither path is a parameter; the trust check is repeated
     immediately before use. Returns (fetched_head_sha, head:.github tree oid)."""
     (check_trusted_git if verify is None else verify)()
-    env = {"PATH": os.path.dirname(TRUSTED_GIT_BIN) + ":" + TRUSTED_GIT_EXEC_PATH, "HOME": "/nonexistent",
-           "GIT_EXEC_PATH": TRUSTED_GIT_EXEC_PATH, "GIT_TERMINAL_PROMPT": "0",
-           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
-    return _fetch_pr(repo, pr, run, TRUSTED_GIT_BIN, env)
+    check_trusted_git_config(run)
+    return _fetch_pr(repo, pr, run, TRUSTED_GIT_BIN, _trusted_git_env())
+
+
+def _trusted_git_env():
+    return {"PATH": os.path.dirname(TRUSTED_GIT_BIN) + ":" + TRUSTED_GIT_EXEC_PATH, "HOME": "/nonexistent",
+            "GIT_EXEC_PATH": TRUSTED_GIT_EXEC_PATH, "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+
+
+def check_trusted_git_config(run=subprocess.run):
+    """Pre-secret fail-closed probe: the root-owned git copy, with the exact production env in a clean
+    empty directory, must list NO configuration at all (exit 0, empty stdout and stderr). A relocated
+    Apple git still carries a compiled Xcode prefix and a `share/git-core/gitconfig` path; any extra
+    config it reads (system/Xcode, repo discovery) shows up here and blocks. Runs only `config --list`;
+    no candidate code is involved. This is a runtime check of the installed binary, not proof of the
+    installation itself."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="veyro-gate-probe-") as tmp:
+            p = run([TRUSTED_GIT_BIN, "config", "--list", "--show-origin", "--show-scope"], cwd=tmp,
+                    env=_trusted_git_env(), capture_output=True, text=True, timeout=GIT_TIMEOUT, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        raise _blocked("git-config-untrusted") from None
+    if p.returncode != 0 or p.stdout != "" or p.stderr != "":
+        raise _blocked("git-config-untrusted")
 
 
 def _trusted_git_file(path, owners, top):
@@ -284,7 +310,8 @@ def evaluate(cfg, get=http_get, fetch=git_fetch_pr):
 CHECK_NAME = "veyro-trusted-gate"
 API_HOST = "https://api.github.com"
 _SELF = os.path.realpath(__file__)
-TLS_CAFILE = "/etc/ssl/cert.pem" if sys.platform == "darwin" else "/etc/ssl/certs/ca-certificates.crt"
+# macOS `/etc` is a symlink to `/private/etc`; the fixed trust file is the resolved path.
+TLS_CAFILE = "/private/etc/ssl/cert.pem" if sys.platform == "darwin" else "/etc/ssl/certs/ca-certificates.crt"
 CONFIG_PATH = "/Library/VeyroGate/etc/config.json"
 EXPECTED_SIGNER_UID = 452  # dedicated _veyrogate uid; provisioning must use this exact unused uid
 RUNTIME_ROOT = "/Library/VeyroGate/runtime/Python3.framework/Versions/3.9"  # root-installed interpreter + stdlib
@@ -414,7 +441,7 @@ def _trusted_location(path, root, publisher, owners, top, allow_missing_zip):
 
 
 def check_runtime(executable=None, prefix=None, base_prefix=None, paths=None, modules=None,
-                  root=RUNTIME_ROOT, publisher=None, owners=(0,), top="/"):
+                  root=RUNTIME_ROOT, publisher=None, owners=(0,), top="/", dylib=None, launcher=None):
     """Pre-secret guard: the interpreter and standard library must be the root-owned installed runtime.
 
     The interpreter's realpath must be exactly `<root>/bin/python3`, `sys.prefix` and `sys.base_prefix`
@@ -422,6 +449,9 @@ def check_runtime(executable=None, prefix=None, base_prefix=None, paths=None, mo
     the runtime tree (or be the installed publisher itself), and all of them, plus their directory
     chains up to `top`, must be owned by `owners` and not group/other writable (no sticky exemption).
     A missing `.zip` entry under the runtime is tolerated only when its parent chain is trusted.
+    The relocated `<root>/Python3` dylib and, if present, the `Resources/Python.app` launcher must meet
+    the same standard, as must every loaded module's `__cached__` path (a missing cache file needs a
+    trusted parent). This is startup detection only; it does not substitute for the root-owned install.
     Imports nothing; the defaults are production values and only tests relax them."""
     executable = sys.executable if executable is None else executable
     prefix = sys.prefix if prefix is None else prefix
@@ -430,6 +460,8 @@ def check_runtime(executable=None, prefix=None, base_prefix=None, paths=None, mo
     modules = sys.modules if modules is None else modules
     publisher = _SELF if publisher is None else publisher
     python = root + "/bin/python3"
+    dylib = root + "/Python3" if dylib is None else dylib
+    launcher = root + "/Resources/Python.app/Contents/MacOS/Python" if launcher is None else launcher
     try:
         if not (isinstance(executable, str) and os.path.isabs(executable)
                 and os.path.realpath(executable) == python and os.path.realpath(root) == root
@@ -437,16 +469,29 @@ def check_runtime(executable=None, prefix=None, base_prefix=None, paths=None, mo
             raise _blocked("runtime-bad-interpreter")
         if prefix != root or base_prefix != root:
             raise _blocked("runtime-bad-prefix")
+        if not os.path.isfile(dylib) or not _trusted_node(dylib, root, publisher, owners, top):
+            raise _blocked("runtime-bad-library")
+        if os.path.lexists(launcher) and not _trusted_node(launcher, root, publisher, owners, top):
+            raise _blocked("runtime-bad-library")
         for entry in list(paths):
             if not _trusted_location(entry, root, publisher, owners, top, True):
                 raise _blocked("runtime-untrusted-path")
         for mod in list(modules.values()):
             f = getattr(mod, "__file__", None)
-            if f is None:
+            if f is not None:
+                if isinstance(f, str) and not os.path.lexists(f) and ".zip" + os.sep in f:
+                    f = f[:f.index(".zip" + os.sep) + 4]  # a member of a zip on the stdlib path
+                if not _trusted_location(f, root, publisher, owners, top, False):
+                    raise _blocked("runtime-untrusted-module")
+            c = getattr(mod, "__cached__", None)
+            if c is None:
                 continue
-            if isinstance(f, str) and not os.path.lexists(f) and ".zip" + os.sep in f:
-                f = f[:f.index(".zip" + os.sep) + 4]  # a member of a zip on the stdlib path
-            if not _trusted_location(f, root, publisher, owners, top, False):
+            if isinstance(c, str) and os.path.isabs(c) and not os.path.lexists(c):
+                parent = os.path.realpath(os.path.dirname(os.path.normpath(c)))
+                if not ((_within(parent, root) or parent == os.path.dirname(publisher))
+                        and _strict_chain(parent, owners, top)):
+                    raise _blocked("runtime-untrusted-module")
+            elif not _trusted_location(c, root, publisher, owners, top, False):
                 raise _blocked("runtime-untrusted-module")
     except (OSError, ValueError):
         raise _blocked("runtime-untrusted") from None
@@ -477,16 +522,33 @@ def check_install(path=_SELF, modules=None, file_owner=0, dir_owners=(0,)):
 
 
 def check_publish_context(environ=None, path=_SELF, isolated=None, modules=None, cafile=TLS_CAFILE,
-                          file_owner=0, dir_owners=(0,), runtime=check_runtime, trusted_git=None):
+                          file_owner=0, dir_owners=(0,), runtime=check_runtime, trusted_git=None, ca_top="/"):
     """Run first in `publish`: before key, network or state access."""
     if not (sys.flags.isolated if isolated is None else isolated):
         raise _blocked("not-isolated")
     runtime()  # trusted interpreter/stdlib before anything else is believed
     check_env(os.environ if environ is None else environ)
     check_install(path, modules, file_owner, dir_owners)
-    (check_trusted_git if trusted_git is None else trusted_git)()  # root-installed git, not /usr/bin/git
-    if not os.path.isfile(cafile):
-        raise _blocked("tls-trust-unavailable")
+    if trusted_git is None:  # root-installed git, not /usr/bin/git, reading no configuration
+        check_trusted_git()
+        check_trusted_git_config()
+    else:
+        trusted_git()
+    check_cafile(cafile, file_owner, dir_owners, ca_top)
+
+
+def check_cafile(cafile, file_owner=0, dir_owners=(0,), top="/"):
+    """The fixed TLS trust file must already be its own realpath (macOS: `/private/etc/ssl/cert.pem`),
+    a regular file owned by `file_owner`, not group/other writable, under a strict real directory chain."""
+    try:
+        if not (isinstance(cafile, str) and os.path.isabs(cafile) and os.path.realpath(cafile) == cafile):
+            raise _blocked("tls-trust-unavailable")
+        st = os.lstat(cafile)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != file_owner or st.st_mode & 0o022 \
+                or not _strict_chain(os.path.dirname(cafile), dir_owners, top):
+            raise _blocked("tls-trust-unavailable")
+    except OSError:
+        raise _blocked("tls-trust-unavailable") from None
 
 
 def parse_publish_argv(argv):
