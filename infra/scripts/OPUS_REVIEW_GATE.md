@@ -27,11 +27,15 @@ until the owner acts. Accepting an external PR needs an owner decision, e.g. add
 author as a collaborator or reviewing a trusted re-submission of the change.
 On an organization-owned repository, `MEMBER` can include members without write access to
 this repository; this association is an API-spend filter, not a repository-permission check.
-Spend cap: per run at most 48 Claude calls (<=250 KB input, <=16k output tokens each, 10 MB
-total diff), plus up to 2 retries on transient errors. Runs are serialized per PR but every
-push by a trusted author starts a new run, so the real ceiling is set by the owner: before
-activation set a monthly spend limit on the Anthropic workspace that owns
-`ANTHROPIC_API_KEY`, and record it in the `OWNER_APPROVALS.md` entry. Not verified from here.
+
+Spend bound: per run at most 48 review chunks (<=250 KB **diff** per chunk, plus manifest
+and prompt overhead; <=16k output tokens per attempt, 10 MB total diff), with up to 2
+retries per chunk on transient errors. Runs are serialized per PR but every push by a trusted
+author starts a new run, so the real ceiling is set by the owner: before
+activation use a dedicated non-default Anthropic workspace and set its monthly spend limit
+for the API key (the default workspace does not support workspace limits), then record it in
+the `OWNER_APPROVALS.md` entry. Spend-limit enforcement can lag usage; this is not an exact
+per-request budget. Not verified from here.
 
 ## Protected paths
 Independently of whether the trusted PR guard check is required, the script BLOCKS before
