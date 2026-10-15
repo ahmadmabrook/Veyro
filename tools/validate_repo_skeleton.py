@@ -2,9 +2,14 @@
 """Fail-closed MOD-001 GOV-01-R01 repository-skeleton check.
 
 REQUIRED_PATHS enumerates only the currently required files; passing it does
-not certify the full repository topology or test pyramid. Missing, wrong-type
-and symlinked paths fail with a named reason. The check is read-only.
-Current execution status and evidence live in MOD-001.md.
+not certify the full repository topology or test pyramid. MOD-001's full
+target topology (IMPLEMENTATION.md §1) also names admin-web/, frontdesk-web/,
+mobile/, contracts/, infra/, .github/workflows/, and tools/ itself, none of
+which are in this manifest yet - hardcoding them as required before they are
+built would make this check report a false FAIL against legitimate
+not-yet-built work. Missing, wrong-type and symlinked paths fail with a named
+reason. The check is read-only. Scenario and evidence: SCENARIOS.md
+SCN-MOD001-003; status: IMPLEMENTATION.md §1.
 """
 import argparse
 import stat

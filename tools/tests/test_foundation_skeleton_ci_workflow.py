@@ -12,7 +12,10 @@ files (e.g. test_dependency_vulnerability_gate_workflow.py):
    SHA anonymously), proving the required negatives: malformed sha/repo,
    an unfetchable (effectively "wrong") commit, and an absent or symlinked
    validator - plus a real green run using the actual committed validator
-   bytes copied into the fixture commit.
+   bytes copied into the fixture commit, and two tests that pin the
+   disclosed candidate-controlled-spoofing limitation (header's `NOT
+   claimed` block) rather than leaving it implicit: a gutted manifest and a
+   stub validator, both candidate-authored, both still reporting PASS.
 
 No network is touched.
 """
@@ -142,6 +145,16 @@ class WorkflowShapeTests(unittest.TestCase):
         for needle in ("NOT claimed", "source file grants no CI result", "PUBLIC", "UNREVIEWED CANDIDATE"):
             self.assertIn(needle, self.text)
 
+    def test_candidate_controlled_spoofing_is_disclosed(self):
+        # Review finding F1: the header must name the bypass explicitly,
+        # not just decline required-gate credit in the abstract.
+        for needle in (
+            "candidate-authored, not independently",
+            "empty `REQUIRED_PATHS`",
+            "trusted-definition split",
+        ):
+            self.assertIn(needle, self.text)
+
 
 class Fixture:
     """A synthetic local git remote plus a runner for the workflow's own
@@ -204,6 +217,35 @@ class Fixture:
         self._git("commit", "-q", "--allow-empty", "-m", "candidate head, symlinked validator")
         return self._git("rev-parse", "HEAD")
 
+    def commit_with_gutted_manifest_validator(self) -> str:
+        """Disclosed-limitation probe (header's `NOT claimed` block; review
+        finding F1, probe B): the candidate's own commit replaces the
+        validator with its real source but an empty manifest. The workflow
+        has no trusted/candidate byte split to catch this."""
+        path = self._ensure(VALIDATOR_REL)
+        source = VALIDATOR.read_text(encoding="utf-8")
+        start = source.index("REQUIRED_PATHS = [")
+        end = source.index("\n]", start) + 2
+        path.write_text(source[:start] + "REQUIRED_PATHS = []" + source[end:], encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-q", "--allow-empty", "-m", "candidate head, gutted manifest")
+        return self._git("rev-parse", "HEAD")
+
+    def commit_with_stub_validator(self) -> str:
+        """Disclosed-limitation probe (header's `NOT claimed` block; review
+        finding F1, probe C): the candidate's own commit replaces the real
+        validator entirely with a trivial always-PASS stub. Not expected to
+        deny, for the same reason as above."""
+        path = self._ensure(VALIDATOR_REL)
+        path.write_text(
+            "#!/usr/bin/env python3\n"
+            "print('PASS - all required paths present as genuine entries.')\n",
+            encoding="utf-8",
+        )
+        self._git("add", "-A")
+        self._git("commit", "-q", "--allow-empty", "-m", "candidate head, stub validator")
+        return self._git("rev-parse", "HEAD")
+
     def _ensure(self, rel: str) -> Path:
         path = self.origin / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,6 +295,7 @@ class BehaviorTests(unittest.TestCase):
         )
         result = self.fx.run(head)
         self.assertEqual(result.returncode, 0, f"STDOUT:{result.stdout}\nSTDERR:{result.stderr}")
+        self.assertIn("Required paths checked: 7", result.stdout)
         self.assertIn("PASS", result.stdout)
 
     def test_real_validator_denies_on_a_missing_required_path(self):
@@ -296,6 +339,28 @@ class BehaviorTests(unittest.TestCase):
         head = self.fx.commit_with_symlinked_validator()
         result = self.fx.run(head)
         self.assertDenied(result, "symlink/gitlink/irregular")
+
+    def test_candidate_can_spoof_green_by_gutting_its_own_manifest(self):
+        """Pins the disclosed limitation in the header's `NOT claimed`
+        block, not a bug: the workflow definition and the validator it runs
+        both come from the same candidate commit, so a candidate that
+        empties its own manifest still reports PASS. Acceptable only
+        because this is a nonrequired smoke check with nothing trusted to
+        protect; disqualifying for a required/protected gate."""
+        head = self.fx.commit_with_gutted_manifest_validator()
+        result = self.fx.run(head)
+        self.assertEqual(result.returncode, 0, f"STDOUT:{result.stdout}\nSTDERR:{result.stderr}")
+        self.assertIn("Required paths checked: 0", result.stdout)
+        self.assertIn("PASS", result.stdout)
+
+    def test_candidate_can_spoof_green_by_replacing_the_validator(self):
+        """Same disclosed limitation as above, the other reproduction named
+        in the header: the candidate replaces the real validator outright
+        with an always-PASS stub."""
+        head = self.fx.commit_with_stub_validator()
+        result = self.fx.run(head)
+        self.assertEqual(result.returncode, 0, f"STDOUT:{result.stdout}\nSTDERR:{result.stderr}")
+        self.assertIn("PASS", result.stdout)
 
 
 if __name__ == "__main__":

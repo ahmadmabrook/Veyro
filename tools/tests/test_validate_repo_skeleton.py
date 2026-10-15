@@ -14,9 +14,22 @@ is checked separately by the validator CLI.
      scenario's own literal case (delete a required top-level directory,
      not just one file) -> every path nested under it is individually
      named missing, none silently dropped.
+  4. test_directory_in_place_of_required_file_fails — a directory standing
+     in for a required file is denied, not silently treated as present.
+  5. test_file_in_place_of_ancestor_directory_fails — a file standing in
+     for a required ancestor directory is denied.
+  6. test_symlinked_required_file_fails — a required file reached only via
+     a symlink is denied.
+  7. test_symlinked_ancestor_directory_fails — a required file reached
+     through a symlinked ancestor directory is denied.
+  8. test_dangling_symlink_fails — a dangling symlink at a required path
+     is denied, not mistaken for a missing-but-harmless entry.
+  9. test_trailing_slash_requires_real_directory — a trailing "/" in a
+     required-path entry demands a genuine directory, not a same-named file.
 
-Run directly with `backend/.venv/bin/python tools/tests/test_validate_repo_skeleton.py`
-(no pytest dependency needed) or with pytest if available.
+Run directly with any Python >= 3.10 interpreter, e.g.
+`python3 tools/tests/test_validate_repo_skeleton.py` (no pytest dependency
+needed), or with pytest if available.
 """
 import shutil
 import sys

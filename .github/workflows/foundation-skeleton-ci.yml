@@ -7,18 +7,16 @@
 # file alone does not make a check required on `main`; that is a separate
 # owner-executed branch-protection action, not taken here.
 #
-# Trust model (deliberately simpler than the `pull_request_target` gates in
+# Trust model (deliberately simpler than the `pull_request_target` gate in
 # this directory, and simpler on purpose):
-#   This check has nothing worth protecting from the code it inspects - it
-#   only asks "does the exact pushed/candidate commit contain these required
-#   paths as genuine files", read-only, no secrets, no privileged token, no
-#   trusted/candidate byte split. There is therefore no reason to reach for
-#   `pull_request_target` (which exists only to run a *trusted* definition
-#   against *untrusted* code, typically to protect a secret or a write-scoped
-#   token neither of which exist here). Plain `pull_request` and `push` are
-#   the correct, smaller-blast-radius events for this job, matching
-#   `test-pyramid.yml`'s own precedent of using plain `pull_request` for
-#   checks that need no elevated trust split.
+#   This nonrequired smoke check only asks whether the candidate's own
+#   validator accepts its own tree; it carries no secret or privileged token
+#   and makes no trusted-gate claim. Plain `pull_request` and `push` are
+#   appropriate for that limited purpose. A required gate would need a
+#   trusted workflow and validator, even without secrets or write access.
+#   The published tree's only other workflow,
+#   `scn020-trusted-event-contract.yml`, uses `pull_request_target`
+#   for its trusted/candidate split; this check intentionally has none.
 #
 #   Both the workflow definition at trigger time and the validator it runs
 #   come from the SAME commit: the pushed commit for `push`, the PR head
@@ -27,8 +25,9 @@
 #   anything else - the whole point is to check the candidate's own tree.
 #
 #   `permissions: {}` and a tokenless `git fetch` by exact SHA: no action
-#   reference (`iac.md` control 5 - no `uses:` line anywhere, matching every
-#   other candidate in this directory), no `secrets.` reference of any kind.
+#   reference (`iac.md` control 5 - no `uses:` line anywhere, matching
+#   `scn020-trusted-event-contract.yml`, the only other committed workflow
+#   in this directory), no `secrets.` reference of any kind.
 #   The fetch is anonymous, so it requires the remote to be fetchable without
 #   credentials. The live GitHub repository is PUBLIC (verified 2026-10-15),
 #   but exact-SHA fetch reachability is not proven until a real run.
@@ -39,8 +38,9 @@
 # `github.sha`, which for that event is a synthetic merge commit, not the
 # candidate's own head) and `github.sha` for `push` (the exact pushed
 # commit). The chosen value then reaches the shell only via `env:`, never
-# spliced into the script body - the same untrusted-value convention every
-# other workflow in this directory uses.
+# spliced into the script body - the same untrusted-value convention
+# `scn020-trusted-event-contract.yml`, the only other workflow in this
+# directory, also uses.
 #
 # Fail-closed by construction:
 #   - malformed `REPO`/`HEAD_SHA` (anything not a well-formed `owner/name` /
@@ -59,6 +59,18 @@
 #     no `if: always()`).
 #
 # NOT claimed:
+#   - A green result here is candidate-authored, not independently
+#     verified: the workflow definition and the validator it executes both
+#     come from the same candidate commit (the pushed/PR-head commit), so a
+#     candidate may empty `REQUIRED_PATHS` or replace
+#     `tools/validate_repo_skeleton.py` with a stub and still report PASS
+#     (reproduced in `tools/tests/test_foundation_skeleton_ci_workflow.py`).
+#     That is acceptable for a nonrequired smoke check with nothing trusted
+#     to protect; it is disqualifying for a required/protected gate.
+#     Promotion to required status needs a trusted-definition split (the
+#     `scn020-trusted-event-contract.yml` pattern: validator bytes and
+#     manifest fetched from the trusted base/protected SHA, not the
+#     candidate head), not a branch-protection toggle alone.
 #   - This source file grants no CI result, SCN-MOD001-003-live evidence,
 #     required status check or certification input. Any run must be verified
 #     separately against its exact head, run ID and logs.
@@ -67,8 +79,9 @@
 #     untouched by this file.
 #   - Fork-PR fetch reachability (whether GitHub.com serves a bare 40-hex
 #     fork head SHA to an anonymous fetch) is the same open, undischarged
-#     precondition every tokenless-fetch gate in this directory already
-#     carries, and is not resolved here.
+#     precondition `scn020-trusted-event-contract.yml`, the only other
+#     tokenless-fetch gate in this directory, already carries, and is not
+#     resolved here.
 
 name: foundation-skeleton-ci
 
