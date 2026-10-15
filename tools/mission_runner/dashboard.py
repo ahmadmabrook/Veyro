@@ -154,7 +154,7 @@ function ciView(ci){
  if(!pr)p.append(el('div','empty',ci.observed_at?'No pull request found for this branch.':NA));
  else{const r=el('div');p.append(r);kv(r,[['PR',pr.number!=null?'#'+pr.number:null],['State',pr.state+(pr.draft?' (draft)':'')],['Review',pr.review]]);
   if(pr.url)p.append(link(pr.url,pr.url))}
- n.append(el('div','mute','Required checks'));
+ n.append(el('div','mute',ci.source==='github-public-api'?'Observed checks (required status not verified)':'Required checks'));
  const cc=el('div');n.append(cc);
  table(cc,['Check','State'],(ci.checks||[]).map(c=>[td(link(c.url,c.name)),td(pill(c.state||NA,st==='fresh'?ciTone(c.state):'warn'))]),'No required checks reported for this branch.');
  n.append(el('div','mute','Recent workflow runs'));

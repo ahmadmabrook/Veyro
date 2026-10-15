@@ -889,6 +889,39 @@ class CIFeed(Base):
     """gh is injected as the subprocess layer; nothing here touches the network."""
     SHA = "a" * 40
 
+    def test_public_api_observation_is_read_only_and_does_not_claim_review_or_required_checks(self):
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
+        calls = []
+        class Response:
+            def __init__(self, obj): self.obj = obj
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self, *_): return json.dumps(self.obj).encode()
+        def open_url(req, timeout):
+            calls.append((req.full_url, req.get_method(), timeout))
+            if "/actions/runs?" in req.full_url:
+                return Response({"workflow_runs": [{"name": "CI", "status": "completed", "conclusion": "success",
+                                                    "head_branch": "b", "head_sha": self.SHA,
+                                                    "html_url": "https://github.com/o/r/actions/runs/1"}]})
+            if "/pulls?" in req.full_url:
+                return Response([{"number": 7, "html_url": "https://github.com/o/r/pull/7", "state": "open",
+                                  "draft": True, "head": {"sha": self.SHA}}])
+            return Response({"check_runs": [{"name": "CI", "conclusion": "success",
+                                             "html_url": "https://github.com/o/r/actions/runs/1/job/1"}]})
+        ci = R.fetch_ci_public(self.cfg, open_url)
+        self.assertEqual((ci["source"], ci["pr"]["review"], ci["checks"][0]["state"]),
+                         ("github-public-api", "unknown", "success"))
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(method == "GET" and timeout <= R.CI_CALL_TIMEOUT for _, method, timeout in calls))
+        self.assertNotIn("token", json.dumps(ci).lower())
+
+    def test_public_api_failure_is_explicit(self):
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
+        def fail(*_args, **_kwargs): raise TimeoutError()
+        with self.assertRaises(R.CIError) as e:
+            R.fetch_ci_public(self.cfg, fail)
+        self.assertEqual(str(e.exception), "github-api-unavailable")
+
     def fake_gh(self, fail=None, calls=None):
         def run(argv, **kw):
             if calls is not None:
@@ -935,11 +968,19 @@ class CIFeed(Base):
             self.assertLessEqual(kw["timeout"], R.CI_CALL_TIMEOUT)
             self.assertIn(argv[1:3], (["repo", "view"], ["run", "list"], ["pr", "view"], ["pr", "checks"]))
 
+    def test_repo_slug_is_taken_from_local_origin_without_network_discovery(self):
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
+        r, calls = self.runner(ci_every=60), []
+        r.ci_run = self.fake_gh(calls=calls)
+        r.refresh_ci()
+        repo_call = next(argv for argv, _ in calls if argv[1:3] == ["repo", "view"])
+        self.assertEqual(repo_call[3], "o/r")
+
     def test_failures_keep_last_success_but_mark_stale_and_leak_nothing(self):
         r = self.runner(ci_every=60)
         r.ci_run = self.fake_gh()
         r.refresh_ci()
-        for fail, code in (("missing", "gh-missing"), ("timeout", "gh-timeout"), ("auth", "gh-auth")):
+        for fail, code in (("missing", "gh-missing"), ("timeout", "gh-timeout-repo-view"), ("auth", "gh-auth")):
             r.last_ci = 0
             r.ci_run = self.fake_gh(fail=fail)
             r.refresh_ci()

@@ -20,6 +20,9 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from types import SimpleNamespace
 import uuid
 from pathlib import Path
@@ -64,7 +67,7 @@ def default_home():
 class Config:
     def __init__(self, home=None, repo=REPO, claude_bin=None, timeout=3600.0, tick=1.0,
                  backoff_base=5.0, backoff_cap=300.0, max_attempts=3, baseline_every=30.0,
-                 sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=60.0):
+                 sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=300.0, ci_mode=None):
         self.home = Path(home) if home else default_home()
         self.repo = Path(repo)
         self.claude_bin = claude_bin or os.environ.get("VEYRO_CLAUDE_BIN", "claude")
@@ -73,6 +76,7 @@ class Config:
         self.max_attempts, self.baseline_every = max_attempts, baseline_every
         self.sandbox, self.verify_timeout = sandbox, verify_timeout  # sandbox: auto | off
         self.gh_bin, self.ci_every = gh_bin or os.environ.get("VEYRO_GH_BIN", "gh"), ci_every  # ci_every<=0 disables
+        self.ci_mode = ci_mode or os.environ.get("VEYRO_CI_MODE", "gh")
 
 
 # ---------------------------------------------------------------- durable store
@@ -493,7 +497,7 @@ def _gh(cfg, run, deadline, *args, ok_codes=(0,)):
     except FileNotFoundError:
         raise CIError("gh-missing")
     except subprocess.TimeoutExpired:
-        raise CIError("gh-timeout")
+        raise CIError(f"gh-timeout-{args[0]}-{args[1]}")
     except OSError:
         raise CIError("gh-failed")
     if p.returncode not in ok_codes:
@@ -520,7 +524,16 @@ def fetch_ci(cfg, run=subprocess.run):
                       timeout=max(0.1, deadline - time.monotonic())).stdout.decode().strip()
     except (subprocess.SubprocessError, OSError):
         raise CIError("git-failed")
-    repo = _gh(cfg, run, deadline, "repo", "view", "--json", "nameWithOwner,url")
+    try:
+        remote = _git(cfg.repo, "remote", "get-url", "origin",
+                      timeout=max(0.1, deadline - time.monotonic())).stdout.decode().strip()
+    except (subprocess.SubprocessError, OSError):
+        remote = ""
+    slug_match = re.search(r"(?:github\.com[:/])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$", remote)
+    slug = slug_match.group(1) if slug_match else None
+    repo_args = ("repo", "view", slug, "--json", "nameWithOwner,url") if slug else (
+        "repo", "view", "--json", "nameWithOwner,url")
+    repo = _gh(cfg, run, deadline, *repo_args)
     runs = _gh(cfg, run, deadline, "run", "list", "--branch", branch, "--limit", "8", "--json",
                "name,status,conclusion,headBranch,headSha,event,createdAt,url")
     pr = checks = None
@@ -546,6 +559,71 @@ def fetch_ci(cfg, run=subprocess.run):
         "runs": [{"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
                   "ref": x.get("headBranch"), "head_sha": x.get("headSha"), "event": x.get("event"),
                   "created_at": x.get("createdAt"), "url": x.get("url")} for x in runs if isinstance(x, dict)]})
+
+
+def fetch_ci_public(cfg, opener=urllib.request.urlopen):
+    """Observe a public GitHub repository without exporting a Keychain credential to a LaunchAgent.
+
+    The three REST reads are deliberately infrequent (default: five minutes) to stay below the
+    unauthenticated API budget. Private repositories fail closed as unavailable.
+    """
+    deadline = time.monotonic() + CI_BUDGET
+    try:
+        branch = _git(cfg.repo, "rev-parse", "--abbrev-ref", "HEAD", timeout=2).stdout.decode().strip()
+        remote = _git(cfg.repo, "remote", "get-url", "origin", timeout=2).stdout.decode().strip()
+    except (subprocess.SubprocessError, OSError):
+        raise CIError("git-failed")
+    match = re.search(r"(?:github\.com[:/])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$", remote)
+    if not match:
+        raise CIError("github-origin-unavailable")
+    slug = match.group(1)
+    owner = slug.split("/", 1)[0]
+    base = "https://api.github.com/repos/" + slug
+
+    def read(path):
+        left = min(CI_CALL_TIMEOUT, deadline - time.monotonic())
+        if left <= 0:
+            raise CIError("github-api-timeout")
+        req = urllib.request.Request(base + path, headers={"Accept": "application/vnd.github+json",
+                                                            "User-Agent": "Veyro-CI-observer"})
+        try:
+            with opener(req, timeout=left) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as e:
+            raise CIError("github-api-rate-limit" if e.code == 403 else "github-api-unavailable")
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise CIError("github-api-unavailable")
+        except (ValueError, TypeError):
+            raise CIError("github-api-bad-output")
+
+    qbranch = urllib.parse.quote(branch, safe="")
+    runs_data = read(f"/actions/runs?branch={qbranch}&per_page=8")
+    prs = read(f"/pulls?head={urllib.parse.quote(owner + ':' + branch, safe='')}&state=open&per_page=1")
+    if not isinstance(runs_data, dict) or not isinstance(runs_data.get("workflow_runs"), list) or not isinstance(prs, list):
+        raise CIError("github-api-bad-output")
+    runs = runs_data["workflow_runs"]
+    pr = prs[0] if prs and isinstance(prs[0], dict) else None
+    head = (pr or {}).get("head", {}).get("sha") if isinstance((pr or {}).get("head"), dict) else None
+    if not head:
+        head = next((x.get("head_sha") for x in runs if isinstance(x, dict) and x.get("head_branch") == branch), None)
+    checks = []
+    if pr and head:
+        checks_data = read(f"/commits/{urllib.parse.quote(head, safe='')}/check-runs?per_page=20")
+        if not isinstance(checks_data, dict) or not isinstance(checks_data.get("check_runs"), list):
+            raise CIError("github-api-bad-output")
+        checks = checks_data["check_runs"]
+    return clean_ci({
+        "source": "github-public-api", "observed_at": now_iso(), "repo": slug,
+        "repo_url": "https://github.com/" + slug, "branch": branch, "head_sha": head,
+        "pr": None if pr is None else {"number": pr.get("number"), "url": pr.get("html_url"),
+                                       "state": pr.get("state"), "review": "unknown",
+                                       "draft": pr.get("draft"), "head_sha": head},
+        "checks": [{"name": c.get("name"), "state": c.get("conclusion") or c.get("status"),
+                    "url": c.get("html_url")} for c in checks if isinstance(c, dict)],
+        "runs": [{"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
+                  "ref": x.get("head_branch"), "head_sha": x.get("head_sha"), "event": x.get("event"),
+                  "created_at": x.get("created_at"), "url": x.get("html_url")}
+                 for x in runs if isinstance(x, dict)]})
 
 
 def backoff(cfg, attempts):
@@ -675,16 +753,16 @@ class Runner:
         except (OSError, ValueError):
             prev = None
         try:
-            new = fetch_ci(self.cfg, self.ci_run)
+            new = fetch_ci_public(self.cfg) if self.cfg.ci_mode == "public" else fetch_ci(self.cfg, self.ci_run)
             err = None
         except CIError as e:
             new, err = None, str(e.args[0])
         except Exception:
-            new, err = None, "gh-failed"
+            new, err = None, "github-api-failed" if self.cfg.ci_mode == "public" else "gh-failed"
         if new:
             data = new | {"last_attempt_at": now_iso(), "error": None}
         else:
-            data = (prev or {"source": "gh"}) | {"last_attempt_at": now_iso(), "error": err}
+            data = (prev or {"source": "github-public-api" if self.cfg.ci_mode == "public" else "gh"}) | {"last_attempt_at": now_iso(), "error": err}
         try:
             atomic_write(path, json.dumps(data).encode())
         except OSError:
@@ -1199,7 +1277,7 @@ def write_launchagents(cfg, write):
     py, me = sys.executable, str(Path(__file__).resolve())
     logs = cfg.home / "logs"
     env = {"PATH": f"{Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin", "HOME": str(Path.home()),
-           "VEYRO_RUNNER_HOME": str(cfg.home)}
+           "VEYRO_RUNNER_HOME": str(cfg.home), "VEYRO_CI_MODE": "public"}
     jobs = {"com.veyro.mod000-runner": ["run"], "com.veyro.mod000-dashboard": ["dashboard"]}
     out = []
     for label, args in jobs.items():
