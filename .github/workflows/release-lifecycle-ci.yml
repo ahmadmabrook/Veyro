@@ -1,0 +1,163 @@
+# MOD-001 GOV-01-R08 (release lifecycle) bounded CI candidate.
+#
+# STATUS: NONREQUIRED CANDIDATE. Not a gate, not required CI, not a branch
+# protection check. Adding this file grants no GOV-01-R08, R04, CI,
+# independent-review, or module credit of any kind. It is a local,
+# candidate-controlled smoke workflow only - the same kind of bounded
+# candidate `foundation-skeleton-ci.yml` already is, applied to the five
+# already-committed R08 files instead of the repo-skeleton validator.
+#
+# Trust model (same reasoning as `foundation-skeleton-ci.yml`, deliberately
+# the simpler shape, not the trusted/candidate split
+# `migration-safety.yml` uses):
+#   This job has nothing worth protecting from the code it inspects. It
+#   only runs the exact pushed/candidate commit's own train-doc lint and its
+#   own two local unittest suites, read-only, no secrets, no privileged
+#   token. There is no trusted definition to protect from a candidate
+#   rewrite here, so plain `pull_request`/`push` (never `pull_request_target`)
+#   are the correct, smaller-blast-radius events - matching
+#   `foundation-skeleton-ci.yml`'s own precedent exactly.
+#
+#   Both the workflow definition at trigger time and the five files it
+#   inspects come from the SAME commit: the pushed commit for `push`, the PR
+#   head commit for `pull_request`. Nothing here is trusted differently from
+#   anything else - the whole point is to check the candidate's own tree.
+#
+#   `permissions: {}` and a tokenless `git fetch` by exact SHA: no action
+#   reference (`iac.md` control 5 - no `uses:` line anywhere, matching every
+#   other candidate in this directory), no `secrets.` reference of any kind.
+#   The fetch is anonymous, so it requires the remote to be fetchable
+#   without credentials; the live repository is PUBLIC, but exact-SHA fetch
+#   reachability is not proven until a real run.
+#
+# SHA resolution without untrusted shell interpolation: `HEAD_SHA` is chosen
+# by a GitHub Actions expression evaluated BEFORE the shell ever runs,
+# selecting `github.event.pull_request.head.sha` for `pull_request` (never
+# `github.sha`, which for that event is a synthetic merge commit, not the
+# candidate's own head) and `github.sha` for `push` (the exact pushed
+# commit). The chosen value then reaches the shell only via `env:`, never
+# spliced into the script body.
+#
+# Fail-closed by construction:
+#   - malformed `REPO`/`HEAD_SHA` (anything not a well-formed `owner/name` /
+#     exact 40-hex commit sha) denies before any fetch is attempted.
+#   - wrong checkout: the checked-out `HEAD` is compared back against the
+#     exact requested `HEAD_SHA`; a mismatch denies instead of silently
+#     validating the wrong tree.
+#   - absent/symlinked source: each of the five required paths' tree entry
+#     must be a regular-file blob (mode 100644/100755); a missing path or a
+#     symlink/gitlink/irregular entry denies by name, and the materialized
+#     on-disk path is checked the same way as a second, independent
+#     confirmation.
+#   - any other nonzero (old/missing Python 3.10+, the train validator's own
+#     `MISSING_SECTION`/`EMPTY_SECTION` exit 1, either unittest suite's own
+#     test failure) ends the job under `set -euo pipefail`, with no masking
+#     of any kind (no `|| true`, no `continue-on-error`, no `if: always()`).
+#
+# NOT claimed:
+#   - No live CI run, no required-status check, no branch-protection change.
+#     Adding this file alone does not make it a required check on `main`;
+#     that is a separate owner-executed branch-protection action, not taken
+#     here.
+#   - No GOV-01-R08, R04, independent-review, or module-approval credit.
+#     Any run must be verified separately against its exact head, run ID
+#     and logs by an independent reviewer, not inferred from this file's
+#     existence.
+#   - `tools/validate_release_lifecycle.py` (`record` mode),
+#     `tools/generate_changelog.py`'s CLI invocation, branch protection, and
+#     every other committed workflow are untouched by this file - this
+#     candidate only runs `train` mode plus the two tools' own existing
+#     local unittest suites.
+#   - Fork-PR fetch reachability (whether GitHub.com serves a bare 40-hex
+#     fork head SHA to an anonymous fetch) is the same open, undischarged
+#     precondition every tokenless-fetch gate in this directory already
+#     carries, and is not resolved here.
+
+name: release-lifecycle-ci
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+
+permissions: {}
+
+jobs:
+  release-lifecycle-ci:
+    name: release-lifecycle-ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the exact candidate head tokenlessly and run the real R08 train validator plus its two local test suites
+        env:
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'release-lifecycle-ci: DENY - %s\n' "$1" >&2; exit 1; }
+
+          [[ "$REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ && "${REPO#*/}" != "." && "${REPO#*/}" != ".." ]] \
+            || deny "github.repository '$REPO' is not a well-formed owner/name"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || deny "head sha '$HEAD_SHA' is not a 40-hex commit sha"
+
+          repo_url="$SERVER_URL/$REPO.git"
+
+          work="${RUNNER_TEMP:?RUNNER_TEMP is required}/release-lifecycle-ci"
+          rm -rf "$work"
+          mkdir -p "$work"
+          head_dir="$work/head"
+
+          # --- 1. Fetch and check out the exact candidate commit, by SHA only ---
+          git init -q "$head_dir"
+          git -C "$head_dir" remote add origin "$repo_url"
+          git -C "$head_dir" fetch -q --no-tags --depth=1 origin "$HEAD_SHA"
+          git -C "$head_dir" checkout -q --detach FETCH_HEAD
+
+          actual_sha="$(git -C "$head_dir" rev-parse HEAD)"
+          [[ "$actual_sha" == "$HEAD_SHA" ]] \
+            || deny "checked-out HEAD $actual_sha does not match requested $HEAD_SHA"
+          printf 'checked out exact head: %s\n' "$HEAD_SHA"
+
+          # --- 2. Every required path must be a genuine, regular file - both
+          #        as a git tree entry at HEAD_SHA and as materialized bytes ---
+          required_paths=(
+            "RELEASE_TRAIN.md"
+            "tools/validate_release_lifecycle.py"
+            "tools/tests/test_validate_release_lifecycle.py"
+            "tools/generate_changelog.py"
+            "tools/tests/test_generate_changelog.py"
+          )
+          for rel in "${required_paths[@]}"; do
+            mode="$(git -C "$head_dir" ls-tree --full-tree "$HEAD_SHA" -- "$rel" | cut -d' ' -f1)"
+            case "$mode" in
+              100644|100755) ;;
+              "") deny "head $HEAD_SHA has no $rel" ;;
+              *) deny "refused head tree entry mode $mode at '$rel' (symlink/gitlink/irregular)" ;;
+            esac
+            [[ -f "$head_dir/$rel" && ! -L "$head_dir/$rel" ]] \
+              || deny "materialized $rel is missing or a symlink on disk"
+          done
+
+          # --- 3. Runner interpreter must support the tools' modern type hints ---
+          python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+            || deny "runner python3 is older than 3.10 (these tools use 'from __future__ import annotations' plus modern type hints and need 3.10+)"
+
+          # --- 4. Execute the real train validator against the exact fetched head ---
+          # No `--root`-style override and no path belonging to the runner's own
+          # checkout of this repository - every invocation below reads only from
+          # $head_dir, the genuine fetched checkout.
+          printf 'executing tools/validate_release_lifecycle.py train from head %s\n' "$HEAD_SHA"
+          python3 "$head_dir/tools/validate_release_lifecycle.py" train "$head_dir/RELEASE_TRAIN.md"
+
+          # --- 5. Run the focused validate_release_lifecycle.py unittest suite ---
+          printf 'executing tools/tests/test_validate_release_lifecycle.py from head %s\n' "$HEAD_SHA"
+          python3 "$head_dir/tools/tests/test_validate_release_lifecycle.py"
+
+          # --- 6. Run the focused generate_changelog.py unittest suite ---
+          printf 'executing tools/tests/test_generate_changelog.py from head %s\n' "$HEAD_SHA"
+          python3 "$head_dir/tools/tests/test_generate_changelog.py"
