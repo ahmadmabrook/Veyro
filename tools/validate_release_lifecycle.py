@@ -45,22 +45,49 @@ STAGES = ("beta", "GA", "deprecated")
 _RECORD_KEYS = {"release_id", "lifecycle_stage", "previous_lifecycle_stage", "re_release_path"}
 _RE_RELEASE_PATH_KEYS = {"new_release_id", "approval_ref"}
 _HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*\s*$")
+_FENCE = re.compile(r"^(`{3,}|~{3,})(.*)$")
 
 
 def _named(value: Any) -> bool:
     return isinstance(value, str) and value.strip() != ""
 
 
+def _normalized_id(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) else None
+
+
 def check_train(text: str) -> list[str]:
     sections: dict[str, list[str]] = {}
     current = None
+    fence_char = None
+    fence_len = 0
     for line in text.splitlines():
-        m = _HEADING.match(line)
-        if m:
-            current = m.group(1).strip().lower()
-            sections.setdefault(current, [])
-        elif current is not None:
-            sections[current].append(line)
+        m = _FENCE.match(line.strip())
+        if fence_char is None:
+            if m:
+                fence_char = m.group(1)[0]
+                fence_len = len(m.group(1))
+                if current is not None:
+                    sections[current].append(line)
+                continue
+            hm = _HEADING.match(line)
+            if hm:
+                current = hm.group(1).strip().lower()
+                sections.setdefault(current, [])
+                continue
+            if current is not None:
+                sections[current].append(line)
+        else:
+            if (
+                m
+                and m.group(1)[0] == fence_char
+                and len(m.group(1)) >= fence_len
+                and m.group(2).strip() == ""
+            ):
+                fence_char = None
+                fence_len = 0
+            if current is not None:
+                sections[current].append(line)
     problems = []
     for name in REQUIRED_SECTIONS:
         body = sections.get(name.lower())
@@ -110,7 +137,7 @@ def check_record(data: Any) -> list[str]:
         governed = (
             path_well_formed
             and isinstance(path, dict)
-            and path.get("new_release_id") != data.get("release_id")
+            and _normalized_id(path.get("new_release_id")) != _normalized_id(data.get("release_id"))
         )
         if step < 0 and not governed:
             problems.append(f"INVALID_TRANSITION: {prev} -> {stage} without governed re_release_path")

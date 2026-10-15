@@ -41,6 +41,55 @@ class TrainTests(unittest.TestCase):
         text = TRAIN.replace("Fixes for 12 weeks.", "")
         self.assertEqual(v.check_train(text), ["EMPTY_SECTION: Maintenance policy"])
 
+    def test_headings_inside_fenced_block_do_not_satisfy_required_sections(self):
+        for fence in ("```", "~~~"):
+            text = (
+                "# T\n\n"
+                f"{fence}\n"
+                "## Maintenance policy\n\nFixes for 12 weeks.\n\n"
+                "## Customer-communication template\n\nSYNTHETIC template.\n"
+                f"{fence}\n"
+            )
+            out = v.check_train(text)
+            self.assertIn("MISSING_SECTION: Maintenance policy", out, fence)
+            self.assertIn("MISSING_SECTION: Customer-communication template", out, fence)
+
+    def test_real_sections_with_unrelated_fenced_lookalike_example_pass(self):
+        text = (
+            TRAIN
+            + "\n## Example\n\n```python\n"
+            "## Maintenance policy\n"
+            "example only, not a real section\n"
+            "```\n"
+        )
+        self.assertEqual(v.check_train(text), [])
+
+    def test_short_closing_fence_does_not_close_long_opening_fence(self):
+        text = (
+            "# T\n\n"
+            "````\n"
+            "## Maintenance policy\n\nFixes for 12 weeks.\n\n"
+            "```\n"
+            "## Customer-communication template\n\nSYNTHETIC template.\n"
+            "````\n"
+        )
+        out = v.check_train(text)
+        self.assertIn("MISSING_SECTION: Maintenance policy", out)
+        self.assertIn("MISSING_SECTION: Customer-communication template", out)
+
+    def test_mismatched_fence_char_does_not_close_fence(self):
+        text = (
+            "# T\n\n"
+            "```\n"
+            "## Maintenance policy\n\nFixes for 12 weeks.\n\n"
+            "~~~\n"
+            "## Customer-communication template\n\nSYNTHETIC template.\n"
+            "```\n"
+        )
+        out = v.check_train(text)
+        self.assertIn("MISSING_SECTION: Maintenance policy", out)
+        self.assertIn("MISSING_SECTION: Customer-communication template", out)
+
 
 class RecordTests(unittest.TestCase):
     def test_each_stage_accepted(self):
@@ -77,6 +126,17 @@ class RecordTests(unittest.TestCase):
         out = v.check_record(rec("beta", "deprecated", re_release_path=same_id))
         self.assertEqual(len(out), 1)
         self.assertIn("INVALID_TRANSITION: deprecated -> beta", out[0])
+
+    def test_re_release_path_same_identity_with_whitespace_denied(self):
+        for variant in (" synthetic-1", "synthetic-1 ", "synthetic-1\t", "synthetic-1\n", " synthetic-1 \t\n"):
+            same_id = {"new_release_id": variant, "approval_ref": "SYNTHETIC-APPROVAL-1"}
+            out = v.check_record(rec("beta", "deprecated", re_release_path=same_id))
+            self.assertEqual(len(out), 1, variant)
+            self.assertIn("INVALID_TRANSITION: deprecated -> beta", out[0], variant)
+
+    def test_re_release_path_genuinely_distinct_id_with_whitespace_still_governed(self):
+        distinct = {"new_release_id": " synthetic-2 ", "approval_ref": "SYNTHETIC-APPROVAL-1"}
+        self.assertEqual(v.check_record(rec("beta", "deprecated", re_release_path=distinct)), [])
 
     def test_re_release_path_unknown_key_denied(self):
         bad = dict(PATH, extra_field="x")
