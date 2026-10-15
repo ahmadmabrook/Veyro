@@ -1,0 +1,251 @@
+# MOD-001 GOV-01-R04 - Gradle lock-completeness REGENERATION DIAGNOSTIC
+# (BUG-076, epoch MOD001-20261013-FRESH-1).
+#
+# STATUS: NONREQUIRED, UNPRIVILEGED DIAGNOSTIC CANDIDATE. Not a gate, not a
+# required check, not OSV evidence, no scenario/module/gate credit. Nothing in
+# this file may be cited as proof that the committed Gradle locks are complete.
+#
+# ----------------------------------------------------------------------------
+# 1. What defect this diagnostic addresses
+# ----------------------------------------------------------------------------
+# BUG-076: on commit 3cc129a0d2d02225f8a3e890c6a0acc3ceda5792, deleting
+# `com.android.tools.ddms:ddmlib:31.11.1` from `mobile/shared/gradle.lockfile`
+# left `tools/validate_toolchain_matrix.py --root` at PASS/0 and the OSV
+# scanner (which queries only the pins that survive in the lock) silently
+# narrower, because neither reads the resolved dependency graph. A truncated
+# lock therefore produces a false-clean scan.
+#
+# The one local probe that did detect the deletion was Gradle itself, and only
+# in `--write-locks` mode. This is load-bearing and is why the invocation below
+# is not a plain `dependencies` run: with the coordinate removed, Gradle 8.14
+# `:shared:dependencies` printed `FAILED` markers in its report and still
+# EXITED 0, whereas `:shared:dependencies ... --write-locks` regenerated the
+# missing coordinate into the lock file. A plain `dependencies` exit code is
+# therefore not proof of lock completeness; a byte-for-byte comparison of the
+# regenerated locks against the committed ones is the probe that actually
+# discriminates.
+#
+# ----------------------------------------------------------------------------
+# 2. Why this is a SEPARATE, UNPRIVILEGED workflow
+# ----------------------------------------------------------------------------
+# The trusted OSV gate (`.github/workflows/dependency-vulnerability-gate.yml`)
+# runs on `pull_request_target`: its definition and every executable it runs
+# come from the default branch, and it treats PR-controlled bytes strictly as
+# inert data (listed, screened, materialized, read - never executed). Running
+# Gradle over a PR head means EXECUTING PR-controlled build logic
+# (`settings.gradle.kts`, `build.gradle.kts`, plugin resolution), which that
+# trust model forbids. This diagnostic is therefore a separate workflow that is
+# unprivileged by construction:
+#
+#   * trigger is `pull_request` (and a diagnostic-only feature-branch push),
+#     never `pull_request_target`, so it carries the fork-PR privilege level;
+#   * `permissions: {}` - the job's GITHUB_TOKEN has no scopes, and no step
+#     references `secrets.*` or GITHUB_TOKEN at all;
+#   * no `uses:` - zero GitHub Actions are referenced. Per
+#     `.claude/rules/infra/iac.md` control 5 every action is BLOCKED until it
+#     clears the `CAPABILITY_POLICY.md` lifecycle, and none has; the checkout
+#     is therefore a tokenless `git fetch` of a public commit;
+#   * nothing is written back to the repository, no package is published, no
+#     environment is deployed, no external service is called except the
+#     anonymous HTTPS fetch of the public repository and of the official Gradle
+#     distribution.
+#
+# Executing PR-controlled Gradle logic is thus bounded to runner compute inside
+# a token-less, secret-less job - the standard `pull_request` exposure.
+#
+# ----------------------------------------------------------------------------
+# 3. What the job does (in order, single step, fail-closed)
+# ----------------------------------------------------------------------------
+#   a. Screens the event: `pull_request`, or a push to
+#      `diagnostic/gradle-lock-regeneration/**`. Any other event or push ref
+#      is denied before anything is fetched.
+#   b. Binds HEAD_SHA to `github.event.pull_request.head.sha` on
+#      `pull_request` and to `github.sha` on push, via `env:` only (never
+#      interpolated into the script body), validates it is 40 lowercase hex,
+#      fetches exactly that commit tokenlessly from the public repository into
+#      RUNNER_TEMP, and re-checks that the checked-out HEAD is that SHA.
+#   c. Downloads the official Gradle 8.14 binary distribution and verifies its
+#      SHA-256 against the hardcoded official digest BEFORE unzipping or
+#      executing anything from it; a mismatch denies with nothing unpacked.
+#      The launcher is then required to self-report `Gradle 8.14`.
+#   d. Requires all four generated lock files to exist at HEAD as regular
+#      `100644 blob` entries (no symlink/gitlink/executable substitution),
+#      copies their original bytes OUTSIDE the checkout, and records each
+#      original's SHA-256 in shell variables before the build runs. The copy
+#      is outside the checkout but still inside RUNNER_TEMP, which the
+#      PR-controlled build runs as the same user and could therefore write to;
+#      the in-process digests (also printed to the log before Gradle starts)
+#      are what make a rewritten baseline detectable rather than silently
+#      green - they are re-verified in (f).
+#   e. Runs Gradle 8.14 `--write-locks` over the head's own `mobile/` project.
+#   f. Compares all four regenerated lock files byte-for-byte with the captured
+#      originals. Any mismatch, missing/irregular file, or nonzero Gradle exit
+#      fails the job and prints a named structured code
+#      (`GRADLE_LOCK_MISMATCH` / `GRADLE_LOCK_SUMMARY`), per
+#      `.claude/rules/infra/observability.md` control 1.
+#
+# ----------------------------------------------------------------------------
+# 4. Why this stays a DIAGNOSTIC and is not promotable from this file alone
+# ----------------------------------------------------------------------------
+#   * Definition is candidate-controlled. On `pull_request` the workflow
+#     definition AND the Gradle build logic both come from the PR head, so a PR
+#     can edit either and turn its own run green. That is acceptable for a
+#     non-required diagnostic and disqualifying for a required gate; promotion
+#     would need the trusted-definition shape the OSV gate already uses, which
+#     cannot host PR-controlled Gradle execution (see section 2).
+#   * Gradle may not resolve every future configuration. Resolution needs
+#     network repositories, a JDK and an Android SDK; the JDK and Android SDK
+#     here are whatever the runner image provides - neither is pinned or
+#     digest-verified by this file, and a future module/flavour/variant may not
+#     resolve at all on a clean runner. A failure can therefore mean
+#     "environment", not "incomplete lock".
+#   * No model assurance and no independent security review. This file has had
+#     neither; the executed-model identity for the session that wrote it is
+#     UNPROVEN.
+#   * It has never run in CI. No run exists, so no claim about its live
+#     behaviour is available - only the local static/offline tests in
+#     `tools/tests/test_gradle_lock_regeneration_ci_workflow.py`.
+#
+# Therefore: OSV gate disposition is unchanged (DENY), BUG-076 stays OPEN, and
+# this workflow is NOT a required check and carries no gate credit.
+
+name: gradle-lock-regeneration-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/gradle-lock-regeneration-ci.yml'
+  push:
+    branches:
+      - 'diagnostic/gradle-lock-regeneration/**'
+
+permissions: {}
+
+jobs:
+  gradle-lock-regeneration-diagnostic:
+    name: gradle-lock-regeneration-diagnostic (NONREQUIRED DIAGNOSTIC - no gate credit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Regenerate the four Gradle locks from the exact head and compare byte-for-byte
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          GRADLE_URL: https://services.gradle.org/distributions/gradle-8.14-bin.zip
+          GRADLE_SHA256: 61ad310d3c7d3e5da131b76bbf22b5a4c0786e9d892dae8c1658d4b484de3caa
+        shell: bash
+        run: |
+          set -euo pipefail
+          deny() { echo "DENY: $1" >&2; exit 1; }
+          fail() { echo "FAIL: $1" >&2; exit 1; }
+
+          case "$EVENT_NAME" in
+            pull_request) ;;
+            push)
+              [[ "$REF" == refs/heads/diagnostic/gradle-lock-regeneration/* ]] \
+                || deny "push ref '$REF' is not a diagnostic/gradle-lock-regeneration/** branch" ;;
+            *) deny "event '$EVENT_NAME' is neither pull_request nor push" ;;
+          esac
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || deny "head sha is not 40-hex"
+          [[ "$GRADLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || deny "pinned Gradle sha256 is not 64-hex"
+          [[ -n "${RUNNER_TEMP:-}" && -d "$RUNNER_TEMP" ]] || deny "RUNNER_TEMP is not a directory"
+
+          work="$RUNNER_TEMP/head"
+          dist="$RUNNER_TEMP/gradle-dist"
+          tool="$RUNNER_TEMP/gradle-toolchain"
+          orig="$RUNNER_TEMP/original-locks"
+          rm -rf "$work" "$dist" "$tool" "$orig"
+          mkdir -p "$work" "$dist" "$tool" "$orig"
+
+          # (b) exact public head, tokenless, into RUNNER_TEMP - never the default checkout.
+          git init -q "$work"
+          git -C "$work" fetch -q --no-tags --depth=1 "$REPO_URL" "$HEAD_SHA" \
+            || deny "tokenless fetch of $HEAD_SHA failed"
+          git -C "$work" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [[ "$(git -C "$work" rev-parse HEAD)" == "$HEAD_SHA" ]] || deny "checkout is not $HEAD_SHA"
+          echo "HEAD_CHECKOUT_OK: $HEAD_SHA"
+
+          # (c) official distribution, digest-verified BEFORE unzip or execution.
+          zip="$dist/gradle-8.14-bin.zip"
+          curl -fsS --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL" \
+            || deny "download of the Gradle distribution failed"
+          [[ -f "$zip" && ! -L "$zip" ]] || deny "downloaded distribution is not a regular file"
+          got="$(sha256sum "$zip" | cut -d' ' -f1)"
+          [[ "$got" == "$GRADLE_SHA256" ]] \
+            || deny "Gradle distribution sha256 $got, expected $GRADLE_SHA256"
+          echo "GRADLE_DIST_SHA256_OK: $GRADLE_SHA256"
+          unzip -q "$zip" -d "$tool"
+          gradle_bin="$tool/gradle-8.14/bin/gradle"
+          [[ -f "$gradle_bin" && ! -L "$gradle_bin" && -x "$gradle_bin" ]] \
+            || deny "unzipped Gradle launcher is missing or irregular"
+          "$gradle_bin" --version > "$RUNNER_TEMP/gradle-version.txt" \
+            || deny "gradle --version failed"
+          grep -qxF 'Gradle 8.14' "$RUNNER_TEMP/gradle-version.txt" \
+            || deny "unzipped launcher does not self-report Gradle 8.14"
+
+          # (d) four regular lock blobs at HEAD; originals captured outside the checkout.
+          locks=(
+            mobile/androidApp/buildscript-gradle.lockfile
+            mobile/androidApp/gradle.lockfile
+            mobile/shared/buildscript-gradle.lockfile
+            mobile/shared/gradle.lockfile
+          )
+          orig_sha=()
+          for rel in "${locks[@]}"; do
+            raw="$(git -C "$work" ls-tree --full-tree "$HEAD_SHA" -- "$rel")" \
+              || deny "listing failed for $rel at $HEAD_SHA"
+            [[ -n "$raw" ]] || deny "$rel is absent at $HEAD_SHA"
+            [[ "$raw" != *$'\n'* ]] || deny "more than one listing entry for $rel at $HEAD_SHA"
+            meta="${raw%%$'\t'*}"
+            listed="${raw#*$'\t'}"
+            [[ "$listed" == "$rel" ]] || deny "listing entry for $rel names another path"
+            [[ "$meta" =~ ^100644\ blob\ [0-9a-f]{40}$ ]] \
+              || deny "$rel is not a regular lock blob at $HEAD_SHA: $meta"
+            path="$work/$rel"
+            [[ -f "$path" && ! -L "$path" ]] || deny "$rel is not a regular file in the checkout"
+            cp -- "$path" "$orig/${rel//\//__}"
+            digest="$(sha256sum "$orig/${rel//\//__}" | cut -d' ' -f1)"
+            orig_sha+=("$digest")
+            echo "LOCK_ORIGINAL_CAPTURED: $rel $digest"
+          done
+          captured="$(find "$orig" -type f | wc -l | tr -d ' ')"
+          [[ "$captured" == "${#locks[@]}" ]] \
+            || deny "captured $captured lock originals, expected ${#locks[@]}"
+
+          # (e) regenerate with the head's own build logic. --write-locks is the
+          # discriminating mode: a plain `dependencies` run exits 0 even with a
+          # coordinate missing from the lock (BUG-076 local negative).
+          "$gradle_bin" -p "$work/mobile" :shared:dependencies :androidApp:dependencies \
+            --write-locks --no-daemon \
+            || fail "Gradle lock regeneration exited nonzero"
+          echo "GRADLE_WRITE_LOCKS_EXIT_ZERO: ok"
+
+          # (f) byte-for-byte comparison of all four locks, against a baseline
+          # whose digests are re-verified against the pre-build values.
+          mismatched=0
+          for i in "${!locks[@]}"; do
+            rel="${locks[$i]}"
+            base="$orig/${rel//\//__}"
+            path="$work/$rel"
+            [[ -f "$base" && ! -L "$base" ]] \
+              || deny "captured original for $rel is missing or irregular after regeneration"
+            now="$(sha256sum "$base" | cut -d' ' -f1)"
+            [[ "$now" == "${orig_sha[$i]}" ]] \
+              || deny "comparison baseline for $rel changed during regeneration (${orig_sha[$i]} -> $now)"
+            [[ -f "$path" && ! -L "$path" ]] \
+              || fail "$rel is missing or irregular after regeneration"
+            if cmp -s -- "$base" "$path"; then
+              echo "GRADLE_LOCK_MATCH: $rel"
+            else
+              mismatched=$((mismatched + 1))
+              echo "GRADLE_LOCK_MISMATCH: $rel"
+              diff -u -- "$base" "$path" | head -n 40 || true
+            fi
+          done
+          echo "GRADLE_LOCK_SUMMARY: checked=${#locks[@]} mismatched=$mismatched head=$HEAD_SHA event=$EVENT_NAME"
+          [[ "$mismatched" -eq 0 ]] \
+            || fail "$mismatched of ${#locks[@]} committed Gradle lock files do not match regeneration"
+          echo "GRADLE_LOCK_REGENERATION_DIAGNOSTIC_CLEAN: NONREQUIRED DIAGNOSTIC - not OSV gate evidence, no gate credit"
