@@ -7,12 +7,6 @@
 #   HEAD_SHA   40-hex candidate head SHA from the event payload
 set -euo pipefail
 
-PROTECTED_PATHS=(
-  ".github/workflows/veyro-foundation-ci.yml"
-  ".github/workflows/veyro-trusted-gate.yml"
-  "infra/scripts/trusted-pr-gate.sh"
-)
-
 fail() {
   echo "::error::trusted-base PR guard: $*"
   exit 1
@@ -32,7 +26,8 @@ fetched_sha="$(git rev-parse --verify refs/remotes/candidate/head^{commit})"
 [[ "$fetched_sha" == "$HEAD_SHA" ]] \
   || fail "fetched candidate ${fetched_sha} does not match event head ${HEAD_SHA}"
 
-# Compare against the merge base so unrelated later base changes are not blamed on the candidate.
+# Compare the candidate's protected gate files to the current protected base. This fails closed
+# on stale branches and prohibits a newly added sibling workflow with a spoofed check name.
 merge_base="$(git merge-base "$base_sha" "$fetched_sha")" \
   || fail "no merge base between base ${base_sha} and candidate ${fetched_sha}"
 
@@ -41,16 +36,15 @@ echo "base=${base_sha} merge-base=${merge_base} candidate=${fetched_sha}"
 # --no-renames lists both old and new paths of a rename; -z keeps odd file names unambiguous.
 status=0
 while IFS= read -r -d '' changed; do
-  for protected in "${PROTECTED_PATHS[@]}"; do
-    if [[ "$changed" == "$protected" ]]; then
-      echo "::error file=${protected}::candidate modifies protected gate file"
-      status=1
-    fi
-  done
-done < <(git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$merge_base" "$fetched_sha")
+  if [[ "$changed" == .github/workflows/* || "$changed" == .github/actions/* ||
+        "$changed" == infra/scripts/trusted-pr-gate.sh ]]; then
+    echo "::error::candidate differs from protected base at a gate file"
+    status=1
+  fi
+done < <(git diff --no-ext-diff --no-textconv --no-renames --name-only -z "$base_sha" "$fetched_sha")
 
 if [[ "$status" -ne 0 ]]; then
-  fail "candidate changes protected gate files; change them through a separately reviewed bootstrap"
+  fail "candidate differs from protected base in workflow/action/guard files; use a separately reviewed bootstrap"
 fi
 
 git diff --check --no-ext-diff "$merge_base" "$fetched_sha" \
