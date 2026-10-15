@@ -439,7 +439,7 @@ def judge_route(role, parsed):
 
 
 # ------------------------------------------------------------ read-only CI observation (gh)
-CI_CALL_TIMEOUT, CI_BUDGET = 3.0, 5.0  # kept well under the 10s heartbeat-liveness window
+CI_CALL_TIMEOUT, CI_BUDGET = 3.0, 7.0  # bounded below the 10s heartbeat-liveness window
 CI_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%?=&#:+-]{0,300}$")
 CI_ENV_KEEP = ("PATH", "HOME", "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
 
