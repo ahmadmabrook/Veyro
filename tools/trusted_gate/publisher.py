@@ -10,7 +10,14 @@ the GitHub App key from the macOS Keychain, signs an App JWT with openssl (key
 passed by file descriptor), mints an in-memory installation token limited to
 the Veyro repo and `checks:write`, and posts one completed check run named
 `veyro-trusted-gate` with conclusion `success` or `failure` only. BLOCKED
-never publishes. Config lives outside the repo and pins this file's SHA-256.
+never publishes (head mismatch/move and job ambiguity are BLOCKED). Config lives
+outside any git worktree and pins this file's SHA-256.
+
+`publish` runs only from an owner-owned, non-group/world-writable installed copy
+outside every git worktree under `python -I`, with no proxy/SSL/PYTHON env
+overrides; all of that is checked before Keychain, network or state access.
+This does not isolate the key from other same-user processes: a dedicated locked
+keychain/account (or equally strong isolation) is still required.
 """
 import argparse
 import base64
@@ -21,6 +28,7 @@ import json
 import os
 import re
 import stat
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -34,6 +42,7 @@ EXIT = {PASS: 0, FAIL: 1, BLOCKED: 3}
 DEFAULT_WORKFLOW = ".github/workflows/veyro-foundation-ci.yml"
 DEFAULT_JOB = "foundation (MOD-000 focused checks)"
 HTTP_TIMEOUT = 10
+GIT_BIN = "/usr/bin/git"
 GIT_TIMEOUT = 60
 MAX_BODY = 1024 * 1024
 _SHA = re.compile(r"[0-9a-f]{40}")
@@ -54,14 +63,18 @@ def _blocked(reason):
     return Gate(BLOCKED, reason)
 
 
-def http_get(path, opener=urllib.request.urlopen):
-    """Bounded unauthenticated GET against api.github.com; returns parsed JSON."""
+def http_get(path, opener=None):
+    """Bounded unauthenticated GET against api.github.com; returns parsed JSON.
+
+    Default transport: no proxy, no redirects, fixed TLS trust file."""
     req = urllib.request.Request("https://api.github.com" + path, headers={
         "Accept": "application/vnd.github+json", "User-Agent": "veyro-trusted-gate"})
+    open_ = opener or _build_opener().open
     try:
-        with opener(req, timeout=HTTP_TIMEOUT) as resp:
+        with open_(req, timeout=HTTP_TIMEOUT) as resp:
             body = resp.read(MAX_BODY + 1)
     except urllib.error.HTTPError as e:
+        e.close()
         raise _blocked(f"http-{e.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise _blocked("http-unreachable") from None
@@ -80,13 +93,13 @@ def git_fetch_pr(repo, pr, run=subprocess.run):
     """Fetch refs/pull/N/head as inert objects into a throwaway bare repo.
 
     Returns (fetched_head_sha, head:.github tree oid)."""
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent",
+    env = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
            "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
     ref = f"refs/pull/{pr}/head"
 
     def git(*args):
         try:
-            p = run(["git", *args], cwd=tmp, env=env, capture_output=True, text=True,
+            p = run([GIT_BIN, *args], cwd=tmp, env=env, capture_output=True, text=True,
                     timeout=GIT_TIMEOUT, check=False)
         except (subprocess.TimeoutExpired, OSError):
             raise _blocked("git-error") from None
@@ -97,6 +110,7 @@ def git_fetch_pr(repo, pr, run=subprocess.run):
     with tempfile.TemporaryDirectory(prefix="veyro-gate-") as tmp:
         git("init", "--bare", "-q", ".")
         git("-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+            "-c", "http.proxy=", "-c", "http.followRedirects=false",
             "-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--depth=1", "-q",
             f"https://github.com/{repo}.git", f"+{ref}:{ref}")
         sha = git("rev-parse", "--verify", ref)
@@ -164,7 +178,9 @@ def _check_run_and_job(cfg, sha, run, get):
     named = [j for j in jobs if isinstance(j, dict) and j.get("name") == cfg["job_name"]
              and j.get("run_id") == rid and j.get("head_sha") == sha]
     if len(named) != 1:
-        raise _fail("job-missing" if not named else "job-ambiguous")
+        if len(named) > 1:
+            raise _blocked("job-ambiguous")
+        raise _fail("job-missing")
     job = named[0]
     if job.get("status") != "completed":
         raise _blocked("job-in-progress")
@@ -188,13 +204,14 @@ def evaluate(cfg, get=http_get, fetch=git_fetch_pr):
         sha = ev["head_sha"] = _pr_head(cfg, get)
         fetched, tree = fetch(cfg["repo"], cfg["pr"])
         ev.update(fetched_head=fetched, github_tree=tree, pinned_github_tree=pin)
-        _need(fetched == sha, "head-sha-mismatch")
+        if fetched != sha:
+            raise _blocked("head-sha-mismatch")
         _need(tree == pin, "github-tree-mismatch")
         run = _latest_run(cfg, sha, get)
         ev.update(run_id=run.get("id"), run_attempt=run.get("run_attempt"))
         ev["job_id"] = _check_run_and_job(cfg, sha, run, get)
         if _pr_head(cfg, get) != sha:
-            raise _fail("head-moved-during-evaluation")
+            raise _blocked("head-moved-during-evaluation")
     except Gate as g:
         return {"verdict": g.verdict, "reason": g.reason, "evidence": ev}
     except Exception:  # fail closed on anything unexpected
@@ -207,7 +224,7 @@ def evaluate(cfg, get=http_get, fetch=git_fetch_pr):
 CHECK_NAME = "veyro-trusted-gate"
 API_HOST = "https://api.github.com"
 _SELF = os.path.realpath(__file__)
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_SELF)))
+TLS_CAFILE = "/etc/ssl/cert.pem"
 SECURITY_BIN = "/usr/bin/security"
 OPENSSL_BIN = "/usr/bin/openssl"
 TOOL_TIMEOUT = 15
@@ -218,7 +235,11 @@ MAX_STATE_ENTRIES = 500
 _CONCLUSION = {PASS: "success", FAIL: "failure"}
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 CONFIG_KEYS = frozenset({"app_id", "installation_id", "repo", "pinned_github_tree", "publisher_sha256",
-                         "keychain_service", "keychain_account", "state_path"})
+                         "keychain_service", "keychain_account", "keychain_path", "state_path"})
+_SHADOW_CHECKED = ("os", "sys", "json", "hmac", "hashlib", "base64", "subprocess", "tempfile",
+                   "fcntl", "ssl", "urllib.request", "urllib.parse", "urllib.error")
+_ENV_EXACT = frozenset({"SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+                        "SSLKEYLOGFILE", "NODE_EXTRA_CA_CERTS", "OPENSSL_CONF", "OPENSSL_MODULES"})
 
 
 def publisher_digest(path=_SELF):
@@ -229,9 +250,82 @@ def publisher_digest(path=_SELF):
         raise _blocked("publisher-unreadable") from None
 
 
-def _inside(path, root):
-    path, root = os.path.realpath(path), os.path.realpath(root)
-    return os.path.commonpath([path, root]) == root
+def in_git_worktree(path):
+    """True if `path` (symlinks resolved) or any ancestor holds a `.git` entry."""
+    cur = os.path.realpath(path)
+    while True:
+        if os.path.lexists(os.path.join(cur, ".git")):
+            return True
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return False
+        cur = parent
+
+
+def check_env(environ):
+    """Refuse proxy, TLS-trust, loader and PYTHON* overrides before any credential access."""
+    for k in environ:
+        u = k.upper()
+        if (u.startswith(("PYTHON", "DYLD_", "LD_", "SSL_", "GIT_")) or u.endswith("_PROXY")
+                or u in _ENV_EXACT):
+            raise _blocked("env-override-refused")
+
+
+def _safe_mode(st, owner_ok):
+    if st.st_uid not in owner_ok:
+        return False
+    if st.st_mode & 0o022:
+        return st.st_uid == 0 and bool(st.st_mode & stat.S_ISVTX) and stat.S_ISDIR(st.st_mode)
+    return True
+
+
+def check_install(path=_SELF, modules=None):
+    """The running publisher must be an owner-owned, non-group/world-writable file whose whole
+    directory chain is trusted, outside every git worktree, with no shadowing stdlib modules."""
+    modules = sys.modules if modules is None else modules
+    real = os.path.realpath(path)
+    if in_git_worktree(real):
+        raise _blocked("publisher-in-worktree")
+    try:
+        st = os.stat(real)
+        if not stat.S_ISREG(st.st_mode) or not _safe_mode(st, (os.geteuid(),)) or st.st_mode & 0o022:
+            raise _blocked("publisher-bad-installation")
+        cur = os.path.dirname(real)
+        while True:
+            if not _safe_mode(os.stat(cur), (os.geteuid(), 0)):
+                raise _blocked("publisher-bad-installation")
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    except OSError:
+        raise _blocked("publisher-bad-installation") from None
+    here = os.path.dirname(real)
+    for name in _SHADOW_CHECKED:
+        f = getattr(modules.get(name), "__file__", None)
+        if isinstance(f, str):
+            if os.path.dirname(os.path.realpath(f)) == here:
+                raise _blocked("module-shadowed")
+
+
+def check_publish_context(environ=None, path=_SELF, isolated=None, modules=None, cafile=TLS_CAFILE):
+    """Run first in `publish`: before Keychain, network or state access."""
+    if not (sys.flags.isolated if isolated is None else isolated):
+        raise _blocked("not-isolated")
+    check_env(os.environ if environ is None else environ)
+    check_install(path, modules)
+    if not os.path.isfile(cafile):
+        raise _blocked("tls-trust-unavailable")
+
+
+def _build_opener(cafile=TLS_CAFILE):
+    """No environment proxy, no redirects, and only the fixed TLS trust file."""
+    try:
+        ctx = ssl.create_default_context(cafile=cafile)
+    except (ssl.SSLError, OSError):
+        raise _blocked("tls-trust-unavailable") from None
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect,
+                                       urllib.request.HTTPSHandler(context=ctx))
 
 
 def _posint(v):
@@ -243,11 +337,11 @@ def _label(v):
             and v == v.strip())
 
 
-def load_config(path, repo_root=REPO_ROOT):
-    """Load and validate the out-of-repo publisher config. Unknown keys are refused."""
+def load_config(path):
+    """Load and validate the publisher config (outside any git worktree). Unknown keys are refused."""
     if not (isinstance(path, str) and os.path.isabs(path)):
         raise _blocked("config-path-not-absolute")
-    if _inside(path, repo_root):
+    if in_git_worktree(path):
         raise _blocked("config-inside-repo")
     try:
         st = os.stat(path)
@@ -273,8 +367,11 @@ def load_config(path, repo_root=REPO_ROOT):
         raise _blocked("config-bad-digest")
     if not (_label(cfg["keychain_service"]) and _label(cfg["keychain_account"])):
         raise _blocked("config-bad-keychain")
+    kp = cfg["keychain_path"]  # mandatory: no default login keychain is ever assumed
+    if not (_label(kp) and os.path.isabs(kp)) or in_git_worktree(kp):
+        raise _blocked("config-bad-keychain")
     sp = cfg["state_path"]
-    if not (isinstance(sp, str) and os.path.isabs(sp)) or _inside(sp, repo_root):
+    if not (isinstance(sp, str) and os.path.isabs(sp)) or in_git_worktree(sp):
         raise _blocked("config-bad-state-path")
     return dict(cfg)
 
@@ -284,14 +381,18 @@ def verify_digest(cfg, publisher_path=_SELF):
         raise _blocked("publisher-digest-mismatch")
 
 
-def external_id(pr, head_sha, tree, digest):
-    return f"veyro-gate:v1:pr={pr}:head={head_sha}:tree={tree}:pub={digest}"
+def external_id(pr, head_sha, tree, digest, run_id, attempt, job_id, conclusion):
+    """Same-run crash retries reuse this id (adopt); any rerun/attempt/conclusion change gets a new check."""
+    return (f"veyro-gate:v2:pr={pr}:head={head_sha}:tree={tree}:pub={digest}"
+            f":run={run_id}:attempt={attempt}:job={job_id}:conclusion={conclusion}")
 
 
-def keychain_read(service, account, run=subprocess.run):
-    """Return the PEM private key from the macOS Keychain (stdout pipe; never argv/env/disk)."""
+def keychain_read(service, account, keychain_path, run=subprocess.run):
+    """Return the PEM private key from the named macOS keychain (stdout pipe; never argv/env/disk).
+
+    The keychain file is passed explicitly. Same-user processes are NOT excluded by this."""
     try:
-        p = run([SECURITY_BIN, "find-generic-password", "-s", service, "-a", account, "-w"],
+        p = run([SECURITY_BIN, "find-generic-password", "-s", service, "-a", account, "-w", keychain_path],
                 capture_output=True, timeout=TOOL_TIMEOUT, check=False,
                 env={"PATH": "/usr/bin:/bin"})
     except (subprocess.TimeoutExpired, OSError):
@@ -311,14 +412,19 @@ def keychain_read(service, account, run=subprocess.run):
     return raw.decode("ascii")
 
 
-def openssl_sign(key_pem, message, run=subprocess.run):
+def openssl_sign(key_pem, message, run=subprocess.run, write=os.write):
     """RS256 signature via openssl. The key goes through a pipe fd, never argv or disk."""
     data = key_pem.encode("ascii")
     if len(data) > MAX_KEY:
         raise _blocked("sign-failed")
     r, w = os.pipe()
     try:
-        os.write(w, data)  # well under the pipe buffer
+        view = memoryview(data)
+        while view:  # os.write may be partial; a short or zero write must never sign a truncated key
+            n = write(w, view)
+            if not (isinstance(n, int) and 0 < n <= len(view)):
+                raise _blocked("sign-failed")
+            view = view[n:]
         os.close(w)
         w = None
         p = run([OPENSSL_BIN, "dgst", "-sha256", "-sign", f"/dev/fd/{r}"], input=message,
@@ -368,11 +474,12 @@ def http_api(method, path, bearer, body=None, opener=None):
         "Accept": "application/vnd.github+json", "User-Agent": "veyro-trusted-gate",
         "Authorization": f"Bearer {bearer}", "X-GitHub-Api-Version": "2022-11-28",
         **({"Content-Type": "application/json"} if data is not None else {})})
-    open_ = opener or urllib.request.build_opener(_NoRedirect).open
+    open_ = opener or _build_opener().open
     try:
         with open_(req, timeout=HTTP_TIMEOUT) as resp:
             raw = resp.read(MAX_BODY + 1)
     except urllib.error.HTTPError as e:
+        e.close()
         raise _blocked(f"http-{e.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise _blocked("http-unreachable") from None
@@ -514,11 +621,12 @@ def _valid_created(cfg, res, sha, ext, conclusion):
 
 
 def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=keychain_read, sign=openssl_sign,
-            transport=http_api, now=time.time, publisher_path=_SELF):
+            transport=http_api, now=time.time, publisher_path=_SELF, guard=check_publish_context):
     """Evaluate then publish. Only PASS->success and FAIL->failure are ever posted."""
     out = {"verdict": BLOCKED, "reason": "internal-error", "published": False, "adopted": False,
            "evidence": {}}
     try:
+        guard()  # installed/isolated/env checks before Keychain, network or state
         verify_digest(cfg, publisher_path)  # before any signing, Keychain read or publish
         if not _posint(pr):
             raise _blocked("bad-config-pr")
@@ -532,13 +640,18 @@ def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=keychain_read
             out.update(verdict=BLOCKED, reason="no-head-sha")
             return out
         conclusion = _CONCLUSION[res["verdict"]]
-        ext = external_id(pr, sha, cfg["pinned_github_tree"], cfg["publisher_sha256"])
+        ev = res["evidence"]
+        run_id, attempt, job_id = ev.get("run_id"), ev.get("run_attempt"), ev.get("job_id")
+        if not (_posint(run_id) and _posint(attempt)) or not (job_id is None or _posint(job_id)):
+            raise _blocked("no-run-evidence")
+        ext = external_id(pr, sha, cfg["pinned_github_tree"], cfg["publisher_sha256"], run_id, attempt,
+                          "none" if job_id is None else job_id, conclusion)
         with _State(cfg["state_path"]) as st:
             entry = {"status": "intent", "repo": cfg["repo"], "pr": pr, "head_sha": sha,
                      "conclusion": conclusion, "app_id": cfg["app_id"], "external_id": ext,
                      "started_at": int(now())}
             st.record(ext, entry)
-            key = read_secret(cfg["keychain_service"], cfg["keychain_account"])
+            key = read_secret(cfg["keychain_service"], cfg["keychain_account"], cfg["keychain_path"])
             jwt = make_jwt(cfg["app_id"], key, sign, now)
             del key
             token = _mint_token(cfg, jwt, transport)
@@ -551,11 +664,22 @@ def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=keychain_read
                 if not _valid_created(cfg, created, sha, ext, conclusion):
                     raise _blocked("existing-check-conflict")
             else:
+                try:
+                    moved = _pr_head({"repo": cfg["repo"], "pr": pr}, get) != sha
+                except Gate:
+                    moved = True
+                if moved:
+                    raise _blocked("head-moved-before-publish")
                 title = f"Veyro trusted gate: {res['verdict']}"
+                summary = (f"{title} ({res['reason']}). Evidence: pr={pr} head={sha} "
+                           f"pinned_tree={cfg['pinned_github_tree']} run_id={run_id} attempt={attempt} "
+                           f"job_id={job_id} publisher_sha256={cfg['publisher_sha256']}. "
+                           "Scope: attests the pinned .github tree and the foundation workflow run/job "
+                           "conclusion only; candidate-controlled test code is not attested.")
                 created = transport("POST", f"/repos/{cfg['repo']}/check-runs", token, {
                     "name": CHECK_NAME, "head_sha": sha, "status": "completed",
                     "conclusion": conclusion, "external_id": ext,
-                    "output": {"title": title, "summary": f"{title} ({res['reason']})"}})
+                    "output": {"title": title, "summary": summary}})
                 adopted = False
                 if not _valid_created(cfg, created, sha, ext, conclusion):
                     raise _blocked("check-response-mismatch")
@@ -582,6 +706,7 @@ def _publish_main(argv):
     ap.add_argument("--pr", required=True, type=int)
     a = ap.parse_args(argv)
     try:
+        check_publish_context()  # before reading config, Keychain, network or state
         cfg = load_config(a.config)
     except Gate as g:
         return _emit({"verdict": BLOCKED, "reason": g.reason, "published": False, "evidence": {}})

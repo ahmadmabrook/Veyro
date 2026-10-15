@@ -8,8 +8,11 @@ import json
 import os
 import subprocess
 import sys
+import shutil
 import tempfile
+import types
 import unittest
+import unittest.mock
 import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -106,7 +109,7 @@ class EvaluatorTests(unittest.TestCase):
     def test_fetched_sha_mismatch(self):
         w = World()
         w.fetched = ("e" * 40, TREE)
-        self.verdict(w, (p.FAIL, "head-sha-mismatch"))
+        self.verdict(w, (p.BLOCKED, "head-sha-mismatch"))
 
     def test_fork_and_base_mismatch(self):
         w = World()
@@ -169,7 +172,7 @@ class EvaluatorTests(unittest.TestCase):
         w.jobs[(100, 1)] = [job_doc(name="other")]
         self.verdict(w, (p.FAIL, "job-missing"))
         w.jobs[(100, 1)] = [job_doc(), job_doc(id=901)]
-        self.verdict(w, (p.FAIL, "job-ambiguous"))
+        self.verdict(w, (p.BLOCKED, "job-ambiguous"))
         w.jobs[(100, 1)] = [job_doc(status="in_progress", conclusion=None)]
         self.verdict(w, (p.BLOCKED, "job-in-progress"))
 
@@ -204,7 +207,7 @@ class EvaluatorTests(unittest.TestCase):
                               if "/actions/runs?" in path else w.get_orig(path))
         self.verdict(w, (p.BLOCKED, "runs-truncated"))
 
-    def test_head_moving_during_evaluation_fails(self):
+    def test_head_moving_during_evaluation_blocks(self):
         w = World()
         calls = []
         orig = w.get
@@ -217,7 +220,7 @@ class EvaluatorTests(unittest.TestCase):
                     d["head"]["sha"] = "9" * 40
             return d
         w.get = get
-        self.verdict(w, (p.FAIL, "head-moved-during-evaluation"))
+        self.verdict(w, (p.BLOCKED, "head-moved-during-evaluation"))
 
     def test_bad_config_blocked(self):
         for over in ({"repo": "nonsense"}, {"pr": 0}, {"pr": "10"}, {"pinned_github_tree": "xyz"},
@@ -287,7 +290,13 @@ class HttpGitTests(unittest.TestCase):
             self.assertEqual(kw["timeout"], p.GIT_TIMEOUT)
             self.assertNotIn("shell", kw)
             self.assertNotIn("checkout", argv)
+        for argv, kw in calls:
+            self.assertEqual(argv[0], "/usr/bin/git")
+            self.assertEqual(kw["env"]["PATH"], "/usr/bin:/bin")
+            self.assertFalse({k for k in kw["env"] if k.upper().endswith("_PROXY") or k.startswith("SSL_")})
         fetch = [a for a, _ in calls if "fetch" in a][0]
+        self.assertIn("http.proxy=", fetch)
+        self.assertIn("http.followRedirects=false", fetch)
         self.assertIn("+refs/pull/10/head:refs/pull/10/head", fetch)
         self.assertIn("protocol.allow=never", fetch)
 
@@ -323,7 +332,8 @@ class AppWorld:
         self.gh = World()
         self.cfg = {"app_id": APP_ID, "installation_id": INST_ID, "repo": REPO, "pinned_github_tree": TREE,
                     "publisher_sha256": p.publisher_digest(), "keychain_service": "veyro-gate-app",
-                    "keychain_account": "app-key", "state_path": state_path}
+                    "keychain_account": "app-key", "keychain_path": "/nonexistent/veyro-gate.keychain-db",
+                    "state_path": state_path}
         self.checks = []  # check runs on GitHub
         self.calls = []
         self.secret_reads = 0
@@ -335,7 +345,8 @@ class AppWorld:
                           "repositories": [{"full_name": REPO}]}
         self.next_id = 1
 
-    def read_secret(self, service, account):
+    def read_secret(self, service, account, keychain_path):
+        assert keychain_path == self.cfg["keychain_path"]
         self.secret_reads += 1
         if self.keychain_fail:
             raise p.Gate(p.BLOCKED, "keychain-error")
@@ -367,15 +378,15 @@ class AppWorld:
 
     def publish(self, pr=10, **kw):
         args = dict(get=self.gh.get, fetch=self.gh.fetch, read_secret=self.read_secret, sign=self.sign,
-                    transport=self.transport, now=lambda: 1_000_000)
+                    transport=self.transport, now=lambda: 1_000_000, guard=lambda: None)
         args.update(kw)
         return p.publish(self.cfg, pr, **args)
 
     def posts(self):
         return [c for c in self.calls if c[0] == "POST" and c[1].endswith("/check-runs")]
 
-    def ext(self, sha=SHA, pr=10):
-        return p.external_id(pr, sha, TREE, self.cfg["publisher_sha256"])
+    def ext(self, sha=SHA, pr=10, run=100, attempt=1, job=900, conclusion="success"):
+        return p.external_id(pr, sha, TREE, self.cfg["publisher_sha256"], run, attempt, job, conclusion)
 
 
 class PublishTests(unittest.TestCase):
@@ -392,8 +403,61 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((body["name"], body["head_sha"], body["status"], body["conclusion"]),
                          ("veyro-trusted-gate", SHA, "completed", "success"))
         self.assertEqual(body["external_id"], self.w.ext())
-        for part in (f"pr=10", f"head={SHA}", f"tree={TREE}", f"pub={self.w.cfg['publisher_sha256']}"):
+        for part in (f"pr=10", f"head={SHA}", f"tree={TREE}", f"pub={self.w.cfg['publisher_sha256']}",
+                     "run=100", "attempt=1", "job=900", "conclusion=success"):
             self.assertIn(part, body["external_id"])
+        summary = body["output"]["summary"]
+        for part in ("run_id=100", "attempt=1", "job_id=900", f"head={SHA}", f"pinned_tree={TREE}",
+                     "candidate-controlled test code is not attested"):
+            self.assertIn(part, summary)
+
+    def test_rerun_on_same_head_creates_new_check_both_directions(self):
+        self.w.publish()  # PASS run 100 attempt 1
+        self.w.gh.runs = [run_doc(run_attempt=2, conclusion="failure")]  # PASS -> FAIL rerun
+        r = self.w.publish()
+        self.assertEqual((r["verdict"], r["published"], r["adopted"]), (p.FAIL, True, False))
+        self.w.gh.runs = [run_doc(run_attempt=3)]  # FAIL -> PASS rerun
+        self.w.gh.jobs[(100, 3)] = [job_doc()]
+        r = self.w.publish()
+        self.assertEqual((r["verdict"], r["published"], r["adopted"]), (p.PASS, True, False))
+        self.assertEqual(len(self.w.checks), 3)
+        self.assertEqual(len({c["external_id"] for c in self.w.checks}), 3)
+        self.assertIn("attempt=2", self.w.checks[1]["external_id"])
+        self.assertIn("job=none", self.w.checks[1]["external_id"])
+        self.assertIn("conclusion=failure", self.w.checks[1]["external_id"])
+
+    def test_head_move_and_job_ambiguity_never_publish_failure(self):
+        w = AppWorld(os.path.join(self.tmp.name, "s5.json"))
+        w.gh.fetched = ("e" * 40, TREE)
+        r = w.publish()
+        self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "head-sha-mismatch", False))
+        w = AppWorld(os.path.join(self.tmp.name, "s6.json"))
+        w.gh.jobs[(100, 1)] = [job_doc(), job_doc(id=901)]
+        r = w.publish()
+        self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "job-ambiguous", False))
+        self.assertEqual((w.calls, w.secret_reads), ([], 0))
+
+    def test_head_moving_just_before_post_blocks(self):
+        orig, n = self.w.gh.get, []
+
+        def get(path):
+            d = orig(path)
+            if "/pulls/" in path:
+                n.append(1)
+                if len(n) == 3:  # evaluation reads twice; third read is the pre-publish recheck
+                    d["head"]["sha"] = "9" * 40
+            return d
+        r = self.w.publish(get=get)
+        self.assertEqual((r["reason"], r["published"]), ("head-moved-before-publish", False))
+        self.assertEqual(self.w.posts(), [])
+
+    def test_guard_runs_before_keychain_network_and_state(self):
+        def refuse():
+            raise p.Gate(p.BLOCKED, "publisher-in-worktree")
+        r = self.w.publish(guard=refuse)
+        self.assertEqual((r["reason"], r["published"]), ("publisher-in-worktree", False))
+        self.assertEqual((self.w.calls, self.w.secret_reads, self.w.sign_calls), ([], 0, 0))
+        self.assertFalse(os.path.exists(self.state))
 
     def test_fail_posts_failure(self):
         self.w.gh.runs = [run_doc(conclusion="failure")]
@@ -621,27 +685,54 @@ class SecretToolTests(unittest.TestCase):
         def run(argv, **kw):
             seen.update(argv=argv, kw=kw)
             return FakeProc(KEY.encode())
-        self.assertEqual(p.keychain_read("svc", "acct", run), KEY.rstrip("\n"))
+        self.assertEqual(p.keychain_read("svc", "acct", "/k/gate.keychain-db", run), KEY.rstrip("\n"))
         self.assertEqual(seen["argv"][:2], [p.SECURITY_BIN, "find-generic-password"])
         self.assertIn("-w", seen["argv"])
+        self.assertEqual(seen["argv"][-1], "/k/gate.keychain-db")  # explicit keychain, never the default
         self.assertNotIn("SUPERSECRETKEYMATERIAL", " ".join(seen["argv"]))
         self.assertEqual(set(seen["kw"]["env"]), {"PATH"})
         self.assertTrue(seen["kw"]["capture_output"])
 
     def test_keychain_hex_output_decoded(self):
         run = lambda argv, **kw: FakeProc(KEY.encode().hex().encode() + b"\n")  # noqa: E731
-        self.assertEqual(p.keychain_read("s", "a", run), KEY.rstrip("\n"))
+        self.assertEqual(p.keychain_read("s", "a", "/k", run), KEY.rstrip("\n"))
 
     def test_keychain_errors_blocked(self):
         for proc in (FakeProc(b"", 44), FakeProc(b"not a key"), FakeProc(b"")):
             with self.assertRaises(p.Gate) as cm:
-                p.keychain_read("s", "a", lambda argv, **kw: proc)
+                p.keychain_read("s", "a", "/k", lambda argv, **kw: proc)
             self.assertEqual(cm.exception.verdict, p.BLOCKED)
 
         def timeout(argv, **kw):
             raise subprocess.TimeoutExpired(argv, 1)
         with self.assertRaises(p.Gate):
-            p.keychain_read("s", "a", timeout)
+            p.keychain_read("s", "a", "/k", timeout)
+
+    def test_partial_writes_deliver_whole_key(self):
+        seen = {}
+
+        def run(argv, **kw):
+            seen["key"] = os.read(int(argv[-1].rsplit("/", 1)[1]), 65536)
+            return FakeProc(SIG)
+        self.assertEqual(p.openssl_sign(KEY, b"m", run, lambda fd, b: os.write(fd, bytes(b[:7]))), SIG)
+        self.assertEqual(seen["key"], KEY.encode())
+
+    def test_zero_or_failing_write_fails_closed_and_closes_fds(self):
+        opened = []
+        real_pipe = os.pipe
+
+        def pipe():
+            fds = real_pipe()
+            opened.extend(fds)
+            return fds
+        for write in (lambda fd, b: 0, lambda fd, b: (_ for _ in ()).throw(OSError("pipe"))):
+            with unittest.mock.patch("os.pipe", pipe):
+                with self.assertRaises(p.Gate) as cm:
+                    p.openssl_sign(KEY, b"m", lambda *a, **k: self.fail("signed truncated key"), write)
+            self.assertEqual(cm.exception.reason, "sign-failed")
+        for fd in opened:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
 
     def test_openssl_sign_passes_key_by_fd_not_argv(self):
         seen = {}
@@ -720,9 +811,10 @@ class ConfigTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = os.path.join(self.tmp.name, "repo")
-        os.makedirs(self.root)
+        os.makedirs(os.path.join(self.root, ".git"))  # any directory holding `.git` is a worktree
         self.good = {"app_id": APP_ID, "installation_id": INST_ID, "repo": REPO, "pinned_github_tree": TREE,
                      "publisher_sha256": "d" * 64, "keychain_service": "svc", "keychain_account": "acct",
+                     "keychain_path": os.path.join(self.tmp.name, "gate.keychain-db"),
                      "state_path": os.path.join(self.tmp.name, "state.json")}
 
     def write(self, doc, name="cfg.json", mode=0o600):
@@ -734,11 +826,11 @@ class ConfigTests(unittest.TestCase):
 
     def reason(self, path):
         with self.assertRaises(p.Gate) as cm:
-            p.load_config(path, self.root)
+            p.load_config(path)
         return cm.exception.reason
 
     def test_good_config_loads(self):
-        self.assertEqual(p.load_config(self.write(self.good), self.root), self.good)
+        self.assertEqual(p.load_config(self.write(self.good)), self.good)
 
     def test_missing_and_unknown_keys_refused(self):
         for k in self.good:
@@ -749,7 +841,8 @@ class ConfigTests(unittest.TestCase):
     def test_bad_values_refused(self):
         for key, val in (("app_id", "1"), ("app_id", True), ("installation_id", 0), ("repo", "nope"),
                          ("pinned_github_tree", "xyz"), ("publisher_sha256", "abc"),
-                         ("keychain_service", ""), ("keychain_account", "a\nb"), ("state_path", "rel.json")):
+                         ("keychain_service", ""), ("keychain_account", "a\nb"), ("state_path", "rel.json"),
+                         ("keychain_path", ""), ("keychain_path", "login.keychain-db")):
             self.assertTrue(self.reason(self.write({**self.good, key: val})), key)
 
     def test_in_repo_paths_refused(self):
@@ -760,7 +853,24 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(self.reason(inside), "config-inside-repo")
         self.assertEqual(self.reason(self.write({**self.good, "state_path": os.path.join(self.root, "s.json")})),
                          "config-bad-state-path")
+        self.assertEqual(self.reason(self.write({**self.good, "keychain_path": os.path.join(self.root, "k")})),
+                         "config-bad-keychain")
         self.assertEqual(self.reason("cfg.json"), "config-path-not-absolute")
+
+    def test_symlink_into_worktree_and_nested_worktree_refused(self):
+        deep = os.path.join(self.root, "a", "b")
+        os.makedirs(deep)
+        link = os.path.join(self.tmp.name, "link")
+        os.symlink(deep, link)
+        self.assertTrue(p.in_git_worktree(deep))
+        self.assertTrue(p.in_git_worktree(os.path.join(link, "new", "state.json")))
+        self.assertEqual(self.reason(self.write({**self.good, "state_path": os.path.join(link, "s.json")})),
+                         "config-bad-state-path")
+        self.assertFalse(p.in_git_worktree(os.path.join(self.tmp.name, "elsewhere", "s.json")))
+
+    def test_keychain_path_is_mandatory(self):
+        doc = {k: v for k, v in self.good.items() if k != "keychain_path"}
+        self.assertEqual(self.reason(self.write(doc)), "config-bad-keys")
 
     def test_writable_config_refused(self):
         self.assertEqual(self.reason(self.write(self.good, mode=0o666)), "config-bad-permissions")
@@ -797,6 +907,130 @@ class PublishCliTests(unittest.TestCase):
     def test_no_generic_url_option(self):
         with self.assertRaises(SystemExit):
             p.main(["publish", "--config", "/tmp/x.json", "--pr", "10", "--api-url", "https://evil.example"])
+
+
+class InstallContextTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = os.path.realpath(self.tmp.name)
+
+    def install(self, where, mode=0o600):
+        os.makedirs(where, exist_ok=True)
+        dest = os.path.join(where, "publisher.py")
+        shutil.copy(p._SELF, dest)
+        os.chmod(dest, mode)
+        return dest
+
+    def reason(self, **kw):
+        with self.assertRaises(p.Gate) as cm:
+            p.check_publish_context(**{"cafile": __file__, "environ": {}, **kw})
+        return cm.exception.reason
+
+    def test_installed_copy_outside_worktree_passes(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__)
+
+    def test_unisolated_python_refused(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        self.assertEqual(self.reason(path=dest, isolated=False), "not-isolated")
+
+    def test_in_repo_copy_refused(self):
+        wt = os.path.join(self.base, "wt")
+        os.makedirs(os.path.join(wt, ".git"))
+        dest = self.install(os.path.join(wt, "tools", "trusted_gate"))
+        self.assertEqual(self.reason(path=dest, isolated=True), "publisher-in-worktree")
+
+    def test_group_world_writable_or_foreign_install_refused(self):
+        inst = os.path.join(self.base, "inst")
+        dest = self.install(inst, mode=0o620)
+        self.assertEqual(self.reason(path=dest, isolated=True), "publisher-bad-installation")
+        os.chmod(dest, 0o600)
+        os.chmod(inst, 0o777)
+        self.addCleanup(os.chmod, inst, 0o700)
+        self.assertEqual(self.reason(path=dest, isolated=True), "publisher-bad-installation")
+        os.chmod(inst, 0o700)
+        with unittest.mock.patch("os.geteuid", return_value=os.geteuid() + 1):
+            self.assertEqual(self.reason(path=dest, isolated=True), "publisher-bad-installation")
+
+    def test_sibling_shadow_modules_refused(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        for name in ("hmac", "json", "subprocess"):
+            fake = {name: types.SimpleNamespace(__file__=os.path.join(os.path.dirname(dest), name + ".py"))}
+            self.assertEqual(self.reason(path=dest, isolated=True, modules=fake), "module-shadowed", name)
+
+    def test_env_overrides_refused_before_anything_else(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        for k in ("HTTPS_PROXY", "http_proxy", "ALL_PROXY", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
+                  "PYTHONPATH", "PYTHONSTARTUP", "DYLD_INSERT_LIBRARIES", "GIT_SSL_NO_VERIFY"):
+            self.assertEqual(self.reason(path=dest, isolated=True, environ={k: "x", "PATH": "/usr/bin"}),
+                             "env-override-refused", k)
+
+    def test_missing_tls_trust_file_refused(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        self.assertEqual(self.reason(path=dest, isolated=True, cafile="/nonexistent/ca.pem"),
+                         "tls-trust-unavailable")
+
+    def run_script(self, script, *extra, isolated=True):
+        argv = [sys.executable] + (["-I"] if isolated else []) + [script, "publish", "--config", "relative.json",
+                                                                   "--pr", "1"] + list(extra)
+        proc = subprocess.run(argv, capture_output=True, text=True, cwd=os.path.dirname(script),
+                              env={"PATH": "/usr/bin:/bin"}, timeout=60)
+        return proc, (json.loads(proc.stdout) if proc.stdout.strip() else {})
+
+    def test_subprocess_shadow_hmac_and_repo_copy_cannot_publish(self):
+        inst = os.path.join(self.base, "inst")
+        dest = self.install(inst)
+        with open(os.path.join(inst, "hmac.py"), "w") as f:
+            f.write("import sys\nsys.stderr.write('SHADOW-LOADED')\n"
+                    "def compare_digest(a, b):\n    return True\n")
+        proc, out = self.run_script(dest, isolated=False)  # script dir would shadow hmac
+        self.assertEqual((proc.returncode, out.get("reason"), out.get("published")), (3, "not-isolated", False))
+        proc, out = self.run_script(dest, isolated=True)  # -I: shadow never imported, install accepted
+        self.assertNotIn("SHADOW-LOADED", proc.stderr)
+        self.assertEqual((out.get("reason"), out.get("published")), ("config-path-not-absolute", False))
+        wt = os.path.join(self.base, "wt")
+        os.makedirs(os.path.join(wt, ".git"))
+        proc, out = self.run_script(self.install(os.path.join(wt, "tools")), isolated=True)
+        self.assertEqual((proc.returncode, out.get("reason"), out.get("published")),
+                         (3, "publisher-in-worktree", False))
+
+
+class TransportTests(unittest.TestCase):
+    @unittest.skipUnless(os.path.isfile(p.TLS_CAFILE), "system CA bundle not present")
+    def test_opener_ignores_env_proxy_refuses_redirect_and_pins_trust(self):
+        env = {"HTTPS_PROXY": "http://evil.example:3128", "HTTP_PROXY": "http://evil.example:3128",
+               "SSL_CERT_FILE": "/nonexistent"}
+        with unittest.mock.patch.dict(os.environ, env), unittest.mock.patch.object(
+                p.urllib.request, "build_opener", wraps=p.urllib.request.build_opener) as build:
+            opener = p._build_opener()
+        kinds = {type(h) for h in opener.handlers}
+        # urllib omits an empty ProxyHandler from opener.handlers, but passing it
+        # suppresses build_opener's environment-derived default proxy handler.
+        self.assertIsInstance(build.call_args.args[0], p.urllib.request.ProxyHandler)
+        self.assertEqual(build.call_args.args[0].proxies, {})
+        self.assertIn(p._NoRedirect, kinds)
+        self.assertNotIn(p.urllib.request.HTTPRedirectHandler, kinds)
+        https = [h for h in opener.handlers if isinstance(h, p.urllib.request.HTTPSHandler)]
+        self.assertEqual(len(https), 1)
+        ctx = https[0]._context
+        self.assertEqual((ctx.verify_mode, ctx.check_hostname), (p.ssl.CERT_REQUIRED, True))
+
+    def test_missing_trust_file_blocks_opener(self):
+        with self.assertRaises(p.Gate) as cm:
+            p._build_opener("/nonexistent/ca.pem")
+        self.assertEqual(cm.exception.reason, "tls-trust-unavailable")
+
+    def test_default_get_and_api_use_secure_opener(self):
+        built = []
+
+        class Opener:
+            def open(self, req, timeout):
+                return FakeResp(b"{}")
+        with unittest.mock.patch.object(p, "_build_opener", lambda: built.append(1) or Opener()):
+            p.http_get("/x")
+            p.http_api("GET", "/x", TOKEN)
+        self.assertEqual(len(built), 2)
 
 
 if __name__ == "__main__":
