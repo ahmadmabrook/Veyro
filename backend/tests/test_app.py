@@ -35,6 +35,9 @@ class HealthzTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
+    def test_intentional_protected_ci_negative(self):
+        self.fail("intentional protected-PR CI negative drill")
+
     def test_each_supported_environment_loads(self):
         for name in ("local", "development", "staging"):
             s = load_settings({"VEYRO_ENV": name})
