@@ -36,6 +36,31 @@ jobs:
       - name: MOD-000 focused unittest suite
         run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
 
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Backend lint (ruff)
+        run: python -m ruff check backend
+
+      - name: Backend type check (mypy)
+        working-directory: backend
+        run: python -m mypy
+
+      - name: Backend focused tests
+        working-directory: backend
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Backend container build
+        run: docker build -t veyro-api:ci backend
+
+      - name: Backend container smoke (local staging profile)
+        run: |
+          set -eu
+          docker run -d --rm --name veyro-ci -p 127.0.0.1:8000:8000 \
+            --env-file infra/env/staging.env -e VEYRO_RELEASE="$GITHUB_SHA" veyro-api:ci
+          trap 'docker rm -f veyro-ci >/dev/null 2>&1 || true' EXIT
+          bash infra/scripts/smoke.sh staging "$GITHUB_SHA"
+
       - name: Negative check - runner fails closed without a source-binding pin
         run: |
           set -u

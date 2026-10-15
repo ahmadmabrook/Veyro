@@ -1,76 +1,29 @@
-# Veyro — durable-authority repo .gitignore
-# Governing baselines, knowledge/, .claude/agents, .claude/rules, and evidence are not
-# ignored by the general patterns below; three credential-bearing raw captures
-# have explicit narrow exceptions. (Corrected 2026-09-04, Phase 5 editorial F5-028: this
-# comment previously pointed to "explicit negative-pattern exceptions at the bottom" that
-# don't exist — none have been needed since no broad pattern below actually catches those
-# paths; removed the stale pointer instead of inventing exceptions nothing requires.)
-
-# OS cruft
 .DS_Store
-**/.DS_Store
-Thumbs.db
-
-# Editor / IDE user state (not the project's own .claude/ config, which is tracked deliberately)
 .idea/
-*.iml
 .vscode/
 *.swp
-*.swo
 
-# Secrets / credentials — never commit these
+# Local secrets and credentials
 .env
 .env.*
 *.pem
 *.key
 *.p12
-*.mobileprovision
-*credentials*.json
-*secrets*.json
 .netrc
 .npmrc
 
-# Local, non-durable Claude Code settings (personal overrides; settings.json itself is tracked)
-.claude/settings.local.json
-
-# Python bytecode cache (added 2026-09-06, Phase 7 — first Python tooling
-# in the repo, verify_baselines.py/validate_capabilities.py, generates these)
+# Python and test tooling
 __pycache__/
 *.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.venv/
+venv/
 
-# Build artifacts / dependency caches (none expected in this control-plane-only repo, excluded defensively)
+# Build and local runtime output
 node_modules/
-.gradle/
 build/
 dist/
-out/
-*.class
-*.apk
-*.aab
-*.ipa
-.build/
-DerivedData/
-Pods/
-
-# Simulator / device / emulator artifacts
-*.xcappdata
-*.simulator-log
-*.trace
-/simulator-screenshots/
-
-# Generated temporary files
-*.tmp
-*.temp
-*.bak
 *.log
-/tmp/
-.cache/
-
-# Raw ACPX captures with locally redacted credentials. Originals are retained
-# outside this repository in the restricted Veyro control archive.
-/knowledge/03-Modules/MOD-001/evidence/code-review/GATE2-R1-F14-FINAL-ADJUDICATION-ACPX-RAW-2026-10-08.txt
-/knowledge/03-Modules/MOD-001/evidence/implementation/SCN070-R1-REMEDIATION-ACPX-RAW-2026-10-04.txt
-/knowledge/03-Modules/MOD-001/evidence/implementation/BUG048-WATCHDOG-ACPX-RAW-2026-10-04.txt
-
-# Test-run scratch output produced by capability drills (evidence itself lives under knowledge/, not here)
-/scratch/
+*.tmp

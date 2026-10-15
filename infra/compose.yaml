@@ -1,0 +1,16 @@
+# Local run path. "staging" here is a LOCAL staging-profile rehearsal, not cloud staging.
+# Usage: see infra/scripts/*.sh. Required: VEYRO_TARGET (local|development|staging), VEYRO_RELEASE.
+name: veyro-${VEYRO_TARGET:?set VEYRO_TARGET}
+services:
+  api:
+    image: veyro-api:${VEYRO_RELEASE:?set VEYRO_RELEASE}
+    build:
+      context: ../backend
+    env_file:
+      - env/${VEYRO_TARGET}.env
+    environment:
+      VEYRO_RELEASE: ${VEYRO_RELEASE}
+    ports:
+      - "127.0.0.1:${VEYRO_PORT:-8000}:8000"
+    read_only: true
+    restart: "no"
