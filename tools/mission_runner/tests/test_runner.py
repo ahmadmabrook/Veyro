@@ -120,7 +120,7 @@ class Base(unittest.TestCase):
         self.bin.write_text(FAKE)
         self.bin.chmod(0o755)
         self.cfg = R.Config(home=self.home, repo=self.repo, claude_bin=str(self.bin), tick=0.05,
-                            backoff_base=0, max_attempts=3, baseline_every=0)
+                            backoff_base=0, max_attempts=3, baseline_every=0, ci_every=0)
         if self.pin:
             R.bootstrap_pin(self.cfg, index_sha(self.repo))
 
@@ -883,6 +883,120 @@ class DashboardTests(Base):
         self.assertTrue(s["runner_alive"])
         self.assertEqual(s["baseline_pin"]["sources"], 4)
         self.assertEqual((self.home / "state.json").read_bytes(), before)
+
+
+class CIFeed(Base):
+    """gh is injected as the subprocess layer; nothing here touches the network."""
+    SHA = "a" * 40
+
+    def fake_gh(self, fail=None, calls=None):
+        def run(argv, **kw):
+            if calls is not None:
+                calls.append((argv, kw))
+            a = " ".join(argv[1:3])
+            if fail == "missing":
+                raise FileNotFoundError(argv[0])
+            if fail == "timeout":
+                raise subprocess.TimeoutExpired(argv, 1)
+            if fail == "auth":
+                return subprocess.CompletedProcess(argv, 1, "", "gh auth login required SECRET-TOKEN-xyz")
+            if fail == "no-pr" and a == "pr view":
+                return subprocess.CompletedProcess(argv, 1, "", 'no pull requests found for branch "token-login"')
+            if fail == "no-checks" and a == "pr checks":
+                return subprocess.CompletedProcess(argv, 1, "", "no required checks reported on this branch")
+            if fail == "rate" and a == "pr view":
+                return subprocess.CompletedProcess(argv, 1, "", "HTTP 403 rate limit exceeded")
+            out = {"repo view": {"nameWithOwner": "o/r", "url": "https://github.com/o/r", "extra": "leak"},
+                   "run list": [{"name": "CI", "status": "completed", "conclusion": "success", "headBranch": "b",
+                                 "headSha": self.SHA, "event": "push", "createdAt": "2026-01-01T00:00:00Z",
+                                 "url": "https://github.com/o/r/actions/runs/1", "token": "leak"},
+                                {"name": "Bad", "status": "completed", "conclusion": "success", "headBranch": "b",
+                                 "headSha": self.SHA, "url": "javascript:alert(1)"}],
+                   "pr view": {"number": 7, "url": "https://github.com/o/r/pull/7", "state": "OPEN",
+                               "reviewDecision": "", "isDraft": False, "headRefOid": self.SHA},
+                   "pr checks": [{"name": "Veyro Foundation CI", "state": "SUCCESS", "link": "https://github.com/o/r/runs/2"}]}[a]
+            return subprocess.CompletedProcess(argv, 0, json.dumps(out), "")
+        return run
+
+    def test_success_snapshot_is_persisted_allowlisted_and_read_only(self):
+        r, calls = self.runner(ci_every=60), []
+        r.ci_run = self.fake_gh(calls=calls)
+        r.refresh_ci()
+        ci = dashboard.runner.snapshot(self.cfg)["ci"]
+        self.assertEqual((ci["state"], ci["error"], ci["source"], ci["head_sha"]), ("fresh", None, "gh", self.SHA))
+        self.assertEqual((ci["pr"]["number"], ci["pr"]["review"], ci["checks"][0]["state"]), (7, "none", "SUCCESS"))
+        self.assertEqual(ci["runs"][0]["url"], "https://github.com/o/r/actions/runs/1")
+        self.assertIsNone(ci["runs"][1]["url"])  # non-https url dropped
+        self.assertNotIn("leak", json.dumps(ci))
+        self.assertEqual((ci["staging"], ci["secrets"], ci["rollback"]), ("not configured",) * 3)
+        for argv, kw in calls:  # argv list, no shell, bounded, read-only verbs only
+            self.assertIsInstance(argv, list)
+            self.assertFalse(kw.get("shell"))
+            self.assertLessEqual(kw["timeout"], R.CI_CALL_TIMEOUT)
+            self.assertIn(argv[1:3], (["repo", "view"], ["run", "list"], ["pr", "view"], ["pr", "checks"]))
+
+    def test_failures_keep_last_success_but_mark_stale_and_leak_nothing(self):
+        r = self.runner(ci_every=60)
+        r.ci_run = self.fake_gh()
+        r.refresh_ci()
+        for fail, code in (("missing", "gh-missing"), ("timeout", "gh-timeout"), ("auth", "gh-auth")):
+            r.last_ci = 0
+            r.ci_run = self.fake_gh(fail=fail)
+            r.refresh_ci()
+            ci = R.snapshot(self.cfg)["ci"]
+            self.assertEqual((ci["state"], ci["error"]), ("stale", code))
+            self.assertEqual(ci["head_sha"], self.SHA)  # last observation retained, clearly marked
+            self.assertNotIn("SECRET", (self.home / "ci.json").read_text())
+
+    def test_never_succeeded_is_unavailable_and_old_success_goes_stale(self):
+        r = self.runner(ci_every=60)
+        r.ci_run = self.fake_gh(fail="missing")
+        r.refresh_ci()
+        ci = R.snapshot(self.cfg)["ci"]
+        self.assertEqual((ci["state"], ci["observed_at"], ci["runs"], ci["pr"]), ("unavailable", None, [], None))
+        r.last_ci, r.ci_run = 0, self.fake_gh()
+        r.refresh_ci()
+        d = json.loads((self.home / "ci.json").read_text()) | {"observed_at": "2020-01-01T00:00:00+00:00"}
+        (self.home / "ci.json").write_text(json.dumps(d))
+        self.assertEqual(R.snapshot(self.cfg)["ci"]["state"], "stale")
+
+    def test_no_pr_and_no_checks_are_absence_but_rate_limit_is_not(self):
+        r = self.runner(ci_every=60)
+        r.ci_run = self.fake_gh(fail="no-pr")
+        r.refresh_ci()
+        ci = R.snapshot(self.cfg)["ci"]
+        self.assertEqual((ci["state"], ci["pr"], ci["checks"]), ("fresh", None, []))
+        r.last_ci, r.ci_run = 0, self.fake_gh(fail="no-checks")
+        r.refresh_ci()
+        ci = R.snapshot(self.cfg)["ci"]
+        self.assertEqual((ci["state"], ci["pr"]["number"], ci["checks"]), ("fresh", 7, []))
+        r.last_ci, r.ci_run = 0, self.fake_gh(fail="rate")
+        r.refresh_ci()
+        ci = R.snapshot(self.cfg)["ci"]
+        self.assertEqual((ci["state"], ci["error"]), ("stale", "gh-failed"))
+
+    def test_malformed_ci_cache_lists_do_not_crash_reader_or_runner(self):
+        (self.home / "ci.json").write_text(json.dumps({"source": "gh", "checks": 123, "runs": {"bad": 1}}))
+        self.assertEqual(R.snapshot(self.cfg)["ci"]["state"], "unavailable")
+        r = self.runner(ci_every=60)
+        r.ci_run = self.fake_gh(fail="missing")
+        r.refresh_ci()
+        self.assertEqual(R.snapshot(self.cfg)["ci"]["error"], "gh-missing")
+
+    def test_tick_is_throttled_and_disabled_by_default_in_tests(self):
+        r, calls = self.runner(ci_every=60), []
+        r.ci_run = self.fake_gh(calls=calls)
+        r.tick()
+        n = len(calls)
+        r.tick()
+        self.assertGreater(n, 0)
+        self.assertEqual(len(calls), n)  # second tick inside the interval does not call gh again
+
+    def test_dashboard_ci_ui_uses_textcontent_and_not_configured_wording(self):
+        js = dashboard.JS
+        self.assertIn("function ciView", js)
+        self.assertIn("not configured", js)
+        self.assertNotIn("innerHTML", js)
 
 
 if __name__ == "__main__":

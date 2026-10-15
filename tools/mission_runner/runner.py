@@ -64,7 +64,7 @@ def default_home():
 class Config:
     def __init__(self, home=None, repo=REPO, claude_bin=None, timeout=3600.0, tick=1.0,
                  backoff_base=5.0, backoff_cap=300.0, max_attempts=3, baseline_every=30.0,
-                 sandbox="auto", verify_timeout=600.0):
+                 sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=60.0):
         self.home = Path(home) if home else default_home()
         self.repo = Path(repo)
         self.claude_bin = claude_bin or os.environ.get("VEYRO_CLAUDE_BIN", "claude")
@@ -72,6 +72,7 @@ class Config:
         self.backoff_base, self.backoff_cap = backoff_base, backoff_cap
         self.max_attempts, self.baseline_every = max_attempts, baseline_every
         self.sandbox, self.verify_timeout = sandbox, verify_timeout  # sandbox: auto | off
+        self.gh_bin, self.ci_every = gh_bin or os.environ.get("VEYRO_GH_BIN", "gh"), ci_every  # ci_every<=0 disables
 
 
 # ---------------------------------------------------------------- durable store
@@ -352,8 +353,8 @@ def verify_baseline(repo, pin):
 
 
 # ------------------------------------------------------------ repo change evidence
-def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=True, timeout=120,
+def _git(repo, *args, timeout=120):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=True, timeout=timeout,
                           env={**{k: os.environ[k] for k in ("PATH", "HOME") if k in os.environ}, "GIT_OPTIONAL_LOCKS": "0"})
 
 
@@ -437,6 +438,116 @@ def judge_route(role, parsed):
             "verdict": "VERIFIED" if ok else "MISMATCH", "basis": basis, "models": used}
 
 
+# ------------------------------------------------------------ read-only CI observation (gh)
+CI_CALL_TIMEOUT, CI_BUDGET = 3.0, 5.0  # kept well under the 10s heartbeat-liveness window
+CI_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%?=&#:+-]{0,300}$")
+CI_ENV_KEEP = ("PATH", "HOME", "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG_DIR", "XDG_CONFIG_HOME")
+
+
+class CIError(Exception):
+    """Carries only a short fixed code; raw gh output never reaches state or the browser."""
+
+
+def _s(v, n=120):
+    return v[:n] if isinstance(v, str) else None
+
+
+def _url(v):
+    return v if isinstance(v, str) and CI_URL_RE.match(v) else None
+
+
+def clean_ci(d):
+    """Allowlist every field read from ci.json / gh; anything unknown is dropped."""
+    if not isinstance(d, dict):
+        return None
+    pr = d.get("pr") if isinstance(d.get("pr"), dict) else None
+    checks = d.get("checks") if isinstance(d.get("checks"), list) else []
+    runs = d.get("runs") if isinstance(d.get("runs"), list) else []
+    out = {"source": _s(d.get("source"), 20), "observed_at": _s(d.get("observed_at"), 40),
+           "last_attempt_at": _s(d.get("last_attempt_at"), 40), "error": _s(d.get("error"), 40),
+           "repo": _s(d.get("repo"), 100), "repo_url": _url(d.get("repo_url")), "branch": _s(d.get("branch"), 100),
+           "head_sha": _s(d.get("head_sha"), 40),
+           "pr": None if pr is None else {"number": pr.get("number") if isinstance(pr.get("number"), int) else None,
+                                         "url": _url(pr.get("url")), "state": _s(pr.get("state"), 20),
+                                         "review": _s(pr.get("review"), 30), "draft": pr.get("draft") is True,
+                                         "head_sha": _s(pr.get("head_sha"), 40)},
+           "checks": [{"name": _s(c.get("name")), "state": _s(c.get("state"), 30), "url": _url(c.get("url"))}
+                      for c in checks if isinstance(c, dict)][:20],
+           "runs": [{"name": _s(x.get("name")), "status": _s(x.get("status"), 30), "conclusion": _s(x.get("conclusion"), 30),
+                     "ref": _s(x.get("ref"), 100), "head_sha": _s(x.get("head_sha"), 40), "event": _s(x.get("event"), 30),
+                     "created_at": _s(x.get("created_at"), 40), "url": _url(x.get("url"))}
+                    for x in runs if isinstance(x, dict)][:10]}
+    for k in ("staging", "secrets", "rollback"):  # nothing in gh proves these; always reported as not configured
+        out[k] = "not configured"
+    return out
+
+
+def _gh(cfg, run, deadline, *args, ok_codes=(0,)):
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise CIError("gh-timeout")
+    env = {k: os.environ[k] for k in CI_ENV_KEEP if k in os.environ} | {"GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"}
+    try:
+        p = run([cfg.gh_bin, *args], capture_output=True, text=True, timeout=min(CI_CALL_TIMEOUT, left),
+                cwd=str(cfg.repo), env=env, stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        raise CIError("gh-missing")
+    except subprocess.TimeoutExpired:
+        raise CIError("gh-timeout")
+    except OSError:
+        raise CIError("gh-failed")
+    if p.returncode not in ok_codes:
+        low = (p.stderr or "").lower()
+        if args[:2] == ("pr", "view") and "no pull requests found" in low:
+            raise CIError("no-pr")
+        raise CIError("gh-auth" if "auth" in low or "login" in low or "token" in low else
+                      "gh-network" if "dial" in low or "resolve" in low or "connect" in low else "gh-failed")
+    if args[:2] == ("pr", "checks") and p.returncode != 0 and not p.stdout.strip():
+        low = (p.stderr or "").lower()
+        if "no checks reported" in low or "no required checks reported" in low:
+            return []
+    try:
+        return json.loads(p.stdout)
+    except ValueError:
+        raise CIError("bad-output")
+
+
+def fetch_ci(cfg, run=subprocess.run):
+    """One bounded, read-only observation through `gh` (argv list, no shell). Raises CIError(code) on any failure."""
+    deadline = time.monotonic() + CI_BUDGET
+    try:
+        branch = _git(cfg.repo, "rev-parse", "--abbrev-ref", "HEAD",
+                      timeout=max(0.1, deadline - time.monotonic())).stdout.decode().strip()
+    except (subprocess.SubprocessError, OSError):
+        raise CIError("git-failed")
+    repo = _gh(cfg, run, deadline, "repo", "view", "--json", "nameWithOwner,url")
+    runs = _gh(cfg, run, deadline, "run", "list", "--branch", branch, "--limit", "8", "--json",
+               "name,status,conclusion,headBranch,headSha,event,createdAt,url")
+    pr = checks = None
+    try:  # no PR for the branch is a normal state, not an outage
+        pr = _gh(cfg, run, deadline, "pr", "view", branch, "--json", "number,url,state,reviewDecision,isDraft,headRefOid")
+    except CIError as e:
+        if e.args[0] != "no-pr":
+            raise
+    if pr is not None:
+        checks = _gh(cfg, run, deadline, "pr", "checks", branch, "--required", "--json", "name,state,link",
+                     ok_codes=(0, 1, 8))
+    if not isinstance(repo, dict) or not isinstance(runs, list) or not (pr is None or isinstance(pr, dict)):
+        raise CIError("bad-output")
+    head = next((x.get("headSha") for x in runs if isinstance(x, dict) and x.get("headBranch") == branch), None)
+    return clean_ci({
+        "source": "gh", "observed_at": now_iso(), "repo": repo.get("nameWithOwner"), "repo_url": repo.get("url"),
+        "branch": branch, "head_sha": (pr or {}).get("headRefOid") or head,
+        "pr": None if pr is None else {"number": pr.get("number"), "url": pr.get("url"), "state": pr.get("state"),
+                                      "review": pr.get("reviewDecision") or "none", "draft": pr.get("isDraft"),
+                                      "head_sha": pr.get("headRefOid")},
+        "checks": [{"name": c.get("name"), "state": c.get("state"), "url": c.get("link")}
+                   for c in checks or [] if isinstance(c, dict)],
+        "runs": [{"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
+                  "ref": x.get("headBranch"), "head_sha": x.get("headSha"), "event": x.get("event"),
+                  "created_at": x.get("createdAt"), "url": x.get("url")} for x in runs if isinstance(x, dict)]})
+
+
 def backoff(cfg, attempts):
     return min(cfg.backoff_cap, cfg.backoff_base * 2 ** max(0, attempts - 1))
 
@@ -448,6 +559,7 @@ class Runner:
         self.rlock = FileLock(cfg.home / "locks" / "runner.lock")
         self.wlock = FileLock(writer_lock_path(cfg.home, cfg.repo))
         self.state, self.sig, self.last_baseline, self.last_hb, self.busy_noted = None, False, 0.0, 0.0, False
+        self.last_ci, self.ci_run = 0.0, subprocess.run  # ci_run: injectable subprocess layer for tests
 
     # --- lifecycle
     def run(self):
@@ -547,7 +659,39 @@ class Runner:
             t = self.next_ready()
             if t:
                 self.dispatch(t)
+        self.refresh_ci()
         self.store.save(self.state)
+
+    def refresh_ci(self):
+        """Periodic read-only gh observation, persisted to out-of-repo ci.json. Bounded by CI_BUDGET and never
+        raises; on failure the last successful observation is kept and tagged with an error code."""
+        if self.cfg.ci_every <= 0 or time.time() - self.last_ci < self.cfg.ci_every:
+            return
+        self.heartbeat(force=True)
+        self.last_ci = time.time()
+        path = self.cfg.home / "ci.json"
+        try:
+            prev = clean_ci(json.loads(path.read_text()))
+        except (OSError, ValueError):
+            prev = None
+        try:
+            new = fetch_ci(self.cfg, self.ci_run)
+            err = None
+        except CIError as e:
+            new, err = None, str(e.args[0])
+        except Exception:
+            new, err = None, "gh-failed"
+        if new:
+            data = new | {"last_attempt_at": now_iso(), "error": None}
+        else:
+            data = (prev or {"source": "gh"}) | {"last_attempt_at": now_iso(), "error": err}
+        try:
+            atomic_write(path, json.dumps(data).encode())
+        except OSError:
+            return
+        if err and (prev or {}).get("error") != err:
+            self.store.event("ci-unavailable", code=err)
+        self.heartbeat(force=True)
 
     def heartbeat(self, force=False):
         if force or time.time() - self.last_hb >= 2:
@@ -1021,9 +1165,19 @@ def snapshot(cfg):
                         and t.get("next_attempt_at", 0) > now else None})
     ci = None
     try:
-        ci = json.loads((cfg.home / "ci.json").read_text())
+        ci = clean_ci(json.loads((cfg.home / "ci.json").read_text()))
     except (OSError, ValueError):
         pass
+    if ci is not None:  # fresh = last success recent AND last attempt clean; never green from stale/no data
+        obs = ci.get("observed_at")
+        age = None
+        try:
+            age = now - datetime.datetime.fromisoformat(obs).timestamp() if obs else None
+        except ValueError:
+            pass
+        limit = max(3 * cfg.ci_every, 30)
+        ci["age_s"] = None if age is None else max(0, round(age))
+        ci["state"] = "unavailable" if age is None else "stale" if age > limit or ci.get("error") else "fresh"
     pin = load_pin(cfg.home)
     lp = writer_lock_path(cfg.home, cfg.repo)
     held = FileLock.probe(lp)
