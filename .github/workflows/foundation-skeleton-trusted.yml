@@ -19,32 +19,84 @@
 #   a candidate that empties its own `REQUIRED_PATHS`, or swaps
 #   `tools/validate_repo_skeleton.py` for an always-PASS stub, can still turn
 #   the smoke check green while this trusted check stays RED, because this
-#   check never reads either of those candidate files. Both halves of that
-#   divergence are exercised in
+#   check reads neither of those files FROM THE CANDIDATE HEAD. Both halves of
+#   that divergence are exercised in
 #   `tools/tests/test_foundation_skeleton_trusted_workflow.py`.
 #
 # WHY THIS FILE IS INERT UNTIL IT LIVES ON THE TRUSTED DEFAULT BRANCH:
 #   `pull_request_target` takes its workflow DEFINITION (and `github.sha`)
-#   from the repository's DEFAULT branch, not from the pull request's head and
-#   not from its base. While this file exists only on an unmerged feature
-#   branch it therefore does not run at all, and nothing here may be read as
-#   a claim that the trigger has fired, or would fire, from this branch. No
-#   live run, no run ID, no logs, no reported context are claimed. Its
-#   behaviour after installation on a published default branch is UNPROVEN;
-#   only the extracted shell/Python body below has been exercised, offline,
-#   against synthetic local Git objects.
+#   from the pull request's BASE branch, never from its head. The `branches:`
+#   filter below pins that base to `main`, so for every run this file can
+#   produce, the definition and `github.sha` come from the protected default
+#   branch. While this file exists only on an unmerged feature branch it does
+#   not run at all, and nothing here may be read as a claim that the trigger
+#   has fired, or would fire, from this branch. No live run, no run ID, no
+#   logs, no reported context are claimed. Its behaviour after installation on
+#   a published default branch is UNPROVEN; only the extracted shell/Python
+#   body below has been exercised, offline, against synthetic local Git
+#   objects.
 #
 # TRUST MODEL (what is trusted, and what is merely data):
-#   - TRUSTED: this workflow definition, loaded from the default branch. Both
-#     halves of the decision live here and nowhere else - (a) the seven
+#   - TRUSTED: this workflow definition, loaded from the base branch (pinned
+#     to `main` above). Both halves of the decision live here - (a) the seven
 #     expected required paths, written out literally below, and (b) the
 #     executable checking logic that screens them. Neither is read from the
-#     PR head. In particular the candidate head's own
-#     `tools/validate_repo_skeleton.py` and its `REQUIRED_PATHS` are NEVER
-#     read, imported, executed or consulted; that file's name does not appear
-#     anywhere in the executed body. The literal path list here is a
-#     deliberate trusted DUPLICATE of that validator's manifest, kept in sync
-#     by a test, not a dependency on it.
+#     PR head. The candidate head's own `tools/validate_repo_skeleton.py` and
+#     its `REQUIRED_PATHS` are NEVER read, imported, executed or consulted,
+#     and no candidate edit to that file can change any decision made here.
+#   - TRUSTED, AND NOW ASSERTED AT RUNTIME (BUG-074): the literal path list
+#     below is a deliberate DUPLICATE of `tools/validate_repo_skeleton.py`'s
+#     `REQUIRED_PATHS`. A local unit test compared the two, but nothing made
+#     that agreement a precondition of this job, so a later default-branch
+#     change to the validator's manifest could have left this check reporting
+#     green against a stale list - a falsely green trusted required check.
+#     The job therefore fetches `github.sha` - the base-branch commit this
+#     definition was loaded from - by exact immutable SHA into its OWN object
+#     store, reads that TRUSTED commit's `tools/validate_repo_skeleton.py` as
+#     an inert blob (never imported, never executed, written to a non-`.py`
+#     filename), and holds it to a STATIC-LITERAL CONTRACT: `REQUIRED_PATHS`
+#     must be bound exactly once there, by one plain top-level literal
+#     assignment, must not be rebound, deleted or mutated anywhere the AST can
+#     see it, and that literal - read via `ast.literal_eval` - must be exactly
+#     equal to the literal below. What this establishes is a property of the
+#     SOURCE TEXT, not a measurement of the value the module would really
+#     expose; see the residual-limitations bullet near the end of this header
+#     for what that distinction does and does not buy. It is asserted BEFORE
+#     any candidate entry is judged. Every line
+#     of the executed body that names that path reads it through
+#     `$trusted_git` at `$TRUSTED_SHA`; the candidate's copy is still never
+#     opened, and cannot satisfy or break the sync.
+#   - TRUSTED, AND PINNED BY EXACT SOURCE DIGEST (BUG-074 residual): the
+#     static contract above is a heuristic over source SHAPE, and no static
+#     heuristic can decide arbitrary Python semantics. Two shapes it provably
+#     misses - `ALIAS = REQUIRED_PATHS` followed by `ALIAS.append(...)`, and
+#     `globals()["REQUIRED_PATHS"].append(...)` - leave every AST assertion
+#     true on a seven-path literal while the module exposes eight, which was
+#     still a route to a falsely green trusted check. So after the trusted
+#     blob has been confirmed to be a regular blob at the exact
+#     `$TRUSTED_SHA`, the job SHA-256 hashes those exact bytes and compares
+#     the digest to a literal expected digest written into this
+#     default-branch definition. That comparison needs no analysis to be
+#     sound, and it is total: ANY byte drift denies
+#     (`TRUSTED_MANIFEST_DIGEST_MISMATCH`), including an alias mutation, a
+#     `globals()` write, an in-place mutator whose name is not on the
+#     explicit list, or a comment-only edit that changes nothing executable.
+#     It denies before a single candidate entry is judged.
+#     WHAT THE PIN DOES AND DOES NOT BUY: it guarantees EXACT-SOURCE SYNC -
+#     the default-branch validator this definition screens against is
+#     byte-identical to the source this definition was reviewed against. It
+#     is NOT a proof of arbitrary Python semantics, and it does not establish
+#     that the pinned source's imported `REQUIRED_PATHS` equals the literal
+#     below; that equality is established by REVIEW at the moment the pin is
+#     set, and the pin's job is to make sure the reviewed bytes are the bytes
+#     that run. The practical consequence is the change-control contract this
+#     check exists to create: the default-branch validator can change ONLY
+#     through an intentional update of the pinned digest in this workflow and
+#     the review that update goes through - an unreviewed default-branch edit
+#     to that file turns this check RED rather than quietly redefining what
+#     it screens. A CANDIDATE-only edit to that file changes neither the
+#     digest nor any other part of this job's decision, because the candidate
+#     copy is never read.
 #   - DATA ONLY: the PR head's Git tree. It is fetched by exact immutable
 #     40-hex SHA and is NEVER checked out, extracted, written to disk,
 #     imported, executed, or installed from. The only candidate bytes that
@@ -54,7 +106,8 @@
 #     words.
 #   - NO CREDENTIALS: `permissions: {}` (the GITHUB_TOKEN carries no scope at
 #     all, read included), no `secrets.` reference of any kind, no
-#     `GITHUB_TOKEN` use, and an anonymous tokenless `git fetch`. This is
+#     `GITHUB_TOKEN` use, and anonymous tokenless `git fetch` for BOTH the
+#     trusted commit and the candidate head. This is
 #     stricter than `contents: read`, and it is what makes
 #     `pull_request_target` acceptable here: the job holds nothing a
 #     candidate could want to steal, and runs no candidate code that could
@@ -63,9 +116,42 @@
 # Fail-closed by construction:
 #   - malformed `github.repository`, `github.sha` or head SHA (anything not a
 #     well-formed `owner/name` / exact 40-hex SHA) denies before any fetch.
-#   - the fetched object is compared back against the exact requested head
-#     SHA, and must be a commit; a mismatch denies rather than screening some
-#     other tree.
+#   - each fetched object is compared back against the exact SHA requested
+#     for it, and must be a commit; a mismatch denies rather than screening
+#     some other tree or syncing against some other manifest.
+#   - the trusted manifest sync denies if `tools/validate_repo_skeleton.py`
+#     is absent from the trusted commit, is not a regular blob there (symlink,
+#     gitlink, tree), appears under more than one tree record, does not decode
+#     or parse as Python, holds zero or more than one top-level
+#     `REQUIRED_PATHS` assignment, holds a non-literal or non-string-sequence
+#     value, or holds a list that differs in ANY element or order from the
+#     literal below. There is no "close enough" and no partial sync.
+#   - the sync also denies (`TRUSTED_MANIFEST_MUTABLE`) if `REQUIRED_PATHS` is
+#     touched again anywhere in that file after its one plain top-level
+#     literal assignment: `+=` or any other augmented assignment, an annotated
+#     or conditional or nested rebinding, an assignment-expression target,
+#     tuple-unpacking or a for/with/except/import/parameter binding of that
+#     name, `del`, a subscript or slice write, a `global`/`nonlocal`
+#     declaration of it, a def/class shadowing it, or a call to one of an
+#     explicit list of in-place mutators on it (`.append`, `.extend`,
+#     `.insert`, `.remove`, `.pop`, `.clear`, `.update`, `.sort`, `.reverse`,
+#     `.add`, `.discard`, `.setdefault`, `.popitem`, `.__setitem__`,
+#     `.__delitem__`, `.__iadd__`). Each of those can leave the first literal
+#     verbatim while the module exposes something else, which would make the
+#     comparison above report a sync that is not one. This rule is a
+#     deliberately blunt static-shape refusal, not an analysis: it will refuse
+#     a harmless manifest written in any of those shapes (fail-closed, and the
+#     fix is to write the manifest as one plain literal), and it is NOT a
+#     proof of the runtime value.
+#   - the sync also denies (`TRUSTED_MANIFEST_DIGEST_MISMATCH`) if the exact
+#     trusted blob bytes do not SHA-256 to the digest pinned in this
+#     definition. This is checked last among the trusted-manifest checks -
+#     deliberately, so that a shape failure still reports which shape rule it
+#     broke, and so those rules keep constraining whatever source a future
+#     intentional pin update points at - but still strictly before any
+#     candidate entry is judged. It is unconditional: a one-byte or
+#     comment-only difference denies exactly as loudly as a rewritten
+#     manifest, and no AST-invisible mutation channel can pass it.
 #   - every required path AND every one of its ancestors must be a genuine
 #     tree entry of the right kind: ancestors must be real directories
 #     (mode 040000, type tree), the final component a regular file
@@ -126,7 +212,57 @@
 #     serves a bare 40-hex FORK head SHA to a credential-less fetch is the
 #     same open, undischarged precondition the other two tokenless-fetch
 #     workflows in this directory already carry, and it is not resolved here.
-#     If it does not, this check denies (fail-closed), it does not pass.
+#     If it does not, this check denies (fail-closed), it does not pass. The
+#     same is unproven for the trusted fetch of `github.sha`, even though that
+#     commit is a base-repository commit reachable from the default branch
+#     rather than a fork head.
+#   - THE SYNC ASSERTION TRUSTS THE ACTIONS CONTEXT FOR `github.sha`. That the
+#     commit it names is the same commit this definition was loaded from is
+#     documented `pull_request_target` behaviour, not something the job can
+#     verify at runtime, and it is untested live here like everything else
+#     about a real run. What the sync proves is narrow: that the literal list
+#     below and the validator's manifest AT THAT COMMIT are identical. It does
+#     not prove either list is the correct set of required paths, it is not a
+#     review of the validator, and it says nothing about the candidate head's
+#     copy of that file, which remains unread by design.
+#   - THE SYNC IS A STATIC-LITERAL CONTRACT, NOT A RUNTIME-VALUE PROOF. The
+#     job never executes, imports or evaluates the trusted validator, so it
+#     cannot observe the value `REQUIRED_PATHS` actually holds when that file
+#     is imported; it can only read the source text. The contract above is
+#     therefore stated the other way round - one plain top-level literal
+#     binding, no rebinding and no AST-visible mutation - and it is enforced
+#     only as far as the AST reaches. Channels the AST layer alone does NOT
+#     see: mutation through an alias (`_X = REQUIRED_PATHS` followed
+#     by `_X.append(...)`), writes through `globals()`, `vars()`,
+#     `setattr`/`sys.modules`, dynamic evaluation of generated source, an
+#     in-place mutator whose name is not on the explicit list above, a
+#     mutating `__getattr__`/metaclass/decorator/descriptor reached from that
+#     module, mutation performed by a DIFFERENT module that imports this one,
+#     and anything a conditional import or interpreter-version difference
+#     changes. Each of those leaves `TRUSTED_MANIFEST_MUTABLE` silent, so the
+#     static layer must not be read as proof of the runtime value, and the
+#     validator's manifest should be kept in the plain literal shape so the
+#     contract stays meaningful.
+#   - WHAT THE EXACT-SOURCE DIGEST PIN CHANGES, AND WHAT IT STILL DOES NOT.
+#     Those channels no longer produce a green check: the pin refuses any
+#     trusted blob that is not byte-identical to the reviewed source, so an
+#     alias mutation, a `globals()` write or an unlisted in-place mutator
+#     denies with `TRUSTED_MANIFEST_DIGEST_MISMATCH` regardless of what the
+#     AST layer could see. But the pin is an identity check, not a semantic
+#     one: it proves the trusted default-branch source is EXACTLY the bytes
+#     this definition was reviewed against, and it proves nothing about what
+#     arbitrary Python in those bytes would do. Nothing here decides the
+#     imported value of `REQUIRED_PATHS` - that remains a REVIEW obligation
+#     on any change to that file, discharged when the pinned digest is
+#     updated, and the pin's only guarantee is that the reviewed bytes are
+#     the bytes in play. Two consequences worth stating plainly: a deliberate
+#     default-branch change to the validator REQUIRES an intentional update
+#     of the pinned digest in this workflow (and so passes through that
+#     change's own review) or this check turns red; and a candidate-only
+#     change to that file cannot alter this job's decision at all, since the
+#     candidate copy is never read, hashed or consulted. The pin also does
+#     not extend to the rest of the trusted tree: only this one file's bytes
+#     are pinned.
 #   - This source file grants no CI result, no live SCN-MOD001-003 evidence,
 #     no required status check, no independent review and no certification
 #     input. Any future run must be verified separately against its exact
@@ -148,7 +284,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Screen the PR head tree against the trusted required-path manifest
+      - name: Sync the trusted required-path manifest, then screen the PR head tree
         env:
           REPO: ${{ github.repository }}
           SERVER_URL: ${{ github.server_url }}
@@ -175,9 +311,38 @@ jobs:
           work="${RUNNER_TEMP:?RUNNER_TEMP is required}/foundation-skeleton-trusted"
           rm -rf "$work"
           mkdir -p "$work"
+          trusted_git="$work/trusted.git"
           cand_git="$work/candidate.git"
 
-          # --- 1. Candidate objects by exact immutable SHA, never checked out ---
+          # --- 1. The trusted commit this definition was loaded from ---
+          # `github.sha` under `pull_request_target` is the tip of the PR BASE
+          # branch, pinned to `main` by the `branches:` filter. Fetched into
+          # its OWN object store so trusted and candidate objects never share
+          # a repository.
+          git init -q "$trusted_git"
+          git -C "$trusted_git" remote add origin "$SERVER_URL/$REPO.git"
+          git -C "$trusted_git" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          trusted_fetched="$(git -C "$trusted_git" rev-parse FETCH_HEAD)"
+          [[ "$trusted_fetched" == "$TRUSTED_SHA" ]] \
+            || deny "fetched object $trusted_fetched is not the requested trusted commit $TRUSTED_SHA"
+          git -C "$trusted_git" cat-file -e "$TRUSTED_SHA^{commit}" \
+            || deny "trusted $TRUSTED_SHA is not a commit object"
+
+          # --- 2. The trusted validator manifest, as inert text ---
+          # BUG-074: the literal required-path list in the trusted body below
+          # duplicates `tools/validate_repo_skeleton.py`'s REQUIRED_PATHS, and
+          # nothing used to make that agreement a precondition of this job.
+          # Both reads below are against the TRUSTED commit in the TRUSTED
+          # object store - never the candidate head - and the bytes are only
+          # ever parsed as text: no import, no execution, and a non-`.py`
+          # destination filename so nothing can pick it up as a module.
+          git -C "$trusted_git" ls-tree --full-tree -z "$TRUSTED_SHA" -- tools/validate_repo_skeleton.py \
+            > "$work/manifest.entry"
+          git -C "$trusted_git" cat-file blob "$TRUSTED_SHA:tools/validate_repo_skeleton.py" \
+            > "$work/manifest.src.txt" \
+            || deny "trusted commit $TRUSTED_SHA has no readable blob at tools/validate_repo_skeleton.py"
+
+          # --- 3. Candidate objects by exact immutable SHA, never checked out ---
           # No `git checkout`, no `git archive`, no `tar`: the candidate tree
           # is never materialized on disk at all, so there is nothing to
           # accidentally run, import or install from.
@@ -190,7 +355,7 @@ jobs:
           git -C "$cand_git" cat-file -e "$HEAD_SHA^{commit}" \
             || deny "head $HEAD_SHA is not a commit object"
 
-          # --- 2. The candidate tree as inert, NUL-delimited data ---
+          # --- 4. The candidate tree as inert, NUL-delimited data ---
           # `-t` keeps the intermediate tree entries, so ancestor kinds can be
           # screened too, not just leaves. Redirected to a FILE, never read
           # through `$(...)`: bash silently discards NUL bytes inside a command
@@ -199,22 +364,29 @@ jobs:
           # able to see a failing `git ls-tree`.
           git -C "$cand_git" ls-tree -r -t --full-tree -z "$HEAD_SHA" > "$work/entries.nul"
 
-          # --- 3. Trusted manifest + trusted checking logic ---
+          # --- 5. Trusted manifest sync, then trusted checking logic ---
           # -E -s: ignore PYTHONPATH and user site-packages. Nothing from the
           # candidate is on sys.path, and no candidate file is opened - only
-          # the ls-tree listing above.
-          python3 -E -s - "$work/entries.nul" <<'PY'
+          # the ls-tree listing above. The two trusted-manifest files come
+          # from the trusted commit, the third from the candidate tree.
+          python3 -E -s - "$work/manifest.entry" "$work/manifest.src.txt" "$work/entries.nul" <<'PY'
+          import ast
+          import hashlib
           import sys
           from pathlib import Path
 
+          def deny(reason):
+              raise SystemExit(f"foundation-skeleton-trusted: DENY - {reason}")
+
           # TRUSTED EXPECTATIONS. This list is part of the trusted
-          # default-branch workflow definition. It is a deliberate duplicate of
-          # `tools/validate_repo_skeleton.py`'s REQUIRED_PATHS, kept in sync by
-          # `tools/tests/test_foundation_skeleton_trusted_workflow.py` - NOT a
-          # read of that file, which lives in candidate-writable space and is
-          # never consulted here. Extend this list only when a path's topology
-          # becomes mandatory; passing it does not certify the full MOD-001
-          # repository topology or test pyramid.
+          # base-branch workflow definition. It is a deliberate duplicate of
+          # `tools/validate_repo_skeleton.py`'s REQUIRED_PATHS, asserted equal
+          # below against that validator AS IT EXISTS AT THE TRUSTED COMMIT -
+          # never against the candidate head's copy, which is not read at all.
+          # Changing this list without changing the validator's manifest on
+          # the default branch (or the reverse) makes the job DENY. Extend it
+          # only when a path's topology becomes mandatory; passing it does not
+          # certify the full MOD-001 repository topology or test pyramid.
           REQUIRED_PATHS = (
               "backend/pyproject.toml",
               "backend/app/__init__.py",
@@ -225,14 +397,214 @@ jobs:
               "backend/tests/contract/__init__.py",
           )
 
+          # The one path read out of the TRUSTED commit, for the sync
+          # assertion only. It is never read from the candidate head.
+          MANIFEST_REL = "tools/validate_repo_skeleton.py"
+
+          # EXACT-SOURCE PIN (BUG-074 residual). The SHA-256 of the exact
+          # trusted-commit bytes of MANIFEST_REL that this workflow definition
+          # was reviewed against. The AST contract below is a static-shape
+          # rule and cannot decide arbitrary Python semantics - an alias
+          # mutation (`_X = REQUIRED_PATHS; _X.append(...)`) or a
+          # `globals()["REQUIRED_PATHS"].append(...)` leaves every AST
+          # assertion true while the module exposes something else. This pin
+          # does not analyse the file at all: it refuses ANY byte that is not
+          # the reviewed source, so those channels - and a comment-only edit -
+          # deny instead of passing. The default-branch validator can
+          # therefore only change together with an intentional update of this
+          # literal, which is a reviewable change to this trusted definition.
+          # Computed as `sha256(blob bytes)` of MANIFEST_REL, NOT a git object
+          # id (no `blob <len>\0` prefix).
+          TRUSTED_MANIFEST_SHA256 = (
+              "a95cb22aacb0388569e6bd183649f007f62078da7c9f2e9eb823dbd70da6f280"
+          )
+
           DIR_MODE = "040000"
           FILE_MODES = ("100644", "100755")
           # Named refusals for the two modes a candidate would most plausibly
           # use to stand something else in for a required path.
           NAMED_REFUSALS = {"120000": "symlink", "160000": "gitlink (submodule)"}
 
+          if len(sys.argv) != 4:
+              deny(f"internal: expected 3 script arguments, got {len(sys.argv) - 1}")
+          manifest_entry, manifest_src, entries_file = (Path(a) for a in sys.argv[1:4])
+
+          # --- TRUSTED MANIFEST SYNC (BUG-074) ---------------------------------
+          # Asserted before a single candidate entry is judged, so a desynced
+          # trusted manifest can never produce a green screen. Everything read
+          # here comes from the trusted commit; `manifest_src` is parsed as
+          # text and nothing in it is imported or executed.
+          records = [r for r in manifest_entry.read_bytes().split(b"\0") if r]
+          if len(records) != 1:
+              deny("TRUSTED_MANIFEST_UNREADABLE: the trusted commit must hold exactly one "
+                   f"tree entry for {MANIFEST_REL}, found {len(records)}")
+          t_meta, t_tab, t_raw = records[0].partition(b"\t")
+          if not t_tab:
+              deny("TRUSTED_MANIFEST_UNREADABLE: unparseable trusted tree record "
+                   f"(no tab): {records[0][:120]!r}")
+          t_fields = t_meta.split(b" ")
+          if len(t_fields) < 2:
+              deny("TRUSTED_MANIFEST_UNREADABLE: unparseable trusted tree metadata: "
+                   f"{t_meta[:120]!r}")
+          t_mode = t_fields[0].decode("utf-8", "replace")
+          t_type = t_fields[1].decode("utf-8", "replace")
+          t_path = t_raw.decode("utf-8", "surrogateescape")
+          if t_path != MANIFEST_REL:
+              deny(f"TRUSTED_MANIFEST_UNREADABLE: trusted tree record is for {t_path!r}, "
+                   f"not {MANIFEST_REL!r}")
+          if t_mode not in FILE_MODES or t_type != "blob":
+              deny(f"TRUSTED_MANIFEST_UNREADABLE: {MANIFEST_REL} at the trusted commit is "
+                   f"not a regular file (mode {t_mode} type {t_type})")
+
+          # Read once: the same bytes are both parsed (AST contract) and
+          # hashed (exact-source pin), so the two layers can never disagree
+          # about which bytes they judged.
+          manifest_bytes = manifest_src.read_bytes()
+          try:
+              module = ast.parse(manifest_bytes.decode("utf-8"))
+          except (UnicodeDecodeError, SyntaxError, ValueError) as exc:
+              deny(f"TRUSTED_MANIFEST_UNREADABLE: {MANIFEST_REL} at the trusted commit does "
+                   f"not parse as Python: {exc!r}")
+
+          # The ONE shape a trusted manifest may use: a plain top-level
+          # assignment whose target is the bare name. An annotated, nested,
+          # conditional or assignment-expression binding is NOT read as if it
+          # were this one - it is refused by the static-literal contract
+          # below, which runs before the count and value checks.
+          MANIFEST_NAME = "REQUIRED_PATHS"
+          # In-place mutators that would change the list while the literal
+          # still reads as synced. An explicit, conservative name list: the
+          # contract refuses these outright rather than pretending to decide
+          # what an arbitrary call does to an arbitrary object.
+          MUTATING_ATTRS = ("append", "extend", "insert", "remove", "pop",
+                            "clear", "update", "sort", "reverse", "add",
+                            "discard", "setdefault", "popitem",
+                            "__setitem__", "__delitem__", "__iadd__")
+
+          bindings = []
+          allowed_targets = []
+          for node in module.body:
+              if not isinstance(node, ast.Assign):
+                  continue
+              targets = [t for t in node.targets
+                         if isinstance(t, ast.Name) and t.id == MANIFEST_NAME]
+              if not targets:
+                  continue
+              bindings.append(node.value)
+              allowed_targets.extend(targets)
+
+          # --- STATIC-LITERAL CONTRACT ---
+          # Comparing only the first literal assignment is not a sync: a
+          # manifest can keep that literal verbatim and still expose a
+          # different value, e.g. a later top-level
+          # `REQUIRED_PATHS += [...]`, `REQUIRED_PATHS.append(...)` or
+          # subscript write. Deciding the real runtime value would mean
+          # executing the file, which this job must never do, so the contract
+          # is the other way round: REQUIRED_PATHS must be bound exactly once,
+          # by one plain top-level assignment, and must not be rebound,
+          # deleted or mutated anywhere the AST can see it. This is a
+          # STATIC-SHAPE rule, deliberately conservative - it may refuse a
+          # harmless manifest (fail-closed), and it does NOT prove the runtime
+          # value: see the header's residual-limitations bullet for the
+          # dynamic channels (aliasing, `globals()`, cross-module writes) it
+          # cannot see.
+          def is_manifest_name(node):
+              return isinstance(node, ast.Name) and node.id == MANIFEST_NAME
+
+          def mutation(node):
+              if is_manifest_name(node):
+                  if isinstance(node.ctx, (ast.Store, ast.Del)) and not any(
+                          node is t for t in allowed_targets):
+                      # Any Store/Del of the bare name that is not the one
+                      # allowed literal assignment: `+=` and the other
+                      # augmented assignments, an annotated or nested or
+                      # conditional rebinding, an assignment expression,
+                      # tuple unpacking, a loop/with/except target, `del`.
+                      return "rebound or deleted outside the one allowed assignment"
+              elif isinstance(node, ast.Subscript) and is_manifest_name(node.value):
+                  if isinstance(node.ctx, (ast.Store, ast.Del)):
+                      return "written through a subscript"
+              elif isinstance(node, ast.Attribute) and is_manifest_name(node.value):
+                  if isinstance(node.ctx, (ast.Store, ast.Del)):
+                      return f"written through attribute .{node.attr}"
+                  if node.attr in MUTATING_ATTRS:
+                      return f"mutated in place through .{node.attr}()"
+              elif isinstance(node, (ast.Global, ast.Nonlocal)):
+                  if MANIFEST_NAME in node.names:
+                      return "declared global/nonlocal, a rebinding channel"
+              elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                  if node.name == MANIFEST_NAME:
+                      return "shadowed by a def/class of the same name"
+              elif isinstance(node, ast.alias):
+                  if MANIFEST_NAME in (node.asname, node.name.split(".")[0]):
+                      return "bound by an import"
+              elif isinstance(node, ast.ExceptHandler):
+                  if node.name == MANIFEST_NAME:
+                      return "bound by an except handler"
+              elif isinstance(node, ast.arg):
+                  if node.arg == MANIFEST_NAME:
+                      return "shadowed by a parameter of the same name"
+              return None
+
+          offenders = []
+          for node in ast.walk(module):
+              why = mutation(node)
+              if why is not None:
+                  offenders.append(f"line {getattr(node, 'lineno', '?')}: {why}")
+          if offenders:
+              deny(f"TRUSTED_MANIFEST_MUTABLE: REQUIRED_PATHS in {MANIFEST_REL} at the "
+                   "trusted commit must be bound exactly once, by a single plain "
+                   "top-level literal assignment, and never rebound, deleted or "
+                   f"mutated; refused {len(offenders)} statement(s): "
+                   + "; ".join(offenders[:5]))
+
+          found = bindings
+          if len(found) != 1:
+              deny("TRUSTED_MANIFEST_UNREADABLE: expected exactly one top-level "
+                   f"REQUIRED_PATHS assignment in {MANIFEST_REL} at the trusted commit, "
+                   f"found {len(found)}")
+          try:
+              manifest = ast.literal_eval(found[0])
+          except Exception as exc:
+              deny(f"TRUSTED_MANIFEST_UNREADABLE: REQUIRED_PATHS in {MANIFEST_REL} at the "
+                   f"trusted commit is not a literal: {exc!r}")
+          if not isinstance(manifest, (list, tuple)) or not all(
+                  isinstance(p, str) for p in manifest):
+              deny(f"TRUSTED_MANIFEST_UNREADABLE: REQUIRED_PATHS in {MANIFEST_REL} at the "
+                   "trusted commit is not a literal sequence of strings")
+          if tuple(manifest) != REQUIRED_PATHS:
+              deny("TRUSTED_MANIFEST_DESYNC: the trusted workflow literal and "
+                   f"{MANIFEST_REL} at the trusted commit disagree; "
+                   f"workflow={list(REQUIRED_PATHS)!r} validator={list(manifest)!r}")
+
+          # --- EXACT-SOURCE PIN ---
+          # Last of the trusted-manifest checks, and still strictly before any
+          # candidate entry is judged. Deliberately ordered AFTER the shape
+          # checks above so that a manifest refused for shape reports WHY
+          # (TRUSTED_MANIFEST_UNREADABLE / _MUTABLE / _DESYNC) instead of only
+          # "wrong bytes", and so those checks keep constraining whatever
+          # source a future intentional pin update points at. This check needs
+          # no analysis to be sound: any byte of drift - an alias mutation, a
+          # `globals()` write, an in-place mutator not on MUTATING_ATTRS, or a
+          # comment-only edit - denies here even though every check above
+          # passed. What it establishes is EXACT-SOURCE identity with the
+          # reviewed blob, not a proof of that blob's runtime semantics.
+          digest = hashlib.sha256(manifest_bytes).hexdigest()
+          if digest != TRUSTED_MANIFEST_SHA256:
+              deny("TRUSTED_MANIFEST_DIGEST_MISMATCH: "
+                   f"{MANIFEST_REL} at the trusted commit is not the reviewed "
+                   f"source; sha256 {digest} != pinned {TRUSTED_MANIFEST_SHA256}. "
+                   "A deliberate change to that file must update this workflow's "
+                   "pinned digest in the same reviewed change.")
+
+          print(f"trusted manifest sync OK: {len(REQUIRED_PATHS)} required path(s) agree "
+                f"with {MANIFEST_REL} at the trusted commit")
+          print(f"trusted manifest digest OK: sha256 {digest} matches the pinned "
+                f"exact-source digest for {MANIFEST_REL}")
+
+          # --- CANDIDATE TREE SCREEN -------------------------------------------
           entries = {}
-          for record in Path(sys.argv[1]).read_bytes().split(b"\0"):
+          for record in entries_file.read_bytes().split(b"\0"):
               if not record:
                   continue
               meta, tab, raw_path = record.partition(b"\t")

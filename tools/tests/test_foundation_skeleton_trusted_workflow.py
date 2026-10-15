@@ -7,10 +7,10 @@ test files (e.g. test_foundation_skeleton_ci_workflow.py):
 
 1. Static assertions over the committed workflow text - trigger, zero
    permissions, no action references, no secrets, no masking, no `${{ }}`
-   inside any script body, and above all that the trusted decision is
-   self-contained: the seven required paths and the checking logic both live
-   in the workflow, and the candidate-writable
-   `tools/validate_repo_skeleton.py` is never named in the executed body.
+   inside any script body, and that the trusted decision is self-contained:
+   the seven required paths and the checking logic both live in the workflow,
+   and the only read of `tools/validate_repo_skeleton.py` is from the TRUSTED
+   commit, never from the candidate head.
 2. BEHAVIORAL execution of the workflow step's own extracted bash script
    against synthetic local Git objects (`file://` transport with
    `allowAnySHA1InWant`, mirroring how the real job fetches an exact SHA
@@ -18,6 +18,25 @@ test files (e.g. test_foundation_skeleton_ci_workflow.py):
    malformed SHAs/repo, an unfetchable commit, and a required path that is
    missing, a directory, a symlink, under a symlinked ancestor, under a
    gitlinked ancestor, or under an ancestor that is a regular file.
+
+BUG-074 adds a third thing to exercise: the job's runtime assertion that its
+own trusted literal still equals `tools/validate_repo_skeleton.py`'s
+REQUIRED_PATHS *at the trusted commit*. The fixture therefore pins a real
+trusted commit (distinct from, and committed before, every candidate commit)
+and the behavioral tests cover both directions - a desynced, missing,
+malformed, non-literal, duplicated or symlinked trusted manifest denies; and
+a candidate-side rewrite of that same file changes neither the sync nor the
+screen.
+
+BUG-074's residual adds a fourth: that assertion's AST layer is a static-shape
+heuristic and cannot decide arbitrary Python semantics, so the job also pins
+the SHA-256 of the exact trusted blob bytes to a literal digest in the
+default-branch definition. The behavioral tests therefore also cover the drift
+the AST layer provably cannot see - alias mutation, a `globals()` write, and a
+comment-only edit - each of which must now deny on the digest while leaving
+TRUSTED_MANIFEST_MUTABLE/_DESYNC silent, plus the exact committed source
+passing, plus the fact that a candidate-only edit to that file reaches neither
+the digest nor any other part of the decision.
 
 The divergence this candidate exists to create is pinned by two paired tests:
 one tampered candidate commit turns the NONREQUIRED smoke check
@@ -31,6 +50,7 @@ cannot happen until this file lives on a published default branch.
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import re
 import shutil
@@ -65,10 +85,112 @@ EXPECTED_REQUIRED_PATHS = (
     "backend/tests/contract/__init__.py",
 )
 
-# `github.sha` stand-in: the trusted default-branch snapshot that would have
-# supplied the workflow definition. Only logged by the script, but it must
-# still be a well-formed 40-hex SHA or the job denies.
-FAKE_TRUSTED_SHA = "1" * 40
+# The repository's real committed validator. The fixture's trusted commit
+# carries exactly these bytes, so the sync assertion is exercised against the
+# manifest that actually ships, not a hand-written stand-in.
+VALIDATOR_SOURCE = VALIDATOR.read_text(encoding="utf-8")
+# The exact-source digest the workflow must pin: SHA-256 over the committed
+# validator's bytes (NOT a git object id - no `blob <len>\0` prefix).
+# Recomputed here from the real file, so a validator edit that does not come
+# with a pin update fails this suite rather than silently desyncing CI.
+EXPECTED_MANIFEST_SHA256 = hashlib.sha256(VALIDATOR.read_bytes()).hexdigest()
+
+
+def manifest_literal(paths: tuple[str, ...]) -> str:
+    body = "".join(f'    "{p}",\n' for p in paths)
+    return f"REQUIRED_PATHS = [\n{body}]"
+
+
+def validator_source_with(manifest: str) -> str:
+    """The real validator with its REQUIRED_PATHS list literal swapped for
+    `manifest` - used to build the trusted-manifest negatives."""
+    start = VALIDATOR_SOURCE.index("REQUIRED_PATHS = [")
+    end = VALIDATOR_SOURCE.index("\n]", start) + 2
+    return VALIDATOR_SOURCE[:start] + manifest + VALIDATOR_SOURCE[end:]
+
+
+# A trusted manifest that has grown an eighth required path while the
+# workflow's own literal still names seven: the exact drift BUG-074 is about.
+EIGHTH_PATH = "backend/tests/e2e/__init__.py"
+EIGHT_PATH_VALIDATOR = validator_source_with(
+    manifest_literal(EXPECTED_REQUIRED_PATHS + (EIGHTH_PATH,))
+)
+# A symlink target that is itself a syntactically valid, correctly-synced
+# manifest: without the mode check, reading the symlink's blob content would
+# sync cleanly, so this pins that the entry's MODE is what decides.
+SYNCED_SYMLINK_TARGET = "REQUIRED_PATHS = [" + ", ".join(
+    f'"{p}"' for p in EXPECTED_REQUIRED_PATHS
+) + "]"
+
+# Each tail below is appended to the UNCHANGED real validator, so the file
+# still parses, still holds exactly ONE top-level literal
+# `REQUIRED_PATHS = [...]`, and that literal is still exactly the workflow's
+# seven paths - every assertion an assignment-only AST read makes about it
+# holds. What the tail changes is the value the module would actually expose,
+# which that read never sees, so the sync reports GREEN on a default-branch
+# manifest that is in fact desynced. The job cannot decide the runtime value
+# without executing the file, so the only honest answer is to refuse it:
+# REQUIRED_PATHS must be bound exactly once, by one top-level literal
+# assignment, and never rebound or mutated anywhere the AST can see it.
+POST_ASSIGNMENT_MUTATIONS = {
+    "aug_assign": 'REQUIRED_PATHS += ["backend/new_required.py"]',
+    "append": 'REQUIRED_PATHS.append("backend/new_required.py")',
+    "extend": 'REQUIRED_PATHS.extend(["backend/new_required.py"])',
+    "insert": 'REQUIRED_PATHS.insert(0, "backend/new_required.py")',
+    "remove": 'REQUIRED_PATHS.remove("backend/pyproject.toml")',
+    "pop": "REQUIRED_PATHS.pop()",
+    "clear": "REQUIRED_PATHS.clear()",
+    "update": 'REQUIRED_PATHS.update(["backend/new_required.py"])',
+    "sort": "REQUIRED_PATHS.sort()",
+    "subscript_assign": 'REQUIRED_PATHS[0] = "backend/new_required.py"',
+    "slice_assign": "REQUIRED_PATHS[:] = []",
+    "subscript_aug_assign": 'REQUIRED_PATHS[0] += ".bak"',
+    "subscript_delete": "del REQUIRED_PATHS[0]",
+    "name_delete": "del REQUIRED_PATHS",
+    # A second PLAIN top-level assignment is deliberately absent here: it is
+    # already covered, by name and count, by the duplicate-assignment negative
+    # below, which must keep reporting TRUSTED_MANIFEST_UNREADABLE/"found 2".
+    "annotated_reassign": 'REQUIRED_PATHS: list = ["backend/new_required.py"]',
+    "walrus_reassign": '_DECOY = (REQUIRED_PATHS := ["backend/new_required.py"])',
+    "tuple_unpack_reassign": '(REQUIRED_PATHS, _OTHER) = (["backend/new_required.py"], 1)',
+    "for_target_reassign": "for REQUIRED_PATHS in ([],):\n    pass",
+    "conditional_reassign": 'if True:\n    REQUIRED_PATHS = ["backend/new_required.py"]',
+    "global_rebind": (
+        "def _grow():\n"
+        "    global REQUIRED_PATHS\n"
+        '    REQUIRED_PATHS = ["backend/new_required.py"]\n'
+        "\n\n_grow()"
+    ),
+}
+
+# The same class reached without any later statement at all: the sole binding
+# of REQUIRED_PATHS is itself not a plain top-level literal assignment, so
+# there is no static literal to hold the default branch to.
+NON_PLAIN_SOLE_BINDINGS = {
+    "annotated_only": 'REQUIRED_PATHS: list = [\n    "backend/pyproject.toml",\n]',
+    "walrus_only": '_SEED = (REQUIRED_PATHS := ["backend/pyproject.toml"])',
+    "conditional_only": 'if True:\n    REQUIRED_PATHS = ["backend/pyproject.toml"]',
+}
+
+# BUG-074 residual. Each tail below is appended to the UNCHANGED real
+# validator and is INVISIBLE to the AST contract: the alias and `globals()`
+# writes never put REQUIRED_PATHS itself in a Store/Del context nor attach a
+# MUTATING_ATTRS call to that name, and the comment changes nothing
+# executable at all. So every static check still passes - exactly one plain
+# top-level literal, no AST-visible mutation, literal equal to the workflow's
+# seven - while the first two ship a module that exposes eight paths. A static
+# heuristic cannot close this; only exact-source bytes can, so each of these
+# must deny on the pinned SHA-256 and must NOT be reported as a shape failure.
+DIGEST_ONLY_DRIFT = {
+    "alias_mutation": (
+        "ALIAS = REQUIRED_PATHS\n"
+        'ALIAS.append("backend/new_required.py")'
+    ),
+    "globals_mutation": 'globals()["REQUIRED_PATHS"].append("backend/new_required.py")',
+    # The minimal case: a comment-only edit. Semantically identical, byte
+    # different - the pin must not care which kind of drift it is.
+    "comment_only": "# one comment-only byte change, nothing executable",
+}
 
 
 def code_lines(path: Path) -> list[str]:
@@ -211,24 +333,70 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertNotIn('$(git -C "$cand_git" ls-tree', self.script)
 
     def test_python_heredoc_is_quoted_and_isolated(self):
-        self.assertIn("""python3 -E -s - "$work/entries.nul" <<'PY'""", self.script)
+        self.assertIn(
+            'python3 -E -s - "$work/manifest.entry" "$work/manifest.src.txt" '
+            """"$work/entries.nul" <<'PY'""",
+            self.script,
+        )
         self.assertRegex(self.script, r"(?m)^PY\s*$")
 
-    def test_trusted_body_never_names_the_candidate_writable_validator(self):
-        # The whole point of the split: the head's own validator and its
-        # REQUIRED_PATHS are not an input to this decision. Asserted against
-        # the executed lines - the body's comments do name that file, to
-        # explain that the trusted list is a duplicate of its manifest rather
-        # than a read of it.
-        self.assertNotIn("validate_repo_skeleton", self.executed)
+    def test_the_validator_is_read_only_from_the_trusted_commit(self):
+        # The head's own validator and its REQUIRED_PATHS are still not an
+        # input to this decision. Since BUG-074 the file IS named in the
+        # executed body - but only ever read out of the trusted object store
+        # at the trusted SHA, so every executed line that names it must be
+        # free of the candidate's repository and SHA.
+        mentions = [ln for ln in self.executed.splitlines() if "validate_repo_skeleton" in ln]
+        self.assertTrue(mentions, "the trusted manifest read must be present")
+        for line in mentions:
+            self.assertNotIn("cand_git", line, line)
+            self.assertNotIn("HEAD_SHA", line, line)
+        self.assertIn(
+            'git -C "$trusted_git" ls-tree --full-tree -z "$TRUSTED_SHA" '
+            "-- tools/validate_repo_skeleton.py",
+            self.script,
+        )
+        self.assertIn(
+            'git -C "$trusted_git" cat-file blob '
+            '"$TRUSTED_SHA:tools/validate_repo_skeleton.py"',
+            self.script,
+        )
+        # Read as text and parsed as a literal - never imported or executed.
+        self.assertIn("ast.literal_eval(", self.executed)
+        for forbidden in ("importlib", "__import__", "runpy", "exec(", "compile("):
+            self.assertNotIn(forbidden, self.executed, f"trusted manifest stays inert: {forbidden}")
+
+    def test_trusted_commit_is_fetched_by_exact_sha_into_its_own_object_store(self):
+        self.assertIn('trusted_git="$work/trusted.git"', self.script)
+        self.assertIn('git -C "$trusted_git" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"',
+                      self.script)
+        self.assertIn('[[ "$trusted_fetched" == "$TRUSTED_SHA" ]]', self.script)
+        self.assertIn('git -C "$trusted_git" cat-file -e "$TRUSTED_SHA^{commit}"', self.script)
+        # Two separate object stores; the trusted read can never resolve
+        # through candidate-fetched objects.
+        self.assertNotEqual(
+            re.search(r'trusted_git="([^"]+)"', self.script).group(1),
+            re.search(r'cand_git="([^"]+)"', self.script).group(1),
+        )
 
     def test_required_paths_live_in_the_trusted_body_and_match_the_manifest(self):
         in_workflow = workflow_required_paths()
         self.assertEqual(in_workflow, EXPECTED_REQUIRED_PATHS)
         self.assertEqual(len(in_workflow), 7)
-        # Sync check only - a drift here means the trusted duplicate needs
-        # updating, not that the workflow should start reading that file.
+        # Still a local duplicate, but no longer only a local one: the job
+        # itself re-asserts this equality at runtime against the trusted
+        # commit, and denies by these names if it does not hold.
         self.assertEqual(in_workflow, validator_required_paths())
+        self.assertIn("TRUSTED_MANIFEST_DESYNC", self.script)
+        self.assertIn("TRUSTED_MANIFEST_UNREADABLE", self.script)
+
+    def test_the_sync_assertion_precedes_the_candidate_screen(self):
+        # Ordering is the whole control: a desynced manifest must deny before
+        # any candidate entry is judged, not after.
+        sync = self.executed.index("TRUSTED_MANIFEST_DESYNC")
+        screen = self.executed.index("MOD-001 TRUSTED REPOSITORY-SKELETON REQUIRED-PATH SCREEN")
+        self.assertLess(sync, screen)
+        self.assertLess(sync, self.executed.index("failures = ["))
 
     def test_checking_logic_screens_modes_and_types_explicitly(self):
         for needle in ('DIR_MODE = "040000"',
@@ -241,15 +409,92 @@ class WorkflowShapeTests(unittest.TestCase):
                        ": missing"):
             self.assertIn(needle, self.script, f"missing explicit screen: {needle}")
 
+    def test_the_static_literal_contract_is_enforced_in_the_trusted_body(self):
+        # The contract that replaces "compare the first literal and hope":
+        # every mutation channel the AST can see is refused by name, and the
+        # refusal is part of the executed body, not of the header's prose.
+        self.assertIn("TRUSTED_MANIFEST_MUTABLE", self.executed)
+        for needle in ("ast.walk(module)", "ast.Store", "ast.Del", "ast.Subscript",
+                       "ast.Attribute", "ast.Global", "ast.Nonlocal", "ast.ExceptHandler",
+                       "ast.alias", "ast.arg", "MUTATING_ATTRS", "allowed_targets"):
+            self.assertIn(needle, self.executed, f"missing mutation screen: {needle}")
+        for attr in ("append", "extend", "insert", "remove", "pop", "clear",
+                     "update", "sort", "reverse"):
+            self.assertIn(f'"{attr}"', self.executed, f"unrefused in-place mutator: {attr}")
+        # Decided entirely from the parsed tree: the trusted source is still
+        # never run to find out what it would do.
+        for forbidden in ("exec(", "eval(compile", "importlib", "__import__", "runpy"):
+            self.assertNotIn(forbidden, self.executed, forbidden)
+
+    def test_the_pinned_digest_is_the_committed_validator_exact_source_sha256(self):
+        """The pin must be the SHA-256 of the real committed validator's
+        bytes. Recomputed from the file here, so a default-branch validator
+        edit without a matching pin update fails locally instead of turning
+        the trusted check red only once it runs."""
+        match = re.search(
+            r'TRUSTED_MANIFEST_SHA256 = \(\s*"([0-9a-f]{64})"\s*\)', self.executed
+        )
+        self.assertIsNotNone(match, "no pinned exact-source digest in the executed body")
+        self.assertEqual(match.group(1), EXPECTED_MANIFEST_SHA256)
+        # Hashed in the trusted body itself, over the bytes read from the
+        # trusted commit - and still without running them.
+        self.assertIn("hashlib.sha256(manifest_bytes).hexdigest()", self.executed)
+        self.assertIn("manifest_bytes = manifest_src.read_bytes()", self.executed)
+
+    def test_the_digest_pin_denies_before_the_candidate_screen(self):
+        """Ordering: the pin is the LAST trusted-manifest check (so a shape
+        failure still reports which rule it broke, and the AST layer keeps
+        constraining whatever source a future pin update points at) but still
+        strictly before any candidate entry is judged."""
+        pin = self.executed.index("TRUSTED_MANIFEST_DIGEST_MISMATCH")
+        self.assertGreater(pin, self.executed.index("TRUSTED_MANIFEST_DESYNC"))
+        self.assertLess(
+            pin, self.executed.index("MOD-001 TRUSTED REPOSITORY-SKELETON REQUIRED-PATH SCREEN")
+        )
+        self.assertLess(pin, self.executed.index("failures = ["))
+
+    def test_the_header_states_the_pin_guarantee_and_its_limit(self):
+        prose = " ".join(self.text.split()).replace(" # ", " ")
+        for needle in ("EXACT-SOURCE",
+                       "TRUSTED_MANIFEST_DIGEST_MISMATCH",
+                       "NOT a proof of arbitrary Python semantics",
+                       "guarantees EXACT-SOURCE SYNC",
+                       "REQUIRES an intentional update of the pinned digest",
+                       "candidate-only change to that file cannot alter this job's decision"):
+            self.assertIn(needle, prose, f"missing pin disclosure: {needle}")
+
+    def test_the_mutation_contract_denies_before_the_literal_comparison(self):
+        mutable = self.executed.index("TRUSTED_MANIFEST_MUTABLE")
+        self.assertLess(mutable, self.executed.index("TRUSTED_MANIFEST_DESYNC"))
+        self.assertLess(mutable, self.executed.index("ast.literal_eval("))
+
     def test_limitations_are_stated_in_the_header(self):
         for needle in ("UNREVIEWED CANDIDATE",
                        "SAME-NAME CANDIDATE CHECK SPOOFING IS NOT SOLVED HERE",
                        "INSTALLATION ON A PUBLISHED DEFAULT BRANCH IS UNPROVEN",
                        "ANONYMOUS FORK-HEAD FETCH REACHABILITY IS UNPROVEN",
                        "THE HEAD TREE IS SCREENED, NOT THE MERGE RESULT",
+                       "THE SYNC ASSERTION TRUSTS THE ACTIONS CONTEXT FOR `github.sha`",
                        "does not run at all",
                        "No branch protection is created, modified or requested"):
             self.assertIn(needle, " ".join(self.text.split()).replace(" # ", " "))
+
+    def test_the_header_claims_only_the_static_contract_and_states_its_residue(self):
+        """The header must not describe the sync as a measurement of the
+        validator's runtime value - it is a property of the source text - and
+        must name the dynamic channels that stay open."""
+        prose = " ".join(self.text.split()).replace(" # ", " ")
+        for needle in ("STATIC-LITERAL CONTRACT",
+                       "THE SYNC IS A STATIC-LITERAL CONTRACT, NOT A RUNTIME-VALUE PROOF",
+                       "never executes, imports or evaluates the trusted validator",
+                       "cannot observe the value `REQUIRED_PATHS` actually holds",
+                       "mutation through an alias",
+                       "writes through `globals()`",
+                       "an in-place mutator whose name is not on the explicit list",
+                       "mutation performed by a DIFFERENT module",
+                       "a REVIEW obligation on any change to that file",
+                       "TRUSTED_MANIFEST_MUTABLE"):
+            self.assertIn(needle, prose, f"missing disclosure: {needle}")
 
     def test_the_nonrequired_smoke_workflow_is_untouched_and_still_nonrequired_shaped(self):
         smoke = "\n".join(code_lines(SMOKE_WORKFLOW))
@@ -261,12 +506,15 @@ class WorkflowShapeTests(unittest.TestCase):
 class Fixture:
     """Synthetic local Git remote plus a runner for an extracted workflow
     script. `file://` transport with `allowAnySHA1InWant` mirrors the real
-    job's anonymous exact-SHA fetch."""
+    job's anonymous exact-SHA fetch, for both the trusted commit and the
+    candidate head - which are two genuinely different commits here, as they
+    are in a real run."""
 
     REPO_SLUG = "acme/widgets"
 
     def __init__(self, tmp: Path):
         self.tmp = tmp
+        self.trusted_sha = ""
         # The scripts build their URL as f"{SERVER_URL}/{REPO}.git", so the
         # fixture remote must sit at exactly that path for the slug above.
         self.origin = tmp / "remote" / f"{self.REPO_SLUG}.git"
@@ -296,6 +544,30 @@ class Fixture:
         self._git("config", "user.name", "veyro test")
         self._git("config", "uploadpack.allowAnySHA1InWant", "true")
         self._git("config", "uploadpack.allowReachableSHA1InWant", "true")
+        # The trusted base-branch snapshot `github.sha` would name. Committed
+        # first, so every candidate commit below is a LATER commit and nothing
+        # a candidate writes can reach back into this one.
+        self.trusted_sha = self.commit_trusted()
+
+    def commit_trusted(self, source: str = VALIDATOR_SOURCE, *, omit: bool = False,
+                       symlink_to: str | None = None, as_directory: bool = False) -> str:
+        """Commit a trusted snapshot carrying `tools/validate_repo_skeleton.py`
+        and return its SHA. `omit` drops the file entirely, `symlink_to`
+        replaces it with a mode-120000 entry and `as_directory` stands a
+        directory in its place, for the fail-closed cases."""
+        path = self.origin / VALIDATOR_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.is_symlink() or path.exists():
+            path.unlink()
+        if symlink_to is not None:
+            os.symlink(symlink_to, path)
+        elif as_directory:
+            self._write(f"{VALIDATOR_REL}/placeholder", "stand-in\n")
+        elif not omit:
+            path.write_text(source, encoding="utf-8")
+        return self._commit("trusted base-branch snapshot")
 
     def _commit(self, message: str) -> str:
         self._git("add", "-A")
@@ -307,6 +579,17 @@ class Fixture:
             if rel not in omit:
                 self._write(rel)
         return self._commit("candidate head")
+
+    def write_candidate_validator(self, source: str) -> None:
+        """Rewrite the candidate's own copy of the validator, uncommitted; the
+        next candidate commit carries it. Never an input to the trusted job."""
+        self._write(VALIDATOR_REL, source)
+
+    def commit_skeleton_with_validator(self, source: str) -> str:
+        """A complete candidate skeleton whose own copy of the validator has
+        been rewritten. Nothing about that copy is an input to this job."""
+        self.write_candidate_validator(source)
+        return self.commit_skeleton()
 
     def commit_with_executable_leaf(self, rel: str) -> str:
         self.commit_skeleton()
@@ -436,7 +719,7 @@ class Fixture:
         *,
         which: str = "trusted",
         repo: str | None = None,
-        trusted_sha: str = FAKE_TRUSTED_SHA,
+        trusted_sha: str | None = None,
     ) -> subprocess.CompletedProcess:
         env = {
             "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
@@ -445,7 +728,7 @@ class Fixture:
             "SERVER_URL": f"file://{self.tmp / 'remote'}",
             "REPO": self.REPO_SLUG if repo is None else repo,
             "HEAD_SHA": head_sha,
-            "TRUSTED_SHA": trusted_sha,
+            "TRUSTED_SHA": self.trusted_sha if trusted_sha is None else trusted_sha,
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_SYSTEM": "/dev/null",
         }
@@ -484,6 +767,12 @@ class BehaviorTests(unittest.TestCase):
     def test_complete_skeleton_is_green(self):
         result = self.fx.run(self.fx.commit_skeleton())
         self.assertGreen(result)
+        self.assertIn("trusted manifest sync OK: 7 required path(s) agree", result.stdout)
+        # The trusted commit carries the exact committed validator bytes, so
+        # the exact-source pin is satisfied by the real source that ships.
+        self.assertIn(
+            f"trusted manifest digest OK: sha256 {EXPECTED_MANIFEST_SHA256}", result.stdout
+        )
         self.assertIn("Trusted required paths checked: 7", result.stdout)
         self.assertIn("foundation-skeleton-trusted: PASS", result.stdout)
 
@@ -590,6 +879,244 @@ class BehaviorTests(unittest.TestCase):
         result = self.fx.run("f" * 40)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_unfetchable_trusted_sha_denies(self):
+        head = self.fx.commit_skeleton()
+        result = self.fx.run(head, trusted_sha="e" * 40)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("foundation-skeleton-trusted: PASS", result.stdout)
+
+    # --- trusted-manifest sync negatives (BUG-074) ---
+
+    SCREEN_BANNER = "MOD-001 TRUSTED REPOSITORY-SKELETON REQUIRED-PATH SCREEN"
+
+    def assertDeniedBeforeScreening(self, result, *needles: str) -> None:
+        """A trusted-manifest failure must deny before a single candidate
+        entry is judged - so neither the screen's banner nor its verdict may
+        appear in the output."""
+        self.assertDenied(result, *needles)
+        self.assertNotIn(self.SCREEN_BANNER, result.stdout)
+        self.assertNotIn("MISSING_REQUIRED_PATH", result.stdout + result.stderr)
+
+    def test_trusted_manifest_with_an_eighth_path_denies_on_a_green_candidate_tree(self):
+        """The drift BUG-074 exists for: the trusted validator grows an eighth
+        required path while this workflow's literal still names seven. The
+        candidate tree holds all seven and would otherwise screen GREEN, so
+        the deny can only come from the sync assertion."""
+        trusted = self.fx.commit_trusted(EIGHT_PATH_VALIDATOR)
+        head = self.fx.commit_skeleton()
+        result = self.fx.run(head, trusted_sha=trusted)
+        self.assertDeniedBeforeScreening(result, "TRUSTED_MANIFEST_DESYNC", EIGHTH_PATH)
+        # Same candidate head, correctly-synced trusted commit: green. The
+        # candidate tree was never the problem.
+        self.assertGreen(self.fx.run(head))
+
+    def test_trusted_manifest_missing_denies(self):
+        trusted = self.fx.commit_trusted(omit=True)
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "no readable blob at tools/validate_repo_skeleton.py",
+        )
+
+    def test_trusted_manifest_that_does_not_parse_denies(self):
+        trusted = self.fx.commit_trusted("def broken(:\n    pass\n")
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "TRUSTED_MANIFEST_UNREADABLE",
+            "does not parse as Python",
+        )
+
+    def test_trusted_manifest_that_is_not_a_literal_denies(self):
+        trusted = self.fx.commit_trusted(
+            validator_source_with("REQUIRED_PATHS = _discover_required_paths()")
+        )
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "TRUSTED_MANIFEST_UNREADABLE",
+            "is not a literal",
+        )
+
+    def test_duplicate_trusted_manifest_assignment_denies(self):
+        """Two top-level REQUIRED_PATHS assignments: the first is correct and
+        the second is not, so a first-wins or last-wins read would disagree
+        about whether this is synced. Neither is allowed to decide."""
+        trusted = self.fx.commit_trusted(
+            VALIDATOR_SOURCE + "\n" + manifest_literal((EIGHTH_PATH,)) + "\n"
+        )
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "TRUSTED_MANIFEST_UNREADABLE",
+            "found 2",
+        )
+
+    def test_trusted_manifest_mutated_after_its_literal_denies(self):
+        """The reproduced bypass: the trusted validator keeps its ordinary
+        seven-path top-level literal - so a first-assignment-only read finds
+        exactly one assignment, literal, equal to the workflow's list, and
+        reports a clean sync - and then changes it. Every one of these ships a
+        runtime manifest the workflow's literal does not match, on a candidate
+        tree that holds all seven paths and would otherwise screen GREEN, so a
+        PASS here would be a falsely green trusted required check."""
+        head = self.fx.commit_skeleton()
+        for label, tail in POST_ASSIGNMENT_MUTATIONS.items():
+            with self.subTest(mutation=label):
+                trusted = self.fx.commit_trusted(VALIDATOR_SOURCE + "\n" + tail + "\n")
+                self.assertDeniedBeforeScreening(
+                    self.fx.run(head, trusted_sha=trusted),
+                    "TRUSTED_MANIFEST_MUTABLE",
+                    "REQUIRED_PATHS",
+                )
+
+    def test_trusted_manifest_whose_sole_binding_is_not_a_plain_literal_denies(self):
+        """No later statement at all - the single binding is annotated,
+        conditional or an assignment expression. Each is a shape the static
+        literal contract cannot hold the default branch to, so each is refused
+        rather than read as if it were a plain top-level literal."""
+        head = self.fx.commit_skeleton()
+        for label, binding in NON_PLAIN_SOLE_BINDINGS.items():
+            with self.subTest(binding=label):
+                trusted = self.fx.commit_trusted(validator_source_with(binding))
+                self.assertDeniedBeforeScreening(
+                    self.fx.run(head, trusted_sha=trusted),
+                    "TRUSTED_MANIFEST_MUTABLE",
+                    "REQUIRED_PATHS",
+                )
+
+    def test_a_mutation_free_trusted_manifest_that_merely_reads_it_passes_the_ast_contract(self):
+        """The AST guard must refuse mutation, not ordinary use: reading
+        REQUIRED_PATHS, iterating it, and binding other names from it are not
+        shape violations, so none of TRUSTED_MANIFEST_MUTABLE/_UNREADABLE/
+        _DESYNC may fire.
+
+        This source used to be asserted GREEN. Under the exact-source pin it
+        is not, and cannot be: it is not the reviewed bytes. That is the
+        intended strengthening - the pin denies drift the shape rules were
+        never able to judge - so what is asserted here is the narrower
+        property the shape rules own, plus the pin catching the drift."""
+        trusted = self.fx.commit_trusted(
+            VALIDATOR_SOURCE
+            + "\n_COUNT = len(REQUIRED_PATHS)\n"
+            + "_SORTED = sorted(REQUIRED_PATHS)\n"
+            + "_FIRST = REQUIRED_PATHS[0]\n"
+            + "_JOINED = ', '.join(REQUIRED_PATHS)\n"
+            + "for _rel in REQUIRED_PATHS:\n    _LAST = _rel\n"
+        )
+        head = self.fx.commit_skeleton()
+        result = self.fx.run(head, trusted_sha=trusted)
+        self.assertDeniedBeforeScreening(result, "TRUSTED_MANIFEST_DIGEST_MISMATCH")
+        output = result.stdout + result.stderr
+        for shape_failure in ("TRUSTED_MANIFEST_MUTABLE", "TRUSTED_MANIFEST_UNREADABLE",
+                              "TRUSTED_MANIFEST_DESYNC"):
+            self.assertNotIn(shape_failure, output, shape_failure)
+        # No "OK" line is printed for a job that denies: the sync and digest
+        # confirmations are emitted only once every trusted-manifest check has
+        # passed, so a denial never carries a partial pass claim.
+        self.assertNotIn("trusted manifest sync OK", result.stdout)
+
+    # --- exact-source digest pin (BUG-074 residual) ---
+
+    def test_ast_invisible_trusted_manifest_drift_denies_on_the_pinned_digest(self):
+        """The residual bypass, reproduced: a trusted validator that keeps its
+        plain seven-path top-level literal and mutates it through an alias or
+        `globals()` passes every static check - one literal, no AST-visible
+        rebinding or mutation, literal equal to the workflow's seven - on a
+        candidate tree that holds all seven paths, which would be a falsely
+        green trusted required check. A comment-only edit is the same class
+        with no semantic change at all. Each must deny on the exact-source
+        digest, before any candidate entry is judged, and must NOT be
+        misreported as a shape failure."""
+        head = self.fx.commit_skeleton()
+        for label, tail in DIGEST_ONLY_DRIFT.items():
+            with self.subTest(drift=label):
+                trusted = self.fx.commit_trusted(VALIDATOR_SOURCE + "\n" + tail + "\n")
+                result = self.fx.run(head, trusted_sha=trusted)
+                self.assertDeniedBeforeScreening(
+                    result,
+                    "TRUSTED_MANIFEST_DIGEST_MISMATCH",
+                    f"pinned {EXPECTED_MANIFEST_SHA256}",
+                )
+                output = result.stdout + result.stderr
+                self.assertNotIn("TRUSTED_MANIFEST_MUTABLE", output)
+                self.assertNotIn("TRUSTED_MANIFEST_DESYNC", output)
+                # Same candidate head, reviewed trusted bytes: green. The
+                # candidate tree was never the problem.
+                self.assertGreen(self.fx.run(head))
+
+    def test_candidate_only_validator_edit_cannot_affect_the_trusted_digest(self):
+        """The candidate rewrites its own copy of the validator - including
+        the alias mutation that the digest refuses on the trusted side. The
+        trusted commit still carries the reviewed bytes, so the pin reports
+        the pinned digest and the job is green: the candidate copy is never
+        read, hashed or consulted."""
+        head = self.fx.commit_skeleton_with_validator(
+            EIGHT_PATH_VALIDATOR
+            + "\nALIAS = REQUIRED_PATHS\nALIAS.append('backend/new_required.py')\n"
+        )
+        result = self.fx.run(head)
+        self.assertGreen(result)
+        self.assertIn(
+            f"trusted manifest digest OK: sha256 {EXPECTED_MANIFEST_SHA256}", result.stdout
+        )
+        self.assertNotIn("TRUSTED_MANIFEST_DIGEST_MISMATCH", result.stdout + result.stderr)
+
+    def test_symlinked_trusted_manifest_denies_even_when_its_target_text_would_sync(self):
+        """A mode-120000 entry whose blob content - the link target - is a
+        correctly-synced manifest. Reading content alone would PASS; the entry
+        must be refused on its mode."""
+        trusted = self.fx.commit_trusted(symlink_to=SYNCED_SYMLINK_TARGET)
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "TRUSTED_MANIFEST_UNREADABLE",
+            "not a regular file (mode 120000 type blob)",
+        )
+
+    def test_directory_standing_in_for_the_trusted_manifest_denies(self):
+        trusted = self.fx.commit_trusted(as_directory=True)
+        head = self.fx.commit_skeleton()
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "no readable blob at tools/validate_repo_skeleton.py",
+        )
+
+    def test_duplicate_tree_record_for_the_trusted_manifest_denies(self):
+        """An fsck-invalid trusted tree holding TWO records for the manifest
+        path - a 120000 symlink and a 100644 blob. Resolving either one would
+        be a guess about which manifest the default branch really ships."""
+        head = self.fx.commit_skeleton()
+        trusted = self.fx.commit_with_duplicate_path_entry(VALIDATOR_REL)
+        self.assertDeniedBeforeScreening(
+            self.fx.run(head, trusted_sha=trusted),
+            "TRUSTED_MANIFEST_UNREADABLE",
+            "exactly one tree entry",
+            "found 2",
+        )
+
+    # --- the candidate's own copy of the validator is still not an input ---
+
+    def test_candidate_validator_rewrite_cannot_force_a_sync_denial(self):
+        """The candidate ships an eighth required path in ITS validator. The
+        trusted commit still says seven, the candidate tree holds those seven,
+        and the job is green: the candidate's copy was never read."""
+        head = self.fx.commit_skeleton_with_validator(EIGHT_PATH_VALIDATOR)
+        result = self.fx.run(head)
+        self.assertGreen(result)
+        self.assertIn("trusted manifest sync OK", result.stdout)
+
+    def test_candidate_validator_rewrite_cannot_mask_a_screen_denial(self):
+        """The mirror case: the candidate guts its own manifest AND drops a
+        required path. The sync still passes (it reads the trusted commit) and
+        the screen still denies on the path actually missing from the head."""
+        self.fx.write_candidate_validator(validator_source_with("REQUIRED_PATHS = []"))
+        head = self.fx.commit_skeleton(omit=("backend/tests/contract/__init__.py",))
+        result = self.fx.run(head)
+        self.assertDenied(result, "MISSING_REQUIRED_PATH", "1 of 7")
+        self.assertIn("trusted manifest sync OK", result.stdout)
+        self.assertNotIn("TRUSTED_MANIFEST", result.stderr)
+
     # --- the divergence this candidate exists to create ---
 
     def test_candidate_tampering_cannot_turn_the_trusted_check_green(self):
@@ -605,7 +1132,22 @@ class BehaviorTests(unittest.TestCase):
             "backend/tests: missing",
             "4 of 7",
         )
-        self.assertNotIn("validate_repo_skeleton", result.stdout + result.stderr)
+        # The candidate's gutted validator is neither read nor reported on:
+        # the only lines naming that file are the sync and the exact-source
+        # pin against the TRUSTED commit, both of which passed on the
+        # untouched manifest there.
+        mentions = [
+            line for line in (result.stdout + result.stderr).splitlines()
+            if "validate_repo_skeleton" in line
+        ]
+        self.assertEqual(
+            mentions,
+            ["trusted manifest sync OK: 7 required path(s) agree with "
+             "tools/validate_repo_skeleton.py at the trusted commit",
+             "trusted manifest digest OK: sha256 "
+             f"{EXPECTED_MANIFEST_SHA256} matches the pinned exact-source "
+             "digest for tools/validate_repo_skeleton.py"],
+        )
 
     def test_the_same_tampered_head_can_still_turn_the_smoke_check_green(self):
         """Paired with the test above, on the SAME commit: run through the
