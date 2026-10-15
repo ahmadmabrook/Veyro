@@ -1,0 +1,42 @@
+name: Veyro Trusted PR Guard
+
+# This workflow is loaded from the default branch. Never check out, run, import,
+# build, or install anything from the PR head in this privileged event.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+# The public repository is fetched anonymously. No token or secret is needed.
+permissions: {}
+
+jobs:
+  trusted-pr-guard:
+    name: trusted-base PR guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Inspect PR Git objects with the base-owned guard
+        env:
+          BASE_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]{0,9}$ ]]
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          git -C "$work" init -q
+          git -C "$work" remote add origin https://github.com/ahmadmabrook/Veyro.git
+          GIT_TERMINAL_PROMPT=0 git -C "$work" fetch -q --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/origin/pr-head"
+          [[ "$(git -C "$work" rev-parse refs/remotes/origin/main)" == "$BASE_SHA" ]]
+          [[ "$(git -C "$work" rev-parse refs/remotes/origin/pr-head)" == "$HEAD_SHA" ]]
+          git -C "$work" checkout -q --detach "$BASE_SHA"
+          # Only the base snapshot's script is executed. HEAD_SHA is inert data.
+          (cd "$work" && bash infra/scripts/trusted-pr-guard.sh)
