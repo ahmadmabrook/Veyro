@@ -23,6 +23,7 @@ venv/
 
 # Build and local runtime output
 node_modules/
+.gradle/
 build/
 dist/
 *.log
