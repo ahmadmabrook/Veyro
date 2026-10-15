@@ -6,18 +6,23 @@ candidate code. Only an exact `success` can yield PASS; every error is BLOCKED,
 every mismatch FAIL. `--dry-run` is keyless and never publishes.
 
 The `publish` command (slice 2) evaluates first, and only for PASS/FAIL reads
-the GitHub App key from the macOS Keychain, signs an App JWT with openssl (key
-passed by file descriptor), mints an in-memory installation token limited to
-the Veyro repo and `checks:write`, and posts one completed check run named
-`veyro-trusted-gate` with conclusion `success` or `failure` only. BLOCKED
-never publishes (head mismatch/move and job ambiguity are BLOCKED). Config lives
-outside any git worktree and pins this file's SHA-256.
+the GitHub App private key from a 0400 PEM file owned by the dedicated signer
+account, signs an App JWT with openssl (key passed by file descriptor), mints an
+in-memory installation token limited to the Veyro repo and `checks:write`, and
+posts one completed check run named `veyro-trusted-gate` with conclusion
+`success` or `failure` only. BLOCKED never publishes (head mismatch/move and job
+ambiguity are BLOCKED). The config is root-owned at one fixed path and pins this
+file's SHA-256.
 
-`publish` runs only from an owner-owned, non-group/world-writable installed copy
-outside every git worktree under `python -I`, with no proxy/SSL/PYTHON env
-overrides; all of that is checked before Keychain, network or state access.
-This does not isolate the key from other same-user processes: a dedicated locked
-keychain/account (or equally strong isolation) is still required.
+Production entry is exactly `python -I <installed publisher> publish --config
+/Library/VeyroGate/etc/config.json --pr N`, run as the dedicated non-admin signer
+account through restricted sudo. Anything else is a fixed `bad-argv`. Before the
+key, network or state are touched, it requires: hardened process (no core dumps,
+umask 077, cwd `/`), a root-owned installed copy outside every git worktree
+under a root-owned directory chain, a clean environment, and a non-root real and
+effective uid equal to both the config `signer_uid` and the uid provisioned into
+`EXPECTED_SIGNER_UID`. No key, path, host, workflow or check name comes from the
+caller. Live account provisioning and sudo rules are outside this repo.
 """
 import argparse
 import base64
@@ -27,6 +32,7 @@ import hmac
 import json
 import os
 import re
+import resource
 import stat
 import ssl
 import subprocess
@@ -224,8 +230,9 @@ def evaluate(cfg, get=http_get, fetch=git_fetch_pr):
 CHECK_NAME = "veyro-trusted-gate"
 API_HOST = "https://api.github.com"
 _SELF = os.path.realpath(__file__)
-TLS_CAFILE = "/etc/ssl/cert.pem"
-SECURITY_BIN = "/usr/bin/security"
+TLS_CAFILE = "/etc/ssl/cert.pem" if sys.platform == "darwin" else "/etc/ssl/certs/ca-certificates.crt"
+CONFIG_PATH = "/Library/VeyroGate/etc/config.json"
+EXPECTED_SIGNER_UID = 452  # dedicated _veyrogate uid; provisioning must use this exact unused uid
 OPENSSL_BIN = "/usr/bin/openssl"
 TOOL_TIMEOUT = 15
 MAX_KEY = 16 * 1024
@@ -234,8 +241,9 @@ MAX_STATE = 1024 * 1024
 MAX_STATE_ENTRIES = 500
 _CONCLUSION = {PASS: "success", FAIL: "failure"}
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_PR_ARG = re.compile(r"[1-9][0-9]{0,8}")
 CONFIG_KEYS = frozenset({"app_id", "installation_id", "repo", "pinned_github_tree", "publisher_sha256",
-                         "keychain_service", "keychain_account", "keychain_path", "state_path"})
+                         "key_path", "signer_uid", "state_path"})
 _SHADOW_CHECKED = ("os", "sys", "json", "hmac", "hashlib", "base64", "subprocess", "tempfile",
                    "fcntl", "ssl", "urllib.request", "urllib.parse", "urllib.error")
 _ENV_EXACT = frozenset({"SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
@@ -279,25 +287,34 @@ def _safe_mode(st, owner_ok):
     return True
 
 
-def check_install(path=_SELF, modules=None):
-    """The running publisher must be an owner-owned, non-group/world-writable file whose whole
-    directory chain is trusted, outside every git worktree, with no shadowing stdlib modules."""
+def _chain_ok(start, owners, stat_fn=os.stat):
+    """True if `start` and every ancestor is a directory owned by `owners`, not group/other writable
+    (a root-owned sticky directory is tolerated). Raises OSError if a stat fails."""
+    cur = start
+    while True:
+        st = stat_fn(cur)
+        if not stat.S_ISDIR(st.st_mode) or not _safe_mode(st, owners):
+            return False
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return True
+        cur = parent
+
+
+def check_install(path=_SELF, modules=None, file_owner=0, dir_owners=(0,)):
+    """The running publisher must be a root-owned, non-group/world-writable file whose whole
+    directory chain is root-owned, outside every git worktree, with no shadowing stdlib modules.
+    `file_owner`/`dir_owners` default to root; only tests relax them."""
     modules = sys.modules if modules is None else modules
     real = os.path.realpath(path)
     if in_git_worktree(real):
         raise _blocked("publisher-in-worktree")
     try:
         st = os.stat(real)
-        if not stat.S_ISREG(st.st_mode) or not _safe_mode(st, (os.geteuid(),)) or st.st_mode & 0o022:
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != file_owner or st.st_mode & 0o022:
             raise _blocked("publisher-bad-installation")
-        cur = os.path.dirname(real)
-        while True:
-            if not _safe_mode(os.stat(cur), (os.geteuid(), 0)):
-                raise _blocked("publisher-bad-installation")
-            parent = os.path.dirname(cur)
-            if parent == cur:
-                break
-            cur = parent
+        if not _chain_ok(os.path.dirname(real), dir_owners):
+            raise _blocked("publisher-bad-installation")
     except OSError:
         raise _blocked("publisher-bad-installation") from None
     here = os.path.dirname(real)
@@ -308,14 +325,45 @@ def check_install(path=_SELF, modules=None):
                 raise _blocked("module-shadowed")
 
 
-def check_publish_context(environ=None, path=_SELF, isolated=None, modules=None, cafile=TLS_CAFILE):
-    """Run first in `publish`: before Keychain, network or state access."""
+def check_publish_context(environ=None, path=_SELF, isolated=None, modules=None, cafile=TLS_CAFILE,
+                          file_owner=0, dir_owners=(0,)):
+    """Run first in `publish`: before key, network or state access."""
     if not (sys.flags.isolated if isolated is None else isolated):
         raise _blocked("not-isolated")
     check_env(os.environ if environ is None else environ)
-    check_install(path, modules)
+    check_install(path, modules, file_owner, dir_owners)
     if not os.path.isfile(cafile):
         raise _blocked("tls-trust-unavailable")
+
+
+def parse_publish_argv(argv):
+    """Only `--config <CONFIG_PATH> --pr N` (N plain positive decimal, max 9 digits) is accepted."""
+    if not (isinstance(argv, (list, tuple)) and len(argv) == 4 and argv[0] == "--config"
+            and argv[1] == CONFIG_PATH and argv[2] == "--pr" and isinstance(argv[3], str)
+            and _PR_ARG.fullmatch(argv[3])):
+        raise _blocked("bad-argv")
+    return int(argv[3])
+
+
+def harden_process(setrlimit=resource.setrlimit, umask=os.umask, chdir=os.chdir):
+    """No core dumps, umask 077 and cwd `/` before any secret is handled."""
+    try:
+        setrlimit(resource.RLIMIT_CORE, (0, 0))
+        umask(0o077)
+        chdir("/")
+    except (OSError, ValueError):
+        raise _blocked("hardening-failed") from None
+
+
+def check_signer_identity(cfg, expected=None, getuid=os.getuid, geteuid=os.geteuid):
+    """Real and effective uid must be one non-root uid equal to config `signer_uid` and to the
+    uid provisioned for the dedicated signer account."""
+    expected = EXPECTED_SIGNER_UID if expected is None else expected
+    if not _posint(expected):
+        raise _blocked("signer-uid-unprovisioned")
+    ruid, euid = getuid(), geteuid()
+    if not (_posint(ruid) and ruid == euid and euid == cfg.get("signer_uid") and euid == expected):
+        raise _blocked("signer-uid-mismatch")
 
 
 def _build_opener(cafile=TLS_CAFILE):
@@ -337,22 +385,35 @@ def _label(v):
             and v == v.strip())
 
 
-def load_config(path):
-    """Load and validate the publisher config (outside any git worktree). Unknown keys are refused."""
+def load_config(path, required=CONFIG_PATH, owner_uid=0, dir_owners=(0,)):
+    """Load and validate the publisher config: the one fixed path, root-owned, mode 0444 or tighter,
+    under a root-owned directory chain, outside any git worktree. Unknown keys are refused.
+    `required`/`owner_uid`/`dir_owners` default to production values; only tests relax them."""
     if not (isinstance(path, str) and os.path.isabs(path)):
         raise _blocked("config-path-not-absolute")
+    if path != required:
+        raise _blocked("config-path-mismatch")
     if in_git_worktree(path):
         raise _blocked("config-inside-repo")
+    d = os.path.dirname(path)
+    fd = None
     try:
-        st = os.stat(path)
+        if os.path.realpath(d) != d or not _chain_ok(d, dir_owners):
+            raise _blocked("config-bad-permissions")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_CONFIG:
             raise _blocked("config-bad-file")
-        if st.st_mode & 0o022 or st.st_uid != os.geteuid():
+        if st.st_uid != owner_uid or stat.S_IMODE(st.st_mode) & ~0o444:
             raise _blocked("config-bad-permissions")
-        with open(path, "rb") as f:
+        with os.fdopen(fd, "rb") as f:
+            fd = None
             cfg = json.loads(f.read(MAX_CONFIG + 1))
     except (OSError, ValueError):
         raise _blocked("config-unreadable") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
     if not isinstance(cfg, dict) or set(cfg) != CONFIG_KEYS:
         raise _blocked("config-bad-keys")
     if not (_posint(cfg["app_id"]) and _posint(cfg["installation_id"])):
@@ -365,11 +426,11 @@ def load_config(path):
     dig = cfg["publisher_sha256"]
     if not (isinstance(dig, str) and _SHA256.fullmatch(dig)):
         raise _blocked("config-bad-digest")
-    if not (_label(cfg["keychain_service"]) and _label(cfg["keychain_account"])):
-        raise _blocked("config-bad-keychain")
-    kp = cfg["keychain_path"]  # mandatory: no default login keychain is ever assumed
-    if not (_label(kp) and os.path.isabs(kp)) or in_git_worktree(kp):
-        raise _blocked("config-bad-keychain")
+    kp = cfg["key_path"]
+    if not (_label(kp) and os.path.isabs(kp) and os.path.normpath(kp) == kp) or in_git_worktree(kp):
+        raise _blocked("config-bad-key-path")
+    if not _posint(cfg["signer_uid"]):  # root (0) is never a signer
+        raise _blocked("config-bad-signer-uid")
     sp = cfg["state_path"]
     if not (isinstance(sp, str) and os.path.isabs(sp)) or in_git_worktree(sp):
         raise _blocked("config-bad-state-path")
@@ -387,28 +448,47 @@ def external_id(pr, head_sha, tree, digest, run_id, attempt, job_id, conclusion)
             f":run={run_id}:attempt={attempt}:job={job_id}:conclusion={conclusion}")
 
 
-def keychain_read(service, account, keychain_path, run=subprocess.run):
-    """Return the PEM private key from the named macOS keychain (stdout pipe; never argv/env/disk).
+def read_key_file(key_path, euid=None, ancestor_owners=(0,), stat_fn=os.stat, open_fn=os.open,
+                  fstat_fn=os.fstat, read_fn=os.read, close_fn=os.close):
+    """Return the PEM private key from the signer-owned 0400 file (never argv/env/log/state).
 
-    The keychain file is passed explicitly. Same-user processes are NOT excluded by this."""
+    The key directory must be owned by the effective uid with mode 0700 and every ancestor
+    root-owned and not group/other writable. The file is opened without following a symlink and
+    must be a regular, single-link, exactly-0400 file owned by the effective uid. Errors carry no
+    path or content. `euid`/`ancestor_owners` and the fs callables are injectable for tests."""
+    euid = os.geteuid() if euid is None else euid
+    if not (isinstance(key_path, str) and os.path.isabs(key_path) and os.path.normpath(key_path) == key_path):
+        raise _blocked("key-bad-path")
+    kdir = os.path.dirname(key_path)
+    fd = None
     try:
-        p = run([SECURITY_BIN, "find-generic-password", "-s", service, "-a", account, "-w", keychain_path],
-                capture_output=True, timeout=TOOL_TIMEOUT, check=False,
-                env={"PATH": "/usr/bin:/bin"})
-    except (subprocess.TimeoutExpired, OSError):
-        raise _blocked("keychain-error") from None
-    if p.returncode != 0 or not p.stdout or len(p.stdout) > MAX_KEY * 2:
-        raise _blocked("keychain-error")
-    raw = p.stdout.strip()
-    if not raw.startswith(b"-----BEGIN"):
-        try:  # `security` hex-encodes multi-line secrets
-            raw = bytes.fromhex(raw.decode("ascii"))
-        except (ValueError, UnicodeDecodeError):
-            raise _blocked("keychain-bad-key") from None
-        raw = raw.strip()
-    if not (raw.startswith(b"-----BEGIN") and b"PRIVATE KEY-----" in raw and raw.isascii()) \
-            or len(raw) > MAX_KEY:
-        raise _blocked("keychain-bad-key")
+        if os.path.realpath(kdir) != kdir or kdir == os.path.dirname(kdir):
+            raise _blocked("key-bad-path")
+        dst = stat_fn(kdir)
+        if not (stat.S_ISDIR(dst.st_mode) and dst.st_uid == euid and stat.S_IMODE(dst.st_mode) == 0o700):
+            raise _blocked("key-bad-directory")
+        if not _chain_ok(os.path.dirname(kdir), ancestor_owners, stat_fn):
+            raise _blocked("key-bad-directory")
+        fd = open_fn(key_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        st = fstat_fn(fd)
+        if not (stat.S_ISREG(st.st_mode) and st.st_uid == euid and stat.S_IMODE(st.st_mode) == 0o400
+                and st.st_nlink == 1 and 0 < st.st_size <= MAX_KEY):
+            raise _blocked("key-bad-file")
+        chunks, total = [], 0
+        while total <= MAX_KEY:
+            b = read_fn(fd, MAX_KEY + 1 - total)
+            if not b:
+                break
+            chunks.append(b)
+            total += len(b)
+        raw = b"".join(chunks).strip()
+    except OSError:
+        raise _blocked("key-unreadable") from None
+    finally:
+        if fd is not None:
+            close_fn(fd)
+    if total > MAX_KEY or not (raw.startswith(b"-----BEGIN") and b"PRIVATE KEY-----" in raw and raw.isascii()):
+        raise _blocked("key-bad-key")
     return raw.decode("ascii")
 
 
@@ -620,14 +700,16 @@ def _valid_created(cfg, res, sha, ext, conclusion):
             and isinstance(app, dict) and app.get("id") == cfg["app_id"])
 
 
-def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=keychain_read, sign=openssl_sign,
-            transport=http_api, now=time.time, publisher_path=_SELF, guard=check_publish_context):
+def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=read_key_file, sign=openssl_sign,
+            transport=http_api, now=time.time, publisher_path=_SELF, guard=check_publish_context,
+            identity=check_signer_identity):
     """Evaluate then publish. Only PASS->success and FAIL->failure are ever posted."""
     out = {"verdict": BLOCKED, "reason": "internal-error", "published": False, "adopted": False,
            "evidence": {}}
     try:
-        guard()  # installed/isolated/env checks before Keychain, network or state
-        verify_digest(cfg, publisher_path)  # before any signing, Keychain read or publish
+        guard()  # installed/isolated/env checks before key, network or state
+        identity(cfg)  # signer uid checks, also before key, network or state
+        verify_digest(cfg, publisher_path)  # before any signing, key read or publish
         if not _posint(pr):
             raise _blocked("bad-config-pr")
         res = evaluate({"repo": cfg["repo"], "pr": pr, "pinned_github_tree": cfg["pinned_github_tree"],
@@ -651,7 +733,7 @@ def publish(cfg, pr, get=http_get, fetch=git_fetch_pr, read_secret=keychain_read
                      "conclusion": conclusion, "app_id": cfg["app_id"], "external_id": ext,
                      "started_at": int(now())}
             st.record(ext, entry)
-            key = read_secret(cfg["keychain_service"], cfg["keychain_account"], cfg["keychain_path"])
+            key = read_secret(cfg["key_path"])
             jwt = make_jwt(cfg["app_id"], key, sign, now)
             del key
             token = _mint_token(cfg, jwt, transport)
@@ -700,17 +782,14 @@ def _emit(result):
 
 
 def _publish_main(argv):
-    ap = argparse.ArgumentParser(prog="publisher.py publish",
-                                 description="Publish the veyro-trusted-gate check run (config is out-of-repo)")
-    ap.add_argument("--config", required=True, help="absolute path to the out-of-repo JSON config")
-    ap.add_argument("--pr", required=True, type=int)
-    a = ap.parse_args(argv)
     try:
-        check_publish_context()  # before reading config, Keychain, network or state
-        cfg = load_config(a.config)
+        pr = parse_publish_argv(argv)  # exact form only, before anything else
+        harden_process()
+        check_publish_context()  # before reading config, key, network or state
+        cfg = load_config(CONFIG_PATH)
     except Gate as g:
         return _emit({"verdict": BLOCKED, "reason": g.reason, "published": False, "evidence": {}})
-    return _emit(publish(cfg, a.pr))
+    return _emit(publish(cfg, pr))
 
 
 def main(argv=None):

@@ -331,9 +331,8 @@ class AppWorld:
     def __init__(self, state_path):
         self.gh = World()
         self.cfg = {"app_id": APP_ID, "installation_id": INST_ID, "repo": REPO, "pinned_github_tree": TREE,
-                    "publisher_sha256": p.publisher_digest(), "keychain_service": "veyro-gate-app",
-                    "keychain_account": "app-key", "keychain_path": "/nonexistent/veyro-gate.keychain-db",
-                    "state_path": state_path}
+                    "publisher_sha256": p.publisher_digest(), "key_path": "/nonexistent/keys/app.pem",
+                    "signer_uid": 4001, "state_path": state_path}
         self.checks = []  # check runs on GitHub
         self.calls = []
         self.secret_reads = 0
@@ -345,8 +344,8 @@ class AppWorld:
                           "repositories": [{"full_name": REPO}]}
         self.next_id = 1
 
-    def read_secret(self, service, account, keychain_path):
-        assert keychain_path == self.cfg["keychain_path"]
+    def read_secret(self, key_path):
+        assert key_path == self.cfg["key_path"]
         self.secret_reads += 1
         if self.keychain_fail:
             raise p.Gate(p.BLOCKED, "keychain-error")
@@ -378,7 +377,8 @@ class AppWorld:
 
     def publish(self, pr=10, **kw):
         args = dict(get=self.gh.get, fetch=self.gh.fetch, read_secret=self.read_secret, sign=self.sign,
-                    transport=self.transport, now=lambda: 1_000_000, guard=lambda: None)
+                    transport=self.transport, now=lambda: 1_000_000, guard=lambda: None,
+                    identity=lambda cfg: None)
         args.update(kw)
         return p.publish(self.cfg, pr, **args)
 
@@ -459,6 +459,14 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((self.w.calls, self.w.secret_reads, self.w.sign_calls), ([], 0, 0))
         self.assertFalse(os.path.exists(self.state))
 
+    def test_identity_runs_before_key_network_and_state(self):
+        def refuse(cfg):
+            raise p.Gate(p.BLOCKED, "signer-uid-mismatch")
+        r = self.w.publish(identity=refuse)
+        self.assertEqual((r["reason"], r["published"]), ("signer-uid-mismatch", False))
+        self.assertEqual((self.w.calls, self.w.secret_reads, self.w.sign_calls), ([], 0, 0))
+        self.assertFalse(os.path.exists(self.state))
+
     def test_fail_posts_failure(self):
         self.w.gh.runs = [run_doc(conclusion="failure")]
         r = self.w.publish()
@@ -499,7 +507,7 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "no-head-sha", False))
         self.assertEqual(self.w.calls, [])
 
-    def test_keychain_failure_blocks_without_post(self):
+    def test_key_read_failure_blocks_without_post(self):
         self.w.keychain_fail = True
         r = self.w.publish()
         self.assertEqual((r["verdict"], r["reason"], r["published"]), (p.BLOCKED, "keychain-error", False))
@@ -679,35 +687,6 @@ class FakeProc:
 
 
 class SecretToolTests(unittest.TestCase):
-    def test_keychain_read_uses_stdout_not_env(self):
-        seen = {}
-
-        def run(argv, **kw):
-            seen.update(argv=argv, kw=kw)
-            return FakeProc(KEY.encode())
-        self.assertEqual(p.keychain_read("svc", "acct", "/k/gate.keychain-db", run), KEY.rstrip("\n"))
-        self.assertEqual(seen["argv"][:2], [p.SECURITY_BIN, "find-generic-password"])
-        self.assertIn("-w", seen["argv"])
-        self.assertEqual(seen["argv"][-1], "/k/gate.keychain-db")  # explicit keychain, never the default
-        self.assertNotIn("SUPERSECRETKEYMATERIAL", " ".join(seen["argv"]))
-        self.assertEqual(set(seen["kw"]["env"]), {"PATH"})
-        self.assertTrue(seen["kw"]["capture_output"])
-
-    def test_keychain_hex_output_decoded(self):
-        run = lambda argv, **kw: FakeProc(KEY.encode().hex().encode() + b"\n")  # noqa: E731
-        self.assertEqual(p.keychain_read("s", "a", "/k", run), KEY.rstrip("\n"))
-
-    def test_keychain_errors_blocked(self):
-        for proc in (FakeProc(b"", 44), FakeProc(b"not a key"), FakeProc(b"")):
-            with self.assertRaises(p.Gate) as cm:
-                p.keychain_read("s", "a", "/k", lambda argv, **kw: proc)
-            self.assertEqual(cm.exception.verdict, p.BLOCKED)
-
-        def timeout(argv, **kw):
-            raise subprocess.TimeoutExpired(argv, 1)
-        with self.assertRaises(p.Gate):
-            p.keychain_read("s", "a", "/k", timeout)
-
     def test_partial_writes_deliver_whole_key(self):
         seen = {}
 
@@ -775,6 +754,148 @@ class SecretToolTests(unittest.TestCase):
             self.assertEqual(v.returncode, 0)
 
 
+class KeyFileTests(unittest.TestCase):
+    """Real files in a temp tree; ownership is the test user's, so root-owned ancestors are injected."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = os.path.realpath(self.tmp.name)
+        self.kdir = os.path.join(self.base, "keys")
+        os.mkdir(self.kdir, 0o700)
+        os.chmod(self.kdir, 0o700)
+        self.key = os.path.join(self.kdir, "app.pem")
+        self.write(self.key)
+        self.owners = (os.geteuid(), 0)
+
+    def write(self, path, data=KEY.encode(), mode=0o400):
+        with open(path, "wb") as f:
+            f.write(data)
+        os.chmod(path, mode)
+
+    def read(self, path=None, **kw):
+        return p.read_key_file(path or self.key, ancestor_owners=self.owners, **kw)
+
+    def reason(self, path=None, **kw):
+        with self.assertRaises(p.Gate) as cm:
+            self.read(path, **kw)
+        self.assertNotIn("SUPERSECRET", str(cm.exception))
+        self.assertNotIn(self.base, str(cm.exception))
+        return cm.exception.reason
+
+    def test_good_key_read(self):
+        self.assertEqual(self.read(), KEY.rstrip("\n"))
+
+    def test_open_flags_and_fd_closed(self):
+        seen = {}
+        real_open = os.open
+
+        def open_fn(path, flags, *a):
+            seen["flags"] = flags
+            seen["fd"] = real_open(path, flags, *a)
+            return seen["fd"]
+        self.read(open_fn=open_fn)
+        for flag in (os.O_NOFOLLOW, os.O_CLOEXEC):
+            self.assertTrue(seen["flags"] & flag)
+        self.assertEqual(seen["flags"] & os.O_ACCMODE, os.O_RDONLY)
+        with self.assertRaises(OSError):
+            os.fstat(seen["fd"])
+
+    def test_symlink_key_refused(self):
+        real = os.path.join(self.kdir, "real.pem")
+        self.write(real)
+        os.symlink(real, os.path.join(self.kdir, "link.pem"))
+        self.assertEqual(self.reason(os.path.join(self.kdir, "link.pem")), "key-unreadable")
+
+    def test_symlinked_key_directory_refused(self):
+        os.symlink(self.kdir, os.path.join(self.base, "klink"))
+        self.assertEqual(self.reason(os.path.join(self.base, "klink", "app.pem")), "key-bad-path")
+
+    def test_hardlinked_key_refused(self):
+        os.link(self.key, os.path.join(self.kdir, "second.pem"))
+        self.assertEqual(self.reason(), "key-bad-file")
+
+    def test_modes_other_than_exactly_0400_refused(self):
+        for mode in (0o600, 0o440, 0o404, 0o444, 0o200, 0o000, 0o500):
+            os.chmod(self.key, mode)
+            expected = {"key-unreadable", "key-bad-file"} if mode in (0o200, 0o000) else {"key-bad-file"}
+            self.assertIn(self.reason(), expected, oct(mode))
+
+    def test_non_regular_empty_and_oversized_refused(self):
+        os.mkdir(os.path.join(self.kdir, "d"), 0o700)
+        self.assertEqual(self.reason(os.path.join(self.kdir, "d")), "key-bad-file")
+        empty = os.path.join(self.kdir, "empty.pem")
+        self.write(empty, b"")
+        self.assertEqual(self.reason(empty), "key-bad-file")
+        big = os.path.join(self.kdir, "big.pem")
+        self.write(big, b"-----BEGIN PRIVATE KEY-----" + b"A" * p.MAX_KEY)
+        self.assertEqual(self.reason(big), "key-bad-file")
+
+    def test_not_a_pem_refused(self):
+        junk = os.path.join(self.kdir, "junk.pem")
+        self.write(junk, b"hello world")
+        self.assertEqual(self.reason(junk), "key-bad-key")
+
+    def test_foreign_owner_refused(self):
+        self.assertEqual(self.reason(euid=os.geteuid() + 1), "key-bad-directory")
+        os.chmod(self.kdir, 0o700)
+        real_fstat = os.fstat
+        fake = lambda fd: types.SimpleNamespace(**{  # noqa: E731
+            **{k: getattr(real_fstat(fd), k) for k in ("st_mode", "st_nlink", "st_size")},
+            "st_uid": os.geteuid() + 1})
+        self.assertEqual(self.reason(fstat_fn=fake), "key-bad-file")
+
+    def test_key_directory_must_be_exactly_0700(self):
+        for mode in (0o750, 0o770, 0o755, 0o500, 0o701):
+            os.chmod(self.kdir, mode)
+            self.addCleanup(os.chmod, self.kdir, 0o700)
+            self.assertEqual(self.reason(), "key-bad-directory", oct(mode))
+
+    def test_group_or_world_writable_ancestor_refused(self):
+        outer = os.path.join(self.base, "outer")
+        inner = os.path.join(outer, "keys")
+        os.makedirs(inner, 0o700)
+        os.chmod(inner, 0o700)
+        key = os.path.join(inner, "app.pem")
+        self.write(key)
+        self.assertEqual(self.read(key), KEY.rstrip("\n"))
+        for mode in (0o770, 0o707, 0o777):
+            os.chmod(outer, mode)
+            self.addCleanup(os.chmod, outer, 0o700)
+            self.assertEqual(self.reason(key), "key-bad-directory", oct(mode))
+
+    def test_injected_stat_root_ancestors_accepted_and_non_root_refused(self):
+        dir_st = types.SimpleNamespace(st_mode=stat_dir(0o700), st_uid=501)
+        root_st = types.SimpleNamespace(st_mode=stat_dir(0o755), st_uid=0)
+        evil_st = types.SimpleNamespace(st_mode=stat_dir(0o755), st_uid=501)
+        file_st = types.SimpleNamespace(st_mode=0o100400, st_uid=501, st_nlink=1, st_size=len(KEY))
+        reads = [KEY.encode(), b""]
+        closed = []
+
+        def run(ancestor):
+            def stat_fn(path):
+                return dir_st if path == "/Library/VeyroGate/keys" else ancestor
+            return p.read_key_file("/Library/VeyroGate/keys/app.pem", euid=501, stat_fn=stat_fn,
+                                   open_fn=lambda path, flags: 7, fstat_fn=lambda fd: file_st,
+                                   read_fn=lambda fd, n: reads.pop(0), close_fn=closed.append)
+        self.assertEqual(run(root_st), KEY.rstrip("\n"))
+        self.assertEqual(closed, [7])
+        with self.assertRaises(p.Gate) as cm:
+            run(evil_st)
+        self.assertEqual(cm.exception.reason, "key-bad-directory")
+
+    def test_relative_or_unnormalized_path_refused(self):
+        for bad in ("app.pem", self.kdir + "/../keys/app.pem", self.kdir + "//app.pem", "/app.pem"):
+            self.assertIn(self.reason(bad), ("key-bad-path", "key-unreadable", "key-bad-directory"), bad)
+
+    def test_missing_key_unreadable(self):
+        self.assertEqual(self.reason(os.path.join(self.kdir, "nope.pem")), "key-unreadable")
+
+
+def stat_dir(mode):
+    return 0o040000 | mode
+
+
 class HttpApiTests(unittest.TestCase):
     def test_header_and_fixed_host(self):
         seen = {}
@@ -810,27 +931,70 @@ class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = os.path.join(self.tmp.name, "repo")
+        self.base = os.path.realpath(self.tmp.name)
+        self.root = os.path.join(self.base, "repo")
         os.makedirs(os.path.join(self.root, ".git"))  # any directory holding `.git` is a worktree
         self.good = {"app_id": APP_ID, "installation_id": INST_ID, "repo": REPO, "pinned_github_tree": TREE,
-                     "publisher_sha256": "d" * 64, "keychain_service": "svc", "keychain_account": "acct",
-                     "keychain_path": os.path.join(self.tmp.name, "gate.keychain-db"),
-                     "state_path": os.path.join(self.tmp.name, "state.json")}
+                     "publisher_sha256": "d" * 64, "key_path": os.path.join(self.base, "keys", "app.pem"),
+                     "signer_uid": 4001, "state_path": os.path.join(self.base, "state.json")}
 
-    def write(self, doc, name="cfg.json", mode=0o600):
-        path = os.path.join(self.tmp.name, name)
+    def write(self, doc, name="cfg.json", mode=0o444):
+        path = os.path.join(self.base, name)
+        if os.path.exists(path):
+            os.chmod(path, 0o600)
         with open(path, "w") as f:
             json.dump(doc, f)
         os.chmod(path, mode)
         return path
 
-    def reason(self, path):
+    def load(self, path, **kw):
+        # The test user stands in for root; real root ownership needs privileges (live check open).
+        return p.load_config(path, **{"required": path, "owner_uid": os.geteuid(),
+                                      "dir_owners": (os.geteuid(), 0), **kw})
+
+    def reason(self, path, **kw):
         with self.assertRaises(p.Gate) as cm:
-            p.load_config(path)
+            self.load(path, **kw)
         return cm.exception.reason
 
     def test_good_config_loads(self):
-        self.assertEqual(p.load_config(self.write(self.good)), self.good)
+        self.assertEqual(self.load(self.write(self.good)), self.good)
+        self.assertEqual(self.load(self.write(self.good, mode=0o400)), self.good)
+
+    def test_production_defaults_require_root_and_fixed_path(self):
+        path = self.write(self.good)
+        with self.assertRaises(p.Gate) as cm:
+            p.load_config(path)  # not the fixed production path
+        self.assertEqual(cm.exception.reason, "config-path-mismatch")
+        self.assertEqual(self.reason(path, owner_uid=os.geteuid() + 1), "config-bad-permissions")
+        if os.geteuid() != 0:  # file owned by this user is not root-owned
+            with self.assertRaises(p.Gate) as cm:
+                p.load_config(path, required=path)
+            self.assertEqual(cm.exception.reason, "config-bad-permissions")
+
+    def test_config_modes_looser_than_0444_refused(self):
+        for mode in (0o644, 0o440 | 0o020, 0o446, 0o666, 0o4444, 0o555):
+            self.assertEqual(self.reason(self.write(self.good, mode=mode)), "config-bad-permissions", oct(mode))
+
+    def test_config_symlink_and_non_regular_refused(self):
+        real = self.write(self.good, name="real.json")
+        link = os.path.join(self.base, "link.json")
+        os.symlink(real, link)
+        self.assertEqual(self.reason(link), "config-unreadable")
+        self.assertEqual(self.reason(self.base), "config-bad-file")
+
+    def test_config_directory_chain_must_not_be_writable(self):
+        d = os.path.join(self.base, "etc")
+        os.mkdir(d, 0o755)
+        path = os.path.join(d, "config.json")
+        with open(path, "w") as f:
+            json.dump(self.good, f)
+        os.chmod(path, 0o444)
+        self.assertEqual(self.load(path), self.good)
+        os.chmod(d, 0o775)
+        self.assertEqual(self.reason(path), "config-bad-permissions")
+        os.chmod(d, 0o755)
+        self.assertEqual(self.reason(path, dir_owners=(os.geteuid() + 1,)), "config-bad-permissions")
 
     def test_missing_and_unknown_keys_refused(self):
         for k in self.good:
@@ -841,21 +1005,26 @@ class ConfigTests(unittest.TestCase):
     def test_bad_values_refused(self):
         for key, val in (("app_id", "1"), ("app_id", True), ("installation_id", 0), ("repo", "nope"),
                          ("pinned_github_tree", "xyz"), ("publisher_sha256", "abc"),
-                         ("keychain_service", ""), ("keychain_account", "a\nb"), ("state_path", "rel.json"),
-                         ("keychain_path", ""), ("keychain_path", "login.keychain-db")):
+                         ("signer_uid", 0), ("signer_uid", "4001"), ("signer_uid", True), ("signer_uid", -5),
+                         ("state_path", "rel.json"), ("key_path", ""), ("key_path", "keys/app.pem"),
+                         ("key_path", "/a/../b/app.pem"), ("key_path", "/a//app.pem")):
             self.assertTrue(self.reason(self.write({**self.good, key: val})), key)
 
     def test_in_repo_paths_refused(self):
         inside = os.path.join(self.root, "cfg.json")
         with open(inside, "w") as f:
             json.dump(self.good, f)
-        os.chmod(inside, 0o600)
+        os.chmod(inside, 0o444)
         self.assertEqual(self.reason(inside), "config-inside-repo")
         self.assertEqual(self.reason(self.write({**self.good, "state_path": os.path.join(self.root, "s.json")})),
                          "config-bad-state-path")
-        self.assertEqual(self.reason(self.write({**self.good, "keychain_path": os.path.join(self.root, "k")})),
-                         "config-bad-keychain")
+        self.assertEqual(self.reason(self.write({**self.good, "key_path": os.path.join(self.root, "k.pem")})),
+                         "config-bad-key-path")
         self.assertEqual(self.reason("cfg.json"), "config-path-not-absolute")
+
+    def test_keychain_fields_no_longer_accepted(self):
+        for k in ("keychain_service", "keychain_account", "keychain_path"):
+            self.assertEqual(self.reason(self.write({**self.good, k: "x"})), "config-bad-keys")
 
     def test_symlink_into_worktree_and_nested_worktree_refused(self):
         deep = os.path.join(self.root, "a", "b")
@@ -868,35 +1037,143 @@ class ConfigTests(unittest.TestCase):
                          "config-bad-state-path")
         self.assertFalse(p.in_git_worktree(os.path.join(self.tmp.name, "elsewhere", "s.json")))
 
-    def test_keychain_path_is_mandatory(self):
-        doc = {k: v for k, v in self.good.items() if k != "keychain_path"}
-        self.assertEqual(self.reason(self.write(doc)), "config-bad-keys")
+    def test_key_path_and_signer_uid_are_mandatory(self):
+        for k in ("key_path", "signer_uid"):
+            doc = {x: v for x, v in self.good.items() if x != k}
+            self.assertEqual(self.reason(self.write(doc)), "config-bad-keys")
 
     def test_writable_config_refused(self):
         self.assertEqual(self.reason(self.write(self.good, mode=0o666)), "config-bad-permissions")
 
     def test_unreadable_or_garbage_refused(self):
-        self.assertEqual(self.reason(os.path.join(self.tmp.name, "missing.json")), "config-unreadable")
-        path = os.path.join(self.tmp.name, "bad.json")
+        self.assertEqual(self.reason(os.path.join(self.base, "missing.json")), "config-unreadable")
+        path = os.path.join(self.base, "bad.json")
         with open(path, "w") as f:
             f.write("nope")
-        os.chmod(path, 0o600)
+        os.chmod(path, 0o444)
         self.assertEqual(self.reason(path), "config-unreadable")
 
 
-class PublishCliTests(unittest.TestCase):
-    def test_publish_requires_config_and_pr(self):
-        with self.assertRaises(SystemExit):
-            p.main(["publish", "--pr", "10"])
-        with self.assertRaises(SystemExit):
-            p.main(["publish", "--config", "/tmp/x.json"])
+class SignerIdentityTests(unittest.TestCase):
+    def check(self, cfg_uid=4001, expected=4001, ruid=4001, euid=4001):
+        p.check_signer_identity({"signer_uid": cfg_uid}, expected, lambda: ruid, lambda: euid)
 
-    def test_bad_config_is_blocked_exit_3_without_publishing(self):
+    def reason(self, **kw):
+        with self.assertRaises(p.Gate) as cm:
+            self.check(**kw)
+        self.assertEqual(cm.exception.verdict, p.BLOCKED)
+        return cm.exception.reason
+
+    def test_matching_non_root_uid_passes(self):
+        self.check()
+
+    def test_root_refused_even_when_everything_says_root(self):
+        self.assertEqual(self.reason(cfg_uid=0, expected=0, ruid=0, euid=0), "signer-uid-unprovisioned")
+        self.assertEqual(self.reason(ruid=0, euid=0), "signer-uid-mismatch")
+        self.assertEqual(self.reason(euid=0), "signer-uid-mismatch")
+
+    def test_real_effective_config_and_expected_must_all_match(self):
+        for kw in ({"ruid": 501}, {"euid": 501}, {"cfg_uid": 501}, {"expected": 501}):
+            self.assertEqual(self.reason(**kw), "signer-uid-mismatch", kw)
+
+    def test_unprovisioned_expected_uid_fails_closed(self):
+        with unittest.mock.patch.object(p, "EXPECTED_SIGNER_UID", None):
+            with self.assertRaises(p.Gate) as cm:
+                p.check_signer_identity({"signer_uid": os.getuid()}, None, os.getuid, os.geteuid)
+        self.assertEqual(cm.exception.reason, "signer-uid-unprovisioned")
+
+    def test_bool_and_missing_uid_refused(self):
+        self.assertEqual(self.reason(expected=True, cfg_uid=True, ruid=1, euid=1), "signer-uid-unprovisioned")
+        with self.assertRaises(p.Gate):
+            p.check_signer_identity({}, 4001, lambda: 4001, lambda: 4001)
+
+
+class HardeningTests(unittest.TestCase):
+    def test_core_limit_umask_and_chdir_applied(self):
+        calls = []
+        p.harden_process(lambda res, lim: calls.append(("rlimit", res, lim)),
+                         lambda m: calls.append(("umask", m)), lambda d: calls.append(("chdir", d)))
+        self.assertEqual(calls, [("rlimit", p.resource.RLIMIT_CORE, (0, 0)), ("umask", 0o077), ("chdir", "/")])
+
+    def test_failure_blocks(self):
+        def boom(*a):
+            raise OSError("no")
+        with self.assertRaises(p.Gate) as cm:
+            p.harden_process(boom, lambda m: None, lambda d: None)
+        self.assertEqual(cm.exception.reason, "hardening-failed")
+
+
+class PublishArgvTests(unittest.TestCase):
+    GOOD = ["--config", p.CONFIG_PATH, "--pr", "10"]
+
+    def test_exact_form_parses(self):
+        self.assertEqual(p.parse_publish_argv(self.GOOD), 10)
+        self.assertEqual(p.parse_publish_argv(["--config", p.CONFIG_PATH, "--pr", "999999999"]), 999999999)
+
+    def test_fixed_config_path(self):
+        self.assertEqual(p.CONFIG_PATH, "/Library/VeyroGate/etc/config.json")
+
+    def test_everything_else_is_bad_argv(self):
+        bad = [[], ["--pr", "10"], ["--config", p.CONFIG_PATH], ["--pr", "10", "--config", p.CONFIG_PATH],
+               ["--config", "/tmp/x.json", "--pr", "10"], ["--config", p.CONFIG_PATH + "/", "--pr", "10"],
+               ["--config=" + p.CONFIG_PATH, "--pr", "10"], ["--config", p.CONFIG_PATH, "--pr=10"],
+               self.GOOD + ["--api-url", "https://evil.example"], self.GOOD + ["x"],
+               ["--config", p.CONFIG_PATH, "--pr", "0"], ["--config", p.CONFIG_PATH, "--pr", "-1"],
+               ["--config", p.CONFIG_PATH, "--pr", "+1"], ["--config", p.CONFIG_PATH, "--pr", "010"],
+               ["--config", p.CONFIG_PATH, "--pr", "1000000000"], ["--config", p.CONFIG_PATH, "--pr", "1.0"],
+               ["--config", p.CONFIG_PATH, "--pr", "1e3"], ["--config", p.CONFIG_PATH, "--pr", " 1"],
+               ["--config", p.CONFIG_PATH, "--pr", "1\n"], ["--config", p.CONFIG_PATH, "--pr", "١"],
+               ["--config", p.CONFIG_PATH, "--pr", "0x10"], ["--config", p.CONFIG_PATH, "--pr", ""],
+               ["--config", p.CONFIG_PATH, "--pr", 10], ["--confi", p.CONFIG_PATH, "--pr", "10"]]
+        for argv in bad:
+            with self.assertRaises(p.Gate, msg=argv) as cm:
+                p.parse_publish_argv(argv)
+            self.assertEqual((cm.exception.verdict, cm.exception.reason), (p.BLOCKED, "bad-argv"))
+
+
+class PublishCliTests(unittest.TestCase):
+    def run_main(self, argv):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = p.main(["publish", "--config", "relative.json", "--pr", "10"])
-        self.assertEqual(code, 3)
-        self.assertEqual(json.loads(out.getvalue())["published"], False)
+            code = p.main(argv)
+        return code, json.loads(out.getvalue())
+
+    def test_bad_argv_is_fixed_blocked_before_hardening_key_network_or_state(self):
+        touched = []
+        with unittest.mock.patch.object(p, "harden_process", lambda: touched.append("harden")), \
+                unittest.mock.patch.object(p, "check_publish_context", lambda: touched.append("ctx")), \
+                unittest.mock.patch.object(p, "load_config", lambda path: touched.append("cfg")), \
+                unittest.mock.patch.object(p, "publish", lambda *a, **k: touched.append("publish")), \
+                unittest.mock.patch.object(p, "read_key_file", lambda *a, **k: touched.append("key")):
+            for argv in (["publish", "--pr", "10"], ["publish", "--config", "/tmp/x.json"],
+                         ["publish", "--config", "relative.json", "--pr", "10"],
+                         ["publish", "--config", p.CONFIG_PATH, "--pr", "0"],
+                         ["publish", "--config", "/tmp/x.json", "--pr", "10", "--api-url", "https://evil.example"]):
+                code, out = self.run_main(argv)
+                self.assertEqual((code, out["reason"], out["verdict"], out["published"]),
+                                 (3, "bad-argv", p.BLOCKED, False), argv)
+        self.assertEqual(touched, [])
+
+    def test_valid_argv_hardens_then_checks_context_then_config_then_publishes(self):
+        order = []
+        cfg = {"c": 1}
+        with unittest.mock.patch.object(p, "harden_process", lambda: order.append("harden")), \
+                unittest.mock.patch.object(p, "check_publish_context", lambda: order.append("ctx")), \
+                unittest.mock.patch.object(p, "load_config", lambda path: order.append(("cfg", path)) or cfg), \
+                unittest.mock.patch.object(p, "publish", lambda c, pr: order.append(("publish", c, pr)) or
+                                           {"verdict": p.PASS, "reason": "ok", "published": True}):
+            code, out = self.run_main(["publish", "--config", p.CONFIG_PATH, "--pr", "42"])
+        self.assertEqual(code, 0)
+        self.assertEqual(order, ["harden", "ctx", ("cfg", p.CONFIG_PATH), ("publish", cfg, 42)])
+
+    def test_context_refusal_stops_before_config(self):
+        def refuse():
+            raise p.Gate(p.BLOCKED, "not-isolated")
+        with unittest.mock.patch.object(p, "harden_process", lambda: None), \
+                unittest.mock.patch.object(p, "check_publish_context", refuse), \
+                unittest.mock.patch.object(p, "load_config", lambda path: self.fail("config read")):
+            code, out = self.run_main(["publish", "--config", p.CONFIG_PATH, "--pr", "1"])
+        self.assertEqual((code, out["reason"], out["published"]), (3, "not-isolated", False))
 
     def test_digest_command(self):
         out = io.StringIO()
@@ -904,9 +1181,11 @@ class PublishCliTests(unittest.TestCase):
             self.assertEqual(p.main(["digest"]), 0)
         self.assertEqual(out.getvalue().strip(), p.publisher_digest())
 
-    def test_no_generic_url_option(self):
-        with self.assertRaises(SystemExit):
-            p.main(["publish", "--config", "/tmp/x.json", "--pr", "10", "--api-url", "https://evil.example"])
+    def test_no_caller_chosen_host_workflow_or_check_name(self):
+        for extra in (["--api-url", "https://evil.example"], ["--workflow-path", "x.yml"],
+                      ["--job-name", "x"], ["--check-name", "x"], ["--repo", "a/b"]):
+            code, out = self.run_main(["publish", "--config", p.CONFIG_PATH, "--pr", "10"] + extra)
+            self.assertEqual((code, out["reason"]), (3, "bad-argv"), extra)
 
 
 class InstallContextTests(unittest.TestCase):
@@ -924,12 +1203,24 @@ class InstallContextTests(unittest.TestCase):
 
     def reason(self, **kw):
         with self.assertRaises(p.Gate) as cm:
-            p.check_publish_context(**{"cafile": __file__, "environ": {}, **kw})
+            p.check_publish_context(**{**self.trust, "cafile": __file__, "environ": {}, **kw})
         return cm.exception.reason
+
+    @property
+    def trust(self):
+        # The test user stands in for root; production defaults (uid 0) are exercised separately.
+        return {"file_owner": os.geteuid(), "dir_owners": (os.geteuid(), 0)}
 
     def test_installed_copy_outside_worktree_passes(self):
         dest = self.install(os.path.join(self.base, "inst"))
-        p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__)
+        p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__, **self.trust)
+
+    @unittest.skipIf(os.geteuid() == 0, "needs a non-root test user")
+    def test_default_requires_root_owned_install(self):
+        dest = self.install(os.path.join(self.base, "inst"))
+        with self.assertRaises(p.Gate) as cm:
+            p.check_publish_context(environ={}, path=dest, isolated=True, cafile=__file__)
+        self.assertEqual(cm.exception.reason, "publisher-bad-installation")
 
     def test_unisolated_python_refused(self):
         dest = self.install(os.path.join(self.base, "inst"))
@@ -950,8 +1241,10 @@ class InstallContextTests(unittest.TestCase):
         self.addCleanup(os.chmod, inst, 0o700)
         self.assertEqual(self.reason(path=dest, isolated=True), "publisher-bad-installation")
         os.chmod(inst, 0o700)
-        with unittest.mock.patch("os.geteuid", return_value=os.geteuid() + 1):
-            self.assertEqual(self.reason(path=dest, isolated=True), "publisher-bad-installation")
+        self.assertEqual(self.reason(path=dest, isolated=True, file_owner=os.geteuid() + 1),
+                         "publisher-bad-installation")
+        self.assertEqual(self.reason(path=dest, isolated=True, dir_owners=(os.geteuid() + 1,)),
+                         "publisher-bad-installation")
 
     def test_sibling_shadow_modules_refused(self):
         dest = self.install(os.path.join(self.base, "inst"))
@@ -972,7 +1265,7 @@ class InstallContextTests(unittest.TestCase):
                          "tls-trust-unavailable")
 
     def run_script(self, script, *extra, isolated=True):
-        argv = [sys.executable] + (["-I"] if isolated else []) + [script, "publish", "--config", "relative.json",
+        argv = [sys.executable] + (["-I"] if isolated else []) + [script, "publish", "--config", p.CONFIG_PATH,
                                                                    "--pr", "1"] + list(extra)
         proc = subprocess.run(argv, capture_output=True, text=True, cwd=os.path.dirname(script),
                               env={"PATH": "/usr/bin:/bin"}, timeout=60)
@@ -986,9 +1279,13 @@ class InstallContextTests(unittest.TestCase):
                     "def compare_digest(a, b):\n    return True\n")
         proc, out = self.run_script(dest, isolated=False)  # script dir would shadow hmac
         self.assertEqual((proc.returncode, out.get("reason"), out.get("published")), (3, "not-isolated", False))
-        proc, out = self.run_script(dest, isolated=True)  # -I: shadow never imported, install accepted
+        proc, out = self.run_script(dest, isolated=True)  # -I: shadow never imported
         self.assertNotIn("SHADOW-LOADED", proc.stderr)
-        self.assertEqual((out.get("reason"), out.get("published")), ("config-path-not-absolute", False))
+        if os.geteuid() != 0:  # a user-owned copy is not a root-owned installation
+            self.assertEqual((proc.returncode, out.get("reason"), out.get("published")),
+                             (3, "publisher-bad-installation", False))
+        proc, out = self.run_script(dest, "extra", isolated=True)  # inexact argv wins before any check
+        self.assertEqual((proc.returncode, out.get("reason"), out.get("published")), (3, "bad-argv", False))
         wt = os.path.join(self.base, "wt")
         os.makedirs(os.path.join(wt, ".git"))
         proc, out = self.run_script(self.install(os.path.join(wt, "tools")), isolated=True)
