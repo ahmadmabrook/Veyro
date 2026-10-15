@@ -1,0 +1,36 @@
+name: Veyro Trusted Gate
+
+# pull_request_target loads this file from the protected base branch, so a candidate PR cannot
+# edit the workflow that judges it. The candidate is fetched as inert Git objects only: no
+# checkout of candidate files, no candidate code execution, no secrets, read-only token.
+on:
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: veyro-trusted-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  trusted-base-pr-guard:
+    name: trusted-base PR guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out protected base (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run trusted guard script from base
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash infra/scripts/trusted-pr-gate.sh
