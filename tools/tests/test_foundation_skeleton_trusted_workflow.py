@@ -38,6 +38,17 @@ TRUSTED_MANIFEST_MUTABLE/_DESYNC silent, plus the exact committed source
 passing, plus the fact that a candidate-only edit to that file reaches neither
 the digest nor any other part of the decision.
 
+GOV-01-R04's first Opus review adds a fifth: none of the above used to RUN in
+the trusted job at all - this suite was committed but only ever executed off
+CI, so a default-branch change that broke one of its properties would have
+turned nothing red. The workflow therefore now has a FIRST step that fetches
+the trusted commit by exact sha, extracts the four sources this suite reads,
+and executes this suite before any candidate entry is judged. Its own tests
+here are static (the step is first, takes no candidate input, screens each
+trusted source by mode/type/path) plus behavioral against a passing and a
+failing STUB suite - a stub because executing the real suite inside itself
+would recurse.
+
 The divergence this candidate exists to create is pinned by two paired tests:
 one tampered candidate commit turns the NONREQUIRED smoke check
 (`foundation-skeleton-ci.yml`, read but never modified here) GREEN while
@@ -67,10 +78,18 @@ REPO = TOOLS.parent
 WORKFLOW_REL = ".github/workflows/foundation-skeleton-trusted.yml"
 SMOKE_WORKFLOW_REL = ".github/workflows/foundation-skeleton-ci.yml"
 VALIDATOR_REL = "tools/validate_repo_skeleton.py"
+SUITE_REL = "tools/tests/test_foundation_skeleton_trusted_workflow.py"
 
 WORKFLOW = REPO / WORKFLOW_REL
 SMOKE_WORKFLOW = REPO / SMOKE_WORKFLOW_REL
 VALIDATOR = REPO / VALIDATOR_REL
+
+# The trusted workflow's two steps, addressed by step name. The selftest step
+# must run this committed suite from the trusted commit BEFORE the screening
+# step judges anything; the screening step is the one every assertion about
+# the candidate decision is made against.
+SELFTEST_STEP = "Run this definition's committed selftest suite from the trusted commit"
+SCREEN_STEP = "Sync the trusted required-path manifest, then screen the PR head tree"
 
 # The seven paths the trusted definition must expect, independent of anything
 # a candidate head ships. Asserted equal to both the workflow's own literal
@@ -201,41 +220,100 @@ def code_lines(path: Path) -> list[str]:
     ]
 
 
-def extract_run_script(path: Path) -> str:
-    """Return the single `run: |` block body from `path`, dedented.
+def run_blocks(path: Path) -> dict[str, str]:
+    """Every `run: |` block body in `path`, dedented, keyed by the `- name:`
+    of the step that owns it.
 
     Indentation-based, no YAML dependency (none is available in this
-    environment) - parses exactly the bytes CI would execute.
+    environment) - parses exactly the bytes CI would execute. This used to
+    assume a single run block per file; the trusted workflow now has two
+    steps (the trusted selftest, then the candidate screen), and which block
+    an assertion is about is load-bearing, so they are kept apart by name
+    rather than merged or counted.
     """
     lines = path.read_text(encoding="utf-8").splitlines()
-    starts = [i for i, ln in enumerate(lines) if re.fullmatch(r"\s*run: \|\s*", ln)]
-    if len(starts) != 1:
-        raise AssertionError(f"expected exactly one 'run: |' block in {path}, found {len(starts)}")
-    start = starts[0]
-    indent = len(lines[start]) - len(lines[start].lstrip())
-    body: list[str] = []
-    for ln in lines[start + 1:]:
-        if ln.strip() and (len(ln) - len(ln.lstrip())) <= indent:
-            break
-        body.append(ln)
-    if not body:
-        raise AssertionError(f"run block in {path} is empty")
-    return textwrap.dedent("\n".join(body)) + "\n"
+    blocks: dict[str, str] = {}
+    step = ""
+    for index, line in enumerate(lines):
+        named = re.fullmatch(r"\s*- name: (?P<name>.+?)\s*", line)
+        if named is not None:
+            step = named.group("name")
+            continue
+        if not re.fullmatch(r"\s*run: \|\s*", line):
+            continue
+        indent = len(line) - len(line.lstrip())
+        body: list[str] = []
+        for ln in lines[index + 1:]:
+            if ln.strip() and (len(ln) - len(ln.lstrip())) <= indent:
+                break
+            body.append(ln)
+        # Trailing blank lines belong to the separation between steps, not to
+        # the block: a YAML `|` scalar clips them to a single newline, so
+        # dropping them here is what makes this extraction byte-exact with
+        # the string a YAML parser hands the runner.
+        while body and not body[-1].strip():
+            body.pop()
+        if not body:
+            raise AssertionError(f"run block for step {step!r} in {path} is empty")
+        if step in blocks:
+            raise AssertionError(f"two run blocks for step {step!r} in {path}")
+        blocks[step] = textwrap.dedent("\n".join(body)) + "\n"
+    if not blocks:
+        raise AssertionError(f"no 'run: |' block in {path}")
+    return blocks
 
 
-def script_code(path: Path) -> str:
+def extract_run_script(path: Path, step: str | None = None) -> str:
+    """One step's `run: |` block body, dedented. `step` selects it by name;
+    omitted, `path` must hold exactly one run block - which is how the
+    single-step nonrequired smoke workflow is read."""
+    blocks = run_blocks(path)
+    if step is None:
+        if len(blocks) != 1:
+            raise AssertionError(
+                f"expected exactly one 'run: |' block in {path}, found {len(blocks)}"
+            )
+        return next(iter(blocks.values()))
+    if step not in blocks:
+        raise AssertionError(f"no step named {step!r} in {path}; found {sorted(blocks)}")
+    return blocks[step]
+
+
+def script_code(path: Path, step: str | None = None) -> str:
     """The extracted run body with whole-line comments removed - the bytes
     that actually execute. Negative assertions ("no `git checkout`", "the
     candidate validator is never named") must be made against this, not
     against the body's own prose explaining why those constructs are absent."""
-    body = extract_run_script(path).splitlines()
+    body = extract_run_script(path, step).splitlines()
     return "\n".join(ln for ln in body if not ln.lstrip().startswith("#")) + "\n"
+
+
+def selftest_stub(marker: str, *, passing: bool) -> str:
+    """A minimal unittest module standing in for the committed suite at
+    SUITE_REL, printing `marker` so a test can tell WHICH commit's suite ran.
+
+    A stub and not the real suite on purpose: this suite's own behavioral
+    tests execute the selftest step's script, so committing this file into
+    the fixture would make that step run this suite again, recursively."""
+    return (
+        "import unittest\n"
+        "\n"
+        "\n"
+        "class Stub(unittest.TestCase):\n"
+        "    def test_marker(self):\n"
+        f'        print("SELFTEST_MARKER {marker}")\n'
+        f"        self.assertTrue({passing!r})\n"
+        "\n"
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    unittest.main()\n"
+    )
 
 
 def workflow_required_paths() -> tuple[str, ...]:
     """The literal REQUIRED_PATHS tuple out of the workflow's own trusted
     Python body - parsed from the executed script, not from the YAML comments."""
-    script = extract_run_script(WORKFLOW)
+    script = extract_run_script(WORKFLOW, SCREEN_STEP)
     match = re.search(r"REQUIRED_PATHS = \((?P<body>.*?)\)\n", script, re.DOTALL)
     if match is None:
         raise AssertionError("no REQUIRED_PATHS tuple in the workflow's executed body")
@@ -259,8 +337,10 @@ class WorkflowShapeTests(unittest.TestCase):
     def setUp(self):
         self.code = "\n".join(code_lines(WORKFLOW))
         self.text = WORKFLOW.read_text(encoding="utf-8")
-        self.script = extract_run_script(WORKFLOW)
-        self.executed = script_code(WORKFLOW)
+        self.script = extract_run_script(WORKFLOW, SCREEN_STEP)
+        self.executed = script_code(WORKFLOW, SCREEN_STEP)
+        self.selftest = extract_run_script(WORKFLOW, SELFTEST_STEP)
+        self.selftest_executed = script_code(WORKFLOW, SELFTEST_STEP)
 
     def test_trigger_is_pull_request_target_on_main_only(self):
         self.assertRegex(self.code, r"(?m)^on:\s*$")
@@ -496,6 +576,77 @@ class WorkflowShapeTests(unittest.TestCase):
                        "TRUSTED_MANIFEST_MUTABLE"):
             self.assertIn(needle, prose, f"missing disclosure: {needle}")
 
+    # --- the trusted selftest step (GOV-01-R04 P1) ---
+
+    def test_the_committed_suite_is_executed_from_the_trusted_commit_first(self):
+        """The P1 this step closes: this suite was committed but never RAN in
+        the trusted job, so every property it asserts was enforced only off
+        CI. The step must run it from the trusted commit, by exact immutable
+        sha, and must be the FIRST step - a job whose own selftest failed
+        must never go on to screen a candidate tree."""
+        self.assertLess(self.text.index(SELFTEST_STEP), self.text.index(SCREEN_STEP))
+        self.assertIn(SUITE_REL, self.selftest_executed)
+        self.assertIn(
+            'git -C "$selftest_git" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"',
+            self.selftest,
+        )
+        self.assertIn('[[ "$selftest_fetched" == "$TRUSTED_SHA" ]]', self.selftest)
+        self.assertIn('git -C "$selftest_git" cat-file -e "$TRUSTED_SHA^{commit}"',
+                      self.selftest)
+        self.assertIn('[[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]]', self.selftest)
+        # Executed, under an isolated interpreter, and a nonzero suite denies.
+        self.assertRegex(self.selftest_executed, r"python3 -I -B \"\$selftest_tree/" + re.escape(SUITE_REL))
+        self.assertIn("SELFTEST_FAILED", self.selftest_executed)
+        for masking in ("|| true", "|| :", "set +e", "continue-on-error"):
+            self.assertNotIn(masking, self.selftest, masking)
+
+    def test_the_selftest_step_reads_only_trusted_bytes_and_no_candidate_input(self):
+        """The step is given no candidate sha, no candidate object store and
+        no candidate path, so adding it leaves the candidate head exactly as
+        inert as it was: every object it touches is named by `$TRUSTED_SHA`
+        out of its own trusted object store."""
+        for forbidden in ("HEAD_SHA", "cand_git", "pull_request", "candidate.git"):
+            self.assertNotIn(forbidden, self.selftest, forbidden)
+        # Only the screening step may receive the candidate head sha.
+        self.assertEqual(len(re.findall(r"github\.event\.pull_request", self.code)), 1)
+        for line in self.selftest_executed.splitlines():
+            if "ls-tree" in line or "cat-file" in line:
+                self.assertIn("$selftest_git", line, line)
+                self.assertIn("$TRUSTED_SHA", line, line)
+        # Separate object store and separate work directory from the screen's.
+        self.assertIn('selftest_git="$work/trusted.git"', self.selftest)
+        self.assertNotEqual(
+            re.search(r'work="([^"]+)"', self.selftest).group(1),
+            re.search(r'work="([^"]+)"', self.script).group(1),
+        )
+        # No action reference, no credential, and no candidate materialization
+        # construct in this step either.
+        for forbidden in ("uses:", "secrets.", "GITHUB_TOKEN", "git checkout",
+                          "git archive", "tar ", "pip install"):
+            self.assertNotIn(forbidden, self.selftest, forbidden)
+
+    def test_every_trusted_source_the_suite_reads_is_extracted_as_a_regular_blob(self):
+        """The suite reads three other committed files besides itself; each
+        must come out of the trusted commit under the same mode/type/path
+        discipline as the manifest read, so nothing can stand in for one."""
+        for rel in (SUITE_REL, WORKFLOW_REL, SMOKE_WORKFLOW_REL, VALIDATOR_REL):
+            self.assertIn(rel, self.selftest_executed, rel)
+        self.assertIn(r"blob_record=$'^(100644|100755) blob [0-9a-f]{40}\t'", self.selftest)
+        self.assertIn('[[ "$record" =~ $blob_record', self.selftest)
+        self.assertIn("SELFTEST_SOURCE_UNREADABLE", self.selftest_executed)
+        self.assertIn("SELFTEST_INPUT_INVALID", self.selftest_executed)
+        self.assertIn("SELFTEST_PYTHON_UNUSABLE", self.selftest_executed)
+
+    def test_the_header_states_what_the_selftest_does_and_does_not_prove(self):
+        prose = " ".join(self.text.split()).replace(" # ", " ")
+        for needle in ("TRUSTED, AND NOW ACTUALLY EXECUTED",
+                       "committed but never ran in this job",
+                       "SELFTEST_FAILED",
+                       "Not one candidate byte is fetched, written, read or executed",
+                       "THE SELFTEST PROVES THE COMMITTED SUITE PASSES, NOT THAT IT IS RIGHT",
+                       "can no longer be silently FALSE on the default branch"):
+            self.assertIn(needle, prose, f"missing selftest disclosure: {needle}")
+
     def test_the_nonrequired_smoke_workflow_is_untouched_and_still_nonrequired_shaped(self):
         smoke = "\n".join(code_lines(SMOKE_WORKFLOW))
         self.assertRegex(smoke, r"(?m)^name: foundation-skeleton-ci\s*$")
@@ -519,9 +670,11 @@ class Fixture:
         # fixture remote must sit at exactly that path for the slug above.
         self.origin = tmp / "remote" / f"{self.REPO_SLUG}.git"
         self.scripts: dict[str, Path] = {}
-        for key, source in (("trusted", WORKFLOW), ("smoke", SMOKE_WORKFLOW)):
+        for key, source, step in (("trusted", WORKFLOW, SCREEN_STEP),
+                                  ("selftest", WORKFLOW, SELFTEST_STEP),
+                                  ("smoke", SMOKE_WORKFLOW, None)):
             path = tmp / f"job-{key}.sh"
-            path.write_text(extract_run_script(source), encoding="utf-8")
+            path.write_text(extract_run_script(source, step), encoding="utf-8")
             path.chmod(0o755)
             self.scripts[key] = path
 
@@ -568,6 +721,33 @@ class Fixture:
         elif not omit:
             path.write_text(source, encoding="utf-8")
         return self._commit("trusted base-branch snapshot")
+
+    def commit_trusted_selftest(self, suite: str, *, omit: tuple[str, ...] = (),
+                                symlink: tuple[str, ...] = ()) -> str:
+        """Commit a trusted snapshot carrying the four sources the selftest
+        step extracts from the trusted commit, with `suite` standing in for
+        the committed suite at SUITE_REL (see `selftest_stub` for why a stub
+        and not the real file). `omit` drops entries and `symlink` replaces
+        them with a mode-120000 entry, for the fail-closed cases."""
+        for rel, text in ((SUITE_REL, suite),
+                          (WORKFLOW_REL, WORKFLOW.read_text(encoding="utf-8")),
+                          (SMOKE_WORKFLOW_REL, SMOKE_WORKFLOW.read_text(encoding="utf-8")),
+                          (VALIDATOR_REL, VALIDATOR_SOURCE)):
+            path = self.origin / rel
+            if rel in omit or rel in symlink:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if path.is_symlink() or path.exists():
+                    path.unlink()
+                if rel in symlink:
+                    os.symlink("elsewhere-stub.py", path)
+                continue
+            # A symlink left at `rel` by an earlier snapshot would otherwise
+            # be followed, writing through it and leaving the 120000 entry in
+            # place for every later commit.
+            if path.is_symlink():
+                path.unlink()
+            self._write(rel, text)
+        return self._commit("trusted base-branch snapshot with selftest sources")
 
     def _commit(self, message: str) -> str:
         self._git("add", "-A")
@@ -1094,6 +1274,62 @@ class BehaviorTests(unittest.TestCase):
             "exactly one tree entry",
             "found 2",
         )
+
+    # --- the trusted selftest step (GOV-01-R04 P1) ---
+
+    def test_selftest_runs_the_suite_committed_at_the_exact_trusted_sha(self):
+        """Wiring: the suite that executes is the one at `$TRUSTED_SHA`, not
+        the branch tip. The trusted commit carries a passing stub; a LATER
+        commit on the same branch carries a failing one, and the step must be
+        green on the first and must never have run the second."""
+        trusted = self.fx.commit_trusted_selftest(selftest_stub("TRUSTED", passing=True))
+        later = self.fx.commit_trusted_selftest(selftest_stub("LATER", passing=False))
+        self.assertNotEqual(trusted, later)
+        result = self.fx.run(later, which="selftest", trusted_sha=trusted)
+        self.assertGreen(result)
+        output = result.stdout + result.stderr
+        self.assertIn("SELFTEST_MARKER TRUSTED", output)
+        self.assertNotIn("SELFTEST_MARKER LATER", output)
+        self.assertIn("selftest OK at trusted commit", result.stdout)
+
+    def test_a_failing_trusted_selftest_denies(self):
+        """The P1's point: a committed suite that does not pass at the trusted
+        commit must turn this check RED, not be ignored. The step exits
+        nonzero and claims no pass."""
+        trusted = self.fx.commit_trusted_selftest(selftest_stub("TRUSTED", passing=False))
+        result = self.fx.run(trusted, which="selftest", trusted_sha=trusted)
+        self.assertDenied(result, "SELFTEST_FAILED", trusted)
+        self.assertIn("SELFTEST_MARKER TRUSTED", result.stdout + result.stderr)
+        self.assertNotIn("selftest OK at trusted commit", result.stdout)
+
+    def test_a_trusted_selftest_source_that_is_not_a_regular_blob_denies(self):
+        """Each of the four sources is screened by mode, type and exact path,
+        so an absent one - or anything standing in for one - denies by name
+        rather than running a suite with a stand-in input."""
+        for rel in (SUITE_REL, WORKFLOW_REL, SMOKE_WORKFLOW_REL, VALIDATOR_REL):
+            for kind in ("omit", "symlink"):
+                with self.subTest(source=rel, stand_in=kind):
+                    trusted = self.fx.commit_trusted_selftest(
+                        selftest_stub("TRUSTED", passing=True), **{kind: (rel,)}
+                    )
+                    result = self.fx.run(trusted, which="selftest", trusted_sha=trusted)
+                    self.assertDenied(result, "SELFTEST_SOURCE_UNREADABLE", rel)
+                    self.assertNotIn("SELFTEST_MARKER", result.stdout + result.stderr)
+
+    def test_malformed_selftest_inputs_deny_before_any_fetch(self):
+        trusted = self.fx.commit_trusted_selftest(selftest_stub("TRUSTED", passing=True))
+        for label, kwargs in (("repo", {"repo": "not a repo slug"}),
+                              ("trusted_sha", {"trusted_sha": "nope"})):
+            with self.subTest(input=label):
+                result = self.fx.run(trusted, which="selftest", **kwargs)
+                self.assertDenied(result, "SELFTEST_INPUT_INVALID")
+                self.assertNotIn("SELFTEST_MARKER", result.stdout + result.stderr)
+
+    def test_an_unfetchable_trusted_sha_denies_the_selftest(self):
+        self.fx.commit_trusted_selftest(selftest_stub("TRUSTED", passing=True))
+        result = self.fx.run("f" * 40, which="selftest", trusted_sha="f" * 40)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("selftest OK at trusted commit", result.stdout)
 
     # --- the candidate's own copy of the validator is still not an input ---
 

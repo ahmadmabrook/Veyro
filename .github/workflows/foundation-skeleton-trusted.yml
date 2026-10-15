@@ -97,6 +97,26 @@
 #     it screens. A CANDIDATE-only edit to that file changes neither the
 #     digest nor any other part of this job's decision, because the candidate
 #     copy is never read.
+#   - TRUSTED, AND NOW ACTUALLY EXECUTED (GOV-01-R04 P1): this definition's
+#     own committed test suite,
+#     `tools/tests/test_foundation_skeleton_trusted_workflow.py`. Until the
+#     first step below existed, that suite was committed but never ran in
+#     this job: every behavioural and trusted-manifest property described
+#     above was asserted only on a developer's machine, so a default-branch
+#     change that broke one of them - a weakened screen, a desynced pinned
+#     digest, a regressed fail-closed path - would have been caught by
+#     nothing this check itself does. The first step therefore fetches
+#     `github.sha` by exact immutable SHA, extracts the four trusted-commit
+#     sources that suite reads (the suite itself, this workflow, the
+#     nonrequired smoke workflow, and `tools/validate_repo_skeleton.py`) as
+#     verified regular blobs, and runs the suite under `python3 -I`. A
+#     nonzero suite denies (`SELFTEST_FAILED`) before the screening step
+#     runs at all. Every byte that step executes is a DEFAULT-BRANCH byte
+#     from the same trusted commit this definition was loaded from - the
+#     same trust level as this file. Not one candidate byte is fetched,
+#     written, read or executed there: the step is given no candidate SHA,
+#     no candidate object store and no candidate path, so the candidate head
+#     stays exactly as inert as it was before.
 #   - DATA ONLY: the PR head's Git tree. It is fetched by exact immutable
 #     40-hex SHA and is NEVER checked out, extracted, written to disk,
 #     imported, executed, or installed from. The only candidate bytes that
@@ -114,6 +134,16 @@
 #     try.
 #
 # Fail-closed by construction:
+#   - the selftest step denies BY NAME on a malformed `github.repository` or
+#     `github.sha` (`SELFTEST_INPUT_INVALID`), on a trusted commit that does
+#     not fetch, is not a commit object, or does not hold each of its four
+#     sources as exactly one regular blob at the exact trusted path
+#     (`SELFTEST_SOURCE_UNREADABLE` - a symlink, gitlink, tree, absent or
+#     duplicated tree record each deny), on a missing or too-old `python3`
+#     (`SELFTEST_PYTHON_UNUSABLE`), and on a suite that exits nonzero for any
+#     reason (`SELFTEST_FAILED`). Steps run in order and a failed step ends
+#     the job, so no candidate tree is ever screened by a job whose own
+#     committed selftest did not pass at the trusted commit.
 #   - malformed `github.repository`, `github.sha` or head SHA (anything not a
 #     well-formed `owner/name` / exact 40-hex SHA) denies before any fetch.
 #   - each fetched object is compared back against the exact SHA requested
@@ -263,6 +293,16 @@
 #     candidate copy is never read, hashed or consulted. The pin also does
 #     not extend to the rest of the trusted tree: only this one file's bytes
 #     are pinned.
+#   - THE SELFTEST PROVES THE COMMITTED SUITE PASSES, NOT THAT IT IS RIGHT.
+#     The step runs whatever assertions the trusted commit happens to ship; a
+#     weakened or deleted assertion passes just as quietly as a strong one, so
+#     this is not a substitute for reviewing changes to that suite. What it
+#     closes is narrower and real: the committed suite can no longer be
+#     silently FALSE on the default branch while this required check reports
+#     green. It also widens this job from "parses trusted text" to "runs
+#     trusted code" on the runner - a deliberate change, acceptable only
+#     because those bytes come from the same trusted commit this definition is
+#     loaded from, and unproven live like everything else here.
 #   - This source file grants no CI result, no live SCN-MOD001-003 evidence,
 #     no required status check, no independent review and no certification
 #     input. Any future run must be verified separately against its exact
@@ -284,6 +324,78 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Run this definition's committed selftest suite from the trusted commit
+        env:
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          TRUSTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deny() { printf 'foundation-skeleton-trusted: DENY - %s\n' "$1" >&2; exit 1; }
+
+          # This step receives NO candidate input of any kind - no candidate
+          # sha, no candidate object store, no candidate path. Everything it
+          # fetches, writes and executes comes from `github.sha`, the trusted
+          # base-branch commit this definition itself was loaded from.
+          [[ "$REPO" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ && "${REPO#*/}" != "." && "${REPO#*/}" != ".." ]] \
+            || deny "SELFTEST_INPUT_INVALID: github.repository '$REPO' is not a well-formed owner/name"
+          [[ "$TRUSTED_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || deny "SELFTEST_INPUT_INVALID: TRUSTED_SHA '$TRUSTED_SHA' is not a 40-hex commit sha"
+
+          # The suite exercises the smoke validator, which needs Python 3.10+.
+          # A missing or older interpreter must deny by name, never skip it.
+          python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+            || deny "SELFTEST_PYTHON_UNUSABLE: runner python3 is missing or older than 3.10"
+
+          work="${RUNNER_TEMP:?RUNNER_TEMP is required}/foundation-skeleton-trusted-selftest"
+          rm -rf "$work"
+          mkdir -p "$work"
+          selftest_git="$work/trusted.git"
+          selftest_tree="$work/trusted-tree"
+
+          # Tokenless, exact-immutable-SHA fetch of the trusted commit into an
+          # object store of its own, verified back against the sha requested.
+          git init -q "$selftest_git"
+          git -C "$selftest_git" remote add origin "$SERVER_URL/$REPO.git"
+          git -C "$selftest_git" fetch -q --no-tags --depth=1 origin "$TRUSTED_SHA"
+          selftest_fetched="$(git -C "$selftest_git" rev-parse FETCH_HEAD)"
+          [[ "$selftest_fetched" == "$TRUSTED_SHA" ]] \
+            || deny "SELFTEST_SOURCE_UNREADABLE: fetched object $selftest_fetched is not the requested trusted commit $TRUSTED_SHA"
+          git -C "$selftest_git" cat-file -e "$TRUSTED_SHA^{commit}" \
+            || deny "SELFTEST_SOURCE_UNREADABLE: trusted $TRUSTED_SHA is not a commit object"
+
+          # The four trusted-commit sources the suite needs: itself (executed),
+          # and the three files it reads. Each must be exactly ONE regular blob
+          # at exactly that path in the trusted tree - a symlink, gitlink,
+          # tree, absent entry, or a duplicate tree record (whose listing
+          # carries a second line, so the path comparison below fails) denies.
+          blob_record=$'^(100644|100755) blob [0-9a-f]{40}\t'
+          for rel in \
+            tools/tests/test_foundation_skeleton_trusted_workflow.py \
+            .github/workflows/foundation-skeleton-trusted.yml \
+            .github/workflows/foundation-skeleton-ci.yml \
+            tools/validate_repo_skeleton.py
+          do
+            record="$(git -C "$selftest_git" ls-tree --full-tree "$TRUSTED_SHA" -- "$rel")" \
+              || deny "SELFTEST_SOURCE_UNREADABLE: cannot list $rel at the trusted commit $TRUSTED_SHA"
+            [[ "$record" =~ $blob_record && "${record#*$'\t'}" == "$rel" ]] \
+              || deny "SELFTEST_SOURCE_UNREADABLE: $rel at the trusted commit is not exactly one regular blob: ${record:-<absent>}"
+            mkdir -p "$selftest_tree/${rel%/*}"
+            git -C "$selftest_git" cat-file blob "$TRUSTED_SHA:$rel" > "$selftest_tree/$rel" \
+              || deny "SELFTEST_SOURCE_UNREADABLE: trusted commit $TRUSTED_SHA has no readable blob at $rel"
+          done
+
+          # `-I` keeps PYTHONPATH, user site-packages and the script's own
+          # directory off sys.path: the suite imports only the standard
+          # library, and nothing in the extracted tree may become importable.
+          # `-B` leaves no bytecode behind in it.
+          printf 'running the committed selftest suite from trusted commit %s\n' "$TRUSTED_SHA"
+          python3 -I -B "$selftest_tree/tools/tests/test_foundation_skeleton_trusted_workflow.py" -v \
+            || deny "SELFTEST_FAILED: the committed selftest suite for this definition does not pass at the trusted commit $TRUSTED_SHA"
+          printf 'foundation-skeleton-trusted: selftest OK at trusted commit %s\n' "$TRUSTED_SHA"
+
       - name: Sync the trusted required-path manifest, then screen the PR head tree
         env:
           REPO: ${{ github.repository }}
