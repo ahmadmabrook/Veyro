@@ -170,7 +170,7 @@ jobs:
 
           # (c) official distribution, digest-verified BEFORE unzip or execution.
           zip="$dist/gradle-8.14-bin.zip"
-          curl -fsS --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL" \
+          curl -fsSL --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL" \
             || deny "download of the Gradle distribution failed"
           [[ -f "$zip" && ! -L "$zip" ]] || deny "downloaded distribution is not a regular file"
           got="$(sha256sum "$zip" | cut -d' ' -f1)"

@@ -50,6 +50,7 @@ exactly the environment coupling that keeps this workflow a diagnostic.
 from __future__ import annotations
 
 import hashlib
+import http.server
 import os
 import shutil
 import re
@@ -57,6 +58,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import unittest
 import zipfile
 from pathlib import Path
@@ -353,6 +355,8 @@ def audit(text: str) -> list[str]:
     if env.get("GRADLE_SHA256") != OFFICIAL_SHA256:
         bad.add("GRADLE_SHA256_PIN")
     need('[[ "$GRADLE_SHA256" =~ ^[0-9a-f]{64}$ ]]', "GRADLE_SHA256_64HEX")
+    need('curl -fsSL --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL"',
+         "CURL_FOLLOWS_REDIRECTS")
     need('[[ "$got" == "$GRADLE_SHA256" ]]', "DIST_DIGEST_COMPARE")
     verify_at = pos('[[ "$got" == "$GRADLE_SHA256" ]]')
     unzip_at = pos("unzip -q")
@@ -434,6 +438,13 @@ class PolicyAuditTests(unittest.TestCase):
              "GRADLE_URL: https://services.gradle.org/distributions/gradle-8.14-bin.zip",
              "GRADLE_URL: https://example.invalid/gradle.zip", "GRADLE_URL_PIN"),
             ("wrong digest pin", OFFICIAL_SHA256, "0" * 64, "GRADLE_SHA256_PIN"),
+            ("curl without -L (exact-head run 38683004249's regression: "
+             "the download silently ingested a 169-byte Gradle redirect "
+             "HTML body, sha256 7108fef32b066dcb8e074d4114e8614cfb6f1efe"
+             "b9497c0b0268b7b4039f22bc, instead of the pinned distribution)",
+             'curl -fsSL --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL"',
+             'curl -fsS --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL"',
+             "CURL_FOLLOWS_REDIRECTS"),
             ("no digest compare", '[[ "$got" == "$GRADLE_SHA256" ]]',
              '[[ -n "$got" ]]', "DIST_DIGEST_COMPARE"),
             ("three locks", "            mobile/shared/gradle.lockfile\n", "",
@@ -739,6 +750,86 @@ class RegenerationBehaviorTests(_BehaviorBase):
         result = self.fx.run(head)
         self.assertFailed(result, "comparison baseline for mobile/shared/gradle.lockfile changed")
         self.assertNotIn("DIAGNOSTIC_CLEAN", result.stdout)
+
+
+def _redirect_server(final_bytes: bytes) -> tuple[http.server.HTTPServer, threading.Thread, str]:
+    """A loopback HTTP server: `/redirect` 302s to `/final`, which serves
+    `final_bytes`. Mirrors the Gradle CDN's own redirect-to-the-real-binary
+    shape that exact-head live run 38683004249 tripped over."""
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            if self.path == "/redirect":
+                self.send_response(302)
+                self.send_header(
+                    "Location", f"http://127.0.0.1:{self.server.server_port}/final")
+                body = b"<html>redirecting to the real distribution</html>"
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif self.path == "/final":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(final_bytes)))
+                self.end_headers()
+                self.wfile.write(final_bytes)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):  # noqa: A002
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{server.server_port}/redirect"
+
+
+class RedirectBehaviorTests(_BehaviorBase):
+    """Reproduces exact-head live run 38683004249's regression directly: the
+    download step pointed at a URL that 302-redirects to the real
+    distribution bytes. The committed command (`curl -fsSL ...`) must follow
+    the redirect and reach the pinned digest; the old command it replaced
+    (`curl -fsS ...`, no `-L`) must be fooled into writing the small redirect
+    body to `$zip` and deny on a digest mismatch - the same failure mode the
+    live run hit (169-byte HTML body, sha256
+    7108fef32b066dcb8e074d4114e8614cfb6f1efeb9497c0b0268b7b4039f22bc, instead
+    of the pinned 61ad310d3c7d3e5da131b76bbf22b5a4c0786e9d892dae8c1658d4b484d
+    e3caa)."""
+
+    def _serve_stub_behind_redirect(self, fx: Harness) -> tuple[str, str]:
+        file_url, digest = fx.stub_dist()
+        zip_bytes = Path(file_url[len("file://"):]).read_bytes()
+        server, thread, url = _redirect_server(zip_bytes)
+        # addCleanup is LIFO: registered in reverse of the order they must
+        # run in (stop serving, then join the thread, then close the socket).
+        self.addCleanup(server.server_close)
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(server.shutdown)
+        return url, digest
+
+    def test_committed_curl_follows_the_redirect_to_the_pinned_distribution(self):
+        head = self.fx.build_head()
+        url, digest = self._serve_stub_behind_redirect(self.fx)
+        result = self.fx.run(head, url=url, digest=digest)
+        self.assertGreen(result)
+        self.assertIn(STUB_MARKER, self.out(result))
+
+    def test_old_no_redirect_curl_is_fooled_by_the_redirect_body(self):
+        old_script = mutate(
+            'curl -fsSL --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL"',
+            'curl -fsS --retry 3 --retry-all-errors -o "$zip" "$GRADLE_URL"',
+        )
+        with tempfile.TemporaryDirectory(prefix="veyro-gradle-lock-oldcurl-") as tmp:
+            fx = Harness(Path(tmp), script=old_script)
+            head = fx.build_head()
+            url, digest = self._serve_stub_behind_redirect(fx)
+            result = fx.run(head, url=url, digest=digest)
+            self.assertFailed(result, "DENY: Gradle distribution sha256")
+            self.assertNotIn(STUB_MARKER, self.out(result),
+                             "the old command must never reach execution once "
+                             "it has only the redirect body, not the real zip")
 
 
 # --------------------------------------------------------------------------- #
