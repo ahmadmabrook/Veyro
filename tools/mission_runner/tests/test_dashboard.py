@@ -1,4 +1,5 @@
 import tempfile
+from datetime import datetime
 import unittest
 import subprocess
 from pathlib import Path
@@ -33,11 +34,75 @@ class DashboardProjectionTests(unittest.TestCase):
         self.assertEqual(state['ci']['state'], 'stale')
         self.assertEqual(state['current_module'], 'MOD-002')
 
+    @staticmethod
+    def _epoch(text):
+        return datetime.fromisoformat(text.replace('Z', '+00:00')).timestamp()
+
+    def _blocked(self, finished='2026-10-16T10:00:00Z', **extra):
+        return dict(self.tasks[0], module='MOD-002', finished_at=finished,
+                    updated_at=finished, created_at='2026-10-16T09:00:00Z', **extra)
+
+    def _record(self, written, accepted=True):
+        return {"MOD-002": {"accepted": accepted, "recorded_accepted": accepted,
+                            "updated_at": self._epoch(written) if isinstance(written, str) else written}}
+
     def test_accepted_module_blocked_task_is_historical(self):
-        tasks = dashboard.task_projection(self.tasks, self.records)
+        records = {"MOD-001": dict(self.records["MOD-001"], updated_at=self._epoch('2026-10-16T12:00:00Z'))}
+        old = dict(self.tasks[0], updated_at='2026-10-16T10:00:00Z')
+        tasks = dashboard.task_projection([old, self.tasks[1]], records)
         self.assertEqual(tasks[0]['lifecycle'], 'historical')
+        self.assertEqual(tasks[0]['history_reason'], 'Module subsequently accepted')
         self.assertEqual(tasks[1]['lifecycle'], 'running')
-        self.assertEqual(dashboard.module_projection(self.catalog, self.records, tasks)[0], 'MOD-002')
+        self.assertEqual(dashboard.module_projection(self.catalog, records, tasks)[0], 'MOD-002')
+
+    def test_blocked_task_after_conditional_record_remains_active(self):
+        blocked = self._blocked(finished='2026-10-16T12:00:00Z')
+        projected = dashboard.task_projection([blocked], self._record('2026-10-16T11:00:00Z'))
+        self.assertEqual(projected[0]['lifecycle'], 'active-blocker')
+
+    def test_record_written_after_block_makes_it_historical(self):
+        blocked = self._blocked()
+        projected = dashboard.task_projection([blocked], self._record('2026-10-16T11:00:00Z'))
+        self.assertEqual(projected[0]['lifecycle'], 'historical')
+        self.assertEqual(projected[0]['history_reason'], 'Module subsequently accepted')
+
+    def test_missing_or_malformed_dates_fail_closed(self):
+        record = self._record('2026-10-16T11:00:00Z')
+        for blocked in (self._blocked(finished='not-a-date'), self._blocked(finished='2026-10-16T10:00:00'),
+                        dict(self._blocked(), updated_at=None, finished_at=None)):
+            self.assertEqual(dashboard.task_projection([blocked], record)[0]['lifecycle'], 'active-blocker')
+        for written in (None, 'bad'):
+            rec = {"MOD-002": {"recorded_accepted": True, "updated_at": written}}
+            self.assertEqual(dashboard.task_projection([self._blocked()], rec)[0]['lifecycle'], 'active-blocker')
+
+    def test_later_work_supersedes_block_despite_earlier_record(self):
+        blocked = self._blocked(finished='2026-10-16T12:00:00Z')
+        later = dict(self.tasks[1], module='MOD-002', status='QUEUED', created_at='2026-10-16T13:00:00Z')
+        projected = dashboard.task_projection([blocked, later], self._record('2026-10-16T11:00:00Z'))
+        self.assertEqual(projected[0]['lifecycle'], 'historical')
+        self.assertIn('formal resolution not recorded', projected[0]['history_reason'])
+
+    def _conditional_projection(self, current_head):
+        records = {"MOD-000": {"accepted": False, "recorded_accepted": True},
+                   "MOD-001": {"accepted": False, "recorded_accepted": True},
+                   "MOD-002": {"accepted": current_head, "recorded_accepted": True}}
+        tasks = [dict(self.tasks[1], id="t1", status="DONE", created_at="2026-10-16T10:00:00Z"),
+                 dict(self.tasks[1], id="t2", status="QUEUED", created_at="2026-10-16T11:00:00Z")]
+        projected = dashboard.task_projection(tasks[::-1], records)
+        return dashboard.module_projection(self.catalog, records, projected)
+
+    def test_unverified_conditional_module_is_current_with_latest_task(self):
+        active, modules = self._conditional_projection(False)
+        self.assertEqual(active, 'MOD-002')
+        self.assertEqual(modules['MOD-002'], 'current')
+        self.assertEqual(modules['MOD-000'], 'accepted')
+        self.assertEqual(modules['MOD-001'], 'accepted')
+
+    def test_current_head_verified_module_with_no_other_task_has_no_current_module(self):
+        active, modules = self._conditional_projection(True)
+        self.assertIsNone(active)
+        self.assertEqual(modules['MOD-002'], 'accepted')
+        self.assertEqual(modules['MOD-000'], 'accepted')
 
     def test_unaccepted_module_blocked_task_remains_actionable(self):
         item = dict(self.tasks[0], module='MOD-003')
@@ -173,7 +238,9 @@ class DashboardProjectionTests(unittest.TestCase):
             self.assertEqual(dashboard.runner.orchestrator_receipt(tmp)['model'], 'openai/gpt-6-sol')
 
     def test_runner_execution_distinguishes_activity_queue_and_control(self):
-        tasks = dashboard.task_projection(self.tasks, self.records)
+        records = {"MOD-001": dict(self.records["MOD-001"], updated_at=self._epoch('2026-10-16T12:00:00Z'))}
+        old = dict(self.tasks[0], updated_at='2026-10-16T10:00:00Z')
+        tasks = dashboard.task_projection([old, self.tasks[1]], records)
         state = {"runner_alive": True, "control": "RUN", "health": {"status": "OK"},
                  "writer_lock": {"state": "free", "child_alive": False}}
         self.assertEqual(dashboard.runner_execution(state, tasks), 'stale')

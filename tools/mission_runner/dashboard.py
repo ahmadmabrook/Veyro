@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -111,21 +112,47 @@ def module_projection(catalog, records, tasks):
     running = {t["module"] for t in tasks if t["status"] == "RUNNING"}
     active = next((m["id"] for m in catalog if m["id"] in running), None)
     if active is None:
-        active = next((m["id"] for m in catalog if not recorded(m["id"])
-                       and any(t["module"] == m["id"] for t in tasks)), None)
+        # Tasks are timestamp-sorted; the latest live-evidence task whose module
+        # lacks current-head verification names the current module.
+        known = {m["id"] for m in catalog}
+        active = next((t["module"] for t in reversed(tasks)
+                       if t["module"] in known and t["status"] in ("QUEUED", "RUNNING", "DONE")
+                       and not records.get(t["module"], {}).get("accepted", False)), None)
     result = {}
     for m in catalog:
         mid = m["id"]
-        if recorded(mid):
-            status = "accepted"
-        elif mid == active:
+        if mid == active:
             status = "current"
+        elif recorded(mid):
+            status = "accepted"
         elif any(t["module"] == mid and t["lifecycle"] == "active-blocker" for t in tasks):
             status = "blocked"
         else:
             status = "not-started"
         result[mid] = status
     return active, result
+
+
+def _epoch(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
+    return parsed.timestamp() if parsed.tzinfo else None
+
+
+def accepted_after_block(rec, task):
+    """True only when a recorded acceptance was written after the task's last update; fail closed."""
+    if not rec.get("recorded_accepted", rec.get("accepted", False)):
+        return False
+    written = rec.get("updated_at")
+    if isinstance(written, bool) or not isinstance(written, (int, float)) or written != written:
+        return False
+    stamps = [task.get(k) for k in ("updated_at", "finished_at") if task.get(k)]
+    epochs = [_epoch(s) for s in stamps]
+    if not epochs or any(e is None for e in epochs):
+        return False
+    return written > max(epochs)
 
 
 def task_projection(tasks, records):
@@ -136,7 +163,7 @@ def task_projection(tasks, records):
     projected = []
     for index, t in enumerate(tasks):
         rec = records.get(t["module"], {})
-        module_accepted = rec.get("recorded_accepted", rec.get("accepted", False))
+        module_accepted = accepted_after_block(rec, t) if t["status"] == "BLOCKED" else False
         # A later task makes an earlier blocked attempt historical activity, not a
         # current queue item. It does not claim the defect was formally resolved.
         later_work = any(other["module"] == t["module"] and other["status"] in ("QUEUED", "RUNNING", "DONE")
