@@ -668,6 +668,54 @@ class DashboardProjectionTests(unittest.TestCase):
         state['control'] = 'STOP'
         self.assertEqual(dashboard.runner_execution(state, tasks), 'stopped')
 
+    def test_handoff_telemetry_is_coordinating_not_worker_running(self):
+        tasks = dashboard.task_projection([], self.records)
+        handoff = {"status": "coordinating", "detail": "turn in flight", "agent": "veyro-orchestrator", "model": "UNKNOWN",
+                   "request": {"id": "handoff-x-1", "child_alive": True}}
+        state = {"runner_alive": True, "control": "RUN", "health": {"status": "OK"},
+                 "writer_lock": {"state": "free", "child_alive": None}, "handoff": handoff}
+        self.assertEqual(dashboard.runner_execution(state, tasks), 'coordinating')
+        agents = dashboard.agent_projection(state, tasks)
+        self.assertEqual(agents[0]['status'], 'coordinating')
+        self.assertIn('role: orchestrator', agents[0]['identity'])
+        self.assertEqual([a['status'] for a in agents[1:]], ['idle', 'idle'])  # no worker "working" without evidence
+        handoff['request']['child_alive'] = False  # dead CLI: not claimed as live coordination
+        self.assertEqual(dashboard.runner_execution(state, tasks), 'idle')
+        self.assertEqual(dashboard.agent_projection(state, tasks)[0]['status'], 'unknown')
+        state['handoff'] = {"status": "waiting_for_owner", "detail": "WAITING_FOR_OWNER: approve", "request": None}
+        self.assertEqual(dashboard.runner_execution(state, tasks), 'waiting_for_owner')
+        state['handoff']['status'] = 'blocked'
+        self.assertEqual(dashboard.runner_execution(state, tasks), 'blocked')
+
+    def test_live_coordination_is_not_hidden_by_an_active_blocker(self):
+        blocker = [{"status": "BLOCKED", "lifecycle": "active-blocker", "stage": None}]
+        handoff = {"status": "coordinating", "detail": "turn in flight", "agent": "veyro-orchestrator",
+                   "model": "openai/gpt-6-sol (runtime-reported by turn handoff-old-1)", "request": {"id": "handoff-x-2", "child_alive": True}}
+        state = {"runner_alive": True, "control": "RUN", "health": {"status": "OK"},
+                 "writer_lock": {"state": "free", "child_alive": None}, "handoff": handoff}
+        self.assertEqual(dashboard.runner_execution(state, blocker), 'coordinating')
+        handoff['request']['child_alive'] = False  # a dead or pid-reused CLI is not live coordination
+        self.assertEqual(dashboard.runner_execution(state, blocker), 'blocked')
+
+    def test_previous_turn_model_is_never_shown_as_current(self):
+        tasks = dashboard.task_projection([], self.records)
+        handoff = {"status": "coordinating", "detail": "turn in flight", "agent": "veyro-orchestrator",
+                   "model": "openai/gpt-6-sol (runtime-reported by turn handoff-old-1)",
+                   "request": {"id": "handoff-x-2", "child_alive": True}}
+        state = {"runner_alive": True, "control": "RUN", "health": {"status": "OK"},
+                 "writer_lock": {"state": "free", "child_alive": None}, "handoff": handoff}
+        identity = dashboard.agent_projection(state, tasks)[0]['identity']
+        self.assertNotIn('gpt-6-sol', identity)
+        self.assertIn('UNKNOWN', identity)
+        view = dashboard.runner.handoff_view({"status": "coordinating", "request": {"id": "handoff-x-2", "child": None},
+                                              "last": {"id": "handoff-old-1", "model_reported": "openai/gpt-6-sol"}})
+        self.assertIn('UNKNOWN', view['model'])
+        self.assertNotIn('gpt-6-sol', view['model'])
+        done = dashboard.runner.handoff_view({"status": "idle", "request": None,
+                                              "last": {"id": "handoff-old-1", "model_reported": "openai/gpt-6-sol"}})
+        self.assertIn('runtime-reported', done['model'])
+        self.assertIn('UNKNOWN', dashboard.runner.handoff_view({"status": "idle", "request": None, "last": {}})['model'])
+
     def test_delayed_heartbeat_is_stale_not_dead_when_pid_is_alive(self):
         tasks = dashboard.task_projection(self.tasks, self.records)
         state = {"runner_alive": False, "runner": {"pid": 123}, "control": "RUN", "health": {"status": "OK"},

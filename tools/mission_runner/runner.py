@@ -13,12 +13,14 @@ import hashlib
 import json
 import os
 import plistlib
+import posixpath
 import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -68,8 +70,12 @@ class Config:
     def __init__(self, home=None, repo=REPO, claude_bin=None, timeout=3600.0, tick=1.0,
                  backoff_base=5.0, backoff_cap=300.0, max_attempts=3, baseline_every=30.0,
                  sandbox="auto", verify_timeout=600.0, gh_bin=None, ci_every=300.0, ci_mode=None,
-                 gate_mode=None):
+                 gate_mode=None, orchestrator_bin=None, handoff_timeout=600.0, review_gate=True):
         self.home = Path(home) if home else default_home()
+        # None disables automatic continuation; `main` resolves the OpenClaw CLI for the real runner.
+        self.orchestrator_bin = orchestrator_bin or os.environ.get("VEYRO_ORCHESTRATOR_BIN") or None
+        self.handoff_timeout = handoff_timeout
+        self.review_gate = review_gate  # mandatory Opus review between write tasks; only unit-test fixtures turn it off
         self.repo = Path(repo)
         self.claude_bin = claude_bin or os.environ.get("VEYRO_CLAUDE_BIN", "claude")
         self.timeout, self.tick = timeout, tick
@@ -363,9 +369,26 @@ def verify_baseline(repo, pin):
 
 
 # ------------------------------------------------------------ repo change evidence
+def git_env():
+    """Curated Git environment: no inherited GIT_* overrides and no system/global config, so a model-written
+    ~/.gitconfig (e.g. core.fsmonitor) can never make a runner git call execute a script."""
+    env = {k: os.environ[k] for k in ("PATH", "HOME") if k in os.environ}
+    env.update(GIT_OPTIONAL_LOCKS="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
+               GIT_TERMINAL_PROMPT="0")
+    return env
+
+
+def git_argv(repo, *args):
+    return ["git", "-c", "core.fsmonitor=", "-C", str(repo), *args]
+
+
+def git_run(repo, *args, timeout=120, check=False, text=False):
+    return subprocess.run(git_argv(repo, *args), capture_output=True, check=check, timeout=timeout, text=text,
+                          env=git_env(), stdin=subprocess.DEVNULL)
+
+
 def _git(repo, *args, timeout=120):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=True, timeout=timeout,
-                          env={**{k: os.environ[k] for k in ("PATH", "HOME") if k in os.environ}, "GIT_OPTIONAL_LOCKS": "0"})
+    return git_run(repo, *args, timeout=timeout, check=True)
 
 
 def _path_hash(p):
@@ -382,7 +405,7 @@ def repo_state(repo):
     Diffing two states reveals every change a child made; a clean path that stays clean is untouched.
     """
     repo = Path(repo)
-    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q", "HEAD"], capture_output=True, text=True)
+    r = git_run(repo, "rev-parse", "--verify", "-q", "HEAD", text=True)
     head = r.stdout.strip() or None
     out = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames").stdout
     files = {}
@@ -661,6 +684,324 @@ def backoff(cfg, attempts):
     return min(cfg.backoff_cap, cfg.backoff_base * 2 ** max(0, attempts - 1))
 
 
+# ------------------------------------------------------- automatic continuation handoff
+ORCH_AGENT = "veyro-continuation-planner"
+ORCH_SESSION = "agent:veyro-continuation-planner:mission-continuation"
+PLANNER_MODEL = "openai/gpt-6-sol"
+PLANNER_TOOLS = frozenset({"read", "ls", "dir_list"})
+# The Gateway runs the turn, not the CLI client, so only the planner's configured tool policy confines it. Under the
+# Codex runtime a native tool (request_user_input_async) leaked into the inventory despite an explicit deny. The
+# owner pinned the SAME model to the built-in OpenClaw runtime at agents.entries.<id>.models[PLANNER_MODEL].agentRuntime.id;
+# that exact setting is required before any Gateway call, and the returned agentHarnessId must confirm it.
+PLANNER_RUNTIME = "openclaw"
+HANDOFF_KINDS = ("TASK", "BLOCKED", "WAITING_FOR_OWNER", "NO_LEGAL_WORK")
+HANDOFF_STATUS = {"BLOCKED": "blocked", "WAITING_FOR_OWNER": "waiting_for_owner", "NO_LEGAL_WORK": "idle"}
+HANDOFF_OUT_MAX = 1_000_000  # whole CLI stdout; larger output is refused, never truncated into a different document
+HANDOFF_TEXT_MAX = 64 * 1024  # the final assistant payload
+HANDOFF_TASK_KEYS = {"id", "module", "role", "title", "plan_phase", "prompt", "allowed_paths", "expected_changes",
+                     "verify_cmd", "review_of", "remediation_of"}
+# Autonomously proposed work may never touch the runner, CI, governance controls or the baseline, nor run an arbitrary verifier.
+PROPOSAL_PROTECTED = ("tools/mission_runner/", ".github/", ".githooks/", ".claude/", "governance/", "baseline/", "knowledge/03-Modules/",
+                      "PROJECT_INDEX.md", "AGENTS.md", "CLAUDE.md", ".gitignore", ".gitattributes")
+VERIFY_TARGET_RE = re.compile(r"(?:backend|tools\.[A-Za-z0-9_]+)\.tests(?:\.[A-Za-z_][A-Za-z0-9_]*){0,3}")
+SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+ORCH_ENV_KEEP = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "TERM")
+
+
+class HandoffError(Exception):
+    pass
+
+
+def _has_include(node):
+    if isinstance(node, dict):
+        return any(k in ("$include", "include", "includes") or _has_include(v) for k, v in node.items())
+    return isinstance(node, list) and any(_has_include(v) for v in node)
+
+
+def planner_policy_blocker(config_path=None):
+    """None only if the configured planner entry is provably read/list-only; else a precise blocker string.
+
+    Reads the one config file the Gateway is pointed at. Anything not provable from it (unparseable/JSON5, includes,
+    missing or duplicate entry, extra tool keys, a runtime other than the exact model-scoped openclaw one) fails closed.
+    Prompt text is never trusted."""
+    path = Path(config_path or os.environ.get("OPENCLAW_CONFIG_PATH") or Path.home() / ".openclaw" / "openclaw.json")
+    try:
+        cfg = strict_json(path.read_text())
+    except (OSError, ValueError) as e:
+        return f"PLANNER_POLICY_UNPROVEN: cannot read strict-JSON gateway config {path.name} ({str(e)[:60]})"
+    if _has_include(cfg):
+        return "PLANNER_POLICY_UNPROVEN: config uses include/override layers; effective entry cannot be proven"
+    agents = cfg.get("agents") if isinstance(cfg, dict) else None
+    if not isinstance(agents, dict) or "list" in agents:
+        return "PLANNER_POLICY_UNPROVEN: agents must be an object with an entries map and no legacy list"
+    entries = agents.get("entries")
+    if not isinstance(entries, dict):
+        return "PLANNER_POLICY_UNPROVEN: agents.entries must be an object keyed by agent id"
+    mine = [k for k in entries if isinstance(k, str) and k.strip().lower() == ORCH_AGENT]  # case/space variants count as duplicates
+    if mine != [ORCH_AGENT]:
+        return f"PLANNER_POLICY_UNPROVEN: agent {ORCH_AGENT} is missing or defined {len(mine)} times"
+    a = entries[ORCH_AGENT]
+    if not isinstance(a, dict):
+        return "PLANNER_POLICY_UNPROVEN: planner entry must be an object"
+    if set(a) - {"id", "name", "workspace", "model", "models", "tools", "subagents"} or a.get("id", ORCH_AGENT) != ORCH_AGENT:
+        return "PLANNER_POLICY_UNPROVEN: unsafe tool or sandbox override on the planner entry"
+    model = a.get("model")
+    if isinstance(model, dict):
+        model = model.get("primary") if set(model) <= {"primary"} else None
+    if model != PLANNER_MODEL:
+        return f"PLANNER_POLICY_UNPROVEN: model is not exactly {PLANNER_MODEL}"
+    tools = a.get("tools")
+    if not isinstance(tools, dict) or set(tools) - {"allow", "deny"}:
+        return "PLANNER_POLICY_UNPROVEN: tools must be an allow/deny list only (no profile, alsoAllow, elevated or overrides)"
+    allow = tools.get("allow")
+    if not (isinstance(allow, list) and allow and all(isinstance(x, str) for x in allow)) or not set(allow) <= PLANNER_TOOLS:
+        return "PLANNER_POLICY_UNPROVEN: tools.allow must be a non-empty subset of read/ls/dir_list"
+    deny = tools.get("deny", [])
+    if not isinstance(deny, list) or not all(isinstance(x, str) for x in deny) or set(deny) & set(allow):
+        return "PLANNER_POLICY_UNPROVEN: tools.deny must be a list of names that does not contradict allow"
+    sub = a.get("subagents")
+    if not (isinstance(sub, dict) and sub.get("allowAgents") == []):
+        return "PLANNER_POLICY_UNPROVEN: subagents.allowAgents must be an explicit empty list"
+    scoped = a.get("models")  # exactly one model-scoped override, and it may only pin the runtime
+    if not (isinstance(scoped, dict) and set(scoped) == {PLANNER_MODEL}):
+        return f"PLANNER_RUNTIME_UNPROVEN: models must hold exactly one override, for {PLANNER_MODEL}"
+    override = scoped[PLANNER_MODEL]
+    runtime = override.get("agentRuntime") if isinstance(override, dict) else None
+    if not isinstance(override, dict) or set(override) != {"agentRuntime"} or not isinstance(runtime, dict) \
+            or set(runtime) != {"id"} or runtime["id"] != PLANNER_RUNTIME:
+        return (f"PLANNER_RUNTIME_UNPROVEN: models[{PLANNER_MODEL}] must be exactly "
+                f'{{"agentRuntime": {{"id": "{PLANNER_RUNTIME}"}}}} (missing/auto/codex runtime or extra override)')
+    return None
+
+
+def _node_version(binpath):
+    parts = binpath.parent.parent.name.lstrip("v").split(".")
+    return tuple(int(x) if x.isdigit() else 0 for x in parts)
+
+
+def discover_orchestrator_bin():
+    """Explicit executable for the OpenClaw CLI; the LaunchAgent PATH does not contain it."""
+    found = shutil.which("openclaw")
+    if found:
+        return found
+    nvm = sorted(Path.home().glob(".nvm/versions/node/*/bin/openclaw"), key=_node_version)  # numeric: v9 < v22
+    return str(nvm[-1]) if nvm else None
+
+
+def _digest(p):
+    try:
+        if p.stat().st_size > 8 * 1024 * 1024:
+            return f"large:{p.stat().st_size}"
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+    except OSError:
+        return "absent" if not p.exists() else "unreadable"
+
+
+def _tree_digests(root, pattern):
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    return [(str(f.relative_to(root)), _digest(f)) for f in sorted(root.glob(pattern)) if f.is_file()]
+
+
+def state_fingerprint(cfg, tasks):
+    """Meaningful state: task lifecycle (incl. gate reasons) + repo HEAD + every owner-side input the orchestrator
+    judges by, committed or not: acceptance receipts, module records, blocker dispositions, module catalog, pin."""
+    try:
+        import dashboard
+        dispositions = _digest(Path(dashboard.DISPOSITIONS_PATH))
+    except Exception:
+        dispositions = "unavailable"
+    owner = [_tree_digests(cfg.home / "acceptances", "*.json"), _tree_digests(Path(cfg.repo) / "knowledge/03-Modules", "**/*"),
+             dispositions, _digest(CATALOG_PATH), _digest(pin_path(cfg.home))]
+    life = sorted((t["id"], t["status"], t.get("attempts"), t.get("blocked_reason"), t.get("gate_reason"))
+                  for t in tasks.values())
+    return hashlib.sha256(json.dumps([life, local_head_readonly(cfg.repo), owner]).encode()).hexdigest()
+
+
+def _no_dup_keys(pairs):
+    out = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError(f"duplicate key {k!r}")
+        out[k] = v
+    return out
+
+
+def _bad_constant(c):
+    raise ValueError(f"non-finite constant {c}")
+
+
+def strict_json(text):
+    return json.loads(text, object_pairs_hook=_no_dup_keys, parse_constant=_bad_constant)
+
+
+def runtime_model(meta):
+    """Model identity exactly as the runtime reports it at result.meta.agentMeta; anything else is UNKNOWN."""
+    agent = meta.get("agentMeta") if isinstance(meta, dict) else None
+    if not isinstance(agent, dict):
+        return None
+    model, provider = agent.get("model"), agent.get("provider")
+    if not (isinstance(model, str) and model.strip() and len(model) <= 80):
+        return None
+    return f"{provider}/{model}" if isinstance(provider, str) and provider.strip() and len(provider) <= 40 else model
+
+
+def parse_handoff_envelope(raw):
+    """(final assistant payload text, runtime-reported model|None, agentHarnessId|None) from `openclaw agent --json` stdout.
+
+    Only the documented envelope is read: {status:"ok", result:{payloads:[{text}], meta:{agentMeta:{aborted:false}}}}.
+    The raw stdout is never searched for markers or model names.
+    """
+    if len(raw) > HANDOFF_OUT_MAX:
+        raise HandoffError("CLI stdout exceeds the size bound")
+    try:
+        env = strict_json(raw.decode("utf-8"))
+    except (ValueError, UnicodeError):
+        raise HandoffError("CLI stdout is not one strict JSON document")
+    if not isinstance(env, dict) or env.get("status") != "ok":
+        raise HandoffError("CLI envelope status is not ok")
+    result = env.get("result")
+    meta = result.get("meta") if isinstance(result, dict) else None
+    agent = meta.get("agentMeta") if isinstance(meta, dict) else None
+    if not isinstance(agent, dict) or agent.get("aborted") is not False:
+        raise HandoffError("turn aborted, or abort state not reported at result.meta.agentMeta")
+    payloads = result.get("payloads")
+    final = payloads[-1] if isinstance(payloads, list) and payloads else None
+    text = final.get("text") if isinstance(final, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        raise HandoffError("no final assistant text payload")
+    if len(text) > HANDOFF_TEXT_MAX:
+        raise HandoffError("final payload exceeds the size bound")
+    harness = agent.get("agentHarnessId")
+    return text, runtime_model(meta), harness if isinstance(harness, str) else None
+
+
+def parse_handoff_proposal(text, req_id):
+    """The final payload must be exactly one JSON object: {request_id, kind, reason, task?}; prose/markdown fails."""
+    try:
+        prop = strict_json(text)
+    except ValueError:
+        raise HandoffError("final payload is not a single strict JSON object (prose/markdown/multiple documents rejected)")
+    if not isinstance(prop, dict) or not {"request_id", "kind", "reason"} <= set(prop) or set(prop) - {"request_id", "kind", "reason", "task"}:
+        raise HandoffError("proposal keys must be request_id, kind, reason and (TASK only) task")
+    if prop["request_id"] != req_id:
+        raise HandoffError("request_id does not match the open request (stale or foreign response)")
+    if not isinstance(prop["kind"], str) or prop["kind"] not in HANDOFF_KINDS:
+        raise HandoffError("kind must be TASK, BLOCKED, WAITING_FOR_OWNER or NO_LEGAL_WORK")
+    if not isinstance(prop["reason"], str) or not 0 < len(prop["reason"].strip()) <= 500:
+        raise HandoffError("reason must be a non-empty string of at most 500 chars")
+    if (prop["kind"] == "TASK") != ("task" in prop):
+        raise HandoffError("a task object is required for TASK and forbidden for every other kind")
+    if prop["kind"] == "TASK" and not (isinstance(prop["task"], dict) and set(prop["task"]) <= HANDOFF_TASK_KEYS):
+        raise HandoffError("task must be one object with only validate_task fields")
+    return prop
+
+
+VERIFY_PATH = "/usr/bin:/bin"  # a sandboxed verifier's PATH: exec is allowed only for Python and Git anyway
+RUNTIME_ARTIFACT_DIRS ={"__pycache__", ".venv", "node_modules", "build", "dist"}
+
+
+def exact_file_problem(repo, p):
+    """Why `p` is not an acceptable exact, canonical, non-runtime-artifact repo file path (None when it is)."""
+    if not isinstance(p, str) or not p or p.endswith("/") or any(c in p for c in "*?[") or "\0" in p:
+        return "must be an exact file path (no directory prefix or glob)"
+    n = posixpath.normpath(p)
+    if n != p or p.startswith("/") or n == ".." or n.startswith("../"):
+        return "must be a canonical repo-relative path"
+    parts = p.split("/")
+    if any(x in RUNTIME_ARTIFACT_DIRS or x.startswith(".env") for x in parts) or p.endswith((".pyc", ".pyo")):
+        return "ignored runtime artifacts (bytecode, virtualenv, node_modules, build, dist, .env*) are not allowed"
+    try:
+        r = git_run(repo, "check-ignore", "-q", "--no-index", "--", p)
+    except (OSError, subprocess.SubprocessError):
+        return "could not prove the path is not git-ignored"
+    if r.returncode == 0:
+        return "git-ignored paths are not allowed"
+    if r.returncode != 1:
+        return "could not prove the path is not git-ignored"
+    return None
+
+
+def proposal_restrictions(cfg, t):
+    """Extra limits for handoff-source (model-proposed) write tasks only; owner-enqueued tasks are unchanged."""
+    if t["role"] not in WRITE_ROLES:
+        return
+    for p in [*t["allowed_paths"], *t["expected_changes"]]:
+        why = exact_file_problem(cfg.repo, p)
+        if why:
+            raise ValueError(f"proposed scope {p!r}: {why}")
+    for p in [*t["allowed_paths"], *t["expected_changes"]]:
+        body = p[:-1] if p.endswith("/") else p  # exactly one trailing slash marks a directory scope
+        n = posixpath.normpath(body) if body else ""
+        if not body or p.startswith("/") or n in (".", "..") or n.startswith("../") or n != body:
+            raise ValueError(f"proposed scope {p!r}: must be a canonical POSIX repo-relative path "
+                             "(no './', repeated slashes, parent segments or absolute paths)")
+        low = p.lower()
+        if any(c in p for c in "*?[") or low in (".", "./"):
+            raise ValueError(f"proposed scope {p!r}: globs and broad paths are not allowed")
+        if any(low.startswith(c.lower()) or (low.endswith("/") and c.lower().startswith(low)) or low == c.lower().rstrip("/")
+               for c in PROPOSAL_PROTECTED):
+            raise ValueError(f"proposed scope {p!r} touches runner, CI, governance or baseline controls")
+    v = t["verify_cmd"]
+    if not v:
+        raise ValueError("a proposed write task must declare a nonempty verify_cmd from the strict unittest allowlist; "
+                         "expected_changes alone is not enough")
+    targets = v[3:]
+    if not (v[:3] == [sys.executable, "-m", "unittest"] and 0 < len(targets) <= 5
+            and all(VERIFY_TARGET_RE.fullmatch(x) for x in targets)):
+        raise ValueError("a proposed verify_cmd must be exactly [<runner python>, '-m', 'unittest', <test module>...] "
+                         "with targets under backend.tests or tools.<name>.tests; no shell, git, other program or flags")
+    shadow, tests_dirs = set(), []
+    for x in targets:
+        parts = x.split(".")
+        pkg = Path(cfg.repo).joinpath(*parts[:parts.index("tests") + 1])
+        if not pkg.is_dir():
+            raise ValueError(f"verify target {x!r}: no reviewed tests package at {'/'.join(parts[:parts.index('tests') + 1])}")
+        tests_dirs.append("/".join(parts[:parts.index("tests") + 1]))
+        for i in range(1, len(parts) + 1):  # every directory, module and package __init__ the verifier imports
+            base = "/".join(parts[:i])
+            shadow |= {base, base + ".py", base + "/__init__.py"}
+    for p in [*t["allowed_paths"], *t["expected_changes"]]:
+        n = posixpath.normpath(p)
+        if p.startswith("/") or n == ".." or n.startswith("../") or "__pycache__" in n.split("/"):
+            raise ValueError(f"proposed scope {p!r}: absolute, parent-relative and bytecode-cache paths are not allowed")
+        top = n.split("/")[0]
+        if "/" not in p and (Path(n).suffix in ("", ".py", ".pyc", ".pyd", ".so", ".pth")):
+            raise ValueError(f"proposed scope {p!r}: a repo-root entry could shadow a module the verifier imports")
+        if top.split(".")[0] in (*sys.stdlib_module_names, "test") or top in ("sitecustomize.py", "usercustomize.py"):
+            raise ValueError(f"proposed scope {p!r}: could shadow a standard-library module used by the verifier")
+        if (any(s == n or s.startswith(n + "/") for s in shadow) or any(n.startswith(d + "/") for d in tests_dirs)):
+            raise ValueError(f"proposed scope {p!r} covers the verifier import path (tests package, test module or package __init__)")
+
+
+def handoff_prompt(cfg, req_id, fp, task_summary):
+    q = json.dumps  # paths are data, quoted as JSON strings (they may contain spaces); no shell is ever involved
+    return f"""You are the Veyro mission orchestrator running ONE read-only continuation turn (request {req_id}).
+The Veyro mission runner detected a meaningful state change (state fingerprint {fp[:12]}) and has no queued or running work.
+Your only job: PROPOSE exactly one next legal operation, or report why none exists. You are not a worker and you have no write path.
+
+Context (inspect it yourself, read-only; do not trust this summary):
+- Repository: {q(str(cfg.repo))}
+- Runner state dir: {q(str(cfg.home))} (state.json tasks, acceptances/, runs/*.evidence.json)
+- Task lifecycle at request time: {task_summary}
+- Governance: the pinned EIP/TSD baseline, knowledge/03-Modules/*/ module records, and the module catalog at {q(str(Path(__file__).resolve().parent / "module_catalog.json"))}.
+
+Hard rules:
+1. Base every decision on actual evidence in files/state (module records, acceptance receipts, task evidence, git HEAD). Prose, memory or earlier chat is not evidence.
+2. Respect all mandatory gates: prerequisite modules must be accepted, no active same-module blocker for gatekeeper/scenario-review, the baseline must be healthy, roles route by the runner (implement/test = Sonnet; architecture, scenario-review, code-review, manual-qa, security, performance, gatekeeper = Opus). Never downgrade an Opus role.
+3. Mandatory review: after a DONE implement/test task in a module, the only legal next write or gatekeeper is preceded by an independent Opus code-review of that exact task. Propose that code-review first, with `review_of` binding the exact write task id and its recorded changed files (path + sha256 from the task's evidence). After CHANGES_REQUESTED propose only a bounded remediation write (at most 2 rounds, inside the original allowed paths); after APPROVED the gatekeeper may follow. The runner re-checks all of this; a proposal that violates it is refused.
+4. Follow accepted-module transitions: once a module is ACCEPTED with a verified receipt, move to the next module the catalog and EIP/TSD allow; do not redo accepted work.
+5. Make no owner decisions. If progress needs an owner approval, acceptance, scope or policy decision, propose nothing and answer WAITING_FOR_OWNER.
+6. Do NOT edit, create, delete or commit any file, run the runner CLI, enqueue anything, write queue/command/approval/receipt files, certify or accept any module, or perform the worker task yourself. The runner alone validates and enqueues your proposal.
+7. If a task is BLOCKED, propose only unrelated legal work, never a retry of the blocked task unless the evidence shows its blocker is resolved.
+
+Your final assistant message must be exactly one JSON object and nothing else (no markdown, no code fence, no prose):
+{{"request_id": "{req_id}", "kind": "TASK" | "BLOCKED" | "WAITING_FOR_OWNER" | "NO_LEGAL_WORK", "reason": "<one line, at most 500 chars>", "task": {{...}}}}
+"task" is present only for kind TASK and is one complete object with the fields id (unique, [A-Za-z0-9._-]{{1,64}}), module (MOD-NNN), role, title, prompt (the full worker prompt), allowed_paths, expected_changes, verify_cmd (required and nonempty for writing roles, exactly the JSON argv [{q(sys.executable)}, "-m", "unittest", "<dotted test module under backend.tests or tools.<name>.tests>", ...]; an empty or any other verifier is refused; review roles carry none), allowed_paths (exact files or directory prefixes only: no globs, never tools/mission_runner/, .github/, governance or baseline paths), for a remediation write remediation_of ("<reviewed write task id>") and, for role code-review, review_of {{"task_id": "<write task id>", "changed": [{{"path": "...", "sha256": "..."}}]}}. Writing roles need allowed_paths and a nonempty verify_cmd (plus expected_changes as appropriate); review roles must carry none of the three.
+"""
+
+
 # ------------------------------------------------------- prerequisite / acceptance gate
 # Roles that can advance implementation or acceptance need every catalog dependency accepted. The remaining
 # roles (architecture, security, performance, code-review) are read-only and certify nothing: they bypass.
@@ -791,8 +1132,7 @@ def receipt_outcome(result):
 
 def _is_ancestor(cfg, sha):
     try:
-        return subprocess.run(["git", "-C", str(cfg.repo), "merge-base", "--is-ancestor", sha, "HEAD"],
-                              capture_output=True, timeout=10).returncode == 0
+        return git_run(cfg.repo, "merge-base", "--is-ancestor", sha, "HEAD", timeout=10).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -811,8 +1151,7 @@ def verify_legacy_mod000(cfg, r):
     if not _is_ancestor(cfg, MOD000_HEADER_SHA):
         raise GateError(f"{m}: legacy header commit is not an ancestor of repo HEAD")
     try:
-        in_header = subprocess.run(["git", "-C", str(cfg.repo), "cat-file", "-e", f"{MOD000_HEADER_SHA}:{MOD000_RECORD}"],
-                                   capture_output=True, timeout=10).returncode == 0
+        in_header = git_run(cfg.repo, "cat-file", "-e", f"{MOD000_HEADER_SHA}:{MOD000_RECORD}", timeout=10).returncode == 0
     except (OSError, subprocess.SubprocessError):
         in_header = False
     if not in_header:
@@ -856,7 +1195,158 @@ def active_module_blockers(cfg, t, tasks):
     registry = dashboard.load_dispositions(dashboard.DISPOSITIONS_PATH)
     projected = dashboard.task_projection(list(tasks.values()), {}, registry, cfg.repo)
     return sorted(p["id"] for p in projected
-                  if p["module"] == t["module"] and p["status"] == "BLOCKED" and p["lifecycle"] == "active-blocker")
+                  if p["module"] == t["module"] and p["status"] == "BLOCKED" and p["lifecycle"] == "active-blocker"
+                  and not remediated_review_blocker(cfg, tasks, tasks[p["id"]]))
+
+
+REVIEW_OUTCOMES = ("APPROVED", "CHANGES_REQUESTED")
+MAX_REMEDIATIONS = 2  # consecutive CHANGES_REQUESTED rounds that may each be followed by a remediation write
+
+
+def _when(t):
+    return (t.get("finished_at") or t.get("updated_at") or t.get("created_at") or "", t.get("id") or "")
+
+
+def review_attempts(tasks, write_id):
+    """Independent Opus code-review ATTEMPTS bound to exactly this write task, oldest first. An attempt is a
+    review that reached an explicit verdict on a verified Opus route; unbound (historical) reviews never count."""
+    found = [r for r in tasks.values()
+             if r.get("role") == "code-review" and (r.get("review_of") or {}).get("task_id") == write_id
+             and (r.get("evidence") or {}).get("review_outcome") in REVIEW_OUTCOMES
+             and (r.get("route") or {}).get("verdict") == "VERIFIED"]
+    return sorted(found, key=_when)
+
+
+def review_verdict(tasks, write_id):
+    """None (never reviewed), CHANGES_REQUESTED or APPROVED. One CHANGES_REQUESTED attempt is final for that exact
+    write: re-reviewing an unchanged write can never turn it into an approval (no review shopping)."""
+    outs = [a["evidence"]["review_outcome"] for a in review_attempts(tasks, write_id)]
+    if not outs:
+        return None
+    return "CHANGES_REQUESTED" if "CHANGES_REQUESTED" in outs else "APPROVED"
+
+
+def _changed_pairs(lst):
+    return sorted(({"path": c.get("path"), "sha256": c.get("sha256")} for c in lst or [] if isinstance(c, dict)),
+                  key=lambda c: str(c["path"]))
+
+
+def _hashes_current(cfg, changed):
+    try:
+        return bool(changed) and all(isinstance(c.get("path"), str) and _path_hash(Path(cfg.repo) / c["path"]) == c.get("sha256")
+                                     for c in changed)
+    except OSError:
+        return False
+
+
+def _bound_review_ok(w, r):
+    """Review r is a runner-verified bound review of exactly write w's recorded evidence."""
+    ev, b = r.get("evidence") or {}, r.get("review_of") or {}
+    return (b.get("task_id") == w["id"] and ev.get("review_bound_verified") is True
+            and (r.get("route") or {}).get("verdict") == "VERIFIED"
+            and _changed_pairs(b.get("changed")) == _changed_pairs((w.get("evidence") or {}).get("changed")))
+
+
+def remediated_review_blocker(cfg, tasks, r):
+    """True only when BLOCKED review r (CHANGES_REQUESTED, bound and runner-verified) is answered by an explicit
+    remediation write (`remediation_of` = the reviewed write) plus an APPROVED bound Opus review of that exact write,
+    in order, with the remediation's recorded files still hashing to their evidence. Every record stays as it was;
+    anything missing or unverifiable leaves the blocker active."""
+    ev = r.get("evidence") or {}
+    if not (r.get("role") == "code-review" and r.get("status") == "BLOCKED" and ev.get("review_outcome") == "CHANGES_REQUESTED"):
+        return False
+    w = tasks.get((r.get("review_of") or {}).get("task_id"))
+    if not (w and w.get("role") in WRITE_ROLES and w.get("status") == "DONE" and w.get("module") == r.get("module")
+            and _bound_review_ok(w, r) and review_verdict(tasks, w["id"]) == "CHANGES_REQUESTED"):
+        return False
+    for w2 in tasks.values():
+        if not (w2.get("remediation_of") == w["id"] and w2.get("role") in WRITE_ROLES and w2.get("status") == "DONE"
+                and w2.get("module") == w["module"] and _when(w2)[0] >= _when(r)[0] and review_verdict(tasks, w2["id"]) == "APPROVED"):
+            continue
+        ok = [a for a in review_attempts(tasks, w2["id"]) if a.get("status") == "DONE" and _bound_review_ok(w2, a)
+              and _when(a)[0] >= _when(w2)[0]]
+        if ok and _hashes_current(cfg, (w2.get("evidence") or {}).get("changed")):
+            return True
+    return False
+
+
+def review_gate_reason(cfg, t, tasks):
+    """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
+    bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
+    if not cfg.review_gate or t["role"] not in WRITE_ROLES | {"gatekeeper"}:
+        return None
+    module = t["module"]
+    writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
+                     and x.get("status") == "DONE" and x.get("review_gate")), key=_when)
+    if not writes:
+        return None
+    last = writes[-1]
+    verdict = review_verdict(tasks, last["id"])
+    if verdict is None:
+        return f"REVIEW_REQUIRED {module}: write task {last['id']} has no independent Opus code-review attempt bound to it"
+    if verdict == "APPROVED":
+        if not _hashes_current(cfg, (last.get("evidence") or {}).get("changed")):
+            return (f"REVIEW_BINDING_STALE {module}: files of {last['id']} no longer match the content that was "
+                    "reviewed and approved")
+        return None
+    if t["role"] == "gatekeeper":
+        return f"REVIEW_CHANGES_REQUESTED {module}: a review of {last['id']} requests changes; only a remediation write may follow"
+    rounds = 0
+    for w in writes:
+        rounds = 0 if review_verdict(tasks, w["id"]) == "APPROVED" else rounds + 1
+    if rounds > MAX_REMEDIATIONS:
+        return f"REMEDIATION_LIMIT {module}: {MAX_REMEDIATIONS} remediation rounds already used after CHANGES_REQUESTED"
+    if not all(in_scope(p, last.get("allowed_paths") or []) for p in t.get("allowed_paths") or []):
+        return f"REMEDIATION_OUT_OF_SCOPE {module}: remediation must stay inside {last['id']}'s allowed paths"
+    return None
+
+
+def review_binding(cfg, t, tasks, require_changed):
+    """Validate (and for the owner CLI, fill) the exact write task + changed-file hashes a code-review binds to."""
+    b = t.get("review_of")
+    if not b:
+        return
+    w = tasks.get(b["task_id"])
+    if not (w and w.get("role") in WRITE_ROLES and w.get("status") == "DONE" and w.get("module") == t["module"]):
+        raise ValueError("review_of must name a DONE write task of the same module")
+    want = [{"path": c.get("path"), "sha256": c.get("sha256")} for c in (w.get("evidence") or {}).get("changed") or []]
+    if not want:
+        raise ValueError("the write task recorded no changed-file evidence to bind to")
+    if b.get("changed") is None:
+        if require_changed:
+            raise ValueError("review_of.changed (path + sha256 of every changed file) is required")
+        b["changed"] = want
+    elif sorted(b["changed"], key=lambda c: c["path"]) != sorted(want, key=lambda c: c["path"]):
+        raise ValueError("review_of.changed does not match the write task's recorded changed files")
+    for c in want:
+        if _path_hash(Path(cfg.repo) / c["path"]) != c["sha256"]:
+            raise ValueError(f"{c['path']} changed since the write task finished: stale binding")
+    for o in tasks.values():  # one bound review per write: a second look at an unchanged write is review shopping
+        if (o.get("id") != t.get("id") and (o.get("review_of") or {}).get("task_id") == b["task_id"]
+                and (o.get("status") in ("QUEUED", "RUNNING") or review_attempts({o["id"]: o}, b["task_id"])
+                     # an explicit reviewer claim (even BLOCKED, or on an unverified route) is never retried for an unchanged write;
+                     # reviews that produced no outcome at all (crash, no marker) stay retryable
+                     or (o.get("evidence") or {}).get("review_outcome_reported") in ("APPROVED", "CHANGES_REQUESTED", "BLOCKED"))):
+            raise ValueError(f"write task {b['task_id']} already has a bound review ({o['id']}); "
+                             "only a new remediation write can be reviewed again")
+
+
+def bound_review_problems(cfg, tasks, t):
+    """Empty when the bound write and every changed-file hash are still exactly what the review was bound to."""
+    b = t.get("review_of")
+    if not b:
+        return []
+    w = tasks.get(b.get("task_id"))
+    if not (w and w.get("role") in WRITE_ROLES and w.get("status") == "DONE" and w.get("module") == t["module"]):
+        return ["bound write task is not a DONE write of the module"]
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not want or _changed_pairs(b.get("changed")) != want:
+        return ["bound changed-file evidence no longer matches the write task"]
+    try:
+        return [f"{c['path']} changed since the write finished" for c in want
+                if _path_hash(Path(cfg.repo) / c["path"]) != c["sha256"]]
+    except OSError as e:
+        return [f"cannot hash bound files: {str(e)[:80]}"]
 
 
 def gate_reason(cfg, t, tasks):
@@ -873,7 +1363,7 @@ def gate_reason(cfg, t, tasks):
             active = active_module_blockers(cfg, t, tasks)
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
-        return None
+        return review_gate_reason(cfg, t, tasks)
     except GateError as e:
         return f"GATE_UNVERIFIABLE: {e}"
     except Exception as e:
@@ -890,6 +1380,7 @@ class Runner:
         self.last_ci, self.ci_run = 0.0, subprocess.run  # ci_run/ci_popen: injectable subprocess layers for tests
         self.ci_seeded = False
         self.ci_popen = subprocess.Popen
+        self.hp = None  # in-flight orchestrator CLI handle (durable record lives in state["handoff"])
 
     # --- lifecycle
     def run(self):
@@ -922,6 +1413,9 @@ class Runner:
 
     def finish(self):
         reason = "STOP" if self.state["control"] == "STOP" else "signal"
+        hp = getattr(self, "hp", None)
+        if hp is not None and hp.poll() is None:  # request stays durable; the next start reconciles it
+            self.stop_handoff_child(hp)
         self.state["runner"]["heartbeat_at"] = now_iso()
         self.state["runner"]["stopped_at"] = now_iso()
         self.store.event("runner-exit", reason=reason)
@@ -945,6 +1439,8 @@ class Runner:
             t["child"], t["stage"] = None, None
             self.store.event("recovered-interrupted", op, task_id=t["id"], orphan_reaped=reaped)
             self.requeue_or_fail(t, "interrupted by runner crash/restart")
+        if (self.state.get("handoff") or {}).get("request"):  # even if continuation was switched off since: never dispatch under it
+            self.handoff_recover()
         self.store.save(self.state)
         lp = writer_lock_path(self.cfg.home, self.cfg.repo)
         if FileLock.probe(lp) == "held":  # an orphan we could not reap still owns the repo: dispatch will wait
@@ -985,12 +1481,286 @@ class Runner:
         self.apply_commands()
         self.check_baseline()
         self.heartbeat()
-        if self.state["control"] == "RUN" and self.state["health"]["status"] == "OK":
+        if self.state["control"] == "RUN" and self.state["health"]["status"] == "OK" and not self.handoff_open() \
+                and not (self.state.get("handoff") or {}).get("quarantine"):
             t = self.next_ready()
             if t:
                 self.dispatch(t)
+        self.handoff_step()
         self.refresh_ci()
         self.store.save(self.state)
+
+    # --- automatic continuation: the runner is only the mechanical trigger; OpenClaw chooses the task
+    def handoff_state(self):
+        return self.state.setdefault("handoff", {"status": "idle", "detail": "no continuation requested yet", "fingerprint": None,
+                                                 "settled": True, "attempts": 0, "request": None, "quarantine": None,
+                                                 "outcome": None, "last": None, "updated_at": now_iso()})
+
+    def handoff_open(self):
+        """True while an orchestrator request is open: nothing may ingest, dispatch or enqueue meanwhile."""
+        return bool((self.state.get("handoff") or {}).get("request"))
+
+    def set_handoff(self, status, detail):
+        h = self.handoff_state()
+        if (h["status"], h["detail"]) != (status, detail):
+            self.store.event("handoff-state", status=status, detail=detail[:300])
+            h.update(status=status, detail=detail[:300], updated_at=now_iso())
+
+    def handoff_step(self):
+        if not self.cfg.orchestrator_bin:
+            return
+        h = self.handoff_state()
+        if h["request"]:
+            return self.handoff_poll(h)
+        if h.get("quarantine"):  # a late gateway turn may be alive: no turn, no ingress, whatever else changes; only `rearm` lifts it
+            self.hold_queue(h["quarantine"])
+            return
+        st = self.state
+        if st["control"] != "RUN":
+            return self.set_handoff("waiting", f"runner control is {st['control']}; no continuation started")
+        if st["health"]["status"] != "OK":
+            return self.set_handoff("blocked", f"baseline unhealthy ({st['health'].get('code') or st['health']['status']}); no continuation")
+        live = [t for t in st["tasks"].values() if t["status"] == "RUNNING" or (t["status"] == "QUEUED" and not t.get("gate_reason"))]
+        if live:  # a QUEUED task the gate holds (gate_reason set) is not work in progress: it must not stall selection forever
+            return self.set_handoff("waiting", "worker task queued or running; continuation deferred")
+        if self.store.pending_commands() or any((self.cfg.home / "queue").glob("*.json")):
+            return  # let the next tick apply commands / ingest before deciding
+        if FileLock.probe(writer_lock_path(self.cfg.home, self.cfg.repo)) != "free":
+            return self.set_handoff("waiting", "repo writer lock held; continuation deferred")
+        fp = state_fingerprint(self.cfg, st["tasks"])
+        if fp == h["fingerprint"]:
+            if h["settled"]:  # this exact state was already handed off once: never loop on unchanged state
+                if h["outcome"]:
+                    self.set_handoff(**h["outcome"])
+                return
+        else:
+            h.update(fingerprint=fp, settled=False, attempts=0, outcome=None)  # a new state is offered; quarantine was handled above
+        self.handoff_start(h, fp)
+
+    def handoff_rearm(self):
+        """Owner command: forget the settled outcome so the current state is offered to the orchestrator once more."""
+        h = self.handoff_state()
+        if h["request"]:
+            return self.store.event("handoff-rearm-refused", reason="a request is open")
+        if self.state["control"] != "RUN" or FileLock.probe(writer_lock_path(self.cfg.home, self.cfg.repo)) != "free":
+            return self.store.event("handoff-rearm-refused", reason="runner not running or writer lock held: nothing verified")
+        try:
+            repo_state(self.cfg.repo)
+        except Exception as e:
+            return self.store.event("handoff-rearm-refused", reason=f"repo snapshot unavailable: {str(e)[:80]}")
+        h.update(fingerprint=None, settled=False, attempts=0, outcome=None, quarantine=None)
+        self.set_handoff("waiting", "re-armed by owner; continuation will be requested on the next idle tick")
+        self.store.event("handoff-rearmed")
+
+    def handoff_start(self, h, fp):
+        try:
+            pre_repo = repo_state(self.cfg.repo)  # lets settle prove the read-only turn wrote nothing
+        except Exception as e:
+            return self.set_handoff("blocked", f"REPO_SNAPSHOT_UNAVAILABLE: cannot prove a read-only turn ({str(e)[:100]})")
+        h["attempts"] += 1
+        h["seq"] = h.get("seq", 0) + 1  # never reused, even after a re-arm: a request id names exactly one turn
+        req_id = f"handoff-{fp[:12]}-{h['seq']}"
+        stem = self.cfg.home / "runs" / req_id
+        msg, out, err = Path(f"{stem}.msg.md"), Path(f"{stem}.out"), Path(f"{stem}.err")
+        tasks = self.state["tasks"]
+        summary = ", ".join(f"{i}:{t['status']}" + (f"({t['blocked_reason']})" if t.get("blocked_reason") else "")
+                            for i, t in sorted(tasks.items()))[:1500] or "no tasks recorded"
+        atomic_write(msg, handoff_prompt(self.cfg, req_id, fp, summary).encode())
+        h["request"] = {"id": req_id, "fingerprint": fp, "started_at": now_iso(), "pre_ids": sorted(tasks),
+                        "deadline": time.time() + self.cfg.handoff_timeout + 30, "msg": str(msg), "out": str(out),
+                        "err": str(err), "child": None, "pre_repo": pre_repo, "foreign_cmds": []}
+        self.set_handoff("coordinating", f"orchestrator turn {req_id} in flight")
+        self.store.save(self.state)  # request is durable BEFORE the CLI exists, so a crash reconciles instead of duplicating
+        self.store.event("handoff-request", req_id, fingerprint=fp[:12], seq=h["seq"])
+        binpath = str(self.cfg.orchestrator_bin)
+        env = {k: os.environ[k] for k in ORCH_ENV_KEEP if k in os.environ}
+        env |= {k: v for k, v in os.environ.items() if k.startswith("OPENCLAW_")}
+        env["PATH"] = f"{Path(binpath).parent}:/usr/bin:/bin:/usr/sbin:/sbin"  # node lives next to the CLI
+        blocker = planner_policy_blocker()  # the Gateway enforces the tool policy, not the CLI sandbox below
+        if blocker:
+            return self.handoff_settle(h, "policy-refused", None, blocker)
+        prefix, why = self.handoff_sandbox_prefix(req_id)
+        if prefix is None:  # defense-in-depth only: confines this CLI client, NOT the separate Gateway turn
+            return self.handoff_settle(h, "sandbox-refused", None, why)
+        cmd = [*prefix, binpath, "agent", "--agent", ORCH_AGENT, "--session-key", ORCH_SESSION, "--message-file", str(msg),
+               "--json", "--timeout", str(int(self.cfg.handoff_timeout))]  # argv list, no shell: paths with spaces are safe
+        with open(out, "wb") as fo, open(err, "wb") as fe:
+            try:
+                p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fo, stderr=fe, cwd=self.cfg.home,
+                                     start_new_session=True, env=env)
+            except OSError as e:
+                return self.handoff_settle(h, "spawn-failed", None, f"spawn failed: {e}")
+        lstart = subprocess.run(["ps", "-o", "lstart=", "-p", str(p.pid)], capture_output=True, text=True).stdout.strip()
+        h["request"]["child"] = {"pid": p.pid, "lstart": lstart}
+        self.hp = p
+        self.store.save(self.state)
+
+    def handoff_sandbox_prefix(self, req_id):
+        """Defense-in-depth Seatbelt for the orchestrator CLI client only: no file writes under the runner home (queue,
+        commands, state, acceptances) or .git from this process. It does NOT confine the separate Gateway turn; that
+        is bounded only by the planner tool and runtime policy checked in planner_policy_blocker. Reads and network stay open
+        (the CLI must reach the Gateway). Returns (argv prefix, None), or (None, reason) when it cannot be applied."""
+        if self.cfg.sandbox == "off":
+            return None, "sandbox is off (sandbox=off); a sandbox is required for the orchestrator turn"
+        if sys.platform != "darwin" or not os.access(SANDBOX_EXEC, os.X_OK):
+            return None, f"{SANDBOX_EXEC} unavailable; a sandbox is required for the orchestrator turn"
+        deny = [str(Path(self.cfg.home).resolve()), str((Path(self.cfg.repo) / ".git").resolve())]
+        q = lambda p: '"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        prof = Path(self.cfg.home) / "runs" / f"{req_id}.sb"
+        try:
+            atomic_write(prof, ("(version 1)\n(allow default)\n(deny file-write* " +
+                                " ".join(f"(subpath {q(d)})" for d in deny) + ")\n").encode())
+        except OSError as e:
+            return None, f"could not write the sandbox profile: {e}"[:200]
+        return [SANDBOX_EXEC, "-f", str(prof)], None
+
+    def handoff_poll(self, h):
+        req, p = h["request"], getattr(self, "hp", None)
+        if p is None or p.pid != (req.get("child") or {}).get("pid"):
+            return self.handoff_recover()  # request without a live handle in this process: reconcile, never re-call blindly
+        rc = p.poll()
+        if rc is None:
+            if self.state["control"] != "RUN":  # owner PAUSE/STOP wins: the turn is killed and its output never used
+                self.stop_handoff_child(p)
+                return self.handoff_settle(h, "paused", None, f"runner control became {self.state['control']} during the turn")
+            if time.time() > req["deadline"]:
+                self.stop_handoff_child(p)
+                self.handoff_settle(h, "timeout", None, f"no result within {int(self.cfg.handoff_timeout)}s")
+            return
+        self.handoff_settle(h, "exited", rc, f"exit {rc}")
+
+    @staticmethod
+    def stop_handoff_child(p):
+        """The orchestrator turn is read-only, so its whole process group is simply killed and reaped."""
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            p.kill()
+        p.wait()
+
+    def handoff_recover(self):
+        """Crash/restart (or lost handle): reap any orphan CLI, then judge the request by queue evidence first."""
+        h = self.handoff_state()
+        req = h.get("request")
+        if not req:
+            return
+        self.reap(req.get("child"))
+        self.hp = None
+        self.handoff_settle(h, "recovered", None, "orchestrator turn interrupted by runner restart")
+
+    def handoff_settle(self, h, how, rc, why):
+        req = h["request"]
+        clean = how == "exited" and rc == 0
+        # Anything that reached the runner's inputs while the request was open was not produced by the proposal.
+        held = self.hold_queue(f"external queue ingress while {req['id']} was open")
+        foreign = req.get("foreign_cmds") or []
+        try:
+            wrote = diff_state(req["pre_repo"], repo_state(self.cfg.repo)) if req.get("pre_repo") else ["<no pre-snapshot>"]
+        except Exception as e:
+            wrote = [f"<snapshot failed: {str(e)[:60]}>"]
+        drift = state_fingerprint(self.cfg, self.state["tasks"]) != req["fingerprint"]
+        model, prop, why_bad, harness_bad = None, None, None, None
+        if clean:
+            try:
+                raw = Path(req["out"]).read_bytes()
+                text, model, harness = parse_handoff_envelope(raw)
+                if harness != PLANNER_RUNTIME:  # the turn ran under another runtime than the one the policy check proved
+                    harness_bad = f"agentHarnessId {str(harness)[:40]!r} is not {PLANNER_RUNTIME!r}"
+                    raise HandoffError(harness_bad)
+                prop = parse_handoff_proposal(text, req["id"])
+            except OSError:
+                why_bad = "CLI output file unreadable"
+            except HandoffError as e:
+                why_bad = str(e)
+        h["request"], self.hp = None, None
+        h["quarantine"] = None
+        enqueued = None
+        if how != "exited" or rc != 0:
+            if how not in ("spawn-failed", "sandbox-refused", "policy-refused"):  # no CLI ran for those; otherwise the gateway may keep running a turn whose CLI was killed or failed
+                h["quarantine"] = f"{how}: late gateway turn possible; owner re-arm required before any enqueue"
+            err = ""
+            try:
+                err = Path(req["err"]).read_bytes()[-200:].decode(errors="replace").strip()
+            except OSError:
+                pass
+            code = {"timeout": "ORCHESTRATOR_TIMEOUT", "recovered": "ORCHESTRATOR_TURN_INTERRUPTED",
+                    "paused": "ORCHESTRATOR_TURN_ABORTED_BY_OWNER", "sandbox-refused": "ORCHESTRATOR_SANDBOX_UNAVAILABLE"}.get(how, "ORCHESTRATOR_CALL_FAILED")
+            outcome = {"status": "blocked", "detail": f"{code}: {why}; no automatic retry; {err}"[:300]}
+            if how == "policy-refused":
+                outcome["detail"] = f"{why}; no automatic retry"[:300]
+        elif harness_bad:
+            # a non-openclaw turn may have had tools the policy never covered: its proposal is discarded and the owner re-arms
+            h["quarantine"] = "RUNTIME_HARNESS_MISMATCH: owner re-arm required before any turn or enqueue"
+            outcome = {"status": "blocked", "detail": f"RUNTIME_HARNESS_MISMATCH: {harness_bad}; proposal discarded"[:300]}
+        elif held or foreign or wrote or drift:
+            # nothing in the runner's own lifecycle moves during a request, so any change came from outside it
+            # (the gateway turn, or an owner edit that cannot be told apart): never re-ask or adopt, quarantine
+            h["quarantine"] = "UNATTRIBUTED_CHANGES_DURING_HANDOFF: owner re-arm required before any turn or enqueue"
+            outcome = {"status": "blocked", "detail": ("UNATTRIBUTED_CHANGES_DURING_HANDOFF: "
+                       f"queue files held {held[:3]}, commands {foreign[:3]}, repo paths {wrote[:3]}"
+                       f"{', owner/acceptance/repo state drift' if drift else ''}; proposal discarded")[:300]}
+        elif why_bad:
+            outcome = {"status": "blocked", "detail": f"ORCHESTRATOR_RESPONSE_INVALID: {why_bad}"[:300]}
+        elif prop["kind"] == "TASK":
+            try:
+                enqueued = self.enqueue_proposal(prop["task"])
+                outcome = {"status": "waiting", "detail": f"enqueued {enqueued} by the runner from a validated proposal"}
+            except (ValueError, OSError) as e:
+                outcome = {"status": "blocked", "detail": f"PROPOSAL_REFUSED: {e}"[:300]}
+        else:
+            outcome = {"status": HANDOFF_STATUS[prop["kind"]], "detail": f"{prop['kind']}: {prop['reason'].strip()}"[:300]}
+        h["last"] = {"id": req["id"], "finished_at": now_iso(), "how": how, "exit": rc,
+                     "claim": prop["kind"] if prop else None, "new_tasks": [enqueued] if enqueued else [],
+                     "model_reported": model}
+        self.store.event("handoff-result", req["id"], how=how, exit=rc, claim=h["last"]["claim"], new_tasks=h["last"]["new_tasks"],
+                         outcome=outcome["detail"][:120], quarantine=h["quarantine"])
+        h.update(settled=True, outcome=outcome)
+        self.set_handoff(**outcome)
+        self.store.save(self.state)  # the enqueued task and the closed request become durable in ONE atomic write
+
+    def hold_queue(self, why):
+        """Move every pending queue file aside so it is never ingested or credited to a handoff; returns the names."""
+        held = []
+        for f in sorted((self.cfg.home / "queue").glob("*.json")):
+            try:
+                f.rename(f.with_suffix(".held"))
+            except OSError:
+                continue
+            held.append(f.name)
+            self.store.event("queue-held", file=f.name, reason=why)
+        return held
+
+    def enqueue_proposal(self, raw_task):
+        """The runner itself validates one proposed task, applies the gate and records it durably (no queue file)."""
+        task = {**raw_task, "created_at": now_iso()}
+        t = validate_task(task, self.cfg)
+        if t["id"] in self.state["tasks"]:
+            raise ValueError(f"task id already exists: {t['id']}")
+        if t["role"] == "code-review" and not t["review_of"]:
+            raise ValueError("an orchestrator-proposed code-review must bind review_of (write task id + changed-file hashes)")
+        proposal_restrictions(self.cfg, t)
+        review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
+        if t["role"] in WRITE_ROLES | {"gatekeeper"}:
+            try:
+                verify_receipt(self.cfg, t["module"])
+            except GateError:
+                pass  # no verified acceptance: the module is still open for work
+            else:
+                raise ValueError(f"{t['module']} already has a verified accepted receipt: no new write or gatekeeper")
+        if t.get("remediation_of"):
+            w = self.state["tasks"].get(t["remediation_of"])
+            if not (w and w.get("module") == t["module"] and w.get("role") in WRITE_ROLES and w.get("status") == "DONE"
+                    and review_verdict(self.state["tasks"], w["id"]) == "CHANGES_REQUESTED"):
+                raise ValueError("remediation_of must name a DONE write of this module whose bound review requested changes")
+            if not all(in_scope(p, w.get("allowed_paths") or []) for p in t["allowed_paths"]):
+                raise ValueError("remediation must stay inside the reviewed write's allowed paths")
+        t["source"] = "handoff"
+        reason = gate_reason(self.cfg, t, self.state["tasks"])
+        if reason:
+            raise ValueError(f"refused by gate: {reason}")
+        self.state["tasks"][t["id"]] = t  # persisted by the caller together with the closed request
+        self.store.event("task-queued", f"{t['id']}:0", task_id=t["id"], module=t["module"], role=t["role"], source="handoff")
+        return t["id"]
 
     def refresh_ci(self):
         """Periodic read-only gh observation, persisted to out-of-repo ci.json. Bounded by CI_BUDGET and never
@@ -1065,9 +1835,16 @@ class Runner:
         return res["ok"]
 
     def ingest_queue(self):
+        h = self.state.get("handoff") or {}
+        if h.get("request"):
+            return  # held untouched: an open orchestrator request may not be credited with, or race, any ingress
+        if h.get("quarantine"):  # a late gateway turn may still be alive: nothing but an owner re-arm reopens ingress
+            self.hold_queue(h["quarantine"])
+            return
         for f in sorted((self.cfg.home / "queue").glob("*.json")):
             try:
                 t = validate_task(json.loads(f.read_text()), self.cfg)
+                review_binding(self.cfg, t, self.state["tasks"], require_changed=False)
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
                 self.store.event("task-rejected", file=f.name, reason=str(e))
@@ -1082,14 +1859,23 @@ class Runner:
         for f in self.store.pending_commands():
             try:
                 c = json.loads(f.read_text())
-                if not (c["cmd"] in CONTROLS and ID_RE.match(str(c["op_id"]))):
+                if not ((c["cmd"] in CONTROLS or c["cmd"] == "rearm") and ID_RE.match(str(c["op_id"]))):
                     raise ValueError("bad command or op_id")
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
                 self.store.event("command-rejected", file=f.name, reason=str(e))
                 continue
+            req = (self.state.get("handoff") or {}).get("request")
             if c["op_id"] in self.state["applied_ops"]:
                 self.store.event("command-duplicate", c["op_id"], cmd=c["cmd"])
+            elif req and c["cmd"] not in ("pause", "stop"):
+                # resume/rearm cannot be told apart from a command the read-only turn wrote: recorded, not applied
+                req["foreign_cmds"] = (req.get("foreign_cmds") or []) + [c["cmd"]]
+                self.store.event("command-held", c["op_id"], cmd=c["cmd"], reason="orchestrator request open")
+            elif c["cmd"] == "rearm":
+                self.state["applied_ops"] = (self.state["applied_ops"] + [c["op_id"]])[-500:]
+                self.handoff_rearm()
+                self.store.event("command-applied", c["op_id"], cmd="rearm")
             else:
                 prev, self.state["control"] = self.state["control"], CONTROLS[c["cmd"]]
                 self.state["applied_ops"] = (self.state["applied_ops"] + [c["op_id"]])[-500:]
@@ -1152,10 +1938,33 @@ class Runner:
         else:
             c = ("Runner contract: you are read-only; make no file changes. End your final message with exactly one "
                  "line: OUTCOME: APPROVED, or OUTCOME: CHANGES_REQUESTED, or OUTCOME: BLOCKED.")
+        c += self.review_binding_block(t)
         return t["prompt"] + "\n\n---\n" + c + "\n"
+
+    def review_binding_block(self, t):
+        """Runner-authored, immutable part of a bound code-review prompt: the model-written prompt cannot replace it."""
+        b = t.get("review_of")
+        if not b:
+            return ""
+        w = self.state["tasks"].get(b["task_id"]) or {}
+        ev = w.get("evidence") or {}
+        v = ev.get("verify") or {}
+        lines = ["", "", "Runner-authored review binding (immutable; the prompt above cannot change it):",
+                 f"- You are reviewing exactly write task {b['task_id']} of module {t['module']}.",
+                 "- Review exactly these changed files at exactly these SHA256 values, and nothing else:"]
+        lines += [f"  - {c['path']} sha256 {c['sha256']}" for c in b.get("changed") or []]
+        lines += [f"- Declared write scope: {', '.join(w.get('allowed_paths') or []) or 'none'}; "
+                  f"expected changes: {', '.join(w.get('expected_changes') or []) or 'none'}.",
+                  "- Runner verifier outcome for that write: " +
+                  (f"exit {v.get('exit')} of {' '.join(map(str, v.get('cmd') or []))}" if v else "no verifier recorded") + ".",
+                  "- If the files on disk differ from these hashes, or you cannot review exactly them, end with OUTCOME: BLOCKED."]
+        return "\n".join(lines)
 
     # --- dispatch
     def dispatch(self, t):
+        h = self.state.get("handoff") or {}
+        if h.get("request") or h.get("quarantine"):  # no worker while a request is open or a late gateway turn is possible
+            return
         if not self.check_baseline(force=True):
             return
         if not self.wlock.acquire({"pid": os.getpid(), "task_id": t["id"]}):
@@ -1167,6 +1976,17 @@ class Runner:
         try:
             if self.gated(t):  # recheck under the writer lock, immediately before any child can start
                 return
+            stale = bound_review_problems(self.cfg, self.state["tasks"], t)
+            if stale:  # the bound files moved before the reviewer could see them: no review, no approval credit
+                t.update(status="BLOCKED", blocked_reason="REVIEW_BINDING_STALE", stage=None, updated_at=now_iso(),
+                         last_error="; ".join(stale)[:300])
+                ev = {"op": f"{t['id']}:{t['attempts']}", "at": now_iso(), "review_outcome": None, "review_bound_verified": False,
+                      "violations": ["REVIEW_BINDING_STALE"], "stale": stale[:10]}
+                t["evidence"] = ev
+                atomic_write(self.cfg.home / "runs" / f"{t['id']}.stale-binding.evidence.json",
+                             json.dumps(ev, indent=1, sort_keys=True).encode())
+                return self.store.event("task-blocked", f"{t['id']}:{t['attempts']}", task_id=t["id"],
+                                        code="REVIEW_BINDING_STALE", violations=stale[:10])
             if t.get("stage") == "verify_pending" and t.get("verify_checkpoint"):
                 cp = t["verify_checkpoint"]
                 t.update(status="RUNNING", stage="verifying")
@@ -1227,7 +2047,11 @@ class Runner:
                 self.store.save(self.state)
             self.settle(t, op, outcome, p, out, err, before, iso)
         finally:
-            self.wlock.release()
+            # terminal/settled state is durable BEFORE the writer lock frees, so a concurrent enqueue never reads stale state
+            try:
+                self.store.save(self.state)
+            finally:
+                self.wlock.release()
 
     def task_base_state(self, t):
         """Repo state at the task's FIRST attempt, kept on disk: later attempts are judged against it, so partial
@@ -1306,7 +2130,7 @@ class Runner:
             bad.append(("MODEL_ASSURANCE_UNVERIFIED", f"{route['verdict']}: {route['basis']}"))
         if not self.check_baseline(force=True):
             bad.append(("POST_RUN_BASELINE_MISMATCH", str(self.state["health"].get("detail"))))
-        changed, head_moved = [], False
+        changed, head_moved, after = [], False, None
         try:
             after = repo_state(self.cfg.repo)
             changed, head_moved = diff_state(before, after), before["head"] != after["head"]
@@ -1332,14 +2156,30 @@ class Runner:
                 return self.store.event("verification-paused", op, task_id=t["id"], why=verify["interrupted"])
             if verify["exit"] != 0:
                 bad.append(("VERIFICATION_FAILED", f"verify_cmd exit {verify['exit']}"))
-        review = None
+            if t.get("source") == "handoff" and after is not None:  # a model-proposed verifier may not mutate or commit: judge a fresh snapshot
+                try:
+                    after2 = repo_state(self.cfg.repo)
+                    mutated = diff_state(after, after2)
+                    if mutated or after2["head"] != after["head"]:
+                        bad.append(("VERIFY_MUTATED_REPO", f"verification changed {mutated[:10]}"
+                                    + (" and moved HEAD" if after2["head"] != after["head"] else "")))
+                except Exception as e:
+                    bad.append(("REPO_SNAPSHOT_UNAVAILABLE", f"after verification: {str(e)[:150]}"))
+        review = reported = None
+        bound_ok = False
         if not write:
             lines = [ln.strip() for ln in str(parsed.get("result", "")).splitlines() if ln.strip()]
             m = OUTCOME_RE.match(lines[-1]) if lines else None
-            review = m.group(1) if m else None
-            if review is None:
+            review = reported = m.group(1) if m else None
+            if t.get("review_of"):  # the bound files must be exactly what the reviewer was told to review, still
+                stale = bound_review_problems(self.cfg, self.state["tasks"], t)
+                bound_ok = not stale
+                if stale:
+                    review = None  # no verdict credit, in either direction; the raw claim stays in the evidence
+                    bad.append(("REVIEW_BINDING_STALE", "; ".join(stale)[:200]))
+            if review is None and reported is None:
                 bad.append(("NO_REVIEW_OUTCOME", "final line is not an explicit OUTCOME: marker"))
-            elif review != "APPROVED":
+            elif review is not None and review != "APPROVED":
                 bad.append((f"REVIEW_{review}", f"reviewer outcome {review}"))
 
         base = Path(self.cfg.repo)
@@ -1349,6 +2189,8 @@ class Runner:
                     "changed": [{"path": c, "sha256": _path_hash(base / c)} for c in changed],
                     "expected_changes": t["expected_changes"], "allowed_paths": t["allowed_paths"],
                     "verify": verify, "review_outcome": review, "violations": [c for c, _ in bad]}
+        if t.get("review_of"):
+            evidence |= {"review_outcome_reported": reported, "review_bound_verified": bound_ok}
         atomic_write(Path(str(out)[:-4] + ".evidence.json"), json.dumps(evidence, indent=1, sort_keys=True).encode())
         t["evidence"], t["stage"], t["result"] = evidence, None, str(parsed.get("result", ""))[:500]
         t.pop("verify_checkpoint", None)
@@ -1358,11 +2200,109 @@ class Runner:
         t.update(status="DONE", finished_at=now_iso(), blocked_reason=None)
         self.store.event("task-done", op, task_id=t["id"], route=route["verdict"], changed=len(changed))
 
+    def verify_sandbox_prefix(self, t, tmpdir, git=None):
+        """REQUIRED Seatbelt for a model-proposed verifier: `(deny default)`, so no network, Mach/LaunchServices/Apple
+        Events or other system-mediated launch.
+
+        Allowed: file reads (including Git); writes only to the private tmpdir (its TMPDIR) and /dev/null. The
+        repository is read-only, even for the task's declared source files: a verifier must not alter what was just
+        written and reviewed. `.git` and the runner home stay denied (the later deny wins); process-exec only inside
+        the runner Python's prefixes and the trusted Git binaries (so `open`, `osascript`, `launchctl` and shells fail
+        at exec). The declared paths are still validated as exact files. Raises ValueError when the scope is not
+        exact or the policy cannot be built; returns None when no sandbox exists (the caller fails closed).
+        """
+        if self.cfg.sandbox == "off" or sys.platform != "darwin" or not shutil.which("sandbox-exec"):
+            return None
+        repo, tmp = Path(self.cfg.repo).resolve(), Path(tmpdir).resolve()
+        files = []
+        for rel in t["allowed_paths"]:
+            why = exact_file_problem(repo, rel)
+            if why:
+                raise ValueError(f"declared write scope {rel!r} is not exact: {why}")
+            f = (repo / rel).resolve()
+            if repo not in f.parents or ".git" in f.relative_to(repo).parts:
+                raise ValueError(f"declared write scope {rel!r} resolves outside the repo worktree")
+            files.append(f)
+        execs = set()
+        for pre in {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix}:
+            p = Path(pre).resolve()
+            if len(p.parts) < 3 or str(p) in ("/usr", "/usr/local", "/opt", "/System", "/Library", "/Applications"):
+                raise ValueError(f"python prefix {p} is too broad to allow process-exec under")
+            execs.add(f'(subpath {json.dumps(str(p))})')
+        execs.add(f'(literal {json.dumps(str(Path(sys.executable).resolve()))})')
+        for g in self.verify_git_paths(git or self.trusted_git()):
+            execs.add(g)
+        q = json.dumps  # Seatbelt string literals accept the same quoting for the characters that can occur in paths
+        deny = [str(Path(self.cfg.home).resolve()), str((repo / ".git").resolve())]
+        prof = self.cfg.home / "runs" / f"verify-{t['id']}.sb"
+        atomic_write(prof, ("(version 1)\n(deny default)\n(allow file-read*)\n(allow sysctl-read)\n"
+                            "(allow process-fork)\n(allow signal (target self))\n"
+                            "(allow process-exec " + " ".join(sorted(execs)) + ")\n"
+                            "(allow file-write* " + f"(subpath {q(str(tmp))}) " + '(literal "/dev/null")' + ")\n"
+                            "(deny file-write* " + " ".join(f"(subpath {q(d)})" for d in deny) + ")\n").encode())
+        return ["sandbox-exec", "-f", str(prof)]
+
+    @staticmethod
+    def trusted_git():
+        """The developer-dir Git (`xcrun -f git`), resolved in the parent: the /usr/bin/git shim cannot locate the
+        developer dir from inside the sandbox. Raises ValueError unless it is an absolute, existing, executable file
+        under an Xcode*.app or CommandLineTools developer directory (fail closed)."""
+        env = {"PATH": VERIFY_PATH}
+        if "HOME" in os.environ:
+            env["HOME"] = os.environ["HOME"]
+        try:
+            out = subprocess.run(["/usr/bin/xcrun", "-f", "git"], capture_output=True, text=True, timeout=10, env=env)
+        except (OSError, subprocess.SubprocessError) as e:
+            raise ValueError(f"cannot resolve the developer Git: {e}"[:200])
+        raw = out.stdout.strip()
+        if out.returncode != 0 or not raw or not os.path.isabs(raw):
+            raise ValueError("xcrun did not return an absolute developer Git path")
+        git = Path(raw).resolve()
+        ok = (len(git.parts) >= 4 and git.parts[-3:] == ("usr", "bin", "git") and git.is_file()
+              and os.access(git, os.X_OK)
+              and (str(git).startswith("/Library/Developer/CommandLineTools/usr/bin/")
+                   or re.fullmatch(r"/Applications/Xcode[^/]*\.app/Contents/Developer/usr/bin/git", str(git))))
+        if not ok:
+            raise ValueError(f"developer Git {git} is not an executable under Xcode.app or CommandLineTools")
+        return git
+
+    @staticmethod
+    def verify_git_paths(git):
+        """Seatbelt exec filters for exactly the trusted Git binary and its git-core helpers."""
+        return [f'(literal {json.dumps(str(git))})',
+                f'(subpath {json.dumps(str(git.parent.parent / "libexec" / "git-core"))})']
+
     def run_verify(self, t):
         env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG") if k in os.environ}
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        argv = list(t["verify_cmd"])
+        tmpdir = None
+        if t.get("source") == "handoff":  # owner/manual verifiers keep their existing, unsandboxed behaviour
+            try:
+                tmpdir = tempfile.mkdtemp(prefix="veyro-verify-")  # mode 0700, unique, created by the parent
+                git = self.trusted_git()
+                prefix = self.verify_sandbox_prefix(t, tmpdir, git)
+            except (OSError, ValueError) as e:
+                prefix = None
+                why = f"could not prepare the sandbox: {e}"[:200]
+            else:
+                why = "sandbox-exec unavailable or sandbox=off"
+            if prefix is None:
+                if tmpdir:
+                    shutil.rmtree(tmpdir, ignore_errors=True)
+                return {"cmd": t["verify_cmd"], "exit": -1, "tail": f"verification refused, sandbox required: {why}"}
+            argv = [*prefix, *argv]
+            env["TMPDIR"] = str(Path(tmpdir).resolve())
+            env["PATH"] = f"{git.parent}:{VERIFY_PATH}"  # plain `git` resolves to the developer Git, not the shim
         try:
-            p = subprocess.Popen(t["verify_cmd"], cwd=self.cfg.repo, env=env, stdin=subprocess.DEVNULL,
+            return self.run_verify_child(t, argv, env)
+        finally:
+            if tmpdir:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def run_verify_child(self, t, argv, env):
+        try:
+            p = subprocess.Popen(argv, cwd=self.cfg.repo, env=env, stdin=subprocess.DEVNULL,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
                                  pass_fds=(self.wlock.fd,) if self.wlock.fd is not None else ())
             lstart = subprocess.run(["ps", "-o", "lstart=", "-p", str(p.pid)], capture_output=True,
@@ -1381,11 +2321,16 @@ class Runner:
                         interrupted = "signal" if self.sig else "stop" if self.state["control"] == "STOP" else None
                         if interrupted or time.monotonic() >= deadline:
                             self.kill_group(p.pid)
-                            p.communicate()
+                            try:
+                                stdout, stderr = p.communicate(timeout=5)
+                            except subprocess.TimeoutExpired:  # a leaked grandchild still holds the pipes
+                                stdout, stderr = "", ""
+                            head = "verification interrupted" if interrupted else "verification timed out"
                             return {"cmd": t["verify_cmd"], "exit": -1,
-                                    "tail": "verification interrupted" if interrupted else "verification timed out",
+                                    "tail": head + ("\n" + ((stdout or "") + (stderr or ""))[-1400:] if (stdout or stderr) else ""),
                                     "interrupted": interrupted}
             finally:
+                self.kill_group(p.pid)  # unconditional, also after abnormal exits; no-op when the group is gone
                 t["verify_child"] = None
                 self.store.save(self.state)
         except OSError as e:
@@ -1464,11 +2409,25 @@ def validate_task(d, cfg):
     plan_phase = d.get("plan_phase")
     if plan_phase is not None and not (isinstance(plan_phase, str) and ID_RE.match(plan_phase)):
         raise ValueError("plan_phase must be a short id")
-    return {"id": d["id"], "module": d["module"], "role": d["role"], "title": str(d.get("title") or d["id"])[:120],
+    remediation_of = d.get("remediation_of")
+    if remediation_of is not None and not (d["role"] in WRITE_ROLES and isinstance(remediation_of, str) and ID_RE.match(remediation_of)):
+        raise ValueError("remediation_of must name the reviewed write task id and is only for writing roles")
+    review_of = d.get("review_of")
+    if review_of is not None:
+        changed = review_of.get("changed") if isinstance(review_of, dict) else None
+        if not (d["role"] == "code-review" and isinstance(review_of, dict) and set(review_of) <= {"task_id", "changed"}
+                and ID_RE.match(str(review_of.get("task_id", ""))) and
+                (changed is None or (isinstance(changed, list) and len(changed) <= 200 and all(
+                    isinstance(c, dict) and set(c) == {"path", "sha256"} and isinstance(c["path"], str) and c["path"]
+                    and (c["sha256"] is None or (isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"])))
+                    for c in changed)))):
+            raise ValueError("review_of is only for code-review: {task_id, changed:[{path, sha256}]}")
+        review_of = {"task_id": review_of["task_id"], "changed": None if changed is None else [dict(c) for c in changed]}
+    return {"review_of": review_of, "review_gate": 1, "id": d["id"], "module": d["module"], "role": d["role"], "title": str(d.get("title") or d["id"])[:120],
             "plan_phase": plan_phase, "prompt": prompt, "allowed_paths": allowed, "expected_changes": expected,
             "verify_cmd": verify, "status": "QUEUED", "stage": None, "attempts": 0, "max_attempts": cfg.max_attempts,
             "next_attempt_at": 0, "created_at": d.get("created_at") or now_iso(), "updated_at": now_iso(),
-            "child": None}
+            "child": None} | ({"remediation_of": remediation_of} if remediation_of else {})
 
 
 def enqueue(cfg, task):
@@ -1476,8 +2435,15 @@ def enqueue(cfg, task):
     t = validate_task(task, cfg)
     store = Store(cfg.home)
     state = store.load()
+    handoff = state.get("handoff") or {}
+    if handoff.get("request"):
+        raise ValueError("an orchestrator handoff request is open: only the runner may enqueue until it settles")
+    if handoff.get("quarantine"):
+        raise ValueError(f"enqueue refused ({handoff['quarantine']}); run `rearm` once the owner has checked the gateway")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
+    review_binding(cfg, t, state["tasks"], require_changed=False)  # fills the exact changed-file hashes from runner evidence
+    task = {**task, "review_of": t["review_of"]}
     reason = gate_reason(cfg, t, state["tasks"])
     if reason:
         raise ValueError(f"task refused by prerequisite gate: {reason}")
@@ -1500,6 +2466,18 @@ def pid_alive(pid):
         return True
     except (OSError, TypeError):
         return False
+
+
+def child_alive(child):
+    """Liveness of a recorded child: the pid must exist AND still carry the recorded start time (pid reuse is not alive)."""
+    if not isinstance(child, dict) or not pid_alive(child.get("pid")):
+        return False
+    try:
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(child["pid"])], capture_output=True, text=True,
+                               timeout=2).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(start) and start == child.get("lstart")
 
 
 def orchestrator_receipt(home):
@@ -1549,6 +2527,24 @@ def local_head_readonly(repo):
         return head if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head) else None
     except (OSError, UnicodeError, ValueError):
         return None
+
+
+def handoff_view(h):
+    """Dashboard telemetry for the continuation handoff. Role (orchestrator) and model identity are separate fields."""
+    if not isinstance(h, dict):
+        return None
+    req, last = h.get("request") or {}, h.get("last") or {}
+    reported = last.get("model_reported")
+    # The current turn's model is unknowable until the runtime reports it; a previous turn's model is never shown as current.
+    model = ("UNKNOWN (current turn not yet reported)" if req else
+             f"{reported} (runtime-reported by turn {last.get('id')})" if reported else "UNKNOWN (not reported by the runtime)")
+    return {"status": h.get("status"), "detail": h.get("detail"), "updated_at": h.get("updated_at"),
+            "role": "orchestrator", "agent": ORCH_AGENT, "attempts": h.get("attempts"),
+            "fingerprint": (h.get("fingerprint") or "")[:12] or None, "quarantine": h.get("quarantine"),
+            "model": model,
+            "request": ({"id": req.get("id"), "started_at": req.get("started_at"),
+                         "child_alive": child_alive(req.get("child"))} if req else None),
+            "last": {k: last.get(k) for k in ("id", "finished_at", "how", "exit", "claim", "new_tasks")} if last else None}
 
 
 def snapshot(cfg):
@@ -1610,7 +2606,7 @@ def snapshot(cfg):
                                                       {"pinned_at": pin["pinned_at"], "index_sha256": pin["index_sha256"],
                                                        "sources": len(pin["sources"])}),
             "usage": st.get("usage", {}), "ci": ci, "events": store.tail_events(200),
-            "orchestrator": orchestrator_receipt(cfg.home),
+            "orchestrator": orchestrator_receipt(cfg.home), "handoff": handoff_view(st.get("handoff")),
             "pending_commands": len(store.pending_commands()), "writer_lock": wl}
 
 
@@ -1624,14 +2620,16 @@ def write_launchagents(cfg, write):
     for label, args in jobs.items():
         plist = {"Label": label, "ProgramArguments": [py, me, *args], "WorkingDirectory": str(cfg.repo),
                  "RunAtLoad": True, "KeepAlive": {"SuccessfulExit": False}, "ThrottleInterval": 30,
-                 "EnvironmentVariables": env,
-                 "ProcessType": "Interactive" if label == "com.veyro.mod000-dashboard" else "Background",
+                 "EnvironmentVariables": env | {"PYTHONPYCACHEPREFIX": str(cfg.home / "pycache" / label)}  # never import repo __pycache__
+                                         | ({"VEYRO_AUTOCONTINUE": "1"} if args == ["run"] else {}),  # explicit opt-in, runner only
+                 "ProcessType": "Interactive" if label == "com.veyro.mod000-dashboard" else "Standard",  # Background throttled verifiers ~10x
                  "StandardOutPath": str(logs / f"{label}.out.log"), "StandardErrorPath": str(logs / f"{label}.err.log")}
         path = Path.home() / "Library/LaunchAgents" / f"{label}.plist"
         if write:
             if path.exists():
                 raise SystemExit(f"refusing to overwrite existing {path}; remove it deliberately first")
             path.parent.mkdir(parents=True, exist_ok=True)
+            Path(plist["EnvironmentVariables"]["PYTHONPYCACHEPREFIX"]).mkdir(parents=True, mode=0o700, exist_ok=True)
             atomic_write(path, plistlib.dumps(plist))
         out.append((path, plist))
     return out
@@ -1643,6 +2641,7 @@ def main(argv=None):
     ap.add_argument("--repo", default=str(REPO), help="repository root holding PROJECT_INDEX.md")
     ap.add_argument("--claude-bin", help="claude executable (default: $VEYRO_CLAUDE_BIN or `claude`)")
     ap.add_argument("--tick", type=float, default=1.0)
+    ap.add_argument("--openclaw-bin", help="OpenClaw CLI for automatic continuation (default: $VEYRO_ORCHESTRATOR_BIN, PATH, nvm)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("run", help="run the mission loop (foreground)")
     d = sub.add_parser("dashboard", help="serve the read-only dashboard on 127.0.0.1")
@@ -1657,9 +2656,12 @@ def main(argv=None):
     e.add_argument("--allow", action="append", default=[], help="repo path/prefix/ (or glob) a writing task may change")
     e.add_argument("--expect", action="append", default=[], help="exact file that must change")
     e.add_argument("--verify-cmd", help='JSON argv list run by the runner after the child, e.g. \'["python3","-m","unittest"]\'')
+    e.add_argument("--review-of", help="code-review only: id of the DONE write task this review is bound to (changed-file hashes are filled from runner evidence)")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
+    x = sub.add_parser("rearm", help="OWNER STEP: offer the current state to the orchestrator again after a settled/blocked handoff")
+    x.add_argument("--op-id")
     sub.add_parser("status")
     sub.add_parser("ci-observe-public", help=argparse.SUPPRESS)  # internal: supervised child of the public observer
     sub.add_parser("verify-baseline", help="check the repo against the out-of-repo pin")
@@ -1669,7 +2671,10 @@ def main(argv=None):
     la.add_argument("--write", action="store_true")
     a = ap.parse_args(argv)
     try:
-        cfg = Config(home=a.home, repo=a.repo, claude_bin=a.claude_bin, tick=a.tick)
+        cfg = Config(home=a.home, repo=a.repo, claude_bin=a.claude_bin, tick=a.tick,
+                     orchestrator_bin=(a.openclaw_bin or os.environ.get("VEYRO_ORCHESTRATOR_BIN") or
+                                       (discover_orchestrator_bin() if a.cmd == "run" and os.environ.get("VEYRO_AUTOCONTINUE") == "1"
+                                        else None)))  # continuation is an explicit owner opt-in, never implied by the binary existing
     except ValueError as ex:
         print(f"invalid configuration: {ex}", file=sys.stderr)
         return 2
@@ -1693,13 +2698,14 @@ def main(argv=None):
             p = enqueue(cfg, {"id": a.id, "module": a.module, "role": a.role, "title": a.title,
                               "plan_phase": a.plan_phase, "allowed_paths": a.allow, "expected_changes": a.expect,
                               "verify_cmd": json.loads(a.verify_cmd) if a.verify_cmd else None,
+                              "review_of": {"task_id": a.review_of} if a.review_of else None,
                               "prompt": Path(a.prompt_file).read_text()})
         except (ValueError, OSError) as ex:
             print(f"enqueue refused: {ex}", file=sys.stderr)
             return 2
         print(f"queued {a.id} (runner picks it up on its next tick)")
         return 0
-    if a.cmd in CONTROLS:
+    if a.cmd in CONTROLS or a.cmd == "rearm":
         op = send_command(cfg, a.cmd, a.op_id)
         snap = snapshot(cfg)
         print(json.dumps({"op_id": op, "command": a.cmd, "runner_alive": snap["runner_alive"],

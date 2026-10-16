@@ -307,6 +307,17 @@ def agent_projection(state, tasks):
                "last_activity": receipt.get("decision_at") if recorded else None,
                "identity": (_label(receipt.get("identity")) + " · " + _label(receipt.get("model"))) if recorded
                            else "UNKNOWN · no orchestrator receipt", "last_action": receipt.get("last_action") if recorded else None}]
+    handoff = state.get("handoff")
+    if isinstance(handoff, dict) and handoff.get("status") and (handoff["status"] == "coordinating" or not recorded or stale):
+        req = handoff.get("request") or {}
+        live = handoff["status"] != "coordinating" or (req.get("child_alive") is True and process_alive)
+        agents[0].update(status=handoff["status"] if live else "unknown", task=str(handoff.get("detail") or "")[:300],
+                         since=req.get("started_at") or handoff.get("updated_at"),
+                         last_activity=handoff.get("updated_at"),
+                         identity=_label(handoff.get("agent")) + " (role: orchestrator) · model " +
+                                  ("UNKNOWN (current turn not yet reported)" if handoff["status"] == "coordinating"
+                                   else _label(handoff.get("model"))),
+                         last_action=(handoff.get("last") or {}).get("claim"))
     for family, name in (("sonnet", "Claude Sonnet"), ("opus", "Claude Opus")):
         matching = working and dispatch.get("model_alias") == family
         latest = max((t for t in tasks if t.get("model") and family in t["model"].lower()),
@@ -339,10 +350,16 @@ def runner_execution(state, tasks):
                                                any(t.get("stage") == "verifying" for t in running)):
             return "running"
         return "stale"
+    handoff = state.get("handoff")
+    if isinstance(handoff, dict) and handoff.get("status") == "coordinating" and \
+            (handoff.get("request") or {}).get("child_alive") is True:
+        return "coordinating"  # live orchestrator turn: shown even beside an active blocker; never as "running"
     if any(t["status"] == "QUEUED" for t in tasks):
         return "waiting"
     if any(t["lifecycle"] == "active-blocker" for t in tasks):
         return "blocked"
+    if isinstance(handoff, dict) and handoff.get("status") in ("blocked", "waiting_for_owner"):
+        return handoff["status"]
     return "idle"
 
 
@@ -407,7 +424,7 @@ def build_state(snapshot, repo):
             "writer_lock": snapshot.get("writer_lock"), "baseline_pin": snapshot.get("baseline_pin"),
             "baseline": snapshot.get("baseline"), "pending_commands": snapshot.get("pending_commands"),
             "current_module": active, "modules": modules, "runner_execution": runner_execution(snapshot, tasks),
-            "orchestrator": orchestrator,
+            "orchestrator": orchestrator, "handoff": snapshot.get("handoff"),
             "last_successful_worker": ({"title": latest_success["title"], "module": latest_success["module"],
                                         "model": latest_success["model"], "at": latest_success["finished_at"]}
                                        if latest_success else None),
