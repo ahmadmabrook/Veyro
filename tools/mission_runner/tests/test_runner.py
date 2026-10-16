@@ -978,11 +978,110 @@ class DashboardTests(Base):
         (d / "MOD-000.md").write_text("# something else\n**Status: ACCEPTED**")
         self.assertEqual(dashboard.module_records(self.repo), {})
 
-    def test_real_mod_001_record_is_not_accepted_when_present(self):
+    def test_real_mod_001_record_is_never_displayed_accepted_without_ci_confirmation(self):
         if not (R.REPO / "knowledge" / "03-Modules" / "MOD-001" / "MOD-001.md").is_file():
             self.skipTest("no real MOD-001 record")
-        rec = dashboard.module_records(R.REPO)["MOD-001"]
-        self.assertFalse(rec["accepted"])
+        raw = dashboard.module_records(R.REPO)
+        for ci in (None, {}, {"state": "unavailable"}):  # the real header may say ACCEPTED; the projection still fails closed
+            self.assertFalse(dashboard.gate_module_records(raw, ci)["MOD-001"]["accepted"])
+
+    # ---- /api/state acceptance projection: a header saying ACCEPTED is shown only while CI confirms the exact head
+    def local_head(self):
+        return subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+    def committed_head(self, dirty=False):
+        """Fixture-only: write the header-ACCEPTED module and commit it (a no-op when unchanged), unless `dirty`
+        asks for it to stay uncommitted; return the local head."""
+        self.write_module("MOD-001", "**Status: ACCEPTED — FOUNDATION ONLY.**")
+        if not dirty and git(self.repo, "status", "--porcelain").stdout:
+            git(self.repo, "add", "-A")
+            git(self.repo, "commit", "-qm", "module")
+        return self.local_head()
+
+    def accepted_via_api(self, dirty=False, **ci_kw):
+        """Write a header-ACCEPTED module and a CI cache for the local head; return what /api/state displays."""
+        head = self.committed_head(dirty)
+        run = self.ci_obs()["runs"][0] | {"head_sha": head}
+        kw = {"head_sha": head, "runs": [run], "observed_at": R.now_iso(), "repo": "o/r", "state": None} | ci_kw
+        (self.home / "ci.json").write_text(json.dumps(self.ci_obs(**kw)))
+        rec = json.loads(self.req("/api/state")[1])["module_records"]["MOD-001"]
+        self.assertTrue(rec["header_accepted"])  # the raw parser still reports what the header says
+        return rec["accepted"], run
+
+    def test_api_accepts_header_only_for_named_successful_push_run_on_exact_fresh_main_head(self):
+        accepted, _ = self.accepted_via_api()  # clean committed fixture plus fresh success permits it
+        self.assertTrue(accepted)
+
+    def test_api_withholds_acceptance_for_dirty_worktree_even_with_fresh_successful_ci(self):
+        self.assertTrue(self.accepted_via_api()[0])  # baseline: committed and clean
+        for name, mutate in {"modified tracked": lambda: (self.repo / "src" / "keep.txt").write_text("changed"),
+                             "untracked": lambda: (self.repo / "scratch.txt").write_text("x")}.items():
+            with self.subTest(name):
+                mutate()
+                self.assertFalse(self.accepted_via_api(dirty=True)[0])  # dirty=True: the fixture must not commit it
+                git(self.repo, "checkout", "--", ".")
+                git(self.repo, "clean", "-qfd")
+        with self.subTest("uncommitted module draft"):
+            git(self.repo, "rm", "-qrf", "knowledge")
+            git(self.repo, "commit", "-qm", "drop module")
+            self.assertFalse(self.accepted_via_api(dirty=True)[0])
+
+    def test_worktree_clean_fails_closed_on_git_errors_and_timeouts(self):
+        self.committed_head()
+        self.assertTrue(dashboard.worktree_clean(self.repo))
+        self.assertFalse(dashboard.worktree_clean(self.repo / "missing"))  # git exits non-zero
+        for exc in (subprocess.TimeoutExpired("git", 5), FileNotFoundError("git")):
+            with mock.patch.object(dashboard.subprocess, "run", side_effect=exc):
+                self.assertFalse(dashboard.worktree_clean(self.repo))
+
+    def test_api_withholds_acceptance_while_exact_head_run_is_pending_or_failed(self):
+        run = self.ci_obs()["runs"][0]
+        for name, patch in {"queued": {"status": "queued", "conclusion": None},
+                            "in progress": {"status": "in_progress", "conclusion": None},
+                            "failure": {"conclusion": "failure"}, "cancelled": {"conclusion": "cancelled"}}.items():
+            with self.subTest(name):
+                self.assertFalse(self.accepted_via_api(runs=[run | patch | {"head_sha": self.committed_head()}])[0])
+        with self.subTest("success plus pending sibling"):
+            head = self.committed_head()
+            ok = run | {"head_sha": head}
+            self.assertFalse(self.accepted_via_api(
+                runs=[ok, ok | {"name": "Other", "status": "queued", "conclusion": None}])[0])
+
+    def test_api_withholds_acceptance_for_stale_unavailable_or_errored_ci(self):
+        self.assertFalse(self.accepted_via_api(observed_at="2000-01-01T00:00:00+00:00")[0])  # stale by age
+        self.assertFalse(self.accepted_via_api(error="gh-failed")[0])
+        self.assertFalse(self.accepted_via_api(observed_at=None)[0])  # unavailable
+        self.write_module("MOD-001", "**Status: ACCEPTED**")
+        (self.home / "ci.json").unlink()
+        rec = json.loads(self.req("/api/state")[1])["module_records"]["MOD-001"]  # no CI snapshot at all
+        self.assertEqual((rec["accepted"], rec["header_accepted"]), (False, True))
+
+    def test_api_withholds_acceptance_for_head_mismatch_and_wrong_head_runs(self):
+        run = self.ci_obs()["runs"][0]
+        self.assertFalse(self.accepted_via_api(head_sha=self.OTHER, runs=[run | {"head_sha": self.OTHER}])[0])  # remote != local
+        self.assertFalse(self.accepted_via_api(runs=[run | {"head_sha": self.OTHER}], runs_other_head=1)[0])  # older head only
+        self.assertFalse(self.accepted_via_api(runs=[])[0])  # pushed head, no run yet
+        self.assertFalse(self.accepted_via_api(branch="feature/x")[0])
+        self.assertFalse(self.accepted_via_api(scope=None)[0])  # legacy cache
+
+    def test_api_withholds_acceptance_for_wrong_event_ref_or_workflow_success(self):
+        run = self.ci_obs()["runs"][0] | {"head_sha": self.committed_head()}
+        for name, patch in {"pull_request": {"event": "pull_request"}, "workflow_dispatch": {"event": "workflow_dispatch"},
+                            "feature ref": {"ref": "feature/x"}, "other workflow": {"name": "Deploy Docs"},
+                            "name case": {"name": "veyro foundation ci"}}.items():
+            with self.subTest(name):
+                self.assertFalse(self.accepted_via_api(runs=[run | patch])[0])
+
+    def test_gate_only_downgrades_and_leaves_non_accepted_records_untouched(self):
+        recs = {"MOD-001": {"accepted": False, "path": "p"}, "MOD-000": {"accepted": True, "path": "q"}}
+        good = self.ci_obs()
+        out = dashboard.gate_module_records(recs, good, clean=True)
+        self.assertEqual((out["MOD-001"]["accepted"], out["MOD-000"]["accepted"]), (False, True))  # never upgrades
+        self.assertEqual(dashboard.gate_module_records(recs, good | {"state": "stale"}, clean=True)["MOD-000"]["accepted"], False)
+        self.assertEqual(dashboard.gate_module_records(recs, good)["MOD-000"]["accepted"], False)  # clean unknown -> closed
+        self.assertEqual(dashboard.gate_module_records(recs, good, clean=False)["MOD-000"]["accepted"], False)
+        self.assertTrue(recs["MOD-000"]["accepted"])  # input not mutated
 
     # ---- CI panel truthfulness: the real ciVerdict source is executed by node when available
     SHA, OTHER = "a" * 40, "b" * 40

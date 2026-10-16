@@ -1,6 +1,8 @@
 """Read-only, loopback-only engineering command center for the Veyro Mission Runner."""
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -40,6 +42,47 @@ def module_records(repo):
             continue
     return out
 
+CI_WORKFLOW = "Veyro Foundation CI"
+
+
+def ci_confirms_head(ci):
+    """Fail-closed: True only for a fresh main-push snapshot whose exact local head has a completed successful
+    named push run and no pending or failed push run. A display gate only, not module certification."""
+    if not isinstance(ci, dict) or ci.get("state") != "fresh" or ci.get("error"):
+        return False
+    head = ci.get("head_sha")
+    if (ci.get("scope"), ci.get("branch"), ci.get("head_matches_local")) != ("main-push", "main", True) \
+            or not isinstance(head, str) or not head:
+        return False
+    runs = ci.get("runs")
+    if not isinstance(runs, list):
+        return False
+    exact = [r for r in runs if isinstance(r, dict) and r.get("event") == "push" and r.get("head_sha") == head]
+    if any(r.get("status") != "completed" or r.get("conclusion") != "success" for r in exact):
+        return False  # pending, failed, cancelled or unknown on the exact head blocks
+    return any(r.get("name") == CI_WORKFLOW and r.get("ref") == "main" for r in exact)
+
+
+def worktree_clean(repo):
+    """Fail-closed: True only when a bounded, non-shell `git status` succeeds and reports nothing, untracked included.
+    Any error, timeout or output means False, so uncommitted module content never earns a status claim."""
+    try:
+        p = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
+                           capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL,
+                           env=dict(os.environ, GIT_OPTIONAL_LOCKS="0"))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return p.returncode == 0 and p.stdout == ""
+
+
+def gate_module_records(records, ci, clean=False):
+    """API projection: a header-ACCEPTED record is reported accepted only while the worktree is clean (`clean`,
+    from worktree_clean) and the CI snapshot confirms the head."""
+    confirmed = clean is True and ci_confirms_head(ci)
+    return {m: dict(rec, accepted=rec["accepted"] and confirmed, header_accepted=rec["accepted"])
+            for m, rec in records.items()}
+
+
 ASSETS = {"/": ("text/html; charset=utf-8", HTML), "/app.css": ("text/css; charset=utf-8", CSS),
           "/app.js": ("text/javascript; charset=utf-8", JS)}
 
@@ -71,7 +114,8 @@ def make_handler(cfg, port):
             if path == "/api/state":
                 state = runner.snapshot(cfg)
                 state["module_catalog"] = CATALOG
-                state["module_records"] = module_records(cfg.repo)
+                state["module_records"] = gate_module_records(module_records(cfg.repo), state.get("ci"),
+                                                                worktree_clean(cfg.repo))
                 return self._send(200, "application/json", json.dumps(state))
             if path in ASSETS:
                 return self._send(200, *ASSETS[path])
