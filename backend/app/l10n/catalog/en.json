@@ -1,0 +1,7 @@
+{
+  "balance.line": "Balance for {member}: {amount}",
+  "items.count": {
+    "one": "{count} item",
+    "other": "{count} items"
+  }
+}
