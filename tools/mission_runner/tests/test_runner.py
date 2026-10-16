@@ -1705,13 +1705,13 @@ def task(**over):
     t.update(over)
     return t
 def emit(text, status="ok", aborted=False, model=True, before=(), extra=None, harness="openclaw"):
-    agent = {"aborted": aborted}
+    agent = {}
     if harness is not None:
         agent["agentHarnessId"] = harness
     if model:
         agent.update(provider="openai", model="gpt-6-sol")
     out = {"runId": "run-1", "status": status, "summary": "completed",
-           "result": {"payloads": [{"text": p} for p in before] + [{"text": text}], "meta": {"agentMeta": agent}}}
+           "result": {"payloads": [{"text": p} for p in before] + [{"text": text}], "meta": {"aborted": aborted, "agentMeta": agent}}}
     out.update(extra or {})
     print(json.dumps(out))
 def obj(kind, reason="r", **extra):
@@ -1757,7 +1757,7 @@ elif mode == "aborted":
 elif mode in ("harness_codex", "harness_missing"):
     emit(json.dumps(obj("TASK", "next legal write", task=task())), harness="codex" if mode == "harness_codex" else None)
 elif mode == "no_payloads":
-    print(json.dumps({"runId": "r", "status": "ok", "result": {"payloads": [], "meta": {"agentMeta": {"aborted": False}}}}))
+    print(json.dumps({"runId": "r", "status": "ok", "result": {"payloads": [], "meta": {"aborted": False, "agentMeta": {}}}}))
 elif mode == "raw_marker":
     print("HANDOFF_RESULT: NO_LEGAL_WORK " + rid + ' "model": "claude-opus-5-5"')
 elif mode == "oversize":
@@ -2003,9 +2003,24 @@ class Handoff(Base):
 
     def envelope(self, text, **over):
         out = {"runId": "r", "status": "ok", "summary": "s",
-               "result": {"payloads": [{"text": text}], "meta": {"agentMeta": {"provider": "openai", "model": "gpt-6-sol",
-                                                                              "agentHarnessId": "openclaw", "aborted": False}}}}
+               "result": {"payloads": [{"text": text}], "meta": {"aborted": False, "agentMeta": {
+                   "provider": "openai", "model": "gpt-6-sol", "agentHarnessId": "openclaw"}}}}
         return json.dumps(out | over).encode()
+
+    def test_parser_accepts_the_real_openclaw_abort_field_placement(self):
+        good = json.dumps({"request_id": "rq", "kind": "NO_LEGAL_WORK", "reason": "none"})
+        live = {"runId": "r", "status": "ok", "summary": "completed", "result": {
+            "payloads": [{"text": good}],
+            "meta": {"aborted": False, "agentMeta": {"provider": "openai", "model": "gpt-6-sol", "agentHarnessId": "openclaw"}}}}
+        text, model, harness = R.parse_handoff_envelope(json.dumps(live).encode())
+        self.assertEqual((text, model, harness), (good, "openai/gpt-6-sol", "openclaw"))
+        for bad in (True, None, "false", 0):
+            with self.assertRaises(R.HandoffError, msg=repr(bad)):
+                R.parse_handoff_envelope(json.dumps({**live, "result": {**live["result"], "meta": {
+                    **live["result"]["meta"], "aborted": bad}}}).encode())
+        missing = {k: v for k, v in live["result"]["meta"].items() if k != "aborted"}
+        with self.assertRaises(R.HandoffError):
+            R.parse_handoff_envelope(json.dumps({**live, "result": {**live["result"], "meta": missing}}).encode())
 
     def test_parser_accepts_only_the_probe_shape_and_strict_final_json(self):
         good = json.dumps({"request_id": "rq", "kind": "NO_LEGAL_WORK", "reason": "none"})
@@ -2013,7 +2028,7 @@ class Handoff(Base):
         self.assertEqual((R.parse_handoff_proposal(text, "rq")["kind"], model, harness),
                          ("NO_LEGAL_WORK", "openai/gpt-6-sol", "openclaw"))
         probe = json.dumps({"runId": "x", "status": "ok", "summary": "done", "result": {
-            "payloads": [{"text": "PROBE_OK"}], "meta": {"agentMeta": {"provider": "openai", "model": "gpt-6-sol", "aborted": False}}}})
+            "payloads": [{"text": "PROBE_OK"}], "meta": {"aborted": False, "agentMeta": {"provider": "openai", "model": "gpt-6-sol"}}}})
         text, _, harness = R.parse_handoff_envelope(probe.encode())
         self.assertIsNone(harness)  # absent from the metadata: reported as None, which settle refuses
         with self.assertRaises(R.HandoffError):  # the literal probe payload is prose, not a proposal
@@ -2023,10 +2038,14 @@ class Handoff(Base):
                          json.dumps({"status": "ok", "result": {"payloads": [{"text": good}], "meta": {
                              "agentMeta": {"model": "m"}}}}).encode(),  # abort state not reported
                          json.dumps({"status": "ok", "result": {"payloads": [{"text": good}], "meta": {
-                             "agentMeta": {"aborted": True}}}}).encode(),
-                         json.dumps({"status": "ok", "result": {"payloads": [], "meta": {"agentMeta": {"aborted": False}}}}).encode(),
+                             "aborted": True, "agentMeta": {"model": "m"}}}}).encode(),
+                         json.dumps({"status": "ok", "result": {"payloads": [{"text": good}], "meta": {
+                             "aborted": None, "agentMeta": {"model": "m"}}}}).encode(),
+                         json.dumps({"status": "ok", "result": {"payloads": [{"text": good}], "meta": {
+                             "agentMeta": {"model": "m", "aborted": False}}}}).encode(),  # wrong placement is not accepted
+                         json.dumps({"status": "ok", "result": {"payloads": [], "meta": {"aborted": False, "agentMeta": {}}}}).encode(),
                          json.dumps({"status": "ok", "result": {"payloads": [{"text": ""}], "meta": {
-                             "agentMeta": {"aborted": False}}}}).encode(),
+                             "aborted": False, "agentMeta": {}}}}).encode(),
                          b'{"status": "ok", "status": "ok"}', b'{"status": NaN}', b"x" * (R.HANDOFF_OUT_MAX + 1)]
         for raw in bad_envelopes:
             with self.assertRaises(R.HandoffError, msg=raw[:60]):
@@ -3082,6 +3101,20 @@ class Handoff(Base):
                     r.enqueue_proposal(self.proposal(id="x-" + role, role=role, verify_cmd=verify) if role == "implement"
                                        else {"id": "x-gk", "module": "MOD-000", "role": "gatekeeper", "prompt": "p"})
                 self.assertIn("verified accepted receipt", str(cm.exception))
+            for role in ("architecture", "code-review", "scenario-review"):  # read-only proposals are refused as well
+                with self.assertRaises(ValueError) as cm:
+                    r.enqueue_proposal({"id": "ro-" + role, "module": "MOD-000", "role": role, "prompt": "p"})
+                self.assertIn("verified accepted receipt", str(cm.exception))
+            self.assertNotIn("ro-architecture", r.state["tasks"])
+
+    def test_handoff_prompt_records_boundary_policy_and_keeps_product_review_rule(self):
+        prompt = R.handoff_prompt(self.cfg, "r1", "f" * 12, "none")
+        self.assertIn("owner-execution-infrastructure-boundary-20261017.md", prompt)
+        self.assertIn("next UNACCEPTED product module (currently MOD-003)", prompt)
+        self.assertIn("never reinterpret historical runner/dashboard maintenance", prompt)
+        self.assertIn("3. Mandatory review: after a DONE implement/test task", prompt)
+        self.assertIn("independent Opus code-review of that exact task", prompt)
+        self.assertIn("Rule 3 still applies in full to actual Veyro product write tasks", prompt)
 
     def test_disabled_without_orchestrator_bin(self):
         r = self.runner()

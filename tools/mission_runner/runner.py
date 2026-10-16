@@ -850,7 +850,7 @@ def runtime_model(meta):
 def parse_handoff_envelope(raw):
     """(final assistant payload text, runtime-reported model|None, agentHarnessId|None) from `openclaw agent --json` stdout.
 
-    Only the documented envelope is read: {status:"ok", result:{payloads:[{text}], meta:{agentMeta:{aborted:false}}}}.
+    Only the documented envelope is read: {status:"ok", result:{payloads:[{text}], meta:{aborted:false, agentMeta:{}}}}.
     The raw stdout is never searched for markers or model names.
     """
     if len(raw) > HANDOFF_OUT_MAX:
@@ -864,8 +864,8 @@ def parse_handoff_envelope(raw):
     result = env.get("result")
     meta = result.get("meta") if isinstance(result, dict) else None
     agent = meta.get("agentMeta") if isinstance(meta, dict) else None
-    if not isinstance(agent, dict) or agent.get("aborted") is not False:
-        raise HandoffError("turn aborted, or abort state not reported at result.meta.agentMeta")
+    if not isinstance(agent, dict) or meta.get("aborted") is not False:
+        raise HandoffError("turn aborted, or abort state not reported at result.meta.aborted")
     payloads = result.get("payloads")
     final = payloads[-1] if isinstance(payloads, list) and payloads else None
     text = final.get("text") if isinstance(final, dict) else None
@@ -991,7 +991,7 @@ Hard rules:
 1. Base every decision on actual evidence in files/state (module records, acceptance receipts, task evidence, git HEAD). Prose, memory or earlier chat is not evidence.
 2. Respect all mandatory gates: prerequisite modules must be accepted, no active same-module blocker for gatekeeper/scenario-review, the baseline must be healthy, roles route by the runner (implement/test = Sonnet; architecture, scenario-review, code-review, manual-qa, security, performance, gatekeeper = Opus). Never downgrade an Opus role.
 3. Mandatory review: after a DONE implement/test task in a module, the only legal next write or gatekeeper is preceded by an independent Opus code-review of that exact task. Propose that code-review first, with `review_of` binding the exact write task id and its recorded changed files (path + sha256 from the task's evidence). After CHANGES_REQUESTED propose only a bounded remediation write (at most 2 rounds, inside the original allowed paths); after APPROVED the gatekeeper may follow. The runner re-checks all of this; a proposal that violates it is refused.
-4. Follow accepted-module transitions: once a module is ACCEPTED with a verified receipt, move to the next module the catalog and EIP/TSD allow; do not redo accepted work.
+4. Follow accepted-module transitions: once a module is ACCEPTED with a verified receipt, move to the next module the catalog and EIP/TSD allow; do not redo accepted work. Continue the next UNACCEPTED product module (currently MOD-003) from its last valid checkpoint. Owner-approved policy is recorded in "/Users/ahmadmabrouk/Library/Application Support/Veyro/mission-runner/policy/owner-execution-infrastructure-boundary-20261017.md": Execution Infrastructure is separate from Veyro product modules, so never reinterpret historical runner/dashboard maintenance under an accepted product module as an unfinished product review gate, and never propose any task for an accepted module (the runner refuses it). Rule 3 still applies in full to actual Veyro product write tasks.
 5. Make no owner decisions. If progress needs an owner approval, acceptance, scope or policy decision, propose nothing and answer WAITING_FOR_OWNER.
 6. Do NOT edit, create, delete or commit any file, run the runner CLI, enqueue anything, write queue/command/approval/receipt files, certify or accept any module, or perform the worker task yourself. The runner alone validates and enqueues your proposal.
 7. If a task is BLOCKED, propose only unrelated legal work, never a retry of the blocked task unless the evidence shows its blocker is resolved.
@@ -1736,17 +1736,16 @@ class Runner:
         t = validate_task(task, self.cfg)
         if t["id"] in self.state["tasks"]:
             raise ValueError(f"task id already exists: {t['id']}")
+        try:
+            verify_receipt(self.cfg, t["module"])
+        except GateError:
+            pass  # no verified acceptance: the module is still open for work
+        else:
+            raise ValueError(f"{t['module']} already has a verified accepted receipt: no orchestrator-proposed task of any role")
         if t["role"] == "code-review" and not t["review_of"]:
             raise ValueError("an orchestrator-proposed code-review must bind review_of (write task id + changed-file hashes)")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
-        if t["role"] in WRITE_ROLES | {"gatekeeper"}:
-            try:
-                verify_receipt(self.cfg, t["module"])
-            except GateError:
-                pass  # no verified acceptance: the module is still open for work
-            else:
-                raise ValueError(f"{t['module']} already has a verified accepted receipt: no new write or gatekeeper")
         if t.get("remediation_of"):
             w = self.state["tasks"].get(t["remediation_of"])
             if not (w and w.get("module") == t["module"] and w.get("role") in WRITE_ROLES and w.get("status") == "DONE"
