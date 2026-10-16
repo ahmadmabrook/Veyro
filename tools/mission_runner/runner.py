@@ -1265,6 +1265,55 @@ def pid_alive(pid):
         return False
 
 
+def orchestrator_receipt(home):
+    """Read an optional decision receipt from the actual orchestrating session.
+
+    The runner does not make module-planning decisions. Missing or malformed
+    evidence is UNKNOWN; this file never authorizes a dispatch.
+    """
+    path = Path(home) / "orchestrator.json"
+    try:
+        if path.stat().st_size > 16_384:
+            raise ValueError("receipt too large")
+        record = json.loads(path.read_text())
+        if record.get("schema") != 1 or not record.get("decision_at") or not record.get("identity"):
+            raise ValueError("invalid receipt")
+        age = time.time() - datetime.datetime.fromisoformat(record["decision_at"]).timestamp()
+        if age < -60:
+            raise ValueError("future decision")
+        keys = ("identity", "model", "model_evidence", "runtime", "session_key", "state", "decision",
+                "last_action", "decision_at", "next_legal_action", "worker_task_id", "source")
+        return {k: record.get(k) for k in keys} | {"age_s": max(0, round(age)), "evidence": "recorded"}
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError):
+        return {"identity": "UNKNOWN", "model": "UNKNOWN", "state": "unknown", "evidence": "missing"}
+
+
+def local_head_readonly(repo):
+    """Resolve local HEAD without forking git from dashboard request threads."""
+    try:
+        gitdir = Path(repo) / ".git"
+        if gitdir.is_file():  # worktree gitdir pointer
+            pointer = gitdir.read_text().strip()
+            if not pointer.startswith("gitdir: "):
+                return None
+            gitdir = (Path(repo) / pointer[8:]).resolve()
+        head = (gitdir / "HEAD").read_text().strip()
+        if head.startswith("ref: "):
+            ref = head[5:]
+            if not ref.startswith("refs/") or any(part in ("", ".", "..") for part in ref.split("/")):
+                return None
+            loose = gitdir / ref
+            if loose.is_file():
+                head = loose.read_text().strip()
+            else:
+                head = next((sha for line in (gitdir / "packed-refs").read_text().splitlines()
+                             if not line.startswith(("#", "^"))
+                             for sha, sep, name in (line.partition(" "),) if sep and name == ref), "")
+        return head if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head) else None
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
 def snapshot(cfg):
     """Read-only truthful view used by `status` and the dashboard. Nothing here is verified by the reader:
     every field is what the runner last recorded (or, for lock/pid liveness, a passive probe)."""
@@ -1297,10 +1346,7 @@ def snapshot(cfg):
         ci = clean_ci({"source": ci.get("source"), "last_attempt_at": ci.get("last_attempt_at"),
                        "error": ci.get("error") or "legacy-scope"})
     if ci is not None:
-        try:  # local read only: lets the dashboard refuse to imply CI covers unpushed local work
-            local = _git(cfg.repo, "rev-parse", "HEAD", timeout=2).stdout.decode().strip()
-        except (subprocess.SubprocessError, OSError):
-            local = None
+        local = local_head_readonly(cfg.repo)  # never fork git on a live dashboard request
         ci["local_head"] = local
         ci["head_matches_local"] = None if not local or not ci.get("head_sha") else ci["head_sha"] == local
         # Fresh requires a recent successful observation and no error on the latest attempt.
@@ -1327,6 +1373,7 @@ def snapshot(cfg):
                                                       {"pinned_at": pin["pinned_at"], "index_sha256": pin["index_sha256"],
                                                        "sources": len(pin["sources"])}),
             "usage": st.get("usage", {}), "ci": ci, "events": store.tail_events(200),
+            "orchestrator": orchestrator_receipt(cfg.home),
             "pending_commands": len(store.pending_commands()), "writer_lock": wl}
 
 
@@ -1340,7 +1387,8 @@ def write_launchagents(cfg, write):
     for label, args in jobs.items():
         plist = {"Label": label, "ProgramArguments": [py, me, *args], "WorkingDirectory": str(cfg.repo),
                  "RunAtLoad": True, "KeepAlive": {"SuccessfulExit": False}, "ThrottleInterval": 30,
-                 "EnvironmentVariables": env, "ProcessType": "Background",
+                 "EnvironmentVariables": env,
+                 "ProcessType": "Interactive" if label == "com.veyro.mod000-dashboard" else "Background",
                  "StandardOutPath": str(logs / f"{label}.out.log"), "StandardErrorPath": str(logs / f"{label}.err.log")}
         path = Path.home() / "Library/LaunchAgents" / f"{label}.plist"
         if write:

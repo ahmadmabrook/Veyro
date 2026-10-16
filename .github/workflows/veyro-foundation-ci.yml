@@ -25,13 +25,19 @@ jobs:
           python-version: "3.13"
 
       - name: Compile / syntax check
-        run: python -m compileall -q tools/mission_runner
+        run: python -m compileall -q tools/mission_runner tools/governance
 
       - name: Workflow trigger shape (push to main only, read-only, trusted gate disabled)
         run: python tools/mission_runner/workflow_check.py
 
       - name: MOD-000 focused unittest suite
         run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
+
+      - name: Governance validator unittest suite
+        run: python -m unittest discover -s tools/governance/tests -t tools/governance -v
+
+      - name: Governance static structural check (not a change-control gate)
+        run: python tools/governance/governance_check.py check --root .
 
       - name: Trusted-gate evaluator/publisher unittest suite (no key or App secret)
         run: python -m unittest discover -s tools/trusted_gate/tests -t tools/trusted_gate -v

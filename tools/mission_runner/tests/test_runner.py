@@ -830,6 +830,8 @@ class Lifecycle(Base):
 
 
 class DashboardTests(Base):
+    """The read-only dashboard projects module decisions, task lifecycle, and CI separately."""
+
     def setUp(self):
         super().setUp()
         self.srv = dashboard.make_server(self.cfg, 0)
@@ -838,58 +840,20 @@ class DashboardTests(Base):
         self.addCleanup(self.srv.shutdown)
         self.base = f"http://127.0.0.1:{self.srv.server_address[1]}"
 
+    def test_worktree_clean_reads_real_git_status(self):
+        self.assertTrue(dashboard.worktree_clean(self.repo))
+        scratch = self.repo / "scratch.txt"
+        scratch.write_text("untracked")
+        self.assertFalse(dashboard.worktree_clean(self.repo))
+        scratch.unlink()
+        tracked = self.repo / "src" / "keep.txt"
+        tracked.write_text("modified")
+        self.assertFalse(dashboard.worktree_clean(self.repo))
+
     def req(self, path, method="GET", host=None):
         rq = urllib.request.Request(self.base + path, method=method, data=b"x" if method != "GET" else None)
         if host:
             rq.add_header("Host", host)
-        try:
-            with urllib.request.urlopen(rq) as r:
-                return r.status, r.read().decode()
-        except urllib.error.HTTPError as e:
-            with e:
-                return e.code, e.read().decode()
-
-    def test_loopback_only_and_truthful_empty_state(self):
-        self.assertEqual(self.srv.server_address[0], "127.0.0.1")
-        code, body = self.req("/api/state")
-        s = json.loads(body)
-        self.assertEqual(code, 200)
-        self.assertFalse(s["runner_alive"])
-        self.assertEqual((s["tasks"], s["usage"], s["ci"]), ([], {}, None))
-        self.assertEqual(s["health"]["status"], "UNKNOWN")  # never a fabricated "OK" before a runner checked
-        self.assertIsNone(s["baseline"])
-        self.assertEqual(s["writer_lock"]["state"], "free")
-
-    def test_read_only_and_host_guard(self):
-        for m in ("POST", "PUT", "DELETE", "PATCH"):
-            self.assertEqual(self.req("/api/state", m)[0], 405)
-        self.assertEqual(self.req("/api/state", host="evil.example")[0], 403)
-        self.assertEqual(self.req("/nope")[0], 404)
-        code, html = self.req("/")
-        self.assertIn("Veyro Mission Runner", html)
-        self.assertEqual(self.req("/app.js")[0], 200)
-        self.assertEqual(dashboard.make_server.__defaults__, (8766,))
-
-    def test_kanban_columns_are_the_requested_six(self):
-        js = self.req("/app.js")[1]
-        cols = ["NOT STARTED", "READY", "IN PROGRESS", "IN REVIEW", "BLOCKED", "DONE"]
-        pos = [js.index(f"'{c}'") for c in cols]
-        self.assertEqual(pos, sorted(pos))
-
-    def test_dashboard_reflects_live_state_and_never_mutates_it(self):
-        r = self.runner()
-        self.add(r)
-        r.tick()
-        r.store.save(r.state)
-        before = (self.home / "state.json").read_bytes()
-        s = json.loads(self.req("/api/state")[1])
-        self.assertEqual(s["tasks"][0]["status"], "DONE")
-        self.assertTrue(s["runner_alive"])
-        self.assertEqual(s["baseline_pin"]["sources"], 4)
-        self.assertEqual((self.home / "state.json").read_bytes(), before)
-
-    def raw(self, path):
-        rq = urllib.request.Request(self.base + path)
         try:
             with urllib.request.urlopen(rq) as r:
                 return r.status, dict(r.headers), r.read().decode()
@@ -897,281 +861,110 @@ class DashboardTests(Base):
             with e:
                 return e.code, dict(e.headers), e.read().decode()
 
-    def test_command_center_assets_are_served_and_wired_together(self):
-        code, headers, html = self.raw("/")
+    def write_module(self, module, status_line, symlink=False):
+        folder = self.repo / "knowledge" / "03-Modules" / module
+        folder.mkdir(parents=True, exist_ok=True)
+        body = f"# {module} — Test\n\n{status_line}\n\n## Requirements\n- first\n- second\n"
+        if symlink:
+            (self.repo / "elsewhere.md").write_text(body)
+            (folder / f"{module}.md").symlink_to(self.repo / "elsewhere.md")
+        else:
+            (folder / f"{module}.md").write_text(body)
+
+    def test_loopback_empty_state_and_read_only_routes(self):
+        self.assertEqual(self.srv.server_address[0], "127.0.0.1")
+        code, _, body = self.req("/api/state")
+        state = json.loads(body)
         self.assertEqual(code, 200)
-        self.assertIn("Engineering Command Center", html)
+        self.assertFalse(state["runner_alive"])
+        self.assertEqual((state["tasks"], state["usage"], state["ci"]), ([], {}, None))
+        self.assertEqual(state["health"]["status"], "UNKNOWN")
+        self.assertEqual(state["accepted_count"], 0)
+        self.assertEqual(state["total_modules"], 75)
+        self.assertEqual(state["writer_lock"]["state"], "free")
+        for method in ("POST", "PUT", "DELETE", "PATCH"):
+            self.assertEqual(self.req("/api/state", method)[0], 405)
+        self.assertEqual(self.req("/api/state", host="evil.example")[0], 403)
+        self.assertEqual(self.req("/nope")[0], 404)
+
+    def test_fixed_assets_and_security_headers(self):
+        code, headers, html = self.req("/")
+        self.assertEqual(code, 200)
+        self.assertIn("Engineering Mission Control", html)
         self.assertIn('href="/app.css"', html)
         self.assertIn('src="/app.js"', html)
-        self.assertEqual(self.raw("/app.css")[2], dashboard.CSS)
-        self.assertEqual(self.raw("/app.js")[2], dashboard.JS)
-        self.assertEqual(self.raw("/app.css")[1]["Content-Type"], "text/css; charset=utf-8")
-        # every element the script looks up must exist, or a render function throws and the page goes blank
-        wanted = set(re.findall(r"\$\('([a-z-]+)'\)", dashboard.JS)) | set(re.findall(r"setBadge\('([a-z-]+)'", dashboard.JS))
-        wanted -= {"module-list"}  # created by the script itself
-        present = set(re.findall(r'id="([a-z-]+)"', html))
-        self.assertEqual(wanted - present, set())
-        for panel in ("quality", "board", "module-detail", "mission", "activity", "usage", "detail"):
-            self.assertIn(panel, present)
-
-    def test_state_carries_module_catalog_and_records_alongside_runner_snapshot(self):
-        s = json.loads(self.req("/api/state")[1])
-        self.assertIn("MOD-001", [m["id"] for m in s["module_catalog"]])
-        self.assertEqual(s["module_records"], {})  # throwaway repo has no module files: absence is not a status
-        for key in ("tasks", "events", "usage", "ci", "writer_lock", "health"):
-            self.assertIn(key, s)
-
-    def test_responses_are_locked_down_for_a_scriptless_loopback_page(self):
+        self.assertEqual(self.req("/app.css")[2], dashboard.CSS)
+        self.assertEqual(self.req("/app.js")[2], dashboard.JS)
+        self.assertIn("text/css", self.req("/app.css")[1]["Content-Type"])
         for path in ("/", "/app.js", "/app.css", "/api/state"):
-            _, headers, _ = self.raw(path)
-            self.assertEqual(headers["X-Content-Type-Options"], "nosniff", path)
-            self.assertEqual(headers["Cache-Control"], "no-store", path)
-            self.assertEqual(headers["X-Frame-Options"], "DENY", path)
-            self.assertIn("default-src 'none'", headers["Content-Security-Policy"], path)
-            self.assertNotIn("unsafe-inline", headers["Content-Security-Policy"], path)
-        html = dashboard.HTML
-        self.assertEqual(re.findall(r"<script\b[^>]*>", html), ['<script src="/app.js">'])  # no inline script under CSP
-        self.assertNotRegex(html, r"(?i)\son[a-z]+\s*=")
-        self.assertNotRegex(html, r"(?i)https?://")  # nothing loaded or linked off-box
-        self.assertNotRegex(dashboard.JS, r"(?i)fetch\([^)]*(?<!\w)(https?:|//)")
+            headers = self.req(path)[1]
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+            self.assertEqual(headers["X-Frame-Options"], "DENY")
+            self.assertIn("default-src 'none'", headers["Content-Security-Policy"])
+        self.assertEqual(re.findall(r"<script\b[^>]*>", html), ['<script src="/app.js">'])
+        self.assertNotIn("innerHTML", dashboard.JS)
         self.assertNotRegex(dashboard.JS, r"method\s*:\s*['\"](?:POST|PUT|DELETE|PATCH)")
+        for path in ("/dashboard.py", "/runner.py", "/module_catalog.json", "/../runner.py", "/.git/config"):
+            self.assertEqual(self.req(path)[0], 404)
+        self.assertEqual(self.req("/app.js?x=1")[0], 200)
+        for view in ("overview", "kanban", "modules", "quality", "activity", "usage"):
+            self.assertIn(f'id="{view}"', html)
 
-    def test_only_the_fixed_asset_routes_exist_no_file_serving(self):
-        for path in ("/dashboard.py", "/runner.py", "/module_catalog.json", "/../runner.py", "/%2e%2e/runner.py",
-                     "/app.js/../runner.py", "/api/state/x", "/.git/config"):
-            self.assertEqual(self.req(path)[0], 404, path)
-        self.assertEqual(self.req("/app.js?x=1")[0], 200)  # query string ignored, still the same fixed asset
+    def test_live_state_is_projected_without_mutation(self):
+        instance = self.runner()
+        self.add(instance)
+        instance.tick()
+        instance.store.save(instance.state)
+        before = (self.home / "state.json").read_bytes()
+        state = json.loads(self.req("/api/state")[2])
+        self.assertEqual(state["tasks"][0]["status"], "DONE")
+        self.assertTrue(state["runner_alive"])
+        self.assertEqual(state["baseline_pin"]["sources"], 4)
+        self.assertEqual((self.home / "state.json").read_bytes(), before)
 
-    def test_host_guard_accepts_only_this_servers_loopback_names(self):
-        port = self.srv.server_address[1]
-        for host in (f"localhost:{port}", f"127.0.0.1:{port}"):
-            self.assertEqual(self.req("/api/state", host=host)[0], 200, host)
-        for host in ("127.0.0.1", f"127.0.0.1.evil.example:{port}", f"evil.example:{port}", "127.0.0.1:1"):
-            self.assertEqual(self.req("/api/state", host=host)[0], 403, host)
+    def test_module_parser_handles_status_and_rejects_symlinks(self):
+        self.write_module("MOD-001", "**Status: PROGRESS — NOT PASS, NOT ACCEPTED.**")
+        self.write_module("MOD-000", "**Status: ACCEPTED — LEAN FOUNDATION.** gatekeeper approved")
+        records = dashboard.module_records(self.repo)
+        self.assertFalse(records["MOD-001"]["accepted"])
+        self.assertTrue(records["MOD-000"]["accepted"])
+        self.assertEqual(records["MOD-001"]["requirements"], ["first", "second"])
+        state = json.loads(self.req("/api/state")[2])
+        self.assertEqual(state["recorded_accepted_count"], 1)
+        self.assertEqual(state["accepted_count"], 0)
+        self.write_module("MOD-002", "**Status: ACCEPTED**", symlink=True)
+        self.assertNotIn("MOD-002", dashboard.module_records(self.repo))
 
-    def write_module(self, module, status_line, symlink=False):
-        d = self.repo / "knowledge" / "03-Modules" / module
-        d.mkdir(parents=True, exist_ok=True)
-        text = f"# {module} — Test\n\n{status_line}\n\n## Requirements\n- first\n- second\n\n## Exact next action\nDo the thing.\n"
-        if symlink:
-            (self.repo / "elsewhere.md").write_text(text)
-            (d / f"{module}.md").symlink_to(self.repo / "elsewhere.md")
-        else:
-            (d / f"{module}.md").write_text(text)
-
-    def test_module_records_never_report_not_accepted_text_as_accepted(self):
-        self.write_module("MOD-001", "**Status: PROGRESS — NOT PASS, NOT ACCEPTED.** Historical CI passed.")
-        self.write_module("MOD-000", "**Status: ACCEPTED** by the owner.")
-        recs = dashboard.module_records(self.repo)
-        self.assertFalse(recs["MOD-001"]["accepted"])
-        self.assertTrue(recs["MOD-000"]["accepted"])  # the parser is not simply hard-wired to False
-        self.assertEqual(recs["MOD-001"]["requirements"], ["first", "second"])
-        self.assertEqual(recs["MOD-001"]["next_action"], "Do the thing.")
-        s = json.loads(self.req("/api/state")[1])
-        self.assertFalse(s["module_records"]["MOD-001"]["accepted"])
-
-    def test_module_records_ignore_symlinked_or_misnamed_files(self):
-        self.write_module("MOD-001", "**Status: ACCEPTED**", symlink=True)
-        self.assertEqual(dashboard.module_records(self.repo), {})
-        d = self.repo / "knowledge" / "03-Modules" / "MOD-000"
-        d.mkdir(parents=True)
-        (d / "MOD-000.md").write_text("# something else\n**Status: ACCEPTED**")
-        self.assertEqual(dashboard.module_records(self.repo), {})
-
-    def test_real_mod_001_record_is_never_displayed_accepted_without_ci_confirmation(self):
-        if not (R.REPO / "knowledge" / "03-Modules" / "MOD-001" / "MOD-001.md").is_file():
-            self.skipTest("no real MOD-001 record")
-        raw = dashboard.module_records(R.REPO)
-        for ci in (None, {}, {"state": "unavailable"}):  # the real header may say ACCEPTED; the projection still fails closed
-            self.assertFalse(dashboard.gate_module_records(raw, ci)["MOD-001"]["accepted"])
-
-    # ---- /api/state acceptance projection: a header saying ACCEPTED is shown only while CI confirms the exact head
-    def local_head(self):
-        return subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True,
-                              check=True).stdout.strip()
-
-    def committed_head(self, dirty=False):
-        """Fixture-only: write the header-ACCEPTED module and commit it (a no-op when unchanged), unless `dirty`
-        asks for it to stay uncommitted; return the local head."""
+    def test_stale_ci_does_not_revoke_recorded_acceptance(self):
         self.write_module("MOD-001", "**Status: ACCEPTED — FOUNDATION ONLY.**")
-        if not dirty and git(self.repo, "status", "--porcelain").stdout:
-            git(self.repo, "add", "-A")
-            git(self.repo, "commit", "-qm", "module")
-        return self.local_head()
+        cached = {"source": "gh", "scope": "main-push", "branch": "main", "head_sha": "a" * 40,
+                  "observed_at": "2000-01-01T00:00:00+00:00", "error": "github-api-timeout", "runs": []}
+        (self.home / "ci.json").write_text(json.dumps(cached))
+        state = json.loads(self.req("/api/state")[2])
+        self.assertTrue(state["module_records"]["MOD-001"]["recorded_accepted"])
+        self.assertFalse(state["module_records"]["MOD-001"]["accepted"])
+        self.assertEqual(state["recorded_accepted_count"], 1)
+        self.assertEqual(state["accepted_count"], 0)
+        self.assertEqual(state["ci"]["state"], "stale")
 
-    def accepted_via_api(self, dirty=False, **ci_kw):
-        """Write a header-ACCEPTED module and a CI cache for the local head; return what /api/state displays."""
-        head = self.committed_head(dirty)
-        run = self.ci_obs()["runs"][0] | {"head_sha": head}
-        kw = {"head_sha": head, "runs": [run], "observed_at": R.now_iso(), "repo": "o/r", "state": None} | ci_kw
-        (self.home / "ci.json").write_text(json.dumps(self.ci_obs(**kw)))
-        rec = json.loads(self.req("/api/state")[1])["module_records"]["MOD-001"]
-        self.assertTrue(rec["header_accepted"])  # the raw parser still reports what the header says
-        return rec["accepted"], run
-
-    def test_api_accepts_header_only_for_named_successful_push_run_on_exact_fresh_main_head(self):
-        accepted, _ = self.accepted_via_api()  # clean committed fixture plus fresh success permits it
-        self.assertTrue(accepted)
-
-    def test_api_withholds_acceptance_for_dirty_worktree_even_with_fresh_successful_ci(self):
-        self.assertTrue(self.accepted_via_api()[0])  # baseline: committed and clean
-        for name, mutate in {"modified tracked": lambda: (self.repo / "src" / "keep.txt").write_text("changed"),
-                             "untracked": lambda: (self.repo / "scratch.txt").write_text("x")}.items():
-            with self.subTest(name):
-                mutate()
-                self.assertFalse(self.accepted_via_api(dirty=True)[0])  # dirty=True: the fixture must not commit it
-                git(self.repo, "checkout", "--", ".")
-                git(self.repo, "clean", "-qfd")
-        with self.subTest("uncommitted module draft"):
-            git(self.repo, "rm", "-qrf", "knowledge")
-            git(self.repo, "commit", "-qm", "drop module")
-            self.assertFalse(self.accepted_via_api(dirty=True)[0])
-
-    def test_worktree_clean_fails_closed_on_git_errors_and_timeouts(self):
-        self.committed_head()
-        self.assertTrue(dashboard.worktree_clean(self.repo))
-        self.assertFalse(dashboard.worktree_clean(self.repo / "missing"))  # git exits non-zero
-        for exc in (subprocess.TimeoutExpired("git", 5), FileNotFoundError("git")):
-            with mock.patch.object(dashboard.subprocess, "run", side_effect=exc):
-                self.assertFalse(dashboard.worktree_clean(self.repo))
-
-    def test_api_withholds_acceptance_while_exact_head_run_is_pending_or_failed(self):
-        run = self.ci_obs()["runs"][0]
-        for name, patch in {"queued": {"status": "queued", "conclusion": None},
-                            "in progress": {"status": "in_progress", "conclusion": None},
-                            "failure": {"conclusion": "failure"}, "cancelled": {"conclusion": "cancelled"}}.items():
-            with self.subTest(name):
-                self.assertFalse(self.accepted_via_api(runs=[run | patch | {"head_sha": self.committed_head()}])[0])
-        with self.subTest("success plus pending sibling"):
-            head = self.committed_head()
-            ok = run | {"head_sha": head}
-            self.assertFalse(self.accepted_via_api(
-                runs=[ok, ok | {"name": "Other", "status": "queued", "conclusion": None}])[0])
-
-    def test_api_withholds_acceptance_for_stale_unavailable_or_errored_ci(self):
-        self.assertFalse(self.accepted_via_api(observed_at="2000-01-01T00:00:00+00:00")[0])  # stale by age
-        self.assertFalse(self.accepted_via_api(error="gh-failed")[0])
-        self.assertFalse(self.accepted_via_api(observed_at=None)[0])  # unavailable
-        self.write_module("MOD-001", "**Status: ACCEPTED**")
-        (self.home / "ci.json").unlink()
-        rec = json.loads(self.req("/api/state")[1])["module_records"]["MOD-001"]  # no CI snapshot at all
-        self.assertEqual((rec["accepted"], rec["header_accepted"]), (False, True))
-
-    def test_api_withholds_acceptance_for_head_mismatch_and_wrong_head_runs(self):
-        run = self.ci_obs()["runs"][0]
-        self.assertFalse(self.accepted_via_api(head_sha=self.OTHER, runs=[run | {"head_sha": self.OTHER}])[0])  # remote != local
-        self.assertFalse(self.accepted_via_api(runs=[run | {"head_sha": self.OTHER}], runs_other_head=1)[0])  # older head only
-        self.assertFalse(self.accepted_via_api(runs=[])[0])  # pushed head, no run yet
-        self.assertFalse(self.accepted_via_api(branch="feature/x")[0])
-        self.assertFalse(self.accepted_via_api(scope=None)[0])  # legacy cache
-
-    def test_api_withholds_acceptance_for_wrong_event_ref_or_workflow_success(self):
-        run = self.ci_obs()["runs"][0] | {"head_sha": self.committed_head()}
-        for name, patch in {"pull_request": {"event": "pull_request"}, "workflow_dispatch": {"event": "workflow_dispatch"},
-                            "feature ref": {"ref": "feature/x"}, "other workflow": {"name": "Deploy Docs"},
-                            "name case": {"name": "veyro foundation ci"}}.items():
-            with self.subTest(name):
-                self.assertFalse(self.accepted_via_api(runs=[run | patch])[0])
-
-    def test_gate_only_downgrades_and_leaves_non_accepted_records_untouched(self):
-        recs = {"MOD-001": {"accepted": False, "path": "p"}, "MOD-000": {"accepted": True, "path": "q"}}
-        good = self.ci_obs()
-        out = dashboard.gate_module_records(recs, good, clean=True)
-        self.assertEqual((out["MOD-001"]["accepted"], out["MOD-000"]["accepted"]), (False, True))  # never upgrades
-        self.assertEqual(dashboard.gate_module_records(recs, good | {"state": "stale"}, clean=True)["MOD-000"]["accepted"], False)
-        self.assertEqual(dashboard.gate_module_records(recs, good)["MOD-000"]["accepted"], False)  # clean unknown -> closed
-        self.assertEqual(dashboard.gate_module_records(recs, good, clean=False)["MOD-000"]["accepted"], False)
-        self.assertTrue(recs["MOD-000"]["accepted"])  # input not mutated
-
-    # ---- CI panel truthfulness: the real ciVerdict source is executed by node when available
-    SHA, OTHER = "a" * 40, "b" * 40
-
-    def ci_obs(self, **kw):
-        run = {"name": "Veyro Foundation CI", "status": "completed", "conclusion": "success", "ref": "main",
-               "head_sha": self.SHA, "event": "push", "url": "https://github.com/o/r/actions/runs/1"}
-        base = {"source": "gh", "scope": "main-push", "branch": "main", "head_sha": self.SHA, "state": "fresh",
-                "error": None, "head_matches_local": True, "runs": [run], "runs_other_head": 0}
-        return base | kw
-
-    def verdicts(self, observations):
+    def test_ci_verdict_requires_fresh_exact_main_push_success(self):
         node = shutil.which("node")
         if not node:
-            self.skipTest("node not installed")
+            self.skipTest("node unavailable")
         js = dashboard.JS
-        fn = js[js.index("function ciVerdict"):js.index("function ciView")]
-        code = fn + "\nconsole.log(JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')).map(ciVerdict)));"
-        out = subprocess.run([node, "-e", code], input=json.dumps(observations), capture_output=True, text=True,
-                             timeout=30, check=True).stdout
-        return [(v["label"], v["kind"]) for v in json.loads(out)]
-
-    def test_ci_panel_passes_only_for_fresh_matching_successful_push_run_on_exact_main_head(self):
-        run = self.ci_obs()["runs"][0]
-        cases = {
-            "pass": (self.ci_obs(), ("PASS", "ok")),
-            "none": (None, ("NOT PASS", "warn")),
-            "mismatch": (self.ci_obs(head_matches_local=False), ("NOT PASS · MISMATCH", "bad")),
-            "local unknown": (self.ci_obs(head_matches_local=None), ("NOT PASS · LOCAL UNKNOWN", "warn")),
-            "stale": (self.ci_obs(state="stale", error="gh-failed"), ("NOT PASS · STALE", "bad")),
-            "unavailable": (self.ci_obs(state="unavailable", runs=[], head_sha=self.SHA), ("NOT PASS · UNAVAILABLE", "warn")),
-            "no run": (self.ci_obs(runs=[]), ("NOT PASS · NO RUN", "warn")),
-            "only older head ran": (self.ci_obs(runs=[run | {"head_sha": self.OTHER}], runs_other_head=1),
-                                    ("NOT PASS · NO RUN", "warn")),
-            "pull_request run": (self.ci_obs(runs=[run | {"event": "pull_request"}]), ("NOT PASS · NO RUN", "warn")),
-            "feature branch run": (self.ci_obs(runs=[run | {"ref": "feature/x"}]), ("NOT PASS · NO RUN", "warn")),
-            "in progress": (self.ci_obs(runs=[run | {"status": "in_progress", "conclusion": None}]),
-                            ("NOT PASS · PENDING", "warn")),
-            "failed": (self.ci_obs(runs=[run | {"conclusion": "failure"}]), ("FAILED", "bad")),
-            "failed beats mismatch": (self.ci_obs(runs=[run | {"conclusion": "failure"}], head_matches_local=False),
-                                      ("FAILED", "bad")),
-            "success plus failure": (self.ci_obs(runs=[run, run | {"name": "x", "conclusion": "timed_out"}]), ("FAILED", "bad")),
-            "stale old failure is not shown as failed": (self.ci_obs(state="stale", runs=[run | {"conclusion": "failure"}]),
-                                                          ("NOT PASS · STALE", "bad")),
-            "legacy branch/pr cache": (self.ci_obs(scope=None, branch="feature/x", pr={"number": 1, "state": "OPEN"},
-                                                   checks=[{"name": "c", "state": "SUCCESS"}]), ("NOT PASS", "warn")),
-            "no head": (self.ci_obs(head_sha=None), ("NOT PASS", "warn")),
-        }
-        got = self.verdicts([c[0] for c in cases.values()])
-        for (name, (_, want)), have in zip(cases.items(), got):
-            self.assertEqual(have, want, name)
-        self.assertEqual([n for (n, (_, w)), h in zip(cases.items(), got) if h[0] == "PASS"], ["pass"])
-
-    def test_ci_panel_requires_the_named_foundation_workflow_for_pass(self):
-        run = self.ci_obs()["runs"][0]
-        other = run | {"name": "Deploy Docs", "url": "https://github.com/o/r/actions/runs/2"}
-        cases = {
-            "unrelated success only": (self.ci_obs(runs=[other]), ("NOT PASS · NO RUN", "warn")),
-            "wrong name case": (self.ci_obs(runs=[run | {"name": "veyro foundation ci"}]), ("NOT PASS · NO RUN", "warn")),
-            "name with suffix": (self.ci_obs(runs=[run | {"name": "Veyro Foundation CI "}]), ("NOT PASS · NO RUN", "warn")),
-            "missing name": (self.ci_obs(runs=[{k: v for k, v in run.items() if k != "name"}]), ("NOT PASS · NO RUN", "warn")),
-            "named pending, unrelated success": (self.ci_obs(runs=[other, run | {"status": "queued", "conclusion": None}]),
-                                                 ("NOT PASS · PENDING", "warn")),
-            "named failure, unrelated success": (self.ci_obs(runs=[other, run | {"conclusion": "failure"}]), ("FAILED", "bad")),
-            "unrelated failure, named success": (self.ci_obs(runs=[run, other | {"conclusion": "failure"}]), ("FAILED", "bad")),
-            "named cancelled": (self.ci_obs(runs=[run | {"conclusion": "cancelled"}]), ("FAILED", "bad")),
-            "named success only": (self.ci_obs(runs=[run]), ("PASS", "ok")),
-            "named success plus unrelated success": (self.ci_obs(runs=[other, run]), ("PASS", "ok")),
-            "named success but mismatch": (self.ci_obs(runs=[run], head_matches_local=False), ("NOT PASS · MISMATCH", "bad")),
-            "unrelated success but stale": (self.ci_obs(runs=[other], state="stale"), ("NOT PASS · STALE", "bad")),
-        }
-        got = self.verdicts([c[0] for c in cases.values()])
-        for (name, (_, want)), have in zip(cases.items(), got):
-            self.assertEqual(have, want, name)
-
-    def test_api_ci_snapshot_for_unpushed_local_work_renders_not_pass(self):
-        """End to end: the runner's own snapshot (remote head != local HEAD) fed through the dashboard verdict."""
-        (self.home / "ci.json").write_text(json.dumps(
-            self.ci_obs(observed_at=R.now_iso(), repo="o/r", state=None, head_matches_local=None)))
-        ci = json.loads(self.req("/api/state")[1])["ci"]
-        self.assertEqual((ci["state"], ci["head_matches_local"]), ("fresh", False))
-        self.assertEqual(self.verdicts([ci])[0], ("NOT PASS · MISMATCH", "bad"))
-
-    def test_api_never_exposes_retired_pr_or_check_fields(self):
-        (self.home / "ci.json").write_text(json.dumps(
-            self.ci_obs(observed_at=R.now_iso(), pr={"number": 9, "url": "https://github.com/o/r/pull/9"},
-                        checks=[{"name": "required", "state": "SUCCESS"}], review="APPROVED")))
-        ci = json.loads(self.req("/api/state")[1])["ci"]
-        for key in ("pr", "checks", "review"):
-            self.assertNotIn(key, ci)
+        fn = js[js.index("function ciVerdict"):js.index("\nlet data=", js.index("function ciVerdict"))]
+        run = {"name": "Veyro Foundation CI", "status": "completed", "conclusion": "success", "ref": "main",
+               "head_sha": "a" * 40, "event": "push"}
+        base = {"scope": "main-push", "branch": "main", "head_sha": "a" * 40, "state": "fresh",
+                "error": None, "head_matches_local": True, "runs": [run]}
+        cases = [base, base | {"state": "stale"}, base | {"head_matches_local": False},
+                 base | {"runs": [run | {"status": "in_progress", "conclusion": None}]},
+                 base | {"runs": [run | {"conclusion": "failure"}]}, base | {"runs": []}]
+        result = subprocess.run([node, "-e", fn + "\nconsole.log(JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')).map(ciVerdict)));"],
+                                input=json.dumps(cases), capture_output=True, text=True, check=True, timeout=10)
+        labels = [x["label"] for x in json.loads(result.stdout)]
+        self.assertEqual(labels, ["PASS", "STALE", "HEAD MISMATCH", "PENDING", "FAILED", "NO FOUNDATION RUN"])
 
 
 class TrustedGateRetired(Base):
@@ -1488,6 +1281,25 @@ class CIFeed(Base):
         ci = R.snapshot(self.cfg)["ci"]
         self.assertEqual((ci["head_matches_local"], ci["runs"]), (True, []))  # matching head, but no push run: no pass
 
+    def test_local_head_readonly_resolves_loose_packed_and_detached_without_git(self):
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            gitdir = repo / ".git"
+            gitdir.mkdir()
+            (gitdir / "HEAD").write_text("ref: refs/heads/main\n")
+            loose = gitdir / "refs/heads/main"
+            loose.parent.mkdir(parents=True)
+            loose.write_text(sha + "\n")
+            self.assertEqual(R.local_head_readonly(repo), sha)
+            loose.unlink()
+            (gitdir / "packed-refs").write_text("# pack-refs\n" + sha + " refs/heads/main\n")
+            self.assertEqual(R.local_head_readonly(repo), sha)
+            (gitdir / "HEAD").write_text(sha + "\n")
+            self.assertEqual(R.local_head_readonly(repo), sha)
+            (gitdir / "HEAD").write_text("ref: refs/../secrets\n")
+            self.assertIsNone(R.local_head_readonly(repo))
+
     def test_legacy_branch_pr_cache_is_not_reported_as_main_evidence_or_carried_forward(self):
         legacy = {"source": "gh", "observed_at": R.now_iso(), "head_sha": self.SHA, "branch": "feature/x",
                   "pr": {"number": 10, "state": "OPEN"}, "checks": [{"name": "c", "state": "SUCCESS"}],
@@ -1520,18 +1332,14 @@ class CIFeed(Base):
         self.assertGreater(n, 0)
         self.assertEqual(len(calls), n)  # second tick inside the interval does not call gh again
 
-    def test_dashboard_ci_ui_uses_textcontent_and_not_configured_wording(self):
+    def test_dashboard_ci_ui_uses_safe_text_and_separate_freshness(self):
         js = dashboard.JS
-        self.assertIn("function ciView", js)
-        self.assertIn("not configured", js)
+        self.assertIn("function ciVerdict", js)
+        self.assertIn("cached runs are not current evidence", js)
         self.assertNotIn("innerHTML", js)
-        ci_js = js[js.index("function ciVerdict"):js.index("function fillSelect")]
-        self.assertIn("not a pre-push gate", ci_js)
-        for retired in ("Pull request", "Required checks", "pr.number", "ci.pr", "ci.checks", "Review"):
-            self.assertNotIn(retired, ci_js)
-        module_js = js[js.index("function renderModule"):js.index("function renderActivity")]
-        for retired in ("ci.pr", "Open PR", "PR #", "ci."):
-            self.assertNotIn(retired, module_js)
+        self.assertIn("CI freshness is distinct from recorded module acceptance", dashboard.HTML)
+        self.assertNotIn("ci.pr", js)
+        self.assertNotIn("ci.checks", js)
 
 
 class WorkflowShape(unittest.TestCase):

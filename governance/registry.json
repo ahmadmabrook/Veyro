@@ -1,0 +1,119 @@
+{
+  "schema": "veyro.governance.registry/1",
+  "module": "MOD-002",
+  "module_catalog": "tools/mission_runner/module_catalog.json",
+  "index": {
+    "sha256": "0ffa29ce97a0243e96826c8295e6a3ddb69460166e7beedc3567d1dbdf1cc1d2",
+    "authority_rows": [
+      "Gym_OS_Master_Product_Blueprint_v1_English.docx",
+      "Veyro_Technical_System_Design_v1.4.2_Foundation_Clarification.docx",
+      "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx",
+      "veyro-product-experience-design/"
+    ]
+  },
+  "baseline": {
+    "owner_decision": "knowledge/00-Decisions/OWNER-2026-10-16-direct-main-github-actions.md"
+  },
+  "reserved_actions": [
+    "spend-paid-activation",
+    "production-promotion",
+    "material-product-business-change",
+    "real-member-data"
+  ],
+  "classification": {
+    "anchor": "GOV-02",
+    "tier": 2,
+    "classification": "confidential",
+    "tenant_scoped": true,
+    "invariant": "INV-GOV-02",
+    "runbook": "RB-GOV-02",
+    "ai_system": "none",
+    "storage_concept": "control-plane-store"
+  },
+  "requirements": [
+    {
+      "id": "GOV-02-R01",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "tools/governance/governance_check.py",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R02",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "knowledge/00-Decisions/ADR-0001-governance-foundation.md",
+        "tools/governance/governance_check.py",
+        "tools/governance/tests/test_governance_check.py"
+      ]
+    },
+    {
+      "id": "GOV-02-R03",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R04",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R05",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "tools/governance/governance_check.py",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R06",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R07",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "tools/governance/governance_check.py",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    },
+    {
+      "id": "GOV-02-R08",
+      "owner": "MOD-002",
+      "status": "FOUNDATION",
+      "product_pass": false,
+      "evidence": [
+        "governance/registry.json",
+        "knowledge/03-Modules/MOD-002/MOD-002.md"
+      ]
+    }
+  ]
+}
