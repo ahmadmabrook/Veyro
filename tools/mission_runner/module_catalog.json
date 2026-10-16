@@ -1,0 +1,887 @@
+[
+  {
+    "id": "MOD-000",
+    "title": "Engineering Control Plane, Persistent Memory & Toolchain",
+    "wave": "Foundation",
+    "dependencies": [],
+    "objective": "Establish the execution control plane before product code: Claude operating rules, Notion MCP board, Obsidian-compatible knowledge vault, TestSprite MCP/CLI, repository policies, evidence conventions and session continuity. Establish automatic Claude model/agent routing and governed automatic Skills/Rules/capability management so the owner normally selects neither models nor routine engineering capabilities.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-001",
+    "title": "Repository, CI/CD, Environments & Quality Engineering",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-000"
+    ],
+    "objective": "Create the production repository skeleton, local/QA/staging environments, CI/CD quality gates, contract/schema checks, deterministic test harnesses and release controls.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-002",
+    "title": "Product, Architecture, Data & AI Governance",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-001"
+    ],
+    "objective": "Encode architecture decision, change-control, data-governance and AI-governance rules as enforceable engineering workflows.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-003",
+    "title": "Localization, RTL, Accessibility & Regional Policy",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-001",
+      "MOD-002"
+    ],
+    "objective": "Build the shared localization, Arabic/RTL, accessibility and regional-policy foundation used by all surfaces.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-004",
+    "title": "Tenant, Organization, Brand & Location Management",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-001",
+      "MOD-002"
+    ],
+    "objective": "Implement the authoritative tenant/org/brand/location hierarchy and hard tenant-isolation foundation.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-005",
+    "title": "Configuration, Feature Flags & Experimentation",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004"
+    ],
+    "objective": "Implement scoped configuration, feature flags and experiment controls with safe defaults and audited rollout.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-006",
+    "title": "KMP + Compose Multiplatform Production Qualification",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-003",
+      "MOD-001"
+    ],
+    "objective": "Prove Compose Multiplatform is production-qualified for Veyro Android/iOS before feature-scale mobile work and document required native escape hatches.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-007",
+    "title": "Identity, Authentication, Passkeys & Device Sessions",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004",
+      "MOD-006"
+    ],
+    "objective": "Implement identity, authentication, MFA/passkeys, session/device lifecycle and account-security controls across required surfaces.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-008",
+    "title": "Authorization, Roles, Permissions, Approvals & Audit",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004",
+      "MOD-007"
+    ],
+    "objective": "Implement RBAC/scoped policy evaluation, approvals, access reviews and immutable audit evidence.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-009",
+    "title": "Security, Privacy, Compliance & Consent",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004",
+      "MOD-007",
+      "MOD-008"
+    ],
+    "objective": "Implement security/privacy controls, consent, data classification, retention/deletion hooks, key management and compliance evidence required by the TSD.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-010",
+    "title": "Domain Events, Event Bus, Reliability & Recovery Core",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-001",
+      "MOD-004",
+      "MOD-009"
+    ],
+    "objective": "Implement transactional outbox, EventBridge/SNS/SQS routing, inbox dedupe, aggregate-version convergence, retained event archive, replay controls and reliability recovery primitives.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-011",
+    "title": "Observability, Performance, Capacity & FinOps",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-010"
+    ],
+    "objective": "Build telemetry, SLO dashboards, traces/logs/metrics, capacity baselines, cost attribution and performance-regression gates.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-012",
+    "title": "Integration Adapter Core",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-009",
+      "MOD-010"
+    ],
+    "objective": "Create secure, versioned adapter contracts, credential handling, retries, webhooks and integration observability used by external systems.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-013",
+    "title": "Notification Platform",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-010",
+      "MOD-012"
+    ],
+    "objective": "Implement templates, preferences, routing, provider adapters, suppression and delivery status.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-014",
+    "title": "People, Profiles & Member 360",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004",
+      "MOD-008",
+      "MOD-009"
+    ],
+    "objective": "Implement person/profile/member identity, contact data, deduplication and Member 360 read models.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-015",
+    "title": "SaaS Plans, Subscription Billing, Metering & Entitlements",
+    "wave": "Foundation",
+    "dependencies": [
+      "MOD-004",
+      "MOD-005",
+      "MOD-010"
+    ],
+    "objective": "Implement Veyro tenant SaaS plans, metering, subscription billing and product entitlements distinct from member entitlements.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-016",
+    "title": "Catalog & Pricing Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-014"
+    ],
+    "objective": "Implement the Pilot slice of catalog, pricing, promotions and packages required by downstream commercial flows.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-017",
+    "title": "Commercial Core Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-016",
+      "MOD-014",
+      "MOD-010"
+    ],
+    "objective": "Implement the Pilot membership/contract lifecycle plus minimum billing/payment/fiscal paths required for an end-to-end member journey.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-018",
+    "title": "Financial Ledger & Wallet Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-017"
+    ],
+    "objective": "Implement append-only ledger, wallet/credit primitives and reconciliation needed by Pilot money flows.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-019",
+    "title": "Scheduling Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-014"
+    ],
+    "objective": "Implement Pilot schedule/resource/capacity primitives.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-020",
+    "title": "Booking & Waitlist Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-019",
+      "MOD-017"
+    ],
+    "objective": "Implement booking, waitlist, promotion and no-show Pilot behavior with strict capacity correctness.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-021",
+    "title": "Hardware / Edge Bridge Pilot Core",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-010",
+      "MOD-012"
+    ],
+    "objective": "Implement the edge runtime/device abstraction core needed for Pilot check-in and access integration.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-022",
+    "title": "Check-in & Access Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-017",
+      "MOD-021"
+    ],
+    "objective": "Implement Pilot check-in/access entitlement decisions, credential handling and local degraded behavior.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-023",
+    "title": "Coach Workspace Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-014",
+      "MOD-008"
+    ],
+    "objective": "Implement coach client workspace and Pilot day-to-day coaching operations.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-024",
+    "title": "Training & Workout Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-023",
+      "MOD-006"
+    ],
+    "objective": "Implement training programs, workouts and exercise logging Pilot slice.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-025",
+    "title": "Assessments & Progress Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-014",
+      "MOD-023"
+    ],
+    "objective": "Implement assessments, measurements, progress records and outcome views needed by Pilot.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-026",
+    "title": "Tasks, Cases, Approvals & SLA Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-008",
+      "MOD-013"
+    ],
+    "objective": "Implement operational tasks/cases/approvals, SLA timers and escalation primitives.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-027",
+    "title": "CRM + Unified Inbox Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-013",
+      "MOD-014",
+      "MOD-026"
+    ],
+    "objective": "Implement Pilot CRM pipeline and unified conversation/inbox workflow.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-028",
+    "title": "Member Self-Service Pilot",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-017",
+      "MOD-020",
+      "MOD-022",
+      "MOD-006"
+    ],
+    "objective": "Implement Pilot member self-service and digital membership/card journeys.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-029",
+    "title": "Internal Admin, Support & Customer Success",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-004",
+      "MOD-008",
+      "MOD-011"
+    ],
+    "objective": "Implement internal SaaS operations, support diagnostics and customer-success controls without unsafe tenant bypass.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-030",
+    "title": "Migration, Import, Validation & Cutover",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-014",
+      "MOD-017",
+      "MOD-018",
+      "MOD-019"
+    ],
+    "objective": "Implement repeatable migration/import validation, reconciliation and cutover tooling for real gym onboarding.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-031",
+    "title": "Onboarding + GTM Knowledge",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-029",
+      "MOD-030"
+    ],
+    "objective": "Implement onboarding/go-live readiness plus product knowledge/training/feedback operations.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-032",
+    "title": "Operational Analytics Pilot Read Models",
+    "wave": "Pilot",
+    "dependencies": [
+      "MOD-010",
+      "MOD-011"
+    ],
+    "objective": "Implement Pilot operational dashboards/read models without turning analytics stores into command authorities.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-033",
+    "title": "Pilot End-to-End Certification",
+    "wave": "Pilot Gate",
+    "dependencies": [
+      "MOD-000",
+      "MOD-001",
+      "MOD-002",
+      "MOD-003",
+      "MOD-004",
+      "MOD-005",
+      "MOD-006",
+      "MOD-007",
+      "MOD-008",
+      "MOD-009",
+      "MOD-010",
+      "MOD-011",
+      "MOD-012",
+      "MOD-013",
+      "MOD-014",
+      "MOD-015",
+      "MOD-016",
+      "MOD-017",
+      "MOD-018",
+      "MOD-019",
+      "MOD-020",
+      "MOD-021",
+      "MOD-022",
+      "MOD-023",
+      "MOD-024",
+      "MOD-025",
+      "MOD-026",
+      "MOD-027",
+      "MOD-028",
+      "MOD-029",
+      "MOD-030",
+      "MOD-031",
+      "MOD-032"
+    ],
+    "objective": "Certify the integrated Pilot as a system, not a collection of individually approved modules.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-034",
+    "title": "Commercial Core GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-033"
+    ],
+    "objective": "Complete all remaining V1 membership, contract, billing, payments, tax/revenue-recovery behavior and Jordan fiscal paths.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-035",
+    "title": "Financial Ledger & Wallet GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-034"
+    ],
+    "objective": "Complete V1 ledger, wallet, credit, FX/reconciliation and finance operational behavior.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-036",
+    "title": "Scheduling GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-033"
+    ],
+    "objective": "Complete V1 scheduling/resource/capacity capabilities.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-037",
+    "title": "Booking GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-036",
+      "MOD-034"
+    ],
+    "objective": "Complete V1 booking/waitlist/no-show intelligence and policy behavior.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-038",
+    "title": "Access GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-034",
+      "MOD-021"
+    ],
+    "objective": "Complete V1 access/check-in behavior, credential types and operational recovery.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-039",
+    "title": "Households, Dependents, Guests & Eligibility",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-014",
+      "MOD-034"
+    ],
+    "objective": "Implement household/dependent/guest identities and eligibility relationships.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-040",
+    "title": "Inventory Core V1",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-016"
+    ],
+    "objective": "Implement V1 SKU, stock, movement and purchasing minimum needed by POS.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-041",
+    "title": "POS, Ecommerce & Order Fulfillment",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-035",
+      "MOD-040"
+    ],
+    "objective": "Implement V1 front-desk sales, payments, receipts/orders and fulfillment.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-042",
+    "title": "Front Desk, Kiosk, Guest & Visitor Operations",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-038",
+      "MOD-041",
+      "MOD-039"
+    ],
+    "objective": "Implement the V1 front-desk/kiosk operational surface.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-043",
+    "title": "CRM + Unified Inbox GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-033"
+    ],
+    "objective": "Complete V1 CRM/inbox communication workflows and SLAs.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-044",
+    "title": "Coach Workspace GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-033"
+    ],
+    "objective": "Complete V1 coach workspace/client management.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-045",
+    "title": "Training & Workout GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-044"
+    ],
+    "objective": "Complete V1 workout/program design, assignment, execution and history.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-046",
+    "title": "Assessments & Progress GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-044"
+    ],
+    "objective": "Complete V1 assessment/measurement/progress capabilities.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-047",
+    "title": "Health, Safety, Consent & Incident",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-009",
+      "MOD-026"
+    ],
+    "objective": "Implement health/safety/consent/incident management with restricted-data controls.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-048",
+    "title": "Member Self-Service & Digital Card GA",
+    "wave": "V1 GA",
+    "dependencies": [
+      "MOD-034",
+      "MOD-037",
+      "MOD-038",
+      "MOD-006"
+    ],
+    "objective": "Complete V1 member app self-service/digital card/service requests.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-049",
+    "title": "V1 GA Integration & Jordan Production Readiness",
+    "wave": "V1 GA Gate",
+    "dependencies": [
+      "MOD-033",
+      "MOD-034",
+      "MOD-035",
+      "MOD-036",
+      "MOD-037",
+      "MOD-038",
+      "MOD-039",
+      "MOD-040",
+      "MOD-041",
+      "MOD-042",
+      "MOD-043",
+      "MOD-044",
+      "MOD-045",
+      "MOD-046",
+      "MOD-047",
+      "MOD-048"
+    ],
+    "objective": "Certify V1 as integrated, production-ready Jordan release subject to all external certification gates.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-050",
+    "title": "Marketing, Referrals, Offers & Growth",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-043"
+    ],
+    "objective": "Implement growth journeys, referrals, offers and campaign mechanics.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-051",
+    "title": "Advanced Inventory & Procurement",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-040"
+    ],
+    "objective": "Complete purchasing, supplier and stock-control depth beyond V1 minimum.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-052",
+    "title": "Staff, Shifts, Attendance, Payroll & Commissions",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-008",
+      "MOD-042"
+    ],
+    "objective": "Implement staff workforce, attendance/payroll/commission workflows.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-053",
+    "title": "Nutrition Planning, Meals, Logging & Adherence",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-044",
+      "MOD-047"
+    ],
+    "objective": "Implement nutrition planning/logging/adherence with safety guardrails.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-054",
+    "title": "Community, Challenges, Achievements & Rewards",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-014",
+      "MOD-013"
+    ],
+    "objective": "Implement community/challenges/rewards with privacy and anti-abuse controls.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-055",
+    "title": "Automation & Workflow Orchestration",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-010",
+      "MOD-026"
+    ],
+    "objective": "Implement tenant automations with bounded actions, retries, approvals and loop protection.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-056",
+    "title": "Data Platform & Warehouse",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-010",
+      "MOD-011"
+    ],
+    "objective": "Implement governed analytics ingestion/warehouse/data products.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-057",
+    "title": "Advanced Analytics, BI, Forecasting & Benchmarking",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-056"
+    ],
+    "objective": "Complete advanced BI/forecast/benchmark capabilities.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-058",
+    "title": "AI Platform, Copilots & Agents",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-002",
+      "MOD-009",
+      "MOD-057"
+    ],
+    "objective": "Implement governed AI platform, copilots/agents, evaluation and tool/action safety.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-059",
+    "title": "Global Search & Command Bar",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-014",
+      "MOD-057"
+    ],
+    "objective": "Implement PostgreSQL FTS/pg_trgm search and command navigation.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-060",
+    "title": "Fraud, Abuse, Trust & Content Moderation",
+    "wave": "V1.5",
+    "dependencies": [
+      "MOD-009",
+      "MOD-050",
+      "MOD-054"
+    ],
+    "objective": "Implement fraud/abuse controls and trust/moderation workflows.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-061",
+    "title": "V1.5 Certification",
+    "wave": "V1.5 Gate",
+    "dependencies": [
+      "MOD-049",
+      "MOD-050",
+      "MOD-051",
+      "MOD-052",
+      "MOD-053",
+      "MOD-054",
+      "MOD-055",
+      "MOD-056",
+      "MOD-057",
+      "MOD-058",
+      "MOD-059",
+      "MOD-060"
+    ],
+    "objective": "Certify V1.5 additions and cumulative regression against all previously approved V1 journeys.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-062",
+    "title": "Developer Platform, APIs, Webhooks & Sandbox",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-012",
+      "MOD-010"
+    ],
+    "objective": "Implement public developer platform, API/webhook lifecycle and sandbox.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-063",
+    "title": "Integration Marketplace",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-062"
+    ],
+    "objective": "Complete marketplace/partner integration lifecycle.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-064",
+    "title": "Hardware & Edge Fleet",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-021",
+      "MOD-063"
+    ],
+    "objective": "Complete device fleet management, firmware/config/health operations and broader hardware abstraction.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-065",
+    "title": "Biometric Identity & Physical Access Methods",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-038",
+      "MOD-064",
+      "MOD-009"
+    ],
+    "objective": "Implement biometric identity/access methods subject to legal/privacy/device qualification.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-066",
+    "title": "White-label, App Builder, CMS & Mobile Release",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-003",
+      "MOD-006",
+      "MOD-005"
+    ],
+    "objective": "Implement controlled white-label theming/content/app release operations.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-067",
+    "title": "Facilities, Equipment, Assets & Maintenance",
+    "wave": "V2",
+    "dependencies": [
+      "MOD-042"
+    ],
+    "objective": "Implement facility/equipment/asset lifecycle and maintenance.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-068",
+    "title": "V2 Certification",
+    "wave": "V2 Gate",
+    "dependencies": [
+      "MOD-061",
+      "MOD-062",
+      "MOD-063",
+      "MOD-064",
+      "MOD-065",
+      "MOD-066",
+      "MOD-067"
+    ],
+    "objective": "Certify V2 capabilities and cumulative product regression.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-069",
+    "title": "Corporate Memberships & Employer Portal",
+    "wave": "Enterprise",
+    "dependencies": [
+      "MOD-034",
+      "MOD-057"
+    ],
+    "objective": "Implement corporate accounts/contracts, rosters, eligibility, employer billing/reporting and privacy thresholds.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-070",
+    "title": "Franchise, Multi-brand & Chain Command Center",
+    "wave": "Enterprise",
+    "dependencies": [
+      "MOD-004",
+      "MOD-035",
+      "MOD-057"
+    ],
+    "objective": "Implement franchise hierarchy/governance, overrides, home club, royalty/intercompany behavior and chain reporting.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-071",
+    "title": "Offboarding, Data Portability, Archival & Deletion",
+    "wave": "Enterprise",
+    "dependencies": [
+      "MOD-009",
+      "MOD-056"
+    ],
+    "objective": "Implement complete verified offboarding/export/deletion reachability and archival controls.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-072",
+    "title": "Legal, Procurement, Vendor, Partner & Compliance Operations",
+    "wave": "Enterprise",
+    "dependencies": [
+      "MOD-009",
+      "MOD-063"
+    ],
+    "objective": "Implement enterprise governance workflows for vendors/partners/legal/compliance evidence.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-073",
+    "title": "Enterprise Isolation, Regional Deployment & SLA",
+    "wave": "Enterprise",
+    "dependencies": [
+      "MOD-070",
+      "MOD-071"
+    ],
+    "objective": "Qualify enterprise isolation options, regional deployments, continuity and contractual SLA instrumentation.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  },
+  {
+    "id": "MOD-074",
+    "title": "Enterprise Certification & Program Closure",
+    "wave": "Enterprise Gate",
+    "dependencies": [
+      "MOD-068",
+      "MOD-069",
+      "MOD-070",
+      "MOD-071",
+      "MOD-072",
+      "MOD-073"
+    ],
+    "objective": "Certify enterprise scope and the cumulative Veyro implementation baseline.",
+    "source": "Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx"
+  }
+]

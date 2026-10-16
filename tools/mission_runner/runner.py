@@ -19,7 +19,6 @@ import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -51,11 +50,6 @@ BASELINE_PREFIXES = ("Gym_OS_Master_Product_Blueprint", "Veyro_Technical_System_
 ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MOD_RE = re.compile(r"^MOD-\d{3}$")
 EXIT_LOCKED, EXIT_CORRUPT = 3, 4
-GATE_PYTHON = "/Library/VeyroGate/runtime/Python3.framework/Versions/3.9/bin/python3"
-GATE_PUBLISHER = "/Library/VeyroGate/bin/publisher.py"
-GATE_CONFIG = "/Library/VeyroGate/etc/config.json"
-GATE_TIMEOUT = 180
-GATE_MAX_OUTPUT = 65536
 
 
 def now_iso():
@@ -87,8 +81,8 @@ class Config:
         if self.ci_mode not in ("gh", "public"):  # a typo must fail closed, never silently fall back to gh
             raise ValueError(f"ci_mode must be 'gh' or 'public', got {self.ci_mode!r}")
         self.gate_mode = gate_mode or os.environ.get("VEYRO_GATE_MODE", "off")
-        if self.gate_mode not in ("off", "publish"):
-            raise ValueError(f"gate_mode must be 'off' or 'publish', got {self.gate_mode!r}")
+        if self.gate_mode != "off":  # trusted-check publishing is retired (owner decision 2026-10-16): fail closed
+            raise ValueError(f"gate_mode must be 'off' (trusted gate retired), got {self.gate_mode!r}")
 
 
 # ---------------------------------------------------------------- durable store
@@ -461,6 +455,9 @@ CI_ENV_KEEP = ("PATH", "HOME", "GH_TOKEN", "GITHUB_TOKEN", "GH_HOST", "GH_CONFIG
 CI_PUBLIC_ENV_KEEP = ("PATH", "HOME")  # the public observer never needs or inherits a credential
 CI_MAX_BYTES = 512 * 1024  # response cap applied before JSON decode
 CI_CODE_RE = re.compile(r"^[a-z0-9-]{1,40}$")
+CI_BRANCH, CI_SCOPE = "main", "main-push"  # post-push Actions evidence for main, never a pre-push gate
+SHA_RE = re.compile(r"[0-9a-f]{40}")
+SLUG_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 
 class CIError(Exception):
@@ -476,22 +473,16 @@ def _url(v):
 
 
 def clean_ci(d):
-    """Allowlist every field read from ci.json / gh; anything unknown is dropped."""
+    """Allowlist every field read from ci.json / gh; anything unknown is dropped. Retired PR/check fields are not carried."""
     if not isinstance(d, dict):
         return None
-    pr = d.get("pr") if isinstance(d.get("pr"), dict) else None
-    checks = d.get("checks") if isinstance(d.get("checks"), list) else []
     runs = d.get("runs") if isinstance(d.get("runs"), list) else []
-    out = {"source": _s(d.get("source"), 20), "observed_at": _s(d.get("observed_at"), 40),
+    other = d.get("runs_other_head")
+    out = {"source": _s(d.get("source"), 20), "scope": _s(d.get("scope"), 20), "observed_at": _s(d.get("observed_at"), 40),
            "last_attempt_at": _s(d.get("last_attempt_at"), 40), "error": _s(d.get("error"), 40),
            "repo": _s(d.get("repo"), 100), "repo_url": _url(d.get("repo_url")), "branch": _s(d.get("branch"), 100),
            "head_sha": _s(d.get("head_sha"), 40),
-           "pr": None if pr is None else {"number": pr.get("number") if isinstance(pr.get("number"), int) else None,
-                                         "url": _url(pr.get("url")), "state": _s(pr.get("state"), 20),
-                                         "review": _s(pr.get("review"), 30), "draft": pr.get("draft") is True,
-                                         "head_sha": _s(pr.get("head_sha"), 40)},
-           "checks": [{"name": _s(c.get("name")), "state": _s(c.get("state"), 30), "url": _url(c.get("url"))}
-                      for c in checks if isinstance(c, dict)][:20],
+           "runs_other_head": other if type(other) is int and other >= 0 else None,
            "runs": [{"name": _s(x.get("name")), "status": _s(x.get("status"), 30), "conclusion": _s(x.get("conclusion"), 30),
                      "ref": _s(x.get("ref"), 100), "head_sha": _s(x.get("head_sha"), 40), "event": _s(x.get("event"), 30),
                      "created_at": _s(x.get("created_at"), 40), "url": _url(x.get("url"))}
@@ -517,28 +508,30 @@ def _gh(cfg, run, deadline, *args, ok_codes=(0,)):
         raise CIError("gh-failed")
     if p.returncode not in ok_codes:
         low = (p.stderr or "").lower()
-        if args[:2] == ("pr", "view") and "no pull requests found" in low:
-            raise CIError("no-pr")
         raise CIError("gh-auth" if "auth" in low or "login" in low or "token" in low else
                       "gh-network" if "dial" in low or "resolve" in low or "connect" in low else "gh-failed")
-    if args[:2] == ("pr", "checks") and p.returncode != 0 and not p.stdout.strip():
-        low = (p.stderr or "").lower()
-        if "no checks reported" in low or "no required checks reported" in low:
-            return []
     try:
         return json.loads(p.stdout)
     except ValueError:
         raise CIError("bad-output")
 
 
+def main_snapshot(source, slug, head, runs):
+    """Build the post-push observation. Only push-event runs on main for the exact observed main head are kept;
+    runs for other commits are counted, never shown, so an older green run cannot stand in for the current head."""
+    if not isinstance(head, str) or not SHA_RE.fullmatch(head):
+        raise CIError("bad-output")
+    exact = [x for x in runs if isinstance(x, dict) and x.get("ref") == CI_BRANCH
+             and x.get("event") == "push" and x.get("head_sha") == head]
+    return clean_ci({"source": source, "scope": CI_SCOPE, "observed_at": now_iso(), "repo": slug,
+                     "repo_url": "https://github.com/" + slug, "branch": CI_BRANCH, "head_sha": head,
+                     "runs": exact, "runs_other_head": len(runs) - len(exact)})
+
+
 def fetch_ci(cfg, run=subprocess.run):
-    """One bounded, read-only observation through `gh` (argv list, no shell). Raises CIError(code) on any failure."""
+    """One bounded, read-only `gh` observation (argv list, no shell) of push runs on main for the exact remote
+    main head. No pull-request query is made. Raises CIError(code) on any failure."""
     deadline = time.monotonic() + CI_BUDGET
-    try:
-        branch = _git(cfg.repo, "rev-parse", "--abbrev-ref", "HEAD",
-                      timeout=max(0.1, deadline - time.monotonic())).stdout.decode().strip()
-    except (subprocess.SubprocessError, OSError):
-        raise CIError("git-failed")
     try:
         remote = _git(cfg.repo, "remote", "get-url", "origin",
                       timeout=max(0.1, deadline - time.monotonic())).stdout.decode().strip()
@@ -549,42 +542,32 @@ def fetch_ci(cfg, run=subprocess.run):
     repo_args = ("repo", "view", slug, "--json", "nameWithOwner,url") if slug else (
         "repo", "view", "--json", "nameWithOwner,url")
     repo = _gh(cfg, run, deadline, *repo_args)
-    runs = _gh(cfg, run, deadline, "run", "list", "--branch", branch, "--limit", "8", "--json",
-               "name,status,conclusion,headBranch,headSha,event,createdAt,url")
-    pr = checks = None
-    try:  # no PR for the branch is a normal state, not an outage
-        pr = _gh(cfg, run, deadline, "pr", "view", branch, "--json", "number,url,state,reviewDecision,isDraft,headRefOid")
-    except CIError as e:
-        if e.args[0] != "no-pr":
-            raise
-    if pr is not None:
-        checks = _gh(cfg, run, deadline, "pr", "checks", branch, "--required", "--json", "name,state,link",
-                     ok_codes=(0, 1, 8))
-    if not isinstance(repo, dict) or not isinstance(runs, list) or not (pr is None or isinstance(pr, dict)):
+    name = repo.get("nameWithOwner") if isinstance(repo, dict) else None
+    if not isinstance(name, str) or not SLUG_RE.fullmatch(name):
         raise CIError("bad-output")
-    head = next((x.get("headSha") for x in runs if isinstance(x, dict) and x.get("headBranch") == branch), None)
-    return clean_ci({
-        "source": "gh", "observed_at": now_iso(), "repo": repo.get("nameWithOwner"), "repo_url": repo.get("url"),
-        "branch": branch, "head_sha": (pr or {}).get("headRefOid") or head,
-        "pr": None if pr is None else {"number": pr.get("number"), "url": pr.get("url"), "state": pr.get("state"),
-                                      "review": pr.get("reviewDecision") or "none", "draft": pr.get("isDraft"),
-                                      "head_sha": pr.get("headRefOid")},
-        "checks": [{"name": c.get("name"), "state": c.get("state"), "url": c.get("link")}
-                   for c in checks or [] if isinstance(c, dict)],
-        "runs": [{"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
-                  "ref": x.get("headBranch"), "head_sha": x.get("headSha"), "event": x.get("event"),
-                  "created_at": x.get("createdAt"), "url": x.get("url")} for x in runs if isinstance(x, dict)]})
+    ref = _gh(cfg, run, deadline, "api", f"repos/{name}/git/ref/heads/{CI_BRANCH}")
+    head = ref.get("object", {}).get("sha") if isinstance(ref, dict) and isinstance(ref.get("object"), dict) else None
+    if not isinstance(head, str) or not SHA_RE.fullmatch(head):
+        raise CIError("bad-output")
+    runs = _gh(cfg, run, deadline, "run", "list", "--branch", CI_BRANCH, "--event", "push", "--commit", head,
+               "--limit", "8", "--json", "name,status,conclusion,headBranch,headSha,event,createdAt,url")
+    if not isinstance(runs, list):
+        raise CIError("bad-output")
+    return main_snapshot("gh", name, head, [
+        {"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
+         "ref": x.get("headBranch"), "head_sha": x.get("headSha"), "event": x.get("event"),
+         "created_at": x.get("createdAt"), "url": x.get("url")} for x in runs if isinstance(x, dict)])
 
 
 def fetch_ci_public(cfg, opener=urllib.request.urlopen):
     """Observe a public GitHub repository without exporting a Keychain credential to a LaunchAgent.
 
-    The three REST reads are deliberately infrequent (default: five minutes) to stay below the
-    unauthenticated API budget. Private repositories fail closed as unavailable.
+    Two REST reads (the main ref, then push runs for that exact SHA), deliberately infrequent (default: five
+    minutes) to stay below the unauthenticated API budget. No pull-request endpoint is queried. Private
+    repositories fail closed as unavailable.
     """
     deadline = time.monotonic() + CI_BUDGET
     try:
-        branch = _git(cfg.repo, "rev-parse", "--abbrev-ref", "HEAD", timeout=2).stdout.decode().strip()
         remote = _git(cfg.repo, "remote", "get-url", "origin", timeout=2).stdout.decode().strip()
     except (subprocess.SubprocessError, OSError):
         raise CIError("git-failed")
@@ -592,7 +575,6 @@ def fetch_ci_public(cfg, opener=urllib.request.urlopen):
     if not match:
         raise CIError("github-origin-unavailable")
     slug = match.group(1)
-    owner = slug.split("/", 1)[0]
     base = "https://api.github.com/repos/" + slug
 
     def read(path):
@@ -618,34 +600,18 @@ def fetch_ci_public(cfg, opener=urllib.request.urlopen):
         except (ValueError, TypeError):
             raise CIError("github-api-bad-output")
 
-    qbranch = urllib.parse.quote(branch, safe="")
-    runs_data = read(f"/actions/runs?branch={qbranch}&per_page=8")
-    prs = read(f"/pulls?head={urllib.parse.quote(owner + ':' + branch, safe='')}&state=open&per_page=1")
-    if not isinstance(runs_data, dict) or not isinstance(runs_data.get("workflow_runs"), list) or not isinstance(prs, list):
+    ref = read(f"/git/ref/heads/{CI_BRANCH}")
+    head = ref.get("object", {}).get("sha") if isinstance(ref, dict) and isinstance(ref.get("object"), dict) else None
+    if not isinstance(head, str) or not SHA_RE.fullmatch(head):
         raise CIError("github-api-bad-output")
-    runs = runs_data["workflow_runs"]
-    pr = prs[0] if prs and isinstance(prs[0], dict) else None
-    head = (pr or {}).get("head", {}).get("sha") if isinstance((pr or {}).get("head"), dict) else None
-    if not head:
-        head = next((x.get("head_sha") for x in runs if isinstance(x, dict) and x.get("head_branch") == branch), None)
-    checks = []
-    if pr and head:
-        checks_data = read(f"/commits/{urllib.parse.quote(head, safe='')}/check-runs?per_page=20")
-        if not isinstance(checks_data, dict) or not isinstance(checks_data.get("check_runs"), list):
-            raise CIError("github-api-bad-output")
-        checks = checks_data["check_runs"]
-    return clean_ci({
-        "source": "github-public-api", "observed_at": now_iso(), "repo": slug,
-        "repo_url": "https://github.com/" + slug, "branch": branch, "head_sha": head,
-        "pr": None if pr is None else {"number": pr.get("number"), "url": pr.get("html_url"),
-                                       "state": pr.get("state"), "review": "unknown",
-                                       "draft": pr.get("draft"), "head_sha": head},
-        "checks": [{"name": c.get("name"), "state": c.get("conclusion") or c.get("status"),
-                    "url": c.get("html_url")} for c in checks if isinstance(c, dict)],
-        "runs": [{"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
-                  "ref": x.get("head_branch"), "head_sha": x.get("head_sha"), "event": x.get("event"),
-                  "created_at": x.get("created_at"), "url": x.get("html_url")}
-                 for x in runs if isinstance(x, dict)]})
+    runs_data = read(f"/actions/runs?branch={CI_BRANCH}&event=push&head_sha={head}&per_page=8")
+    if not isinstance(runs_data, dict) or not isinstance(runs_data.get("workflow_runs"), list):
+        raise CIError("github-api-bad-output")
+    return main_snapshot("github-public-api", slug, head, [
+        {"name": x.get("name"), "status": x.get("status"), "conclusion": x.get("conclusion"),
+         "ref": x.get("head_branch"), "head_sha": x.get("head_sha"), "event": x.get("event"),
+         "created_at": x.get("created_at"), "url": x.get("html_url")}
+        for x in runs_data["workflow_runs"] if isinstance(x, dict)])
 
 
 def observe_public(cfg, popen=subprocess.Popen):
@@ -686,7 +652,7 @@ def observe_public(cfg, popen=subprocess.Popen):
     if p.returncode != 0:
         raise CIError("github-api-failed")
     ci = clean_ci(data)
-    if not ci or ci.get("source") != "github-public-api" or not ci.get("observed_at"):
+    if not ci or ci.get("source") != "github-public-api" or ci.get("scope") != CI_SCOPE or not ci.get("observed_at"):
         raise CIError("github-api-bad-output")
     return ci
 
@@ -804,9 +770,7 @@ class Runner:
             t = self.next_ready()
             if t:
                 self.dispatch(t)
-        ci = self.refresh_ci()
-        if ci is not None and self.cfg.gate_mode == "publish":
-            self.refresh_gate(ci)
+        self.refresh_ci()
         self.store.save(self.state)
 
     def refresh_ci(self):
@@ -818,6 +782,8 @@ class Runner:
         try:
             prev = clean_ci(json.loads(path.read_text()))
         except (OSError, ValueError):
+            prev = None
+        if prev and prev.get("scope") != CI_SCOPE:  # pre-2026-10-16 branch/PR observation: never carried forward
             prev = None
         first_poll = not self.ci_seeded
         self.ci_seeded = True
@@ -851,65 +817,6 @@ class Runner:
             self.store.event("ci-unavailable", code=err)
         self.heartbeat(force=True)
         return new
-
-    def refresh_gate(self, ci, popen=subprocess.Popen):
-        """Ask the separately installed signer to evaluate an observed PR. The runner supplies only a PR
-        number; the signer independently verifies repo, head, pinned tree, workflow run and identity.
-        No key or App token enters this process. A bad/absent signer cannot become a green result."""
-        pr_data = ci.get("pr") if isinstance(ci, dict) else None
-        if not isinstance(pr_data, dict):
-            return
-        pr = pr_data.get("number")
-        if not (type(pr) is int and 0 < pr < 10 ** 9
-                and str(pr_data.get("state", "")).lower() == "open"):
-            return
-        argv = ["/usr/bin/sudo", "-n", "-u", "_veyrogate", "--", GATE_PYTHON, "-I", GATE_PUBLISHER,
-                "publish", "--config", GATE_CONFIG, "--pr", str(pr)]
-        result = {"state": "blocked", "reason": "signer-unavailable", "pr": pr,
-                  "attempted_at": now_iso(), "published": False}
-        proc = None
-        try:
-            with tempfile.TemporaryFile(dir=self.cfg.home) as output:
-                proc = popen(argv, cwd="/", env={"PATH": "/usr/bin:/bin"}, stdin=subprocess.DEVNULL,
-                             stdout=output, stderr=subprocess.DEVNULL, start_new_session=True)
-                deadline = time.monotonic() + GATE_TIMEOUT
-                while True:
-                    try:
-                        code = proc.wait(timeout=min(1, max(0.01, deadline - time.monotonic())))
-                        break
-                    except subprocess.TimeoutExpired:
-                        self.heartbeat(force=True)
-                        if self.sig or time.monotonic() >= deadline or output.tell() > GATE_MAX_OUTPUT:
-                            raise TimeoutError
-                if output.tell() <= GATE_MAX_OUTPUT:
-                    output.seek(0)
-                    payload = json.loads(output.read().decode("utf-8"))
-                    verdict = payload.get("verdict") if isinstance(payload, dict) else None
-                    published = payload.get("published") is True if isinstance(payload, dict) else False
-                    reason = payload.get("reason") if isinstance(payload, dict) else None
-                    expected = {"PASS": 0, "FAIL": 1, "BLOCKED": 3}
-                    check_id = payload.get("check_run_id")
-                    if (verdict in expected and code == expected[verdict]
-                            and ((verdict == "BLOCKED" and not published)
-                                 or (verdict != "BLOCKED" and published and type(check_id) is int and check_id > 0))
-                            and isinstance(reason, str) and CI_CODE_RE.fullmatch(reason)):
-                        result.update(state=verdict.lower(), reason=reason,
-                                      published=published if verdict != "BLOCKED" else False)
-                        if published and type(check_id) is int and check_id > 0:
-                            result["check_run_id"] = check_id
-        except (OSError, ValueError, UnicodeError, TimeoutError, TypeError):
-            pass
-        finally:
-            if proc is not None and proc.poll() is None:
-                self.kill_group(proc.pid, grace=0.5)
-                proc.wait()
-        try:
-            atomic_write(self.cfg.home / "gate.json", json.dumps(result).encode())
-        except OSError:
-            pass
-        if result["state"] == "blocked":
-            self.store.event("gate-blocked", code=result["reason"], pr=pr)
-        self.heartbeat(force=True)
 
     def heartbeat(self, force=False):
         if force or time.time() - self.last_hb >= 2:
@@ -1386,6 +1293,9 @@ def snapshot(cfg):
         ci = clean_ci(json.loads((cfg.home / "ci.json").read_text()))
     except (OSError, ValueError):
         pass
+    if ci is not None and ci.get("scope") != CI_SCOPE:  # legacy branch/PR cache: not evidence about main
+        ci = clean_ci({"source": ci.get("source"), "last_attempt_at": ci.get("last_attempt_at"),
+                       "error": ci.get("error") or "legacy-scope"})
     if ci is not None:
         try:  # local read only: lets the dashboard refuse to imply CI covers unpushed local work
             local = _git(cfg.repo, "rev-parse", "HEAD", timeout=2).stdout.decode().strip()

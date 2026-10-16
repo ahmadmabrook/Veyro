@@ -3,6 +3,8 @@ import datetime
 import hashlib
 import json
 import os
+import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -19,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import dashboard  # noqa: E402
 import runner as R  # noqa: E402
+import workflow_check as WC  # noqa: E402
 
 # Fake `claude` emitting the real `-p --output-format json` result shape (modelUsage carries contextWindow /
 # maxOutputTokens limits next to the token counters). Behaviour is steered by KEY=VALUE lines in the prompt.
@@ -885,84 +888,276 @@ class DashboardTests(Base):
         self.assertEqual(s["baseline_pin"]["sources"], 4)
         self.assertEqual((self.home / "state.json").read_bytes(), before)
 
+    def raw(self, path):
+        rq = urllib.request.Request(self.base + path)
+        try:
+            with urllib.request.urlopen(rq) as r:
+                return r.status, dict(r.headers), r.read().decode()
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, dict(e.headers), e.read().decode()
 
-class TrustedGateInvocation(Base):
-    def test_gate_is_off_by_default_and_rejects_unknown_mode(self):
+    def test_command_center_assets_are_served_and_wired_together(self):
+        code, headers, html = self.raw("/")
+        self.assertEqual(code, 200)
+        self.assertIn("Engineering Command Center", html)
+        self.assertIn('href="/app.css"', html)
+        self.assertIn('src="/app.js"', html)
+        self.assertEqual(self.raw("/app.css")[2], dashboard.CSS)
+        self.assertEqual(self.raw("/app.js")[2], dashboard.JS)
+        self.assertEqual(self.raw("/app.css")[1]["Content-Type"], "text/css; charset=utf-8")
+        # every element the script looks up must exist, or a render function throws and the page goes blank
+        wanted = set(re.findall(r"\$\('([a-z-]+)'\)", dashboard.JS)) | set(re.findall(r"setBadge\('([a-z-]+)'", dashboard.JS))
+        wanted -= {"module-list"}  # created by the script itself
+        present = set(re.findall(r'id="([a-z-]+)"', html))
+        self.assertEqual(wanted - present, set())
+        for panel in ("quality", "board", "module-detail", "mission", "activity", "usage", "detail"):
+            self.assertIn(panel, present)
+
+    def test_state_carries_module_catalog_and_records_alongside_runner_snapshot(self):
+        s = json.loads(self.req("/api/state")[1])
+        self.assertIn("MOD-001", [m["id"] for m in s["module_catalog"]])
+        self.assertEqual(s["module_records"], {})  # throwaway repo has no module files: absence is not a status
+        for key in ("tasks", "events", "usage", "ci", "writer_lock", "health"):
+            self.assertIn(key, s)
+
+    def test_responses_are_locked_down_for_a_scriptless_loopback_page(self):
+        for path in ("/", "/app.js", "/app.css", "/api/state"):
+            _, headers, _ = self.raw(path)
+            self.assertEqual(headers["X-Content-Type-Options"], "nosniff", path)
+            self.assertEqual(headers["Cache-Control"], "no-store", path)
+            self.assertEqual(headers["X-Frame-Options"], "DENY", path)
+            self.assertIn("default-src 'none'", headers["Content-Security-Policy"], path)
+            self.assertNotIn("unsafe-inline", headers["Content-Security-Policy"], path)
+        html = dashboard.HTML
+        self.assertEqual(re.findall(r"<script\b[^>]*>", html), ['<script src="/app.js">'])  # no inline script under CSP
+        self.assertNotRegex(html, r"(?i)\son[a-z]+\s*=")
+        self.assertNotRegex(html, r"(?i)https?://")  # nothing loaded or linked off-box
+        self.assertNotRegex(dashboard.JS, r"(?i)fetch\([^)]*(?<!\w)(https?:|//)")
+        self.assertNotRegex(dashboard.JS, r"method\s*:\s*['\"](?:POST|PUT|DELETE|PATCH)")
+
+    def test_only_the_fixed_asset_routes_exist_no_file_serving(self):
+        for path in ("/dashboard.py", "/runner.py", "/module_catalog.json", "/../runner.py", "/%2e%2e/runner.py",
+                     "/app.js/../runner.py", "/api/state/x", "/.git/config"):
+            self.assertEqual(self.req(path)[0], 404, path)
+        self.assertEqual(self.req("/app.js?x=1")[0], 200)  # query string ignored, still the same fixed asset
+
+    def test_host_guard_accepts_only_this_servers_loopback_names(self):
+        port = self.srv.server_address[1]
+        for host in (f"localhost:{port}", f"127.0.0.1:{port}"):
+            self.assertEqual(self.req("/api/state", host=host)[0], 200, host)
+        for host in ("127.0.0.1", f"127.0.0.1.evil.example:{port}", f"evil.example:{port}", "127.0.0.1:1"):
+            self.assertEqual(self.req("/api/state", host=host)[0], 403, host)
+
+    def write_module(self, module, status_line, symlink=False):
+        d = self.repo / "knowledge" / "03-Modules" / module
+        d.mkdir(parents=True, exist_ok=True)
+        text = f"# {module} — Test\n\n{status_line}\n\n## Requirements\n- first\n- second\n\n## Exact next action\nDo the thing.\n"
+        if symlink:
+            (self.repo / "elsewhere.md").write_text(text)
+            (d / f"{module}.md").symlink_to(self.repo / "elsewhere.md")
+        else:
+            (d / f"{module}.md").write_text(text)
+
+    def test_module_records_never_report_not_accepted_text_as_accepted(self):
+        self.write_module("MOD-001", "**Status: PROGRESS — NOT PASS, NOT ACCEPTED.** Historical CI passed.")
+        self.write_module("MOD-000", "**Status: ACCEPTED** by the owner.")
+        recs = dashboard.module_records(self.repo)
+        self.assertFalse(recs["MOD-001"]["accepted"])
+        self.assertTrue(recs["MOD-000"]["accepted"])  # the parser is not simply hard-wired to False
+        self.assertEqual(recs["MOD-001"]["requirements"], ["first", "second"])
+        self.assertEqual(recs["MOD-001"]["next_action"], "Do the thing.")
+        s = json.loads(self.req("/api/state")[1])
+        self.assertFalse(s["module_records"]["MOD-001"]["accepted"])
+
+    def test_module_records_ignore_symlinked_or_misnamed_files(self):
+        self.write_module("MOD-001", "**Status: ACCEPTED**", symlink=True)
+        self.assertEqual(dashboard.module_records(self.repo), {})
+        d = self.repo / "knowledge" / "03-Modules" / "MOD-000"
+        d.mkdir(parents=True)
+        (d / "MOD-000.md").write_text("# something else\n**Status: ACCEPTED**")
+        self.assertEqual(dashboard.module_records(self.repo), {})
+
+    def test_real_mod_001_record_is_not_accepted_when_present(self):
+        if not (R.REPO / "knowledge" / "03-Modules" / "MOD-001" / "MOD-001.md").is_file():
+            self.skipTest("no real MOD-001 record")
+        rec = dashboard.module_records(R.REPO)["MOD-001"]
+        self.assertFalse(rec["accepted"])
+
+    # ---- CI panel truthfulness: the real ciVerdict source is executed by node when available
+    SHA, OTHER = "a" * 40, "b" * 40
+
+    def ci_obs(self, **kw):
+        run = {"name": "Veyro Foundation CI", "status": "completed", "conclusion": "success", "ref": "main",
+               "head_sha": self.SHA, "event": "push", "url": "https://github.com/o/r/actions/runs/1"}
+        base = {"source": "gh", "scope": "main-push", "branch": "main", "head_sha": self.SHA, "state": "fresh",
+                "error": None, "head_matches_local": True, "runs": [run], "runs_other_head": 0}
+        return base | kw
+
+    def verdicts(self, observations):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        js = dashboard.JS
+        fn = js[js.index("function ciVerdict"):js.index("function ciView")]
+        code = fn + "\nconsole.log(JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')).map(ciVerdict)));"
+        out = subprocess.run([node, "-e", code], input=json.dumps(observations), capture_output=True, text=True,
+                             timeout=30, check=True).stdout
+        return [(v["label"], v["kind"]) for v in json.loads(out)]
+
+    def test_ci_panel_passes_only_for_fresh_matching_successful_push_run_on_exact_main_head(self):
+        run = self.ci_obs()["runs"][0]
+        cases = {
+            "pass": (self.ci_obs(), ("PASS", "ok")),
+            "none": (None, ("NOT PASS", "warn")),
+            "mismatch": (self.ci_obs(head_matches_local=False), ("NOT PASS · MISMATCH", "bad")),
+            "local unknown": (self.ci_obs(head_matches_local=None), ("NOT PASS · LOCAL UNKNOWN", "warn")),
+            "stale": (self.ci_obs(state="stale", error="gh-failed"), ("NOT PASS · STALE", "bad")),
+            "unavailable": (self.ci_obs(state="unavailable", runs=[], head_sha=self.SHA), ("NOT PASS · UNAVAILABLE", "warn")),
+            "no run": (self.ci_obs(runs=[]), ("NOT PASS · NO RUN", "warn")),
+            "only older head ran": (self.ci_obs(runs=[run | {"head_sha": self.OTHER}], runs_other_head=1),
+                                    ("NOT PASS · NO RUN", "warn")),
+            "pull_request run": (self.ci_obs(runs=[run | {"event": "pull_request"}]), ("NOT PASS · NO RUN", "warn")),
+            "feature branch run": (self.ci_obs(runs=[run | {"ref": "feature/x"}]), ("NOT PASS · NO RUN", "warn")),
+            "in progress": (self.ci_obs(runs=[run | {"status": "in_progress", "conclusion": None}]),
+                            ("NOT PASS · PENDING", "warn")),
+            "failed": (self.ci_obs(runs=[run | {"conclusion": "failure"}]), ("FAILED", "bad")),
+            "failed beats mismatch": (self.ci_obs(runs=[run | {"conclusion": "failure"}], head_matches_local=False),
+                                      ("FAILED", "bad")),
+            "success plus failure": (self.ci_obs(runs=[run, run | {"name": "x", "conclusion": "timed_out"}]), ("FAILED", "bad")),
+            "stale old failure is not shown as failed": (self.ci_obs(state="stale", runs=[run | {"conclusion": "failure"}]),
+                                                          ("NOT PASS · STALE", "bad")),
+            "legacy branch/pr cache": (self.ci_obs(scope=None, branch="feature/x", pr={"number": 1, "state": "OPEN"},
+                                                   checks=[{"name": "c", "state": "SUCCESS"}]), ("NOT PASS", "warn")),
+            "no head": (self.ci_obs(head_sha=None), ("NOT PASS", "warn")),
+        }
+        got = self.verdicts([c[0] for c in cases.values()])
+        for (name, (_, want)), have in zip(cases.items(), got):
+            self.assertEqual(have, want, name)
+        self.assertEqual([n for (n, (_, w)), h in zip(cases.items(), got) if h[0] == "PASS"], ["pass"])
+
+    def test_ci_panel_requires_the_named_foundation_workflow_for_pass(self):
+        run = self.ci_obs()["runs"][0]
+        other = run | {"name": "Deploy Docs", "url": "https://github.com/o/r/actions/runs/2"}
+        cases = {
+            "unrelated success only": (self.ci_obs(runs=[other]), ("NOT PASS · NO RUN", "warn")),
+            "wrong name case": (self.ci_obs(runs=[run | {"name": "veyro foundation ci"}]), ("NOT PASS · NO RUN", "warn")),
+            "name with suffix": (self.ci_obs(runs=[run | {"name": "Veyro Foundation CI "}]), ("NOT PASS · NO RUN", "warn")),
+            "missing name": (self.ci_obs(runs=[{k: v for k, v in run.items() if k != "name"}]), ("NOT PASS · NO RUN", "warn")),
+            "named pending, unrelated success": (self.ci_obs(runs=[other, run | {"status": "queued", "conclusion": None}]),
+                                                 ("NOT PASS · PENDING", "warn")),
+            "named failure, unrelated success": (self.ci_obs(runs=[other, run | {"conclusion": "failure"}]), ("FAILED", "bad")),
+            "unrelated failure, named success": (self.ci_obs(runs=[run, other | {"conclusion": "failure"}]), ("FAILED", "bad")),
+            "named cancelled": (self.ci_obs(runs=[run | {"conclusion": "cancelled"}]), ("FAILED", "bad")),
+            "named success only": (self.ci_obs(runs=[run]), ("PASS", "ok")),
+            "named success plus unrelated success": (self.ci_obs(runs=[other, run]), ("PASS", "ok")),
+            "named success but mismatch": (self.ci_obs(runs=[run], head_matches_local=False), ("NOT PASS · MISMATCH", "bad")),
+            "unrelated success but stale": (self.ci_obs(runs=[other], state="stale"), ("NOT PASS · STALE", "bad")),
+        }
+        got = self.verdicts([c[0] for c in cases.values()])
+        for (name, (_, want)), have in zip(cases.items(), got):
+            self.assertEqual(have, want, name)
+
+    def test_api_ci_snapshot_for_unpushed_local_work_renders_not_pass(self):
+        """End to end: the runner's own snapshot (remote head != local HEAD) fed through the dashboard verdict."""
+        (self.home / "ci.json").write_text(json.dumps(
+            self.ci_obs(observed_at=R.now_iso(), repo="o/r", state=None, head_matches_local=None)))
+        ci = json.loads(self.req("/api/state")[1])["ci"]
+        self.assertEqual((ci["state"], ci["head_matches_local"]), ("fresh", False))
+        self.assertEqual(self.verdicts([ci])[0], ("NOT PASS · MISMATCH", "bad"))
+
+    def test_api_never_exposes_retired_pr_or_check_fields(self):
+        (self.home / "ci.json").write_text(json.dumps(
+            self.ci_obs(observed_at=R.now_iso(), pr={"number": 9, "url": "https://github.com/o/r/pull/9"},
+                        checks=[{"name": "required", "state": "SUCCESS"}], review="APPROVED")))
+        ci = json.loads(self.req("/api/state")[1])["ci"]
+        for key in ("pr", "checks", "review"):
+            self.assertNotIn(key, ci)
+
+
+class TrustedGateRetired(Base):
+    """Owner decision 2026-10-16: the runner never invokes the optional trusted gate, even if asked to."""
+
+    def test_publish_and_any_other_gate_mode_are_refused_fail_closed(self):
         self.assertEqual(self.cfg.gate_mode, "off")
-        with self.assertRaises(ValueError):
-            R.Config(home=self.home, repo=self.repo, gate_mode="maybe")
-        r = self.runner()
-        with mock.patch.object(r, "refresh_ci", return_value={"pr": {"number": 7, "state": "open"}}), \
-                mock.patch.object(r, "refresh_gate") as gate:
+        for mode in ("publish", "maybe"):
+            with self.assertRaises(ValueError):
+                R.Config(home=self.home, repo=self.repo, gate_mode=mode)
+            with mock.patch.dict(os.environ, {"VEYRO_GATE_MODE": mode}), self.assertRaises(ValueError):
+                R.Config(home=self.home, repo=self.repo)
+
+    def test_tick_never_spawns_a_signer_or_sudo_even_with_a_pr_shaped_observation(self):
+        r = self.runner(ci_every=60)
+        spawned, real_popen = [], subprocess.Popen
+
+        def spy(argv, *a, **k):  # records every child the tick starts, still delegating to the real Popen
+            spawned.append(" ".join(map(str, argv)))
+            return real_popen(argv, *a, **k)
+
+        with mock.patch.object(subprocess, "Popen", side_effect=spy), \
+                mock.patch.object(r, "refresh_ci", return_value={"pr": {"number": 7, "state": "open"}}):
             r.tick()
-        gate.assert_not_called()
-
-    def test_fixed_sudo_command_and_only_valid_published_result_is_green(self):
-        r = self.runner(gate_mode="publish")
-        seen = []
-
-        class Proc:
-            pid = 123
-            def wait(self, timeout=None): return 0
-            def poll(self): return 0
-
-        def popen(argv, **kw):
-            seen.append((argv, kw))
-            kw["stdout"].write(json.dumps({"verdict": "PASS", "reason": "workflow-success",
-                                           "published": True, "check_run_id": 42}).encode())
-            return Proc()
-
-        r.refresh_gate({"pr": {"number": 7, "state": "open"}}, popen)
-        self.assertEqual(seen[0][0], ["/usr/bin/sudo", "-n", "-u", "_veyrogate", "--", R.GATE_PYTHON,
-                                      "-I", R.GATE_PUBLISHER, "publish", "--config", R.GATE_CONFIG,
-                                      "--pr", "7"])
-        self.assertEqual(seen[0][1]["env"], {"PATH": "/usr/bin:/bin"})
-        self.assertEqual(json.loads((self.home / "gate.json").read_text())["state"], "pass")
-        self.assertEqual(json.loads((self.home / "gate.json").read_text())["check_run_id"], 42)
-
-        def malformed(argv, **kw):
-            kw["stdout"].write(b'{"verdict":"PASS","reason":"workflow-success","published":true}')
-            return Proc()
-        r.refresh_gate({"pr": {"number": 7, "state": "OPEN"}}, malformed)
-        self.assertEqual(json.loads((self.home / "gate.json").read_text())["state"], "blocked")
-
-    def test_no_pr_never_invokes_signer(self):
-        r = self.runner(gate_mode="publish")
-        for pr in (None, [], [7], {"number": True, "state": "open"}, {"number": -1, "state": "open"},
-                   {"number": 7, "state": "closed"}):
-            r.refresh_gate({"pr": pr}, lambda *a, **k: self.fail("signer called"))
+        self.assertFalse([c for c in spawned if "sudo" in c or "_veyrogate" in c or "publisher" in c], spawned)
+        self.assertFalse(hasattr(r, "refresh_gate"))
         self.assertFalse((self.home / "gate.json").exists())
+        self.assertFalse(any(n.startswith("GATE_") for n in dir(R)))
 
 
 class CIFeed(Base):
     """gh is injected as the subprocess layer; nothing here touches the network."""
     SHA = "a" * 40
 
-    def test_public_api_observation_is_read_only_and_does_not_claim_review_or_required_checks(self):
-        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
-        calls = []
+    OLD = "b" * 40
+    RUN_URL = "https://github.com/o/r/actions/runs/1"
+
+    def public_opener(self, calls, runs, head=None):
         class Response:
-            def __init__(self, obj): self.obj = obj
+            def __init__(self, obj): self.data = json.dumps(obj).encode()
             def __enter__(self): return self
             def __exit__(self, *_): pass
-            def read(self, *_): return json.dumps(self.obj).encode()
+            def read(self, *_): return self.data
         def open_url(req, timeout):
             calls.append((req.full_url, req.get_method(), timeout))
-            if "/actions/runs?" in req.full_url:
-                return Response({"workflow_runs": [{"name": "CI", "status": "completed", "conclusion": "success",
-                                                    "head_branch": "b", "head_sha": self.SHA,
-                                                    "html_url": "https://github.com/o/r/actions/runs/1"}]})
-            if "/pulls?" in req.full_url:
-                return Response([{"number": 7, "html_url": "https://github.com/o/r/pull/7", "state": "open",
-                                  "draft": True, "head": {"sha": self.SHA}}])
-            return Response({"check_runs": [{"name": "CI", "conclusion": "success",
-                                             "html_url": "https://github.com/o/r/actions/runs/1/job/1"}]})
-        ci = R.fetch_ci_public(self.cfg, open_url)
-        self.assertEqual((ci["source"], ci["pr"]["review"], ci["checks"][0]["state"]),
-                         ("github-public-api", "unknown", "success"))
-        self.assertEqual(len(calls), 3)
+            if "/git/ref/heads/main" in req.full_url:
+                return Response({"object": {"sha": head or self.SHA}})
+            return Response({"workflow_runs": runs})
+        return open_url
+
+    def mk_run(self, sha=None, event="push", branch="main", conclusion="success"):
+        return {"name": "Veyro Foundation CI", "status": "completed", "conclusion": conclusion, "head_branch": branch,
+                "head_sha": sha or self.SHA, "event": event, "html_url": self.RUN_URL}
+
+    def test_public_observation_reads_only_main_ref_and_push_runs_never_a_pull_request(self):
+        self.public_origin()
+        calls = []
+        runs = [self.mk_run(), self.mk_run(sha=self.OLD), self.mk_run(event="pull_request"),
+                self.mk_run(branch="feature/x")]
+        ci = R.fetch_ci_public(self.cfg, self.public_opener(calls, runs))
+        self.assertEqual((ci["source"], ci["scope"], ci["branch"], ci["head_sha"]),
+                         ("github-public-api", "main-push", "main", self.SHA))
+        self.assertEqual([(x["head_sha"], x["event"], x["ref"]) for x in ci["runs"]], [(self.SHA, "push", "main")])
+        self.assertEqual(ci["runs_other_head"], 3)  # older/other-event/other-branch runs are hidden, only counted
+        self.assertEqual(len(calls), 2)
         self.assertTrue(all(method == "GET" and timeout <= R.CI_CALL_TIMEOUT for _, method, timeout in calls))
+        for url, _, _ in calls:
+            self.assertNotIn("/pulls", url)
+            self.assertNotIn("check-runs", url)
+        self.assertIn(f"branch=main&event=push&head_sha={self.SHA}", calls[1][0])
+        for key in ("pr", "checks"):
+            self.assertNotIn(key, ci)
         self.assertNotIn("token", json.dumps(ci).lower())
+
+    def test_public_main_head_without_push_run_is_not_a_pass(self):
+        self.public_origin()
+        ci = R.fetch_ci_public(self.cfg, self.public_opener([], [self.mk_run(sha=self.OLD)]))
+        self.assertEqual((ci["head_sha"], ci["runs"], ci["runs_other_head"]), (self.SHA, [], 1))
+
+    def test_malformed_main_ref_is_rejected(self):
+        self.public_origin()
+        for head in ("main", "A" * 40, "a" * 39):
+            with self.assertRaises(R.CIError) as e:
+                R.fetch_ci_public(self.cfg, self.public_opener([], [], head=head))
+            self.assertEqual(str(e.exception), "github-api-bad-output")
 
     def test_public_api_failure_is_explicit(self):
         subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
@@ -996,24 +1191,10 @@ class CIFeed(Base):
             def __enter__(self): return self
             def __exit__(self, *_): pass
             def read(self, n=-1): return self.data[:n] if n >= 0 else self.data
-        for data in (b"<html>not json", b" " * (R.CI_MAX_BYTES + 10), b'{"workflow_runs": 3}'):
+        for data in (b"<html>not json", b" " * (R.CI_MAX_BYTES + 10), b'{"object": 3}'):
             with self.assertRaises(R.CIError) as e:
                 R.fetch_ci_public(self.cfg, lambda req, timeout, d=data: Raw(d))
             self.assertEqual(str(e.exception), "github-api-bad-output")
-
-    def test_public_no_pr_is_normal_and_reads_no_checks(self):
-        self.public_origin()
-        urls = []
-        class Raw:
-            def __init__(self, obj): self.data = json.dumps(obj).encode()
-            def __enter__(self): return self
-            def __exit__(self, *_): pass
-            def read(self, n=-1): return self.data
-        def open_url(req, timeout):
-            urls.append(req.full_url)
-            return Raw({"workflow_runs": []} if "/actions/runs?" in req.full_url else [])
-        ci = R.fetch_ci_public(self.cfg, open_url)
-        self.assertEqual((ci["pr"], ci["checks"], ci["head_sha"], len(urls)), (None, [], None, 2))
 
     class FakePopen:
         """Stands in for the supervised child; never starts a process."""
@@ -1052,9 +1233,14 @@ class CIFeed(Base):
         self.assertIn("ci-observe-public", p.cmd)
 
     def test_public_observer_maps_child_results_to_fixed_codes(self):
-        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r", "extra": "leak"}).encode()
+        ok = json.dumps({"source": "github-public-api", "scope": "main-push", "observed_at": R.now_iso(),
+                         "repo": "o/r", "extra": "leak"}).encode()
         ci = R.observe_public(self.cfg, self.popen_factory(out=ok))
         self.assertEqual((ci["repo"], "extra" in ci), ("o/r", False))
+        legacy = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r"}).encode()
+        with self.assertRaises(R.CIError) as e:  # an observation without the main-push scope is never accepted
+            R.observe_public(self.cfg, self.popen_factory(out=legacy))
+        self.assertEqual(str(e.exception), "github-api-bad-output")
         for out, rc, want in ((b'{"error": "github-api-rate-limit"}', 1, "github-api-rate-limit"),
                               (b'{"error": "Bad <script> text"}', 1, "github-api-failed"),
                               (b"garbage", 0, "github-api-bad-output"),
@@ -1065,7 +1251,8 @@ class CIFeed(Base):
             self.assertEqual(str(e.exception), want)
 
     def test_public_refresh_persists_and_suppresses_redundant_polls_across_restart(self):
-        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r"}).encode()
+        ok = json.dumps({"source": "github-public-api", "scope": "main-push", "observed_at": R.now_iso(),
+                         "repo": "o/r"}).encode()
         r = self.runner(ci_mode="public", ci_every=300)
         r.ci_popen = self.popen_factory(out=ok)
         r.refresh_ci()
@@ -1086,7 +1273,8 @@ class CIFeed(Base):
             self.assertEqual(len(self.FakePopen.made), 1, stamp)
 
     def test_public_refresh_failure_keeps_last_good_observation_with_error_code(self):
-        ok = json.dumps({"source": "github-public-api", "observed_at": R.now_iso(), "repo": "o/r"}).encode()
+        ok = json.dumps({"source": "github-public-api", "scope": "main-push", "observed_at": R.now_iso(),
+                         "repo": "o/r"}).encode()
         r = self.runner(ci_mode="public", ci_every=300)
         r.ci_popen = self.popen_factory(out=ok)
         r.refresh_ci()
@@ -1113,21 +1301,19 @@ class CIFeed(Base):
                 raise subprocess.TimeoutExpired(argv, 1)
             if fail == "auth":
                 return subprocess.CompletedProcess(argv, 1, "", "gh auth login required SECRET-TOKEN-xyz")
-            if fail == "no-pr" and a == "pr view":
-                return subprocess.CompletedProcess(argv, 1, "", 'no pull requests found for branch "token-login"')
-            if fail == "no-checks" and a == "pr checks":
-                return subprocess.CompletedProcess(argv, 1, "", "no required checks reported on this branch")
-            if fail == "rate" and a == "pr view":
+            if fail == "rate" and a == "run list":
                 return subprocess.CompletedProcess(argv, 1, "", "HTTP 403 rate limit exceeded")
             out = {"repo view": {"nameWithOwner": "o/r", "url": "https://github.com/o/r", "extra": "leak"},
-                   "run list": [{"name": "CI", "status": "completed", "conclusion": "success", "headBranch": "b",
+                   "api repos/o/r/git/ref/heads/main": {"object": {"sha": self.SHA}},
+                   "run list": [{"name": "CI", "status": "completed", "conclusion": "success", "headBranch": "main",
                                  "headSha": self.SHA, "event": "push", "createdAt": "2026-01-01T00:00:00Z",
                                  "url": "https://github.com/o/r/actions/runs/1", "token": "leak"},
-                                {"name": "Bad", "status": "completed", "conclusion": "success", "headBranch": "b",
-                                 "headSha": self.SHA, "url": "javascript:alert(1)"}],
-                   "pr view": {"number": 7, "url": "https://github.com/o/r/pull/7", "state": "OPEN",
-                               "reviewDecision": "", "isDraft": False, "headRefOid": self.SHA},
-                   "pr checks": [{"name": "Veyro Foundation CI", "state": "SUCCESS", "link": "https://github.com/o/r/runs/2"}]}[a]
+                                {"name": "Bad", "status": "completed", "conclusion": "success", "headBranch": "main",
+                                 "headSha": self.SHA, "event": "push", "url": "javascript:alert(1)"},
+                                {"name": "OldHead", "status": "completed", "conclusion": "success",
+                                 "headBranch": "main", "headSha": self.OLD, "event": "push"},
+                                {"name": "PR", "status": "completed", "conclusion": "success", "headBranch": "main",
+                                 "headSha": self.SHA, "event": "pull_request"}]}[a]
             return subprocess.CompletedProcess(argv, 0, json.dumps(out), "")
         return run
 
@@ -1137,16 +1323,24 @@ class CIFeed(Base):
         r.refresh_ci()
         ci = dashboard.runner.snapshot(self.cfg)["ci"]
         self.assertEqual((ci["state"], ci["error"], ci["source"], ci["head_sha"]), ("fresh", None, "gh", self.SHA))
-        self.assertEqual((ci["pr"]["number"], ci["pr"]["review"], ci["checks"][0]["state"]), (7, "none", "SUCCESS"))
+        self.assertEqual((ci["scope"], ci["branch"]), ("main-push", "main"))
+        self.assertEqual([x["name"] for x in ci["runs"]], ["CI", "Bad"])  # other head / other event never shown
+        self.assertEqual(ci["runs_other_head"], 2)
         self.assertEqual(ci["runs"][0]["url"], "https://github.com/o/r/actions/runs/1")
         self.assertIsNone(ci["runs"][1]["url"])  # non-https url dropped
         self.assertNotIn("leak", json.dumps(ci))
+        self.assertNotIn("pr", ci)
         self.assertEqual((ci["staging"], ci["secrets"], ci["rollback"]), ("not configured",) * 3)
-        for argv, kw in calls:  # argv list, no shell, bounded, read-only verbs only
+        for argv, kw in calls:  # argv list, no shell, bounded, read-only verbs only, no PR query
             self.assertIsInstance(argv, list)
             self.assertFalse(kw.get("shell"))
             self.assertLessEqual(kw["timeout"], R.CI_CALL_TIMEOUT)
-            self.assertIn(argv[1:3], (["repo", "view"], ["run", "list"], ["pr", "view"], ["pr", "checks"]))
+            self.assertIn(argv[1:3], (["repo", "view"], ["run", "list"], ["api", "repos/o/r/git/ref/heads/main"]))
+        self.assertFalse(any("pr" in argv[1:2] or "pulls" in " ".join(argv) for argv, _ in calls))
+        run_list = next(argv for argv, _ in calls if argv[1:3] == ["run", "list"])
+        self.assertEqual(run_list[run_list.index("--branch") + 1], "main")
+        self.assertEqual(run_list[run_list.index("--event") + 1], "push")
+        self.assertEqual(run_list[run_list.index("--commit") + 1], self.SHA)
 
     def test_repo_slug_is_taken_from_local_origin_without_network_discovery(self):
         subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/o/r.git"], check=True)
@@ -1160,7 +1354,8 @@ class CIFeed(Base):
         r = self.runner(ci_every=60)
         r.ci_run = self.fake_gh()
         r.refresh_ci()
-        for fail, code in (("missing", "gh-missing"), ("timeout", "gh-timeout-repo-view"), ("auth", "gh-auth")):
+        for fail, code in (("missing", "gh-missing"), ("timeout", "gh-timeout-repo-view"), ("auth", "gh-auth"),
+                           ("rate", "gh-failed")):
             r.last_ci = 0
             r.ci_run = self.fake_gh(fail=fail)
             r.refresh_ci()
@@ -1174,30 +1369,43 @@ class CIFeed(Base):
         r.ci_run = self.fake_gh(fail="missing")
         r.refresh_ci()
         ci = R.snapshot(self.cfg)["ci"]
-        self.assertEqual((ci["state"], ci["observed_at"], ci["runs"], ci["pr"]), ("unavailable", None, [], None))
+        self.assertEqual((ci["state"], ci["observed_at"], ci["runs"]), ("unavailable", None, []))
         r.last_ci, r.ci_run = 0, self.fake_gh()
         r.refresh_ci()
         d = json.loads((self.home / "ci.json").read_text()) | {"observed_at": "2020-01-01T00:00:00+00:00"}
         (self.home / "ci.json").write_text(json.dumps(d))
         self.assertEqual(R.snapshot(self.cfg)["ci"]["state"], "stale")
 
-    def test_no_pr_and_no_checks_are_absence_but_rate_limit_is_not(self):
+    def test_snapshot_flags_local_head_mismatch_and_pushless_main_head(self):
         r = self.runner(ci_every=60)
-        r.ci_run = self.fake_gh(fail="no-pr")
+        r.ci_run = self.fake_gh()
         r.refresh_ci()
         ci = R.snapshot(self.cfg)["ci"]
-        self.assertEqual((ci["state"], ci["pr"], ci["checks"]), ("fresh", None, []))
-        r.last_ci, r.ci_run = 0, self.fake_gh(fail="no-checks")
-        r.refresh_ci()
+        self.assertEqual((ci["state"], ci["head_matches_local"]), ("fresh", False))  # local repo head is not remote main
+        local = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True,
+                               check=True).stdout.strip()
+        d = json.loads((self.home / "ci.json").read_text()) | {"head_sha": local, "runs": []}
+        (self.home / "ci.json").write_text(json.dumps(d))
         ci = R.snapshot(self.cfg)["ci"]
-        self.assertEqual((ci["state"], ci["pr"]["number"], ci["checks"]), ("fresh", 7, []))
-        r.last_ci, r.ci_run = 0, self.fake_gh(fail="rate")
-        r.refresh_ci()
+        self.assertEqual((ci["head_matches_local"], ci["runs"]), (True, []))  # matching head, but no push run: no pass
+
+    def test_legacy_branch_pr_cache_is_not_reported_as_main_evidence_or_carried_forward(self):
+        legacy = {"source": "gh", "observed_at": R.now_iso(), "head_sha": self.SHA, "branch": "feature/x",
+                  "pr": {"number": 10, "state": "OPEN"}, "checks": [{"name": "c", "state": "SUCCESS"}],
+                  "runs": [{"name": "CI", "status": "completed", "conclusion": "success", "head_sha": self.SHA}]}
+        (self.home / "ci.json").write_text(json.dumps(legacy))
         ci = R.snapshot(self.cfg)["ci"]
-        self.assertEqual((ci["state"], ci["error"]), ("stale", "gh-failed"))
+        self.assertEqual((ci["state"], ci["runs"], ci["head_sha"], ci["error"]), ("unavailable", [], None, "legacy-scope"))
+        self.assertNotIn("pr", ci)
+        r = self.runner(ci_every=60)
+        r.ci_run = self.fake_gh(fail="missing")
+        r.refresh_ci()
+        saved = json.loads((self.home / "ci.json").read_text())
+        self.assertEqual((saved.get("runs"), saved.get("head_sha"), saved["error"]), (None, None, "gh-missing"))
+        self.assertNotIn("pr", saved)
 
     def test_malformed_ci_cache_lists_do_not_crash_reader_or_runner(self):
-        (self.home / "ci.json").write_text(json.dumps({"source": "gh", "checks": 123, "runs": {"bad": 1}}))
+        (self.home / "ci.json").write_text(json.dumps({"source": "gh", "runs": {"bad": 1}}))
         self.assertEqual(R.snapshot(self.cfg)["ci"]["state"], "unavailable")
         r = self.runner(ci_every=60)
         r.ci_run = self.fake_gh(fail="missing")
@@ -1218,6 +1426,68 @@ class CIFeed(Base):
         self.assertIn("function ciView", js)
         self.assertIn("not configured", js)
         self.assertNotIn("innerHTML", js)
+        ci_js = js[js.index("function ciVerdict"):js.index("function fillSelect")]
+        self.assertIn("not a pre-push gate", ci_js)
+        for retired in ("Pull request", "Required checks", "pr.number", "ci.pr", "ci.checks", "Review"):
+            self.assertNotIn(retired, ci_js)
+        module_js = js[js.index("function renderModule"):js.index("function renderActivity")]
+        for retired in ("ci.pr", "Open PR", "PR #", "ci."):
+            self.assertNotIn(retired, module_js)
+
+
+class WorkflowShape(unittest.TestCase):
+    """Direct-main policy: the real workflow passes, and each forbidden mutation of it is detected."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = WC.WORKFLOW.read_text()
+
+    def test_committed_workflow_is_push_to_main_only_with_gate_disabled(self):
+        self.assertEqual(WC.check(self.text), [])
+        self.assertIn("name: foundation (MOD-000 focused checks)", self.text)  # check name kept for continuity
+
+    def mutated(self, old, new):
+        self.assertIn(old, self.text)  # a stale mutation target must fail loudly, not pass vacuously
+        return WC.check(self.text.replace(old, new, 1))
+
+    def test_removed_and_added_triggers_are_rejected(self):
+        trigger = 'on:\n  push:\n    branches:\n      - "main"\n'
+        for extra in ("  pull_request:\n", "  merge_group:\n", "  pull_request_target:\n", "  workflow_dispatch:\n"):
+            self.assertTrue(self.mutated(trigger, trigger + extra), extra)
+        self.assertTrue(self.mutated('      - "main"\n', '      - "main"\n      - "feature/**"\n'))
+        self.assertTrue(self.mutated('      - "main"\n', '      - "release"\n'))
+        self.assertTrue(self.mutated(trigger, "on:\n  pull_request:\n"))
+
+    def test_write_permission_gate_secret_and_deploy_are_rejected(self):
+        self.assertTrue(self.mutated("contents: read", "contents: write"))
+        self.assertTrue(self.mutated("contents: read\n", "contents: read\n  checks: write\n"))
+        self.assertTrue(self.mutated("      - name: Compile / syntax check\n",
+                                     "      - name: Compile / syntax check\n        env:\n          VEYRO_GATE_MODE: publish\n"))
+        self.assertTrue(self.mutated("      - name: Compile / syntax check\n",
+                                     "      - name: x\n        run: echo ${{ secrets.TOKEN }}\n"
+                                     "      - name: Compile / syntax check\n"))
+        self.assertTrue(self.mutated("    timeout-minutes: 15\n", "    timeout-minutes: 15\n    environment: production\n"))
+
+    def test_renamed_job_is_rejected_and_comments_cannot_hide_or_trigger_findings(self):
+        self.assertTrue(self.mutated("name: foundation (MOD-000 focused checks)", "name: foundation"))
+        self.assertEqual(WC.check(self.text + "\n# pull_request merge_group feature/** deploy\n"), [])
+
+    def test_top_level_concurrency_is_rejected_but_comment_mentions_are_not(self):
+        self.assertNotRegex(self.text, r"(?m)^concurrency\s*:")
+        block = "concurrency:\n  group: g\n  cancel-in-progress: false\n\n"
+        inline = "concurrency: g\n\n"
+        for extra in (block, inline):
+            self.assertTrue(self.mutated("jobs:\n", extra + "jobs:\n"), extra)
+        self.assertEqual(WC.check(self.text.replace("jobs:\n", "# concurrency: not used here\njobs:\n", 1)), [])
+
+    def test_cli_exit_codes(self):
+        with tempfile.TemporaryDirectory() as d:
+            good, bad = Path(d, "good.yml"), Path(d, "bad.yml")
+            good.write_text(self.text)
+            bad.write_text(self.text.replace('      - "main"\n', '      - "main"\n  pull_request:\n', 1))
+            with mock.patch("sys.stderr"), mock.patch("builtins.print"):
+                self.assertEqual(WC.main(["x", str(good)]), 0)
+                self.assertEqual(WC.main(["x", str(bad)]), 1)
 
 
 if __name__ == "__main__":

@@ -1,18 +1,12 @@
 name: Veyro Foundation CI
 
 on:
-  pull_request:
   push:
     branches:
-      - "feature/**"
-  merge_group:
+      - "main"
 
 permissions:
   contents: read
-
-concurrency:
-  group: veyro-foundation-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 jobs:
   foundation:
@@ -32,6 +26,9 @@ jobs:
 
       - name: Compile / syntax check
         run: python -m compileall -q tools/mission_runner
+
+      - name: Workflow trigger shape (push to main only, read-only, trusted gate disabled)
+        run: python tools/mission_runner/workflow_check.py
 
       - name: MOD-000 focused unittest suite
         run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
