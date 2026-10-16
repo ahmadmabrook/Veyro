@@ -1,0 +1,42 @@
+{
+ "version": 1,
+ "note": "Exact audited dispositions for prior BLOCKED tasks. A task is shown historical only when every listed evidence item is verified; anything else stays an active blocker. Never inferred from later same-module work, module acceptance, dates or generic CI.",
+ "owner_record": {
+  "id": "OWNER-2026-10-16-direct-main-github-actions",
+  "path": "knowledge/00-Decisions/OWNER-2026-10-16-direct-main-github-actions.md",
+  "contains": "APPROVED by the owner"
+ },
+ "dispositions": {
+  "mod000-live-opus-review-1": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod000-gatekeeper-1", "docs": [{"path": "knowledge/03-Modules/MOD-000/MOD-000.md", "contains": "mod000-gatekeeper-1:1"}]},
+  "mod000-opus-heartbeat-review-2": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod000-gatekeeper-1", "docs": [{"path": "knowledge/03-Modules/MOD-000/MOD-000.md", "contains": "mod000-gatekeeper-1:1"}]},
+  "mod001-opus-slice-review-1": {"module": "MOD-001", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod001-opus-rollback-rereview-1", "also_task_ids": ["mod001-direct-main-final-gatekeeper-20261016"]},
+  "mod001-screen-binding-1": {"module": "MOD-001", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod001-direct-main-final-gatekeeper-20261016", "docs": [{"path": "knowledge/03-Modules/MOD-001/APPROVAL.md", "contains": "MR-MOD-001-20261016-001"}]},
+  "mod001-foundation-ci-pin-opus-review-1": {"module": "MOD-001", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod001-foundation-ci-pin-opus-review-2"},
+  "mod001-python-dependency-lock-1": {"module": "MOD-001", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod001-python-dependency-lock-opus-review-1"},
+  "mod002-governance-s1-opus-review-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-governance-s1-opus-dc16-review-20261016"},
+  "mod002-governance-s1-opus-rereview-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-governance-s1-opus-dc16-review-20261016"},
+  "mod002-governance-s1-opus-final-review-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-governance-s1-opus-dc16-review-20261016"},
+  "mod002-dashboard-full-candidate-opus-review-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-dashboard-full-candidate-opus-r4-20261016"},
+  "mod002-dashboard-full-candidate-opus-r2-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-dashboard-full-candidate-opus-r4-20261016"},
+  "mod002-dashboard-full-candidate-opus-r3-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-dashboard-full-candidate-opus-r4-20261016"},
+  "mod002-adr0001-independent-review-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-adr0001-acceptance-diff-opus-20261016", "docs": [{"path": "knowledge/00-Decisions/ADR-0001-governance-foundation.md", "contains": "Status: ACCEPTED"}]},
+  "mod002-adr0001-clarification-opus-review-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-adr0001-acceptance-diff-opus-20261016", "docs": [{"path": "knowledge/00-Decisions/ADR-0001-governance-foundation.md", "contains": "Status: ACCEPTED"}]},
+  "mod002-final-foundation-gatekeeper-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-foundation-gatekeeper-remediation-review-20261016"},
+  "mod002-dashboard-conditional-current-sonnet-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-foundation-activation-full-opus-review-20261016"},
+  "mod002-dashboard-blocker-order-sonnet-20261016": {"module": "MOD-002", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod002-foundation-activation-full-opus-review-20261016"},
+  "mod003-foundation-architecture-scope-20261016": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-source-grounded-architecture-scope-20261016"},
+  "mod003-s1-full-opus-review-20261016": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-s1-opus-remediation-review-20261016"},
+  "mission-control-owner-decision-blocker-opus-review-20261016": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mission-control-owner-decision-blocker-full-opus-r2-20261016"},
+  "mod003-owner-appendix-b-record-opus-review-20261016": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-owner-appendix-b-record-opus-r2-20261016", "docs": [{"path": "knowledge/00-Decisions/OWNER-2026-10-16-mod003-appendix-b-s1.md", "contains": "**Status: APPROVED by the owner on 2026-10-16; operative for MOD-003 S1 only after the publication conditions below.**"}]},
+  "blocker-projection-hardening-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
+  "runner-prerequisite-gate-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
+  "runner-prerequisite-gate-evidence-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
+  "runner-prerequisite-gate-correction-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
+  "blocker-new-attempt-dispositions-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
+  "mod001-opus-trusted-gate-review-1": {"module": "MOD-001", "classification": "SUPERSEDED_BY_APPROVED_CHANGE", "clauses": ["the trusted-check signer / GitHub App gate"]},
+  "mod001-opus-trusted-gate-rereview-1": {"module": "MOD-001", "classification": "SUPERSEDED_BY_APPROVED_CHANGE", "clauses": ["the trusted-check signer / GitHub App gate"]},
+  "mod001-app-gate-opus-review-1": {"module": "MOD-001", "classification": "SUPERSEDED_BY_APPROVED_CHANGE", "clauses": ["the trusted-check signer / GitHub App gate"]},
+  "mod001-app-role-opus-review-1": {"module": "MOD-001", "classification": "SUPERSEDED_BY_APPROVED_CHANGE", "clauses": ["a custom App"]},
+  "mod001-app-runtime-opus-review-1": {"module": "MOD-001", "classification": "SUPERSEDED_BY_APPROVED_CHANGE", "clauses": ["a custom App"]}
+ }
+}

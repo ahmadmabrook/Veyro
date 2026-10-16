@@ -661,6 +661,225 @@ def backoff(cfg, attempts):
     return min(cfg.backoff_cap, cfg.backoff_base * 2 ** max(0, attempts - 1))
 
 
+# ------------------------------------------------------- prerequisite / acceptance gate
+# Roles that can advance implementation or acceptance need every catalog dependency accepted. The remaining
+# roles (architecture, security, performance, code-review) are read-only and certify nothing: they bypass.
+GATED_ROLES = WRITE_ROLES | {"gatekeeper", "scenario-review", "manual-qa"}
+CATALOG_PATH = Path(__file__).resolve().parent / "module_catalog.json"
+RECEIPT_MAX_BYTES = 64 * 1024
+REVIEW_MAX_BYTES = 8 * 1024 * 1024
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+RECEIPT_REVIEW_KINDS = ("gatekeeper", "activation-review")
+VERDICT_LINE_RE = re.compile(
+    r"^(?:OUTCOME:\s*(APPROVED|CHANGES_REQUESTED|BLOCKED)\s*|\*\*OUTCOME:\s*(APPROVED|CHANGES_REQUESTED|BLOCKED)\.?\*\*.*)$")
+CI_WORKFLOW_NAME = "Veyro Foundation CI"
+LEGACY_MODE = "legacy-mod000-lean-foundation"  # MOD-000 only: accepted before CI existed
+MOD000_HEADER_SHA = "85596d904aa36bc30abaac524d846e7454da8b6a"
+MOD000_RECORD = "knowledge/03-Modules/MOD-000/MOD-000.md"
+MOD000_LEGACY_TASK, MOD000_LEGACY_MR = "mod000-gatekeeper-1", "MR-MOD-000-20261015-004"
+MOD000_LEGACY_REVIEW = "runs/mod000-gatekeeper-1-1.out"
+
+
+class GateError(Exception):
+    pass
+
+
+def catalog_dependencies(module):
+    try:
+        entries = json.loads(CATALOG_PATH.read_text())
+        found = [e for e in entries if isinstance(e, dict) and e.get("id") == module]
+        deps = found[0]["dependencies"]
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        raise GateError(f"{module}: not found in module catalog or catalog unreadable")
+    if not (isinstance(deps, list) and all(isinstance(d, str) and MOD_RE.match(d) for d in deps)):
+        raise GateError(f"{module}: malformed dependencies in module catalog")
+    return deps
+
+
+def _read_bounded(path, limit):
+    if path.is_symlink() or not path.is_file():
+        raise GateError(f"{path.name}: missing or not a regular file")
+    with open(path, "rb") as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise GateError(f"{path.name}: larger than {limit} bytes")
+    return data
+
+
+def verify_receipt(cfg, module):
+    """Read-only, offline check of the operator-written receipt `<home>/acceptances/<module>.json`.
+
+    The receipt is the operator's claim; it is only trusted once every part is re-verified locally: the
+    activation commit must be an ancestor of the repo HEAD (stale => reject), the recorded CI run must be a
+    success on exactly that commit, and each review file must hash to the recorded sha256 and be an
+    APPROVED, Opus-routed (judge_route VERIFIED) success result. Raises GateError on anything else.
+    """
+    try:
+        r = json.loads(_read_bounded(cfg.home / "acceptances" / f"{module}.json", RECEIPT_MAX_BYTES))
+    except ValueError:
+        raise GateError(f"{module}: receipt is not valid JSON")
+    if not isinstance(r, dict) or r.get("schema") != SCHEMA or r.get("module") != module:
+        raise GateError(f"{module}: receipt schema/module mismatch")
+    if not (isinstance(r.get("operator"), str) and r["operator"].strip() and isinstance(r.get("recorded_at"), str)):
+        raise GateError(f"{module}: receipt lacks operator/recorded_at")
+    mode = r.get("mode")
+    if mode is not None:
+        if mode != LEGACY_MODE or module != "MOD-000":
+            raise GateError(f"{module}: receipt mode {mode!r} is not permitted")
+        return verify_legacy_mod000(cfg, r)
+    sha = r.get("activation_sha")
+    if not (isinstance(sha, str) and SHA_RE.fullmatch(sha)):
+        raise GateError(f"{module}: activation_sha is not a full commit sha")
+    ci = r.get("ci")
+    if not (isinstance(ci, dict) and isinstance(ci.get("run_id"), str) and ci["run_id"].isdigit()
+            and ci.get("event") == "push" and ci.get("status") == "completed" and ci.get("name") == CI_WORKFLOW_NAME
+            and ci.get("head_sha") == sha and ci.get("conclusion") == "success"):
+        raise GateError(f"{module}: CI evidence is not a completed successful {CI_WORKFLOW_NAME} push run "
+                        "on the activation sha")
+    if not _is_ancestor(cfg, sha):
+        raise GateError(f"{module}: activation sha {sha[:12]} is not an ancestor of repo HEAD (stale or unknown)")
+    reviews = r.get("reviews")
+    if not (isinstance(reviews, list) and 0 < len(reviews) <= 10):
+        raise GateError(f"{module}: receipt has no reviews")
+    home = cfg.home.resolve()
+    seen = {}
+    for rv in reviews:
+        if not (isinstance(rv, dict) and rv.get("kind") in RECEIPT_REVIEW_KINDS and isinstance(rv.get("path"), str)
+                and isinstance(rv.get("sha256"), str) and SHA256_RE.fullmatch(rv["sha256"])):
+            raise GateError(f"{module}: malformed review entry")
+        if rv.get("activation_sha") != sha:  # operator-supplied binding of this review to this activation
+            raise GateError(f"{module}: review {rv['path']} is not bound to the activation sha")
+        _load_approved_review(home, rv["path"], rv["sha256"], module)
+        seen.setdefault(rv["kind"], set()).add(rv["sha256"])
+    # Both an independent gatekeeper review and the exact activation-diff review are mandatory, and distinct.
+    if set(seen) != set(RECEIPT_REVIEW_KINDS) or seen["gatekeeper"] & seen["activation-review"]:
+        raise GateError(f"{module}: receipt needs distinct approved gatekeeper and activation-review evidence")
+
+
+def _load_approved_review(home, relpath, sha256, module):
+    """Hash-match, parse and judge one offline review file: Opus-routed success with a single APPROVED verdict."""
+    rel = Path(relpath)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise GateError(f"{module}: review path escapes runner home")
+    path = home / rel
+    if home not in path.resolve().parents:
+        raise GateError(f"{module}: review path escapes runner home")
+    data = _read_bounded(path, REVIEW_MAX_BYTES)
+    if hashlib.sha256(data).hexdigest() != sha256:
+        raise GateError(f"{module}: review {rel.name} does not match recorded sha256")
+    try:
+        parsed = json.loads(data)
+    except ValueError:
+        raise GateError(f"{module}: review {rel.name} is not CLI json")
+    if not (isinstance(parsed, dict) and parsed.get("subtype") == "success" and parsed.get("is_error") is not True
+            and receipt_outcome(parsed.get("result")) == "APPROVED"
+            and judge_route("gatekeeper", parsed)["verdict"] == "VERIFIED"):
+        raise GateError(f"{module}: review {rel.name} is not an APPROVED, Opus-verified success")
+
+
+def receipt_outcome(result):
+    """Verdict of an offline review for acceptance receipts only (task-run reviews keep the strict final-line rule).
+
+    Only standalone verdict LINES count: the plain `OUTCOME: X` or the Markdown `**OUTCOME: X.** ...`. Inline prose
+    mentions are ignored; multiple or contradictory standalone verdict lines make it unverifiable (None).
+    """
+    if not isinstance(result, str):
+        return None
+    found = [m.group(1) or m.group(2) for m in (VERDICT_LINE_RE.match(ln.strip()) for ln in result.splitlines()) if m]
+    return found[0] if len(found) == 1 else None
+
+
+def _is_ancestor(cfg, sha):
+    try:
+        return subprocess.run(["git", "-C", str(cfg.repo), "merge-base", "--is-ancestor", sha, "HEAD"],
+                              capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def verify_legacy_mod000(cfg, r):
+    """MOD-000 only: accepted as Lean Foundation before CI existed, so no CI is required or invented.
+
+    Re-verifies the exact legacy evidence: the receipt names the initial committed header, which must be an
+    ancestor of HEAD and contain the module record; the raw Opus gatekeeper output (hash bound by the operator)
+    must be an APPROVED Opus success; the runner state task must be DONE/VERIFIED/APPROVED; and the live
+    module record must still say ACCEPTED and cite the gatekeeper MR.
+    """
+    m = "MOD-000"
+    if r.get("module") != m or r.get("activation_sha") != MOD000_HEADER_SHA:
+        raise GateError(f"{m}: legacy receipt must name the initial committed header {MOD000_HEADER_SHA[:12]}")
+    if not _is_ancestor(cfg, MOD000_HEADER_SHA):
+        raise GateError(f"{m}: legacy header commit is not an ancestor of repo HEAD")
+    try:
+        in_header = subprocess.run(["git", "-C", str(cfg.repo), "cat-file", "-e", f"{MOD000_HEADER_SHA}:{MOD000_RECORD}"],
+                                   capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        in_header = False
+    if not in_header:
+        raise GateError(f"{m}: header commit does not contain the module record")
+    rs = r.get("review_sha256")
+    if not (isinstance(rs, str) and SHA256_RE.fullmatch(rs)):
+        raise GateError(f"{m}: legacy receipt lacks review_sha256")
+    _load_approved_review(cfg.home.resolve(), MOD000_LEGACY_REVIEW, rs, m)
+    try:
+        st = json.loads(_read_bounded(cfg.home / "state.json", REVIEW_MAX_BYTES))
+        task = st["tasks"][MOD000_LEGACY_TASK]
+        ev = task["evidence"]
+    except (ValueError, KeyError, TypeError, GateError):
+        raise GateError(f"{m}: legacy gatekeeper task {MOD000_LEGACY_TASK} not found in runner state")
+    if not (task.get("status") == "DONE" and task.get("module") == m and task.get("role") == "gatekeeper"
+            and isinstance(ev, dict) and ev.get("route_verdict") == "VERIFIED" and ev.get("review_outcome") == "APPROVED"):
+        raise GateError(f"{m}: legacy gatekeeper task is not DONE/VERIFIED/APPROVED")
+    try:
+        text = _read_bounded(Path(cfg.repo) / MOD000_RECORD, REVIEW_MAX_BYTES).decode(errors="replace")
+    except GateError:
+        raise GateError(f"{m}: live module record missing")
+    head = "\n".join(text.splitlines()[:5])
+    if not (MOD000_LEGACY_MR in text and "ACCEPTED" in head and "PENDING" not in head):
+        raise GateError(f"{m}: live module record does not show ACCEPTED with {MOD000_LEGACY_MR}")
+
+
+BLOCKER_GATED_ROLES = {"gatekeeper", "scenario-review"}
+
+
+def active_module_blockers(cfg, t, tasks):
+    """Ids of same-module BLOCKED tasks the dashboard lifecycle projection still calls active blockers.
+
+    The dashboard's exact disposition registry is the single source of truth; it is imported lazily (it only
+    reads local files at import and is never a write path), so there is no import cycle at module load.
+    Any import/registry/evidence defect leaves the blocker active, and the caller fails closed on exceptions.
+    """
+    blocked = [x for x in tasks.values() if x.get("status") == "BLOCKED" and x.get("module") == t["module"]]
+    if not blocked:
+        return []
+    import dashboard
+    registry = dashboard.load_dispositions(dashboard.DISPOSITIONS_PATH)
+    projected = dashboard.task_projection(list(tasks.values()), {}, registry, cfg.repo)
+    return sorted(p["id"] for p in projected
+                  if p["module"] == t["module"] and p["status"] == "BLOCKED" and p["lifecycle"] == "active-blocker")
+
+
+def gate_reason(cfg, t, tasks):
+    """None when the task may run, else an explicit reason. Fails closed on any error."""
+    try:
+        if t["role"] not in GATED_ROLES:
+            return None
+        for dep in catalog_dependencies(t["module"]):
+            try:
+                verify_receipt(cfg, dep)
+            except GateError as e:
+                return f"PREREQ_NOT_ACCEPTED {dep}: {e}"
+        if t["role"] in BLOCKER_GATED_ROLES:
+            active = active_module_blockers(cfg, t, tasks)
+            if active:
+                return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
+        return None
+    except GateError as e:
+        return f"GATE_UNVERIFIABLE: {e}"
+    except Exception as e:
+        return f"GATE_UNVERIFIABLE: {type(e).__name__}"
+
+
 # ---------------------------------------------------------------------- runner
 class Runner:
     def __init__(self, cfg):
@@ -879,9 +1098,21 @@ class Runner:
             f.unlink()
 
     def next_ready(self):
-        ready = [t for t in self.state["tasks"].values()
-                 if t["status"] == "QUEUED" and t.get("next_attempt_at", 0) <= time.time()]
-        return min(ready, key=lambda t: t["created_at"]) if ready else None
+        ready = sorted((t for t in self.state["tasks"].values()
+                        if t["status"] == "QUEUED" and t.get("next_attempt_at", 0) <= time.time()),
+                       key=lambda t: t["created_at"])
+        for t in ready:  # a gated item is skipped, never BLOCKED/DONE, so it cannot starve eligible work behind it
+            if not self.gated(t):
+                return t
+        return None
+
+    def gated(self, t):
+        """True (and records why) if the prerequisite gate holds the task. A resumed verification already ran."""
+        reason = None if t.get("stage") == "verify_pending" else gate_reason(self.cfg, t, self.state["tasks"])
+        if reason != t.get("gate_reason"):
+            t["gate_reason"] = reason
+            self.store.event("task-gated" if reason else "task-gate-cleared", task_id=t["id"], reason=reason)
+        return reason is not None
 
     # --- child isolation
     def child_env(self):
@@ -934,6 +1165,8 @@ class Runner:
             return
         self.busy_noted = False
         try:
+            if self.gated(t):  # recheck under the writer lock, immediately before any child can start
+                return
             if t.get("stage") == "verify_pending" and t.get("verify_checkpoint"):
                 cp = t["verify_checkpoint"]
                 t.update(status="RUNNING", stage="verifying")
@@ -1240,10 +1473,14 @@ def validate_task(d, cfg):
 
 def enqueue(cfg, task):
     task = {**task, "created_at": now_iso()}
-    validate_task(task, cfg)
+    t = validate_task(task, cfg)
     store = Store(cfg.home)
-    if task["id"] in store.load()["tasks"]:
+    state = store.load()
+    if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
+    reason = gate_reason(cfg, t, state["tasks"])
+    if reason:
+        raise ValueError(f"task refused by prerequisite gate: {reason}")
     path = cfg.home / "queue" / f"{time.time_ns():020d}-{task['id']}.json"
     atomic_write(path, json.dumps(task).encode())
     return path

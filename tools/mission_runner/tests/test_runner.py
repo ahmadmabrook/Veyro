@@ -1342,6 +1342,345 @@ class CIFeed(Base):
         self.assertNotIn("ci.checks", js)
 
 
+class PrerequisiteGate(Base):
+    """MOD-001 depends only on MOD-000 in the catalog; its receipt is the evidence under test."""
+
+    def head(self):
+        return git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+    def review(self, name="rev.json", result=None, model="claude-opus-5-5", kind="gatekeeper", bind=None, **over):
+        result = f"fine {name}\nOUTCOME: APPROVED" if result is None else result
+        body = {"type": "result", "subtype": "success", "is_error": False, "result": result,
+                "modelUsage": {model: {"inputTokens": 10, "outputTokens": 20}}} | over
+        data = json.dumps(body).encode()
+        (self.home / "reviews").mkdir(parents=True, exist_ok=True)
+        (self.home / "reviews" / name).write_bytes(data)
+        return {"kind": kind, "path": f"reviews/{name}", "sha256": hashlib.sha256(data).hexdigest(),
+                "activation_sha": bind or self.head()}
+
+    def both(self):
+        return [self.review("gk.json"), self.review("act.json", kind="activation-review")]
+
+    def ci(self, sha=None, **over):
+        return {"run_id": "123", "name": "Veyro Foundation CI", "event": "push", "status": "completed",
+                "head_sha": sha or self.head(), "conclusion": "success"} | over
+
+    def receipt(self, module="MOD-000", **over):
+        sha = self.head()
+        body = {"schema": 1, "module": module, "operator": "op", "recorded_at": R.now_iso(), "activation_sha": sha,
+                "ci": self.ci(sha)} | over
+        if "reviews" not in over:  # build defaults lazily so caller-made review files are never overwritten
+            body["reviews"] = self.both()
+        (self.home / "acceptances").mkdir(parents=True, exist_ok=True)
+        (self.home / "acceptances" / f"{module}.json").write_text(json.dumps(body))
+
+    def refused(self, role="implement", module="MOD-001", **kw):
+        with self.assertRaises(ValueError) as cm:
+            self.add(self.runner(), role=role, module=module, **kw)
+        return str(cm.exception)
+
+    def test_missing_prerequisite_refused_at_enqueue(self):
+        self.assertIn("PREREQ_NOT_ACCEPTED MOD-000", self.refused())
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.refused("gatekeeper"))
+
+    def test_valid_exact_evidence_allows(self):
+        self.receipt()
+        r = self.runner()
+        t = self.add(r, module="MOD-001")
+        self.assertIs(r.next_ready(), t)
+        self.assertIsNone(t.get("gate_reason"))
+
+    def test_wrong_evidence_fails_closed(self):
+        good, act = self.review(), self.review("act.json", kind="activation-review")
+        bad_cases = {
+            "only-gatekeeper": {"reviews": [good]},
+            "only-activation": {"reviews": [act]},
+            "same-file-both-kinds": {"reviews": [good, good | {"kind": "activation-review"}]},
+            "unbound-review": {"reviews": [good, act | {"activation_sha": "1" * 40}]},
+            "unknown-mode": {"mode": "other"},
+            "module": {"module": "MOD-002"},
+            "sha": {"activation_sha": "0" * 40, "ci": self.ci("0" * 40)},
+            "ci-sha": {"ci": self.ci("1" * 40)},
+            "ci-conclusion": {"ci": self.ci(conclusion="failure")},
+            "ci-pending": {"ci": self.ci(status="in_progress", conclusion=None)},
+            "ci-status": {"ci": self.ci(status="queued")},
+            "ci-pr-event": {"ci": self.ci(event="pull_request")},
+            "ci-wrong-workflow": {"ci": self.ci(name="Other Workflow")},
+            "ci-run-id": {"ci": self.ci(run_id="12a")},
+            "ci-run-id-int": {"ci": self.ci(run_id=123)},
+            "review-hash": {"reviews": [good | {"sha256": "0" * 64}, act]},
+            "review-not-approved": {"reviews": [self.review("b.json", result="x\nOUTCOME: CHANGES_REQUESTED"), act]},
+            "review-not-opus": {"reviews": [self.review("c.json", model="claude-sonnet-5-5"), act]},
+            "review-escape": {"reviews": [good | {"path": "../outside.json"}, act]},
+            "no-reviews": {"reviews": []},
+        }
+        for name, over in bad_cases.items():
+            self.receipt(**over)
+            self.assertIn("PREREQ_NOT_ACCEPTED", self.refused(), name)
+        self.receipt()
+        (self.home / "acceptances" / "MOD-000.json").write_text("{not json")
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.refused())
+
+    def test_unknown_module_fails_closed(self):
+        self.assertIn("GATE_UNVERIFIABLE", self.refused(module="MOD-999"))
+
+    def test_independent_readonly_roles_bypass(self):
+        r = self.runner()
+        for i, role in enumerate(("architecture", "security", "performance", "code-review")):
+            self.add(r, role=role, module="MOD-001", id=f"ro{i}")
+        self.assertEqual(len(r.state["tasks"]), 4)
+        self.assertIsNotNone(r.next_ready())
+
+    def test_recheck_at_dispatch(self):
+        self.receipt()
+        r = self.runner()
+        t = self.add(r, module="MOD-001")
+        self.assertIs(r.next_ready(), t)
+        (self.home / "acceptances" / "MOD-000.json").unlink()
+        r.dispatch(t)
+        self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))
+        self.assertIn("PREREQ_NOT_ACCEPTED", t["gate_reason"])
+        self.assertFalse((self.repo / "out" / "a.txt").exists())
+
+    def test_gated_head_of_line_does_not_starve_or_complete(self):
+        self.receipt()
+        r = self.runner()
+        old = self.add(r, module="MOD-001", id="old")
+        (self.home / "acceptances" / "MOD-000.json").unlink()
+        new = self.add(r, module="MOD-000", id="new", allowed_paths=["out/"], expected_changes=["out/b.txt"],
+                       prompt="WRITE=out/b.txt\nCONTENT=hi")
+        self.assertIs(r.next_ready(), new)
+        self.assertEqual(old["status"], "QUEUED")
+        r.dispatch(r.next_ready())
+        self.assertEqual(new["status"], "DONE")
+        self.assertEqual((old["status"], old["attempts"]), ("QUEUED", 0))
+        self.assertIsNone(r.next_ready())
+
+    def test_no_second_writer_when_gate_passes(self):
+        self.receipt()
+        r = self.runner()
+        t = self.add(r, module="MOD-001")
+        other = R.FileLock(R.writer_lock_path(self.home, self.repo))
+        self.assertTrue(other.acquire({"pid": os.getpid()}))
+        try:
+            r.dispatch(t)
+        finally:
+            other.release()
+        self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))
+        self.assertFalse((self.repo / "out" / "a.txt").exists())
+        r.dispatch(t)
+        self.assertEqual(t["status"], "DONE")
+
+    def test_markdown_verdict_shape_and_contradictions(self):
+        md = "Reviewed the diff.\n\n**OUTCOME: APPROVED.** No P0 or P1 findings.\n\nSee notes below."
+        self.assertEqual(R.receipt_outcome(md), "APPROVED")
+        self.assertEqual(R.receipt_outcome("x\nOUTCOME: APPROVED"), "APPROVED")
+        for bad in (md + "\nOUTCOME: CHANGES_REQUESTED", "OUTCOME: BLOCKED\n" + md, md + "\n" + md,
+                    "no verdict", None):
+            self.assertIsNone(R.receipt_outcome(bad), bad)
+        self.receipt(reviews=[self.review("gk.json", result=md),
+                              self.review("act.json", kind="activation-review", result=md + " ")])
+        r = self.runner()
+        self.assertIsNotNone(self.add(r, module="MOD-001"))
+        self.receipt(reviews=[self.review("gk.json", result=md + "\nOUTCOME: BLOCKED"),
+                              self.review("act.json", kind="activation-review", result=md + " ")])
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.refused(id="t2"))
+        # the runner's own review contract is untouched: final line must still be a plain marker
+        self.assertIsNone(R.OUTCOME_RE.match("**OUTCOME: APPROVED.** No P0 or P1 findings."))
+
+    def test_inline_prose_mention_ignored_but_standalone_lines_counted(self):
+        prose = "The gate requires OUTCOME: APPROVED only after review; do not write OUTCOME: APPROVED early.\n"
+        self.assertEqual(R.receipt_outcome(prose + "\nOUTCOME: APPROVED"), "APPROVED")
+        self.assertEqual(R.receipt_outcome(prose + "\n**OUTCOME: APPROVED.** fine"), "APPROVED")
+        self.assertIsNone(R.receipt_outcome(prose))
+        self.assertIsNone(R.receipt_outcome(prose + "OUTCOME: APPROVED\nOUTCOME: APPROVED"))
+        self.assertIsNone(R.receipt_outcome(prose + "OUTCOME: APPROVED\n**OUTCOME: BLOCKED.** no"))
+        self.assertIsNone(R.receipt_outcome(prose + "OUTCOME: APPROVED\nOUTCOME: CHANGES_REQUESTED"))
+        self.receipt(reviews=[self.review("gk.json", result=prose + "\nOUTCOME: APPROVED"),
+                              self.review("act.json", kind="activation-review", result=prose + "\n**OUTCOME: APPROVED.** ok")])
+        self.assertIsNotNone(self.add(self.runner(), module="MOD-001"))
+
+    def registry(self, dispositions):
+        path = Path(self.tmp.name) / "dispositions.json"
+        path.write_text(json.dumps({"version": 1, "owner_record": None, "dispositions": dispositions}))
+        patch = mock.patch.object(dashboard, "DISPOSITIONS_PATH", path)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def history(self, r, module, id, at, **fields):
+        """Persisted historical task of any module (MOD-000 has no prerequisites, so it enqueues freely)."""
+        t = self.add(r, id=id)
+        t.update(module=module, created_at=at, **fields)
+        r.store.save(r.state)
+        return t
+
+    def blocked(self, r, module, id, at):
+        return self.history(r, module, id, at, status="BLOCKED")
+
+    def approved(self, r, module, id, at):
+        return self.history(r, module, id, at, status="DONE", evidence={"review_outcome": "APPROVED"},
+                            route={"verdict": "VERIFIED"})
+
+    def test_same_module_active_blocker_holds_gatekeeper_and_scenario_review(self):
+        self.receipt()
+        self.registry({})
+        r = self.runner()
+        self.blocked(r, "MOD-001", "old", "2026-01-01T00:00:00Z")
+        for role in ("gatekeeper", "scenario-review"):
+            self.assertIn("ACTIVE_BLOCKER MOD-001: old", self.refused(role))
+        self.assertNotIn("acceptance_gating", r.state["tasks"]["old"])
+
+    def test_other_module_and_other_roles_not_held(self):
+        self.receipt()
+        self.registry({})
+        r = self.runner()
+        self.blocked(r, "MOD-000", "other", "2026-01-01T00:00:00Z")
+        self.assertEqual(self.add(r, role="gatekeeper", module="MOD-001", id="gk")["status"], "QUEUED")
+        self.assertEqual(self.add(r, module="MOD-001", id="impl")["status"], "QUEUED")
+
+    def test_resolved_historical_blocker_does_not_hold(self):
+        self.receipt()
+        self.registry({"old": {"module": "MOD-001", "classification": dashboard.RESOLVED, "evidence_task_id": "ok"}})
+        r = self.runner()
+        self.blocked(r, "MOD-001", "old", "2026-01-01T00:00:00Z")
+        self.approved(r, "MOD-001", "ok", "2026-01-02T00:00:00Z")
+        self.assertEqual(self.add(r, role="gatekeeper", module="MOD-001", id="gk")["status"], "QUEUED")
+
+    def test_unverifiable_disposition_stays_active(self):
+        self.receipt()
+        r = self.runner()
+        self.blocked(r, "MOD-001", "old", "2026-01-01T00:00:00Z")
+        ok = self.approved(r, "MOD-001", "ok", "2026-01-02T00:00:00Z")
+        entry = {"module": "MOD-001", "classification": dashboard.RESOLVED, "evidence_task_id": "ok"}
+        for name, reg in {"empty": {}, "wrong-module": {"old": entry | {"module": "MOD-002"}},
+                          "missing-evidence": {"old": entry | {"evidence_task_id": "nope"}},
+                          "doc-missing": {"old": entry | {"docs": [{"path": "none.md", "contains": "x"}]}}}.items():
+            self.registry(reg)
+            self.assertIn("ACTIVE_BLOCKER", self.refused("gatekeeper"), name)
+        ok["route"] = {"verdict": "UNVERIFIED"}
+        r.store.save(r.state)
+        self.registry({"old": entry})
+        self.assertIn("ACTIVE_BLOCKER", self.refused("gatekeeper"))
+        ok["route"] = {"verdict": "VERIFIED"}
+        r.store.save(r.state)
+        (Path(self.tmp.name) / "dispositions.json").write_text("{bad")  # unreadable registry fails closed
+        self.assertIn("ACTIVE_BLOCKER", self.refused("gatekeeper"))
+        self.assertEqual(r.state["tasks"]["old"]["status"], "BLOCKED")  # statuses are never cleared
+
+    def test_current_mod003_review_rejection_holds_until_exact_disposition(self):
+        self.registry({})  # MOD-003 prerequisites are not under test: the receipt check is bypassed below
+        r = self.runner()
+        self.blocked(r, "MOD-003", "mod003-s1-full-opus-review-20261016", "2026-01-01T00:00:00Z")
+        t = {"id": "gk3", "module": "MOD-003", "role": "gatekeeper", "status": "QUEUED"}
+        with mock.patch.object(R, "catalog_dependencies", return_value=[]):
+            self.assertIn("ACTIVE_BLOCKER MOD-003", R.gate_reason(self.cfg, t, r.state["tasks"]))
+            self.registry({"mod003-s1-full-opus-review-20261016": {
+                "module": "MOD-003", "classification": dashboard.RESOLVED, "evidence_task_id": "rem"}})
+            self.approved(r, "MOD-003", "rem", "2026-01-02T00:00:00Z")
+            self.assertIsNone(R.gate_reason(self.cfg, t, r.state["tasks"]))
+
+    def test_dispatch_recheck_and_no_head_of_line_starvation(self):
+        self.receipt()
+        self.registry({})
+        r = self.runner()
+        gk = self.add(r, role="gatekeeper", module="MOD-001", id="gk")
+        later = self.add(r, module="MOD-000", id="later", allowed_paths=["out/"], expected_changes=["out/b.txt"],
+                         prompt="WRITE=out/b.txt\nCONTENT=hi")
+        self.assertIs(r.next_ready(), gk)
+        self.blocked(r, "MOD-001", "old", "2026-01-01T00:00:00Z")
+        self.assertIs(r.next_ready(), later)  # gated gatekeeper is skipped, not blocking eligible work
+        r.dispatch(gk)  # re-checked under the writer lock before dispatch
+        self.assertEqual((gk["status"], gk["attempts"]), ("QUEUED", 0))
+        self.assertIn("ACTIVE_BLOCKER", gk["gate_reason"])
+        self.assertEqual(r.state["tasks"]["old"]["status"], "BLOCKED")
+
+
+class LegacyMod000Receipt(Base):
+    """MOD-000-only receipt for the pre-CI Lean Foundation acceptance; the fixed evidence is patched to a temp repo."""
+
+    def head(self):
+        return git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        rec = self.repo / R.MOD000_RECORD
+        rec.parent.mkdir(parents=True, exist_ok=True)
+        rec.write_text("# MOD-000\nStatus: ACCEPTED\n" + R.MOD000_LEGACY_MR + "\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "module record")
+        self.hdr = self.head()
+        for name, val in (("MOD000_HEADER_SHA", self.hdr),):
+            p = mock.patch.object(R, name, val)
+            p.start()
+            self.addCleanup(p.stop)
+        self.write_evidence()
+
+    def write_evidence(self, state_over=None, result="done\nOUTCOME: APPROVED", model="claude-opus-5-5"):
+        body = {"subtype": "success", "is_error": False, "result": result,
+                "modelUsage": {model: {"inputTokens": 10, "outputTokens": 20}}}
+        data = json.dumps(body).encode()
+        (self.home / "runs").mkdir(parents=True, exist_ok=True)
+        (self.home / R.MOD000_LEGACY_REVIEW).write_bytes(data)
+        task = {"id": R.MOD000_LEGACY_TASK, "module": "MOD-000", "role": "gatekeeper", "status": "DONE",
+                "evidence": {"route_verdict": "VERIFIED", "review_outcome": "APPROVED"}} | (state_over or {})
+        (self.home / "state.json").write_text(json.dumps({"schema": 1, "tasks": {R.MOD000_LEGACY_TASK: task}}))
+        return hashlib.sha256(data).hexdigest()
+
+    def legacy(self, sha256=None, module="MOD-000", **over):
+        body = {"schema": 1, "module": module, "mode": R.LEGACY_MODE, "operator": "op", "recorded_at": R.now_iso(),
+                "activation_sha": self.hdr, "review_sha256": sha256 or self.write_evidence()} | over
+        (self.home / "acceptances").mkdir(parents=True, exist_ok=True)
+        (self.home / "acceptances" / f"{module}.json").write_text(json.dumps(body))
+
+    def check(self):
+        return R.gate_reason(self.runner().cfg, {"role": "implement", "module": "MOD-001", "id": "x"}, {})
+
+    def test_positive_without_ci(self):
+        self.legacy()
+        self.assertIsNone(self.check())
+
+    def test_missing_or_wrong_evidence_rejected(self):
+        self.legacy()
+        (self.home / "state.json").write_text(json.dumps({"schema": 1, "tasks": {}}))
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+        for over in ({"status": "BLOCKED"}, {"evidence": {"route_verdict": "MISMATCH", "review_outcome": "APPROVED"}},
+                     {"evidence": {"route_verdict": "VERIFIED", "review_outcome": "CHANGES_REQUESTED"}}):
+            self.legacy(self.write_evidence(over))
+            self.assertIn("PREREQ_NOT_ACCEPTED", self.check(), over)
+        for kw in ({"result": "x\nOUTCOME: CHANGES_REQUESTED"}, {"model": "claude-sonnet-5-5"}):
+            self.legacy(self.write_evidence(**kw))
+            self.assertIn("PREREQ_NOT_ACCEPTED", self.check(), kw)
+        self.legacy(self.write_evidence())
+        self.assertIsNone(self.check())
+        self.legacy("0" * 64)
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+        self.legacy(activation_sha="1" * 40)
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+        self.legacy()
+        (self.home / R.MOD000_LEGACY_REVIEW).unlink()
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+
+    def test_live_header_must_still_show_accepted(self):
+        self.legacy()
+        (self.repo / R.MOD000_RECORD).write_text("# MOD-000\nStatus: PENDING ACCEPTED\n" + R.MOD000_LEGACY_MR + "\n")
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+        (self.repo / R.MOD000_RECORD).write_text("# MOD-000\nStatus: ACCEPTED\n")
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+
+    def test_mode_rejected_for_other_modules(self):
+        cfg = self.runner().cfg
+        self.legacy(module="MOD-001", activation_sha=self.hdr)
+        with self.assertRaises(R.GateError):
+            R.verify_receipt(cfg, "MOD-001")
+
+    def test_legacy_prose_mention_with_final_verdict_accepted(self):
+        prose = "Gate says OUTCOME: APPROVED is only for clean reviews.\n\nOUTCOME: APPROVED"
+        self.legacy(self.write_evidence(result=prose))
+        self.assertIsNone(self.check())
+        self.legacy(self.write_evidence(result=prose + "\nOUTCOME: CHANGES_REQUESTED"))
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.check())
+
+
 class WorkflowShape(unittest.TestCase):
     """Direct-main policy: the real workflow passes, and each forbidden mutation of it is detected."""
 
