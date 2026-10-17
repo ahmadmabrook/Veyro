@@ -3056,6 +3056,64 @@ class Handoff(Base):
             R.enqueue(self.cfg, {"id": "rv3", "module": "MOD-000", "role": "code-review", "prompt": "x", "review_of": {"task_id": "w2"}})
         self.assertEqual(w2["status"], "DONE")
 
+    def test_one_operational_hash_tool_retry_preserves_blocked_history_and_exact_candidate(self):
+        self.cfg.review_gate = True
+        r = self.runner()
+        self.finished_write(r)
+        old = self.add(r, role="code-review", id="nohash", prompt="OUTCOME_LINE=BLOCKED",
+                       review_of={"task_id": "w1"})
+        r.dispatch(old)
+        self.assertEqual((old["status"], old["evidence"]["review_bound_verified"]), ("BLOCKED", True))
+        old["result"] = ("I couldn't do the binding check; no shell or hash tool. "
+                         "On the code itself I found no Critical, High or Medium issues. OUTCOME: BLOCKED")
+        r.store.save(r.state)
+        R.enqueue(self.cfg, {"id": "retry", "module": "MOD-000", "role": "code-review",
+                             "prompt": "OUTCOME_LINE=APPROVED", "review_of": {"task_id": "w1"},
+                             "review_retry_of": "nohash"})
+        r.ingest_queue()
+        retry = r.state["tasks"]["retry"]
+        self.assertEqual(retry["review_retry_of"], "nohash")
+        self.assertEqual(retry["review_candidate"], R.review_candidate(self.repo))
+        prompt = r.child_prompt(retry)
+        self.assertIn("You do not need a shell or hash tool", prompt)
+        self.assertIn("COMPLETE dirty product candidate", prompt)
+        with self.assertRaisesRegex(ValueError, "prior retry"):
+            R.enqueue(self.cfg, {"id": "retry2", "module": "MOD-000", "role": "code-review",
+                                 "prompt": "x", "review_of": {"task_id": "w1"},
+                                 "review_retry_of": "nohash"})
+        r.dispatch(retry)
+        self.assertEqual((retry["status"], retry["evidence"]["review_bound_verified"]), ("DONE", True))
+        self.assertEqual((old["status"], old["evidence"]["review_outcome"]), ("BLOCKED", "BLOCKED"))
+        self.assertEqual(R.review_verdict(r.state["tasks"], "w1"), "APPROVED")
+        self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
+        (self.repo / "out" / "extra.txt").write_text("changed after review")
+        self.assertFalse(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
+
+    def test_operational_retry_refuses_substantive_block_and_changed_candidate(self):
+        self.cfg.review_gate = True
+        r = self.runner()
+        self.finished_write(r)
+        old = self.add(r, role="code-review", id="nohash", prompt="OUTCOME_LINE=BLOCKED",
+                       review_of={"task_id": "w1"})
+        r.dispatch(old)
+        with self.assertRaisesRegex(ValueError, "operational no-hash-tool"):
+            R.enqueue(self.cfg, {"id": "retry", "module": "MOD-000", "role": "code-review",
+                                 "prompt": "x", "review_of": {"task_id": "w1"},
+                                 "review_retry_of": "nohash"})
+        old["result"] = ("I couldn't do the binding check; no shell or hash tool. "
+                         "On the code itself I found no Critical, High or Medium issues. OUTCOME: BLOCKED")
+        r.store.save(r.state)
+        R.enqueue(self.cfg, {"id": "retry", "module": "MOD-000", "role": "code-review",
+                             "prompt": "OUTCOME_LINE=APPROVED", "review_of": {"task_id": "w1"},
+                             "review_retry_of": "nohash"})
+        r.ingest_queue()
+        (self.repo / "out" / "extra.txt").write_text("new candidate")
+        retry = r.state["tasks"]["retry"]
+        self.assertIn("complete review candidate changed since retry enqueue",
+                      R.bound_review_problems(self.cfg, r.state["tasks"], retry))
+        r.dispatch(retry)
+        self.assertEqual(retry["blocked_reason"], "REVIEW_BINDING_STALE")
+
     def test_exact_remediation_and_approved_review_release_the_gatekeeper_without_rewriting_history(self):
         self.cfg.review_gate = True
         r = self.runner()

@@ -1196,7 +1196,8 @@ def active_module_blockers(cfg, t, tasks):
     projected = dashboard.task_projection(list(tasks.values()), {}, registry, cfg.repo)
     return sorted(p["id"] for p in projected
                   if p["module"] == t["module"] and p["status"] == "BLOCKED" and p["lifecycle"] == "active-blocker"
-                  and not remediated_review_blocker(cfg, tasks, tasks[p["id"]]))
+                  and not remediated_review_blocker(cfg, tasks, tasks[p["id"]])
+                  and not resolved_operational_review_blocker(cfg, tasks, tasks[p["id"]]))
 
 
 REVIEW_OUTCOMES = ("APPROVED", "CHANGES_REQUESTED")
@@ -1237,6 +1238,44 @@ def _hashes_current(cfg, changed):
                                      for c in changed)
     except OSError:
         return False
+
+
+def review_candidate(repo):
+    """Runner-owned receipt for the complete dirty candidate, not just the last write."""
+    state = repo_state(repo)
+    files = [{"path": p, "sha256": h} for p, h in sorted(state["files"].items())]
+    if not files or any(not isinstance(c["sha256"], str) or not SHA256_RE.fullmatch(c["sha256"]) for c in files):
+        raise ValueError("review candidate needs regular dirty files with SHA256 hashes")
+    diff = _git(repo, "diff", "--binary", "--no-ext-diff", "--", *(c["path"] for c in files)).stdout
+    body = {"head": state["head"], "files": files, "diff_sha256": hashlib.sha256(diff).hexdigest()}
+    body["candidate_sha256"] = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return body
+
+
+def operational_hash_block(r):
+    """Only the audited no-hash-tool BLOCKED case may receive one unchanged-candidate retry."""
+    ev = r.get("evidence") or {}
+    result = r.get("result") or ""
+    return (r.get("status") == "BLOCKED" and r.get("blocked_reason") == "REVIEW_BLOCKED"
+            and ev.get("review_outcome") == ev.get("review_outcome_reported") == "BLOCKED"
+            and ev.get("review_bound_verified") is True and ev.get("violations") == ["REVIEW_BLOCKED"]
+            and (r.get("route") or {}).get("verdict") == "VERIFIED"
+            and "couldn't do the binding check" in result and "no shell" in result
+            and "no Critical, High or Medium issues" in result)
+
+
+def resolved_operational_review_blocker(cfg, tasks, prior):
+    """A historical operational BLOCKED review clears only after its one exact retry passes."""
+    if not operational_hash_block(prior):
+        return False
+    w = tasks.get((prior.get("review_of") or {}).get("task_id"))
+    if not w:
+        return False
+    matches = [r for r in tasks.values() if r.get("review_retry_of") == prior["id"]
+               and (r.get("review_of") or {}).get("task_id") == w["id"]]
+    return (len(matches) == 1 and matches[0].get("status") == "DONE"
+            and (matches[0].get("evidence") or {}).get("review_outcome") == "APPROVED"
+            and _bound_review_ok(w, matches[0]) and matches[0].get("review_candidate") == review_candidate(cfg.repo))
 
 
 def _bound_review_ok(w, r):
@@ -1321,14 +1360,19 @@ def review_binding(cfg, t, tasks, require_changed):
     for c in want:
         if _path_hash(Path(cfg.repo) / c["path"]) != c["sha256"]:
             raise ValueError(f"{c['path']} changed since the write task finished: stale binding")
-    for o in tasks.values():  # one bound review per write: a second look at an unchanged write is review shopping
-        if (o.get("id") != t.get("id") and (o.get("review_of") or {}).get("task_id") == b["task_id"]
-                and (o.get("status") in ("QUEUED", "RUNNING") or review_attempts({o["id"]: o}, b["task_id"])
-                     # an explicit reviewer claim (even BLOCKED, or on an unverified route) is never retried for an unchanged write;
-                     # reviews that produced no outcome at all (crash, no marker) stay retryable
-                     or (o.get("evidence") or {}).get("review_outcome_reported") in ("APPROVED", "CHANGES_REQUESTED", "BLOCKED"))):
-            raise ValueError(f"write task {b['task_id']} already has a bound review ({o['id']}); "
-                             "only a new remediation write can be reviewed again")
+    prior = [o for o in tasks.values() if o.get("id") != t.get("id")
+             and (o.get("review_of") or {}).get("task_id") == b["task_id"]
+             and (o.get("status") in ("QUEUED", "RUNNING") or review_attempts({o["id"]: o}, b["task_id"])
+                  or (o.get("evidence") or {}).get("review_outcome_reported") in ("APPROVED", "CHANGES_REQUESTED", "BLOCKED"))]
+    retry_of = t.get("review_retry_of")
+    if retry_of:
+        if not (len(prior) == 1 and prior[0].get("id") == retry_of and operational_hash_block(prior[0])):
+            raise ValueError("review retry requires exactly one operational no-hash-tool BLOCKED review, with no substantive verdict or prior retry")
+        if t.get("review_candidate") != review_candidate(cfg.repo):
+            raise ValueError("review retry candidate is missing or changed")
+    elif prior:  # substantive verdicts and approved reviews are never review-shopped
+        raise ValueError(f"write task {b['task_id']} already has a bound review ({prior[0]['id']}); "
+                         "only a new remediation write can be reviewed again")
 
 
 def bound_review_problems(cfg, tasks, t):
@@ -1343,8 +1387,11 @@ def bound_review_problems(cfg, tasks, t):
     if not want or _changed_pairs(b.get("changed")) != want:
         return ["bound changed-file evidence no longer matches the write task"]
     try:
-        return [f"{c['path']} changed since the write finished" for c in want
-                if _path_hash(Path(cfg.repo) / c["path"]) != c["sha256"]]
+        problems = [f"{c['path']} changed since the write finished" for c in want
+                    if _path_hash(Path(cfg.repo) / c["path"]) != c["sha256"]]
+        if t.get("review_retry_of") and t.get("review_candidate") != review_candidate(cfg.repo):
+            problems.append("complete review candidate changed since retry enqueue")
+        return problems
     except OSError as e:
         return [f"cannot hash bound files: {str(e)[:80]}"]
 
@@ -1744,6 +1791,8 @@ class Runner:
             raise ValueError(f"{t['module']} already has a verified accepted receipt: no orchestrator-proposed task of any role")
         if t["role"] == "code-review" and not t["review_of"]:
             raise ValueError("an orchestrator-proposed code-review must bind review_of (write task id + changed-file hashes)")
+        if t.get("review_retry_of"):
+            raise ValueError("operational review retries require the owner CLI and an audited prior BLOCKED record")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -1956,7 +2005,18 @@ class Runner:
                   f"expected changes: {', '.join(w.get('expected_changes') or []) or 'none'}.",
                   "- Runner verifier outcome for that write: " +
                   (f"exit {v.get('exit')} of {' '.join(map(str, v.get('cmd') or []))}" if v else "no verifier recorded") + ".",
-                  "- If the files on disk differ from these hashes, or you cannot review exactly them, end with OUTCOME: BLOCKED."]
+                  "- The runner computed these SHA256 values at enqueue and checks them again before and after your review. "
+                  "You do not need a shell or hash tool; inspect the named files with your read-only tools. "
+                  "If you cannot inspect their contents, or find a substantive defect, report that accurately."]
+        candidate = t.get("review_candidate")
+        if candidate:
+            lines += ["- Operational retry of prior BLOCKED review " + t["review_retry_of"] + "; its verdict remains historical.",
+                      "- Runner-verified COMPLETE dirty product candidate: head " + candidate["head"] +
+                      "; diff SHA256 " + candidate["diff_sha256"] + "; candidate SHA256 " + candidate["candidate_sha256"] + ".",
+                      "- Inspect every candidate file below, including files from earlier writes:"]
+            lines += [f"  - {c['path']} sha256 {c['sha256']}" for c in candidate["files"]]
+            lines += ["- The runner rechecks this entire manifest after your review. A missing personal hash tool alone is not "
+                      "a reason to block; inability to inspect the files or a substantive defect is."]
         return "\n".join(lines)
 
     # --- dispatch
@@ -2422,15 +2482,26 @@ def validate_task(d, cfg):
                     for c in changed)))):
             raise ValueError("review_of is only for code-review: {task_id, changed:[{path, sha256}]}")
         review_of = {"task_id": review_of["task_id"], "changed": None if changed is None else [dict(c) for c in changed]}
+    retry_of = d.get("review_retry_of")
+    if retry_of is not None and not (d["role"] == "code-review" and review_of and
+                                     isinstance(retry_of, str) and ID_RE.match(retry_of)):
+        raise ValueError("review_retry_of is only for a bound code-review")
+    candidate = d.get("review_candidate")
+    if candidate is not None and not (retry_of and isinstance(candidate, dict)
+                                      and set(candidate) == {"head", "files", "diff_sha256", "candidate_sha256"}):
+        raise ValueError("review_candidate is only for an operational review retry")
     return {"review_of": review_of, "review_gate": 1, "id": d["id"], "module": d["module"], "role": d["role"], "title": str(d.get("title") or d["id"])[:120],
             "plan_phase": plan_phase, "prompt": prompt, "allowed_paths": allowed, "expected_changes": expected,
             "verify_cmd": verify, "status": "QUEUED", "stage": None, "attempts": 0, "max_attempts": cfg.max_attempts,
             "next_attempt_at": 0, "created_at": d.get("created_at") or now_iso(), "updated_at": now_iso(),
-            "child": None} | ({"remediation_of": remediation_of} if remediation_of else {})
+            "child": None} | ({"remediation_of": remediation_of} if remediation_of else {}) | (
+                {"review_retry_of": retry_of, "review_candidate": candidate} if retry_of else {})
 
 
 def enqueue(cfg, task):
     task = {**task, "created_at": now_iso()}
+    if task.get("review_retry_of"):
+        task["review_candidate"] = review_candidate(cfg.repo)
     t = validate_task(task, cfg)
     store = Store(cfg.home)
     state = store.load()
@@ -2656,6 +2727,7 @@ def main(argv=None):
     e.add_argument("--expect", action="append", default=[], help="exact file that must change")
     e.add_argument("--verify-cmd", help='JSON argv list run by the runner after the child, e.g. \'["python3","-m","unittest"]\'')
     e.add_argument("--review-of", help="code-review only: id of the DONE write task this review is bound to (changed-file hashes are filled from runner evidence)")
+    e.add_argument("--review-retry-of", help="owner-audited operational BLOCKED review id; permits one unchanged-candidate retry only")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
@@ -2698,6 +2770,7 @@ def main(argv=None):
                               "plan_phase": a.plan_phase, "allowed_paths": a.allow, "expected_changes": a.expect,
                               "verify_cmd": json.loads(a.verify_cmd) if a.verify_cmd else None,
                               "review_of": {"task_id": a.review_of} if a.review_of else None,
+                              "review_retry_of": a.review_retry_of,
                               "prompt": Path(a.prompt_file).read_text()})
         except (ValueError, OSError) as ex:
             print(f"enqueue refused: {ex}", file=sys.stderr)
