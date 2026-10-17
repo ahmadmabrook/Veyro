@@ -408,10 +408,10 @@ class HostileControlTests(unittest.TestCase):
         for sep in SEPARATORS:
             hostile = "SECRET" + sep + "evil"
             for call in (
-                lambda: sanitize_untrusted(hostile),
-                lambda: isolate(hostile, "auto"),
-                lambda: render_balance_line("en", "latn", hostile, 1, "JOD"),
-                lambda: render_balance_line("ar", "latn", hostile, 1, "JOD"),
+                lambda hostile=hostile: sanitize_untrusted(hostile),
+                lambda hostile=hostile: isolate(hostile, "auto"),
+                lambda hostile=hostile: render_balance_line("en", "latn", hostile, 1, "JOD"),
+                lambda hostile=hostile: render_balance_line("ar", "latn", hostile, 1, "JOD"),
             ):
                 with self.assertRaises(ValueError, msg=hex(ord(sep))) as caught:
                     call()
@@ -424,9 +424,9 @@ class HostileControlTests(unittest.TestCase):
         for control in controls:
             hostile = "SECRET" + control + "evil"
             for call in (
-                lambda: sanitize_untrusted(hostile),
-                lambda: isolate(hostile, "rtl"),
-                lambda: render_balance_line("ar", "arab", hostile, 1, "JOD"),
+                lambda hostile=hostile: sanitize_untrusted(hostile),
+                lambda hostile=hostile: isolate(hostile, "rtl"),
+                lambda hostile=hostile: render_balance_line("ar", "arab", hostile, 1, "JOD"),
             ):
                 with self.assertRaises(ValueError, msg=hex(ord(control))) as caught:
                     call()
@@ -557,7 +557,8 @@ class WorstCaseTests(unittest.TestCase):
         name = "أ" * NAME_MAX
         for locale in ("ar", "en"):
             line = self.timed(
-                f"name {locale}", lambda: render_balance_line(locale, "arab", name, 1, "JOD")
+                f"name {locale}",
+                lambda locale=locale: render_balance_line(locale, "arab", name, 1, "JOD"),
             )
             self.assertIn(name, line["text"])
         line = self.timed(
