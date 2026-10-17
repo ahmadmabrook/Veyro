@@ -252,6 +252,10 @@ class DashboardProjectionTests(unittest.TestCase):
     POST_AUDIT = {
         OWNER_BLOCKER: ('MOD-003', 'mission-control-owner-decision-blocker-full-opus-r2-20261016'),
         'mod003-owner-appendix-b-record-opus-review-20261016': ('MOD-003', 'mod003-owner-appendix-b-record-opus-r2-20261016'),
+        'mod003-s1-security-opus-20261017': ('MOD-003', 'mod003-s1-security-after-hardening-opus-20261017'),
+        'mod003-s1-performance-opus-20261017': ('MOD-003', 'mod003-s1-performance-after-bounds-opus-20261017'),
+        'mod003-s1-sonnet-security-performance-20261017': ('MOD-003', 'mod003-s1-opus-operational-retry-20261017'),
+        'mod003-s1-full-opus-review-after-findings-20261017': ('MOD-003', 'mod003-s1-opus-operational-retry-20261017'),
         'blocker-projection-hardening-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
         'runner-prerequisite-gate-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
         'runner-prerequisite-gate-evidence-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
