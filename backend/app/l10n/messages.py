@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
-from app.l10n.conventions import LOCALES, parse_locale
+from app.l10n.conventions import LOCALES, MAX_INTEGER_BITS, MAX_PLACEHOLDER_CHARS, parse_locale
 
 Entry = str | Mapping[str, str]
 Catalog = Mapping[str, Entry]
@@ -84,6 +84,8 @@ def plural_category(locale: str, count: int) -> str:
         raise TypeError("count must be an integer")
     if count < 0:
         raise ValueError("count must not be negative")
+    if count.bit_length() > MAX_INTEGER_BITS:
+        raise ValueError("count out of range")
     if loc == "ar":
         if count == 0:
             return "zero"
@@ -123,14 +125,17 @@ def translate(
 ) -> Message:
     """Render key in locale; a missing (or incomplete plural) ar entry falls back to en.
 
-    Placeholder values are inserted verbatim. Callers must sanitize/isolate untrusted values
-    (see conventions.sanitize_untrusted and conventions.isolate) before passing them; the
-    fixture does so.
+    Placeholder values are inserted verbatim but bounded to MAX_PLACEHOLDER_CHARS. Callers must
+    sanitize/isolate untrusted values (see conventions.sanitize_untrusted and
+    conventions.isolate, which reject paragraph separators) before passing them; the fixture
+    does so.
     """
     loc = parse_locale(locale)
     values: Mapping[str, str] = {} if params is None else params
     if not all(isinstance(v, str) for v in values.values()):
         raise TypeError("placeholder values must be strings")
+    if any(len(v) > MAX_PLACEHOLDER_CHARS for v in values.values()):
+        raise ValueError("placeholder value too long")
     source = catalogs if catalogs is not None else {name: load_catalog(name) for name in LOCALES}
     for candidate in dict.fromkeys((loc, FALLBACK_LOCALE)):
         category = None if count is None else plural_category(candidate, count)

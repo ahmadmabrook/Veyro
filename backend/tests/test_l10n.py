@@ -1,6 +1,7 @@
 import ast
 import sys
 import time
+import unicodedata
 import unittest
 from pathlib import Path
 from types import MappingProxyType
@@ -394,6 +395,187 @@ class PerfBaselineTests(unittest.TestCase):
         )
         self.assertLess(load_seconds, 1.0)
         self.assertLess(format_seconds, 10.0)
+
+
+SEPARATORS = [chr(c) for c in (0x0A, 0x0D, 0x1C, 0x1D, 0x1E, 0x85, 0x2028, 0x2029)]
+MAX_INT = 2**conventions.MAX_INTEGER_BITS - 1
+NAME_MAX = conventions.MAX_UNTRUSTED_TEXT_CHARS
+PLACEHOLDER_MAX = conventions.MAX_PLACEHOLDER_CHARS
+
+
+class HostileControlTests(unittest.TestCase):
+    def test_sec_each_paragraph_separator_rejected_with_fixed_error(self):
+        for sep in SEPARATORS:
+            hostile = "SECRET" + sep + "evil"
+            for call in (
+                lambda: sanitize_untrusted(hostile),
+                lambda: isolate(hostile, "auto"),
+                lambda: render_balance_line("en", "latn", hostile, 1, "JOD"),
+                lambda: render_balance_line("ar", "latn", hostile, 1, "JOD"),
+            ):
+                with self.assertRaises(ValueError, msg=hex(ord(sep))) as caught:
+                    call()
+                self.assertEqual(str(caught.exception), "text contains a control character")
+
+    def test_sec_non_separator_cc_zl_zp_rejected_with_fixed_error(self):
+        # NUL, BEL, TAB, VT, FF, ESC, DEL, C1 range, plus Zl/Zp.
+        controls = [chr(c) for c in (0x00, 0x07, 0x09, 0x0B, 0x0C, 0x1B, 0x1F, 0x7F, 0x80, 0x9F)]
+        controls += [chr(0x2028), chr(0x2029)]
+        for control in controls:
+            hostile = "SECRET" + control + "evil"
+            for call in (
+                lambda: sanitize_untrusted(hostile),
+                lambda: isolate(hostile, "rtl"),
+                lambda: render_balance_line("ar", "arab", hostile, 1, "JOD"),
+            ):
+                with self.assertRaises(ValueError, msg=hex(ord(control))) as caught:
+                    call()
+                self.assertEqual(str(caught.exception), "text contains a control character")
+                self.assertNotIn("SECRET", str(caught.exception))
+
+    def test_sec_exact_cc_boundaries(self):
+        for code in range(0x00, 0xA0):
+            is_cc = unicodedata.category(chr(code)) == "Cc"
+            text = "a" + chr(code)
+            if is_cc:
+                with self.assertRaises(ValueError, msg=hex(code)):
+                    sanitize_untrusted(text)
+            else:
+                self.assertEqual(sanitize_untrusted(text), text, hex(code))
+        for code in (0xA0, 0xAD, 0x2027, 0x202F):  # NBSP, soft hyphen, neighbours of Zl/Zp
+            self.assertEqual(sanitize_untrusted(chr(code)), chr(code), hex(code))
+
+    def test_sec_control_at_exact_length_limit_rejected_not_too_long(self):
+        at = "a" * (NAME_MAX - 1) + chr(0x00)
+        with self.assertRaises(ValueError) as caught:
+            sanitize_untrusted(at)
+        self.assertEqual(str(caught.exception), "text contains a control character")
+        with self.assertRaises(ValueError) as caught:
+            sanitize_untrusted(at + "a")
+        self.assertEqual(str(caught.exception), "text too long")
+        self.assertEqual(sanitize_untrusted("a" * NAME_MAX), "a" * NAME_MAX)
+
+    def test_bnd_ordinary_arabic_and_english_text_preserved(self):
+        for text in ("سارة", "Sara Ali", "سارة Ali ١٢٣ 123", "x-y_z.@(1)", "مَّ"):
+            self.assertEqual(sanitize_untrusted(text), text)
+            self.assertEqual(isolate(text, "auto"), FSI + text + PDI)
+
+    def test_sec_separator_after_bidi_control_still_rejected(self):
+        for sep in SEPARATORS:
+            with self.assertRaises(ValueError):
+                sanitize_untrusted(RLO + sep + PDI_CHAR)
+
+    def test_sec_isolate_output_never_contains_separator_or_stray_controls(self):
+        for control in OVERRIDES:
+            out = isolate("a" + control + "b", "rtl")
+            self.assertEqual(out, RLI + "ab" + PDI)
+            self.assertFalse(any(s in out for s in SEPARATORS))
+
+    def test_sec_trusted_template_and_amount_remain_protected(self):
+        line = render_balance_line("ar", "latn", "Sara" + RLO, 1234, "JOD")
+        self.assertEqual(line["text"], f"رصيد {FSI}Sara{PDI}: {LRI}JOD 1.234{PDI}")
+        self.assertEqual(format_money(1, "JOD", "latn", "ar"), LRI + "JOD 0.001" + PDI)
+        template = "line1\nline2 {name}"
+        out = translate("k", "en", {"name": "x"}, catalogs={"en": {"k": template}})
+        self.assertEqual(out.text, "line1\nline2 x")  # trusted templates are not filtered
+
+    def test_neg_non_string_member_rejected(self):
+        with self.assertRaises(TypeError):
+            render_balance_line("en", "latn", b"Sara", 1, "JOD")
+
+
+class BoundsTests(unittest.TestCase):
+    def test_bnd_integer_and_money_at_and_beyond_limit(self):
+        limit = 2**conventions.MAX_INTEGER_BITS
+        for sign in (1, -1):
+            self.assertTrue(format_integer(sign * (limit - 1), "latn"))
+            with self.assertRaises(ValueError) as caught:
+                format_integer(sign * limit, "latn")
+            self.assertEqual(str(caught.exception), "integer out of range")
+            self.assertTrue(format_money(sign * (limit - 1), "JOD", "arab", "ar"))
+            with self.assertRaises(ValueError) as caught:
+                format_money(sign * limit, "JOD", "latn", "en")
+            self.assertEqual(str(caught.exception), "integer out of range")
+        self.assertGreater(limit, 10**40)
+
+    def test_bnd_huge_integer_rejected_without_conversion(self):
+        huge = 10**100000
+        for call in (
+            lambda: format_integer(huge, "latn"),
+            lambda: format_money(huge, "USD", "latn", "en"),
+            lambda: plural_category("ar", huge),
+            lambda: render_balance_line("en", "latn", "Sara", huge, "JOD"),
+        ):
+            with self.assertRaises(ValueError):
+                call()
+
+    def test_bnd_member_name_at_and_beyond_limit(self):
+        at = "a" * NAME_MAX
+        line = render_balance_line("en", "latn", at, 1, "JOD")
+        self.assertIn(FSI + at + PDI, line["text"])
+        with self.assertRaises(ValueError) as caught:
+            render_balance_line("en", "latn", at + "a", 1, "JOD")
+        self.assertEqual(str(caught.exception), "text too long")
+        with self.assertRaises(ValueError):
+            sanitize_untrusted("a" * (NAME_MAX + 1))
+        with self.assertRaises(ValueError):
+            isolate("a" * (NAME_MAX + 1), "ltr")
+        # length is judged on the input, so padding with strippable controls cannot bypass it
+        with self.assertRaises(ValueError):
+            sanitize_untrusted(RLO * (NAME_MAX + 1))
+
+    def test_bnd_placeholder_at_and_beyond_limit(self):
+        catalogs = {"en": {"k": "{v}"}}
+        at = "x" * PLACEHOLDER_MAX
+        self.assertEqual(translate("k", "en", {"v": at}, catalogs=catalogs).text, at)
+        with self.assertRaises(ValueError) as caught:
+            translate("k", "en", {"v": at + "x"}, catalogs=catalogs)
+        self.assertEqual(str(caught.exception), "placeholder value too long")
+
+    def test_bnd_plural_count_at_and_beyond_limit(self):
+        self.assertEqual(plural_category("ar", MAX_INT), plural_category("ar", MAX_INT % 100))
+        with self.assertRaises(ValueError) as caught:
+            plural_category("ar", MAX_INT + 1)
+        self.assertEqual(str(caught.exception), "count out of range")
+        with self.assertRaises(ValueError):
+            translate("items.count", "en", {"count": "1"}, count=MAX_INT + 1)
+
+
+class WorstCaseTests(unittest.TestCase):
+    """Measured worst accepted inputs; timings are printed, not asserted tightly."""
+
+    def timed(self, label, call):
+        start = time.perf_counter()
+        for _ in range(100):
+            result = call()
+        elapsed_ms = (time.perf_counter() - start) * 10  # per call, ms
+        print(f"\nPERF worst-case {label}: {elapsed_ms:.4f} ms/call")
+        self.assertLess(elapsed_ms, 1000)  # generous sanity ceiling only
+        return result
+
+    def test_perf_worst_accepted_name_amount_and_plural(self):
+        name = "أ" * NAME_MAX
+        for locale in ("ar", "en"):
+            line = self.timed(
+                f"name {locale}", lambda: render_balance_line(locale, "arab", name, 1, "JOD")
+            )
+            self.assertIn(name, line["text"])
+        line = self.timed(
+            "amount", lambda: render_balance_line("ar", "arab", "Sara", MAX_INT, "JOD")
+        )
+        self.assertIn("JOD", line["text"])
+        count_text = format_integer(MAX_INT, "arab")
+        message = self.timed(
+            "plural",
+            lambda: translate("items.count", "ar", {"count": count_text}, count=MAX_INT),
+        )
+        self.assertIn(count_text, message.text)
+        self.timed(
+            "placeholder",
+            lambda: translate(
+                "items.count", "en", {"count": "9" * PLACEHOLDER_MAX}, count=MAX_INT
+            ),
+        )
 
 
 if __name__ == "__main__":

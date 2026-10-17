@@ -22,6 +22,19 @@ _ISOLATE_OPENERS: Final[dict[str, str]] = {"rtl": RLI, "ltr": LRI, "auto": FSI}
 _BIDI_CONTROLS: Final = "".join(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
 _STRIP_BIDI: Final = str.maketrans("", "", _BIDI_CONTROLS)
 
+# Unicode Cc (U+0000-001F, U+007F-009F), Zl (U+2028) and Zp (U+2029). This covers every bidi
+# paragraph separator (LF, CR, U+001C-001E, U+0085, U+2028, U+2029), which would terminate every
+# open isolate. Untrusted text containing any of them is rejected, never stripped or echoed.
+_REJECTED_CONTROL_RANGES: Final = ((0x00, 0x1F), (0x7F, 0x9F), (0x2028, 0x2029))
+_REJECTED_CONTROL_RE: Final = re.compile(
+    "[" + "".join(f"\\u{lo:04x}-\\u{hi:04x}" for lo, hi in _REJECTED_CONTROL_RANGES) + "]"
+)
+
+# Fail-closed S1 bounds, checked in O(1) before any decimal conversion or copying.
+MAX_INTEGER_BITS: Final = 256  # |value| < 2**256 (~77 decimal digits); covers 10**40 comfortably
+MAX_UNTRUSTED_TEXT_CHARS: Final = 256  # member names
+MAX_PLACEHOLDER_CHARS: Final = 512  # any placeholder value passed to translate()
+
 _ARABIC_DIGITS: Final = "".join(chr(0x0660 + i) for i in range(10))
 _TO_ARABIC: Final = str.maketrans("0123456789", _ARABIC_DIGITS)
 _TO_LATIN: Final = str.maketrans(_ARABIC_DIGITS, "0123456789")
@@ -46,9 +59,19 @@ def direction(locale: str) -> Direction:
 
 
 def sanitize_untrusted(text: str) -> str:
-    """Remove bidi embedding/override/isolate controls so they cannot reorder surrounding text."""
+    """Make untrusted text safe to place inside an isolate, or reject it.
+
+    Contract: text longer than MAX_UNTRUSTED_TEXT_CHARS or containing any Unicode Cc, Zl or Zp
+    control (including tab and all paragraph separators) raises ValueError (fixed message, input
+    not echoed); embedding/override/isolate controls are stripped. A returned value therefore
+    cannot break out of an isolate.
+    """
     if not isinstance(text, str):
         raise TypeError("text must be a string")
+    if len(text) > MAX_UNTRUSTED_TEXT_CHARS:
+        raise ValueError("text too long")
+    if _REJECTED_CONTROL_RE.search(text) is not None:
+        raise ValueError("text contains a control character")
     return text.translate(_STRIP_BIDI)
 
 
@@ -68,6 +91,8 @@ def _check_numbering(numbering: str) -> None:
 def _require_int(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError("integer required")
+    if value.bit_length() > MAX_INTEGER_BITS:
+        raise ValueError("integer out of range")
     return value
 
 
