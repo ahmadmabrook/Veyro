@@ -32,6 +32,7 @@
   "mod003-s1-performance-opus-20261017": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-s1-performance-after-bounds-opus-20261017"},
   "mod003-s1-sonnet-security-performance-20261017": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-s1-opus-operational-retry-20261017"},
   "mod003-s1-full-opus-review-after-findings-20261017": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-s1-opus-operational-retry-20261017"},
+  "mod003-s1-opus-card-review-20261017": {"module": "MOD-003", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "mod003-s1-opus-card-wording-review-20261017"},
   "blocker-projection-hardening-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
   "runner-prerequisite-gate-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
   "runner-prerequisite-gate-evidence-sonnet-20261016": {"module": "MOD-000", "classification": "RESOLVED_BUT_HISTORICAL", "evidence_task_id": "blocker-integrity-full-code-opus-review-20261016"},
