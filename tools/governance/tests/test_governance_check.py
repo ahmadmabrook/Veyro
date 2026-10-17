@@ -591,6 +591,286 @@ class MalformedInput(Base):
                 self.assertEqual(cm.exception.code, 2)
 
 
+NEW = "knowledge/00-Decisions/OWNER-2026-10-18-next.md"
+NEW_STEM = "OWNER-2026-10-18-next"
+EVID = "knowledge/03-Modules/MOD-002/evidence.md"
+
+
+class FirstPublication(Base):
+    def setUp(self):
+        super().setUp()
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "base")
+        self.fx.write(NEW, OWNER_TEXT)
+        self.ext = Path(tempfile.mkdtemp(prefix="gov-att-"))
+        self.addCleanup(shutil.rmtree, self.ext, True)
+        self.att = self.ext / "att.json"
+        self.attest()
+        self.git("add", "--", NEW)
+
+    def git(self, *a):
+        subprocess.run(["git", "-C", str(self.fx.root), *a], check=True, capture_output=True)
+
+    def head(self):
+        return subprocess.run(["git", "-C", str(self.fx.root), "rev-parse", "HEAD"], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def attest(self, **over):
+        d = {"schema": "veyro.owner-attestation/1", "owner_id": "gateway-owner",
+             "source": "openclaw:webchat:direct", "owner_choice_quote": "I choose option B", "source_prompt_message_id": "msg-123",
+             "record_path": NEW, "record_sha256": hashlib.sha256((self.fx.root / NEW).read_bytes()).hexdigest(),
+             "expected_head": self.head()}
+        d.update(over)
+        self.att.write_text(json.dumps(d))
+
+    def publish(self, decision=NEW_STEM, *paths, att=None):
+        return run("check-change", "--root", str(self.fx.root), "--decision", decision,
+                   "--first-publish-owner-attestation", str(att or self.att),
+                   stdin="\n".join(paths or (NEW,)) + "\n")
+
+    def assertPublishBlocked(self, res):
+        self.assertEqual(res[0], 1, res[1])
+        self.assertIn("FIRST_PUBLISH_BLOCKED", [v["code"] for v in res[1]["violations"]], res[1])
+
+    def assertPublishBlockedBy(self, res, detail):
+        self.assertPublishBlocked(res)
+        self.assertIn(detail, " | ".join(v["detail"] for v in res[1]["violations"]), res[1])
+
+    def test_exact_new_sole_record_passes_with_audit(self):
+        code, out = self.publish()
+        self.assertEqual((code, out["result"]), (0, "PASS"), out)
+        self.assertEqual(out["first_publish_audit"]["attestation_sha256"],
+                         hashlib.sha256(self.att.read_bytes()).hexdigest())
+
+    def test_staged_new_record_passes(self):
+        self.git("add", NEW)
+        self.assertEqual(self.publish()[0], 0)
+
+    def test_staged_x_then_attested_working_y_blocks(self):
+        self.git("add", NEW)
+        self.fx.write(NEW, OWNER_TEXT + "harmless\n")
+        self.attest()
+        self.assertPublishBlocked(self.publish())
+        self.git("add", NEW)
+        self.assertEqual(self.publish()[0], 0)
+
+    def test_staged_then_modified_and_typechange_block(self):
+        self.git("add", NEW)
+        (self.fx.root / NEW).unlink()
+        (self.fx.root / NEW).symlink_to(self.fx.root / OWNER)
+        self.assertPublishBlocked(self.publish())
+        # MM: record committed at HEAD, staged edit, further working edit
+        self.git("rm", "-f", "-q", "--cached", "--", NEW)
+        (self.fx.root / NEW).unlink()
+        self.fx.write(NEW, OWNER_TEXT)
+        self.git("add", NEW)
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "n")
+        self.fx.write(NEW, OWNER_TEXT + "one\n")
+        self.git("add", NEW)
+        self.fx.write(NEW, OWNER_TEXT + "two\n")
+        self.attest()
+        self.assertPublishBlocked(self.publish())
+
+    def test_untracked_record_blocks(self):
+        self.git("rm", "-q", "--cached", "--", NEW)
+        self.assertPublishBlocked(self.publish())
+
+    def test_extra_staged_tracked_edit_blocks(self):
+        reg = self.fx.root / "governance/registry.json"
+        reg.write_text(reg.read_text() + "\n")
+        self.git("add", "governance/registry.json")
+        self.assertPublishBlocked(self.publish())
+
+    def test_unrelated_modified_with_assume_unchanged_blocks(self):
+        reg = self.fx.root / "governance/registry.json"
+        reg.write_text(reg.read_text() + "\n")
+        self.git("update-index", "--assume-unchanged", "governance/registry.json")
+        self.assertPublishBlocked(self.publish())
+        # independent of the ls-files tag check: the raw-bytes comparison alone detects it
+        self.assertIn("differs from the index", G.tree_state_problem(self.fx.root, NEW, (self.fx.root / NEW).read_bytes()))
+
+    def test_same_size_edit_with_restored_mtime_blocks(self):
+        import os
+        reg = self.fx.root / EVID
+        st = os.stat(reg)
+        data = reg.read_bytes()
+        reg.write_bytes(data[:-1] + (b"X" if data[-1:] != b"X" else b"Y"))
+        os.utime(reg, ns=(st.st_atime_ns, st.st_mtime_ns))
+        self.git("config", "core.trustctime", "false")
+        self.git("config", "core.checkStat", "minimal")
+        self.assertPublishBlockedBy(self.publish(), f"working file differs from the index: {EVID}")
+        self.assertIn("differs from the index", G.tree_state_problem(self.fx.root, NEW, (self.fx.root / NEW).read_bytes()))
+
+    def test_clean_filter_trick_blocks(self):
+        reg = self.fx.root / EVID
+        orig = self.ext / "orig.md"
+        orig.write_bytes(reg.read_bytes())
+        data = reg.read_bytes()
+        reg.write_bytes(data[:-1] + (b"X" if data[-1:] != b"X" else b"Y"))
+        (self.fx.root / ".git/info").mkdir(exist_ok=True)
+        (self.fx.root / ".git/info/attributes").write_text(f"{EVID} filter=x\n")
+        self.git("config", "filter.x.clean", f"cat '{orig}'")
+        self.assertPublishBlockedBy(self.publish(), f"working file differs from the index: {EVID}")
+        self.assertIn("differs from the index", G.tree_state_problem(self.fx.root, NEW, (self.fx.root / NEW).read_bytes()))
+
+    def test_tracked_symlink_or_missing_file_blocks(self):
+        reg = self.fx.root / EVID
+        saved = reg.read_bytes()
+        reg.unlink()
+        self.assertPublishBlockedBy(self.publish(), "tracked file unreadable or not a plain regular file")
+        reg.symlink_to(self.fx.root / OWNER)
+        self.assertPublishBlockedBy(self.publish(), "tracked file unreadable or not a plain regular file")
+        reg.unlink()
+        reg.write_bytes(saved)
+        self.assertEqual(self.publish()[0], 0)
+
+    def test_assume_unchanged_hides_nothing(self):
+        reg = self.fx.root / "governance/registry.json"
+        reg.write_text(reg.read_text() + "\n")
+        self.git("update-index", "--assume-unchanged", "governance/registry.json")
+        self.assertPublishBlocked(self.publish())
+        self.git("update-index", "--no-assume-unchanged", "--skip-worktree", "governance/registry.json")
+        self.assertPublishBlocked(self.publish())
+
+    def test_porcelain_entries_keep_codes(self):
+        self.assertEqual(G.porcelain_entries(b"?? a\0R  new\0old\0AM x\0"),
+                         [("??", "a"), ("R ", "new"), ("R ", "old"), ("AM", "x")])
+
+    def test_absent_option_stays_blocked(self):
+        self.assertBlocked("CHANGE_SELF_AUTHORIZING", self.change(NEW_STEM, NEW))
+
+    def test_receipt_mismatches_block(self):
+        for over in ({"record_sha256": "0" * 64}, {"owner_id": "someone"}, {"source": "other"},
+                     {"record_path": OWNER2}, {"owner_choice_quote": " "}, {"source_prompt_message_id": ""},
+                     {"owner_choice_quote": 5}, {"extra": "x"}, {"schema": "veyro.owner-attestation/2"},
+                     {"schema": "veyro.owner-attestation/1 "}, {"schema": ""}, {"schema": 1}):
+            with self.subTest(over=over):
+                self.attest(**over)
+                self.assertPublishBlocked(self.publish())
+
+    def test_wrong_head_blocks(self):
+        other = "0" * len(self.head())
+        self.attest(expected_head=other)
+        self.assertPublishBlockedBy(self.publish(), "does not match current HEAD")
+
+    def test_head_move_after_attestation_blocks(self):
+        self.git("rm", "-q", "--cached", "--", NEW)
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "move")
+        self.git("add", "--", NEW)
+        self.assertPublishBlockedBy(self.publish(), "does not match current HEAD")
+        self.attest()
+        self.assertEqual(self.publish()[0], 0)
+
+    def test_malformed_head_blocks(self):
+        good = self.head()
+        for bad in (good.upper(), good[:-1], good[:7], good + "0", " " + good, good + "\n", "", "HEAD", "g" * len(good), 5, None):
+            with self.subTest(bad=bad):
+                self.attest(expected_head=bad)
+                self.assertPublishBlocked(self.publish())
+
+    def test_missing_head_key_blocks(self):
+        d = json.loads(self.att.read_text())
+        del d["expected_head"]
+        self.att.write_text(json.dumps(d))
+        self.assertPublishBlocked(self.publish())
+
+    def test_missing_schema_blocks(self):
+        d = json.loads(self.att.read_text())
+        del d["schema"]
+        self.att.write_text(json.dumps(d))
+        self.assertPublishBlocked(self.publish())
+
+    def test_malformed_receipt_blocks(self):
+        for text in ("not json", "[]", '{"owner_id": "a", "owner_id": "b"}', ""):
+            with self.subTest(text=text):
+                self.att.write_text(text)
+                self.assertPublishBlocked(self.publish())
+        self.assertPublishBlocked(self.publish(att=self.ext / "missing.json"))
+
+    def test_receipt_must_be_regular_file_outside_repo(self):
+        inside = self.fx.root / "att.json"
+        inside.write_text(self.att.read_text())
+        self.assertPublishBlocked(self.publish(att=inside))
+        link = self.ext / "link.json"
+        link.symlink_to(self.att)
+        self.assertPublishBlocked(self.publish(att=link))
+        self.assertPublishBlocked(self.publish(att=self.ext))
+
+    def test_existing_head_record_blocks(self):
+        self.assertPublishBlocked(self.publish(OWNER2_STEM, OWNER2, att=self._att_for(OWNER2)))
+        self.git("add", NEW)
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "n")
+        self.fx.write(NEW, OWNER_TEXT + "edit\n")
+        self.attest()
+        self.assertPublishBlocked(self.publish())
+
+    def _att_for(self, rel):
+        p = self.ext / "other.json"
+        p.write_text(json.dumps({"schema": "veyro.owner-attestation/1", "owner_id": "gateway-owner",
+                                 "source": "openclaw:webchat:direct",
+                                 "owner_choice_quote": "q", "source_prompt_message_id": "m", "record_path": rel,
+                                 "record_sha256": hashlib.sha256((self.fx.root / rel).read_bytes()).hexdigest(),
+                                 "expected_head": self.head()}))
+        return p
+
+    def test_extra_dirty_or_supplied_path_blocks(self):
+        self.fx.write("backend/app.py", "x\n")
+        self.assertPublishBlocked(self.publish())
+        (self.fx.root / "backend/app.py").unlink()
+        self.assertEqual(self.publish()[0], 0)
+        (self.fx.root / "A.docx").write_text("dirty\n")
+        self.assertPublishBlocked(self.publish())
+        (self.fx.root / "A.docx").unlink()
+        for extra in ("backend/app.py", "A.docx", "PROJECT_INDEX.md", "governance/registry.json"):
+            with self.subTest(extra=extra):
+                self.assertPublishBlocked(self.publish(NEW_STEM, NEW, extra))
+        self.assertPublishBlocked(self.publish(NEW_STEM, NEW.upper()))
+        self.assertPublishBlocked(self.publish(NEW_STEM, NEW, NEW.upper()))
+
+    def test_frozen_baseline_and_wrong_decision_block(self):
+        self.assertPublishBlocked(self.publish(NEW_STEM, OWNER))
+        self.assertPublishBlocked(self.publish("OWNER-2026-10-16-baseline", OWNER))
+        self.assertPublishBlocked(self.publish("ADR-0001", NEW))
+        self.assertPublishBlocked(self.publish("OWNER-other", NEW))
+
+    def test_symlink_record_blocks(self):
+        (self.fx.root / NEW).unlink()
+        (self.fx.root / NEW).symlink_to(self.fx.root / OWNER)
+        self.assertPublishBlocked(self.publish())
+
+    def test_oversized_receipt_blocks(self):
+        self.att.write_text(" " * (G.ATTEST_MAX_BYTES + 1))
+        self.assertPublishBlocked(self.publish())
+
+    def test_read_regular_capped_helper(self):
+        f = self.ext / "f.bin"
+        f.write_bytes(b"abc")
+        self.assertEqual(G.read_regular_capped(f, 3), b"abc")
+        with self.assertRaises(OSError):
+            G.read_regular_capped(f, 2)
+        link = self.ext / "l.bin"
+        link.symlink_to(f)
+        with self.assertRaises(OSError):
+            G.read_regular_capped(link, 10)
+        with self.assertRaises(OSError):
+            G.read_regular_capped(self.ext, 10)
+        with self.assertRaises(OSError):
+            G.read_regular_capped(self.ext / "missing.bin", 10)
+
+    def test_not_a_git_repo_fails_closed(self):
+        shutil.rmtree(self.fx.root / ".git")
+        code, out = self.publish()
+        self.assertNotEqual(code, 0, out)
+
+    def test_porcelain_parsing(self):
+        self.assertEqual(G.porcelain_paths(b""), [])
+        self.assertEqual(G.porcelain_paths(b"?? a b\0R  new\0old\0 M x\0"), ["a b", "new", "old", "x"])
+        for bad in (b"?? a", b"R  new\0", b"x\0"):
+            with self.assertRaises(G.Malformed):
+                G.porcelain_paths(bad)
+
+
 class Cli(Base):
     def test_exit_codes_via_subprocess(self):
         tool = str(HERE.parent / "governance_check.py")
