@@ -51,6 +51,14 @@ MOD004_PROMOTION = {
     "contracts/engineering/staging/mod004-rls.md": ".claude/rules/backend/mod004-rls.md",
     "contracts/engineering/staging/mod004-privileged-console.md": ".claude/rules/admin/mod004-privileged-console.md",
 }
+OPERATIONAL_DIFF_RETRY_RECEIPTS = {
+    # The one audited historical review that lacked the Git baseline; no general phrase-based exception.
+    "mod004-cap-provenance-final-opus-review-20261018": {
+        "result_sha256": "4d93f76b86dafcab3c1a47dd8b3758c58b518c578421d45e563864fa09ab1b4d",
+        "changed": [{"path": "contracts/engineering/module-capabilities.yaml",
+                     "sha256": "2958958c1212deafbb9bc3e34673bb4ee145913f655671ae709d4a552dde526a"}],
+    },
+}
 BASELINE_PREFIXES = ("Gym_OS_Master_Product_Blueprint", "Veyro_Technical_System_Design",
                      "Veyro_Engineering_Implementation_Plan", "veyro-product-experience-design")
 ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -902,6 +910,25 @@ def parse_handoff_proposal(text, req_id):
     return prop
 
 
+def complete_handoff_outer_brace(text):
+    """Complete only a TASK envelope missing its final outer brace; all other JSON stays strict."""
+    if not isinstance(text, str) or not text.startswith("{") or not text.rstrip().endswith("}}"):
+        return text, False
+    try:
+        strict_json(text)
+        return text, False
+    except ValueError:
+        pass
+    candidate = text.rstrip() + "}"
+    try:
+        obj = strict_json(candidate)
+    except ValueError:
+        return text, False
+    if isinstance(obj, dict) and obj.get("kind") == "TASK" and isinstance(obj.get("task"), dict):
+        return candidate, True
+    return text, False
+
+
 VERIFY_PATH = "/usr/bin:/bin"  # a sandboxed verifier's PATH: exec is allowed only for Python and Git anyway
 RUNTIME_ARTIFACT_DIRS ={"__pycache__", ".venv", "node_modules", "build", "dist"}
 
@@ -1002,6 +1029,7 @@ Hard rules:
 
 Your final assistant message must be exactly one JSON object and nothing else (no markdown, no code fence, no prose).
 The reason value MUST be one non-empty string of at most 500 characters; aim for under 300. Put detailed evidence in the task prompt, not reason:
+Before sending, check that all JSON braces close. For a TASK response, close every nested changed entry, its list, review_of, task, and finally the outer proposal.
 {{"request_id": "{req_id}", "kind": "TASK" | "BLOCKED" | "WAITING_FOR_OWNER" | "NO_LEGAL_WORK", "reason": "<one line, at most 500 chars>", "task": {{...}}}}
 "task" is present only for kind TASK and is one complete object with the fields id (unique, [A-Za-z0-9._-]{{1,64}}), module (MOD-NNN), role, title, prompt (the full worker prompt), allowed_paths, expected_changes, verify_cmd (required and nonempty for writing roles, exactly the JSON argv [{q(sys.executable)}, "-m", "unittest", "<dotted test module under backend.tests or tools.<name>.tests>", ...]; an empty or any other verifier is refused; review roles carry none), allowed_paths (exact files or directory prefixes only: no globs, never tools/mission_runner/, .github/, governance or baseline paths), for a remediation write remediation_of ("<reviewed write task id>") and, for role code-review, review_of {{"task_id": "<write task id>", "changed": [{{"path": "...", "sha256": "..."}}]}}. Writing roles need allowed_paths and a nonempty verify_cmd (plus expected_changes as appropriate); review roles must carry none of the three.
 """
@@ -1270,9 +1298,16 @@ def review_candidate_still_valid(repo, candidate):
         paths = [c["path"] for c in candidate["files"]]
         if head == old or not _is_ancestor(Config(repo=repo), old):
             return False
+        if repo_state(repo)["files"]:  # no unreviewed dirty work can inherit the approval
+            return False
+        changed_since = set(_git(repo, "diff", "--no-renames", "--name-only", old, head).stdout.decode().splitlines())
+        if changed_since != set(paths):
+            return False
         if any(_path_hash(Path(repo) / c["path"]) != c["sha256"] for c in candidate["files"]):
             return False
-        diff = _git(repo, "diff", "--binary", "--no-ext-diff", old, head, "--", *paths).stdout
+        tracked_at_base = set(_git(repo, "ls-tree", "-r", "--name-only", old, "--", *paths).stdout.decode().splitlines())
+        diff = (_git(repo, "diff", "--binary", "--no-ext-diff", old, head, "--", *sorted(tracked_at_base)).stdout
+                if tracked_at_base else b"")
         return hashlib.sha256(diff).hexdigest() == candidate["diff_sha256"]
     except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
         return False
@@ -1282,13 +1317,16 @@ def operational_hash_block(r):
     """Only an audited inability to inspect the baseline may receive one unchanged-candidate retry."""
     ev = r.get("evidence") or {}
     result = r.get("result") or ""
+    audited = OPERATIONAL_DIFF_RETRY_RECEIPTS.get(r.get("id"))
     return (r.get("status") == "BLOCKED" and r.get("blocked_reason") == "REVIEW_BLOCKED"
             and ev.get("review_outcome") == ev.get("review_outcome_reported") == "BLOCKED"
             and ev.get("review_bound_verified") is True and ev.get("violations") == ["REVIEW_BLOCKED"]
             and (r.get("route") or {}).get("verdict") == "VERIFIED"
             and (("couldn't do the binding check" in result and "no shell" in result
                   and "no Critical, High or Medium issues" in result)
-                 or ("couldn't check the diff" in result and "no shell or git access" in result)))
+                 or (audited is not None and hashlib.sha256(result.encode()).hexdigest() == audited["result_sha256"]
+                     and (r.get("review_of") or {}).get("changed") == audited["changed"]
+                     and "couldn't check the diff" in result and "no shell or git access" in result)))
 
 
 def resolved_operational_review_blocker(cfg, tasks, prior):
@@ -1751,7 +1789,11 @@ class Runner:
                 if harness != PLANNER_RUNTIME:  # the turn ran under another runtime than the one the policy check proved
                     harness_bad = f"agentHarnessId {str(harness)[:40]!r} is not {PLANNER_RUNTIME!r}"
                     raise HandoffError(harness_bad)
+                text, completed_brace = complete_handoff_outer_brace(text)
                 prop = parse_handoff_proposal(text, req["id"])
+                if completed_brace:
+                    self.store.event("handoff-json-brace-completed", req["id"],
+                                     reason="single missing outer TASK brace; strict schema and task gates still applied")
             except OSError:
                 why_bad = "CLI output file unreadable"
             except HandoffError as e:
@@ -2150,6 +2192,10 @@ class Runner:
             lines += ["- Runner-computed read-only Git diff of those bound files against HEAD " + head +
                       "; diff SHA256 " + hashlib.sha256(diff).hexdigest() + ". Compare it with the current file contents:",
                       "```diff", diff.decode("utf-8", errors="replace"), "```"]
+            tracked = set(_git(self.cfg.repo, "ls-tree", "-r", "--name-only", "HEAD", "--", *changed_paths).stdout.decode().splitlines())
+            lines += ["- NEW FILE absent from HEAD (not present in Git diff): " + p +
+                      "; read its complete current contents at the bound SHA256 above."
+                      for p in changed_paths if p not in tracked]
         if candidate:
             lines += ["- Operational retry of prior BLOCKED review " + t["review_retry_of"] + "; its verdict remains historical.",
                       "- Runner-verified COMPLETE dirty product candidate: head " + candidate["head"] +
@@ -2163,6 +2209,11 @@ class Runner:
             lines += ["- Runner-computed Git diff against that exact HEAD follows. It is read-only evidence; compare it "
                       "with the current file contents and the bound hashes:",
                       "```diff", diff.decode("utf-8", errors="replace"), "```"]
+            paths = [c["path"] for c in candidate["files"]]
+            tracked = set(_git(self.cfg.repo, "ls-tree", "-r", "--name-only", candidate["head"], "--", *paths).stdout.decode().splitlines())
+            lines += ["- NEW FILE absent from the candidate HEAD (not present in Git diff): " + p +
+                      "; read its complete current contents at the bound SHA256 above."
+                      for p in paths if p not in tracked]
             lines += ["- The runner rechecks this entire manifest after your review. A missing personal hash tool alone is not "
                       "a reason to block; inability to inspect the files or a substantive defect is."]
         return "\n".join(lines)
@@ -2209,6 +2260,15 @@ class Runner:
                          updated_at=now_iso())
                 return self.store.event("task-blocked", f"{t['id']}:{t['attempts'] + 1}", task_id=t["id"],
                                         code="REPO_SNAPSHOT_UNAVAILABLE")
+            try:
+                prompt_text = self.child_prompt(t)  # all Git reads finish before RUNNING and before any child exists
+            except Exception as e:  # a prompt must never terminate the sole runner after it owns the lease
+                code = "REVIEW_BINDING_STALE" if isinstance(e, ValueError) else "REPO_SNAPSHOT_UNAVAILABLE"
+                t.update(status="BLOCKED", blocked_reason=code, stage=None, updated_at=now_iso(),
+                         last_error=f"review prompt unavailable: {e}"[:300],
+                         evidence={"op": f"{t['id']}:{t['attempts']}", "at": now_iso(),
+                                   "review_outcome": None, "review_bound_verified": False, "violations": [code]})
+                return self.store.event("task-blocked", f"{t['id']}:{t['attempts']}", task_id=t["id"], code=code)
             alias = required_family(t["role"])
             t["attempts"] += 1
             op = f"{t['id']}:{t['attempts']}"
@@ -2233,7 +2293,7 @@ class Runner:
                 except OSError as e:
                     return self.failure(t, f"spawn failed: {e}", op)
                 try:
-                    p.stdin.write(self.child_prompt(t).encode())
+                    p.stdin.write(prompt_text.encode())
                     p.stdin.close()
                 except BrokenPipeError:
                     pass
@@ -2759,6 +2819,7 @@ def handoff_view(h):
     return {"status": h.get("status"), "detail": h.get("detail"), "updated_at": h.get("updated_at"),
             "role": "orchestrator", "agent": ORCH_AGENT, "attempts": h.get("attempts"),
             "fingerprint": (h.get("fingerprint") or "")[:12] or None, "quarantine": h.get("quarantine"),
+            "retry_at": h.get("retry_at"),
             "model": model,
             "request": ({"id": req.get("id"), "started_at": req.get("started_at"),
                          "child_alive": child_alive(req.get("child"))} if req else None),
@@ -2767,16 +2828,18 @@ def handoff_view(h):
 
 def progress_state(st, runner_alive):
     """A heartbeat is liveness, not evidence of forward progress."""
-    if st.get("control") == "STOP" or not runner_alive:
+    if st.get("control") in ("STOP", "PAUSE") or not runner_alive:
         return "STOPPED"
     h = st.get("handoff") or {}
+    if st.get("health", {}).get("status") != "OK" or h.get("quarantine"):
+        return "BLOCKED"
     if h.get("request") or any(t.get("status") == "RUNNING" or
                               (t.get("status") == "QUEUED" and not t.get("gate_reason"))
                               for t in st.get("tasks", {}).values()):
         return "WORKING"
     if h.get("status") == "waiting_for_owner":
         return "WAITING_FOR_OWNER"
-    if st.get("health", {}).get("status") != "OK" or h.get("status") == "blocked" or h.get("quarantine"):
+    if h.get("status") == "blocked":
         return "BLOCKED"
     return "IDLE"
 

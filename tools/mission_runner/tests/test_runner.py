@@ -3195,6 +3195,10 @@ class Handoff(Base):
                        review_of={"task_id": "w1"})
         r.dispatch(old)
         old["result"] = "I couldn't check the diff against HEAD; no shell or git access. OUTCOME: BLOCKED"
+        R.OPERATIONAL_DIFF_RETRY_RECEIPTS["nodiff"] = {
+            "result_sha256": hashlib.sha256(old["result"].encode()).hexdigest(),
+            "changed": old["review_of"]["changed"]}
+        self.addCleanup(lambda: R.OPERATIONAL_DIFF_RETRY_RECEIPTS.pop("nodiff", None))
         r.store.save(r.state)
         R.enqueue(self.cfg, {"id": "diff-retry", "module": "MOD-000", "role": "code-review",
                              "prompt": "OUTCOME_LINE=APPROVED", "review_of": {"task_id": "w1"},
@@ -3208,7 +3212,7 @@ class Handoff(Base):
         r.dispatch(retry)
         self.assertEqual((old["status"], retry["status"]), ("BLOCKED", "DONE"))
         self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
-        git(self.repo, "add", "out/a.txt")
+        git(self.repo, "add", "out/a.txt", "backend/tests/test_fake.py")
         git(self.repo, "commit", "-m", "publish reviewed candidate")
         self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
         (self.repo / "out" / "a.txt").write_text("different")
@@ -3227,6 +3231,49 @@ class Handoff(Base):
         self.assertIn("-before", prompt)
         self.assertIn("+hi", prompt)
         self.assertIn(git(self.repo, "rev-parse", "HEAD").stdout.strip(), prompt)
+
+    def test_new_files_are_identified_and_published_candidate_stays_bound(self):
+        r = self.runner()
+        w = self.finished_write(r)
+        review = self.add(r, role="code-review", id="new-file-review", review_of={"task_id": w["id"]})
+        self.assertIn("NEW FILE absent from HEAD", r.child_prompt(review))
+        candidate = R.review_candidate(self.repo)
+        git(self.repo, "add", "out/a.txt", "backend/tests/test_fake.py")
+        git(self.repo, "commit", "-m", "publish new files")
+        self.assertTrue(R.review_candidate_still_valid(self.repo, candidate))
+        (self.repo / "extra.txt").write_text("unreviewed")
+        self.assertFalse(R.review_candidate_still_valid(self.repo, candidate))
+        (self.repo / "extra.txt").unlink()
+        git(self.repo, "commit", "--allow-empty", "-m", "unrelated empty")
+        self.assertTrue(R.review_candidate_still_valid(self.repo, candidate))
+        (self.repo / "extra.txt").write_text("unreviewed")
+        git(self.repo, "add", "extra.txt")
+        git(self.repo, "commit", "-m", "unreviewed extra")
+        self.assertFalse(R.review_candidate_still_valid(self.repo, candidate))
+
+    def test_published_candidate_cannot_hide_a_deleted_file_as_a_rename(self):
+        old = self.repo / "old.txt"
+        old.write_text("shared text\n" * 20)
+        git(self.repo, "add", "old.txt")
+        git(self.repo, "commit", "-m", "tracked baseline")
+        new = self.repo / "new.txt"
+        new.write_text(old.read_text())
+        candidate = R.review_candidate(self.repo)
+        git(self.repo, "add", "new.txt")
+        git(self.repo, "rm", "old.txt")
+        git(self.repo, "commit", "-m", "rename with unreviewed deletion")
+        self.assertFalse(R.review_candidate_still_valid(self.repo, candidate))
+
+    def test_review_prompt_failure_blocks_before_child_spawn(self):
+        r = self.runner()
+        self.finished_write(r)
+        review = self.add(r, role="code-review", id="prompt-fail", review_of={"task_id": "w1"})
+        with mock.patch.object(r, "child_prompt", side_effect=OSError("git unavailable")):
+            r.dispatch(review)
+        self.assertEqual((review["status"], review["blocked_reason"], review["attempts"]),
+                         ("BLOCKED", "REPO_SNAPSHOT_UNAVAILABLE", 0))
+        self.assertIsNone(review["child"])
+        self.assertEqual(R.FileLock.probe(R.writer_lock_path(self.home, self.repo)), "free")
 
     def test_invalid_handoff_is_retried_once_and_stays_bounded(self):
         r = self.hr()
@@ -3250,6 +3297,33 @@ class Handoff(Base):
         self.assertEqual(R.progress_state({"control": "RUN", "health": {"status": "OK"},
                                            "handoff": {"status": "waiting_for_owner"}, "tasks": {}}, True), "WAITING_FOR_OWNER")
 
+    def test_only_one_missing_task_outer_brace_is_completed_before_strict_validation(self):
+        proposal = {"request_id": "rq", "kind": "TASK", "reason": "review required",
+                    "task": {"id": "rv", "module": "MOD-004", "role": "code-review", "prompt": "x",
+                             "review_of": {"task_id": "w", "changed": [{"path": "a.md", "sha256": "a" * 64}]}}}
+        raw = json.dumps(proposal)
+        fixed, repaired = R.complete_handoff_outer_brace(raw[:-1])
+        self.assertTrue(repaired)
+        self.assertEqual(R.parse_handoff_proposal(fixed, "rq"), proposal)
+        self.assertEqual(R.complete_handoff_outer_brace(raw), (raw, False))
+        for bad in (raw[:-2], "```json\n" + raw[:-1], raw[:-1] + " prose",
+                    json.dumps({"request_id": "rq", "kind": "BLOCKED", "reason": "x"})[:-1]):
+            text, repaired = R.complete_handoff_outer_brace(bad)
+            self.assertFalse(repaired)
+            with self.assertRaises(R.HandoffError):
+                R.parse_handoff_proposal(text, "rq")
+        with self.assertRaises(R.HandoffError):
+            R.parse_handoff_proposal(fixed, "stale")
+
+    def test_progress_state_fails_closed_on_pause_health_and_quarantine(self):
+        base = {"control": "RUN", "health": {"status": "OK"}, "handoff": {},
+                "tasks": {"q": {"status": "QUEUED", "gate_reason": None}}}
+        self.assertEqual(R.progress_state(base, True), "WORKING")
+        self.assertEqual(R.progress_state(base | {"control": "PAUSE"}, True), "STOPPED")
+        self.assertEqual(R.progress_state(base | {"health": {"status": "BLOCKED"}}, True), "BLOCKED")
+        self.assertEqual(R.progress_state(base | {"handoff": {"quarantine": "late turn"}}, True), "BLOCKED")
+        self.assertEqual(R.handoff_view({"retry_at": 123, "status": "blocked"})["retry_at"], 123)
+
     def test_operational_retry_refuses_substantive_block_and_changed_candidate(self):
         self.cfg.review_gate = True
         r = self.runner()
@@ -3257,6 +3331,8 @@ class Handoff(Base):
         old = self.add(r, role="code-review", id="nohash", prompt="OUTCOME_LINE=BLOCKED",
                        review_of={"task_id": "w1"})
         r.dispatch(old)
+        old["result"] = "I couldn't check the diff; no shell or git access. Critical defect also found."
+        self.assertFalse(R.operational_hash_block(old))  # the historical exception never applies to a new review
         with self.assertRaisesRegex(ValueError, "operational no-hash-tool"):
             R.enqueue(self.cfg, {"id": "retry", "module": "MOD-000", "role": "code-review",
                                  "prompt": "x", "review_of": {"task_id": "w1"},
