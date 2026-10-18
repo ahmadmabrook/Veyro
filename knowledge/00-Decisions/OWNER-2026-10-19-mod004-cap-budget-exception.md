@@ -1,0 +1,29 @@
+# Owner decision — one-time MOD-004 CAP budget exception
+
+**Status: OWNER-APPROVED PROPOSAL; NOT EFFECTIVE until this exact record has independent review, local first-publication attestation, a normal non-force push, and successful CI on that pushed SHA.** This is a single-gap prospective budget exception, not a qualification result, security approval, capability activation, Module Ready judgment, Scenario Review PASS, or S1 authorization.
+
+## Authority and binding
+
+The verified owner Ahmad Mabrouk (`gateway-owner`) approved “Option A, narrowly scoped” in the direct OpenClaw webchat on 2026-10-19. Source: attached text `pasted-text-1792358571230.txt`, external-content identifier `85fb587232d96e18`. The chat message ID was not exposed; none is invented. The owner authorized this proposal only for `BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME` and required formal recording, independent review, and exact-SHA CI before any additional envelope becomes available.
+
+Pinned source: `Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx`, SHA-256 `b82e56f88a3b5cc5ba486fe8d10b2d04e8153ce227729e9ba6a92debe15d894f`. EIP ¶601, ¶610, ¶621 and ¶11821 (zero-based paragraph indices) retain their attempt counting, stop, BLOCKED, and Opus-lead escalation rules except for the one prospective envelope expressly stated below. The pinned EIP file is not edited.
+
+## Fixed candidate and historical state
+
+The candidate remains the one in `contracts/engineering/capability-records/CAP-001-mod004-d123a-prepull.md` (pre-decision SHA-256 `f056483119f6468c88d4f2ca321b5bd6f6b2393889ba15eb2f52470bc0b87e77`) and `mod004-d123a-wheel-lock.txt` (SHA-256 `59bccdd3ebde84004df74b41846751306b43a7704a94041af522125fd9c48e2d`): PostgreSQL `17.11-bookworm` linux/arm64 manifest `sha256:a85953d6f830fd55a12929df3b7a4fa94dc96d652de62d2d714e0867ccb3670d`; psycopg 3.3.6, psycopg-binary 3.3.6, psycopg-pool 3.3.3, and typing-extensions 4.16.0 at the four exact wheel hashes in that lock. Evidence edits may not silently change this candidate; any candidate change needs its own governing decision and review.
+
+The prior Opus lead task `mod004-cap-budget-source-recovery-opus-20261019` returned `BLOCKED: CAPABILITY_GAP`. The earlier source-verification review also returned BLOCKED. All prior attempts, observed token/time use, unknown counts, OPEN CAP blockers B1–B7, and historical review outcomes remain intact. The `BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME` row itself stays OPEN: earlier attempt use remains UNKNOWN. This decision does not reconcile that history or satisfy CAP-001 §6 item 1 (the separate pre-pull attempt/budget prerequisite). Nothing is reset, relabelled PASS, or deemed safe by this decision. The existing provisional manifest and CAP dossier remain provisional and not gate-eligible.
+
+## Narrow exception
+
+Once, and only once, the publication conditions in the status line are met, the Capability Manager may use an **additional prospective envelope** for this exact gap and fixed candidate: **at most 45 active orchestration minutes and 50,000 model tokens**. The first newly exhausted limit immediately stops further qualification work and returns the gap to `BLOCKED: CAPABILITY_GAP` and Opus-lead escalation. No automatic renewal, rollover, silent reset, or second candidate is authorized. No new custom Skill/Rule creation attempt or unrelated capability work is authorized.
+
+The new envelope is incremental and separately metered from its effective start; historical use remains recorded as historical use, including unknown portions. Before the first further qualification action, record the effective publication SHA/CI evidence, start time, and zero **new-envelope** use separately from the unchanged historical counters in the existing CAP record and capability manifest through their normal reviewed workflow. Count all subsequent gap-specific active orchestration time and model tokens, including evidence gathering and review, against this envelope; unknown new usage is not treated as zero. If token telemetry is unavailable or new usage cannot be reconciled, stop rather than presume remaining budget. Stop also when either new limit is exhausted. An incomplete review or failed CI leaves the new envelope unavailable.
+
+## Gates retained
+
+This exception permits bounded evidence work only after it becomes effective. It does **not** authorize image or wheel artifact pulls, downloads or installations, paid or external-account actions, a second candidate, D4.3 selection, capability ACTIVE, MOD-004 Ready, Scenario Review PASS, or S1 implementation. Read-only metadata verification remains subject to the existing pre-pull controls and the new envelope; this record grants no artifact fetch. ADR-0002 D12.3a's pre-pull controls remain mandatory. Provenance, exact wheel and image hash verification, CVE applicability, image and bundled native-library inventory, licensing/LGPL obligations, independent security review, tenant isolation, runtime qualification, migration lint, CON-04, Rule qualification, product reviews, and required CI remain mandatory. A pre-pull security approval is a separate decision supported by its own evidence; this budget record supplies none. This is an owner-approved exception to one EIP default budget, not a DC-16 reserved action or a waiver of CAP-001 §6.
+
+## Publication and use
+
+The first publication changes only this new `OWNER-*` file. It requires an independent Opus review of the exact file/diff, the existing local first-publication owner attestation check, and successful CI on the exact non-force pushed head. Only then may the next separately bounded accounting/evidence task be assessed through the existing Continuous Runner and its current gates. No runner repair, modification, restart or duplication is authorized under this exception or its envelope. If any required review, evidence, security or product gate fails, preserve its result and stop at that gate.
