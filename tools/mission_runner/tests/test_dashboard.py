@@ -257,6 +257,7 @@ class DashboardProjectionTests(unittest.TestCase):
         'mod003-s1-sonnet-security-performance-20261017': ('MOD-003', 'mod003-s1-opus-operational-retry-20261017'),
         'mod003-s1-full-opus-review-after-findings-20261017': ('MOD-003', 'mod003-s1-opus-operational-retry-20261017'),
         'mod003-s1-opus-card-review-20261017': ('MOD-003', 'mod003-s1-opus-card-wording-review-20261017'),
+        'mod004-cap-provenance-final-opus-review-20261018': ('MOD-004', 'mod004-cap-provenance-diff-retry-opus-20261018'),
         'blocker-projection-hardening-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
         'runner-prerequisite-gate-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
         'runner-prerequisite-gate-evidence-sonnet-20261016': ('MOD-000', MOD000_REVIEW),
