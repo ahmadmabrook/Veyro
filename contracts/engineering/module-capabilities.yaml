@@ -144,8 +144,40 @@
               {"rule_id": "RULE-001", "rule_path": ".claude/rules/backend/mod004-rls.md", "created_and_promoted": true},
               {"rule_id": "RULE-002", "rule_path": ".claude/rules/admin/mod004-privileged-console.md", "created_and_promoted": true}
             ],
+            "per_rule_custom_attempt_counters": [
+              {
+                "gap_id": "BLK-RULE-QUALIFICATION",
+                "rule_id": "RULE-001",
+                "custom_attempts_used": 1,
+                "custom_attempts_cap_if_per_rule": 1,
+                "custom_attempts_remaining_if_per_rule": 0,
+                "elapsed_minutes_used": null,
+                "tokens_used": null,
+                "budget_usage_note": "UNKNOWN: elapsed time and token usage were not recorded; none is invented.",
+                "evidence": {
+                  "promotion_commit": "5e9eeb48ad138a7e633b91aee3f9828a2aa46fba",
+                  "promotion_audit": null,
+                  "promotion_audit_note": "No promotion audit is cited; the only evidence is the promotion commit."
+                }
+              },
+              {
+                "gap_id": "BLK-RULE-QUALIFICATION",
+                "rule_id": "RULE-002",
+                "custom_attempts_used": 1,
+                "custom_attempts_cap_if_per_rule": 1,
+                "custom_attempts_remaining_if_per_rule": 0,
+                "elapsed_minutes_used": null,
+                "tokens_used": null,
+                "budget_usage_note": "UNKNOWN: elapsed time and token usage were not recorded; none is invented.",
+                "evidence": {
+                  "promotion_commit": "5e9eeb48ad138a7e633b91aee3f9828a2aa46fba",
+                  "promotion_audit": null,
+                  "promotion_audit_note": "No promotion audit is cited; the only evidence is the promotion commit."
+                }
+              }
+            ],
             "budget_evidence": {
-              "promotion_commit": "5e9eeb48",
+              "promotion_commit": "5e9eeb48ad138a7e633b91aee3f9828a2aa46fba",
               "promotion_subject": "Add reviewed exact-file MOD-004 rule promotion",
               "policy_source": "EIP ¶607, ¶11821"
             },
@@ -153,7 +185,7 @@
             "qualification_state": "OPEN: promotion is not qualification; path-scope tests, runtime-negative tests and independent review remain outstanding."
           }
         ],
-        "note": "null = no CAP-recorded counter exists; no attempt is claimed or recorded for those gaps. The BLK-RULE-QUALIFICATION custom usage is derived from promotion commit 5e9eeb48 and is not a CAP-recorded counter."
+        "note": "null = no CAP-recorded counter exists and usage is unknown, not zero, for the CAP/SKL/CON04 gaps. BLK-RULE-QUALIFICATION is NOT zero: both custom rules (RULE-001, RULE-002) were created and promoted, so the counting interpretation is unresolved (one attempt per rule, i.e. two counters, or one at gap level), but either reading reaches the cap and no further custom rule creation is authorized. This is derived from promotion commit 5e9eeb48ad138a7e633b91aee3f9828a2aa46fba, not from a CAP-recorded counter. Elapsed time and token usage for these attempts are unknown and not recorded."
       },
       "lifecycle_review_state": {
         "last_reviewed_at": null,
