@@ -1,0 +1,20 @@
+# PROVISIONAL. NOT GATE-ELIGIBLE. PRE-PULL REVIEW PENDING.
+# ADR-0002 D12.3a qualification-only wheel lock. Evidence record: CAP-001-mod004-d123a-prepull.md
+# This lock is ONLY for Python 3.13 / macOS arm64 isolated qualification, and only after an
+# independent pre-pull APPROVED review. It is NOT a production or backend lockfile.
+# Platform, filename and hash must be rechecked against PyPI before any download/install.
+# Exactly four pinned requirements; no other packages, no extras.
+--require-hashes
+--only-binary=:all:
+psycopg==3.3.6 \
+    --hash=sha256:a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631
+# psycopg-3.3.6-py3-none-any.whl
+psycopg-binary==3.3.6 \
+    --hash=sha256:373704aea331d3f3e3402c125a1543f5875e2986ebb54f97d1647942161f803f
+# psycopg_binary-3.3.6-cp313-cp313-macosx_11_0_arm64.whl
+psycopg-pool==3.3.3 \
+    --hash=sha256:9b9cd6a4fcec47a410f7e82d408540e7f77b478509e91b44c1a5457a13e5ff37
+# psycopg_pool-3.3.3-py3-none-any.whl
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+# typing_extensions-4.16.0-py3-none-any.whl
