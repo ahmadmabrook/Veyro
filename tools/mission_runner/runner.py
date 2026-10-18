@@ -1000,7 +1000,8 @@ Hard rules:
 6. Do NOT edit, create, delete or commit any file, run the runner CLI, enqueue anything, write queue/command/approval/receipt files, certify or accept any module, or perform the worker task yourself. The runner alone validates and enqueues your proposal.
 7. If a task is BLOCKED, propose only unrelated legal work, never a retry of the blocked task unless the evidence shows its blocker is resolved.
 
-Your final assistant message must be exactly one JSON object and nothing else (no markdown, no code fence, no prose):
+Your final assistant message must be exactly one JSON object and nothing else (no markdown, no code fence, no prose).
+The reason value MUST be one non-empty string of at most 500 characters; aim for under 300. Put detailed evidence in the task prompt, not reason:
 {{"request_id": "{req_id}", "kind": "TASK" | "BLOCKED" | "WAITING_FOR_OWNER" | "NO_LEGAL_WORK", "reason": "<one line, at most 500 chars>", "task": {{...}}}}
 "task" is present only for kind TASK and is one complete object with the fields id (unique, [A-Za-z0-9._-]{{1,64}}), module (MOD-NNN), role, title, prompt (the full worker prompt), allowed_paths, expected_changes, verify_cmd (required and nonempty for writing roles, exactly the JSON argv [{q(sys.executable)}, "-m", "unittest", "<dotted test module under backend.tests or tools.<name>.tests>", ...]; an empty or any other verifier is refused; review roles carry none), allowed_paths (exact files or directory prefixes only: no globs, never tools/mission_runner/, .github/, governance or baseline paths), for a remediation write remediation_of ("<reviewed write task id>") and, for role code-review, review_of {{"task_id": "<write task id>", "changed": [{{"path": "...", "sha256": "..."}}]}}. Writing roles need allowed_paths and a nonempty verify_cmd (plus expected_changes as appropriate); review roles must carry none of the three.
 """
@@ -1257,15 +1258,16 @@ def review_candidate(repo):
 
 
 def operational_hash_block(r):
-    """Only the audited no-hash-tool BLOCKED case may receive one unchanged-candidate retry."""
+    """Only an audited inability to inspect the baseline may receive one unchanged-candidate retry."""
     ev = r.get("evidence") or {}
     result = r.get("result") or ""
     return (r.get("status") == "BLOCKED" and r.get("blocked_reason") == "REVIEW_BLOCKED"
             and ev.get("review_outcome") == ev.get("review_outcome_reported") == "BLOCKED"
             and ev.get("review_bound_verified") is True and ev.get("violations") == ["REVIEW_BLOCKED"]
             and (r.get("route") or {}).get("verdict") == "VERIFIED"
-            and "couldn't do the binding check" in result and "no shell" in result
-            and "no Critical, High or Medium issues" in result)
+            and (("couldn't do the binding check" in result and "no shell" in result
+                  and "no Critical, High or Medium issues" in result)
+                 or ("couldn't check the diff" in result and "no shell or git access" in result)))
 
 
 def resolved_operational_review_blocker(cfg, tasks, prior):
@@ -1580,12 +1582,20 @@ class Runner:
             return self.set_handoff("waiting", "repo writer lock held; continuation deferred")
         fp = state_fingerprint(self.cfg, st["tasks"])
         if fp == h["fingerprint"]:
+            if h["settled"] and (h.get("outcome") or {}).get("detail", "").startswith("ORCHESTRATOR_RESPONSE_INVALID:") \
+                    and h["attempts"] < 2:
+                h["settled"] = False  # one bounded retry of an invalid envelope; no task was adopted
+                h["retry_at"] = time.time() + min(self.cfg.backoff_cap, self.cfg.backoff_base * 2)
+                self.store.event("handoff-invalid-retry-scheduled", attempts=h["attempts"], retry_at=h["retry_at"])
             if h["settled"]:  # this exact state was already handed off once: never loop on unchanged state
                 if h["outcome"]:
                     self.set_handoff(**h["outcome"])
                 return
         else:
             h.update(fingerprint=fp, settled=False, attempts=0, outcome=None)  # a new state is offered; quarantine was handled above
+        if time.time() < h.get("retry_at", 0):
+            return
+        h.pop("retry_at", None)
         self.handoff_start(h, fp)
 
     def handoff_rearm(self):
@@ -1600,6 +1610,7 @@ class Runner:
         except Exception as e:
             return self.store.event("handoff-rearm-refused", reason=f"repo snapshot unavailable: {str(e)[:80]}")
         h.update(fingerprint=None, settled=False, attempts=0, outcome=None, quarantine=None)
+        h.pop("retry_at", None)
         self.set_handoff("waiting", "re-armed by owner; continuation will be requested on the next idle tick")
         self.store.event("handoff-rearmed")
 
@@ -2116,6 +2127,13 @@ class Runner:
                       "; diff SHA256 " + candidate["diff_sha256"] + "; candidate SHA256 " + candidate["candidate_sha256"] + ".",
                       "- Inspect every candidate file below, including files from earlier writes:"]
             lines += [f"  - {c['path']} sha256 {c['sha256']}" for c in candidate["files"]]
+            diff = _git(self.cfg.repo, "diff", "--binary", "--no-ext-diff", "--",
+                        *(c["path"] for c in candidate["files"])).stdout
+            if hashlib.sha256(diff).hexdigest() != candidate["diff_sha256"]:
+                raise ValueError("review candidate diff changed while constructing bound prompt")
+            lines += ["- Runner-computed Git diff against that exact HEAD follows. It is read-only evidence; compare it "
+                      "with the current file contents and the bound hashes:",
+                      "```diff", diff.decode("utf-8", errors="replace"), "```"]
             lines += ["- The runner rechecks this entire manifest after your review. A missing personal hash tool alone is not "
                       "a reason to block; inability to inspect the files or a substantive defect is."]
         return "\n".join(lines)
@@ -2718,6 +2736,22 @@ def handoff_view(h):
             "last": {k: last.get(k) for k in ("id", "finished_at", "how", "exit", "claim", "new_tasks")} if last else None}
 
 
+def progress_state(st, runner_alive):
+    """A heartbeat is liveness, not evidence of forward progress."""
+    if st.get("control") == "STOP" or not runner_alive:
+        return "STOPPED"
+    h = st.get("handoff") or {}
+    if h.get("request") or any(t.get("status") == "RUNNING" or
+                              (t.get("status") == "QUEUED" and not t.get("gate_reason"))
+                              for t in st.get("tasks", {}).values()):
+        return "WORKING"
+    if h.get("status") == "waiting_for_owner":
+        return "WAITING_FOR_OWNER"
+    if st.get("health", {}).get("status") != "OK" or h.get("status") == "blocked" or h.get("quarantine"):
+        return "BLOCKED"
+    return "IDLE"
+
+
 def snapshot(cfg):
     """Read-only truthful view used by `status` and the dashboard. Nothing here is verified by the reader:
     every field is what the runner last recorded (or, for lock/pid liveness, a passive probe)."""
@@ -2771,6 +2805,7 @@ def snapshot(cfg):
           "runner_alive": pid_alive((owner or {}).get("runner_pid") or (owner or {}).get("pid")) if owner else None,
           "child_alive": pid_alive((owner or {}).get("child_pid")) if owner and owner.get("child_pid") else None}
     return {"generated_at": now_iso(), "state_error": err, "runner_alive": alive, "heartbeat_age_s": hb,
+            "progress_state": progress_state(st, alive),
             "runner": r or None, "control": st.get("control"), "health": st.get("health"),
             "baseline": st.get("baseline"), "recoveries": st.get("recoveries", 0), "tasks": tasks,
             "baseline_pin": None if pin is None else ({"error": pin["error"]} if pin.get("error") else

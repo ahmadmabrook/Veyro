@@ -3183,6 +3183,54 @@ class Handoff(Base):
         (self.repo / "out" / "extra.txt").write_text("changed after review")
         self.assertFalse(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
 
+    def test_diff_unavailable_review_gets_one_hash_bound_diff_retry(self):
+        self.cfg.review_gate = True
+        (self.repo / "out").mkdir()
+        (self.repo / "out" / "a.txt").write_text("before")
+        git(self.repo, "add", "out/a.txt")
+        git(self.repo, "commit", "-m", "review baseline")
+        r = self.runner()
+        self.finished_write(r)
+        old = self.add(r, role="code-review", id="nodiff", prompt="OUTCOME_LINE=BLOCKED",
+                       review_of={"task_id": "w1"})
+        r.dispatch(old)
+        old["result"] = "I couldn't check the diff against HEAD; no shell or git access. OUTCOME: BLOCKED"
+        r.store.save(r.state)
+        R.enqueue(self.cfg, {"id": "diff-retry", "module": "MOD-000", "role": "code-review",
+                             "prompt": "OUTCOME_LINE=APPROVED", "review_of": {"task_id": "w1"},
+                             "review_retry_of": "nodiff"})
+        r.ingest_queue()
+        retry = r.state["tasks"]["diff-retry"]
+        prompt = r.child_prompt(retry)
+        self.assertIn("Runner-computed Git diff", prompt)
+        self.assertIn("+hi", prompt)
+        self.assertIn(retry["review_candidate"]["diff_sha256"], prompt)
+        r.dispatch(retry)
+        self.assertEqual((old["status"], retry["status"]), ("BLOCKED", "DONE"))
+        self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
+
+    def test_invalid_handoff_is_retried_once_and_stays_bounded(self):
+        r = self.hr()
+        self.cfg.backoff_base = 1
+        r.state["health"] = {"status": "OK"}
+        h = r.handoff_state()
+        h.update(fingerprint=R.state_fingerprint(self.cfg, r.state["tasks"]), settled=True, attempts=1,
+                 outcome={"status": "blocked", "detail": "ORCHESTRATOR_RESPONSE_INVALID: reason too long"})
+        with mock.patch.object(r, "handoff_start") as start:
+            r.handoff_step()
+            self.assertFalse(start.called)
+            self.assertFalse(h["settled"])
+            with mock.patch("runner.time.time", return_value=h["retry_at"] + 1):
+                r.handoff_step()
+            self.assertEqual(start.call_count, 1)
+            h.update(settled=True, attempts=2)
+            r.handoff_step()
+            self.assertEqual(start.call_count, 1)
+        self.assertEqual(R.progress_state({"control": "RUN", "health": {"status": "OK"},
+                                           "handoff": {"status": "blocked"}, "tasks": {}}, True), "BLOCKED")
+        self.assertEqual(R.progress_state({"control": "RUN", "health": {"status": "OK"},
+                                           "handoff": {"status": "waiting_for_owner"}, "tasks": {}}, True), "WAITING_FOR_OWNER")
+
     def test_operational_retry_refuses_substantive_block_and_changed_candidate(self):
         self.cfg.review_gate = True
         r = self.runner()
