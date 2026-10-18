@@ -1257,6 +1257,27 @@ def review_candidate(repo):
     return body
 
 
+def review_candidate_still_valid(repo, candidate):
+    """An approved dirty candidate remains valid after those exact bytes are committed."""
+    try:
+        if review_candidate(repo) == candidate:
+            return True
+    except (ValueError, OSError):
+        pass  # a clean published candidate has no dirty-file receipt
+    try:
+        head = _git(repo, "rev-parse", "HEAD").stdout.decode().strip()
+        old = candidate["head"]
+        paths = [c["path"] for c in candidate["files"]]
+        if head == old or not _is_ancestor(Config(repo=repo), old):
+            return False
+        if any(_path_hash(Path(repo) / c["path"]) != c["sha256"] for c in candidate["files"]):
+            return False
+        diff = _git(repo, "diff", "--binary", "--no-ext-diff", old, head, "--", *paths).stdout
+        return hashlib.sha256(diff).hexdigest() == candidate["diff_sha256"]
+    except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
+        return False
+
+
 def operational_hash_block(r):
     """Only an audited inability to inspect the baseline may receive one unchanged-candidate retry."""
     ev = r.get("evidence") or {}
@@ -1281,7 +1302,8 @@ def resolved_operational_review_blocker(cfg, tasks, prior):
                and (r.get("review_of") or {}).get("task_id") == w["id"]]
     return (len(matches) == 1 and matches[0].get("status") == "DONE"
             and (matches[0].get("evidence") or {}).get("review_outcome") == "APPROVED"
-            and _bound_review_ok(w, matches[0]) and matches[0].get("review_candidate") == review_candidate(cfg.repo))
+            and _bound_review_ok(w, matches[0])
+            and review_candidate_still_valid(cfg.repo, matches[0].get("review_candidate")))
 
 
 def _bound_review_ok(w, r):

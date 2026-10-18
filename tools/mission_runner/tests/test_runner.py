@@ -3208,6 +3208,11 @@ class Handoff(Base):
         r.dispatch(retry)
         self.assertEqual((old["status"], retry["status"]), ("BLOCKED", "DONE"))
         self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
+        git(self.repo, "add", "out/a.txt")
+        git(self.repo, "commit", "-m", "publish reviewed candidate")
+        self.assertTrue(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
+        (self.repo / "out" / "a.txt").write_text("different")
+        self.assertFalse(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
 
     def test_invalid_handoff_is_retried_once_and_stays_bounded(self):
         r = self.hr()
