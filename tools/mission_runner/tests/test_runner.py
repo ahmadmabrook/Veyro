@@ -3214,6 +3214,20 @@ class Handoff(Base):
         (self.repo / "out" / "a.txt").write_text("different")
         self.assertFalse(R.resolved_operational_review_blocker(self.cfg, r.state["tasks"], old))
 
+    def test_normal_bound_review_receives_read_only_baseline_diff(self):
+        (self.repo / "out").mkdir()
+        (self.repo / "out" / "a.txt").write_text("before")
+        git(self.repo, "add", "out/a.txt")
+        git(self.repo, "commit", "-m", "review baseline")
+        r = self.runner()
+        self.finished_write(r)
+        review = self.add(r, role="code-review", id="bound-diff", review_of={"task_id": "w1"})
+        prompt = r.child_prompt(review)
+        self.assertIn("Runner-computed read-only Git diff", prompt)
+        self.assertIn("-before", prompt)
+        self.assertIn("+hi", prompt)
+        self.assertIn(git(self.repo, "rev-parse", "HEAD").stdout.strip(), prompt)
+
     def test_invalid_handoff_is_retried_once_and_stays_bounded(self):
         r = self.hr()
         self.cfg.backoff_base = 1

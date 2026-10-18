@@ -2143,6 +2143,13 @@ class Runner:
                   "You do not need a shell or hash tool; inspect the named files with your read-only tools. "
                   "If you cannot inspect their contents, or find a substantive defect, report that accurately."]
         candidate = t.get("review_candidate")
+        if not candidate:
+            changed_paths = [c["path"] for c in b.get("changed") or []]
+            head = _git(self.cfg.repo, "rev-parse", "HEAD").stdout.decode().strip()
+            diff = _git(self.cfg.repo, "diff", "--binary", "--no-ext-diff", "--", *changed_paths).stdout
+            lines += ["- Runner-computed read-only Git diff of those bound files against HEAD " + head +
+                      "; diff SHA256 " + hashlib.sha256(diff).hexdigest() + ". Compare it with the current file contents:",
+                      "```diff", diff.decode("utf-8", errors="replace"), "```"]
         if candidate:
             lines += ["- Operational retry of prior BLOCKED review " + t["review_retry_of"] + "; its verdict remains historical.",
                       "- Runner-verified COMPLETE dirty product candidate: head " + candidate["head"] +
