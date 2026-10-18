@@ -47,6 +47,10 @@ OUTCOME_RE = re.compile(r"^OUTCOME:\s*(APPROVED|CHANGES_REQUESTED|BLOCKED)\s*$")
 BASELINE_CODES = ("BASELINE_MISMATCH", "BASELINE_NOT_PINNED")
 CHILD_ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "SHELL", "TERM")
 CONTROLS = {"pause": "PAUSE", "resume": "RUN", "stop": "STOP"}
+MOD004_PROMOTION = {
+    "contracts/engineering/staging/mod004-rls.md": ".claude/rules/backend/mod004-rls.md",
+    "contracts/engineering/staging/mod004-privileged-console.md": ".claude/rules/admin/mod004-privileged-console.md",
+}
 BASELINE_PREFIXES = ("Gym_OS_Master_Product_Blueprint", "Veyro_Technical_System_Design",
                      "Veyro_Engineering_Implementation_Plan", "veyro-product-experience-design")
 ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -1907,7 +1911,8 @@ class Runner:
         for f in self.store.pending_commands():
             try:
                 c = json.loads(f.read_text())
-                if not ((c["cmd"] in CONTROLS or c["cmd"] == "rearm") and ID_RE.match(str(c["op_id"]))):
+                if not ((c["cmd"] in CONTROLS or c["cmd"] in ("rearm", "promote-mod004-capability"))
+                        and ID_RE.match(str(c["op_id"]))):
                     raise ValueError("bad command or op_id")
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
@@ -1920,6 +1925,12 @@ class Runner:
                 # resume/rearm cannot be told apart from a command the read-only turn wrote: recorded, not applied
                 req["foreign_cmds"] = (req.get("foreign_cmds") or []) + [c["cmd"]]
                 self.store.event("command-held", c["op_id"], cmd=c["cmd"], reason="orchestrator request open")
+            elif c["cmd"] == "promote-mod004-capability":
+                try:
+                    self.promote_mod004_capability(c)
+                except (ValueError, OSError, TypeError) as e:
+                    self.store.event("capability-promotion-refused", c["op_id"], reason=str(e)[:300])
+                self.state["applied_ops"] = (self.state["applied_ops"] + [c["op_id"]])[-500:]
             elif c["cmd"] == "rearm":
                 self.state["applied_ops"] = (self.state["applied_ops"] + [c["op_id"]])[-500:]
                 self.handoff_rearm()
@@ -1930,6 +1941,96 @@ class Runner:
                 self.store.event("command-applied", c["op_id"], cmd=c["cmd"], prev=prev, now=self.state["control"])
             self.store.save(self.state)  # persist the op id before consuming the file
             f.unlink()
+
+    def promote_mod004_capability(self, c):
+        """Promote one independently reviewed Sonnet staging task, never a caller-selected path."""
+        if set(c) != {"cmd", "op_id", "task_id", "hashes", "ts"}:
+            raise ValueError("promotion command fields differ from the fixed contract")
+        if not isinstance(c["task_id"], str) or not ID_RE.fullmatch(c["task_id"]):
+            raise ValueError("promotion task id is invalid")
+        hashes = c["hashes"]
+        if not isinstance(hashes, dict) or set(hashes) != set(MOD004_PROMOTION) or not all(
+                isinstance(h, str) and SHA256_RE.fullmatch(h) for h in hashes.values()):
+            raise ValueError("promotion requires exactly two named staging SHA256 values")
+        if self.state["control"] != "RUN" or self.state["health"].get("status") != "OK":
+            raise ValueError("runner is not healthy and running")
+        handoff = self.state.get("handoff") or {}
+        if handoff.get("request") or handoff.get("quarantine"):
+            raise ValueError("promotion refused while orchestrator handoff is open or quarantined")
+        if not self.check_baseline(force=True):
+            raise ValueError("baseline is not pinned and current")
+        w = self.state["tasks"].get(c["task_id"])
+        if not (w and w.get("module") == "MOD-004" and w.get("role") == "implement"
+                and w.get("status") == "DONE" and (w.get("route") or {}).get("verdict") == "VERIFIED"
+                and w.get("allowed_paths") == list(MOD004_PROMOTION)
+                and set(w.get("expected_changes") or []) == set(MOD004_PROMOTION)
+                and (w.get("evidence") or {}).get("violations") == []):
+            raise ValueError("staging task is not a verified exact-two-file Sonnet write")
+        changed = _changed_pairs((w["evidence"] or {}).get("changed"))
+        if changed != _changed_pairs([{"path": p, "sha256": hashes[p]} for p in MOD004_PROMOTION]):
+            raise ValueError("staging hashes differ from runner-recorded write evidence")
+        approved = [r for r in self.state["tasks"].values() if r.get("status") == "DONE"
+                    and r.get("module") == "MOD-004" and r.get("role") == "code-review"
+                    and (r.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                    and _bound_review_ok(w, r)]
+        if review_verdict(self.state["tasks"], w["id"]) != "APPROVED" or len(approved) != 1:
+            raise ValueError("exact staging write lacks one independent bound APPROVED Opus review")
+        if not self.wlock.acquire({"pid": os.getpid(), "promotion": c["op_id"]}):
+            raise ValueError("repo writer lock is held")
+        try:
+            repo = self.cfg.repo.resolve()
+            payload = {}
+            for src, dst in MOD004_PROMOTION.items():
+                sp, dp = repo / src, repo / dst
+                for path in (sp, dp):
+                    for parent in list(path.relative_to(repo).parents)[:-1]:
+                        ancestor = repo / parent
+                        if ancestor.is_symlink():
+                            raise ValueError(f"symlink forbidden in promotion ancestor: {ancestor.relative_to(repo)}")
+                    if path.is_symlink():
+                        raise ValueError(f"symlink forbidden in promotion path: {path.relative_to(repo)}")
+                if not sp.is_file() or dp.exists() or not dp.parent.is_dir():
+                    raise ValueError(f"staging missing or destination already exists: {dst}")
+                data = sp.read_bytes()
+                if not data or len(data) > 100_000 or hashlib.sha256(data).hexdigest() != hashes[src]:
+                    raise ValueError(f"staging bytes changed or invalid: {src}")
+                payload[dst] = data
+            self.store.event("capability-promotion-prepared", c["op_id"], task_id=w["id"],
+                             review_id=approved[0]["id"], sources=hashes,
+                             destinations={dst: hashes[src] for src, dst in MOD004_PROMOTION.items()})
+            installed = []
+            try:
+                for dst, data in payload.items():
+                    target = repo / dst
+                    temporary = target.with_name(f".{target.name}.{c['op_id']}.tmp")
+                    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                    try:
+                        remaining = memoryview(data)
+                        while remaining:
+                            remaining = remaining[os.write(fd, remaining):]
+                        os.fsync(fd)
+                    finally:
+                        os.close(fd)
+                    try:
+                        os.link(temporary, target, follow_symlinks=False)  # never replace an existing rule
+                        installed.append((target, hashlib.sha256(data).hexdigest()))
+                        fsync_dir(target.parent)
+                        if _path_hash(target) != installed[-1][1]:
+                            raise ValueError(f"installed destination hash mismatch: {dst}")
+                    finally:
+                        temporary.unlink(missing_ok=True)
+            except (ValueError, OSError):
+                for target, expected in reversed(installed):
+                    if _path_hash(target) == expected:
+                        target.unlink()
+                        fsync_dir(target.parent)
+                self.store.event("capability-promotion-rolled-back", c["op_id"], task_id=w["id"])
+                raise
+            self.store.event("capability-promotion-installed", c["op_id"], task_id=w["id"],
+                             review_id=approved[0]["id"], destinations={dst: hashlib.sha256(data).hexdigest()
+                                                                           for dst, data in payload.items()})
+        finally:
+            self.wlock.release()
 
     def next_ready(self):
         ready = sorted((t for t in self.state["tasks"].values()
@@ -2731,6 +2832,10 @@ def main(argv=None):
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
+    pm = sub.add_parser("promote-mod004-capability", help="queue exact-two-file reviewed MOD-004 rule promotion")
+    pm.add_argument("--task-id", required=True)
+    pm.add_argument("--rls-sha256", required=True)
+    pm.add_argument("--console-sha256", required=True)
     x = sub.add_parser("rearm", help="OWNER STEP: offer the current state to the orchestrator again after a settled/blocked handoff")
     x.add_argument("--op-id")
     sub.add_parser("status")
@@ -2782,6 +2887,19 @@ def main(argv=None):
         snap = snapshot(cfg)
         print(json.dumps({"op_id": op, "command": a.cmd, "runner_alive": snap["runner_alive"],
                           "note": None if snap["runner_alive"] else "runner not running; applied when it next starts"}))
+        return 0
+    if a.cmd == "promote-mod004-capability":
+        if not ID_RE.fullmatch(a.task_id) or not all(SHA256_RE.fullmatch(h) for h in
+                                                     (a.rls_sha256, a.console_sha256)):
+            print("promotion refused: invalid task id or SHA256", file=sys.stderr)
+            return 2
+        op = f"promotion-{uuid.uuid4().hex[:12]}"
+        command = {"cmd": a.cmd, "op_id": op, "task_id": a.task_id, "ts": now_iso(),
+                   "hashes": {list(MOD004_PROMOTION)[0]: a.rls_sha256,
+                              list(MOD004_PROMOTION)[1]: a.console_sha256}}
+        atomic_write(cfg.home / "commands" / f"{time.time_ns():020d}-{op}.json",
+                     json.dumps(command, sort_keys=True).encode())
+        print(json.dumps({"op_id": op, "status": "queued; runner will validate review and hashes under writer lock"}))
         return 0
     if a.cmd == "status":
         s = snapshot(cfg)

@@ -153,6 +153,100 @@ class Base(unittest.TestCase):
         return r.state["tasks"][id]
 
 
+class Mod004Promotion(Base):
+    def setUp(self):
+        super().setUp()
+        self.r = self.runner()
+        self.r.state["health"] = {"status": "OK"}
+        self.destinations = list(R.MOD004_PROMOTION.values())
+        self.hashes = {}
+        for src, dst in R.MOD004_PROMOTION.items():
+            p = self.repo / src
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("# reviewed " + src + "\n")
+            (self.repo / dst).parent.mkdir(parents=True, exist_ok=True)
+            self.hashes[src] = hashlib.sha256(p.read_bytes()).hexdigest()
+        changed = [{"path": p, "sha256": h} for p, h in self.hashes.items()]
+        self.r.state["tasks"]["stage"] = {
+            "id": "stage", "module": "MOD-004", "role": "implement", "status": "DONE",
+            "allowed_paths": list(R.MOD004_PROMOTION), "expected_changes": list(R.MOD004_PROMOTION),
+            "route": {"verdict": "VERIFIED"}, "evidence": {"changed": changed, "violations": []}}
+        self.r.state["tasks"]["review"] = {
+            "id": "review", "module": "MOD-004", "role": "code-review", "status": "DONE",
+            "review_of": {"task_id": "stage", "changed": changed},
+            "route": {"verdict": "VERIFIED"},
+            "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}
+
+    def command(self, **updates):
+        return {"cmd": "promote-mod004-capability", "op_id": "promotion-test", "task_id": "stage",
+                "hashes": dict(self.hashes), "ts": R.now_iso()} | updates
+
+    def test_exact_reviewed_pair_installs_and_audits(self):
+        self.r.promote_mod004_capability(self.command())
+        for src, dst in R.MOD004_PROMOTION.items():
+            self.assertEqual((self.repo / src).read_bytes(), (self.repo / dst).read_bytes())
+        self.assertIn("capability-promotion-installed", (self.home / "events.jsonl").read_text())
+
+    def test_rejects_bad_hash_unapproved_review_and_destination_override(self):
+        bad = dict(self.hashes)
+        bad[list(bad)[0]] = "0" * 64
+        with self.assertRaises(ValueError):
+            self.r.promote_mod004_capability(self.command(hashes=bad))
+        self.r.state["tasks"]["review"]["evidence"]["review_outcome"] = "CHANGES_REQUESTED"
+        with self.assertRaises(ValueError):
+            self.r.promote_mod004_capability(self.command())
+        self.r.state["tasks"]["review"]["evidence"]["review_outcome"] = "APPROVED"
+        with self.assertRaises(ValueError):
+            self.r.promote_mod004_capability(self.command(destination="other"))
+        self.assertFalse(any((self.repo / d).exists() for d in self.destinations))
+
+    def test_refuses_existing_destination_and_symlink(self):
+        (self.repo / self.destinations[0]).write_text("not ours")
+        with self.assertRaises(ValueError):
+            self.r.promote_mod004_capability(self.command())
+        (self.repo / self.destinations[0]).unlink()
+        (self.repo / self.destinations[0]).symlink_to(self.repo / list(self.hashes)[0])
+        with self.assertRaises(ValueError):
+            self.r.promote_mod004_capability(self.command())
+        self.assertFalse((self.repo / self.destinations[1]).exists())
+
+    def test_handoff_and_quarantine_refuse_promotion(self):
+        for handoff in ({"request": {"id": "open"}}, {"quarantine": "late-turn"}):
+            self.r.state["handoff"] = handoff
+            with self.assertRaisesRegex(ValueError, "handoff is open or quarantined"):
+                self.r.promote_mod004_capability(self.command())
+        self.assertFalse(any((self.repo / d).exists() for d in self.destinations))
+
+    def test_staged_bytes_and_writer_lock_are_rechecked(self):
+        (self.repo / list(self.hashes)[0]).write_text("tampered")
+        with self.assertRaisesRegex(ValueError, "staging bytes changed"):
+            self.r.promote_mod004_capability(self.command())
+        src = list(self.hashes)[0]
+        (self.repo / src).write_text("# reviewed " + src + "\n")
+        other = R.FileLock(R.writer_lock_path(self.home, self.repo))
+        self.assertTrue(other.acquire({"pid": 2}))
+        try:
+            with self.assertRaisesRegex(ValueError, "writer lock"):
+                self.r.promote_mod004_capability(self.command())
+        finally:
+            other.release()
+
+    def test_partial_install_rolls_back_without_touching_other_files(self):
+        link = R.os.link
+        calls = 0
+        def fail_second(*a, **kw):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("simulated second-link failure")
+            return link(*a, **kw)
+        with mock.patch.object(R.os, "link", side_effect=fail_second):
+            with self.assertRaises(OSError):
+                self.r.promote_mod004_capability(self.command())
+        self.assertFalse(any((self.repo / d).exists() for d in self.destinations))
+        self.assertIn("capability-promotion-rolled-back", (self.home / "events.jsonl").read_text())
+
+
 class Routing(unittest.TestCase):
     """judge_route against the real modelUsage shape."""
 
