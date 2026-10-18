@@ -1,0 +1,170 @@
+{
+  "artifact": "module-capabilities",
+  "format": "JSON-compatible YAML 1.2 (strict-JSON parseable)",
+  "provisional": true,
+  "gate_eligible": false,
+  "status_note": "PROVISIONAL documentation draft. Not gate-eligible. Does not claim any capability ACTIVE, MOD-004 Ready, Scenario Review/Scenario PASS, security PASS or S1 authorization. Independent review is outstanding. Does not satisfy the Capability / Rules / Skills gate.",
+  "source": {
+    "schema_anchor": "EIP Appendix H H.1 ¶11758 (zero-based paragraph index)",
+    "eip_docx_sha256": "b82e56f88a3b5cc5ba486fe8d10b2d04e8153ce227729e9ba6a92debe15d894f",
+    "extract_path": "mission-runner/reviews/mod004-capability-governance-source-supplement-20261018.md",
+    "extract_sha256_claimed": "2de22c1774d43be381276dcba8143d3ea1e8e7e0ae626de5faed19f8b3f57b8a",
+    "extract_sha256_rehash": "NOT_COMPUTED: the authoring session had no hashing tool; runner must verify externally",
+    "other_anchors": [
+      "EIP §4.1 ¶562-587",
+      "EIP §4.2 ¶588-619",
+      "EIP Appendix H ¶11755-11821",
+      "ADR-0002 D11, D12, D14 (knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md)"
+    ]
+  },
+  "dependency_decision": {
+    "record": "knowledge/00-Decisions/OWNER-2026-10-18-mod004-foundation-dependency.md",
+    "scope": "MOD-004 dependency edge only; not Ready, not ACTIVE",
+    "published_head": "6311ab38f548c789c026baac791b546ead1a992e",
+    "foundation_ci_run": "39107717468",
+    "foundation_ci_scope": "exact-head CI for published head 6311ab38"
+  },
+  "modules": [
+    {
+      "module_id": "MOD-004",
+      "applicable_capability_profiles": {
+        "formal_profile_ids": null,
+        "formal_profile_note": "No formal capability profile ID is registered; none is claimed. Labels below are descriptive, grounded in EIP/ADR-0002 D11.",
+        "descriptive_labels": [
+          "backend/data profile (PostgreSQL tenant isolation, S1 slice)",
+          "Internal SaaS Console profile (CON-04 only, ADR-0002 D11/D14)"
+        ]
+      },
+      "repo_paths_surfaces": {
+        "backend_data_paths": [
+          "backend/app/tenancy/**",
+          "backend/migrations/**",
+          "backend/tests/integration/tenancy/**",
+          "infra/db/**"
+        ],
+        "console_surfaces": [
+          {
+            "surface": "CON-04 Tenant provisioning (Internal SaaS Console)",
+            "path_glob": "frontend/console/con-04-tenant-provisioning/**",
+            "path_status": "non-operative provisional placeholder; no UI or matching path exists today"
+          }
+        ]
+      },
+      "required_agent_roles": [
+        "veyro-lead / veyro-architect (Opus)",
+        "veyro-critical-engineer (Opus or Opus-led; tenant isolation/RLS is a critical slice, EIP ¶570-571)",
+        "veyro-backend-engineer",
+        "veyro-admin-web-engineer (CON-04 only; blocked until a UI surface exists)",
+        "veyro-code-reviewer (Opus, fresh context)",
+        "veyro-security-reviewer (Opus)",
+        "veyro-scenario-reviewer (Opus, fresh context)",
+        "veyro-gatekeeper (Opus, fresh context)"
+      ],
+      "required_rule_ids": ["RULE-001", "RULE-002"],
+      "required_skill_tool_ids": {
+        "registered_ids": [],
+        "required_capabilities_unregistered": [
+          "PostgreSQL 17 (local test container only; ADR-0002 D4.3 PROPOSAL)",
+          "psycopg 3 (ADR-0002 D4.3 PROPOSAL)",
+          "psycopg_pool (ADR-0002 D4.3 PROPOSAL)",
+          "migration-lint (ADR-0002 D5; reviewed as Skill/tool and qualified by the D5 mutation corpus)"
+        ]
+      },
+      "required_cross_cutting_controls": [
+        "tenant-isolation (RLS, transaction-local context, platform_scope function-only; TSD §7.3)",
+        "privileged-console-review (CON-04; admin/privileged-console Rule family; EIP ¶11758, MOD-029 card ¶2853 applied by ADR-0002 D11 [INFERENCE])",
+        "independent-opus-review (no self-review; no silent downgrade, EIP ¶585)",
+        "supply-chain-evidence for PostgreSQL, psycopg, psycopg_pool (EIP ¶754, ADR-0002 D11)"
+      ],
+      "missing_capability_blockers": [
+        {
+          "id": "BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME",
+          "kind": "CAP",
+          "blocks": "PostgreSQL 17, psycopg, psycopg_pool, free local runtime",
+          "state": "OPEN: no CAP record, no supply-chain evidence, no free-runtime qualification",
+          "result_if_unresolved": "BLOCKED: CAPABILITY_GAP"
+        },
+        {
+          "id": "BLK-SKL-MIGRATION-LINT",
+          "kind": "SKL",
+          "blocks": "migration-lint (ADR-0002 D5)",
+          "state": "OPEN: no SKL record, no eval, no mutation-corpus qualification",
+          "result_if_unresolved": "BLOCKED: CAPABILITY_GAP"
+        },
+        {
+          "id": "BLK-CON04-PRIVILEGED-CONSOLE-REVIEW",
+          "kind": "CONTROL",
+          "blocks": "explicit CON-04 privileged-console-review check",
+          "state": "OPEN: blocked on missing CON-04 UI/path; D14 mapping unreviewed; no route contract",
+          "result_if_unresolved": "BLOCKED: CAPABILITY_GAP"
+        },
+        {
+          "id": "BLK-RULE-QUALIFICATION",
+          "kind": "RULE",
+          "blocks": "RULE-001 and RULE-002 qualification",
+          "state": "OPEN: matching/non-matching path tests, runtime-negative tests and independent review not done",
+          "result_if_unresolved": "BLOCKED: CAPABILITY_GAP"
+        }
+      ],
+      "evidence_ids": {
+        "CAP": [],
+        "SKL": [],
+        "RULE": ["RULE-001", "RULE-002"],
+        "note": "RULE records are PROVISIONAL drafts, not qualified evidence. No CAP or SKL record is registered."
+      },
+      "status": "PROVISIONAL",
+      "candidate_operational_status": null,
+      "lifecycle_status": null,
+      "gate_eligible": false,
+      "capability_dependency_ids": {
+        "dependencies": [
+          {"from": "RULE-002", "to": "RULE-001", "relation": "tenant isolation mechanics live in RULE-001 (RULE-002 scope limit)"}
+        ],
+        "acyclic_check": "NOT_RUN: cycle detection is a blocking qualification/MOD-001 validation check (EIP ¶11821)"
+      },
+      "per_gap_attempts_budget": {
+        "policy_source": "EIP ¶601, ¶607, ¶11821",
+        "max_external_candidate_evaluations_per_gap": 2,
+        "max_custom_creation_attempts_per_gap": 1,
+        "default_orchestration_budget_minutes": 45,
+        "token_budget_when_observable": 50000,
+        "gaps": [
+          {"gap_id": "BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME", "external_attempts_used": null, "custom_attempts_used": null, "budget_evidence": null},
+          {"gap_id": "BLK-SKL-MIGRATION-LINT", "external_attempts_used": null, "custom_attempts_used": null, "budget_evidence": null},
+          {"gap_id": "BLK-CON04-PRIVILEGED-CONSOLE-REVIEW", "external_attempts_used": null, "custom_attempts_used": null, "budget_evidence": null},
+          {
+            "gap_id": "BLK-RULE-QUALIFICATION",
+            "external_attempts_used": null,
+            "external_attempts_note": "No external candidate evaluation is recorded; null = unknown, not zero.",
+            "custom_attempts_used": 1,
+            "custom_attempts_cap": 1,
+            "custom_attempts_remaining": 0,
+            "custom_attempt_counting_basis": "gap-level, conservative: the RULE-001/RULE-002 pair was created and promoted together in one promotion, so the single custom attempt allowed per gap (EIP ¶607, ¶11821) is treated as consumed. No reset and no additional budget is granted or invented.",
+            "custom_attempt_artifacts": [
+              {"rule_id": "RULE-001", "rule_path": ".claude/rules/backend/mod004-rls.md", "created_and_promoted": true},
+              {"rule_id": "RULE-002", "rule_path": ".claude/rules/admin/mod004-privileged-console.md", "created_and_promoted": true}
+            ],
+            "budget_evidence": {
+              "promotion_commit": "5e9eeb48",
+              "promotion_subject": "Add reviewed exact-file MOD-004 rule promotion",
+              "policy_source": "EIP ¶607, ¶11821"
+            },
+            "ambiguity": "OPEN: it is not established whether the cap is counted per gap (this gap covers both rules, so 1 used of 1) or per rule (two counters, each 1 used of 1). Both readings show the cap reached for the created pair; neither permits a further custom rule-creation attempt. Usage is not hidden or reduced. Interpretation is unresolved and needs independent disposition. Fixes to the existing rules versus a new custom attempt is also undecided and is not asserted here.",
+            "qualification_state": "OPEN: promotion is not qualification; path-scope tests, runtime-negative tests and independent review remain outstanding."
+          }
+        ],
+        "note": "null = no CAP-recorded counter exists; no attempt is claimed or recorded for those gaps. The BLK-RULE-QUALIFICATION custom usage is derived from promotion commit 5e9eeb48 and is not a CAP-recorded counter."
+      },
+      "lifecycle_review_state": {
+        "last_reviewed_at": null,
+        "next_review_due": null,
+        "independent_reviewer": null,
+        "lifecycle_status": null
+      },
+      "rollback_target": {
+        "target": "remove contracts/engineering/module-capabilities.yaml and the two RULE records (documentation only; no runtime capability installed)",
+        "procedure_status": "PROVISIONAL; formal rollback procedure to be recorded at CAP registration"
+      }
+    }
+  ]
+}
