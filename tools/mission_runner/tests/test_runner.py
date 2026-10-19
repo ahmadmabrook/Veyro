@@ -3512,5 +3512,94 @@ class ProposalCanonicalPaths(unittest.TestCase):
                     R.proposal_restrictions(self.cfg, t)
 
 
+class AccountingRecoveryBoundary(Base):
+    def setUp(self):
+        super().setUp()
+        self.cfg.review_gate = True
+        for p in R.ACCOUNTING_RECOVERY_PATHS:
+            f = self.repo / p
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("historical baseline\n")
+        self.hashes = tuple(R._path_hash(self.repo / p) for p in R.ACCOUNTING_RECOVERY_PATHS)
+        self.old = {"id": "mod004-cap-budget-accounting-sonnet-20261019", "module": "MOD-004",
+                    "role": "implement", "status": "DONE", "review_gate": 1, "created_at": "2026-01-01T00:00:00Z",
+                    "evidence": {"changed": [{"path": p, "sha256": "0" * 64} for p in R.ACCOUNTING_RECOVERY_PATHS]}}
+        self.prior = {"id": R.ACCOUNTING_RECOVERY_REVIEW, "module": "MOD-004", "role": "code-review",
+                      "status": "BLOCKED", "blocked_reason": "REVIEW_BLOCKED", "route": {"verdict": "VERIFIED"},
+                      "review_of": {"task_id": self.old["id"], "changed": self.old["evidence"]["changed"]},
+                      "evidence": {"review_outcome": "BLOCKED", "review_outcome_reported": "BLOCKED",
+                                   "review_bound_verified": True}}
+        self.tasks = {self.old["id"]: self.old, self.prior["id"]: self.prior}
+        self.write = {"id": R.ACCOUNTING_RECOVERY_WRITE, "module": "MOD-004", "role": "implement",
+                      "allowed_paths": list(R.ACCOUNTING_RECOVERY_PATHS),
+                      "expected_changes": list(R.ACCOUNTING_RECOVERY_PATHS),
+                      "verify_cmd": [sys.executable, "-m", "unittest", "tools.governance.tests.test_governance_check"],
+                      "accounting_recovery_of": R.ACCOUNTING_RECOVERY_REVIEW}
+
+    def test_one_fresh_write_only_and_no_old_review_approval(self):
+        with mock.patch.object(R, "ACCOUNTING_RECOVERY_BASE_HASHES", self.hashes):
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.write, self.tasks))
+            self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, self.write | {"id": "other",
+                                                                      "accounting_recovery_of": None}, self.tasks))
+            for mutation in ({"id": "other"}, {"allowed_paths": ["out/"]},
+                             {"expected_changes": [R.ACCOUNTING_RECOVERY_PATHS[0]]}):
+                self.assertEqual(R.review_gate_reason(self.cfg, self.write | mutation, self.tasks),
+                                 "ACCOUNTING_RECOVERY_INVALID")
+            self.prior["route"]["verdict"] = "UNVERIFIED"
+            self.assertEqual(R.review_gate_reason(self.cfg, self.write, self.tasks), "ACCOUNTING_RECOVERY_INVALID")
+            self.prior["route"]["verdict"] = "VERIFIED"
+            self.tasks[self.write["id"]] = self.write | {"status": "QUEUED"}
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.write, self.tasks))
+            self.tasks["second"] = self.write | {"id": "second", "status": "QUEUED"}
+            self.assertEqual(R.review_gate_reason(self.cfg, self.write, self.tasks), "ACCOUNTING_RECOVERY_INVALID")
+        self.assertEqual(self.prior["evidence"]["review_outcome"], "BLOCKED")
+        self.assertIsNone(R.review_verdict(self.tasks, self.old["id"]))
+
+    def test_source_appendix_is_hash_checked_and_read_only(self):
+        import zipfile
+        eip = self.repo / "pinned.docx"
+        paragraphs = ["<w:p><w:r><w:t>paragraph %s</w:t></w:r></w:p>" % i for i in range(11825)]
+        xml = ('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+               '<w:body>' + ''.join(paragraphs) + '</w:body></w:document>')
+        with zipfile.ZipFile(eip, "w", compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr("word/document.xml", xml)
+        sources = {}
+        for rel in R.ACCOUNTING_SOURCES:
+            p = self.home / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"result": "historical BLOCKED evidence", "duration_ms": 10,
+                                     "modelUsage": {"claude-opus-5-5": {"outputTokens": 2}},
+                                     "observed_at_utc": "2026-01-01T00:00:00Z"}))
+            sources[rel] = R._path_hash(p)
+        with mock.patch.object(R, "ACCOUNTING_EIP", (eip.name, R._path_hash(eip))), \
+             mock.patch.object(R, "ACCOUNTING_SOURCES", sources):
+            appendix = R.accounting_evidence_block(self.cfg, self.tasks)
+            self.assertIn("paragraph 621", appendix)
+            self.assertIn("historical BLOCKED evidence", appendix)
+            self.assertIn("modelUsage", appendix)
+            self.assertEqual(self.prior["status"], "BLOCKED")
+            victim = self.home / next(iter(sources))
+            victim.write_text("tampered")
+            with self.assertRaisesRegex(ValueError, "source unavailable or changed"):
+                R.accounting_evidence_block(self.cfg, self.tasks)
+
+    def test_appendix_follows_new_write_and_bounded_remediation_reviews(self):
+        r = self.runner()
+        r.state["tasks"] = self.tasks | {self.write["id"]: self.write}
+        review = {"id": "new-review", "role": "code-review", "module": "MOD-004", "prompt": "review",
+                  "review_of": {"task_id": self.write["id"]}}
+        remediation = {"id": "remediation", "role": "implement", "module": "MOD-004", "prompt": "fix",
+                       "allowed_paths": list(R.ACCOUNTING_RECOVERY_PATHS), "expected_changes": [],
+                       "remediation_of": self.write["id"]}
+        r.state["tasks"]["remediation"] = remediation
+        with mock.patch.object(r, "review_binding_block", return_value="BOUND"), \
+             mock.patch.object(R, "accounting_evidence_block", return_value="SOURCE APPENDIX"):
+            for task in (self.write | {"prompt": "write"}, review, remediation,
+                         review | {"id": "remediation-review", "review_of": {"task_id": "remediation"}}):
+                self.assertIn("SOURCE APPENDIX", r.child_prompt(task))
+            self.assertNotIn("SOURCE APPENDIX", r.child_prompt({"id": "unrelated", "role": "code-review",
+                                                                  "module": "MOD-004", "prompt": "other"}))
+
+
 if __name__ == "__main__":
     unittest.main()
