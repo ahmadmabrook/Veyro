@@ -3600,6 +3600,29 @@ class AccountingRecoveryBoundary(Base):
             self.assertNotIn("SOURCE APPENDIX", r.child_prompt({"id": "unrelated", "role": "code-review",
                                                                   "module": "MOD-004", "prompt": "other"}))
 
+    def test_historical_blocked_write_does_not_consume_fresh_remediation_round(self):
+        fresh = self.write | {"status": "DONE", "review_gate": 1, "finished_at": "2026-01-01T00:01:00Z"}
+        first = {"id": "first-remediation", "module": "MOD-004", "role": "implement", "status": "DONE",
+                 "review_gate": 1, "finished_at": "2026-01-01T00:02:00Z", "remediation_of": fresh["id"],
+                 "allowed_paths": list(R.ACCOUNTING_RECOVERY_PATHS)}
+        tasks = self.tasks | {fresh["id"]: fresh, first["id"]: first}
+        for i, w in enumerate((fresh, first), 1):
+            tasks[f"review-{i}"] = {"id": f"review-{i}", "role": "code-review", "module": "MOD-004",
+                                    "status": "BLOCKED", "review_of": {"task_id": w["id"]},
+                                    "route": {"verdict": "VERIFIED"},
+                                    "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        next_write = {"id": "second-remediation", "module": "MOD-004", "role": "implement",
+                      "allowed_paths": list(R.ACCOUNTING_RECOVERY_PATHS)}
+        self.assertIsNone(R.review_gate_reason(self.cfg, next_write, tasks))
+        tasks["review-3"] = {"id": "review-3", "role": "code-review", "module": "MOD-004",
+                             "status": "BLOCKED", "review_of": {"task_id": "second-remediation"},
+                             "route": {"verdict": "VERIFIED"}, "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        tasks["second-remediation"] = next_write | {"status": "DONE", "review_gate": 1,
+            "finished_at": "2026-01-01T00:03:00Z", "remediation_of": first["id"]}
+        self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, next_write | {"id": "third"}, tasks))
+        self.prior["status"] = "DONE"
+        self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, next_write, tasks))
+
 
 if __name__ == "__main__":
     unittest.main()

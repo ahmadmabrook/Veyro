@@ -1489,6 +1489,20 @@ def accounting_evidence_block(cfg, tasks):
     return "\n".join(lines)
 
 
+def accounting_recovery_chain(tasks, write):
+    """True only for the fresh accounting write and its at-most-two reviewed remediations."""
+    for _ in range(MAX_REMEDIATIONS + 1):
+        if not write or write.get("module") != "MOD-004":
+            return False
+        if write.get("id") == ACCOUNTING_RECOVERY_WRITE:
+            prior = tasks.get(ACCOUNTING_RECOVERY_REVIEW) or {}
+            return (write.get("accounting_recovery_of") == ACCOUNTING_RECOVERY_REVIEW
+                    and prior.get("status") == "BLOCKED" and prior.get("blocked_reason") == "REVIEW_BLOCKED"
+                    and (prior.get("evidence") or {}).get("review_outcome") == "BLOCKED")
+        write = tasks.get(write.get("remediation_of"))
+    return False
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -1512,6 +1526,10 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if t["role"] == "gatekeeper":
         return f"REVIEW_CHANGES_REQUESTED {module}: a review of {last['id']} requests changes; only a remediation write may follow"
+    # The historical source-inaccessible write is not a remediation round of the new candidate.
+    # This leaves MAX_REMEDIATIONS unchanged and applies only to the exact audited recovery chain.
+    if accounting_recovery_chain(tasks, last):
+        writes = writes[next(i for i, w in enumerate(writes) if w["id"] == ACCOUNTING_RECOVERY_WRITE):]
     rounds = 0
     for w in writes:
         rounds = 0 if review_verdict(tasks, w["id"]) == "APPROVED" else rounds + 1
@@ -2282,9 +2300,7 @@ class Runner:
                  "line: OUTCOME: APPROVED, or OUTCOME: CHANGES_REQUESTED, or OUTCOME: BLOCKED.")
         c += self.review_binding_block(t)
         reviewed = self.state["tasks"].get((t.get("review_of") or {}).get("task_id")) or {}
-        if (t.get("accounting_recovery_of") or t.get("remediation_of") == ACCOUNTING_RECOVERY_WRITE
-                or reviewed.get("accounting_recovery_of")
-                or reviewed.get("remediation_of") == ACCOUNTING_RECOVERY_WRITE):
+        if accounting_recovery_chain(self.state["tasks"], t if t["role"] in WRITE_ROLES else reviewed):
             c += accounting_evidence_block(self.cfg, self.state["tasks"])
         return t["prompt"] + "\n\n---\n" + c + "\n"
 
