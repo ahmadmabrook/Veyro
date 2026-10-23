@@ -1570,16 +1570,21 @@ def s0_marked(t):
     return t.get("plan_phase") == S0_MARKER
 
 
-def s0_touches(t):
-    """Any writing task, of any module, that names an S0 path or whose scope (directory, glob, other case) would
-    cover one. Only the exact MOD-004 S0 shape may do so; this is the guard against reclassifying S0 elsewhere."""
+def _touches_any(t, paths):
+    """Any writing task, of any module, that names one of `paths` or whose scope (directory, glob, other case) would
+    cover one."""
     if t.get("role") not in WRITE_ROLES:
         return False
     allowed, expected = t.get("allowed_paths") or [], t.get("expected_changes") or []
     low = [a.lower() for a in allowed]
-    return (any(p.lower() in {s.lower() for s in S0_PATHS} for p in [*allowed, *expected])
-            or any(in_scope(s.lower(), low) for s in S0_PATHS)
-            or any(s.lower().startswith(a.rstrip("/") + "/") for a in low if a.rstrip("/") for s in S0_PATHS))  # bare `backend/app`
+    return (any(p.lower() in {s.lower() for s in paths} for p in [*allowed, *expected])
+            or any(in_scope(s.lower(), low) for s in paths)
+            or any(s.lower().startswith(a.rstrip("/") + "/") for a in low if a.rstrip("/") for s in paths))  # bare `backend/app`
+
+
+def s0_touches(t):
+    """Only the exact MOD-004 S0 shape may touch an S0 product path; this is the guard against reclassifying S0 elsewhere."""
+    return _touches_any(t, S0_PATHS)
 
 
 def s0_shape_problem(t):
@@ -1774,13 +1779,13 @@ def _s0_ci_label(cfg, commit):
     return "observed"
 
 
-def _s0_subject(cfg, name, e, tasks, seen):
+def _s0_subject(cfg, name, e, tasks, seen, allowed=None):
     """One committed, CI-green, independently Opus-APPROVED subject whose current bytes are what was reviewed."""
     label = f"S0 {name}"
     if not (isinstance(e, dict) and set(e) == {"path", "sha256", "commit", "ci", "review"}):
         raise GateError(f"{label}: malformed entry")
     path, sha, commit, rv = e["path"], e["sha256"], e["commit"], e["review"]
-    if not (isinstance(path, str) and S0_SUBJECTS[name].fullmatch(path) and ".." not in Path(path).parts):
+    if not (isinstance(path, str) and (allowed or S0_SUBJECTS)[name].fullmatch(path) and ".." not in Path(path).parts):
         raise GateError(f"{label}: path is not permitted")
     if not (isinstance(sha, str) and SHA256_RE.fullmatch(sha) and isinstance(commit, str) and SHA_RE.fullmatch(commit)):
         raise GateError(f"{label}: malformed sha256/commit")
@@ -1865,6 +1870,15 @@ def _s0_content_problem(cfg, cert, cap, edge):
         _s0_ref(cfg, ref, (".claude/rules/", ".claude/skills/"), "S0 rule/skill")
     if edge.get("path") != S0_EDGE_RECORD:
         raise GateError("S0 edge decision: not the published owner dependency-edge record")
+    # the capability declaration's own runner hash is the runner as of its publication: historical evidence only
+    hist = (cap.get("authority") or {}).get("runner_gate") if isinstance(cap.get("authority"), dict) else None
+    if not (isinstance(hist, dict) and set(hist) == {"path", "sha256"} and hist["path"] == S0_RUNNER_FILE
+            and isinstance(hist["sha256"], str) and SHA256_RE.fullmatch(hist["sha256"])):
+        raise GateError("S0 declaration: no well-formed historical runner_gate record")
+    if cert.get("runner_gate") != {"path": S0_RUNNER_FILE, "sha256": CODE_SHA}:
+        raise GateError("S0 certificate: runner_gate must name the current reviewed runner hash, not a historical one")
+    if cert.get("historical_runner_gate") != hist:
+        raise GateError("S0 certificate: historical_runner_gate must restate the declaration's runner_gate exactly")
 
 
 def verify_s0_authority(cfg, tasks):
@@ -1984,6 +1998,165 @@ def s0_probe(cfg):
         return f"S0_PROBE_UNVERIFIABLE: {type(e).__name__}"
 
 
+# ------------------------------------------------ MOD-004 S0 document lane
+# Owner-authorized document routing for the two S0 slice documents only (OWNER-2026-10-19-mod004-s0-only.md item 2,
+# ADR-0002 D12.5, and the 2026-10-23 document-lane decision OWNER-2026-10-23-mod004-s0-doc-lane.md): one Sonnet write of exactly the eligibility certificate and the scenario/QA packet, one exact-bound
+# Opus review per write, and at most MAX_REMEDIATIONS remediations of a CHANGES_REQUESTED verdict. It is a separate
+# chain: it never joins the CAP review chain, never becomes its `last`, never spends or resets its remediation count,
+# and makes no other MOD-004 write eligible. It is not the S0 product write and is never counted as one.
+S0_DOC_MARKER = "MOD004-S0-DOC"
+S0_DOC_PATHS = ("contracts/engineering/mod004-s0-eligibility.json", "contracts/engineering/mod004-s0-scenario-qa.md")
+S0_DOC_OWNER_RECORD = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
+S0_DOC_RECEIPT = "MOD-004-S0-DOC"  # operator-written <home>/acceptances/MOD-004-S0-DOC.json: owner, adr, runner_gate, doc_owner
+S0_DOC_SUBJECTS = {  # name -> allowed repo path; owner/adr/runner_gate are the S0 subjects, doc_owner is this lane's own decision
+    "owner": S0_SUBJECTS["owner"], "adr": S0_SUBJECTS["adr"], "runner_gate": S0_SUBJECTS["runner_gate"],
+    "doc_owner": re.compile(re.escape(S0_DOC_OWNER_RECORD)),
+}
+
+
+def s0_doc_marked(t):
+    return t.get("plan_phase") == S0_DOC_MARKER
+
+
+def s0_doc_touches(t):
+    """Any writing task, of any module, that names a slice document or whose scope (directory, glob, other case) would
+    cover one. Only the exact MOD004-S0-DOC shape may do so, and nothing else offers another way to write them."""
+    return _touches_any(t, S0_DOC_PATHS)
+
+
+def s0_single_attempt(t):
+    return s0_marked(t) or s0_doc_marked(t)
+
+
+def s0_doc_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the S0 document lane is a MOD-004 implement task only"
+    if t.get("source") == "handoff":
+        return "the planner cannot propose S0 document tasks"
+    if t.get("review_retry_of") is not None or t.get("accounting_recovery_of") is not None:
+        return "review_retry_of and accounting_recovery_of are rejected"
+    if t.get("review_of") is not None or t.get("review_candidate") is not None:
+        return "a document write cannot carry review binding fields"
+    if sorted(t.get("allowed_paths") or []) != sorted(S0_DOC_PATHS) or sorted(t.get("expected_changes") or []) != sorted(S0_DOC_PATHS):
+        return "allowed_paths and expected_changes must be exactly the two S0 document files"
+    if t.get("verify_cmd") != []:
+        return "the document lane runs no verifier"
+    base = t.get("doc_base")
+    if not (isinstance(base, dict) and set(base) == set(S0_DOC_PATHS)
+            and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in base.values())):
+        return "doc_base (the exact current sha256, or null if absent, of both documents) is required"
+    return None
+
+
+def verify_s0_doc_authority(cfg, tasks):
+    """Offline re-verification that the S0 owner record, the ADR D12.5 amendment, this lane's own owner record
+    (doc_owner) and this very runner file are each the committed, non-force-published, exact-SHA CI-green,
+    independently Opus-APPROVED bytes, every one bound through _s0_subject. It never trusts task prose, and needs no
+    slice document."""
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_DOC_RECEIPT}.json", RECEIPT_MAX_BYTES), "S0 doc receipt")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"} and r["schema"] == SCHEMA
+            and r["module"] == S0_MODULE and r["kind"] == "mod004-s0-doc-authority" and isinstance(r["operator"], str)
+            and r["operator"].strip() and isinstance(r["recorded_at"], str)
+            and isinstance(r["subjects"], dict) and set(r["subjects"]) == set(S0_DOC_SUBJECTS)):
+        raise GateError("S0 doc receipt schema mismatch")
+    seen = set()
+    data = {name: _s0_subject(cfg, name, r["subjects"][name], tasks, seen, S0_DOC_SUBJECTS) for name in S0_DOC_SUBJECTS}
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+        raise GateError("S0 doc runner_gate: the loaded runner is not the reviewed, CI-green runner file")
+    if b"D12.5" not in data["adr"]:
+        raise GateError("S0 doc adr: no D12.5 S0 amendment")
+
+
+def _s0_doc_chain(tasks, write):
+    """The doc-lane writes from `write` back to its root through remediation_of, newest first, or None if any link
+    is not a DONE doc-lane implement write of MOD-004 whose single bound verified review requested changes."""
+    chain = []
+    while write is not None:
+        if len(chain) >= MAX_REMEDIATIONS:
+            return None
+        if not (s0_doc_marked(write) and write.get("module") == S0_MODULE and write.get("role") == "implement"
+                and write.get("status") == "DONE" and write["id"] not in {w["id"] for w in chain}):
+            return None
+        reviews = [r for r in tasks.values() if (r.get("review_of") or {}).get("task_id") == write["id"]]
+        if not (len(reviews) == 1 and reviews[0].get("source") != "handoff"
+                and review_verdict(tasks, write["id"]) == "CHANGES_REQUESTED"
+                and _bound_review_ok(write, reviews[0])):
+            return None
+        chain.append(write)
+        nxt = write.get("remediation_of")
+        write = tasks.get(nxt) if nxt else None
+        if nxt and write is None:
+            return None
+    return chain
+
+
+def s0_doc_gate_reason(cfg, t, tasks):
+    """None for a task outside the lane or a fully authorised document write; else an explicit S0_DOC_* reason."""
+    if not s0_doc_marked(t):
+        if s0_doc_touches(t):
+            return f"S0_DOC_UNTAGGED {t['id']}: a write naming or covering the S0 slice documents is not admitted"
+        return None
+    problem = s0_doc_shape_problem(t)
+    if problem:
+        return f"S0_DOC_INVALID_TASK {t['id']}: {problem}"
+    if any(s0_marked(x) and x.get("role") in WRITE_ROLES for x in tasks.values()):
+        return "S0_DOC_CLOSED: an S0 product write exists; the slice documents may no longer change"
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        return "S0_DOC_CLOSED: the S0 authority receipt exists and binds the slice documents"
+    if t.get("attempts"):
+        return f"S0_DOC_ATTEMPT_USED {t['id']}: the single document write attempt was already started"
+    others = [x for x in tasks.values() if x.get("id") != t["id"] and s0_doc_marked(x) and x.get("role") in WRITE_ROLES]
+    parent = t.get("remediation_of")
+    if parent is None:
+        if others:
+            return f"S0_DOC_SECOND_WRITE: document write {sorted(x['id'] for x in others)[0]} already exists; only bounded remediation may follow"
+        want = None
+    else:
+        chain = _s0_doc_chain(tasks, tasks.get(parent))
+        if not chain:
+            return ("S0_DOC_REMEDIATION_INVALID: remediation_of must name a DONE document write whose one exact-bound "
+                    f"review requested changes, within {MAX_REMEDIATIONS} rounds")
+        if {x["id"] for x in others} != {w["id"] for w in chain}:
+            return "S0_DOC_DUPLICATE_WORK: another document write exists outside this remediation chain"
+        want = {c["path"]: c["sha256"] for c in (chain[0].get("evidence") or {}).get("changed") or []}
+        if want != t["doc_base"]:
+            return "S0_DOC_STALE_DRAFT: doc_base is not the exact content the review requested changes to"
+    now = {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS}
+    if now != t["doc_base"]:
+        return "S0_DOC_STALE_DRAFT: a document changed since doc_base was pinned"
+    try:
+        verify_s0_doc_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_DOC_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
+def s0_doc_review_reason(cfg, t, tasks):
+    """The one exact-bound Opus review of a document write: any other review task bound to it, in any status, has
+    used the slot; there is no retry lineage; the bound hashes are exactly the write's two recorded files."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and s0_doc_marked(w)):
+        return None
+    if t.get("source") == "handoff":
+        return "S0_DOC_REVIEW_UNSUPPORTED: the planner cannot propose a document-lane review; it is owner-routed"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_DOC_REVIEW_UNSUPPORTED: a document write gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"):
+        return "S0_DOC_REVIEW_UNSUPPORTED: only a DONE MOD-004 document write can be reviewed here"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not (len(want) == len(S0_DOC_PATHS) and sorted(c["path"] for c in want) == sorted(S0_DOC_PATHS)
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) for c in want)
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_DOC_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of both document files"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_DOC_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review document write {w['id']}"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_DOC_REVIEW_BINDING_STALE: the document files no longer match the write's recorded hashes"
+    return None
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -1991,10 +2164,13 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if s0_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
         return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
+    if s0_doc_marked(t) or s0_doc_touches(t):
+        return f"S0_DOC_INVALID_TASK {t['id']}: document tasks are admitted only by the S0 document gate"
     module = t["module"]
-    # the one S0 chain is a separate chain: it never becomes `last`, so it cannot unblock any other MOD-004 task
+    # the S0 and document chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
-                     and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)), key=_when)
+                     and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
+                     and not s0_doc_marked(x)), key=_when)
     if not writes:
         return None
     last = writes[-1]
@@ -2084,10 +2260,10 @@ def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
         if t["role"] == "code-review":
-            return s0_review_reason(t, tasks)
+            return s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks)
         if t["role"] not in GATED_ROLES:
             return None
-        reason = s0_gate_reason(cfg, t, tasks)
+        reason = s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks)
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -2099,7 +2275,7 @@ def gate_reason(cfg, t, tasks):
             active = active_module_blockers(cfg, t, tasks)
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
-        if s0_marked(t):  # the sole authorised S0 write: separate chain, historical blockers stay untouched
+        if s0_marked(t) or s0_doc_marked(t):  # the sole S0 write and the document lane: separate chains, historical blockers stay untouched
             return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
@@ -2499,8 +2675,8 @@ class Runner:
             raise ValueError("operational review retries require the owner CLI and an audited prior BLOCKED record")
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
-        if s0_marked(t) or s0_touches(t):
-            raise ValueError("MOD004-S0 tasks require the owner CLI; the planner cannot propose them")
+        if s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_doc_touches(t):
+            raise ValueError("tasks for the MOD004-S0 or MOD004-S0-DOC files require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -2984,10 +3160,11 @@ class Runner:
     # --- settle: DONE is earned only by external evidence, never by exit code or prose
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
-        if outcome in ("stopped", "signal") and s0_marked(t):  # the single S0 attempt started: triage, never re-run
-            t.update(status="BLOCKED", blocked_reason="S0_ATTEMPT_INTERRUPTED", stage=None,
-                     last_error="the only S0 write attempt was interrupted; repo may hold partial edits")
-            return self.store.event("task-blocked", op, task_id=t["id"], code="S0_ATTEMPT_INTERRUPTED")
+        if outcome in ("stopped", "signal") and s0_single_attempt(t):  # the single S0/document attempt started: triage, never re-run
+            code = "S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED"
+            t.update(status="BLOCKED", blocked_reason=code, stage=None,
+                     last_error="the only attempt of this S0 write was interrupted; repo may hold partial edits")
+            return self.store.event("task-blocked", op, task_id=t["id"], code=code)
         if outcome in ("stopped", "signal"):  # operator/launchd action is not a task failure
             t.update(status="QUEUED", attempts=t["attempts"] - 1, stage=None)
             return self.store.event("attempt-interrupted", op, task_id=t["id"], why=outcome)
@@ -3095,6 +3272,13 @@ class Runner:
                 bad.append(("S0_AUTHORITY_WITHDRAWN", str(e)[:200]))
             except Exception as e:
                 bad.append(("S0_AUTHORITY_WITHDRAWN", type(e).__name__))
+        if write and s0_doc_marked(t):  # authority may have been withdrawn during the child
+            try:
+                verify_s0_doc_authority(self.cfg, self.state["tasks"])
+            except GateError as e:
+                bad.append(("S0_DOC_AUTHORITY_WITHDRAWN", str(e)[:200]))
+            except Exception as e:
+                bad.append(("S0_DOC_AUTHORITY_WITHDRAWN", type(e).__name__))
         base = Path(self.cfg.repo)
         evidence = {"op": op, "at": now_iso(), "subtype": parsed.get("subtype"),
                     "permission_denials": len(denials) if isinstance(denials, list) else None,
@@ -3272,7 +3456,7 @@ class Runner:
 
     def requeue_or_fail(self, t, reason):
         t["last_error"], t["updated_at"] = reason, now_iso()
-        if t["attempts"] >= self.cfg.max_attempts or s0_marked(t):  # S0: one attempt, no transport retry
+        if t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t):  # S0 and its documents: one attempt, no transport retry
             t["status"] = "FAILED"
             self.store.event("task-failed", f"{t['id']}:{t['attempts']}", task_id=t["id"], reason=reason)
         else:
@@ -3351,6 +3535,11 @@ def validate_task(d, cfg):
     if retry_of is not None and not (d["role"] == "code-review" and review_of and
                                      isinstance(retry_of, str) and ID_RE.match(retry_of)):
         raise ValueError("review_retry_of is only for a bound code-review")
+    doc_base = d.get("doc_base")
+    if doc_base is not None and not (plan_phase == S0_DOC_MARKER and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+                                     and set(doc_base) == set(S0_DOC_PATHS)
+                                     and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())):
+        raise ValueError("doc_base is only for a MOD004-S0-DOC write: {path: sha256 or null} for exactly the two document paths")
     candidate = d.get("review_candidate")
     if candidate is not None and not (retry_of and isinstance(candidate, dict)
                                       and set(candidate) == {"head", "files", "diff_sha256", "candidate_sha256"}):
@@ -3361,7 +3550,19 @@ def validate_task(d, cfg):
             "next_attempt_at": 0, "created_at": d.get("created_at") or now_iso(), "updated_at": now_iso(),
             "child": None} | ({"remediation_of": remediation_of} if remediation_of else {}) | (
                 {"accounting_recovery_of": accounting_recovery_of} if accounting_recovery_of else {}) | (
-                {"review_retry_of": retry_of, "review_candidate": candidate} if retry_of else {})
+                {"review_retry_of": retry_of, "review_candidate": candidate} if retry_of else {}) | (
+                {"doc_base": dict(doc_base)} if doc_base is not None else {})
+
+
+def parse_doc_base(pairs):
+    """`PATH=SHA256` or `PATH=absent`, one per document, as the doc_base mapping."""
+    out = {}
+    for x in pairs:
+        path, sep, value = x.partition("=")
+        if not sep or path in out:
+            raise ValueError(f"--doc-base must be PATH=SHA256|absent, once per document: {x!r}")
+        out[path] = None if value == "absent" else value
+    return out
 
 
 def enqueue(cfg, task):
@@ -3378,7 +3579,7 @@ def enqueue(cfg, task):
         raise ValueError(f"enqueue refused ({handoff['quarantine']}); run `rearm` once the owner has checked the gateway")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
-    if s0_marked(t):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+    if s0_marked(t) or s0_doc_marked(t):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
         problem = s0_runner_problem(state)
         if problem:
             raise ValueError(f"task refused by S0 gate: {problem}")
@@ -3619,6 +3820,9 @@ def main(argv=None):
     e.add_argument("--review-of", help="code-review only: id of the DONE write task this review is bound to (changed-file hashes are filled from runner evidence)")
     e.add_argument("--review-retry-of", help="owner-audited operational BLOCKED review id; permits one unchanged-candidate retry only")
     e.add_argument("--accounting-recovery-of", help="one audited MOD-004 source-inaccessible accounting review id; fresh write only")
+    e.add_argument("--remediation-of", help="MOD004-S0-DOC only: the document write whose exact-bound review requested changes")
+    e.add_argument("--doc-base", action="append", default=[], metavar="PATH=SHA256|absent",
+                   help="MOD004-S0-DOC only, once per document: the exact current content hash this write starts from")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
@@ -3662,12 +3866,16 @@ def main(argv=None):
         return dashboard.serve(cfg, a.port)
     if a.cmd == "enqueue":
         try:
+            if a.remediation_of and a.plan_phase != S0_DOC_MARKER:
+                raise ValueError("--remediation-of is accepted here only for MOD004-S0-DOC document writes")
             p = enqueue(cfg, {"id": a.id, "module": a.module, "role": a.role, "title": a.title,
                               "plan_phase": a.plan_phase, "allowed_paths": a.allow, "expected_changes": a.expect,
                               "verify_cmd": json.loads(a.verify_cmd) if a.verify_cmd else None,
                               "review_of": {"task_id": a.review_of} if a.review_of else None,
                               "review_retry_of": a.review_retry_of,
                               "accounting_recovery_of": a.accounting_recovery_of,
+                              "remediation_of": a.remediation_of,
+                              "doc_base": parse_doc_base(a.doc_base) if a.doc_base else None,
                               "prompt": Path(a.prompt_file).read_text()})
         except (ValueError, OSError) as ex:
             print(f"enqueue refused: {ex}", file=sys.stderr)

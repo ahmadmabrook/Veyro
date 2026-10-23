@@ -3626,7 +3626,7 @@ class AccountingRecoveryBoundary(Base):
         self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, next_write, tasks))
 
 
-class Mod004S0Gate(Base):
+class S0Fixture(Base):
     """Owner-approved MOD-004 S0-only exception: every authority and slice receipt is synthetic but independently
     re-verifiable (committed bytes, exact-commit CI, hash-bound Opus reviews); task prose is never trusted."""
     OWNER, ADR, RUN, EDGE = R.S0_OWNER_RECORD, R.S0_ADR, R.S0_RUNNER_FILE, R.S0_EDGE_RECORD
@@ -3636,6 +3636,7 @@ class Mod004S0Gate(Base):
     OLD = "mod004-cap-budget-accounting-sonnet-20261019"
     SUBJECTS = (("owner", OWNER), ("adr", ADR), ("runner_gate", RUN), ("eligibility", CERT), ("capability", CAP),
                 ("edge", EDGE))
+    HIST_RUNNER = {"path": R.S0_RUNNER_FILE, "sha256": hashlib.sha256(b"runner bytes at declaration time\n").hexdigest()}
 
     def setUp(self):
         super().setUp()
@@ -3729,6 +3730,7 @@ class Mod004S0Gate(Base):
             "schema": 1, "module": "MOD-004", "status": "S0_ELIGIBLE", "lifecycle": "EFFECTIVE",
             "paths": sorted(R.S0_PATHS), "dependency_receipts": receipts,
             "edge_decision": self.ref(self.EDGE), "module_manifest": self.ref(self.MANIFEST), "no_ui": True,
+            "runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": R.CODE_SHA}, "historical_runner_gate": dict(self.HIST_RUNNER),
             "screen_registry": self.ref(self.SCREENS), "screen_identities": list(R.S0_SCREEN_IDS),
             "toolchain_evidence": {"workflow": self.ref(self.WORKFLOW), "python_version": "3.13", "commit": self.base,
                                    "ci": self.ci(self.base)}} | (cert or {})))
@@ -3736,7 +3738,8 @@ class Mod004S0Gate(Base):
             "schema": 1, "module": "MOD-004", "status": "ACTIVE_FOR_S0_ONLY", "paths": sorted(R.S0_PATHS),
             "toolchain": "python3.13-stdlib", "third_party_caps": 0, "database_profiles": 0, "console_profiles": 0,
             "module_row_status": "PROVISIONAL", "forbidden_imports": sorted(R.S0_FORBIDDEN_IMPORTS),
-            "module_manifest": self.ref(self.MANIFEST), "rules_skills": [self.ref(self.RULE)]} | (cap or {})))
+            "module_manifest": self.ref(self.MANIFEST), "rules_skills": [self.ref(self.RULE)],
+            "authority": {"runner_gate": dict(self.HIST_RUNNER)}} | (cap or {})))
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-qm", "s0 evidence", "--allow-empty")
         commit = self.head()
@@ -3775,7 +3778,8 @@ class Mod004S0Gate(Base):
                   "evidence": {"review_outcome": outcome}}
         return self.history | {write["id"]: write, review["id"]: review}
 
-    # --- tests
+
+class Mod004S0Gate(S0Fixture):
     def test_authorised_s0_write_passes_and_leaves_history_untouched(self):
         before = json.dumps(self.history, sort_keys=True)
         self.assertIsNone(self.reason())
@@ -4652,6 +4656,798 @@ class Mod004S0Gate(Base):
         self.assertIn("(deny default)", profile)
         self.assertNotIn("(allow default)", profile)
 
+
+
+class Mod004S0RunnerIdentity(S0Fixture):
+    """The S0 eligibility certificate names the current reviewed runner, never the declaration's historical hash."""
+    def test_certificate_must_name_the_current_reviewed_runner_hash(self):
+        self.assertIsNone(self.reason())
+        current = {"path": R.S0_RUNNER_FILE, "sha256": R.CODE_SHA}
+        self.assertNotEqual(self.HIST_RUNNER["sha256"], R.CODE_SHA)
+        cases = {
+            "historical hash used as the runner": {"runner_gate": dict(self.HIST_RUNNER)},
+            "no runner_gate": {"runner_gate": None},
+            "other sha": {"runner_gate": current | {"sha256": "5" * 64}},
+            "other path": {"runner_gate": current | {"path": "tools/mission_runner/dashboard.py"}},
+            "extra key": {"runner_gate": current | {"commit": "1" * 40}},
+            "uppercase sha": {"runner_gate": current | {"sha256": R.CODE_SHA.upper()}},
+            "string": {"runner_gate": R.CODE_SHA},
+        }
+        for name, cert in cases.items():
+            self.build(cert=cert)
+            with self.subTest(name):
+                self.assertIn("S0 certificate: runner_gate must name the current reviewed runner hash", self.reason())
+        self.build()
+        self.assertIsNone(self.reason())
+
+    def test_certificate_must_describe_the_declarations_runner_hash_as_historical(self):
+        for name, cert in {
+            "missing": {"historical_runner_gate": None},
+            "current hash passed off as historical": {"historical_runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": R.CODE_SHA}},
+            "other hash": {"historical_runner_gate": self.HIST_RUNNER | {"sha256": "6" * 64}},
+            "extra key": {"historical_runner_gate": self.HIST_RUNNER | {"note": "x"}},
+        }.items():
+            self.build(cert=cert)
+            with self.subTest(name):
+                self.assertIn("S0 certificate: historical_runner_gate must restate", self.reason())
+        self.build()
+        self.assertIsNone(self.reason())
+
+    def test_declaration_without_a_wellformed_historical_runner_record_is_refused(self):
+        for name, cap in {
+            "no authority": {"authority": None},
+            "authority not an object": {"authority": "x"},
+            "no runner_gate": {"authority": {}},
+            "bad sha": {"authority": {"runner_gate": self.HIST_RUNNER | {"sha256": "zz"}}},
+            "other path": {"authority": {"runner_gate": self.HIST_RUNNER | {"path": "x.py"}}},
+            "extra key": {"authority": {"runner_gate": self.HIST_RUNNER | {"commit": "1" * 40}}},
+        }.items():
+            self.build(cap=cap)
+            with self.subTest(name):
+                self.assertIn("S0 declaration: no well-formed historical runner_gate record", self.reason())
+        self.build()
+        self.assertIsNone(self.reason())
+
+    def test_declaration_hash_alone_never_satisfies_the_runner_identity(self):
+        self.build(cert={"runner_gate": dict(self.HIST_RUNNER)}, cap={"authority": {"runner_gate": dict(self.HIST_RUNNER)}})
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+        with self.assertRaisesRegex(R.GateError, "current reviewed runner hash"):
+            R.verify_s0_authority(self.cfg, self.history)
+        self.build()
+        with mock.patch.object(R, "CODE_SHA", self.HIST_RUNNER["sha256"]):  # a runner that is not the reviewed one
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+
+class Mod004S0DocLane(S0Fixture):
+    """The owner-authorised MOD004-S0-DOC lane: Sonnet writes of exactly the two S0 slice documents, one exact-bound
+    review per write, bounded remediation, and complete separation from both the CAP chain and the S0 product write."""
+    DOC_CERT, DOC_QA = R.S0_DOC_PATHS
+    DOC_OWNER = R.S0_DOC_OWNER_RECORD
+
+    def setUp(self):
+        super().setUp()
+        receipt = json.loads((self.home / "acceptances" / "MOD-004-S0.json").read_text())
+        (self.home / "acceptances" / "MOD-004-S0.json").unlink()  # S0 is not activated yet: the lane produces its cert
+        self.write(self.DOC_OWNER, "document-lane owner record\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "doc lane owner record")
+        subjects = {n: receipt["subjects"][n] for n in ("owner", "adr", "runner_gate")}
+        subjects["doc_owner"] = self.doc_owner_entry()
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"].update(self.history)
+        store.save(state)
+        self.doc_receipt = {k: receipt[k] for k in ("schema", "module", "operator", "recorded_at")} | {
+            "kind": "mod004-s0-doc-authority", "subjects": subjects}
+        self.write_doc_receipt()
+
+    def doc_owner_entry(self, rel=None, name="s0-doc_owner"):
+        rel = rel or self.DOC_OWNER
+        commit = self.head()
+        return {"path": rel, "sha256": self.sha(rel), "commit": commit, "ci": self.ci(commit),
+                "review": self.review(rel, name)}
+
+    def write_doc_receipt(self, receipt=None):
+        (self.home / "acceptances" / f"{R.S0_DOC_RECEIPT}.json").write_text(json.dumps(receipt or self.doc_receipt))
+
+    def doc_raw(self, **over):
+        return {"id": "doc-1", "module": "MOD-004", "role": "implement", "prompt": "write the S0 documents",
+                "plan_phase": R.S0_DOC_MARKER, "allowed_paths": list(R.S0_DOC_PATHS),
+                "expected_changes": list(R.S0_DOC_PATHS), "verify_cmd": [],
+                "doc_base": {p: None for p in R.S0_DOC_PATHS}} | over
+
+    def doc(self, post=None, **over):
+        return R.validate_task(self.doc_raw(**over), self.cfg) | (post or {})
+
+    def doc_reason(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.doc(post, **over), self.history if tasks is None else tasks)
+
+    def put_docs(self, text="draft"):
+        for p in R.S0_DOC_PATHS:
+            self.write(p, f"{text} {p}\n")
+        return {p: self.sha(p) for p in R.S0_DOC_PATHS}
+
+    def done_doc(self, tid, base, hashes, tasks=None, **over):
+        """A DONE document write with the runner's recorded changed-file evidence."""
+        w = self.doc(id=tid, doc_base=base, **over) | {
+            "status": "DONE", "attempts": 1, "created_at": "2026-10-23T00:00:00Z", "route": {"verdict": "VERIFIED"},
+            "evidence": {"changed": [{"path": p, "sha256": h} for p, h in hashes.items()], "violations": []}}
+        tasks = dict(self.history if tasks is None else tasks)
+        tasks[tid] = w
+        return tasks
+
+    def doc_review(self, tasks, wid, outcome="CHANGES_REQUESTED", rid=None, status=None, **over):
+        w = tasks[wid]
+        rid = rid or f"rev-{wid}"
+        r = {"id": rid, "module": "MOD-004", "role": "code-review", "status": status or "BLOCKED",
+             "review_of": {"task_id": wid, "changed": [dict(c) for c in w["evidence"]["changed"]]},
+             "route": {"verdict": "VERIFIED"},
+             "evidence": {"review_outcome": outcome, "review_bound_verified": True}} | over
+        return tasks | {rid: r}
+
+    def review_task(self, wid, tasks, **over):
+        w = tasks[wid]
+        return {"id": "doc-review", "module": "MOD-004", "role": "code-review", "status": "QUEUED",
+                "review_of": {"task_id": wid, "changed": [dict(c) for c in w["evidence"]["changed"]]}} | over
+
+    def cap_next(self):
+        return R.validate_task({"id": "cap-next", "module": "MOD-004", "role": "implement", "prompt": "x",
+                                "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]}, self.cfg)
+
+    # --- positive: the lane admits exactly the two document files
+    def test_authorised_document_write_passes_and_leaves_history_untouched(self):
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.doc_reason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+
+    def test_document_write_passes_with_existing_drafts_pinned_by_hash(self):
+        base = self.put_docs()
+        self.assertIsNone(self.doc_reason(doc_base=base))
+
+    def test_document_lane_is_single_attempt_but_s0_product_eligibility_is_unchanged(self):
+        self.assertTrue(R.s0_single_attempt(self.doc()))
+        self.assertTrue(R.s0_single_attempt(self.task()))
+        self.assertFalse(R.s0_doc_marked(self.task()))
+        self.assertFalse(R.s0_marked(self.doc()))
+        self.assertEqual(sorted(R.S0_PATHS), sorted(self.task()["allowed_paths"]))
+        self.assertTrue(set(R.S0_PATHS).isdisjoint(R.S0_DOC_PATHS))
+
+    # --- negative: shape, module, role, marker, path and lineage mismatches fail closed
+    def test_shape_mismatches_are_refused(self):
+        one = R.S0_DOC_PATHS[:1]
+        cases = {
+            "module": {"module": "MOD-003"},
+            "extra allowed path": {"allowed_paths": [*R.S0_DOC_PATHS, "contracts/engineering/other.json"]},
+            "directory scope": {"allowed_paths": ["contracts/engineering/"]},
+            "one path only": {"allowed_paths": list(one), "expected_changes": list(one)},
+            "one expected path": {"expected_changes": list(one)},
+            "product path": {"allowed_paths": [*R.S0_DOC_PATHS, R.S0_PATHS[0]],
+                             "expected_changes": [*R.S0_DOC_PATHS, R.S0_PATHS[0]]},
+            "other doc path": {"allowed_paths": [R.S0_DOC_PATHS[0], "contracts/engineering/mod004-s0-capability.json"],
+                               "expected_changes": [R.S0_DOC_PATHS[0], "contracts/engineering/mod004-s0-capability.json"]},
+            "verifier": {"verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]},
+        }
+        for name, over in cases.items():
+            with self.subTest(name):
+                reason = self.doc_reason(**over)
+                self.assertIsNotNone(reason)
+                self.assertTrue(reason.startswith(("S0_DOC_", "S0_UNTAGGED", "GATE_UNVERIFIABLE")), reason)
+        for name, post in {
+            "role": {"role": "gatekeeper"}, "handoff source": {"source": "handoff"}, "review retry": {"review_retry_of": "x"},
+            "accounting recovery": {"accounting_recovery_of": "x"},
+            "review binding": {"review_of": {"task_id": self.OLD}}, "review candidate": {"review_candidate": "x"},
+            "missing doc_base": {"doc_base": None}, "partial doc_base": {"doc_base": {R.S0_DOC_PATHS[0]: None}},
+            "bad doc_base hash": {"doc_base": {R.S0_DOC_PATHS[0]: "zz", R.S0_DOC_PATHS[1]: None}},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(self.doc_reason(post=post).startswith("S0_DOC_INVALID_TASK"), name)
+
+    def test_marker_is_not_a_generic_write_path_and_other_mod004_writes_stay_ineligible(self):
+        cap = self.cap_next()
+        self.assertIsNotNone(R.gate_reason(self.cfg, cap, self.history))
+        unmarked = R.validate_task(self.doc_raw(plan_phase=None, doc_base=None), self.cfg)
+        self.assertIsNotNone(R.gate_reason(self.cfg, unmarked, self.history))
+        s0_with_docs = self.task(allowed_paths=list(R.S0_DOC_PATHS), expected_changes=list(R.S0_DOC_PATHS))
+        self.assertIsNotNone(R.gate_reason(self.cfg, s0_with_docs, self.history))
+        self.assertTrue(R.review_gate_reason(self.cfg, self.doc(), self.history).startswith("S0_DOC_INVALID_TASK"))
+
+    def test_doc_base_requires_the_marker_and_a_write_role(self):
+        with self.assertRaises(ValueError):
+            R.validate_task(self.doc_raw(plan_phase=None), self.cfg)
+        with self.assertRaises(ValueError):
+            R.validate_task(self.doc_raw(role="code-review"), self.cfg)
+
+    # --- stale drafts
+    def test_stale_or_unpinned_drafts_are_refused(self):
+        self.assertIsNone(self.doc_reason())
+        base = {}
+        for p in R.S0_DOC_PATHS:
+            self.write(p, "pinned\n")
+            base[p] = self.sha(p)
+        self.assertIn("S0_DOC_STALE_DRAFT", self.doc_reason())  # drafts appeared but doc_base says absent
+        self.assertIsNone(self.doc_reason(doc_base=base))
+        self.write(R.S0_DOC_PATHS[1], "edited after pinning\n")
+        self.assertIn("S0_DOC_STALE_DRAFT", self.doc_reason(doc_base=base))
+        self.write(R.S0_DOC_PATHS[1], "pinned\n")
+        (self.repo / R.S0_DOC_PATHS[0]).unlink()
+        self.assertIn("S0_DOC_STALE_DRAFT", self.doc_reason(doc_base=base))
+
+    # --- authority
+    def test_authority_must_verify_offline_and_fails_closed(self):
+        def broken(mutate):
+            r = json.loads(json.dumps(self.doc_receipt))
+            mutate(r)
+            self.write_doc_receipt(r)
+            return self.doc_reason()
+        self.assertIsNone(self.doc_reason())
+        for name, mutate in {
+            "extra subject": lambda r: r["subjects"].update(eligibility=r["subjects"]["owner"]),
+            "missing subject": lambda r: r["subjects"].pop("adr"),
+            "wrong kind": lambda r: r.update(kind="mod004-s0-authority"),
+            "wrong module": lambda r: r.update(module="MOD-003"),
+            "extra key": lambda r: r.update(extra=1),
+            "bad owner hash": lambda r: r["subjects"]["owner"].update(sha256="0" * 64),
+            "bad ci": lambda r: r["subjects"]["adr"]["ci"].update(conclusion="failure"),
+            "unknown commit": lambda r: r["subjects"]["runner_gate"].update(commit="1" * 40),
+            "swapped review": lambda r: r["subjects"]["owner"].update(review=r["subjects"]["adr"]["review"]),
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(broken(mutate).startswith(("S0_DOC_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")), name)
+        self.write_doc_receipt()
+        (self.home / "acceptances" / f"{R.S0_DOC_RECEIPT}.json").unlink()
+        self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+
+    def test_authority_rejects_edited_bytes_changes_requested_reviews_and_a_different_runner(self):
+        self.write(self.OWNER, "owner record edited after review\n")
+        self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+        self.write(self.OWNER, "owner record\n")
+        self.assertIsNone(self.doc_reason())
+        original = json.dumps(self.history["rev-s0-adr"])
+        self.history["rev-s0-adr"]["evidence"]["review_outcome"] = "CHANGES_REQUESTED"
+        self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+        self.history["rev-s0-adr"] = json.loads(original)
+        self.assertIsNone(self.doc_reason())
+        with mock.patch.object(R, "CODE_SHA", "f" * 64):
+            self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+
+    # --- duplicate / second / used attempt
+    def test_duplicate_active_work_and_second_roots_are_refused(self):
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                tasks = self.history | {"doc-0": self.doc(id="doc-0") | {"status": status}}
+                self.assertIn("S0_DOC_SECOND_WRITE", self.doc_reason(tasks=tasks))
+
+    def test_a_started_attempt_is_never_rerun(self):
+        self.assertIn("S0_DOC_ATTEMPT_USED", self.doc_reason(post={"attempts": 1}))
+
+    def test_requeue_and_interrupted_runs_are_single_attempt(self):
+        r = self.runner()
+        t = self.doc() | {"status": "RUNNING", "attempts": 1, "stage": None, "child": None}
+        r.state["tasks"][t["id"]] = t
+        r.requeue_or_fail(t, "interrupted by runner crash/restart")
+        self.assertEqual(t["status"], "FAILED")
+
+    # --- activation closes the lane
+    def test_lane_closes_when_the_s0_receipt_or_an_s0_product_write_exists(self):
+        self.assertIsNone(self.doc_reason())
+        tasks = self.history | {"s0-write": self.task() | {"status": "QUEUED"}}
+        self.assertIn("S0_DOC_CLOSED", self.doc_reason(tasks=tasks))
+        (self.home / "acceptances" / "MOD-004-S0.json").write_text("{}")
+        self.assertIn("S0_DOC_CLOSED", self.doc_reason())
+
+    # --- CAP / S0 separation
+    def test_document_chain_never_touches_the_cap_review_chain_or_budget(self):
+        cap = self.cap_next()
+        before = R.review_gate_reason(self.cfg, cap, self.history)
+        base = self.put_docs("one")
+        tasks = self.done_doc("doc-1", {p: None for p in R.S0_DOC_PATHS}, base) | {}
+        tasks["doc-1"]["review_gate"] = 1
+        tasks = self.doc_review(tasks, "doc-1")
+        self.assertEqual(R.review_gate_reason(self.cfg, cap, tasks), before)
+        hashes2 = self.put_docs("two")
+        tasks = self.done_doc("doc-2", base, hashes2, tasks=tasks, remediation_of="doc-1")
+        tasks["doc-2"]["review_gate"] = 1
+        tasks = self.doc_review(tasks, "doc-2")
+        self.assertEqual(R.review_gate_reason(self.cfg, cap, tasks), before)
+        self.assertEqual(R.gate_reason(self.cfg, cap, tasks), R.gate_reason(self.cfg, cap, self.history))
+        self.assertNotIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, cap, tasks) or "")
+        for tid in ("doc-1", "doc-2"):
+            self.assertEqual(tasks[tid]["module"], "MOD-004")
+        self.assertEqual(R.review_verdict(tasks, self.OLD), None)
+        self.assertEqual(R.review_attempts(tasks, self.OLD), [])
+
+    def test_approved_document_review_does_not_unblock_cap_and_cap_history_does_not_unblock_docs(self):
+        cap = self.cap_next()
+        before = R.review_gate_reason(self.cfg, cap, self.history)
+        hashes = self.put_docs()
+        tasks = self.done_doc("doc-1", {p: None for p in R.S0_DOC_PATHS}, hashes)
+        tasks = self.doc_review(tasks, "doc-1", outcome="APPROVED", status="DONE")
+        self.assertEqual(R.review_gate_reason(self.cfg, cap, tasks), before)
+        self.assertIn("S0_DOC_SECOND_WRITE", self.doc_reason(tasks=tasks, doc_base=hashes, id="doc-x"))
+
+    def test_s0_product_gate_is_unaffected_by_document_history_and_stays_fail_closed(self):
+        hashes = self.put_docs()
+        tasks = self.done_doc("doc-1", {p: None for p in R.S0_DOC_PATHS}, hashes)
+        tasks = self.doc_review(tasks, "doc-1", outcome="APPROVED", status="DONE")
+        self.CERT = R.S0_DOC_PATHS[0]  # the lane-produced certificate becomes the S0 eligibility subject
+        self.SUBJECTS = tuple((n, self.CERT if n == "eligibility" else rel) for n, rel in S0Fixture.SUBJECTS)
+        self.write(self.CERT, "unused\n")
+        self.build()
+        tasks = self.history | {k: v for k, v in tasks.items() if k.startswith(("doc-", "rev-doc"))}
+        self.assertIsNone(self.reason(tasks=tasks))
+        self.assertIsNone(self.reason())
+        self.write(self.CERT, json.dumps({"tampered": True}))
+        self.assertIsNotNone(self.reason(tasks=tasks))
+        self.assertIn("S0", self.reason(tasks=tasks))
+
+    def test_s0_product_gate_rejects_a_cert_review_that_requested_changes_and_a_foreign_runner(self):
+        self.CERT = R.S0_DOC_PATHS[0]
+        self.SUBJECTS = tuple((n, self.CERT if n == "eligibility" else rel) for n, rel in S0Fixture.SUBJECTS)
+        self.build()
+        self.assertIsNone(self.reason())
+        original = json.dumps(self.history["rev-s0-eligibility"])
+        self.history["rev-s0-eligibility"]["evidence"]["review_outcome"] = "CHANGES_REQUESTED"
+        self.assertIsNotNone(self.reason())
+        self.history["rev-s0-eligibility"] = json.loads(original)
+        self.assertIsNone(self.reason())
+        with mock.patch.object(R, "CODE_SHA", "e" * 64):
+            self.assertIsNotNone(self.reason())
+
+    # --- review binding
+    def reviewable(self):
+        hashes = self.put_docs()
+        return self.done_doc("doc-1", {p: None for p in R.S0_DOC_PATHS}, hashes), hashes
+
+    def test_exact_bound_review_passes_and_uses_the_one_slot(self):
+        tasks, _ = self.reviewable()
+        self.assertIsNone(R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+        tasks = self.doc_review(tasks, "doc-1", outcome="CHANGES_REQUESTED")
+        self.assertIn("S0_DOC_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+        tasks = self.doc_review(tasks, "doc-1", rid="blocked-no-verdict", outcome=None)
+        self.assertIn("S0_DOC_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+
+    def test_any_prior_review_task_in_any_status_uses_the_slot(self):
+        for status in ("QUEUED", "RUNNING", "FAILED", "BLOCKED", "DONE"):
+            with self.subTest(status):
+                tasks, _ = self.reviewable()
+                tasks["earlier"] = {"id": "earlier", "module": "MOD-004", "role": "code-review", "status": status,
+                                    "review_of": {"task_id": "doc-1"}}
+                self.assertIn("S0_DOC_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+
+    def test_unsupported_reviews_fail_closed(self):
+        tasks, hashes = self.reviewable()
+        good = self.review_task("doc-1", tasks)
+        one = [dict(c) for c in good["review_of"]["changed"]][:1]
+        bad_hash = [dict(c) for c in good["review_of"]["changed"]]
+        bad_hash[0]["sha256"] = "0" * 64
+        for name, over in {
+            "retry lineage": {"review_retry_of": "x"}, "candidate": {"review_candidate": "x"},
+            "one file only": {"review_of": {"task_id": "doc-1", "changed": one}},
+            "wrong hash": {"review_of": {"task_id": "doc-1", "changed": bad_hash}},
+            "no changed": {"review_of": {"task_id": "doc-1", "changed": None}},
+            "other module": {"module": "MOD-003"},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(R.gate_reason(self.cfg, good | over, tasks).startswith(
+                    ("S0_DOC_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), name)
+        for name, mutate in {"write not DONE": lambda w: w.update(status="BLOCKED"),
+                             "extra changed file": lambda w: w["evidence"]["changed"].append({"path": "x", "sha256": "1" * 64}),
+                             "off-lane path": lambda w: w["evidence"]["changed"][0].update(path="contracts/engineering/x.json")}.items():
+            with self.subTest(name):
+                t2 = json.loads(json.dumps(tasks))
+                mutate(t2["doc-1"])
+                self.assertTrue(R.gate_reason(self.cfg, self.review_task("doc-1", t2) | {
+                    "review_of": {"task_id": "doc-1", "changed": t2["doc-1"]["evidence"]["changed"]}}, t2).startswith(
+                    "S0_DOC_REVIEW_UNSUPPORTED"), name)
+
+    def test_planner_review_of_a_document_write_is_refused_but_owner_routed_review_passes(self):
+        tasks, _ = self.reviewable()
+        self.assertIsNone(R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+        reason = R.gate_reason(self.cfg, self.review_task("doc-1", tasks, source="handoff"), tasks)
+        self.assertTrue(reason.startswith("S0_DOC_REVIEW_UNSUPPORTED"), reason)
+        r = self.runner()
+        r.state["tasks"]["doc-1"] = tasks["doc-1"]
+        raw = self.review_task("doc-1", tasks) | {"id": "pp-rev", "prompt": "review", "title": "r"}
+        raw.pop("status")
+        with self.assertRaisesRegex(ValueError, "S0_DOC_REVIEW_UNSUPPORTED"):
+            r.enqueue_proposal(raw)
+        self.assertNotIn("pp-rev", r.state["tasks"])
+
+    def test_stored_planner_review_cannot_authorise_a_document_remediation(self):
+        tasks, base, parent = self.changes_requested(1)
+        over = dict(id="doc-2", doc_base=base, remediation_of=parent)
+        self.assertIsNone(self.doc_reason(tasks=tasks, **over))
+        planner = {**tasks, f"rev-{parent}": tasks[f"rev-{parent}"] | {"source": "handoff"}}
+        self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=planner, **over))
+        self.assertIsNone(R._s0_doc_chain(planner, planner[parent]))
+        self.assertIsNotNone(R._s0_doc_chain(tasks, tasks[parent]))
+
+    def test_a_symlinked_document_cannot_be_reviewed_into_the_lane(self):
+        hashes = self.put_docs()
+        link = self.repo / self.DOC_QA
+        link.unlink()
+        link.symlink_to(self.repo / self.OWNER)
+        changed = {self.DOC_CERT: hashes[self.DOC_CERT], self.DOC_QA: R._path_hash(link)}
+        tasks = self.done_doc("doc-1", {p: None for p in R.S0_DOC_PATHS}, changed)
+        self.assertTrue(R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks).startswith("S0_DOC_REVIEW_UNSUPPORTED"))
+
+    def test_review_is_stale_when_a_document_changes_after_the_write(self):
+        tasks, _ = self.reviewable()
+        self.write(self.DOC_QA, "changed after the write finished\n")
+        self.assertIn("S0_DOC_REVIEW_BINDING_STALE", R.gate_reason(self.cfg, self.review_task("doc-1", tasks), tasks))
+
+    def test_enqueue_fills_binds_and_refuses_a_second_review_and_planner_proposals(self):
+        r = self.runner()
+        tasks, hashes = self.reviewable()
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"].update({k: v for k, v in tasks.items() if k == "doc-1"})
+        store.save(state)
+        path = R.enqueue(self.cfg, {"id": "rv1", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                    "review_of": {"task_id": "doc-1"}})
+        queued = json.loads(path.read_text())
+        self.assertEqual(sorted((c["path"], c["sha256"]) for c in queued["review_of"]["changed"]), sorted(hashes.items()))
+        state = store.load()
+        state["tasks"]["rv1"] = R.validate_task(queued, self.cfg) | {"status": "QUEUED"}
+        store.save(state)
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "rv2", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                 "review_of": {"task_id": "doc-1"}})
+        with self.assertRaises(ValueError):
+            r.enqueue_proposal({"id": "pp", "module": "MOD-004", "role": "implement", "title": "p", "prompt": "x",
+                                "plan_phase": R.S0_DOC_MARKER, "allowed_paths": list(R.S0_DOC_PATHS),
+                                "expected_changes": list(R.S0_DOC_PATHS), "doc_base": {p: None for p in R.S0_DOC_PATHS}})
+
+    def test_owner_enqueue_of_the_lane_requires_a_loaded_runner(self):
+        path = R.enqueue(self.cfg, self.doc_raw())
+        self.assertEqual(json.loads(path.read_text())["plan_phase"], R.S0_DOC_MARKER)
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": "0" * 64}
+        store.save(state)
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.doc_raw(id="doc-2"))
+
+    # --- bounded remediation
+    def changes_requested(self, rounds=1):
+        """Root write plus `rounds` -1 remediations, each with one CHANGES_REQUESTED exact-bound review."""
+        base = {p: None for p in R.S0_DOC_PATHS}
+        tasks = self.history
+        parent = None
+        for i in range(1, rounds + 1):
+            hashes = self.put_docs(f"draft {i}")
+            over = {"remediation_of": parent} if parent else {}
+            tasks = self.done_doc(f"doc-{i}", base, hashes, tasks=tasks, **over)
+            tasks = self.doc_review(tasks, f"doc-{i}")
+            base, parent = hashes, f"doc-{i}"
+        return tasks, base, parent
+
+    def test_remediation_of_a_changes_requested_review_passes_up_to_the_bound(self):
+        tasks, base, parent = self.changes_requested(1)
+        self.assertIsNone(self.doc_reason(tasks=tasks, id="doc-2", doc_base=base, remediation_of=parent))
+        tasks, base, parent = self.changes_requested(2)
+        self.assertIsNone(self.doc_reason(tasks=tasks, id="doc-3", doc_base=base, remediation_of=parent))
+        tasks, base, parent = self.changes_requested(3)
+        self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=tasks, id="doc-4", doc_base=base, remediation_of=parent))
+
+    def test_remediation_is_refused_without_a_valid_exact_bound_changes_requested_review(self):
+        tasks, base, parent = self.changes_requested(1)
+        over = dict(id="doc-2", doc_base=base, remediation_of=parent)
+        approved = {**tasks, f"rev-{parent}": tasks[f"rev-{parent}"] | {"evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}}
+        unverified = {**tasks, f"rev-{parent}": tasks[f"rev-{parent}"] | {"evidence": {"review_outcome": "CHANGES_REQUESTED"}}}
+        unrouted = {**tasks, f"rev-{parent}": tasks[f"rev-{parent}"] | {"route": {"verdict": "UNVERIFIED"}}}
+        no_review = {k: v for k, v in tasks.items() if k != f"rev-{parent}"}
+        two_reviews = self.doc_review(tasks, parent, rid="rev-second")
+        not_done = {**tasks, parent: tasks[parent] | {"status": "FAILED"}}
+        not_doc = {**tasks, parent: tasks[parent] | {"plan_phase": None}}
+        cases = {"approved": approved, "unverified": unverified, "unrouted": unrouted, "no review": no_review,
+                 "two reviews": two_reviews, "write not done": not_done, "not a doc write": not_doc}
+        for name, ts in cases.items():
+            with self.subTest(name):
+                self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=ts, **over), name)
+        self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=tasks, id="doc-2", doc_base=base,
+                                                                  remediation_of="missing"))
+        self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=tasks, id="doc-2", doc_base=base,
+                                                                  remediation_of=self.OLD))
+
+    def test_remediation_binds_to_the_reviewed_content_and_forbids_retry_shopping(self):
+        tasks, base, parent = self.changes_requested(1)
+        other = {p: "a" * 64 for p in R.S0_DOC_PATHS}
+        self.assertIn("S0_DOC_STALE_DRAFT", self.doc_reason(tasks=tasks, id="doc-2", doc_base=other, remediation_of=parent))
+        self.write(self.DOC_CERT, "edited after the review\n")
+        self.assertIn("S0_DOC_STALE_DRAFT", self.doc_reason(tasks=tasks, id="doc-2", doc_base=base, remediation_of=parent))
+        self.put_docs("draft 1")
+        sibling = self.done_doc("doc-2", base, self.put_docs("draft 1"), tasks=tasks, remediation_of=parent)
+        self.assertIn("S0_DOC_REMEDIATION_INVALID", self.doc_reason(tasks=sibling, id="doc-3", doc_base=base, remediation_of="doc-2"))
+        queued = tasks | {"doc-2": self.doc(id="doc-2", doc_base=base, remediation_of=parent) | {"status": "QUEUED"}}
+        self.assertIn("S0_DOC_DUPLICATE_WORK", self.doc_reason(tasks=queued, id="doc-3", doc_base=base, remediation_of=parent))
+        self.assertIn("S0_DOC_SECOND_WRITE", self.doc_reason(tasks=tasks, id="doc-9", doc_base=base))
+
+    def test_remediation_chain_must_be_the_only_document_work(self):
+        tasks, base, parent = self.changes_requested(1)
+        stray = tasks | {"doc-stray": self.doc(id="doc-stray") | {"status": "BLOCKED"}}
+        self.assertIn("S0_DOC_DUPLICATE_WORK", self.doc_reason(tasks=stray, id="doc-2", doc_base=base, remediation_of=parent))
+
+    def test_remediation_does_not_reset_or_spend_the_cap_budget(self):
+        cap = self.cap_next()
+        before = R.review_gate_reason(self.cfg, cap, self.history)
+        tasks, base, parent = self.changes_requested(2)
+        self.assertEqual(R.review_gate_reason(self.cfg, cap, tasks), before)
+        self.assertTrue(all(R.s0_doc_marked(tasks[f"doc-{i}"]) for i in (1, 2)))
+        self.assertFalse(R.accounting_recovery_valid(self.cfg, cap | {"accounting_recovery_of": parent}, tasks))
+
+    def test_remediation_requires_the_owner_cli_marker_and_validates_doc_base(self):
+        with self.assertRaises(ValueError):
+            R.validate_task(self.doc_raw(doc_base={R.S0_DOC_PATHS[0]: "a" * 64}), self.cfg)
+        self.assertEqual(R.parse_doc_base([f"{R.S0_DOC_PATHS[0]}=absent", f"{R.S0_DOC_PATHS[1]}={'b' * 64}"]),
+                         {R.S0_DOC_PATHS[0]: None, R.S0_DOC_PATHS[1]: "b" * 64})
+        for bad in (["nopair"], [f"{R.S0_DOC_PATHS[0]}=absent", f"{R.S0_DOC_PATHS[0]}=absent"]):
+            with self.assertRaises(ValueError):
+                R.parse_doc_base(bad)
+
+
+    # --- every other writer of the slice documents is refused, however it names or covers them
+    def foreign(self, module="MOD-003", **over):
+        """A validated task whose scope is then set directly, so scopes that validation would itself reject (a bare
+        directory, a mixed-case scope) still reach the gates."""
+        scope = {k: over.pop(k) for k in ("allowed_paths", "expected_changes") if k in over}
+        t = R.validate_task({"id": "other", "module": module, "role": "implement", "prompt": "x",
+                             "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]} | over, self.cfg)
+        return t | ({"allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS)} | scope)
+
+    def covering_cases(self):
+        cert = R.S0_DOC_PATHS[0]
+        return {
+            "foreign module exact": {},
+            "foreign module one file": {"allowed_paths": [R.S0_DOC_PATHS[1]], "expected_changes": [R.S0_DOC_PATHS[1]]},
+            "broad directory": {"allowed_paths": ["contracts/engineering/"], "expected_changes": [cert]},
+            "broader directory": {"allowed_paths": ["contracts/"], "expected_changes": [cert]},
+            "bare directory": {"allowed_paths": ["contracts/engineering"], "expected_changes": [cert]},
+            "top-level bare directory": {"allowed_paths": ["contracts"], "expected_changes": [cert]},
+            "glob": {"allowed_paths": ["contracts/engineering/*.json"], "expected_changes": [cert]},
+            "prefix glob": {"allowed_paths": ["contracts/engineering/mod004-s0-*"], "expected_changes": [cert]},
+            "wildcard everything": {"allowed_paths": ["*"], "expected_changes": [cert]},
+            "case variant": {"allowed_paths": [cert.upper()], "expected_changes": [cert.upper()]},
+            "mixed case variant": {"allowed_paths": ["Contracts/Engineering/Mod004-S0-Scenario-QA.md"],
+                                   "expected_changes": ["Contracts/Engineering/Mod004-S0-Scenario-QA.md"]},
+            "case variant directory": {"allowed_paths": ["CONTRACTS/ENGINEERING/"], "expected_changes": ["CONTRACTS/ENGINEERING/other.json"]},
+            "one document under a directory": {"allowed_paths": ["contracts/"], "expected_changes": [R.S0_DOC_PATHS[1]]},
+            "test role": {"role": "test"},
+        }
+
+    def test_slice_documents_are_unwritable_by_any_task_without_the_exact_marker(self):
+        for review_gate in (True, False):
+            self.cfg.review_gate = review_gate
+            for name, over in self.covering_cases().items():
+                for module in ("MOD-003", "MOD-004", "MOD-000"):
+                    for phase in (None, "other-phase", R.S0_MARKER):
+                        with self.subTest(f"{name} {module} {phase} gate={review_gate}"):
+                            t = self.foreign(module=module, plan_phase=phase, **over)
+                            self.assertTrue(R.s0_doc_touches(t))
+                            reason = R.gate_reason(self.cfg, t, self.history)
+                            self.assertTrue(reason and reason.startswith(("S0_DOC_UNTAGGED", "S0_INVALID_TASK", "S0_UNTAGGED")), reason)
+
+    def test_untagged_slice_document_writers_are_refused_by_the_review_gate_without_an_alternate_path(self):
+        self.cfg.review_gate = True
+        for name, over in self.covering_cases().items():
+            with self.subTest(name):
+                t = self.foreign(module="MOD-004", **over)
+                self.assertTrue(R.review_gate_reason(self.cfg, t, self.history).startswith(("S0_DOC_INVALID_TASK", "S0_INVALID_TASK")))
+                reason = R.gate_reason(self.cfg, t, self.history)
+                self.assertTrue(reason.startswith(("S0_DOC_UNTAGGED", "S0_UNTAGGED")), reason)
+                self.assertNotIn("REVIEW_REQUIRED", reason)
+                self.assertNotIn("recovery", reason.lower())
+        # an unrelated, review-chain-eligible history cannot make a covering write pass either
+        tasks = self.history | {self.OLD: self.history[self.OLD] | {"status": "DONE"},
+                                "rev-ok": {"id": "rev-ok", "module": "MOD-004", "role": "code-review", "status": "DONE",
+                                           "review_of": {"task_id": self.OLD}, "route": {"verdict": "VERIFIED"},
+                                           "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}}
+        self.assertIsNotNone(R.gate_reason(self.cfg, self.foreign(module="MOD-004", allowed_paths=["contracts/"],
+                                                                  expected_changes=[R.S0_DOC_PATHS[0]]), tasks))
+
+    def test_planner_cannot_propose_any_writer_of_the_slice_documents(self):
+        r = self.runner()
+        for name, over in self.covering_cases().items():
+            for module in ("MOD-003", "MOD-004"):
+                for phase in (None, R.S0_DOC_MARKER):
+                    with self.subTest(f"{name} {module} {phase}"):
+                        raw = {"id": "pp", "module": module, "role": "implement", "title": "p", "prompt": "x",
+                               "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS),
+                               "plan_phase": phase} | over
+                        if phase:
+                            raw["doc_base"] = {p: None for p in R.S0_DOC_PATHS}
+                        try:
+                            R.validate_task(raw, self.cfg)
+                            expected = "owner CLI"
+                        except ValueError:
+                            expected = ""  # refused earlier still, by task validation
+                        with self.assertRaisesRegex(ValueError, expected):
+                            r.enqueue_proposal(raw)
+                        self.assertNotIn("pp", r.state["tasks"])
+
+    def test_non_writers_and_unrelated_paths_are_not_slice_document_touches(self):
+        cap_file = "contracts/engineering/mod004-s0-capability.json"
+        for name, t in {
+            "review role": self.foreign() | {"role": "code-review"},
+            "capability file": self.foreign(allowed_paths=[cap_file], expected_changes=[cap_file]),
+            "other directory": self.foreign(allowed_paths=["contracts/ui/"], expected_changes=["contracts/ui/x.yaml"]),
+            "scratch": self.foreign(allowed_paths=["out/"], expected_changes=["out/a.txt"]),
+        }.items():
+            with self.subTest(name):
+                self.assertFalse(R.s0_doc_touches(t))
+        self.assertFalse(R.s0_doc_touches(self.task()))  # the S0 product write never covers the documents
+        self.assertFalse(R.s0_touches(self.doc()))  # and the document write never covers the product files
+        self.assertTrue(R.s0_doc_touches(self.doc()))
+
+    # --- the new owner record is its own distinct, fully bound subject of the document authority receipt
+    def test_document_receipt_requires_the_distinct_doc_owner_subject_beside_owner_and_adr(self):
+        self.assertEqual(sorted(R.S0_DOC_SUBJECTS), ["adr", "doc_owner", "owner", "runner_gate"])
+        self.assertEqual(sorted(self.doc_receipt["subjects"]), sorted(R.S0_DOC_SUBJECTS))
+        self.assertEqual(self.doc_receipt["subjects"]["doc_owner"]["path"], self.DOC_OWNER)
+        self.assertEqual(self.doc_receipt["subjects"]["owner"]["path"], self.OWNER)
+        self.assertEqual(self.doc_receipt["subjects"]["adr"]["path"], self.ADR)
+        self.assertIsNone(self.doc_reason())
+        self.assertNotIn("doc_owner", R.S0_SUBJECTS)  # the S0 product receipt shape is unchanged
+        for name in ("owner", "adr", "doc_owner"):
+            r = json.loads(json.dumps(self.doc_receipt))
+            r["subjects"].pop(name)
+            self.write_doc_receipt(r)
+            with self.subTest(f"missing {name}"):
+                self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+        self.write_doc_receipt()
+        self.assertIsNone(self.doc_reason())
+
+    def test_doc_owner_path_is_the_exact_record_only(self):
+        entries = {"s0 owner record": self.OWNER, "adr": self.ADR, "runner": self.RUN,
+                   "traversal": "knowledge/00-Decisions/../00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
+                   "case variant": self.DOC_OWNER.replace("OWNER-", "owner-"), "sibling": self.DOC_OWNER + ".bak"}
+        for name, rel in entries.items():
+            r = json.loads(json.dumps(self.doc_receipt))
+            r["subjects"]["doc_owner"] = r["subjects"]["doc_owner"] | {"path": rel}
+            self.write_doc_receipt(r)
+            with self.subTest(name):
+                self.assertIn("S0 doc_owner: path is not permitted", self.doc_reason())
+        for name in ("owner", "adr", "runner_gate"):  # and the old subjects cannot be pointed at the new record
+            r = json.loads(json.dumps(self.doc_receipt))
+            r["subjects"][name] = r["subjects"][name] | {"path": self.DOC_OWNER}
+            self.write_doc_receipt(r)
+            with self.subTest(f"{name} on the new record"):
+                self.assertIn(f"S0 {name}: path is not permitted", self.doc_reason())
+
+    def test_doc_owner_must_be_the_current_committed_hash(self):
+        self.assertIsNone(self.doc_reason())
+        self.write(self.DOC_OWNER, "edited, not committed\n")
+        self.assertIn("S0 doc_owner: current file is not the committed, reviewed content", self.doc_reason())
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "edited owner record")
+        self.assertIn("S0 doc_owner: current file is not the committed, reviewed content", self.doc_reason())
+        r = json.loads(json.dumps(self.doc_receipt))
+        r["subjects"]["doc_owner"] = r["subjects"]["doc_owner"] | {"sha256": "0" * 64}
+        self.write_doc_receipt(r)
+        self.assertIn("S0 doc_owner", self.doc_reason())
+
+    def test_doc_owner_needs_its_own_independent_opus_approved_exact_file_review(self):
+        def reason_with(mutate=None, review_edit=None):
+            r = json.loads(json.dumps(self.doc_receipt))
+            if mutate:
+                mutate(r)
+            self.write_doc_receipt(r)
+            return self.doc_reason()
+        rid = self.doc_receipt["subjects"]["doc_owner"]["review"]["task_id"]
+        saved = json.dumps(self.history[rid])
+        self.assertIsNone(self.doc_reason())
+        # reusing another subject's review is not independent
+        self.assertIn("S0 doc_owner", reason_with(lambda r: r["subjects"]["doc_owner"].update(review=r["subjects"]["owner"]["review"])))
+        self.assertIn("S0 adr", reason_with(lambda r: r["subjects"]["adr"].update(review=r["subjects"]["doc_owner"]["review"])))
+        self.write_doc_receipt()
+        for name, edit in {
+            "changes requested": lambda x: x["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "sonnet role": lambda x: x.update(role="implement"),
+            "unverified route": lambda x: x["route"].update(verdict="UNVERIFIED"),
+            "not done": lambda x: x.update(status="BLOCKED"),
+            "planner proposed": lambda x: x.update(source="handoff"),
+            "prompt names another file": lambda x: x.update(prompt="Review " + self.OWNER + " " + "0" * 64),
+        }.items():
+            x = json.loads(saved)
+            edit(x)
+            self.history[rid] = x
+            with self.subTest(name):
+                self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
+        self.history[rid] = json.loads(saved)
+        self.assertIsNone(self.doc_reason())
+        # a different reviewer approved other bytes, and another reviewer of the exact bytes requested changes
+        other = self.review(self.DOC_OWNER, "second-doc-owner-review", verdict="CHANGES_REQUESTED")
+        self.assertIn("did not approve", self.doc_reason())
+        self.assertTrue(other["task_id"] in self.history)
+
+    def test_doc_owner_needs_exact_sha_push_ci_and_a_published_ancestor_commit(self):
+        def broken(mutate):
+            r = json.loads(json.dumps(self.doc_receipt))
+            mutate(r["subjects"]["doc_owner"])
+            self.write_doc_receipt(r)
+            return self.doc_reason()
+        orphan = git(self.repo, "commit-tree", "HEAD^{tree}", "-m", "force-pushed away").stdout.strip()
+        wrong_sha = "2" * 40
+        cases = {
+            "ci failure": lambda e: e["ci"].update(conclusion="failure"),
+            "ci cancelled": lambda e: e["ci"].update(conclusion="cancelled"),
+            "ci not completed": lambda e: e["ci"].update(status="in_progress"),
+            "ci pull_request event": lambda e: e["ci"].update(event="pull_request"),
+            "ci other workflow": lambda e: e["ci"].update(name="Other"),
+            "ci for another sha": lambda e: e["ci"].update(head_sha=wrong_sha),
+            "ci run id not numeric": lambda e: e["ci"].update(run_id="abc"),
+            "unknown commit": lambda e: e.update(commit="1" * 40, ci=self.ci("1" * 40)),
+            "unpublished orphan commit": lambda e: e.update(commit=orphan, ci=self.ci(orphan)),
+            "malformed commit": lambda e: e.update(commit="HEAD"),
+            "extra key": lambda e: e.update(note="x"),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name):
+                self.assertIn("S0 doc_owner", broken(mutate))
+                self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", broken(mutate))
+        self.write_doc_receipt()
+        self.assertIsNone(self.doc_reason())
+
+    def test_authority_withdrawn_when_the_doc_owner_record_changes_during_a_run(self):
+        r = self.runner()
+        R.verify_s0_doc_authority(self.cfg, self.history)
+        self.write(self.DOC_OWNER, "changed while the child ran\n")
+        with self.assertRaisesRegex(R.GateError, "S0 doc_owner"):
+            R.verify_s0_doc_authority(self.cfg, self.history)
+        self.assertIsNotNone(r)
+
+    # --- stop/signal and timeout: the one document attempt is never re-run, other tasks keep their behaviour
+    def started_doc(self, r, **over):
+        t = self.doc(**over) | {"status": "RUNNING", "attempts": 1, "stage": None, "child": None}
+        r.state["tasks"][t["id"]] = t
+        return t
+
+    def test_stop_and_signal_block_the_single_document_attempt_for_triage(self):
+        r = self.runner(max_attempts=3)
+        for outcome in ("stopped", "signal"):
+            with self.subTest(outcome):
+                t = self.started_doc(r, id=f"doc-{outcome}")
+                r.settle(t, f"{t['id']}:1", outcome, None, None, None, None, None)
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_DOC_ATTEMPT_INTERRUPTED", 1))
+                self.assertIsNone(t["stage"])
+                self.assertIn("partial edits", t["last_error"])
+                self.assertIn("S0_DOC_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, self.history))
+                self.assertIsNone(r.next_ready())
+        s0 = self.task() | {"status": "RUNNING", "attempts": 1, "stage": None}
+        r.settle(s0, "s0-write:1", "signal", None, None, None, None, None)
+        self.assertEqual((s0["status"], s0["blocked_reason"]), ("BLOCKED", "S0_ATTEMPT_INTERRUPTED"))
+        plain = {"id": "plain", "status": "RUNNING", "attempts": 1, "plan_phase": None}
+        r.settle(plain, "plain:1", "signal", None, None, None, None, None)
+        self.assertEqual((plain["status"], plain["attempts"]), ("QUEUED", 0))
+        capdoc = {"id": "cap", "status": "RUNNING", "attempts": 1, "plan_phase": "MOD004-S0-DOC-X"}
+        r.settle(capdoc, "cap:1", "stopped", None, None, None, None, None)  # a lookalike marker is an ordinary task
+        self.assertEqual((capdoc["status"], capdoc["attempts"]), ("QUEUED", 0))
+
+    def test_timeout_fails_the_single_document_attempt_without_retry(self):
+        r = self.runner(max_attempts=3, timeout=7)
+        t = self.started_doc(r)
+        r.settle(t, "doc-1:1", "timeout", None, None, None, None, None)
+        self.assertEqual((t["status"], t["attempts"]), ("FAILED", 1))
+        self.assertIn("timeout after 7s", t["last_error"])
+        self.assertIsNone(r.next_ready())
+        self.assertIn("S0_DOC_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, self.history))
+        s0 = self.task() | {"status": "RUNNING", "attempts": 1, "stage": None}
+        r.settle(s0, "s0-write:1", "timeout", None, None, None, None, None)
+        self.assertEqual((s0["status"], s0["attempts"]), ("FAILED", 1))
+        plain = {"id": "plain", "status": "RUNNING", "attempts": 1, "plan_phase": None, "module": "MOD-000"}
+        r.settle(plain, "plain:1", "timeout", None, None, None, None, None)
+        self.assertEqual(plain["status"], "QUEUED")  # unchanged for every other task
+        self.assertGreater(plain["next_attempt_at"], 0)
+
+    def test_a_remediation_attempt_is_also_single_attempt_after_stop_or_timeout(self):
+        tasks, base, parent = self.changes_requested(1)
+        r = self.runner(max_attempts=3)
+        t = self.started_doc(r, id="doc-2", doc_base=base, remediation_of=parent)
+        r.settle(t, "doc-2:1", "stopped", None, None, None, None, None)
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_DOC_ATTEMPT_INTERRUPTED"))
+        t3 = self.started_doc(r, id="doc-3", doc_base=base, remediation_of=parent)
+        r.settle(t3, "doc-3:1", "timeout", None, None, None, None, None)
+        self.assertEqual((t3["status"], t3["attempts"]), ("FAILED", 1))
 
 
 if __name__ == "__main__":
