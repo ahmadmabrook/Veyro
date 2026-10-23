@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "module": "MOD-004",
+  "paths": [
+    "backend/app/tenancy_s0.py",
+    "backend/tests/test_tenancy_s0.py"
+  ],
+  "scope": "S0 pure ProvisionTenant envelope input validation only; no S1, UI, runtime tenant isolation or module Ready",
+  "authority": {
+    "owner_record": {
+      "path": "knowledge/00-Decisions/OWNER-2026-10-19-mod004-s0-only.md",
+      "sha256": "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"
+    },
+    "adr": {
+      "path": "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md",
+      "sha256": "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"
+    },
+    "runner_gate": {
+      "path": "tools/mission_runner/runner.py",
+      "sha256": "70e428a77cb6e10d6cee31614bcc3f6adb33131ff460f39c92cc208f06121a9a"
+    },
+    "published_runner_gate_commit": "98854b21776141a872df0bedde5988410df28453",
+    "runner_gate_ci": {
+      "run_id": "39955120170",
+      "name": "Veyro Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "head_sha": "98854b21776141a872df0bedde5988410df28453",
+      "conclusion": "success"
+    }
+  },
+  "status": "ACTIVE_FOR_S0_ONLY",
+  "effectiveness_rule": "Effective for exact S0 paths only after this exact declaration has its own independent verified Opus APPROVED review, non-force publication and successful exact-SHA push CI, and the operator receipt binds it; not an ACTIVE module row.",
+  "module_row_status": "PROVISIONAL",
+  "module_manifest": {
+    "path": "contracts/engineering/module-capabilities.yaml",
+    "sha256": "2958958c1212deafbb9bc3e34673bb4ee145913f655671ae709d4a552dde526a"
+  },
+  "toolchain": "python3.13-stdlib",
+  "third_party_caps": 0,
+  "database_profiles": 0,
+  "console_profiles": 0,
+  "forbidden_imports": [
+    "asyncio",
+    "asyncpg",
+    "boto3",
+    "ctypes",
+    "dbm",
+    "ftplib",
+    "http",
+    "imaplib",
+    "importlib",
+    "multiprocessing",
+    "pkgutil",
+    "poplib",
+    "psycopg",
+    "psycopg2",
+    "psycopg_pool",
+    "requests",
+    "runpy",
+    "shelve",
+    "smtplib",
+    "socket",
+    "socketserver",
+    "sqlalchemy",
+    "sqlite3",
+    "ssl",
+    "subprocess",
+    "telnetlib",
+    "urllib",
+    "xmlrpc"
+  ],
+  "rules_skills": [],
+  "rules_skills_none_applicable": "The two existing MOD-004 rule files cover backend/app/tenancy/** or migrations/integration/infra/db and the CON-04 privileged UI respectively. The exact S0 paths backend/app/tenancy_s0.py and backend/tests/test_tenancy_s0.py are outside both path globs; S0 has no DB or UI. No registered skill is needed for pure stdlib parsing. Their S1/UI obligations remain OPEN.",
+  "out_of_scope_existing_rules": [
+    {
+      "path": ".claude/rules/backend/mod004-rls.md",
+      "sha256": "835567afa2dce9ba8750b368d8175d0b6eda3966fe368cf4d424934e04afd6fd"
+    },
+    {
+      "path": ".claude/rules/admin/mod004-privileged-console.md",
+      "sha256": "2119142fb42a0bdbdf77c01471e43c6ed0672a9f98cff009924fd0a4d2a645c1"
+    }
+  ],
+  "dependency_closure": "Only reviewed Python 3.13 standard library names allowed by the runner gate; no package install, wheel/image pull, PostgreSQL service, psycopg/psycopg_pool, SQL, DB, network, storage, console or process capability. Static closure and deny-default sandbox plus independent exact-diff review are complementary; no claim of tenant-isolation certification.",
+  "review_instruction": "The bound S0 product reviewer must inspect reflection, frames, match-class patterns, mock.patch string targets and dynamic imports as well as direct forbidden imports; the approved gate review documented static-check limits.",
+  "remaining_full_module_blockers": [
+    "BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME",
+    "BLK-SKL-MIGRATION-LINT",
+    "BLK-CON04-PRIVILEGED-CONSOLE-REVIEW",
+    "BLK-RULE-QUALIFICATION"
+  ],
+  "cap_budget": "No reset: historical CAP qualification remains PAUSED/BLOCKED and exhausted."
+}
