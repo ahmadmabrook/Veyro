@@ -4266,6 +4266,30 @@ class Mod004S0Gate(S0Fixture):
         ci.write_text(json.dumps({"scope": R.CI_SCOPE, "head_sha": commit, "runs": []}))
         self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
 
+    def test_negative_review_quoting_the_subject_blocks_whatever_its_declared_primary_or_binding(self):
+        owner_sha = self.sha(self.OWNER)
+        text = (self.repo / self.OWNER).read_text()
+        other, other_sha = "contracts/engineering/other.json", "7" * 64
+        quoted = f"\nContext certificate quoting {self.OWNER} SHA-256 {owner_sha}:\n{text}"
+        declared = f"Review EXACT file {other} SHA-256 {other_sha}" + quoted
+        for name, (prompt, over) in {
+            "decoy-primary": (declared, {}),
+            "decoy-primary-bound-to-other": (declared, {"role": "code-review", "review_of": {
+                "task_id": "w", "changed": [{"path": other, "sha256": other_sha}]}}),
+            "same-exact": (f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}" + quoted, {}),
+            "no-declaration": (quoted, {}),
+            "bytes-only": (f"sha {owner_sha}\n{text}", {}),
+        }.items():
+            with self.subTest(name):
+                self.history["neg"] = {"id": "neg", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                       "prompt": prompt, "evidence": {"review_outcome": "CHANGES_REQUESTED"},
+                                       "blocked_reason": "REVIEW_CHANGES_REQUESTED"} | over
+                self.build()
+                self.assertIn("did not approve", self.reason())
+        del self.history["neg"]
+        self.build()
+        self.assertIsNone(self.reason())
+
     def test_earlier_non_approved_review_of_the_same_bytes_blocks_authority_but_changed_bytes_may_be_reviewed_again(self):
         owner_sha, adr_sha, old_adr_sha = self.sha(self.OWNER), self.sha(self.ADR), "dc85eedde34fbf54982ee7e291233b75e5ade74213427786e3626b8afe6ccad7"
         text = (self.repo / self.OWNER).read_text()
@@ -5295,6 +5319,159 @@ class Mod004S0DocLane(S0Fixture):
             with self.subTest(f"missing {name}"):
                 self.assertIn("S0_DOC_AUTHORITY_UNVERIFIED", self.doc_reason())
         self.write_doc_receipt()
+        self.assertIsNone(self.doc_reason())
+
+    # --- negative reviews naming a subject block it, except three exact audited historical context-only tasks
+    def negative_prior(self, tid, prompt, **over):
+        self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
+                             "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                             "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}} | over
+
+    def quoting(self, *rels):
+        return "Context records:\n" + "".join(f"{rel} SHA-256 {self.sha(rel)}\n" for rel in rels)
+
+    def pinned(self, tid, primary_path, primary_sha, rels):
+        """A stored negative task whose primary is another file and which only quotes `rels`, plus its table entry."""
+        prompt = f"Review EXACT file {primary_path} SHA-256 {primary_sha}\n" + self.quoting(*rels)
+        self.negative_prior(tid, prompt)
+        return {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "primary_path": primary_path,
+                "primary_sha256": primary_sha, "subjects": tuple((rel, self.sha(rel)) for rel in rels)}
+
+    def audited_shape(self):
+        """The three audited real-history shapes (cert quoting owner+ADR; two runner reviews quoting the doc owner)."""
+        return (self.pinned("hist-cert", self.CERT, "a" * 64, (self.OWNER, self.ADR)),
+                self.pinned("hist-gate-1", self.RUN, "b" * 64, (self.DOC_OWNER,)),
+                self.pinned("hist-gate-2", self.RUN, "c" * 64, (self.DOC_OWNER,)))
+
+    def table(self, entries):
+        return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
+
+    def test_context_exception_table_is_exactly_the_three_audited_entries(self):
+        self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
+                                                     "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
+        doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
+                     "c55e7da6c3f92242029f8a93ae8bf9f2be43439fa1da95a98fd6bfed72066cbb")
+        self.assertEqual(R.S0_DOC_OWNER_RECORD, doc_owner[0])
+        self.assertEqual(R.S0_CONTEXT_EXCEPTIONS, (
+            {"task_id": "mod004-s0-eligibility-opus-review-20261023",
+             "prompt_sha256": "6786e9712b3f04d865cb3f4880c3aaab84671ba0d403e54b4082f8b8af38b1d6",
+             "primary_path": "contracts/engineering/mod004-s0-eligibility.json",
+             "primary_sha256": "7563735b0aabc91298bda77a55335b5d8d0ebadc690159459db24b59a00fa581",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-19-mod004-s0-only.md",
+                           "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"),
+                          ("knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md",
+                           "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"))},
+            {"task_id": "mod004-s0-doc-gate-opus-security-rereview-20261023",
+             "prompt_sha256": "9c9935edc43664cb55d53c8d8f6aa52262fbad9fc6f5cbe270a2f713ffa89711",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "9cfb2ef9c39a16b0c48683e05b7248357d032d57ccc6e2be554fdf6b94e8cc72", "subjects": (doc_owner,)},
+            {"task_id": "mod004-s0-doc-gate-subject-fix-opus-security-review-20261023",
+             "prompt_sha256": "4ad623d7abb184323197dd8a2e51e02aed9366726c107b1b396c9b9e347c089e",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "00e7ca4d255ac2dce68e9dd02678708ae95559137b75a919d03de45188f5eba7", "subjects": (doc_owner,)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 3)
+
+    def test_pinned_historical_context_tasks_do_not_taint_owner_adr_or_doc_owner_but_default_is_fail_closed(self):
+        entries = self.audited_shape()
+        self.assertIn("did not approve", self.doc_reason())  # default: no exception exists, the rejections stand
+        with self.table(entries):
+            self.assertIsNone(self.doc_reason())
+        for dropped, expect in ((0, "S0 owner"), (1, "S0 doc_owner"), (2, "S0 doc_owner")):  # every pin is its own
+            with self.subTest(dropped), self.table(entries[:dropped] + entries[dropped + 1:]):
+                self.assertIn(expect, self.doc_reason())
+
+    def test_pinned_exception_fails_closed_on_any_id_prompt_subject_primary_binding_or_record_mutation(self):
+        entries = self.audited_shape()
+        with self.table(entries):
+            self.assertIsNone(self.doc_reason())
+        for i, e in enumerate(entries):
+            expect = "S0 owner" if i == 0 else "S0 doc_owner"
+            original, prompt = dict(self.history[e["task_id"]]), self.history[e["task_id"]]["prompt"]
+            other_sub = [{"path": self.RUN, "sha256": "7" * 64}]
+            task_cases = {
+                "renamed": {"id": "renamed"}, "prompt-bytes": {"prompt": prompt + " "},
+                "primary-path-gone": {"prompt": prompt.replace(e["primary_path"], "x")},
+                "primary-sha-gone": {"prompt": prompt.replace(e["primary_sha256"], "d" * 64)},
+                "review_of": {"review_of": {"task_id": "w"}}, "review_of-none": {"review_of": {"task_id": "w", "changed": None}},
+                "review_of-subject": {"role": "code-review", "review_of": {"task_id": "w", "changed": [self.ref(e["subjects"][0][0])]}},
+                "review_of-other": {"role": "code-review", "review_of": {"task_id": "w", "changed": other_sub}},
+                "status": {"status": "DONE"}, "reason": {"blocked_reason": "REVIEW_BLOCKED"}, "route": {"route": {}},
+                "reported-only": {"evidence": {"review_outcome_reported": "CHANGES_REQUESTED", "violations": []}},
+            }
+            for label, over in task_cases.items():
+                with self.subTest(f"{i} task {label}"), self.table(entries):
+                    self.history[e["task_id"]] = original | over
+                    self.assertIn(expect, self.doc_reason())
+                    self.assertIn("did not approve", self.doc_reason())
+                self.history[e["task_id"]] = original
+            entry_cases = {
+                "task_id": {"task_id": "x"}, "prompt_sha256": {"prompt_sha256": "d" * 64},
+                "primary_path": {"primary_path": R.S0_EDGE_RECORD}, "primary_sha256": {"primary_sha256": "e" * 64},
+                "subject-sha": {"subjects": tuple((p, "f" * 64) for p, _ in e["subjects"])}, "subjects-empty": {"subjects": ()},
+                "subject-path": {"subjects": tuple((R.S0_EDGE_RECORD, h) for _, h in e["subjects"])},
+            }
+            for label, over in entry_cases.items():
+                with self.subTest(f"{i} entry {label}"), self.table((*entries[:i], e | over, *entries[i + 1:])):
+                    self.assertIn(expect, self.doc_reason())
+        with self.subTest("eligibility entry is per subject"):
+            for dropped, expect in ((0, "S0 owner"), (1, "S0 adr")):
+                e = entries[0]
+                with self.table((e | {"subjects": tuple(s for j, s in enumerate(e["subjects"]) if j != dropped)}, *entries[1:])):
+                    self.assertIn(expect, self.doc_reason())
+
+    def test_pinned_exception_covers_only_the_listed_subject_pairs_not_other_quoted_records(self):
+        entries = list(self.audited_shape())
+        wide = self.quoting(self.DOC_OWNER, self.OWNER)
+        prompt = f"Review EXACT file {self.RUN} SHA-256 {'b' * 64}\n" + wide
+        self.negative_prior("hist-gate-1", prompt)
+        entries[1] = entries[1] | {"prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()}
+        with self.table(entries):
+            self.assertIn("S0 owner", self.doc_reason())  # the doc-owner pair is listed, the owner pair is not
+
+    def test_a_pinned_task_cannot_approve_the_subject_it_only_quoted(self):
+        prompt = f"Review EXACT file {self.RUN} SHA-256 {'b' * 64}\n" + self.quoting(self.DOC_OWNER)
+        rv = self.review(self.DOC_OWNER, "pinned-approved", prompt=prompt)
+        self.doc_receipt["subjects"]["doc_owner"]["review"] = rv
+        self.write_doc_receipt()
+        self.assertIsNone(self.doc_reason())  # an ordinary approving task naming the subject is positive evidence
+        entry = {"task_id": rv["task_id"], "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                 "primary_path": self.RUN, "primary_sha256": "b" * 64, "subjects": ((self.DOC_OWNER, self.sha(self.DOC_OWNER)),)}
+        with self.table((entry,)):
+            self.assertIn("S0 doc_owner", self.doc_reason())
+            self.assertIn("cannot approve", self.doc_reason())
+
+    def test_direct_negative_review_of_a_subject_blocks_even_under_a_pinned_id_or_decoy_shape(self):
+        other, other_sha = self.RUN, "7" * 64
+        for name, rel in (("owner", self.OWNER), ("adr", self.ADR), ("doc_owner", self.DOC_OWNER)):
+            sha, text = self.sha(rel), (self.repo / rel).read_text()
+            prompts = {
+                "direct": f"Review EXACT file {rel} SHA-256 {sha}\n", "independent": f"Independent judgment of {rel} SHA-256 {sha}\n",
+                "decoy-primary": f"Review EXACT file {other} SHA-256 {other_sha}\n" + self.quoting(rel),
+                "decoy-bytes": f"Review EXACT file {other} SHA-256 {other_sha}\nsha {sha}\n{text}",
+            }
+            for label, prompt in prompts.items():
+                for tid in ("neg", "hist-pinned"):
+                    pin = {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                           "primary_path": other, "primary_sha256": other_sha, "subjects": ((rel, sha),)}
+                    self.negative_prior(tid, prompt)
+                    with self.subTest(f"{name} {label} {tid}"):
+                        self.assertIn(f"S0 {name}", self.doc_reason())
+                        if label != "decoy-primary" and label != "decoy-bytes":
+                            with self.table((pin,)):  # a pin whose prompt lacks its primary is not an exception
+                                self.assertIn("did not approve", self.doc_reason())
+                    del self.history[tid]
+        self.assertIsNone(self.doc_reason())
+
+    def test_decoy_primary_approved_review_gains_no_exception_and_its_negative_twin_blocks(self):
+        decoy = f"Review EXACT file {self.RUN} SHA-256 {'7' * 64}\n" + self.quoting(self.OWNER)
+        rv = self.review(self.OWNER, "decoy-approved", prompt=decoy)
+        self.doc_receipt["subjects"]["owner"]["review"] = rv
+        self.write_doc_receipt()
+        self.assertIsNone(self.doc_reason())  # positive binding is unchanged: the approval names the exact subject
+        self.negative_prior("decoy-neg", decoy)  # the same-shape CHANGES_REQUESTED twin stays binding: no shopping
+        self.assertIn("S0 owner", self.doc_reason())
+        self.assertIn("did not approve", self.doc_reason())
+        del self.history["decoy-neg"]
         self.assertIsNone(self.doc_reason())
 
     def test_doc_owner_path_is_the_exact_record_only(self):

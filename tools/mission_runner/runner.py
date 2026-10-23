@@ -1712,6 +1712,53 @@ def _s0_names_subject(y, path, sha, text):
     return named, isinstance(changed, list) and {"path": path, "sha256": sha} in changed
 
 
+# Audited, immutable historical exceptions. Default is fail-closed: ANY negative Opus review whose prompt names a subject's
+# exact path+sha (or exact bytes) blocks it. These three tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
+# path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
+S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
+S0_DOC_OWNER_SHA = "c55e7da6c3f92242029f8a93ae8bf9f2be43439fa1da95a98fd6bfed72066cbb"
+S0_OWNER_SHA = "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"
+S0_ADR_SHA = "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"
+S0_CONTEXT_EXCEPTIONS = (
+    {"task_id": "mod004-s0-eligibility-opus-review-20261023",
+     "prompt_sha256": "6786e9712b3f04d865cb3f4880c3aaab84671ba0d403e54b4082f8b8af38b1d6",
+     "primary_path": "contracts/engineering/mod004-s0-eligibility.json",
+     "primary_sha256": "7563735b0aabc91298bda77a55335b5d8d0ebadc690159459db24b59a00fa581",
+     "subjects": ((S0_OWNER_RECORD, S0_OWNER_SHA), (S0_ADR, S0_ADR_SHA))},
+    {"task_id": "mod004-s0-doc-gate-opus-security-rereview-20261023",
+     "prompt_sha256": "9c9935edc43664cb55d53c8d8f6aa52262fbad9fc6f5cbe270a2f713ffa89711",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "9cfb2ef9c39a16b0c48683e05b7248357d032d57ccc6e2be554fdf6b94e8cc72",
+     "subjects": ((S0_DOC_OWNER_PATH, S0_DOC_OWNER_SHA),)},
+    {"task_id": "mod004-s0-doc-gate-subject-fix-opus-security-review-20261023",
+     "prompt_sha256": "4ad623d7abb184323197dd8a2e51e02aed9366726c107b1b396c9b9e347c089e",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "00e7ca4d255ac2dce68e9dd02678708ae95559137b75a919d03de45188f5eba7",
+     "subjects": ((S0_DOC_OWNER_PATH, S0_DOC_OWNER_SHA),)},
+)
+
+
+def _s0_pinned_context(y, path, sha):
+    """True only for a task that IS one pinned exception for exactly this (path, sha) subject: exact id, exact immutable
+    prompt hash, no review_of binding, and its exact primary path and sha256 present in that prompt."""
+    prompt = y.get("prompt")
+    if not (isinstance(prompt, str) and not y.get("review_of")):
+        return False
+    digest = hashlib.sha256(prompt.encode("utf-8", "surrogatepass")).hexdigest()
+    return any(y.get("id") == e["task_id"] and digest == e["prompt_sha256"] and (path, sha) in e["subjects"]
+               and e["primary_path"] in prompt and e["primary_sha256"] in prompt for e in S0_CONTEXT_EXCEPTIONS)
+
+
+def _s0_quoted_context_only(y, path, sha):
+    """A negative review naming the subject is skipped ONLY when it is a pinned exception whose stored record is still
+    the audited verified-Opus CHANGES_REQUESTED block. Everything else naming the subject stands as a review of it."""
+    yev = y.get("evidence") or {}
+    return (_s0_pinned_context(y, path, sha) and y.get("status") == "BLOCKED"
+            and y.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED" and (y.get("route") or {}).get("verdict") == "VERIFIED"
+            and yev.get("review_outcome") == "CHANGES_REQUESTED")
+
+
 def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
     """Bind to an existing runner review task, never to receipt booleans: the task must be DONE with a verified Opus
     route and APPROVED evidence, its output file (path derived from its dispatch op) must hash to the receipt and
@@ -1740,8 +1787,12 @@ def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
     named, paired = _s0_names_subject(x, path, sha, text)
     if not (named or (paired and ev.get("review_bound_verified") is True)):
         raise GateError(f"{label}: the review task's recorded prompt/binding does not name the exact subject and sha256")
+    if _s0_pinned_context(x, path, sha):  # a pinned context-only task never approves what it only quoted
+        raise GateError(f"{label}: task {x['id']} only quotes this subject as context and cannot approve it")
     for y in tasks.values():  # one bad verdict on these exact bytes stands: no re-review shopping
         if isinstance(y, dict) and y is not x and y.get("role") in OPUS_ROLES and any(_s0_names_subject(y, path, sha, text)):
+            if _s0_quoted_context_only(y, path, sha):
+                continue  # audited historical exception: this subject was only quoted context
             yev = y.get("evidence") or {}
             marks = [y.get("blocked_reason"), *(yev["violations"] if isinstance(yev.get("violations"), list) else [])]
             no_verdict = (y.get("status") == "BLOCKED" and (y.get("route") or {}).get("verdict") == "VERIFIED"
@@ -2006,7 +2057,7 @@ def s0_probe(cfg):
 # and makes no other MOD-004 write eligible. It is not the S0 product write and is never counted as one.
 S0_DOC_MARKER = "MOD004-S0-DOC"
 S0_DOC_PATHS = ("contracts/engineering/mod004-s0-eligibility.json", "contracts/engineering/mod004-s0-scenario-qa.md")
-S0_DOC_OWNER_RECORD = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
+S0_DOC_OWNER_RECORD = S0_DOC_OWNER_PATH
 S0_DOC_RECEIPT = "MOD-004-S0-DOC"  # operator-written <home>/acceptances/MOD-004-S0-DOC.json: owner, adr, runner_gate, doc_owner
 S0_DOC_SUBJECTS = {  # name -> allowed repo path; owner/adr/runner_gate are the S0 subjects, doc_owner is this lane's own decision
     "owner": S0_SUBJECTS["owner"], "adr": S0_SUBJECTS["adr"], "runner_gate": S0_SUBJECTS["runner_gate"],
