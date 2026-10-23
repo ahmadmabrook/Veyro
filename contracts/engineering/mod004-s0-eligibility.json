@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "module": "MOD-004",
+  "paths": [
+    "backend/app/tenancy_s0.py",
+    "backend/tests/test_tenancy_s0.py"
+  ],
+  "scope": "S0 pure ProvisionTenant envelope input validation only; no S1, UI, runtime tenant isolation or module Ready",
+  "authority": {
+    "owner_record": {
+      "path": "knowledge/00-Decisions/OWNER-2026-10-19-mod004-s0-only.md",
+      "sha256": "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"
+    },
+    "adr": {
+      "path": "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md",
+      "sha256": "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"
+    },
+    "runner_gate": {
+      "path": "tools/mission_runner/runner.py",
+      "sha256": "c7020ecbf9ada11cebdf79f98109657ba5fa6ba0aa42536fdc4098114e052296"
+    },
+    "published_runner_gate_commit": "28a7ba9065ea4560e8a48f96bd003af8a13fbf48",
+    "runner_gate_ci": {
+      "run_id": "40000798714",
+      "name": "Veyro Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "head_sha": "28a7ba9065ea4560e8a48f96bd003af8a13fbf48",
+      "conclusion": "success"
+    }
+  },
+  "runner_gate": {
+    "path": "tools/mission_runner/runner.py",
+    "sha256": "c7020ecbf9ada11cebdf79f98109657ba5fa6ba0aa42536fdc4098114e052296"
+  },
+  "historical_runner_gate": {
+    "path": "tools/mission_runner/runner.py",
+    "sha256": "70e428a77cb6e10d6cee31614bcc3f6adb33131ff460f39c92cc208f06121a9a"
+  },
+  "historical_runner_gate_note": "historical_runner_gate restates the capability declaration's embedded authority.runner_gate exactly. It is the runner as of that declaration's publication and is NOT the loaded runner; the current reviewed runner is top-level runner_gate.",
+  "status": "S0_ELIGIBLE",
+  "lifecycle": "EFFECTIVE",
+  "effectiveness_rule": "The lifecycle field is a target state, not self-effectuating. For S0 alone this certificate becomes effective only after its own exact-file verified independent Opus APPROVED review, non-force publication and successful exact-SHA push CI; the capability declaration's independent Opus review and exact-SHA CI are already complete (see capability_declaration), while its S0 effectiveness remains conditional on this rule; the scoped scenario packet requires an exact-byte independent Opus APPROVED review, which one fresh runner-bound review naming both new document path/hash pairs may satisfy together with this certificate's review, followed by publication and exact-SHA CI of the reviewed documents (none yet done; prior reviews mod004-s0-eligibility-opus-review-20261023, mod004-s0-scenario-qa-opus-review-20261023 and mod004-s0-doc-correction-opus-review-20261023 were CHANGES_REQUESTED on old bytes and satisfy nothing); the operator must verify that review before any product receipt/dispatch; the published owner, ADR, edge and runner-gate evidence above must remain valid; the reviewed runner must be solely loaded with fresh heartbeat and free writer lock; and the operator receipt must bind every current runner subject. The runner independently rechecks its six receipt subjects but does not machine-check the scenario review. No product dispatch until the read-only S0 probe opens.",
+  "judgment_scope": "Eligibility for one exact S0 two-file input-shape write, not MOD-004 READY or product acceptance.",
+  "dependency_receipts": {
+    "MOD-001": "2c0bd7a8e844338717a78e2c6bcd9b0b2f6e731d3a89bae666cd816bb87e4cd3",
+    "MOD-002": "29bf9c584e2b5ccbec60290af80560e317c3383ef77c87ce22df12c8faf987b3"
+  },
+  "dependency_validation": {
+    "MOD-001": "Operator-attested local verify_receipt PASS and current receipt hash; operator independently observed exact activation push CI run 38883415070 on 8e0f20d493b46a0867b1ddbb464db4ed0caa0972 successful.",
+    "MOD-002": "Operator-attested local verify_receipt PASS and current receipt hash; operator independently observed exact activation push CI run 38907796747 on f9804beb2576c2520d377a27c275f00a4685c47e successful.",
+    "edge_interpretation": "published owner edge decision permits APPROVED — FOUNDATION ONLY for this dependency edge; not Module Ready or capability activation"
+  },
+  "edge_decision": {
+    "path": "knowledge/00-Decisions/OWNER-2026-10-18-mod004-foundation-dependency.md",
+    "sha256": "cf3e7c5847f3b0ed9ce7d35f5ace0e04882513dd31cb0fa088558e3ecb1d2723"
+  },
+  "module_manifest": {
+    "path": "contracts/engineering/module-capabilities.yaml",
+    "sha256": "2958958c1212deafbb9bc3e34673bb4ee145913f655671ae709d4a552dde526a"
+  },
+  "no_ui": true,
+  "screen_registry": {
+    "path": "contracts/ui/screen-contracts.yaml",
+    "sha256": "7b2e238f8035373568025a1e08516430d075186cb12e8bb0a0a10135ce25c9e2"
+  },
+  "screen_identities": [
+    "CON-04",
+    "ADM-SET-01",
+    "ADM-SET-02",
+    "ADM-SET-06"
+  ],
+  "screen_boundary": "identity only; all registry contract fields remain null; no route, UI, permission or full screen contract is claimed",
+  "toolchain_evidence": {
+    "workflow": {
+      "path": ".github/workflows/veyro-foundation-ci.yml",
+      "sha256": "793e1c23b42ff860855764d86df807fe1d71faa2f943fe00155b3a319239417d"
+    },
+    "python_version": "3.13",
+    "commit": "98854b21776141a872df0bedde5988410df28453",
+    "ci": {
+      "run_id": "39955120170",
+      "name": "Veyro Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "head_sha": "98854b21776141a872df0bedde5988410df28453",
+      "conclusion": "success"
+    }
+  },
+  "s0_spec": {
+    "input": "synthetic ProvisionTenant envelope with opaque external key, claimed actor/correlation UUIDs, idempotency UUID and optional expected-version metadata",
+    "allowed": "parse and normalize shape; reject malformed, missing or extra fields",
+    "forbidden": "authentication, authorization, tenant choice or creation, state mutation, tenant context, API, file/network/process/database/SQL I/O",
+    "expected_version": "optional metadata only; no invented requirement for initial provisioning; TSD ¶1237 and ADR-0002 D6.3 discrepancy remains open",
+    "success_meaning": "shape-valid only, never trusted identity or tenant isolation"
+  },
+  "scenario_qa_packet": {
+    "path": "contracts/engineering/mod004-s0-scenario-qa.md",
+    "sha256": "349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45",
+    "sha256_note": "Historical: the prior hash ffa4f968... belonged to an earlier packet that was rejected (CHANGES_REQUESTED) and is void. The hash above is the operator-computed SHA-256 of the supplied exact packet bytes (11927 bytes); the drafting agent did not compute it. No review of these bytes has occurred yet."
+  },
+  "capability_declaration": {
+    "path": "contracts/engineering/mod004-s0-capability.json",
+    "sha256": "f1f1af309477c087c1bb9bfa7e8de04311a90a6bd404335b05b6f00d17e5a1a8",
+    "review": {
+      "task_id": "mod004-s0-capability-opus-review-20261023",
+      "output_sha256": "d22475f8250691afac6b42eff892168516f59d3b5ebf106803d7328178a2d294",
+      "route": "verified Opus",
+      "outcome": "APPROVED"
+    },
+    "publication": {
+      "commit": "2a7ae90cad03779aae0980d23193af9133b49891",
+      "push": "non-force",
+      "ci": {
+        "run_id": "39960332784",
+        "name": "Veyro Foundation CI",
+        "event": "push",
+        "status": "completed",
+        "head_sha": "2a7ae90cad03779aae0980d23193af9133b49891",
+        "conclusion": "success"
+      }
+    },
+    "note": "These are the current committed declaration bytes. Its review and exact-SHA CI are complete; any earlier statement that they are pending is stale. The declaration's S0 effectiveness remains conditional on the rest of this certificate's effectiveness_rule. Its embedded historical runner hash (70e428...) is preserved as historical_runner_gate; the current loaded runner is top-level runner_gate."
+  },
+  "open_full_module_gates": [
+    "module-wide Ready",
+    "module-wide ACTIVE capability manifest",
+    "24-category Scenario Review",
+    "PostgreSQL/RLS runtime tests",
+    "security review",
+    "Manual QA",
+    "Gatekeeper",
+    "Approval Certificate",
+    "R01-R07",
+    "UI and Appendix F contracts"
+  ],
+  "authority_publication": {
+    "owner": {
+      "commit": "01918152a39f0ecc96e18a2053543a3ea7291832",
+      "ci": {
+        "run_id": "39222252810",
+        "name": "Veyro Foundation CI",
+        "event": "push",
+        "status": "completed",
+        "head_sha": "01918152a39f0ecc96e18a2053543a3ea7291832",
+        "conclusion": "success"
+      },
+      "review": {
+        "task_id": "mod004-s0-owner-record-final-opus-review-20261019",
+        "output_sha256": "78f214aee16f26e94c50e371225adfadb229ca77405707a175c821d006278a4b",
+        "route": "verified Opus",
+        "outcome": "APPROVED"
+      }
+    },
+    "adr": {
+      "commit": "8bb6ae06d6b60f43a2a44e429b6aecbe85611959",
+      "ci": {
+        "run_id": "39946381368",
+        "name": "Veyro Foundation CI",
+        "event": "push",
+        "status": "completed",
+        "head_sha": "8bb6ae06d6b60f43a2a44e429b6aecbe85611959",
+        "conclusion": "success"
+      },
+      "review": {
+        "task_id": "mod004-s0-adr-amendment-opus-remediation-review-20261023",
+        "output_sha256": "aff24776eddfc456d3e68c2e8a8ef5b30eb55c2817c699f14de19c18d1744836",
+        "route": "verified Opus",
+        "outcome": "APPROVED"
+      }
+    },
+    "runner_gate": {
+      "commit": "28a7ba9065ea4560e8a48f96bd003af8a13fbf48",
+      "ci": {
+        "run_id": "40000798714",
+        "name": "Veyro Foundation CI",
+        "event": "push",
+        "status": "completed",
+        "head_sha": "28a7ba9065ea4560e8a48f96bd003af8a13fbf48",
+        "conclusion": "success"
+      },
+      "review": {
+        "task_id": "mod004-s0-doc-gate-pinned-subject-opus-final-review-20261023",
+        "output_sha256": "f108565ef9c02cc82da581747a009deb78bd3099c4d702bf4668bb735975215d",
+        "route": "verified Opus",
+        "outcome": "APPROVED"
+      }
+    },
+    "evidence_class": "CI runs and current reviews independently rechecked by operator; runner re-verifies subject commitments and review outputs from its state, and calls older CI operator-attested unless observed in ci.json."
+  },
+  "edge_publication": {
+    "commit": "6311ab38f548c789c026baac791b546ead1a992e",
+    "ci": {
+      "run_id": "39107717468",
+      "name": "Veyro Foundation CI",
+      "event": "push",
+      "status": "completed",
+      "head_sha": "6311ab38f548c789c026baac791b546ead1a992e",
+      "conclusion": "success"
+    },
+    "review": {
+      "task_id": "mod004-foundation-edge-owner-opus-review-20261018",
+      "output_sha256": "d81dbbbf55fe0f93ba66df47b7e033d39392000d2b6b48bc2846c12a5126e3c2",
+      "route": "verified Opus",
+      "outcome": "APPROVED"
+    },
+    "status_note": "The edge record’s in-file publication-pending wording is stale; its exact bytes were subsequently independently reviewed and published at this commit. Its scope remains dependency edge only."
+  },
+  "operator_observed_local_python": "Python 3.13.13 at /opt/homebrew/bin/python3.13 on 2026-10-23; this is operator observation, not a reviewer-executed command.",
+  "runner_load_observation": {
+    "observed_at": "2026-10-23",
+    "reload_count": 1,
+    "prior_pid": 37662,
+    "new_pid_at_check": 28500,
+    "loaded_runner_sha256": "c7020ecbf9ada11cebdf79f98109657ba5fa6ba0aa42536fdc4098114e052296",
+    "task_history_preserved": true,
+    "sole_process_and_free_writer_lock_at_check": true,
+    "fresh_heartbeat_at_check": true,
+    "evidence_class": "Operator-reported, point-in-time observation at check; not a future guarantee and not independently rechecked by the drafting agent.",
+    "ongoing_requirement": "Runner gate rechecks current sole-runner code hash and fresh heartbeat before S0 enqueue; this observation alone does not grant dispatch."
+  },
+  "scenario_review_requirement": {
+    "superseded_reviews": [
+      {
+        "task_id": "mod004-s0-eligibility-opus-review-20261023",
+        "outcome": "CHANGES_REQUESTED",
+        "applies_to": "old certificate bytes only; does not satisfy the new bytes"
+      },
+      {
+        "task_id": "mod004-s0-scenario-qa-opus-review-20261023",
+        "outcome": "CHANGES_REQUESTED",
+        "applies_to": "old packet bytes only; does not satisfy the new bytes"
+      },
+      {
+        "task_id": "mod004-s0-doc-correction-opus-review-20261023",
+        "outcome": "CHANGES_REQUESTED",
+        "applies_to": "the just-rejected two-file write; does not satisfy the new bytes"
+      }
+    ],
+    "status": "REQUIRED_PENDING",
+    "required_role": "fresh-context Opus scenario/QA",
+    "required_outcome": "ONE fresh runner-bound verified Opus APPROVED review naming BOTH new exact document path/hash pairs (this certificate and the scenario packet) may satisfy the separate certificate and scenario review preconditions. The operator must verify that exact review before any product receipt or dispatch, because the machine S0 receipt lacks a scenario subject. Publication of the reviewed documents and successful exact-SHA push CI still follow; none of these has happened yet.",
+    "enforcement_note": "The runner receipt schema has no scenario subject. The operator must independently verify this review and exact packet hash before writing the receipt; do not describe the machine gate as enforcing it."
+  }
+}
