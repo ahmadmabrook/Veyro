@@ -1720,12 +1720,13 @@ S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.
 S0_DOC_OWNER_SHA = "c55e7da6c3f92242029f8a93ae8bf9f2be43439fa1da95a98fd6bfed72066cbb"
 S0_OWNER_SHA = "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"
 S0_ADR_SHA = "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"
+S0_EDGE_SHA = "cf3e7c5847f3b0ed9ce7d35f5ace0e04882513dd31cb0fa088558e3ecb1d2723"
 S0_CONTEXT_EXCEPTIONS = (
     {"task_id": "mod004-s0-eligibility-opus-review-20261023",
      "prompt_sha256": "6786e9712b3f04d865cb3f4880c3aaab84671ba0d403e54b4082f8b8af38b1d6",
      "primary_path": "contracts/engineering/mod004-s0-eligibility.json",
      "primary_sha256": "7563735b0aabc91298bda77a55335b5d8d0ebadc690159459db24b59a00fa581",
-     "subjects": ((S0_OWNER_RECORD, S0_OWNER_SHA), (S0_ADR, S0_ADR_SHA))},
+     "subjects": ((S0_OWNER_RECORD, S0_OWNER_SHA), (S0_ADR, S0_ADR_SHA), (S0_EDGE_RECORD, S0_EDGE_SHA))},
     {"task_id": "mod004-s0-doc-gate-opus-security-rereview-20261023",
      "prompt_sha256": "9c9935edc43664cb55d53c8d8f6aa52262fbad9fc6f5cbe270a2f713ffa89711",
      "primary_path": S0_RUNNER_FILE,
@@ -2076,7 +2077,7 @@ def s0_doc_touches(t):
 
 
 def s0_single_attempt(t):
-    return s0_marked(t) or s0_doc_marked(t)
+    return s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t)
 
 
 def s0_doc_shape_problem(t):
@@ -2144,7 +2145,7 @@ def _s0_doc_chain(tasks, write):
 def s0_doc_gate_reason(cfg, t, tasks):
     """None for a task outside the lane or a fully authorised document write; else an explicit S0_DOC_* reason."""
     if not s0_doc_marked(t):
-        if s0_doc_touches(t):
+        if s0_doc_touches(t) and not s0_refresh_marked(t):  # the refresh is admitted only by its own, stricter gate
             return f"S0_DOC_UNTAGGED {t['id']}: a write naming or covering the S0 slice documents is not admitted"
         return None
     problem = s0_doc_shape_problem(t)
@@ -2154,6 +2155,8 @@ def s0_doc_gate_reason(cfg, t, tasks):
         return "S0_DOC_CLOSED: an S0 product write exists; the slice documents may no longer change"
     if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
         return "S0_DOC_CLOSED: the S0 authority receipt exists and binds the slice documents"
+    if any(s0_refresh_marked(x) and x.get("role") in WRITE_ROLES for x in tasks.values()):
+        return "S0_DOC_CLOSED: the one-time document refresh exists; the original document lane stays consumed"
     if t.get("attempts"):
         return f"S0_DOC_ATTEMPT_USED {t['id']}: the single document write attempt was already started"
     others = [x for x in tasks.values() if x.get("id") != t["id"] and s0_doc_marked(x) and x.get("role") in WRITE_ROLES]
@@ -2208,6 +2211,141 @@ def s0_doc_review_reason(cfg, t, tasks):
     return None
 
 
+# ------------------------------------------------ MOD-004 S0 one-time document refresh (edge-context recovery)
+# Owner-authorised by OWNER-2026-10-24-mod004-s0-edge-context-recovery.md item 2/3: ONE further runner-recorded Sonnet
+# write of exactly the two S0 slice documents, starting from the pinned published hashes, with ONE exact-bound Opus
+# review and no retry, remediation or review shopping. It is not the consumed MOD004-S0-DOC lane, never the S0 product
+# write, and never joins the CAP chain. Its authority is the separately named MOD-004-S0-RECOVERY.json receipt, which
+# is machine-verified like every other S0 authority (committed bytes, exact-commit CI, distinct Opus-APPROVED reviews)
+# and additionally requires the old MOD-004-S0.json to be preserved out of acceptances/ and absent from it.
+S0_REFRESH_MARKER = "MOD004-S0-DOC-REFRESH"
+S0_REFRESH_BASE = {
+    "contracts/engineering/mod004-s0-eligibility.json": "0adce2c8590a1c26124fa94b286155b66cba301d1f7d88a387ea4ae17a627ff9",
+    "contracts/engineering/mod004-s0-scenario-qa.md": "349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45"}
+S0_RECOVERY_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-edge-context-recovery.md"
+S0_RECOVERY_RECEIPT = "MOD-004-S0-RECOVERY"  # operator-written <home>/acceptances/MOD-004-S0-RECOVERY.json
+S0_OLD_RECEIPT_SHA = "0bb98e348496413779ce83414325d8286a678dccf982c304ca257316dd30894f"  # the invalid MOD-004-S0.json
+S0_RECOVERY_CHECKPOINT = "checkpoints/MOD-004-S0.pre-recovery.json"  # fixed path under the runner home
+S0_RECOVERY_SUBJECTS = {  # five distinct exact subjects, each with its own distinct Opus-APPROVED review
+    "owner": S0_SUBJECTS["owner"], "adr": S0_SUBJECTS["adr"], "doc_owner": S0_DOC_SUBJECTS["doc_owner"],
+    "recovery_owner": re.compile(re.escape(S0_RECOVERY_OWNER_PATH)), "runner_gate": S0_SUBJECTS["runner_gate"],
+}
+
+
+def s0_refresh_marked(t):
+    return t.get("plan_phase") == S0_REFRESH_MARKER
+
+
+def s0_refresh_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the S0 document refresh is a MOD-004 implement task only"
+    if t.get("source") == "handoff":
+        return "the planner cannot propose the S0 document refresh"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of", "review_of",
+                                          "review_candidate")):
+        return "remediation_of, review_retry_of, accounting_recovery_of and review binding fields are rejected"
+    if sorted(t.get("allowed_paths") or []) != sorted(S0_DOC_PATHS) or sorted(t.get("expected_changes") or []) != sorted(S0_DOC_PATHS):
+        return "allowed_paths and expected_changes must be exactly the two S0 document files"
+    if t.get("verify_cmd") != []:
+        return "the document refresh runs no verifier"
+    if t.get("doc_base") != S0_REFRESH_BASE:
+        return "doc_base must be exactly the two pinned published document hashes"
+    return None
+
+
+def _s0_preserved_receipt(cfg, e):
+    """The invalid S0 receipt must sit, byte-identical, at the one fixed regular non-symlink checkpoint under the home."""
+    if not (isinstance(e, dict) and set(e) == {"path", "sha256"} and e["path"] == S0_RECOVERY_CHECKPOINT
+            and e["sha256"] == S0_OLD_RECEIPT_SHA):
+        raise GateError("S0 recovery: preserved_receipt must be the fixed checkpoint path and the pinned old receipt sha256")
+    cur = Path(cfg.home)
+    for part in Path(e["path"]).parts[:-1]:
+        cur = cur / part
+        if cur.is_symlink() or not cur.is_dir():
+            raise GateError("S0 recovery: the preserved receipt checkpoint directory is missing or a symlink")
+    data = _read_bounded(Path(cfg.home) / e["path"], RECEIPT_MAX_BYTES)
+    if hashlib.sha256(data).hexdigest() != S0_OLD_RECEIPT_SHA:
+        raise GateError("S0 recovery: the preserved old S0 receipt does not hash to the pinned sha256")
+
+
+def verify_s0_refresh_authority(cfg, tasks):
+    """Offline re-verification of the recovery authority: no S0 receipt in acceptances/, the old one preserved at its
+    fixed checkpoint, and the five distinct subjects (original owner, ADR D12.5, 2026-10-23 doc owner, 2026-10-24
+    recovery owner, this very runner file) each bound through _s0_subject. It never trusts task prose and never
+    treats the old document-lane receipt as authority; it grants nothing to the S0 product gate."""
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        raise GateError("S0 recovery: an S0 authority receipt exists in acceptances/; the refresh runs only while it is absent")
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_RECOVERY_RECEIPT}.json", RECEIPT_MAX_BYTES), "S0 recovery receipt")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "preserved_receipt", "subjects"}
+            and r["schema"] == SCHEMA and r["module"] == S0_MODULE and r["kind"] == "mod004-s0-recovery-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip() and isinstance(r["recorded_at"], str)
+            and isinstance(r["subjects"], dict) and set(r["subjects"]) == set(S0_RECOVERY_SUBJECTS)):
+        raise GateError("S0 recovery receipt schema mismatch")
+    _s0_preserved_receipt(cfg, r["preserved_receipt"])
+    seen = set()
+    data = {name: _s0_subject(cfg, name, r["subjects"][name], tasks, seen, S0_RECOVERY_SUBJECTS) for name in S0_RECOVERY_SUBJECTS}
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+        raise GateError("S0 recovery runner_gate: the loaded runner is not the reviewed, CI-green runner file")
+    if b"D12.5" not in data["adr"]:
+        raise GateError("S0 recovery adr: no D12.5 S0 amendment")
+
+
+def s0_refresh_gate_reason(cfg, t, tasks):
+    """None for a task outside the refresh or the one fully authorised refresh write; else an explicit S0_REFRESH_* reason."""
+    if not s0_refresh_marked(t):
+        return None
+    problem = s0_refresh_shape_problem(t)
+    if problem:
+        return f"S0_REFRESH_INVALID_TASK {t['id']}: {problem}"
+    if any(s0_marked(x) and x.get("role") in WRITE_ROLES for x in tasks.values()):
+        return "S0_REFRESH_CLOSED: an S0 product write exists; the slice documents may no longer change"
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        return "S0_REFRESH_CLOSED: an S0 authority receipt exists in acceptances/ and binds the slice documents"
+    if t.get("attempts"):
+        return f"S0_REFRESH_ATTEMPT_USED {t['id']}: the single refresh write attempt was already started"
+    others = sorted(x["id"] for x in tasks.values() if x.get("id") != t["id"] and s0_refresh_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_REFRESH_SECOND_WRITE: refresh write {others[0]} already exists; the refresh is one-time"
+    busy = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t["id"]
+                  and x.get("status") in ("QUEUED", "RUNNING") and s0_doc_touches(x))
+    if busy:
+        return f"S0_REFRESH_CONCURRENT_WRITE: {busy[0]} is a pending write that touches the slice documents"
+    if {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS} != S0_REFRESH_BASE:
+        return "S0_REFRESH_STALE_DRAFT: a document is not the pinned published content"
+    try:
+        verify_s0_refresh_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_REFRESH_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
+def s0_refresh_review_reason(cfg, t, tasks):
+    """The one exact-bound Opus review of the refresh write: any other review task bound to it, in any status, has used
+    the slot; there is no retry; the bound hashes are exactly the two documents, both different from the pinned base."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and s0_refresh_marked(w)):
+        return None
+    if t.get("source") == "handoff":
+        return "S0_REFRESH_REVIEW_UNSUPPORTED: the planner cannot propose a refresh review; it is owner-routed"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_REFRESH_REVIEW_UNSUPPORTED: the refresh write gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"):
+        return "S0_REFRESH_REVIEW_UNSUPPORTED: only a DONE MOD-004 refresh write can be reviewed here"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not (len(want) == len(S0_DOC_PATHS) and sorted(c["path"] for c in want) == sorted(S0_DOC_PATHS)
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) and c["sha256"] != S0_REFRESH_BASE[c["path"]]
+                    for c in want)
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_REFRESH_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of both document files"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_REFRESH_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review refresh write {w['id']}"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_REFRESH_REVIEW_BINDING_STALE: the document files no longer match the write's recorded hashes"
+    return None
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -2215,13 +2353,13 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if s0_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
         return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
-    if s0_doc_marked(t) or s0_doc_touches(t):
+    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_doc_touches(t):
         return f"S0_DOC_INVALID_TASK {t['id']}: document tasks are admitted only by the S0 document gate"
     module = t["module"]
-    # the S0 and document chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
+    # the S0, document and refresh chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
                      and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
-                     and not s0_doc_marked(x)), key=_when)
+                     and not s0_doc_marked(x) and not s0_refresh_marked(x)), key=_when)
     if not writes:
         return None
     last = writes[-1]
@@ -2311,10 +2449,10 @@ def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
         if t["role"] == "code-review":
-            return s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks)
+            return s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
         if t["role"] not in GATED_ROLES:
             return None
-        reason = s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks)
+        reason = s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks) or s0_refresh_gate_reason(cfg, t, tasks)
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -2326,7 +2464,7 @@ def gate_reason(cfg, t, tasks):
             active = active_module_blockers(cfg, t, tasks)
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
-        if s0_marked(t) or s0_doc_marked(t):  # the sole S0 write and the document lane: separate chains, historical blockers stay untouched
+        if s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t):  # the sole S0 write, the document lane and the refresh: separate chains, historical blockers stay untouched
             return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
@@ -2726,8 +2864,8 @@ class Runner:
             raise ValueError("operational review retries require the owner CLI and an audited prior BLOCKED record")
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
-        if s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_doc_touches(t):
-            raise ValueError("tasks for the MOD004-S0 or MOD004-S0-DOC files require the owner CLI; the planner cannot propose them")
+        if s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_doc_touches(t):
+            raise ValueError("tasks for the MOD004-S0, MOD004-S0-DOC or MOD004-S0-DOC-REFRESH files require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -3212,7 +3350,8 @@ class Runner:
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
         if outcome in ("stopped", "signal") and s0_single_attempt(t):  # the single S0/document attempt started: triage, never re-run
-            code = "S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED"
+            code = ("S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
+                    "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
             t.update(status="BLOCKED", blocked_reason=code, stage=None,
                      last_error="the only attempt of this S0 write was interrupted; repo may hold partial edits")
             return self.store.event("task-blocked", op, task_id=t["id"], code=code)
@@ -3330,6 +3469,13 @@ class Runner:
                 bad.append(("S0_DOC_AUTHORITY_WITHDRAWN", str(e)[:200]))
             except Exception as e:
                 bad.append(("S0_DOC_AUTHORITY_WITHDRAWN", type(e).__name__))
+        if write and s0_refresh_marked(t):  # recovery authority may have been withdrawn, or an S0 receipt installed, during the child
+            try:
+                verify_s0_refresh_authority(self.cfg, self.state["tasks"])
+            except GateError as e:
+                bad.append(("S0_REFRESH_AUTHORITY_WITHDRAWN", str(e)[:200]))
+            except Exception as e:
+                bad.append(("S0_REFRESH_AUTHORITY_WITHDRAWN", type(e).__name__))
         base = Path(self.cfg.repo)
         evidence = {"op": op, "at": now_iso(), "subtype": parsed.get("subtype"),
                     "permission_denials": len(denials) if isinstance(denials, list) else None,
@@ -3587,10 +3733,10 @@ def validate_task(d, cfg):
                                      isinstance(retry_of, str) and ID_RE.match(retry_of)):
         raise ValueError("review_retry_of is only for a bound code-review")
     doc_base = d.get("doc_base")
-    if doc_base is not None and not (plan_phase == S0_DOC_MARKER and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and set(doc_base) == set(S0_DOC_PATHS)
                                      and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())):
-        raise ValueError("doc_base is only for a MOD004-S0-DOC write: {path: sha256 or null} for exactly the two document paths")
+        raise ValueError("doc_base is only for a MOD004-S0-DOC or MOD004-S0-DOC-REFRESH write: {path: sha256 or null} for exactly the two document paths")
     candidate = d.get("review_candidate")
     if candidate is not None and not (retry_of and isinstance(candidate, dict)
                                       and set(candidate) == {"head", "files", "diff_sha256", "candidate_sha256"}):
@@ -3630,7 +3776,7 @@ def enqueue(cfg, task):
         raise ValueError(f"enqueue refused ({handoff['quarantine']}); run `rearm` once the owner has checked the gateway")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
-    if s0_marked(t) or s0_doc_marked(t):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+    if s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
         problem = s0_runner_problem(state)
         if problem:
             raise ValueError(f"task refused by S0 gate: {problem}")
@@ -3873,7 +4019,7 @@ def main(argv=None):
     e.add_argument("--accounting-recovery-of", help="one audited MOD-004 source-inaccessible accounting review id; fresh write only")
     e.add_argument("--remediation-of", help="MOD004-S0-DOC only: the document write whose exact-bound review requested changes")
     e.add_argument("--doc-base", action="append", default=[], metavar="PATH=SHA256|absent",
-                   help="MOD004-S0-DOC only, once per document: the exact current content hash this write starts from")
+                   help="MOD004-S0-DOC / MOD004-S0-DOC-REFRESH only, once per document: the exact current content hash this write starts from")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
