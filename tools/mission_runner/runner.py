@@ -6,6 +6,7 @@ in the state dir (default outside the repo); this process never writes to the
 repository itself. See knowledge/03-Modules/MOD-000/MOD-000.md.
 """
 import argparse
+import ast
 import datetime
 import fcntl
 import fnmatch
@@ -1503,14 +1504,497 @@ def accounting_recovery_chain(tasks, write):
     return False
 
 
+# ------------------------------------------------ MOD-004 S0-only eligibility gate
+# Prospective, owner-approved exception (OWNER-2026-10-19-mod004-s0-only.md, ADR-0002 D12.5) for exactly one
+# stdlib-only two-file product write plus one bound review. It never clears, hides or reclassifies the historical
+# CAP-accounting chain: the one valid S0 write skips that chain, every other MOD-004 task is still held by it.
+S0_MARKER = "MOD004-S0"  # plan_phase of the sole S0 write
+S0_MODULE = "MOD-004"
+S0_PATHS = ("backend/app/tenancy_s0.py", "backend/tests/test_tenancy_s0.py")
+S0_VERIFY_MODULE = "backend.tests.test_tenancy_s0"
+S0_RECEIPT = "MOD-004-S0"  # operator-written claim <home>/acceptances/MOD-004-S0.json; re-verified except that CI
+# records are operator-attested (only the runner gate's is cross-checked against the observed ci.json)
+S0_OWNER_RECORD = "knowledge/00-Decisions/OWNER-2026-10-19-mod004-s0-only.md"
+S0_ADR = "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md"
+S0_RUNNER_FILE = "tools/mission_runner/runner.py"
+S0_EDGE_RECORD = "knowledge/00-Decisions/OWNER-2026-10-18-mod004-foundation-dependency.md"
+S0_MANIFEST = "contracts/engineering/module-capabilities.yaml"  # module-wide manifest: must stay PROVISIONAL
+S0_SCREENS = "contracts/ui/screen-contracts.yaml"
+S0_WORKFLOW = ".github/workflows/veyro-foundation-ci.yml"
+S0_SUBJECTS = {  # name -> allowed repo path; certificates are JSON under contracts/engineering/, never the module row
+    "owner": re.compile(re.escape(S0_OWNER_RECORD)),
+    "adr": re.compile(re.escape(S0_ADR)),
+    "runner_gate": re.compile(re.escape(S0_RUNNER_FILE)),
+    "eligibility": re.compile(r"contracts/engineering/[A-Za-z0-9._/-]+\.json"),
+    "capability": re.compile(r"contracts/engineering/[A-Za-z0-9._/-]+\.json"),
+    "edge": re.compile(re.escape(S0_EDGE_RECORD)),
+}
+S0_FORBIDDEN_IMPORTS = frozenset({
+    "psycopg", "psycopg2", "psycopg_pool", "sqlalchemy", "asyncpg", "sqlite3", "dbm", "shelve", "socket", "ssl",
+    "http", "urllib", "ftplib", "smtplib", "poplib", "imaplib", "telnetlib", "xmlrpc", "socketserver", "asyncio",
+    "subprocess", "multiprocessing", "ctypes", "importlib", "pkgutil", "runpy", "requests", "boto3"})
+S0_FIRST_PARTY = frozenset({"backend.app.tenancy_s0", "app.tenancy_s0"})  # the tests may import only the validator
+# Pure envelope validation: only these modules and, per module, only these names (never a re-exported module such
+# as `uuid.os`, and never reflection). The tests file additionally gets ast/pathlib/unittest.
+S0_NAMES = {
+    "__future__": {"annotations"}, "collections": {"OrderedDict"}, "dataclasses": {"dataclass", "field", "FrozenInstanceError"},
+    "enum": {"Enum", "IntEnum", "StrEnum", "auto", "unique"}, "functools": {"lru_cache", "cached_property", "total_ordering"},
+    "json": {"loads", "dumps", "JSONDecodeError"}, "string": {"ascii_letters", "ascii_lowercase", "ascii_uppercase", "digits", "hexdigits"},
+    "re": {"compile", "fullmatch", "match", "search", "Pattern", "error", "IGNORECASE", "ASCII", "VERBOSE", "I", "A"},
+    "types": {"MappingProxyType", "SimpleNamespace"}, "uuid": {"UUID", "uuid4"},
+    "typing": {"Any", "Callable", "ClassVar", "Final", "Iterable", "Literal", "Mapping", "MutableMapping", "NamedTuple",
+               "NoReturn", "Optional", "Protocol", "Self", "Sequence", "TYPE_CHECKING", "TypedDict", "Union", "cast"},
+    "ast": {"parse", "walk", "Import", "ImportFrom", "Name", "Attribute", "Call", "Constant", "Module"},
+    "pathlib": {"Path"}, "unittest": {"TestCase", "main", "mock", "skip", "skipIf", "skipUnless", "expectedFailure", "SkipTest"},
+    "unittest.mock": {"patch", "MagicMock", "Mock", "call", "sentinel", "ANY"}}
+S0_PRODUCT_MODULES = frozenset(set(S0_NAMES) - {"ast", "pathlib", "unittest", "unittest.mock"})
+S0_TEST_MODULES = frozenset(S0_NAMES)
+S0_DYNAMIC = frozenset({"__import__", "eval", "exec", "compile", "open", "breakpoint", "input", "globals", "locals", "vars",
+                        "getattr", "setattr", "delattr", "help", "dir", "__builtins__", "__loader__", "__spec__"})
+S0_BAD_ATTRS = frozenset({
+    "__class__", "__bases__", "__base__", "__mro__", "__subclasses__", "__dict__", "__globals__", "__builtins__",
+    "__code__", "__closure__", "__func__", "__self__", "__import__", "__loader__", "__spec__", "__getattribute__",
+    "__reduce__", "__reduce_ex__", "__traceback__", "__wrapped__", "f_globals", "f_locals", "f_back", "gi_frame",
+    "cr_frame", "tb_frame", "open", "write_text", "write_bytes", "unlink", "mkdir", "rmdir", "rename", "touch",
+    "symlink_to", "hardlink_to", "chmod", "lchmod", "system", "popen"})
+# Below an allowed name (`mock.patch.<x>`, `uuid.UUID.<x>`) no private attribute and no module-like escape is allowed.
+S0_ESCAPE_ATTRS = S0_FORBIDDEN_IMPORTS | {"os", "sys", "builtins", "io", "shutil", "inspect", "posix", "nt", "tempfile",
+                                          "glob", "platform", "signal", "threading", "pty", "typing", "enum"}
+# the four MOD-004 screen identities (ADR-0002 D14, MOD-004.md); ADM-SET-03..05 are not claimed by MOD-004
+S0_SCREEN_IDS = ("CON-04", "ADM-SET-01", "ADM-SET-02", "ADM-SET-06")
+S0_PYTHON, S0_PY_VERSION = "/opt/homebrew/bin/python3.13", (3, 13)  # the only interpreter the S0 verifier may use
+S0_HEARTBEAT_MAX_AGE = 30.0
+
+
+def s0_marked(t):
+    return t.get("plan_phase") == S0_MARKER
+
+
+def s0_touches(t):
+    """Any writing task, of any module, that names an S0 path or whose scope (directory, glob, other case) would
+    cover one. Only the exact MOD-004 S0 shape may do so; this is the guard against reclassifying S0 elsewhere."""
+    if t.get("role") not in WRITE_ROLES:
+        return False
+    allowed, expected = t.get("allowed_paths") or [], t.get("expected_changes") or []
+    low = [a.lower() for a in allowed]
+    return (any(p.lower() in {s.lower() for s in S0_PATHS} for p in [*allowed, *expected])
+            or any(in_scope(s.lower(), low) for s in S0_PATHS)
+            or any(s.lower().startswith(a.rstrip("/") + "/") for a in low if a.rstrip("/") for s in S0_PATHS))  # bare `backend/app`
+
+
+def s0_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "S0 is a MOD-004 implement task only"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of")):
+        return "remediation_of, review_retry_of and accounting_recovery_of are rejected"
+    if t.get("source") == "handoff":
+        return "the planner cannot propose S0 tasks"
+    if sorted(t.get("allowed_paths") or []) != sorted(S0_PATHS) or sorted(t.get("expected_changes") or []) != sorted(S0_PATHS):
+        return "allowed_paths and expected_changes must be exactly the two S0 files"
+    if t.get("verify_cmd") != [S0_PYTHON, "-m", "unittest", S0_VERIFY_MODULE]:
+        return "verify_cmd must be exactly the Python 3.13 S0 unittest module"
+    return None
+
+
+def s0_python():
+    """(resolved executable, prefixes) of the one interpreter the sandboxed S0 verifier may exec. ValueError
+    (fail closed) unless it is an absolute executable file that reports exactly Python 3.13."""
+    exe = Path(S0_PYTHON)
+    if not (exe.is_absolute() and exe.is_file() and os.access(exe, os.X_OK)):
+        raise ValueError(f"S0 verifier interpreter {S0_PYTHON} is unavailable")
+    code = "import json,sys;print(json.dumps([sys.version_info[:2],sys.prefix,sys.base_prefix,sys.exec_prefix,sys.base_exec_prefix]))"
+    try:
+        out = subprocess.run([str(exe), "-I", "-c", code], capture_output=True, text=True, timeout=15, cwd="/",
+                             env={"PATH": VERIFY_PATH}, stdin=subprocess.DEVNULL)
+        info = json.loads(out.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise ValueError("cannot query the S0 verifier interpreter")
+    if not (out.returncode == 0 and isinstance(info, list) and len(info) == 5 and info[0] == list(S0_PY_VERSION)
+            and all(isinstance(p, str) for p in info[1:])):
+        raise ValueError(f"{S0_PYTHON} is not Python {'.'.join(map(str, S0_PY_VERSION))}")
+    return str(exe.resolve()), info[1:]
+
+
+def _s0_chain_ok(module, attrs):
+    """Attribute path below an imported module: each hop is a permitted submodule until a permitted name; every
+    attribute after that name must be public and not a module-like escape (`re.compile.sys`, `uuid.UUID._x`)."""
+    for i, a in enumerate(attrs):
+        if f"{module}.{a}" in S0_NAMES:
+            module = f"{module}.{a}"
+            continue
+        return a in S0_NAMES.get(module, ()) and all(
+            not t.startswith("_") and t not in S0_ESCAPE_ATTRS for t in attrs[i + 1:])
+    return True
+
+
+def _s0_file_import_problems(rel, source):
+    """Allowlist of modules AND of names inside them (so `from uuid import os` fails), no use of an imported module
+    as a bare value, no attribute traversal outside the allowed names, and no reflection or dynamic-import form."""
+    test = rel == S0_PATHS[1]
+    mods, problems, alias = (S0_TEST_MODULES if test else S0_PRODUCT_MODULES), [], {}
+    tree = ast.parse(source)
+    nodes = list(ast.walk(tree))
+    for n in nodes:
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if test and a.name in S0_FIRST_PARTY:
+                    continue
+                if a.name not in mods:
+                    problems.append(f"{rel}: forbidden import {a.name}")
+                else:
+                    alias[a.asname or a.name.split(".")[0]] = a.name if a.asname else a.name.split(".")[0]
+        elif isinstance(n, ast.ImportFrom):
+            if n.level or not n.module:
+                problems.append(f"{rel}: relative import")
+            elif test and n.module in ("backend.app", "app"):
+                problems += [f"{rel}: forbidden import {n.module}.{a.name}" for a in n.names
+                             if f"{n.module}.{a.name}" not in S0_FIRST_PARTY]
+            elif test and n.module in S0_FIRST_PARTY:
+                continue
+            elif n.module not in mods:
+                problems.append(f"{rel}: forbidden import {n.module}")
+            else:
+                for a in n.names:
+                    if a.name not in S0_NAMES.get(n.module, ()):
+                        problems.append(f"{rel}: forbidden name {n.module}.{a.name}")
+                    elif f"{n.module}.{a.name}" in S0_NAMES:
+                        alias[a.asname or a.name] = f"{n.module}.{a.name}"
+        elif isinstance(n, ast.Name) and n.id in S0_DYNAMIC:
+            problems.append(f"{rel}: dynamic import, reflection or I/O form {n.id}")
+        elif isinstance(n, ast.Attribute) and n.attr in S0_BAD_ATTRS:
+            problems.append(f"{rel}: reflection or I/O attribute {n.attr}")
+    based = set()
+    for n in nodes:
+        if isinstance(n, ast.Attribute):
+            attrs, cur = [], n
+            while isinstance(cur, ast.Attribute):
+                attrs.append(cur.attr)
+                cur = cur.value
+            if isinstance(cur, ast.Name) and cur.id in alias:
+                based.add(id(cur))
+                if not _s0_chain_ok(alias[cur.id], attrs[::-1]):
+                    problems.append(f"{rel}: module attribute {cur.id}.{'.'.join(attrs[::-1])} is not allowed")
+    for n in nodes:  # `x = uuid; x.os` would otherwise hide the traversal
+        if isinstance(n, ast.Name) and n.id in alias and id(n) not in based and not isinstance(n.ctx, ast.Store):
+            problems.append(f"{rel}: imported module {n.id} used as a value")
+    return problems
+
+
+def s0_import_problems(repo):
+    """Static import-closure check of the two S0 files against a narrow pure-stdlib allowlist (no I/O, network,
+    process, database or dynamic-import forms). Fails closed: any read, size, symlink, decode or parse error is a
+    problem, never an exception, so it cannot crash Runner.settle."""
+    problems = []
+    for rel in S0_PATHS:
+        try:
+            problems += _s0_file_import_problems(rel, _read_bounded(Path(repo) / rel, 1_000_000))
+        except Exception as e:
+            problems.append(f"{rel}: missing, unreadable or not valid Python ({type(e).__name__})")
+    return problems
+
+
+def _s0_ci_ok(ci, sha):
+    return (isinstance(ci, dict) and isinstance(ci.get("run_id"), str) and ci["run_id"].isdigit()
+            and ci.get("event") == "push" and ci.get("status") == "completed" and ci.get("name") == CI_WORKFLOW_NAME
+            and ci.get("head_sha") == sha and ci.get("conclusion") == "success")
+
+
+def _s0_names_subject(y, path, sha, text):
+    """(prompt names the path-or-exact-bytes and full sha256, review_of.changed lists {path, sha256}) for a task."""
+    prompt = y.get("prompt")
+    named = isinstance(prompt, str) and sha in prompt and (path in prompt or (text is not None and text in prompt))
+    changed = (y.get("review_of") or {}).get("changed")
+    return named, isinstance(changed, list) and {"path": path, "sha256": sha} in changed
+
+
+def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
+    """Bind to an existing runner review task, never to receipt booleans: the task must be DONE with a verified Opus
+    route and APPROVED evidence, its output file (path derived from its dispatch op) must hash to the receipt and
+    carry the same APPROVED final-line result, and its immutable recorded prompt (or runner-verified review binding)
+    must name the exact subject: path and full sha256, or full sha256 plus the exact current bytes."""
+    if not (isinstance(rv, dict) and set(rv) == {"task_id", "output_sha256"} and isinstance(rv["task_id"], str)
+            and ID_RE.match(rv["task_id"]) and isinstance(rv["output_sha256"], str)
+            and SHA256_RE.fullmatch(rv["output_sha256"]) and rv["task_id"] not in seen):
+        raise GateError(f"{label}: needs its own distinct runner review task id and output sha256")
+    x = tasks.get(rv["task_id"])
+    x = x if isinstance(x, dict) else {}
+    route, ev = x.get("route") or {}, x.get("evidence") or {}
+    op = route.get("dispatch_op")
+    if not (x.get("id") == rv["task_id"] and x.get("status") == "DONE" and x.get("role") in OPUS_ROLES
+            and route.get("verdict") == "VERIFIED" and isinstance(op, str)
+            and re.fullmatch(re.escape(x["id"]) + r":[1-9][0-9]*", op) and ev.get("op") == op
+            and ev.get("review_outcome") == "APPROVED" and ev.get("route_verdict") == "VERIFIED"
+            and ev.get("subtype") == "success" and ev.get("violations") == []):
+        raise GateError(f"{label}: task {rv['task_id']} is not a DONE, verified-Opus, APPROVED review")
+    if x.get("source") == "handoff":
+        raise GateError(f"{label}: a planner-proposed review cannot be authority evidence")
+    try:
+        text = data.decode()
+    except UnicodeDecodeError:
+        text = None
+    named, paired = _s0_names_subject(x, path, sha, text)
+    if not (named or (paired and ev.get("review_bound_verified") is True)):
+        raise GateError(f"{label}: the review task's recorded prompt/binding does not name the exact subject and sha256")
+    for y in tasks.values():  # one bad verdict on these exact bytes stands: no re-review shopping
+        if isinstance(y, dict) and y is not x and y.get("role") in OPUS_ROLES and any(_s0_names_subject(y, path, sha, text)):
+            yev = y.get("evidence") or {}
+            marks = [y.get("blocked_reason"), *(yev["violations"] if isinstance(yev.get("violations"), list) else [])]
+            no_verdict = (y.get("status") == "BLOCKED" and (y.get("route") or {}).get("verdict") == "VERIFIED"
+                          and "NO_REVIEW_OUTCOME" in marks)  # e.g. a verdict line followed by one more line
+            if no_verdict or (yev.get("review_outcome_reported") or yev.get("review_outcome")) in ("CHANGES_REQUESTED", "BLOCKED"):
+                raise GateError(f"{label}: review {y.get('id')} of these exact bytes did not approve them")
+    out = _read_bounded(Path(cfg.home) / "runs" / (op.replace(":", "-") + ".out"), REVIEW_MAX_BYTES)
+    if hashlib.sha256(out).hexdigest() != rv["output_sha256"]:
+        raise GateError(f"{label}: review output does not match its recorded sha256")
+    try:
+        parsed = json.loads(out)
+    except ValueError:
+        raise GateError(f"{label}: review output is not CLI json")
+    result = parsed.get("result") if isinstance(parsed, dict) else None
+    lines = [ln.strip() for ln in result.splitlines() if ln.strip()] if isinstance(result, str) else []
+    m = OUTCOME_RE.match(lines[-1]) if lines else None
+    if not (m and m.group(1) == "APPROVED" and parsed.get("subtype") == "success" and parsed.get("is_error") is not True
+            and x.get("result") == result[:500] and judge_route(x["role"], parsed)["verdict"] == "VERIFIED"):
+        raise GateError(f"{label}: review output is not an APPROVED, Opus-verified success matching the task record")
+    seen.add(rv["task_id"])
+
+
+def _s0_ci_label(cfg, commit):
+    """'observed' when the runner's own ci.json observed exactly this commit green; 'operator-attested' when it has
+    nothing for the commit (older CI is NOT re-verified here). A ci.json for this commit that is not green refuses."""
+    try:
+        obs = clean_ci(json.loads(_read_bounded(cfg.home / "ci.json", CI_MAX_BYTES)))
+    except (GateError, ValueError):
+        return "operator-attested"
+    if not obs or obs.get("scope") != CI_SCOPE or obs.get("head_sha") != commit:
+        return "operator-attested"
+    if not any(r.get("name") == CI_WORKFLOW_NAME and r.get("event") == "push" and r.get("status") == "completed"
+               and r.get("conclusion") == "success" and r.get("head_sha") == commit for r in obs["runs"]):
+        raise GateError(f"observed CI for {commit[:12]} is not a completed successful {CI_WORKFLOW_NAME} push run")
+    return "observed"
+
+
+def _s0_subject(cfg, name, e, tasks, seen):
+    """One committed, CI-green, independently Opus-APPROVED subject whose current bytes are what was reviewed."""
+    label = f"S0 {name}"
+    if not (isinstance(e, dict) and set(e) == {"path", "sha256", "commit", "ci", "review"}):
+        raise GateError(f"{label}: malformed entry")
+    path, sha, commit, rv = e["path"], e["sha256"], e["commit"], e["review"]
+    if not (isinstance(path, str) and S0_SUBJECTS[name].fullmatch(path) and ".." not in Path(path).parts):
+        raise GateError(f"{label}: path is not permitted")
+    if not (isinstance(sha, str) and SHA256_RE.fullmatch(sha) and isinstance(commit, str) and SHA_RE.fullmatch(commit)):
+        raise GateError(f"{label}: malformed sha256/commit")
+    if not _s0_ci_ok(e["ci"], commit):
+        raise GateError(f"{label}: CI evidence is not a successful {CI_WORKFLOW_NAME} push run on {commit[:12]}")
+    if not _is_ancestor(cfg, commit):
+        raise GateError(f"{label}: commit {commit[:12]} is not an ancestor of repo HEAD (stale or unknown)")
+    if name == "runner_gate":
+        _s0_ci_label(cfg, commit)
+    data = _read_bounded(Path(cfg.repo) / path, REVIEW_MAX_BYTES)
+    try:
+        committed = git_run(cfg.repo, "show", f"{commit}:{path}", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"{label}: cannot read the committed bytes")
+    if not (committed.returncode == 0 and hashlib.sha256(data).hexdigest() == sha
+            and hashlib.sha256(committed.stdout).hexdigest() == sha):
+        raise GateError(f"{label}: current file is not the committed, reviewed content (stale)")
+    _s0_review(cfg, label, rv, tasks, seen, path, sha, data)
+    return data
+
+
+def _s0_json(data, label):
+    try:
+        d = strict_json(data.decode())
+    except (ValueError, UnicodeDecodeError):
+        raise GateError(f"{label}: not strict JSON")
+    if not isinstance(d, dict):
+        raise GateError(f"{label}: not an object")
+    return d
+
+
+def _s0_ref(cfg, ref, prefixes, label):
+    """A {path, sha256} reference to a current repo file under one of the given prefixes."""
+    if not (isinstance(ref, dict) and set(ref) == {"path", "sha256"} and isinstance(ref["path"], str)
+            and ref["path"].startswith(prefixes) and ".." not in Path(ref["path"]).parts):
+        raise GateError(f"{label}: malformed or out-of-place file reference")
+    data = _read_bounded(Path(cfg.repo) / ref["path"], REVIEW_MAX_BYTES)
+    if hashlib.sha256(data).hexdigest() != ref["sha256"]:
+        raise GateError(f"{label}: {ref['path']} changed since the reviewed document named it")
+    return data
+
+
+def _s0_content_problem(cfg, cert, cap, edge):
+    """Reviewed-document content that must match the current repo: the PROVISIONAL module-wide manifest (parsed,
+    not just named), the four identity-only screens, the Python 3.13 CI evidence, rules/skills and no-UI scope."""
+    manifest_ref = {"path": S0_MANIFEST, "sha256": None}
+    manifest = _s0_ref(cfg, cert.get("module_manifest"), (S0_MANIFEST,), "S0 manifest")
+    manifest_ref["sha256"] = hashlib.sha256(manifest).hexdigest()
+    if cert["module_manifest"] != manifest_ref or cap.get("module_manifest") != manifest_ref:
+        raise GateError("S0 manifest: certificate and declaration must both bind the current manifest bytes")
+    m = _s0_json(manifest, "S0 manifest")
+    mods = m.get("modules")
+    rows = [r for r in mods if isinstance(r, dict) and r.get("module_id") == S0_MODULE] if isinstance(mods, list) else []
+    if not (m.get("provisional") is True and m.get("gate_eligible") is False and len(rows) == 1
+            and rows[0].get("status") == "PROVISIONAL" and rows[0].get("gate_eligible") is False):
+        raise GateError("S0 manifest: the module-wide MOD-004 row is not the PROVISIONAL, non-gate-eligible row")
+    reg = _s0_json(_s0_ref(cfg, cert.get("screen_registry"), (S0_SCREENS,), "S0 screen registry"), "S0 screen registry")
+    ids = cert.get("screen_identities")
+    screens = {s.get("id"): s for s in reg.get("screens", []) if isinstance(s, dict)} if isinstance(reg.get("screens"), list) else {}
+    if not (cert["screen_registry"]["path"] == S0_SCREENS and cert.get("no_ui") is True and isinstance(ids, list)
+            and sorted(i for i in ids if isinstance(i, str)) == sorted(S0_SCREEN_IDS) and len(ids) == 4
+            and all(isinstance(i, str) and i in screens and isinstance(screens[i].get("contract"), dict)
+                    and all(v is None for v in screens[i]["contract"].values()) for i in ids)):
+        raise GateError("S0 certificate: needs no_ui and exactly the four existing, identity-only screen ids "
+                        + ", ".join(S0_SCREEN_IDS))
+    tc = cert.get("toolchain_evidence")
+    if not (isinstance(tc, dict) and set(tc) == {"workflow", "python_version", "commit", "ci"} and tc["python_version"] == "3.13"
+            and isinstance(tc["commit"], str) and SHA_RE.fullmatch(tc["commit"]) and _s0_ci_ok(tc["ci"], tc["commit"])
+            and _is_ancestor(cfg, tc["commit"])):
+        raise GateError("S0 certificate: Python 3.13 CI evidence is malformed, not exact-commit green or not an ancestor of HEAD")
+    wf = _s0_ref(cfg, tc["workflow"], (S0_WORKFLOW,), "S0 workflow")
+    old = git_run(cfg.repo, "show", f"{tc['commit']}:{S0_WORKFLOW}", timeout=10)
+    if not (tc["workflow"]["path"] == S0_WORKFLOW and re.search(rb'(?m)^\s*python-version:\s*"3\.13"\s*$', wf)
+            and old.returncode == 0 and old.stdout == wf):
+        raise GateError("S0 certificate: the CI workflow is not the 3.13 workflow that ran, or changed since")
+    rs = cap.get("rules_skills")
+    if not isinstance(rs, list):
+        raise GateError("S0 declaration: rules_skills must be a list of current rule/skill files")
+    if not rs and not (isinstance(cap.get("rules_skills_none_applicable"), str) and cap["rules_skills_none_applicable"].strip()):
+        raise GateError("S0 declaration: an empty rules_skills list needs a stated reason")
+    for ref in rs:
+        _s0_ref(cfg, ref, (".claude/rules/", ".claude/skills/"), "S0 rule/skill")
+    if edge.get("path") != S0_EDGE_RECORD:
+        raise GateError("S0 edge decision: not the published owner dependency-edge record")
+
+
+def verify_s0_authority(cfg, tasks):
+    """Read-only, offline re-verification of everything the S0 write needs; never trusts task prose or flags.
+    Owner record, ADR, runner file, certificate, declaration and the published dependency-edge record must be
+    committed, CI-green on that exact commit, current, and each bound to an existing DONE, verified-Opus, APPROVED
+    runner review task whose recorded prompt names the exact subject. The S0_ELIGIBLE certificate and the
+    ACTIVE_FOR_S0_ONLY declaration must additionally state the exact two paths and a valid lifecycle, and agree
+    with the current MOD-001/MOD-002 receipts, the PROVISIONAL module manifest bytes and the edge decision."""
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_RECEIPT}.json", RECEIPT_MAX_BYTES), "S0 receipt")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"} and r["schema"] == SCHEMA
+            and r["module"] == S0_MODULE and r["kind"] == "mod004-s0-authority" and isinstance(r["operator"], str)
+            and r["operator"].strip() and isinstance(r["recorded_at"], str)
+            and isinstance(r["subjects"], dict) and set(r["subjects"]) == set(S0_SUBJECTS)):
+        raise GateError("S0 receipt schema mismatch")
+    seen, data = set(), {}
+    for name in S0_SUBJECTS:
+        data[name] = _s0_subject(cfg, name, r["subjects"][name], tasks, seen)
+    subj = r["subjects"]
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+        raise GateError("S0 runner_gate: the loaded runner is not the reviewed, CI-green runner file")
+    if b"D12.5" not in data["adr"]:
+        raise GateError("S0 adr: no D12.5 S0 amendment")
+    if subj["eligibility"]["path"] == subj["capability"]["path"]:
+        raise GateError("S0 receipt: contradictory subject paths")
+    paths = sorted(S0_PATHS)
+    cert, cap = _s0_json(data["eligibility"], "S0 eligibility"), _s0_json(data["capability"], "S0 capability")
+    receipts = {}
+    for dep in ("MOD-001", "MOD-002"):
+        verify_receipt(cfg, dep)
+        receipts[dep] = hashlib.sha256(_read_bounded(cfg.home / "acceptances" / f"{dep}.json", RECEIPT_MAX_BYTES)).hexdigest()
+    if not (cert.get("schema") == SCHEMA and cert.get("module") == S0_MODULE and cert.get("status") == "S0_ELIGIBLE"
+            and cert.get("lifecycle") == "EFFECTIVE" and cert.get("paths") == paths
+            and cert.get("dependency_receipts") == receipts
+            and cert.get("edge_decision") == {"path": subj["edge"]["path"], "sha256": subj["edge"]["sha256"]}):
+        raise GateError("S0 eligibility certificate is not S0_ELIGIBLE/EFFECTIVE for the exact paths and current receipts")
+    zero = ("third_party_caps", "database_profiles", "console_profiles")
+    if not (cap.get("schema") == SCHEMA and cap.get("module") == S0_MODULE and cap.get("status") == "ACTIVE_FOR_S0_ONLY"
+            and cap.get("paths") == paths and cap.get("toolchain") == "python3.13-stdlib"
+            and cap.get("module_row_status") == "PROVISIONAL"
+            and all(type(cap.get(k)) is int and cap[k] == 0 for k in zero)
+            and isinstance(cap.get("forbidden_imports"), list) and S0_FORBIDDEN_IMPORTS <= set(cap["forbidden_imports"])):
+        raise GateError("S0 capability declaration is not ACTIVE_FOR_S0_ONLY for the exact paths with a zero-CAP stdlib closure")
+    _s0_content_problem(cfg, cert, cap, subj["edge"])
+    # only the runner gate is cross-checked against observed ci.json; every other CI record is the operator's attestation
+    return {"ci": {n: _s0_ci_label(cfg, subj[n]["commit"]) if n == "runner_gate" else "operator-attested" for n in S0_SUBJECTS}}
+
+
+def s0_gate_reason(cfg, t, tasks):
+    """None for a task outside S0 or a fully authorised sole S0 write; else an explicit S0_* reason."""
+    if not (s0_marked(t) or s0_touches(t)):
+        return None
+    if not s0_marked(t):
+        return f"S0_UNTAGGED {t['id']}: a write naming the S0 files must carry plan_phase {S0_MARKER}"
+    problem = s0_shape_problem(t)
+    if problem:
+        return f"S0_INVALID_TASK {t['id']}: {problem}"
+    writes = {x["id"] for x in tasks.values() if x.get("id") != t["id"] and s0_marked(x) and x.get("role") in WRITE_ROLES}
+    for rv in tasks.values():
+        if (rv.get("role") == "code-review" and (rv.get("review_of") or {}).get("task_id") in writes
+                and not (rv.get("status") == "DONE" and (rv.get("evidence") or {}).get("review_outcome") == "APPROVED")):
+            return f"S0_PRIOR_REVIEW_NOT_APPROVED: {rv['id']} stops automatic S0 writes"
+    if writes:
+        return f"S0_SECOND_WRITE: S0 write {sorted(writes)[0]} already exists; only one S0 write is authorised"
+    if t.get("attempts") and t.get("stage") != "verify_pending":  # one child attempt, whatever ended it: no transport retry
+        return f"S0_ATTEMPT_USED {t['id']}: the single S0 write attempt was already started"
+    try:
+        verify_s0_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
+def s0_review_reason(t, tasks):
+    """The one bound review of the one S0 write: any other review task bound to it, in any status (failed, blocked
+    without a verdict, stale, timed out, mis-formatted), has used the slot; and there is no retry lineage."""
+    wid = (t.get("review_of") or {}).get("task_id")
+    w = tasks.get(wid)
+    if not (w and s0_marked(w)):
+        return None
+    if t.get("review_retry_of"):
+        return "S0_REVIEW_RETRY: the S0 write gets one bound review and no retry"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == wid)
+    if used:
+        return f"S0_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review S0 write {wid}"
+    return None
+
+
+def s0_runner_problem(state):
+    """Why the live sole runner may not be the one that loaded this reviewed code (None when it did): its recorded
+    code_sha256 must equal this file, with a fresh heartbeat and a live pid. An old runner is rejected here."""
+    r = (state or {}).get("runner")
+    if not (isinstance(r, dict) and r.get("code_sha256") == CODE_SHA):
+        return "S0_RUNNER_NOT_LOADED: the live runner has not loaded this reviewed runner code"
+    try:
+        age = time.time() - datetime.datetime.fromisoformat(r["heartbeat_at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        age = None
+    if r.get("stopped_at") or age is None or not 0 <= age <= S0_HEARTBEAT_MAX_AGE \
+            or not (type(r.get("pid")) is int and pid_alive(r["pid"])):
+        return "S0_RUNNER_NOT_LIVE: no fresh heartbeat from a live runner"
+    return None
+
+
+def s0_probe(cfg):
+    """Read-only gate probe: reads state.json and the repo, queues nothing, takes no lock, writes nothing.
+    Returns None when the exact canonical S0 route would be admitted now, else the refusing reason. It is a probe of
+    the gate only: it grants no PASS, review or dispatch."""
+    try:
+        state = json.loads(_read_bounded(cfg.home / "state.json", 64 * 1024 * 1024))
+        t = validate_task({"id": "s0-gate-probe", "module": S0_MODULE, "role": "implement", "prompt": "read-only probe",
+                           "plan_phase": S0_MARKER, "allowed_paths": list(S0_PATHS), "expected_changes": list(S0_PATHS),
+                           "verify_cmd": [S0_PYTHON, "-m", "unittest", S0_VERIFY_MODULE]}, cfg)
+        return s0_runner_problem(state) or gate_reason(cfg, t, state["tasks"])
+    except Exception as e:
+        return f"S0_PROBE_UNVERIFIABLE: {type(e).__name__}"
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
     if not cfg.review_gate or t["role"] not in WRITE_ROLES | {"gatekeeper"}:
         return None
+    if s0_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
+        return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
     module = t["module"]
+    # the one S0 chain is a separate chain: it never becomes `last`, so it cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
-                     and x.get("status") == "DONE" and x.get("review_gate")), key=_when)
+                     and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)), key=_when)
     if not writes:
         return None
     last = writes[-1]
@@ -1599,8 +2083,13 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
+        if t["role"] == "code-review":
+            return s0_review_reason(t, tasks)
         if t["role"] not in GATED_ROLES:
             return None
+        reason = s0_gate_reason(cfg, t, tasks)
+        if reason:
+            return reason
         for dep in catalog_dependencies(t["module"]):
             try:
                 verify_receipt(cfg, dep)
@@ -1610,6 +2099,8 @@ def gate_reason(cfg, t, tasks):
             active = active_module_blockers(cfg, t, tasks)
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
+        if s0_marked(t):  # the sole authorised S0 write: separate chain, historical blockers stay untouched
+            return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
         return f"GATE_UNVERIFIABLE: {e}"
@@ -2008,6 +2499,8 @@ class Runner:
             raise ValueError("operational review retries require the owner CLI and an audited prior BLOCKED record")
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
+        if s0_marked(t) or s0_touches(t):
+            raise ValueError("MOD004-S0 tasks require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -2491,6 +2984,10 @@ class Runner:
     # --- settle: DONE is earned only by external evidence, never by exit code or prose
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
+        if outcome in ("stopped", "signal") and s0_marked(t):  # the single S0 attempt started: triage, never re-run
+            t.update(status="BLOCKED", blocked_reason="S0_ATTEMPT_INTERRUPTED", stage=None,
+                     last_error="the only S0 write attempt was interrupted; repo may hold partial edits")
+            return self.store.event("task-blocked", op, task_id=t["id"], code="S0_ATTEMPT_INTERRUPTED")
         if outcome in ("stopped", "signal"):  # operator/launchd action is not a task failure
             t.update(status="QUEUED", attempts=t["attempts"] - 1, stage=None)
             return self.store.event("attempt-interrupted", op, task_id=t["id"], why=outcome)
@@ -2553,8 +3050,11 @@ class Runner:
         missing = [e for e in t["expected_changes"] if e not in changed]
         if missing:
             bad.append(("EXPECTED_CHANGE_MISSING", f"declared but unchanged: {missing}"))
+        s0_bad = s0_import_problems(self.cfg.repo) if write and s0_marked(t) else []
+        if s0_bad:  # forbidden closure: never executed by the verifier and never credited
+            bad.append(("S0_FORBIDDEN_IMPORT", "; ".join(s0_bad)[:300]))
         verify = None
-        if write and t["verify_cmd"] and not stray and not head_moved:
+        if write and t["verify_cmd"] and not stray and not head_moved and not s0_bad:
             verify = self.run_verify(t)
             if verify.get("interrupted"):
                 t.update(status="QUEUED", stage="verify_pending", updated_at=now_iso())
@@ -2588,6 +3088,13 @@ class Runner:
             elif review is not None and review != "APPROVED":
                 bad.append((f"REVIEW_{review}", f"reviewer outcome {review}"))
 
+        if write and s0_marked(t):  # authority may have been withdrawn during the child or a paused verification
+            try:
+                verify_s0_authority(self.cfg, self.state["tasks"])
+            except GateError as e:
+                bad.append(("S0_AUTHORITY_WITHDRAWN", str(e)[:200]))
+            except Exception as e:
+                bad.append(("S0_AUTHORITY_WITHDRAWN", type(e).__name__))
         base = Path(self.cfg.repo)
         evidence = {"op": op, "at": now_iso(), "subtype": parsed.get("subtype"),
                     "permission_denials": len(denials) if isinstance(denials, list) else None,
@@ -2606,7 +3113,7 @@ class Runner:
         t.update(status="DONE", finished_at=now_iso(), blocked_reason=None)
         self.store.event("task-done", op, task_id=t["id"], route=route["verdict"], changed=len(changed))
 
-    def verify_sandbox_prefix(self, t, tmpdir, git=None):
+    def verify_sandbox_prefix(self, t, tmpdir, git=None, python=None):
         """REQUIRED Seatbelt for a model-proposed verifier: `(deny default)`, so no network, Mach/LaunchServices/Apple
         Events or other system-mediated launch.
 
@@ -2630,12 +3137,13 @@ class Runner:
                 raise ValueError(f"declared write scope {rel!r} resolves outside the repo worktree")
             files.append(f)
         execs = set()
-        for pre in {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix}:
+        exe, prefixes = python or (sys.executable, {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix})
+        for pre in set(prefixes):  # `python` is the S0 verifier's pinned interpreter; default is the runner's own
             p = Path(pre).resolve()
             if len(p.parts) < 3 or str(p) in ("/usr", "/usr/local", "/opt", "/System", "/Library", "/Applications"):
                 raise ValueError(f"python prefix {p} is too broad to allow process-exec under")
             execs.add(f'(subpath {json.dumps(str(p))})')
-        execs.add(f'(literal {json.dumps(str(Path(sys.executable).resolve()))})')
+        execs.add(f'(literal {json.dumps(str(Path(exe).resolve()))})')
         for g in self.verify_git_paths(git or self.trusted_git()):
             execs.add(g)
         q = json.dumps  # Seatbelt string literals accept the same quoting for the characters that can occur in paths
@@ -2683,11 +3191,14 @@ class Runner:
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         argv = list(t["verify_cmd"])
         tmpdir = None
-        if t.get("source") == "handoff":  # owner/manual verifiers keep their existing, unsandboxed behaviour
+        s0 = s0_marked(t)
+        if t.get("source") == "handoff" or s0:  # owner/manual verifiers keep their unsandboxed behaviour; S0 never does
             try:
                 tmpdir = tempfile.mkdtemp(prefix="veyro-verify-")  # mode 0700, unique, created by the parent
                 git = self.trusted_git()
-                prefix = self.verify_sandbox_prefix(t, tmpdir, git)
+                if s0 and argv[:1] != [S0_PYTHON]:
+                    raise ValueError("the S0 verifier must be the pinned Python 3.13")
+                prefix = self.verify_sandbox_prefix(t, tmpdir, git, s0_python() if s0 else None)
             except (OSError, ValueError) as e:
                 prefix = None
                 why = f"could not prepare the sandbox: {e}"[:200]
@@ -2761,7 +3272,7 @@ class Runner:
 
     def requeue_or_fail(self, t, reason):
         t["last_error"], t["updated_at"] = reason, now_iso()
-        if t["attempts"] >= self.cfg.max_attempts:
+        if t["attempts"] >= self.cfg.max_attempts or s0_marked(t):  # S0: one attempt, no transport retry
             t["status"] = "FAILED"
             self.store.event("task-failed", f"{t['id']}:{t['attempts']}", task_id=t["id"], reason=reason)
         else:
@@ -2867,6 +3378,10 @@ def enqueue(cfg, task):
         raise ValueError(f"enqueue refused ({handoff['quarantine']}); run `rearm` once the owner has checked the gateway")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
+    if s0_marked(t):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+        problem = s0_runner_problem(state)
+        if problem:
+            raise ValueError(f"task refused by S0 gate: {problem}")
     review_binding(cfg, t, state["tasks"], require_changed=False)  # fills the exact changed-file hashes from runner evidence
     task = {**task, "review_of": t["review_of"]}
     reason = gate_reason(cfg, t, state["tasks"])
@@ -3116,7 +3631,8 @@ def main(argv=None):
     sub.add_parser("status")
     sub.add_parser("ci-observe-public", help=argparse.SUPPRESS)  # internal: supervised child of the public observer
     sub.add_parser("verify-baseline", help="check the repo against the out-of-repo pin")
-    pb = sub.add_parser("pin-baseline", help="OWNER STEP: pin PROJECT_INDEX.md + source hashes outside the repo (one time)")
+    sub.add_parser("s0-probe", help="read-only MOD-004 S0 gate probe: queues, locks and writes nothing; exit 0 only if open")
+    pb =sub.add_parser("pin-baseline", help="OWNER STEP: pin PROJECT_INDEX.md + source hashes outside the repo (one time)")
     pb.add_argument("--confirm-index-sha256", help="sha256 of the PROJECT_INDEX.md you reviewed (shasum -a 256)")
     la = sub.add_parser("launchagent", help="print (default) or write LaunchAgent plists; never loads them")
     la.add_argument("--write", action="store_true")
@@ -3177,6 +3693,10 @@ def main(argv=None):
                      json.dumps(command, sort_keys=True).encode())
         print(json.dumps({"op_id": op, "status": "queued; runner will validate review and hashes under writer lock"}))
         return 0
+    if a.cmd == "s0-probe":
+        reason = s0_probe(cfg)
+        print(json.dumps({"s0_route": "open" if reason is None else "closed", "reason": reason}))
+        return 0 if reason is None else 1
     if a.cmd == "status":
         s = snapshot(cfg)
         s.pop("events")

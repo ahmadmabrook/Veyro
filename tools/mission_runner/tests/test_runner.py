@@ -1,7 +1,9 @@
 """Focused control-plane safety tests. Run: python3 -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner"""
+import contextlib
 import datetime
 import errno
 import hashlib
+import io
 import json
 import os
 import re
@@ -3622,6 +3624,1034 @@ class AccountingRecoveryBoundary(Base):
         self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, next_write | {"id": "third"}, tasks))
         self.prior["status"] = "DONE"
         self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, next_write, tasks))
+
+
+class Mod004S0Gate(Base):
+    """Owner-approved MOD-004 S0-only exception: every authority and slice receipt is synthetic but independently
+    re-verifiable (committed bytes, exact-commit CI, hash-bound Opus reviews); task prose is never trusted."""
+    OWNER, ADR, RUN, EDGE = R.S0_OWNER_RECORD, R.S0_ADR, R.S0_RUNNER_FILE, R.S0_EDGE_RECORD
+    MANIFEST, SCREENS, WORKFLOW = R.S0_MANIFEST, R.S0_SCREENS, R.S0_WORKFLOW
+    RULE = ".claude/rules/backend/mod004-rls.md"
+    CERT, CAP = "contracts/engineering/s0/eligibility.json", "contracts/engineering/s0/capability.json"
+    OLD = "mod004-cap-budget-accounting-sonnet-20261019"
+    SUBJECTS = (("owner", OWNER), ("adr", ADR), ("runner_gate", RUN), ("eligibility", CERT), ("capability", CAP),
+                ("edge", EDGE))
+
+    def setUp(self):
+        super().setUp()
+        self.cfg.review_gate = True
+        self.history = {  # the historical CAP-accounting chain: one DONE write whose only review is terminal BLOCKED
+            self.OLD: {"id": self.OLD, "module": "MOD-004", "role": "implement", "status": "DONE", "review_gate": 1,
+                       "created_at": "2026-01-01T00:00:00Z", "evidence": {"changed": [{"path": "x", "sha256": "0" * 64}]}},
+            R.ACCOUNTING_RECOVERY_REVIEW: {"id": R.ACCOUNTING_RECOVERY_REVIEW, "module": "MOD-004", "role": "code-review",
+                                           "status": "BLOCKED", "blocked_reason": "REVIEW_BLOCKED",
+                                           "route": {"verdict": "VERIFIED"}, "review_of": {"task_id": self.OLD},
+                                           "evidence": {"review_outcome": "BLOCKED", "review_bound_verified": True}}}
+        self.write(self.OWNER, "owner record\n")
+        self.write(self.ADR, "ADR\nD12.5 S0 amendment\n")
+        self.write(self.RUN, "reviewed runner bytes\n")
+        self.write(self.EDGE, "owner edge decision\n")
+        self.write(self.MANIFEST, json.dumps({"provisional": True, "gate_eligible": False, "modules": [
+            {"module_id": "MOD-004", "status": "PROVISIONAL", "gate_eligible": False}]}))
+        self.write(self.SCREENS, json.dumps({"screens": [{"id": i, "contract": {"route": None, "owning_module": None}}
+                                                         for i in (*R.S0_SCREEN_IDS, "ADM-SET-03", "ADM-SET-04")]}))
+        self.write(self.WORKFLOW, 'steps:\n  python-version: "3.13"\n')
+        self.write(self.RULE, "rule\n")
+        patcher = mock.patch.object(R, "CODE_SHA", hashlib.sha256(b"reviewed runner bytes\n").hexdigest())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "s0 fixtures")
+        self.base = self.head()  # the commit whose workflow ran the green Python 3.13 CI
+        for module in ("MOD-001", "MOD-002"):
+            self.accept(module)
+        self.build()
+
+    # --- synthetic evidence
+    def write(self, rel, text):
+        p = self.repo / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+
+    def head(self):
+        return git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+    def sha(self, rel):
+        return hashlib.sha256((self.repo / rel).read_bytes()).hexdigest()
+
+    def ci(self, sha):
+        return {"run_id": "123", "name": "Veyro Foundation CI", "event": "push", "status": "completed",
+                "head_sha": sha, "conclusion": "success"}
+
+    def ref(self, rel):
+        return {"path": rel, "sha256": self.sha(rel)}
+
+    def legacy_review(self, name):
+        body = {"type": "result", "subtype": "success", "is_error": False, "result": f"fine {name}\nOUTCOME: APPROVED",
+                "modelUsage": {"claude-opus-5-5": {"inputTokens": 10, "outputTokens": 20}}}
+        data = json.dumps(body).encode()
+        (self.home / "reviews").mkdir(parents=True, exist_ok=True)
+        (self.home / "reviews" / name).write_bytes(data)
+        return {"path": f"reviews/{name}", "sha256": hashlib.sha256(data).hexdigest()}
+
+    def review(self, rel, name, model="claude-opus-5-5", verdict="APPROVED", prompt=None, record=None, role="architecture"):
+        """A runner review task record plus its dispatch output file, as the live runner leaves them. Returns the
+        receipt entry. The default prompt names the exact path and full sha256 of the file as it is now."""
+        sha = self.sha(rel)
+        tid, result = f"rev-{name}", f"fine {name}\nOUTCOME: {verdict}"
+        op = f"{tid}:1"
+        out = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": result,
+                          "modelUsage": {model: {"inputTokens": 10, "outputTokens": 20}}}).encode()
+        (self.home / "runs").mkdir(parents=True, exist_ok=True)
+        (self.home / "runs" / f"{tid}-1.out").write_bytes(out)
+        self.history[tid] = {
+            "id": tid, "module": "MOD-004", "role": role, "status": "DONE", "result": result[:500],
+            "prompt": f"Review {rel}. Its SHA-256 is {sha}. Last line OUTCOME." if prompt is None else prompt,
+            "route": {"verdict": "VERIFIED", "dispatch_op": op, "intended": "opus"},
+            "evidence": {"op": op, "review_outcome": verdict, "route_verdict": "VERIFIED", "subtype": "success",
+                         "violations": []}} | (record or {})
+        return {"task_id": tid, "output_sha256": hashlib.sha256(out).hexdigest()}
+
+    def accept(self, module, operator="op"):
+        sha = self.head()
+        reviews = [{"kind": kind, "activation_sha": sha, **self.legacy_review(f"{module}-{kind}.json")}
+                   for kind in R.RECEIPT_REVIEW_KINDS]
+        (self.home / "acceptances").mkdir(parents=True, exist_ok=True)
+        (self.home / "acceptances" / f"{module}.json").write_text(json.dumps(
+            {"schema": 1, "module": module, "operator": operator, "recorded_at": R.now_iso(),
+             "activation_sha": sha, "ci": self.ci(sha), "reviews": reviews}))
+
+    def build(self, cert=None, cap=None, patch=None):
+        """Commit fresh certificates, then write a receipt whose every subject is reviewed at that exact commit."""
+        receipts = {m: hashlib.sha256((self.home / "acceptances" / f"{m}.json").read_bytes()).hexdigest()
+                    for m in ("MOD-001", "MOD-002")}
+        self.write(self.CERT, json.dumps({
+            "schema": 1, "module": "MOD-004", "status": "S0_ELIGIBLE", "lifecycle": "EFFECTIVE",
+            "paths": sorted(R.S0_PATHS), "dependency_receipts": receipts,
+            "edge_decision": self.ref(self.EDGE), "module_manifest": self.ref(self.MANIFEST), "no_ui": True,
+            "screen_registry": self.ref(self.SCREENS), "screen_identities": list(R.S0_SCREEN_IDS),
+            "toolchain_evidence": {"workflow": self.ref(self.WORKFLOW), "python_version": "3.13", "commit": self.base,
+                                   "ci": self.ci(self.base)}} | (cert or {})))
+        self.write(self.CAP, json.dumps({
+            "schema": 1, "module": "MOD-004", "status": "ACTIVE_FOR_S0_ONLY", "paths": sorted(R.S0_PATHS),
+            "toolchain": "python3.13-stdlib", "third_party_caps": 0, "database_profiles": 0, "console_profiles": 0,
+            "module_row_status": "PROVISIONAL", "forbidden_imports": sorted(R.S0_FORBIDDEN_IMPORTS),
+            "module_manifest": self.ref(self.MANIFEST), "rules_skills": [self.ref(self.RULE)]} | (cap or {})))
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "s0 evidence", "--allow-empty")
+        commit = self.head()
+        subjects = {name: {"path": rel, "sha256": self.sha(rel), "commit": commit, "ci": self.ci(commit),
+                           "review": self.review(rel, f"s0-{name}")} for name, rel in self.SUBJECTS}
+        receipt = {"schema": 1, "module": "MOD-004", "kind": "mod004-s0-authority", "operator": "op",
+                   "recorded_at": R.now_iso(), "subjects": subjects}
+        if patch:
+            patch(receipt)
+        (self.home / "acceptances" / "MOD-004-S0.json").write_text(json.dumps(receipt))
+        store = R.Store(self.home)  # the live runner reads review tasks from its state: mirror them there
+        state = store.load()
+        state["tasks"].update(self.history)
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": R.CODE_SHA}  # live, loaded
+        store.save(state)
+
+    def raw(self, **over):
+        return {"id": "s0-write", "module": "MOD-004", "role": "implement", "prompt": "s0", "plan_phase": R.S0_MARKER,
+                "allowed_paths": list(R.S0_PATHS), "expected_changes": list(R.S0_PATHS),
+                "verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]} | over
+
+    def task(self, post=None, **over):
+        return R.validate_task(self.raw(**over), self.cfg) | (post or {})
+
+    def reason(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.task(post, **over), self.history if tasks is None else tasks)
+
+    def other_write(self):
+        return R.validate_task({"id": "s1-write", "module": "MOD-004", "role": "implement", "prompt": "x",
+                                "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]}, self.cfg)
+
+    def s0_chain(self, outcome="APPROVED", status="DONE"):
+        write = self.task() | {"status": "DONE", "review_gate": 1}
+        review = {"id": "s0-review", "module": "MOD-004", "role": "code-review", "status": status,
+                  "review_of": {"task_id": write["id"]}, "route": {"verdict": "VERIFIED"},
+                  "evidence": {"review_outcome": outcome}}
+        return self.history | {write["id"]: write, review["id"]: review}
+
+    # --- tests
+    def test_authorised_s0_write_passes_and_leaves_history_untouched(self):
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.reason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+        self.assertIn(self.OLD, R.gate_reason(self.cfg, self.other_write(), self.history))
+        self.assertIsNone(R.review_verdict(self.history, self.OLD))
+        self.assertEqual(self.history[R.ACCOUNTING_RECOVERY_REVIEW]["status"], "BLOCKED")
+
+    def test_enqueue_refuses_without_authority_and_accepts_with_it(self):
+        R.enqueue(self.cfg, self.raw())
+        (self.home / "acceptances" / "MOD-004-S0.json").unlink()
+        with self.assertRaisesRegex(ValueError, "S0_AUTHORITY_UNVERIFIED"):
+            R.enqueue(self.cfg, self.raw(id="s0-other"))
+
+    def test_gate_is_rechecked_under_the_writer_lock_before_dispatch(self):
+        r = self.runner()
+        R.enqueue(self.cfg, self.raw())
+        r.ingest_queue()
+        t = r.state["tasks"]["s0-write"]
+        self.assertIs(r.next_ready(), t)
+        (self.repo / self.CAP).write_text("{}")  # certificate changed after it was reviewed
+        r.dispatch(t)
+        self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", t["gate_reason"])
+        self.assertFalse((self.repo / R.S0_PATHS[0]).exists())
+
+    def test_untagged_and_mistagged_tasks_are_refused(self):
+        for name, over in {"no-marker": {"plan_phase": None}, "wrong-marker": {"plan_phase": "MOD004-S1"},
+                           "lowercase": {"plan_phase": "mod004-s0"}}.items():
+            self.assertIn("S0_UNTAGGED", self.reason(**over), name)
+        self.assertIn("S0_UNTAGGED", R.gate_reason(self.cfg, self.other_write() | {
+            "allowed_paths": ["backend/"], "expected_changes": []}, self.history))
+        for name, over in {"other-module": {"module": "MOD-003"}, "test-role": {"role": "test"},
+                           "gatekeeper": {"role": "gatekeeper", "allowed_paths": None, "expected_changes": None,
+                                          "verify_cmd": None}}.items():
+            self.assertIn("S0_INVALID_TASK", self.reason(**over), name)
+        self.assertIn("S0_UNTAGGED", self.reason(module="MOD-003", plan_phase=None))
+
+    def test_unauthorized_paths_and_verifier_are_refused(self):
+        a, b = R.S0_PATHS
+        cases = {"extra-file": {"allowed_paths": [a, b, "docs/x.md"]}, "directory": {"allowed_paths": ["backend/"]},
+                 "one-file": {"allowed_paths": [a], "expected_changes": [a]}, "glob": {"allowed_paths": ["backend/**"]},
+                 "extra-expected": {"allowed_paths": [a, b, "docs/x.md"], "expected_changes": [a, b, "docs/x.md"]},
+                 "other-verifier": {"verify_cmd": [R.S0_PYTHON, "-m", "unittest", "backend.tests.test_other"]},
+                 "runner-python-not-3.13": {"verify_cmd": [sys.executable, "-m", "unittest", R.S0_VERIFY_MODULE]},
+                 "python-flags": {"verify_cmd": [R.S0_PYTHON, "-E", "-m", "unittest", R.S0_VERIFY_MODULE]},
+                 "no-verifier": {"verify_cmd": None}, "shell-verifier": {"verify_cmd": ["sh", "-c", "true"]}}
+        for name, over in cases.items():
+            self.assertIn("S0_INVALID_TASK", self.reason(**over), name)
+
+    def test_rejected_lineage_and_planner_origin(self):
+        for field in ("remediation_of", "review_retry_of", "accounting_recovery_of"):
+            self.assertIn("S0_INVALID_TASK", self.reason(post={field: "something"}), field)
+        self.assertIn("S0_INVALID_TASK", self.reason(post={"source": "handoff"}))
+        r = self.runner()
+        with self.assertRaisesRegex(ValueError, "owner CLI"):
+            r.enqueue_proposal(self.raw())
+        with self.assertRaisesRegex(ValueError, "owner CLI"):
+            r.enqueue_proposal(self.raw(plan_phase=None, id="s0-untagged"))
+
+    def test_stale_missing_or_unverifiable_authority_fails_closed(self):
+        def set_both(r, sha):
+            r["subjects"]["adr"].update(commit=sha, ci=self.ci(sha))
+
+        def swap(name, **kw):
+            return lambda r: r["subjects"][name]["review"].update(**kw)
+
+        cases = {}
+        for name in ("owner", "adr", "runner_gate", "eligibility", "capability", "edge"):
+            cases[f"ci-failed-{name}"] = lambda r, n=name: r["subjects"][n]["ci"].update(conclusion="failure")
+            cases[f"ci-pr-{name}"] = lambda r, n=name: r["subjects"][n]["ci"].update(event="pull_request")
+            cases[f"ci-other-sha-{name}"] = lambda r, n=name: r["subjects"][n]["ci"].update(head_sha="1" * 40)
+            cases[f"hash-{name}"] = lambda r, n=name: r["subjects"][n].update(sha256="0" * 64)
+            cases[f"review-output-hash-{name}"] = lambda r, n=name: swap(n, output_sha256="0" * 64)(r)
+            cases[f"review-unknown-task-{name}"] = lambda r, n=name: swap(n, task_id="no-such-task")(r)
+            cases[f"review-extra-claim-{name}"] = lambda r, n=name: swap(n, approved=True)(r)
+            cases[f"missing-{name}"] = lambda r, n=name: r["subjects"].pop(n)
+        cases |= {"unknown-commit": lambda r: set_both(r, "1" * 40),
+                  "review-reused": lambda r: r["subjects"]["adr"].update(review=r["subjects"]["owner"]["review"]),
+                  "wrong-owner-path": lambda r: r["subjects"]["owner"].update(path=self.ADR),
+                  "edge-is-any-owner-file": lambda r: r["subjects"]["edge"].update(path=self.OWNER),
+                  "edge-other-owner-file": lambda r: r["subjects"]["edge"].update(path="knowledge/00-Decisions/OWNER-x.md"),
+                  "cert-outside-contracts": lambda r: r["subjects"]["capability"].update(path=self.OWNER),
+                  "same-cert-twice": lambda r: r["subjects"]["capability"].update(path=self.CERT),
+                  "extra-subject": lambda r: r["subjects"].update(extra=r["subjects"]["owner"]),
+                  "wrong-kind": lambda r: r.update(kind="mod004-s0-other"), "wrong-module": lambda r: r.update(module="MOD-003"),
+                  "extra-key": lambda r: r.update(ok=True), "no-operator": lambda r: r.update(operator=" ")}
+        for name, patch in cases.items():
+            self.build(patch=patch)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason() or "", name)
+        self.build()
+        self.assertIsNone(self.reason())
+        receipt = self.home / "acceptances" / "MOD-004-S0.json"
+        for text in ("{bad", "[]", '{"schema": 1, "schema": 1}'):
+            receipt.write_text(text)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), text)
+        receipt.unlink()
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+    def test_files_changed_after_review_and_wrong_loaded_runner_are_stale(self):
+        for rel in (self.OWNER, self.ADR, self.RUN, self.EDGE, self.CERT, self.CAP, self.MANIFEST, self.SCREENS,
+                    self.WORKFLOW, self.RULE):
+            self.build()
+            (self.repo / rel).write_bytes((self.repo / rel).read_bytes() + b"x")
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), rel)
+            git(self.repo, "checkout", "--", rel)
+        self.build()
+        self.assertIsNone(self.reason())
+        with mock.patch.object(R, "CODE_SHA", "0" * 64):
+            self.assertIn("loaded runner", self.reason())
+        self.write(self.ADR, "ADR without the amendment\n")  # committed in build below, still lacks D12.5
+        self.build()
+        self.assertIn("D12.5", self.reason())
+
+    def test_slice_certificate_and_declaration_must_state_exact_scope(self):
+        a, b = R.S0_PATHS
+        cert_cases = [{"status": "DRAFT"}, {"lifecycle": "SUPERSEDED"}, {"module": "MOD-005"}, {"paths": [a]},
+                      {"paths": sorted([a, b, "backend/app/x.py"])},
+                      {"dependency_receipts": {"MOD-001": "0" * 64, "MOD-002": "0" * 64}},
+                      {"edge_decision": {"path": self.EDGE, "sha256": "0" * 64}},
+                      {"module_manifest": {"path": self.MANIFEST, "sha256": "0" * 64}},
+                      {"module_manifest": "PROVISIONAL"}, {"module_manifest": None},
+                      {"screen_registry": {"path": self.SCREENS, "sha256": "0" * 64}}, {"no_ui": False}, {"no_ui": "yes"},
+                      {"screen_identities": list(R.S0_SCREEN_IDS[:3])},
+                      {"screen_identities": [*R.S0_SCREEN_IDS[:3], R.S0_SCREEN_IDS[2]]},
+                      {"screen_identities": [*R.S0_SCREEN_IDS[:3], "ADM-SET-04"]},  # exists, but is not one of the four
+                      {"screen_identities": [*R.S0_SCREEN_IDS[:3], "ADM-SET-03"]},  # exists, but MOD-004 does not claim it
+                      {"screen_identities": ["ADM-SET-03", *R.S0_SCREEN_IDS[1:]]},  # ADM-SET-03 in place of CON-04
+                      {"screen_identities": ["ADM-SET-01", "ADM-SET-02", "ADM-SET-03", "ADM-SET-06"]},
+                      {"screen_identities": [*R.S0_SCREEN_IDS[:3], "ADM-SET-99"]},
+                      {"screen_identities": [*R.S0_SCREEN_IDS, "ADM-SET-04"]},
+                      {"screen_identities": [*R.S0_SCREEN_IDS[:3], None]},
+                      {"toolchain_evidence": None},
+                      {"toolchain_evidence": {"workflow": self.ref(self.WORKFLOW), "python_version": "3.12",
+                                              "commit": self.base, "ci": self.ci(self.base)}},
+                      {"toolchain_evidence": {"workflow": self.ref(self.WORKFLOW), "python_version": "3.13",
+                                              "commit": self.base, "ci": self.ci(self.base) | {"conclusion": "failure"}}},
+                      {"toolchain_evidence": {"workflow": self.ref(self.WORKFLOW), "python_version": "3.13",
+                                              "commit": "1" * 40, "ci": self.ci("1" * 40)}},
+                      {"toolchain_evidence": {"workflow": {"path": self.WORKFLOW, "sha256": "0" * 64},
+                                              "python_version": "3.13", "commit": self.base, "ci": self.ci(self.base)}}]
+        cap_cases = [{"module_manifest": {"path": self.MANIFEST, "sha256": "0" * 64}}, {"module_manifest": None},
+                     {"rules_skills": None}, {"rules_skills": []}, {"rules_skills": [{"path": "README.md", "sha256": "0" * 64}]},
+                     {"rules_skills": [{"path": self.RULE, "sha256": "0" * 64}]},
+                     {"rules_skills": [], "rules_skills_none_applicable": "  "},
+                     {"rules_skills": [{"path": ".claude/rules/../../x", "sha256": "0" * 64}]},
+                     {"status": "PROPOSED"}, {"status": "ACTIVE"}, {"paths": [b]}, {"toolchain": "python3.13+psycopg"},
+                     {"third_party_caps": 1}, {"third_party_caps": True}, {"database_profiles": 1},
+                     {"console_profiles": 1}, {"module_row_status": "ACTIVE"}, {"forbidden_imports": ["psycopg"]},
+                     {"forbidden_imports": None}]
+        for over in cert_cases:
+            self.build(cert=over)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), str(over))
+        for over in cap_cases:
+            self.build(cap=over)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), str(over))
+
+    def test_dependency_receipts_must_be_current(self):
+        self.accept("MOD-002", operator="someone-else")  # receipt changed after the certificate named its hash
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+        self.build()  # certificate refreshed against the new receipt
+        self.assertIsNone(self.reason())
+        (self.home / "acceptances" / "MOD-001.json").unlink()
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+    def test_certificates_bind_the_real_provisional_manifest_screens_and_workflow(self):
+        row = {"module_id": "MOD-004", "status": "PROVISIONAL", "gate_eligible": False}
+        manifests = {
+            "row-active": {"provisional": True, "gate_eligible": False, "modules": [row | {"status": "ACTIVE"}]},
+            "row-gate-eligible": {"provisional": True, "gate_eligible": False, "modules": [row | {"gate_eligible": True}]},
+            "file-not-provisional": {"provisional": False, "gate_eligible": False, "modules": [row]},
+            "file-gate-eligible": {"provisional": True, "gate_eligible": True, "modules": [row]},
+            "row-missing": {"provisional": True, "gate_eligible": False, "modules": [row | {"module_id": "MOD-005"}]},
+            "row-twice": {"provisional": True, "gate_eligible": False, "modules": [row, row]},
+            "no-modules": {"provisional": True, "gate_eligible": False}}
+        for name, doc in manifests.items():  # certificates re-bind the new bytes, so only the parsed row can refuse
+            self.write(self.MANIFEST, json.dumps(doc))
+            self.build()
+            self.assertIn("PROVISIONAL", self.reason(), name)
+        self.write(self.MANIFEST, "not json")
+        self.build()
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+        self.write(self.MANIFEST, json.dumps(manifests["row-active"] | {"modules": [row]}))
+        self.build()
+        self.assertIsNone(self.reason())
+        screens = [{"id": i, "contract": {"route": None}} for i in R.S0_SCREEN_IDS]
+        for name, bad in {"route-claimed": {"id": R.S0_SCREEN_IDS[3], "contract": {"route": "/tenants"}},
+                          "no-contract": {"id": R.S0_SCREEN_IDS[3]},
+                          "contract-not-object": {"id": R.S0_SCREEN_IDS[3], "contract": None}}.items():
+            self.write(self.SCREENS, json.dumps({"screens": screens[:3] + [bad]}))
+            self.build()
+            self.assertIn("identity-only", self.reason(), name)
+        self.write(self.SCREENS, json.dumps({"screens": screens}))
+        self.build()
+        self.assertIsNone(self.reason())
+
+    def test_python_313_ci_evidence_must_match_the_workflow_that_ran(self):
+        self.write(self.WORKFLOW, 'steps:\n  python-version: "3.12"\n')  # edited after the green run on self.base
+        self.build()
+        self.assertIn("3.13 workflow", self.reason())
+        git(self.repo, "checkout", self.base, "--", self.WORKFLOW)
+        self.build()
+        self.assertIsNone(self.reason())
+        self.write(self.WORKFLOW, 'steps:\n  python-version: "3.13"\n  extra: true\n')  # different bytes than the CI run
+        self.build()
+        self.assertIn("3.13 workflow", self.reason())
+
+    def test_the_four_mod004_screens_are_con04_and_adm_set_01_02_06(self):
+        self.assertEqual(sorted(R.S0_SCREEN_IDS), ["ADM-SET-01", "ADM-SET-02", "ADM-SET-06", "CON-04"])
+        self.assertNotIn("ADM-SET-03", R.S0_SCREEN_IDS)
+        for ids in (["CON-04", "ADM-SET-01", "ADM-SET-02", "ADM-SET-06"], ["ADM-SET-06", "ADM-SET-02", "CON-04", "ADM-SET-01"]):
+            self.build(cert={"screen_identities": ids})
+            self.assertIsNone(self.reason(), ids)
+
+    def test_empty_rules_skills_need_a_stated_reason_and_extra_descriptions_are_fine(self):
+        self.build(cap={"rules_skills": [], "rules_skills_none_applicable": "stdlib validator; no rule applies"})
+        self.assertIsNone(self.reason())
+        self.build(cap={"note": "descriptive"}, cert={"note": "descriptive"})
+        self.assertIsNone(self.reason())
+
+    def test_review_must_be_an_existing_verified_runner_task_that_named_the_subject(self):
+        owner, a_sha = self.OWNER, self.sha(self.OWNER)
+
+        def entry(**kw):
+            return lambda r: r["subjects"]["owner"].update(review=self.review(owner, "variant", **kw))
+
+        def mangle(field, value):
+            def patch(r):
+                r["subjects"]["owner"]["review"] = self.review(owner, "variant")
+                self.history["rev-variant"][field] = value
+            return patch
+
+        def evidence(**kw):
+            def patch(r):
+                r["subjects"]["owner"]["review"] = self.review(owner, "variant")
+                self.history["rev-variant"]["evidence"] |= kw
+            return patch
+
+        bad = {
+            "model-not-opus-in-output": entry(model="claude-sonnet-5-5"),
+            "verdict-changes-requested": entry(verdict="CHANGES_REQUESTED"),
+            "verdict-blocked": entry(verdict="BLOCKED"),
+            "prompt-without-sha": entry(prompt=f"Review {owner} please"),
+            "prompt-short-sha": entry(prompt=f"Review {owner} sha {a_sha[:16]}"),
+            "prompt-sha-without-path-or-bytes": entry(prompt=f"The record has SHA-256 {a_sha}"),
+            "prompt-path-and-other-sha": entry(prompt=f"Review {owner} sha {'0' * 64}"),
+            "prompt-not-a-string": mangle("prompt", None),
+            "status-blocked": mangle("status", "BLOCKED"),
+            "status-queued": mangle("status", "QUEUED"),
+            "role-is-a-write": mangle("role", "implement"),
+            "role-sonnet-test": mangle("role", "test"),
+            "route-unverified": mangle("route", {"verdict": "UNVERIFIED", "dispatch_op": "rev-variant:1"}),
+            "route-op-of-other-task": mangle("route", {"verdict": "VERIFIED", "dispatch_op": "other-task:1"}),
+            "route-op-attempt-zero": mangle("route", {"verdict": "VERIFIED", "dispatch_op": "rev-variant:0"}),
+            "route-op-traversal": mangle("route", {"verdict": "VERIFIED", "dispatch_op": "rev-variant:1/../../x"}),
+            "task-id-mismatch": mangle("id", "someone-else"),
+            "task-result-differs-from-output": mangle("result", "OUTCOME: APPROVED"),
+            "evidence-op-differs": evidence(op="rev-variant:2"),
+            "evidence-outcome-changes": evidence(review_outcome="CHANGES_REQUESTED"),
+            "evidence-route-unverified": evidence(route_verdict="UNVERIFIED"),
+            "evidence-violations": evidence(violations=["REVIEW_BINDING_STALE"]),
+            "evidence-subtype": evidence(subtype="error_max_turns"),
+            "evidence-none": mangle("evidence", None),
+        }
+
+        def unverified_binding(r):  # a review_of claim only counts when the runner recorded review_bound_verified
+            r["subjects"]["owner"]["review"] = self.review(owner, "variant", prompt="Review the owner record")
+            self.history["rev-variant"]["review_of"] = {"changed": [{"path": owner, "sha256": a_sha}]}
+        bad["bound-claim-without-runner-verification"] = unverified_binding
+        for name, patch in bad.items():
+            self.build(patch=patch)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason() or "", name)
+        for name in ("rev-variant",):  # the output file can also be lost, replaced or edited after the fact
+            out = self.home / "runs" / f"{name}-1.out"
+            self.build(patch=entry())
+            self.assertIsNone(self.reason())
+            out.write_bytes(out.read_bytes() + b" ")
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+            out.unlink()
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+    def test_existing_owner_and_adr_style_review_tasks_are_accepted_without_a_rereview(self):
+        text = (self.repo / self.OWNER).read_text()
+        owner_prompt = f"Review of the final unpublished record. Exact record SHA-256 {self.sha(self.OWNER)}.\n\nEXACT RECORD:\n\n{text}"
+        adr_prompt = (f"Review the ADR. ADR SHA-256: {self.sha(self.ADR)}.\nEXACT CURRENT DIFF:\ndiff --git a/{self.ADR} b/{self.ADR}\n"
+                      "+text (no full ADR bytes)")
+        edge_record = {"prompt": "Independently review the exact one-file owner record written by task x.",
+                       "role": "code-review",
+                       "review_of": {"task_id": "w", "changed": [self.ref(self.EDGE)]},
+                       "evidence": {"op": "rev-edge:1", "review_outcome": "APPROVED", "route_verdict": "VERIFIED",
+                                    "subtype": "success", "violations": [], "review_bound_verified": True}}
+
+        def patch(r):
+            r["subjects"]["owner"]["review"] = self.review(self.OWNER, "owner-style", prompt=owner_prompt)
+            r["subjects"]["adr"]["review"] = self.review(self.ADR, "adr-style", prompt=adr_prompt)
+            r["subjects"]["edge"]["review"] = self.review(self.EDGE, "edge", prompt=edge_record["prompt"], record=edge_record,
+                                                           role="code-review")
+        self.build(patch=patch)
+        self.assertIsNone(self.reason())
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.reason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)  # historical task records are only read
+        edge_record["evidence"]["review_bound_verified"] = False  # the runner-verified binding is what counts
+        self.build(patch=patch)
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+    def test_cross_module_broad_scopes_cannot_reclassify_s0(self):
+        a, b = R.S0_PATHS
+        scopes = ["backend", "backend/app", "backend/tests", "Backend/App", "backend/", "backend/app/", "backend/**",
+                  "backend/app/tenancy_*.py", "backend/tests/", "Backend/App/",
+                  "BACKEND/APP/TENANCY_S0.PY", a, b, "backend/*/test_tenancy_s0.py"]
+        for module in ("MOD-001", "MOD-003", "MOD-004", "MOD-005"):
+            for role in ("implement", "test"):
+                for scope in scopes:
+                    raw = {"id": "other", "module": module, "role": role, "prompt": "x", "allowed_paths": [scope],
+                           "expected_changes": [], "verify_cmd": ["true"]}
+                    untagged = R.validate_task(raw, self.cfg)
+                    self.assertIn("S0_UNTAGGED", R.s0_gate_reason(self.cfg, untagged, self.history) or "", (module, role, scope))
+                    self.assertIn("S0_UNTAGGED", R.gate_reason(self.cfg, untagged, self.history), (module, role, scope))
+                    tagged = R.validate_task(raw | {"plan_phase": R.S0_MARKER}, self.cfg)
+                    self.assertIn("S0_INVALID_TASK", R.gate_reason(self.cfg, tagged, self.history), (module, role, scope))
+        for module in ("MOD-001", "MOD-003", "MOD-005"):  # the exact S0 shape under another module id
+            for tag in (None, R.S0_MARKER):
+                t = R.validate_task(self.raw(module=module, plan_phase=tag), self.cfg)
+                self.assertRegex(R.gate_reason(self.cfg, t, self.history), "S0_UNTAGGED|S0_INVALID_TASK", (module, tag))
+        for scope in ("out/", "docs/", "backend/app/other.py", "backend/tests/test_other.py", "frontend/", "backend2",
+                      "backend/application", "backend/app/tenancy"):  # sibling names and a deeper-but-different path
+            ok = R.validate_task({"id": "fine", "module": "MOD-003", "role": "implement", "prompt": "x",
+                                  "allowed_paths": [scope], "expected_changes": [], "verify_cmd": ["true"]}, self.cfg)
+            self.assertIsNone(R.s0_gate_reason(self.cfg, ok, self.history), scope)
+        r = self.runner()
+        for module in ("MOD-003", "MOD-005"):
+            with self.assertRaisesRegex(ValueError, "owner CLI"):
+                r.enqueue_proposal(self.raw(module=module, plan_phase=None, allowed_paths=["backend/"], expected_changes=[]))
+
+    def test_any_earlier_review_of_the_s0_write_uses_the_single_review_slot(self):
+        write = self.task() | {"status": "DONE", "review_gate": 1}
+        tasks = self.history | {write["id"]: write}
+        review = R.validate_task({"id": "s0-rev-2", "module": "MOD-004", "role": "code-review", "prompt": "r",
+                                  "review_of": {"task_id": write["id"]}}, self.cfg)
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))  # the first bound review is fine
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks | {"s0-rev-2": review}))  # and rechecks itself fine
+        base = {"id": "s0-rev-1", "module": "MOD-004", "role": "code-review", "review_of": {"task_id": write["id"]}}
+        priors = {
+            "failed-after-timeouts": {"status": "FAILED", "attempts": 3, "last_error": "timeout after 3600s"},
+            "queued": {"status": "QUEUED"}, "running": {"status": "RUNNING", "attempts": 1},
+            "timeout-requeued": {"status": "QUEUED", "attempts": 2, "last_error": "timeout after 3600s"},
+            "blocked-no-final-outcome": {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME",
+                                         "evidence": {"review_outcome": None, "violations": ["NO_REVIEW_OUTCOME"]}},
+            "extra-line-after-outcome": {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME",
+                                         "evidence": {"review_outcome": None, "review_outcome_reported": None,
+                                                      "violations": ["NO_REVIEW_OUTCOME"]}},
+            "blocked-stale-binding": {"status": "BLOCKED", "blocked_reason": "REVIEW_BINDING_STALE",
+                                      "evidence": {"review_outcome": None, "review_bound_verified": False}},
+            "changes-requested": {"status": "BLOCKED", "evidence": {"review_outcome": "CHANGES_REQUESTED"}},
+            "approved": {"status": "DONE", "evidence": {"review_outcome": "APPROVED"}},
+            "unverified-route": {"status": "BLOCKED", "route": {"verdict": "MISMATCH"}}}
+        for name, prior in priors.items():
+            self.assertIn("S0_REVIEW_SLOT_USED", R.gate_reason(self.cfg, review, tasks | {"s0-rev-1": base | prior}), name)
+        # a review of any other write is unaffected, and the historical accounting review chain is untouched
+        other = review | {"review_of": {"task_id": self.OLD}}
+        self.assertNotIn("S0_REVIEW_SLOT_USED", R.gate_reason(self.cfg, other, tasks | {"s0-rev-1": base | priors["failed-after-timeouts"]}) or "")
+        self.assertEqual(self.history[R.ACCOUNTING_RECOVERY_REVIEW]["status"], "BLOCKED")
+
+    def test_planner_cannot_propose_a_second_s0_review(self):
+        r = self.runner()
+        self.write(R.S0_PATHS[0], "import uuid\n")  # the reviewed bytes the bound review would name
+        write = self.task() | {"status": "DONE", "review_gate": 1, "evidence": {"changed": [self.ref(R.S0_PATHS[0])]}}
+        r.state["tasks"][write["id"]] = write
+        r.state["tasks"]["s0-rev-1"] = {"id": "s0-rev-1", "module": "MOD-004", "role": "code-review", "status": "FAILED",
+                                        "review_of": {"task_id": write["id"], "changed": write["evidence"]["changed"]}}
+        with self.assertRaisesRegex(ValueError, "S0_REVIEW_SLOT_USED"):
+            r.enqueue_proposal({"id": "s0-rev-2", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                "review_of": {"task_id": write["id"], "changed": write["evidence"]["changed"]}})
+
+    def test_s0_write_gets_exactly_one_attempt(self):
+        started = self.task(post={"attempts": 1, "status": "QUEUED"})
+        self.assertIn("S0_ATTEMPT_USED", self.reason(post={"attempts": 1}))
+        self.assertIsNone(self.reason(post={"attempts": 1, "stage": "verify_pending"}))  # verification resumes, no new child
+        self.assertIsNone(self.reason(post={"attempts": 0}))
+        r = self.runner()
+        r.state["tasks"]["s0-write"] = started | {"attempts": 1, "stage": None}
+        t = r.state["tasks"]["s0-write"]
+        r.requeue_or_fail(t, "spawn failed")  # a retry that would start a second writing child
+        self.assertEqual(t["status"], "FAILED")
+        t.update(status="RUNNING")
+        r.settle(t, "s0-write:1", "stopped", None, None, None, None, None)  # operator stop: never silently re-run
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_ATTEMPT_INTERRUPTED"))
+        self.assertEqual(t["attempts"], 1)
+        plain = {"id": "plain", "status": "RUNNING", "attempts": 1, "plan_phase": None}
+        r.settle(plain, "plain:1", "stopped", None, None, None, None, None)  # other tasks keep their existing behaviour
+        self.assertEqual((plain["status"], plain["attempts"]), ("QUEUED", 0))
+
+    def test_transport_failure_does_not_retry_the_s0_write(self):
+        a, b = R.S0_PATHS
+        counter = Path(self.tmp.name) / "counter"
+        r = self.runner()
+        R.enqueue(self.cfg, self.raw(prompt=f"FAIL_UNTIL=5\nCOUNTER={counter}\nWRITE={a}\nCONTENT=import uuid\nWRITE2={b}"))
+        r.ingest_queue()
+        t = r.state["tasks"]["s0-write"]
+        r.dispatch(r.next_ready())
+        self.assertEqual((t["status"], t["attempts"]), ("FAILED", 1))
+        self.assertIsNone(r.next_ready())
+        self.assertEqual(counter.read_text(), "1")  # exactly one child was ever started
+        self.assertIn("S0_SECOND_WRITE", R.gate_reason(self.cfg, self.task(id="s0-again"), r.state["tasks"]))
+
+    def test_enqueue_requires_the_live_runner_to_have_loaded_this_reviewed_code(self):
+        store = R.Store(self.home)
+
+        def runner_state(**over):
+            state = store.load()
+            state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": R.CODE_SHA} | over
+            store.save(state)
+
+        stale = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120)).isoformat(timespec="seconds")
+        for name, over in {"old-code": {"code_sha256": "0" * 64}, "no-code-sha": {"code_sha256": None},
+                           "stale-heartbeat": {"heartbeat_at": stale}, "no-heartbeat": {"heartbeat_at": None},
+                           "bad-heartbeat": {"heartbeat_at": "yesterday"}, "stopped": {"stopped_at": R.now_iso()},
+                           "dead-pid": {"pid": 2 ** 22 + 12345}, "no-pid": {"pid": None}}.items():
+            runner_state(**over)
+            with self.subTest(name), self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_"):
+                R.enqueue(self.cfg, self.raw(id=f"s0-{name}"))
+        state = store.load()
+        state["runner"] = None
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_LOADED"):
+            R.enqueue(self.cfg, self.raw())
+        self.assertEqual(list((self.home / "queue").iterdir()), [])  # nothing was queued by any refusal
+        runner_state()
+        R.enqueue(self.cfg, self.raw())
+        self.assertEqual(len(list((self.home / "queue").iterdir())), 1)
+
+    def test_read_only_probe_reports_the_route_without_queueing_or_mutating(self):
+        def snapshot():
+            return {p.relative_to(self.home).as_posix(): p.read_bytes() for p in self.home.rglob("*") if p.is_file()}
+        before = snapshot()
+        self.assertIsNone(R.s0_probe(self.cfg))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "s0-probe"])
+        self.assertEqual((code, json.loads(buf.getvalue())), (0, {"s0_route": "open", "reason": None}))
+        self.assertEqual(snapshot(), before)  # no queue file, state, event, lock or run file was written
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": "0" * 64}
+        store.save(state)
+        before = snapshot()
+        self.assertIn("S0_RUNNER_NOT_LOADED", R.s0_probe(self.cfg))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "s0-probe"])
+        self.assertEqual((code, json.loads(buf.getvalue())["s0_route"]), (1, "closed"))
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": R.CODE_SHA}
+        store.save(state)
+        self.assertIsNone(R.s0_probe(self.cfg))
+        (self.home / "acceptances" / "MOD-004-S0.json").unlink()
+        before = snapshot()
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", R.s0_probe(self.cfg))
+        self.assertEqual(snapshot(), before)
+        (self.home / "state.json").write_text("{broken")
+        self.assertIn("S0_PROBE_UNVERIFIABLE", R.s0_probe(self.cfg))
+
+    def test_runner_gate_ci_is_cross_checked_against_observed_ci_json(self):
+        commit = self.head()
+        ci = self.home / "ci.json"
+
+        def observe(head, **run):
+            ci.write_text(json.dumps({"source": "gh", "scope": R.CI_SCOPE, "head_sha": head, "runs": [
+                {"name": "Veyro Foundation CI", "status": "completed", "conclusion": "success", "head_sha": head,
+                 "event": "push", "ref": "main"} | run]}))
+        self.assertEqual(R.verify_s0_authority(self.cfg, self.history)["ci"]["runner_gate"], "operator-attested")  # no ci.json
+        self.assertEqual(set(R.verify_s0_authority(self.cfg, self.history)["ci"].values()), {"operator-attested"})
+        observe("1" * 40)  # observed main moved on: older CI stays an operator attestation
+        self.assertEqual(R.verify_s0_authority(self.cfg, self.history)["ci"]["runner_gate"], "operator-attested")
+        observe(commit)
+        self.assertEqual(R.verify_s0_authority(self.cfg, self.history)["ci"]["runner_gate"], "observed")
+        for name, run in {"failed": {"conclusion": "failure"}, "running": {"status": "in_progress", "conclusion": None},
+                          "other-workflow": {"name": "Other"}, "pr": {"event": "pull_request"},
+                          "other-sha": {"head_sha": "2" * 40}}.items():
+            observe(commit, **run)
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), name)
+        ci.write_text("{broken")
+        self.assertIsNone(self.reason())  # unreadable ci.json: attestation only, as for every older CI record
+        ci.write_text(json.dumps({"scope": R.CI_SCOPE, "head_sha": commit, "runs": []}))
+        self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
+
+    def test_earlier_non_approved_review_of_the_same_bytes_blocks_authority_but_changed_bytes_may_be_reviewed_again(self):
+        owner_sha, adr_sha, old_adr_sha = self.sha(self.OWNER), self.sha(self.ADR), "dc85eedde34fbf54982ee7e291233b75e5ade74213427786e3626b8afe6ccad7"
+        text = (self.repo / self.OWNER).read_text()
+        negative = {"evidence": {"review_outcome": "CHANGES_REQUESTED", "review_outcome_reported": "CHANGES_REQUESTED"},
+                    "status": "BLOCKED", "blocked_reason": "REVIEW_CHANGES_REQUESTED"}
+
+        def prior(tid, rel, sha, **over):
+            self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "DONE",
+                                 "prompt": f"Independent review of {rel}; SHA-256 {sha}", "evidence": {}} | over
+
+        self.assertIsNone(self.reason())
+        # (1) the real situation: a CHANGES_REQUESTED review of the OLD ADR bytes, then approval of changed bytes
+        prior("adr-old-changes", self.ADR, old_adr_sha, **negative)
+        prior("adr-old-failed", self.ADR, old_adr_sha, status="FAILED")
+        prior("adr-old-blocked", self.ADR, old_adr_sha, evidence={"review_outcome": "BLOCKED"}, status="BLOCKED")
+        self.assertIsNone(self.reason(), "remediated, changed bytes are legitimately reviewed again")
+        # (2) a verdict-less failure of the same bytes is not a verdict
+        prior("adr-same-failed", self.ADR, adr_sha, status="FAILED", evidence={})
+        prior("adr-same-blocked-noverdict", self.ADR, adr_sha, status="BLOCKED", evidence={"review_outcome": None})
+        prior("adr-same-approved", self.ADR, adr_sha, evidence={"review_outcome": "APPROVED"})
+        self.assertIsNone(self.reason())
+        # (3) any verdict-bearing non-approval of these exact bytes stands, however the earlier review named them
+        cases = {
+            "path-and-sha": (self.ADR, adr_sha, negative),
+            "blocked-outcome": (self.ADR, adr_sha, {"status": "BLOCKED", "evidence": {"review_outcome": "BLOCKED"}}),
+            "reported-only": (self.ADR, adr_sha, {"status": "BLOCKED", "evidence": {"review_outcome": None,
+                                                                                    "review_outcome_reported": "CHANGES_REQUESTED"}}),
+            "owner-exact-bytes": ("elsewhere", owner_sha, negative | {"prompt": f"SHA-256 {owner_sha}\nEXACT RECORD:\n{text}"}),
+            "review-of-pair": (self.ADR, adr_sha, negative | {"prompt": "no names", "role": "code-review",
+                                                                "review_of": {"task_id": "w", "changed": [self.ref(self.ADR)]}}),
+            "security-role": (self.ADR, adr_sha, negative | {"role": "security"}),
+            # a verified Opus review of these bytes with no usable final verdict (e.g. verdict line plus an extra line)
+            "no-final-verdict": (self.ADR, adr_sha, {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME",
+                                                     "route": {"verdict": "VERIFIED"},
+                                                     "evidence": {"review_outcome": None, "violations": ["NO_REVIEW_OUTCOME"]}}),
+            "no-final-verdict-violation-only": (self.ADR, adr_sha, {"status": "BLOCKED", "route": {"verdict": "VERIFIED"},
+                                                                    "evidence": {"review_outcome": None,
+                                                                                 "violations": ["NO_REVIEW_OUTCOME", "X"]}}),
+            "no-final-verdict-owner-bytes": ("elsewhere", owner_sha, {
+                "status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME", "route": {"verdict": "VERIFIED"},
+                "prompt": f"SHA-256 {owner_sha}\nEXACT RECORD:\n{text}", "evidence": {"review_outcome": None}}),
+        }
+        for name, (rel, sha, over) in cases.items():
+            self.history.pop("neg", None)
+            prior("neg", rel, sha, **over)
+            self.build()  # fresh receipt from the current files
+            self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason(), name)
+            self.assertIn("did not approve", self.reason(), name)
+        self.history.pop("neg", None)
+        for name, over in {"write-role": {"role": "implement"}, "no-names": {"prompt": "Review something else"}}.items():
+            prior("neg", self.ADR, adr_sha, **(negative | over))
+            self.build()
+            self.assertIsNone(self.reason(), name)  # not a review of these bytes
+        # (3b) not standing: unverified route, not BLOCKED, no marker, other bytes, or not an Opus review
+        quiet = {"unverified-route": {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME", "route": {"verdict": "MISMATCH"}},
+                 "no-route": {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME"},
+                 "not-blocked": {"status": "DONE", "blocked_reason": "NO_REVIEW_OUTCOME", "route": {"verdict": "VERIFIED"}},
+                 "other-block-reason": {"status": "BLOCKED", "blocked_reason": "REVIEW_BINDING_STALE", "route": {"verdict": "VERIFIED"},
+                                        "evidence": {"review_outcome": None, "violations": ["REVIEW_BINDING_STALE"]}},
+                 "write-role": {"status": "BLOCKED", "blocked_reason": "NO_REVIEW_OUTCOME", "role": "implement",
+                                "route": {"verdict": "VERIFIED"}}}
+        for name, over in quiet.items():
+            self.history.pop("neg", None)
+            prior("neg", self.ADR, adr_sha, **over)
+            self.build()
+            self.assertIsNone(self.reason(), name)
+        self.history.pop("neg", None)
+        prior("neg", self.ADR, old_adr_sha, status="BLOCKED", blocked_reason="NO_REVIEW_OUTCOME", route={"verdict": "VERIFIED"},
+              evidence={"review_outcome": None, "violations": ["NO_REVIEW_OUTCOME"]})
+        self.build()
+        self.assertIsNone(self.reason(), "different bytes: remediation of changed bytes stays legitimate")
+        # (4) a planner-proposed review cannot be the authority evidence, even if it is APPROVED and verified
+        self.history.pop("neg", None)
+        self.build(patch=lambda r: r["subjects"]["adr"].update(review=self.review(self.ADR, "planner", record={"source": "handoff"})))
+        self.assertIn("planner-proposed", self.reason())
+
+    def test_second_s0_write_is_refused_whatever_its_state(self):
+        for status in ("DONE", "QUEUED", "FAILED", "BLOCKED"):
+            first = self.task(id="s0-first") | {"status": status}
+            self.assertIn("S0_SECOND_WRITE", self.reason(self.history | {"s0-first": first}), status)
+        self.assertIn("S0_SECOND_WRITE", self.reason(self.s0_chain("APPROVED"), id="s0-again"))
+
+    def test_prior_non_approved_s0_review_stops_s0_writes(self):
+        for outcome, status in (("CHANGES_REQUESTED", "BLOCKED"), ("BLOCKED", "BLOCKED"), (None, "BLOCKED"),
+                                ("APPROVED", "BLOCKED")):
+            tasks = self.s0_chain(outcome, status)
+            self.assertIn("S0_PRIOR_REVIEW_NOT_APPROVED", self.reason(tasks, id="s0-again"), (outcome, status))
+
+    def test_s0_review_never_unblocks_other_mod004_work_and_gets_no_retry(self):
+        tasks = self.s0_chain("APPROVED")
+        for t in (self.other_write(), self.other_write() | {"plan_phase": "MOD004-S1"}):
+            self.assertIn(f"REVIEW_REQUIRED MOD-004: write task {self.OLD}", R.gate_reason(self.cfg, t, tasks))
+        review = R.validate_task({"id": "s0-rev", "module": "MOD-004", "role": "code-review", "prompt": "r",
+                                  "review_of": {"task_id": "s0-write"}}, self.cfg)
+        self.assertIn("S0_REVIEW_SLOT_USED", R.gate_reason(self.cfg, review, tasks))  # s0-review already holds the slot
+        sole = {k: v for k, v in tasks.items() if k != "s0-review"}
+        self.assertIsNone(R.gate_reason(self.cfg, review, sole))  # the sole bound review is allowed
+        self.assertIn("S0_REVIEW_RETRY", R.gate_reason(self.cfg, review | {"review_retry_of": "s0-review"}, tasks))
+        elsewhere = review | {"review_of": {"task_id": self.OLD}, "review_retry_of": "x"}
+        self.assertNotIn("S0_REVIEW_RETRY", R.gate_reason(self.cfg, elsewhere, tasks) or "")
+
+    def test_import_closure_is_enforced(self):
+        a, b = R.S0_PATHS
+        good = {a: "from __future__ import annotations\nimport uuid\nimport re\nfrom json import loads\nfrom typing import Any\n",
+                b: "import ast\nimport pathlib\nimport unittest\nimport unittest.mock\nfrom backend.app.tenancy_s0 import x\n"
+                "from backend.app import tenancy_s0\nfrom app import tenancy_s0 as t\nimport backend.app.tenancy_s0\n"}
+        for rel, text in good.items():
+            self.write(rel, text)
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+        for text in ("import psycopg", "import socket", "import sqlite3", "import requests", "from . import x",
+                     "import subprocess", "import importlib", "x = __import__('os')", "exec('1')", "eval('1')",
+                     "compile('1', 'f', 'exec')", "open('f')", "input()", "x = __builtins__", "vars()", "globals()",
+                     "import uuid\nuuid.__loader__", "import builtins", "import os", "import sys", "import pathlib",
+                     "import ast", "import unittest", "import logging", "import datetime", "import secrets",
+                     "from backend.app import other", "from backend.app.tenancy import y", "import sqlalchemy.orm",
+                     "from backend.app.tenancy_s0 import y", "import uuid, socket", "import urllib.request",
+                     "def broken(:", "\x00", "x = (", "from os import path"):
+            self.write(a, text)
+            self.assertTrue(R.s0_import_problems(self.repo), text)
+        for text in ("import psycopg", "import os", "import socket", "import subprocess", "import tempfile",
+                     "from backend.app.tenancy import y", "from backend.app import other", "x = __import__('os')",
+                     "pathlib.Path('f').open()", "import pathlib\npathlib.Path('f').open()"):
+            self.write(a, good[a])
+            self.write(b, text)
+            self.assertTrue(R.s0_import_problems(self.repo), text)
+        self.write(b, good[b])
+
+    def test_names_inside_allowed_modules_and_reflection_cannot_smuggle_io(self):
+        a, b = R.S0_PATHS
+        ok_a, ok_b = "import uuid\nx = uuid.UUID('00000000-0000-0000-0000-000000000000')\n", "import unittest\n"
+        self.write(a, ok_a)
+        self.write(b, ok_b)
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+        smuggle = (
+            "from uuid import os", "from typing import sys", "from dataclasses import inspect", "from json import decoder",
+            "from re import enum", "from enum import sys", "from functools import os", "from string import *",
+            "from uuid import UUID, os as o", "from uuid import getnode", "from json import load",
+            "import uuid\nuuid.os.system('true')", "import uuid\nuuid.os", "import typing\ntyping.sys.modules",
+            "import uuid as u\nu.os", "import uuid\nx = uuid\nx.os", "import uuid\ny = [uuid]", "import json\njson.load",
+            "import json.decoder", "import re\nre.enum", "import re\nre._compiler", "import typing as t\nt.sys",
+            "x = getattr(object, 'a')", "setattr(object, 'a', 1)", "delattr(object, 'a')", "x = ().__class__",
+            "x = ().__class__.__mro__", "x = object.__subclasses__()", "f = lambda: 0\nf.__globals__", "x = f.__dict__",
+            "x = f.__code__", "x = f.__closure__", "import uuid\nuuid.UUID.__init__.__globals__", "x = f'{().__class__}'",
+            "x = dir(())", "help()", "x = locals()", "import enum\nclass E(enum.Enum):\n    pass\nE.__members__.__class__",
+            "x = ().__reduce__()", "x = ().__getattribute__('a')", "import re\nre.compile('a').__class__",
+            "x = (1).__class__.__base__", "class C:\n    __slots__ = ()\nC.__subclasses__()")
+        for text in smuggle:
+            self.write(a, text)
+            self.assertTrue(R.s0_import_problems(self.repo), "product: " + text)
+        for text in smuggle + ("import pathlib\nx = pathlib\nx.os", "import pathlib\npathlib.os.system('true')",
+                               "import pathlib\npathlib.Path('f').write_text('x')", "import ast\nast.os",
+                               "import unittest\nunittest.mock.sys", "from unittest import mock\nmock.sys",
+                               "from unittest.mock import sys", "from unittest import os", "import unittest.mock as m\nm.sys.exit()",
+                               "import unittest\nunittest.sys", "from pathlib import os"):
+            self.write(a, ok_a)
+            self.write(b, text)
+            self.assertTrue(R.s0_import_problems(self.repo), "tests: " + text)
+        self.write(b, ok_b)  # the positive product examples below must not inherit the last forbidden tests file
+        self.write(a, ok_a)
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+        for text in ("from uuid import UUID, uuid4\nimport re\nP = re.compile(r'a')\nx = re.fullmatch(P, 'a')\n"
+                     "from typing import Any, Optional\nclass E:\n    def __init__(self):\n        super().__init__()\n",
+                     "from dataclasses import dataclass, field\n@dataclass(frozen=True)\nclass D:\n    a: int = field(default=1)\n",
+                     "import json\nx = json.loads('1')\nimport enum\nclass K(enum.Enum):\n    A = 1\n"):
+            self.write(a, text)
+            self.assertEqual(R.s0_import_problems(self.repo), [], text)
+        self.write(a, ok_a)
+        for text in ("import unittest\nfrom unittest import mock\nimport pathlib\nclass T(unittest.TestCase):\n    def test(self):\n"
+                     "        with mock.patch.object(pathlib.Path, 'read_text', return_value=''):\n            pass\n",
+                     "import unittest.mock as m\nm.patch\n", "import ast\nast.parse('1')\n"):
+            self.write(b, text)
+            self.assertEqual(R.s0_import_problems(self.repo), [], text)
+
+    def test_chained_attributes_below_an_allowed_name_cannot_reach_modules_or_private_state(self):
+        a, b = R.S0_PATHS
+        ok_a, ok_b = "import uuid\n", "import unittest\n"
+        chained = ("import uuid\nuuid.UUID._os", "import uuid\nuuid.UUID.os", "import re\nre.compile.sys",
+                   "import re\nre.compile.__module__", "import dataclasses\ndataclasses.field._x",
+                   "import typing\ntyping.Any.sys.modules", "import json\njson.loads.os.system",
+                   "import functools\nfunctools.lru_cache.subprocess", "import typing\ntyping.Optional.enum",
+                   "import uuid as u\nu.UUID.builtins", "import types\ntypes.SimpleNamespace.io")
+        tests_only = ("import unittest\nunittest.TestCase.os", "import unittest.mock as m\nm.patch.sys",
+                      "import unittest\nunittest.mock.patch.os.system", "from unittest import mock\nmock.patch.object._x",
+                      "import pathlib\npathlib.Path.os", "import pathlib\npathlib.Path.chmod(0)", "import ast\nast.parse.subprocess")
+        for text in chained:
+            self.write(a, text)
+            self.write(b, ok_b)
+            self.assertTrue(R.s0_import_problems(self.repo), "product: " + text)
+            self.write(a, ok_a)
+            self.write(b, text)
+            self.assertTrue(R.s0_import_problems(self.repo), "tests: " + text)
+        for text in tests_only:
+            self.write(a, ok_a)
+            self.write(b, text)
+            self.assertTrue(R.s0_import_problems(self.repo), "tests: " + text)
+        self.write(a, "import uuid\nimport re\nx = uuid.UUID.int\ny = re.compile\n")  # valid limited paths stay valid
+        self.write(b, "import unittest.mock as m\nfrom unittest import mock\nm.patch.object\nmock.patch.dict\n")
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+
+    def test_import_check_fails_closed_on_read_errors_without_raising(self):
+        a, b = R.S0_PATHS
+        self.write(a, "import uuid\n")
+        self.write(b, "import unittest\n")
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+        (self.repo / b).unlink()  # missing
+        self.assertIn(b, "\n".join(R.s0_import_problems(self.repo)))
+        (self.repo / b).mkdir()  # not a regular file
+        self.assertTrue(R.s0_import_problems(self.repo))
+        (self.repo / b).rmdir()
+        (self.repo / b).symlink_to(self.repo / a)  # symlink
+        self.assertTrue(R.s0_import_problems(self.repo))
+        (self.repo / b).unlink()
+        (self.repo / b).write_bytes(b"\xff\xfe\x00import socket")  # not decodable Python
+        self.assertTrue(R.s0_import_problems(self.repo))
+        (self.repo / b).write_text("# " + "x" * 1_000_001)  # larger than the bound
+        self.assertTrue(R.s0_import_problems(self.repo))
+        self.write(b, "import unittest\n")
+        self.assertEqual(R.s0_import_problems(self.repo), [])
+        for exc in (PermissionError("denied"), OSError(errno.EIO, "io"), RecursionError(), MemoryError(), RuntimeError("x")):
+            with mock.patch.object(R, "_read_bounded", side_effect=exc):
+                problems = R.s0_import_problems(self.repo)
+            self.assertEqual(len(problems), 2, repr(exc))  # one problem per file, never an exception
+        with mock.patch.object(R.ast, "parse", side_effect=RecursionError):
+            self.assertEqual(len(R.s0_import_problems(self.repo)), 2)
+        self.assertEqual(R.s0_import_problems(self.repo / "nowhere"), [f"{a}: missing, unreadable or not valid Python (GateError)",
+                                                                          f"{b}: missing, unreadable or not valid Python (GateError)"])
+
+    def test_forbidden_import_from_the_write_is_never_credited_or_executed(self):
+        r = self.runner()
+        a, b = R.S0_PATHS
+        R.enqueue(self.cfg, self.raw(prompt=f"WRITE={a}\nCONTENT=import psycopg\nWRITE2={b}"))
+        r.ingest_queue()
+        t = r.state["tasks"]["s0-write"]
+        r.dispatch(r.next_ready())
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_FORBIDDEN_IMPORT"))
+        self.assertIn("S0_FORBIDDEN_IMPORT", t["evidence"]["violations"])
+        self.assertIsNone(t["evidence"]["verify"])  # the verifier never imported the forbidden module
+        self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+        self.assertIn("S0_SECOND_WRITE", R.gate_reason(self.cfg, self.task(id="s0-retry-shop"), r.state["tasks"]))
+
+    def dispatch_s0(self, body, verify=None):
+        """Dispatch the S0 write. `verify(r)` stands in for the sandboxed verifier (exit 0) and may change the
+        authority while it 'runs'; without it the real verifier path is used."""
+        a, b = R.S0_PATHS
+        r = self.runner()
+        R.enqueue(self.cfg, self.raw(prompt=f"WRITE={a}\nCONTENT={body}\nWRITE2={b}"))
+        r.ingest_queue()
+        t = r.state["tasks"]["s0-write"]
+        if verify is None:
+            r.dispatch(r.next_ready())
+            return t
+
+        def run_verify(task):
+            verify(r)
+            return {"cmd": task["verify_cmd"], "exit": 0, "tail": ""}
+        with mock.patch.object(R.Runner, "run_verify", side_effect=run_verify):
+            r.dispatch(r.next_ready())
+        return t
+
+    def test_s0_write_is_credited_only_while_authority_is_still_current(self):
+        t = self.dispatch_s0("import uuid", verify=lambda r: None)  # control: untouched authority earns DONE
+        self.assertEqual((t["status"], t["attempts"]), ("DONE", 1))
+
+    def assert_withdrawal_earns_no_done(self, withdraw):
+        t = self.dispatch_s0("import uuid", verify=withdraw)
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_AUTHORITY_WITHDRAWN"))
+        self.assertEqual(t["attempts"], 1)  # no extra child, no retry
+        self.assertIn("S0_AUTHORITY_WITHDRAWN", t["evidence"]["violations"])
+        self.assertIsNone(R.review_verdict(self.history, t["id"]))
+        self.assertIn("S0_SECOND_WRITE", R.gate_reason(self.cfg, self.task(id="s0-again"), {t["id"]: t}))
+
+    def test_receipt_withdrawn_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: (self.home / "acceptances" / "MOD-004-S0.json").unlink())
+
+    def test_certificate_changed_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: (self.repo / self.CAP).write_text("{}"))
+
+    def test_owner_record_changed_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: (self.repo / self.OWNER).write_text("changed after review"))
+
+    def test_review_task_withdrawn_or_turned_negative_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: r.state["tasks"].pop("rev-s0-owner"))
+
+    def test_dependency_receipt_removed_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: (self.home / "acceptances" / "MOD-001.json").unlink())
+
+    def test_review_no_longer_done_while_the_write_runs_earns_no_done(self):
+        self.assert_withdrawal_earns_no_done(lambda r: r.state["tasks"]["rev-s0-adr"].update(status="BLOCKED"))
+
+    def test_authority_withdrawn_during_a_paused_verification_earns_no_done_on_resume(self):
+        r = self.runner()
+        a, b = R.S0_PATHS
+        R.enqueue(self.cfg, self.raw(prompt=f"WRITE={a}\nCONTENT=import uuid\nWRITE2={b}"))
+        r.ingest_queue()
+        t = r.state["tasks"]["s0-write"]
+        pauses = iter([{"cmd": t["verify_cmd"], "exit": -1, "tail": "paused", "interrupted": "stop"}])
+
+        def run_verify(task):
+            try:
+                return next(pauses)
+            except StopIteration:
+                return {"cmd": task["verify_cmd"], "exit": 0, "tail": ""}
+        with mock.patch.object(R.Runner, "run_verify", side_effect=run_verify):
+            r.dispatch(r.next_ready())
+            self.assertEqual((t["status"], t["stage"], t["attempts"]), ("QUEUED", "verify_pending", 1))
+            (self.home / "acceptances" / "MOD-004-S0.json").unlink()  # withdrawn while verification was paused
+            self.assertIsNone(r.gated(t) or None)  # the resumed verification is not a new child, so it is not gated away
+            r.dispatch(t)
+        self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_AUTHORITY_WITHDRAWN", 1))
+
+    def test_dispatch_with_dynamic_import_form_is_blocked_before_verification(self):
+        t = self.dispatch_s0("x = __import__('socket')")
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_FORBIDDEN_IMPORT"))
+        self.assertIsNone(t["evidence"]["verify"])
+
+    def test_checker_crash_blocks_the_write_instead_of_crashing_settle(self):
+        with mock.patch.object(R, "_s0_file_import_problems", side_effect=RuntimeError("boom")):
+            t = self.dispatch_s0("import uuid")
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_FORBIDDEN_IMPORT"))
+        self.assertIn("RuntimeError", t["last_error"])
+        self.assertIsNone(t["evidence"]["verify"])
+
+    def s0_verify_task(self, argv):
+        return {"id": "s0v", "plan_phase": R.S0_MARKER, "allowed_paths": list(R.S0_PATHS), "verify_cmd": argv}
+
+    def test_s0_verifier_is_never_run_unsandboxed_or_on_the_wrong_python(self):
+        r = self.runner()
+        marker = Path(self.tmp.name) / "ran"
+        code = f"open({str(marker)!r}, 'w').write('x')"
+        pinned = [R.S0_PYTHON, "-c", code]
+        r.cfg.sandbox = "off"  # no sandbox: refused, and the candidate code never runs
+        res = r.run_verify(self.s0_verify_task(pinned))
+        self.assertEqual(res["exit"], -1)
+        self.assertIn("sandbox required", res["tail"])
+        r.cfg.sandbox = "auto"
+        with mock.patch.object(R.Runner, "trusted_git", side_effect=ValueError("no git")):
+            self.assertIn("sandbox required", r.run_verify(self.s0_verify_task(pinned))["tail"])
+        res = r.run_verify(self.s0_verify_task([sys.executable, "-c", code]))  # the runner's own (3.14) Python
+        self.assertIn("sandbox required", res["tail"])
+        with mock.patch.object(R, "S0_PYTHON", "/nonexistent/python3.13"):  # pinned interpreter unavailable
+            res = r.run_verify(self.s0_verify_task(["/nonexistent/python3.13", "-c", code]))
+        self.assertIn("sandbox required", res["tail"])
+        with mock.patch.object(R, "S0_PYTHON", sys.executable), mock.patch.object(R, "S0_PY_VERSION", (2, 7)):
+            self.assertIn("sandbox required", r.run_verify(self.s0_verify_task([sys.executable, "-c", code]))["tail"])
+            with self.assertRaises(ValueError):
+                R.s0_python()
+        self.assertFalse(marker.exists())
+        plain = r.run_verify({"id": "plain", "verify_cmd": [sys.executable, "-c", "print('ok')"]})  # owner verifiers: unchanged
+        self.assertEqual(plain["exit"], 0)
+        with mock.patch.object(R, "S0_PYTHON", sys.executable), mock.patch.object(R, "S0_PY_VERSION", tuple(sys.version_info[:2])):
+            exe, prefixes = R.s0_python()
+            self.assertEqual(exe, str(Path(sys.executable).resolve()))
+            self.assertTrue(prefixes)
+
+    @unittest.skipUnless(sys.platform == "darwin" and shutil.which("sandbox-exec"), "Seatbelt required")
+    def test_s0_verifier_cannot_write_connect_or_exec_even_if_the_import_check_were_bypassed(self):
+        try:
+            R.Runner.trusted_git()
+        except ValueError:
+            self.skipTest("no trusted developer Git on this machine")
+        r = self.runner()
+        a, b = R.S0_PATHS
+        self.write(a, "import uuid\n")
+        self.write(b, "import unittest\n")
+        outside = Path(self.tmp.name) / "outside"
+        outside.mkdir()
+        code = (
+            "import json, socket, subprocess, sys\n"
+            "out = {}\n"
+            f"for name, path in (('product', {str(self.repo / a)!r}), ('tests', {str(self.repo / b)!r}), ('new', {str(self.repo / 'backend' / 'new.py')!r}),"
+            f" ('outside', {str(outside / 'x')!r}), ('home', {str(self.home / 'x')!r}), ('git', {str(self.repo / '.git' / 'x')!r})):\n"
+            "    try:\n        open(path, 'w').write('pwned')\n        out[name] = 'WROTE'\n"
+            "    except OSError:\n        out[name] = 'denied'\n"
+            "try:\n    socket.create_connection(('127.0.0.1', 9), timeout=1)\n    out['net'] = 'CONNECTED'\n"
+            "except OSError:\n    out['net'] = 'denied'\n"
+            "try:\n    subprocess.run(['/bin/sh', '-c', 'true'])\n    out['exec'] = 'RAN'\n"
+            "except OSError:\n    out['exec'] = 'denied'\n"
+            "print(json.dumps(out))\n"
+            "sys.exit(0 if set(out.values()) == {'denied'} else 3)\n")
+        with mock.patch.object(R, "S0_PYTHON", sys.executable), mock.patch.object(R, "S0_PY_VERSION", tuple(sys.version_info[:2])):
+            res = r.run_verify(self.s0_verify_task([sys.executable, "-c", code]))
+        self.assertEqual(res["exit"], 0, res["tail"])
+        self.assertEqual((self.repo / a).read_text(), "import uuid\n")
+        self.assertEqual((self.repo / b).read_text(), "import unittest\n")
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse((self.home / "x").exists())
+        profile = (self.home / "runs" / "verify-s0v.sb").read_text()
+        self.assertIn("(deny default)", profile)
+        self.assertNotIn("(allow default)", profile)
+
 
 
 if __name__ == "__main__":
