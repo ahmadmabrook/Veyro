@@ -5661,7 +5661,7 @@ class Mod004S0DocLane(S0Fixture):
     def table(self, entries):
         return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
 
-    def test_context_exception_table_is_exactly_the_four_audited_entries(self):
+    def test_context_exception_table_is_exactly_the_five_audited_entries(self):
         self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
                                                      "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
         doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
@@ -5691,8 +5691,21 @@ class Mod004S0DocLane(S0Fixture):
              "primary_path": "tools/mission_runner/runner.py",
              "primary_sha256": "0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9",
              "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md",
-                           "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228"),)}))
-        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 4)
+                           "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228"),)},
+            {"task_id": "product-loop-gate-opus-security-20261024",
+             "prompt_sha256": "7b49e302ca857420280306f37f2510611e7f8592eea108cfbceaac6e655ac169",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "cf8b7e5af12f03686c6596cc9cf7cbe7c83d622bbeb3fca5206b47923cf8f589",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
+                           "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 5)
+
+    def test_pinned_loop_owner_review_artifact_is_the_runner_recorded_output_hash(self):
+        self.assertEqual(R.S0_LOOP_OWNER_REVIEW, "owner-product-remediation-loop-opus-r3-20261024")
+        self.assertEqual(R.S0_LOOP_OWNER_REVIEW_OUTPUT_SHA,
+                         "614c73fab45a57b2e0eba71822ea15a0967bfcc99cab4fd47cea314282e6c64e")
+        self.assertNotEqual(R.S0_LOOP_OWNER_REVIEW_OUTPUT_SHA,
+                            "869205a32ec078526db2bcfea6adef4640cca41a63d1b402397e4d8ef7764c12")
 
     def test_pinned_historical_context_tasks_do_not_taint_owner_adr_or_doc_owner_but_default_is_fail_closed(self):
         entries = self.audited_shape()
@@ -9823,6 +9836,95 @@ class Mod004S0LoopRebind(S0TestFixture):
     def test_s0_loop_gate_runs_inside_gate_reason(self):
         self.assertIsNone(R.gate_reason(self.cfg, self.loop(), self.history))
         self.assertTrue(R.gate_reason(self.cfg, self.loop(post={"attempts": 1}), self.history).startswith("S0_LOOP_ATTEMPT_USED"))
+
+    # --- pinned r1 context-only security review of the loop owner record
+    def pinned_loop_context(self):
+        """A stored r1-shaped negative task whose primary is another runner candidate and which only quotes the loop
+        owner record (fixture bytes), plus its table entry."""
+        prompt = (f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {'a' * 64}\nGoverning context record:\n"
+                  f"{self.LOOP_OWNER} SHA-256 {self.sha(self.LOOP_OWNER)}\n")
+        tid = "product-loop-gate-opus-security-20261024"
+        self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
+                             "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                             "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        return {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "primary_path": R.S0_RUNNER_FILE,
+                "primary_sha256": "a" * 64, "subjects": ((self.LOOP_OWNER, self.sha(self.LOOP_OWNER)),)}
+
+    def test_the_real_r1_entry_is_pinned_for_exactly_the_loop_owner_record(self):
+        e = R.S0_CONTEXT_EXCEPTIONS[4]
+        self.assertEqual(e["task_id"], "product-loop-gate-opus-security-20261024")
+        self.assertEqual(e["prompt_sha256"], "7b49e302ca857420280306f37f2510611e7f8592eea108cfbceaac6e655ac169")
+        self.assertEqual((e["primary_path"], e["primary_sha256"]),
+                         (R.S0_RUNNER_FILE, "cf8b7e5af12f03686c6596cc9cf7cbe7c83d622bbeb3fca5206b47923cf8f589"))
+        self.assertEqual(e["subjects"], ((R.S0_LOOP_OWNER_PATH, "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),))
+        stored = {"id": e["task_id"], "role": "architecture", "status": "BLOCKED", "review_of": None,
+                  "prompt": f"{e['primary_path']} {e['primary_sha256']} {e['subjects'][0][0]} {e['subjects'][0][1]}",
+                  "blocked_reason": "REVIEW_CHANGES_REQUESTED", "route": {"verdict": "VERIFIED"},
+                  "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS",
+                               (e | {"prompt_sha256": hashlib.sha256(stored["prompt"].encode()).hexdigest()},)):
+            self.assertTrue(R._s0_quoted_context_only(stored, *e["subjects"][0]))
+            self.assertFalse(R._s0_quoted_context_only(stored, R.S0_RUNNER_FILE, e["primary_sha256"]))
+            self.assertFalse(R._s0_quoted_context_only(stored, R.S0_TEST_OWNER_PATH, R.S0_TEST_OWNER_SHA))
+
+    def test_the_pinned_r1_context_task_does_not_poison_loop_owner_but_default_is_fail_closed(self):
+        self.assertIsNone(self.aproblem())
+        entry = self.pinned_loop_context()
+        self.assertIn("S0 loop_owner", self.aproblem())  # default table: the stored rejection still stands
+        self.assertIn("did not approve", self.aproblem())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (*R.S0_CONTEXT_EXCEPTIONS, entry)):
+            self.assertIsNone(self.aproblem())
+
+    def test_pinned_r1_context_fails_closed_on_any_id_prompt_primary_subject_or_record_mutation(self):
+        entry = self.pinned_loop_context()
+        original, prompt = dict(self.history[entry["task_id"]]), self.history[entry["task_id"]]["prompt"]
+        task_cases = {
+            "renamed": {"id": "renamed"}, "prompt-bytes": {"prompt": prompt + " "},
+            "primary-path-gone": {"prompt": prompt.replace(entry["primary_path"], "x")},
+            "primary-sha-gone": {"prompt": prompt.replace(entry["primary_sha256"], "d" * 64)},
+            "review_of": {"review_of": {"task_id": "w"}},
+            "status": {"status": "DONE"}, "reason": {"blocked_reason": "REVIEW_BLOCKED"}, "route": {"route": {}},
+            "unverified-route": {"route": {"verdict": "UNVERIFIED"}},
+            "reported-only": {"evidence": {"review_outcome_reported": "CHANGES_REQUESTED", "violations": []}},
+            "blocked-outcome": {"evidence": {"review_outcome": "BLOCKED", "violations": []}},
+        }
+        for label, over in task_cases.items():
+            with self.subTest(f"task {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+                self.history[entry["task_id"]] = original | over
+                self.assertIn("S0 loop_owner", self.aproblem())
+                self.assertIn("did not approve", self.aproblem())
+            self.history[entry["task_id"]] = original
+        entry_cases = {
+            "task_id": {"task_id": "x"}, "prompt_sha256": {"prompt_sha256": "d" * 64},
+            "primary_path": {"primary_path": "contracts/engineering/unrelated.json"}, "primary_sha256": {"primary_sha256": "e" * 64},
+            "subject-sha": {"subjects": ((self.LOOP_OWNER, "f" * 64),)}, "subjects-empty": {"subjects": ()},
+        }
+        for label, over in entry_cases.items():
+            with self.subTest(f"entry {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry | over,)):
+                self.assertIn("S0 loop_owner", self.aproblem())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.aproblem())
+
+    def test_a_genuine_negative_review_of_the_loop_owner_still_blocks_beside_the_pinned_r1_exception(self):
+        entry = self.pinned_loop_context()
+        sha = self.sha(self.LOOP_OWNER)
+        prompts = {
+            "primary": f"Review EXACT file {self.LOOP_OWNER} SHA-256 {sha}\n",
+            "primary beside another runner": f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {entry['primary_sha256']}\n"
+                                              f"Review EXACT file {self.LOOP_OWNER} SHA-256 {sha}\n"}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.aproblem())
+            for label, prompt in prompts.items():
+                for outcome in ("CHANGES_REQUESTED", "BLOCKED"):
+                    with self.subTest(f"{label} {outcome}"):
+                        self.history["adverse"] = {"id": "adverse", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                                   "prompt": prompt, "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_" + outcome,
+                                                   "evidence": {"review_outcome": outcome, "violations": ["REVIEW_" + outcome]}}
+                        reason = self.aproblem()
+                        self.assertIn("S0 loop_owner", reason)
+                        self.assertIn("did not approve", reason)
+                        del self.history["adverse"]
+            self.assertIsNone(self.aproblem())
 
     # --- authority receipt tamper
     def test_s0_loop_authority_receipt_tamper(self):

@@ -1722,7 +1722,7 @@ def _s0_names_subject(y, path, sha, text):
 
 
 # Audited, immutable historical exceptions. Default is fail-closed: ANY negative Opus review whose prompt names a subject's
-# exact path+sha (or exact bytes) blocks it. These four tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# exact path+sha (or exact bytes) blocks it. These five tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1753,6 +1753,12 @@ S0_CONTEXT_EXCEPTIONS = (
      "primary_path": S0_RUNNER_FILE,
      "primary_sha256": "0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9",
      "subjects": ((S0_TEST_OWNER_PATH, S0_TEST_OWNER_SHA),)},
+    {"task_id": "product-loop-gate-opus-security-20261024",
+     "prompt_sha256": "7b49e302ca857420280306f37f2510611e7f8592eea108cfbceaac6e655ac169",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "cf8b7e5af12f03686c6596cc9cf7cbe7c83d622bbeb3fca5206b47923cf8f589",
+     "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
+                   "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),)},
 )
 
 
@@ -2527,7 +2533,7 @@ S0_LOOP_SUBJECTS = {  # three-plus-one distinct exact subjects, each with its ow
     "runner_gate": S0_SUBJECTS["runner_gate"],
 }
 S0_LOOP_OWNER_REVIEW = "owner-product-remediation-loop-opus-r3-20261024"
-S0_LOOP_OWNER_REVIEW_OUTPUT_SHA = "869205a32ec078526db2bcfea6adef4640cca41a63d1b402397e4d8ef7764c12"
+S0_LOOP_OWNER_REVIEW_OUTPUT_SHA = "614c73fab45a57b2e0eba71822ea15a0967bfcc99cab4fd47cea314282e6c64e"
 S0_LOOP_OWNER_COMMIT = "7a877c7b6075d91928c4a6b465716a2b9430f8ea"
 S0_LOOP_OWNER_CI_RUN = "40079271823"
 
