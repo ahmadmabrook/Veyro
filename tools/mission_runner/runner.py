@@ -1722,7 +1722,7 @@ def _s0_names_subject(y, path, sha, text):
 
 
 # Audited, immutable historical exceptions. Default is fail-closed: ANY negative Opus review whose prompt names a subject's
-# exact path+sha (or exact bytes) blocks it. These three tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# exact path+sha (or exact bytes) blocks it. These four tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1730,6 +1730,8 @@ S0_DOC_OWNER_SHA = "c55e7da6c3f92242029f8a93ae8bf9f2be43439fa1da95a98fd6bfed7206
 S0_OWNER_SHA = "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"
 S0_ADR_SHA = "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"
 S0_EDGE_SHA = "cf3e7c5847f3b0ed9ce7d35f5ace0e04882513dd31cb0fa088558e3ecb1d2723"
+S0_TEST_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md"
+S0_TEST_OWNER_SHA = "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228"
 S0_CONTEXT_EXCEPTIONS = (
     {"task_id": "mod004-s0-eligibility-opus-review-20261023",
      "prompt_sha256": "6786e9712b3f04d865cb3f4880c3aaab84671ba0d403e54b4082f8b8af38b1d6",
@@ -1746,6 +1748,11 @@ S0_CONTEXT_EXCEPTIONS = (
      "primary_path": S0_RUNNER_FILE,
      "primary_sha256": "00e7ca4d255ac2dce68e9dd02678708ae95559137b75a919d03de45188f5eba7",
      "subjects": ((S0_DOC_OWNER_PATH, S0_DOC_OWNER_SHA),)},
+    {"task_id": "mod004-s0-test-runner-opus-security-review-20261024",
+     "prompt_sha256": "212e8143359c7814d964ad929bc62cc6dbf795fe735b6b001feaa6333ba111d5",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9",
+     "subjects": ((S0_TEST_OWNER_PATH, S0_TEST_OWNER_SHA),)},
 )
 
 
@@ -2376,8 +2383,6 @@ S0_TEST_MARKER = "MOD004-S0-TEST-REMEDIATION"
 S0_REBIND_BASE = {
     "contracts/engineering/mod004-s0-eligibility.json": "17d5120ef0e99b5a36cabf62e5a2c6f86349ad5d9c73e0ad294d43b54479c8d1",
     "contracts/engineering/mod004-s0-scenario-qa.md": "08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680"}
-S0_TEST_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md"
-S0_TEST_OWNER_SHA = "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228"
 S0_TEST_RECOVERY_RECEIPT = "MOD-004-S0-TEST-RECOVERY"  # operator-written <home>/acceptances/MOD-004-S0-TEST-RECOVERY.json
 S0_TEST_CHECKPOINT = "checkpoints/MOD-004-S0.pre-test-remediation.json"  # fixed path under the runner home
 S0_PRE_TEST_RECEIPT_SHA = "a02beb42243981ed2997a8a9525db99e410201e31b90cfce6de83d9f1589876f"  # the current six-subject receipt

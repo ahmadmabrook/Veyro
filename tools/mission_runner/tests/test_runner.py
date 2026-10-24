@@ -5321,7 +5321,7 @@ class Mod004S0DocLane(S0Fixture):
         self.write_doc_receipt()
         self.assertIsNone(self.doc_reason())
 
-    # --- negative reviews naming a subject block it, except three exact audited historical context-only tasks
+    # --- negative reviews naming a subject block it, except four exact audited historical context-only tasks
     def negative_prior(self, tid, prompt, **over):
         self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
                              "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
@@ -5346,7 +5346,7 @@ class Mod004S0DocLane(S0Fixture):
     def table(self, entries):
         return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
 
-    def test_context_exception_table_is_exactly_the_three_audited_entries(self):
+    def test_context_exception_table_is_exactly_the_four_audited_entries(self):
         self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
                                                      "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
         doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
@@ -5370,8 +5370,14 @@ class Mod004S0DocLane(S0Fixture):
             {"task_id": "mod004-s0-doc-gate-subject-fix-opus-security-review-20261023",
              "prompt_sha256": "4ad623d7abb184323197dd8a2e51e02aed9366726c107b1b396c9b9e347c089e",
              "primary_path": "tools/mission_runner/runner.py",
-             "primary_sha256": "00e7ca4d255ac2dce68e9dd02678708ae95559137b75a919d03de45188f5eba7", "subjects": (doc_owner,)}))
-        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 3)
+             "primary_sha256": "00e7ca4d255ac2dce68e9dd02678708ae95559137b75a919d03de45188f5eba7", "subjects": (doc_owner,)},
+            {"task_id": "mod004-s0-test-runner-opus-security-review-20261024",
+             "prompt_sha256": "212e8143359c7814d964ad929bc62cc6dbf795fe735b6b001feaa6333ba111d5",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md",
+                           "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228"),)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 4)
 
     def test_pinned_historical_context_tasks_do_not_taint_owner_adr_or_doc_owner_but_default_is_fail_closed(self):
         entries = self.audited_shape()
@@ -6788,6 +6794,149 @@ class Mod004S0TestRecoveryAuthority(S0TestFixture):
         self.assertEqual(len({R.S0_MARKER, R.S0_DOC_MARKER, R.S0_REFRESH_MARKER, R.S0_REBIND_MARKER, R.S0_TEST_MARKER}), 5)
         self.assertEqual(len({R.S0_RECEIPT, R.S0_DOC_RECEIPT, R.S0_RECOVERY_RECEIPT, R.S0_TEST_RECOVERY_RECEIPT}), 4)
         self.assertNotEqual(R.S0_TEST_CHECKPOINT, R.S0_RECOVERY_CHECKPOINT)
+
+
+    # --- the one audited context-only quote of the test owner record by the old runner-candidate review
+    TEST_RUNNER_REVIEW_PROMPT = (
+        'Fresh independent Opus execution-boundary/security review of the exact TWO-FILE runner '
+        'amendment in isolated worktree /tmp/veyro-s0-test-runner-20261024. Read full diff at '
+        '/tmp/veyro-s0-test-runner-candidate-20261024.review.diff, SHA-256 '
+        '99033dfd93a8a7b4a7450f565b70256fee6639bf7417cb4a1c176abd5031b8d9, and relevant surrounding '
+        'code/tests. Candidate SHA-256: tools/mission_runner/runner.py = '
+        '0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9; '
+        'tools/mission_runner/tests/test_runner.py = '
+        '915db136fd67cd1003d8fa397e7c7447f406539ea881ef1bb307722aa0647a7f. Base published owner record '
+        'knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md SHA-256 '
+        '731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228, commit '
+        'a418ed411540a5e8570caf0a90b7b5b9b9b501e5, exact-SHA CI 40039307973 success. Earlier Opus owner '
+        're-review mod004-s0-test-owner-opus-rereview-20261024 APPROVED. No live reload or receipts have '
+        'moved yet.\n\nReview the amendment as a privilege/approval boundary, not a style exercise. Check '
+        'every legal and negative path: new authority receipt checks committed exact owner/runner bytes, '
+        'distinct Opus outputs and exact CI fields, preserved a02b... S0 receipt regular non-symlink '
+        'checkpoint and old recovery history, original write/CHANGES_REQUESTED review untouched; one '
+        'document-rebind marker despite historical product write but old doc lanes remain closed, exact '
+        'two current base hashes, one child/review with no retry; after document publication/receipt '
+        'rebuild, full verify_s0_authority for the NEW runner before one test-only write; the original '
+        's0_probe must still refuse a general second product write; test-only task only '
+        'backend/tests/test_tenancy_s0.py with pinned starting hash, validator 5543... immutable, exact '
+        'Python3.13 verifier, no planner or lineage bypass, one child attempt; one bound Opus review '
+        'must machine-bind and recheck BOTH validator and corrected test hashes at enqueue, dispatch, '
+        'completion. Look for ways untagged, broad, foreign, stale, duplicate, wrong-source, or '
+        'concurrent tasks bypass the gate; ensure CAP/accepted-module gates and original S0 path remain '
+        'unchanged. Specifically challenge whether historical receipts claimed byte-identical are '
+        'actually rehashed, whether owner exact-commit CI is independently verified enough for the '
+        'asserted guarantee, whether any state retry or review shopping can occur, and whether rebind '
+        'docs can be changed after later review.\n\nTests should include meaningful positive/negative '
+        'cases on Python 3.13 and 3.14; local full runner Handoff failures predate this diff and must '
+        'not be used to waive focused negatives. Do not edit, commit, push, enqueue, write receipts, or '
+        'reload. If a blocking gap exists, return CHANGES_REQUESTED with precise code/test correction. '
+        'Do not say tests or hashes ran if you cannot execute them. An APPROVED verdict permits operator '
+        'publication/CI consideration only, not S0 product dispatch, completion or CAP qualification. '
+        'End with exactly one standalone final line: OUTCOME: APPROVED, OUTCOME: CHANGES_REQUESTED, or '
+        'OUTCOME: BLOCKED.\n')
+
+    def pinned_owner_context(self):
+        """A stored negative task whose primary is another runner candidate and which only quotes the owner record
+        (fixture bytes), plus its table entry."""
+        prompt = (f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {'a' * 64}\nContext record:\n"
+                  f"{self.TOWNER} SHA-256 {self.sha(self.TOWNER)}\n")
+        tid = "hist-test-runner"
+        self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
+                             "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                             "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        return {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "primary_path": R.S0_RUNNER_FILE,
+                "primary_sha256": "a" * 64, "subjects": ((self.TOWNER, self.sha(self.TOWNER)),)}
+
+    def test_the_real_stored_runner_review_prompt_is_pinned_as_context_only_for_exactly_the_owner_record(self):
+        e = R.S0_CONTEXT_EXCEPTIONS[3]
+        self.assertEqual(e["task_id"], "mod004-s0-test-runner-opus-security-review-20261024")
+        self.assertEqual(hashlib.sha256(self.TEST_RUNNER_REVIEW_PROMPT.encode()).hexdigest(), e["prompt_sha256"])
+        self.assertEqual((e["primary_path"], e["primary_sha256"]),
+                         ("tools/mission_runner/runner.py", "0eee2186db49971023385ce742c99395da1360fa2fce87a14b68787d818f58a9"))
+        self.assertEqual(e["subjects"], ((R.S0_TEST_OWNER_PATH, self.REAL["S0_TEST_OWNER_SHA"]),))
+        self.assertIn(e["primary_sha256"], self.TEST_RUNNER_REVIEW_PROMPT)
+        self.assertIn(self.REAL["S0_TEST_OWNER_SHA"], self.TEST_RUNNER_REVIEW_PROMPT)
+        stored = {"id": e["task_id"], "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                  "prompt": self.TEST_RUNNER_REVIEW_PROMPT, "review_of": None, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                  "route": {"verdict": "VERIFIED"},
+                  "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        owner = (R.S0_TEST_OWNER_PATH, self.REAL["S0_TEST_OWNER_SHA"])
+        self.assertTrue(R._s0_quoted_context_only(stored, *owner))
+        for other in ((R.S0_DOC_OWNER_PATH, R.S0_DOC_OWNER_SHA), (R.S0_ADR, R.S0_ADR_SHA), (R.S0_OWNER_RECORD, R.S0_OWNER_SHA),
+                      (R.S0_RUNNER_FILE, e["primary_sha256"]), (R.S0_TEST_OWNER_PATH, "d" * 64)):
+            with self.subTest(other):
+                self.assertFalse(R._s0_quoted_context_only(stored, *other))
+        for label, over in {"id": {"id": "renamed"}, "prompt": {"prompt": self.TEST_RUNNER_REVIEW_PROMPT + " "},
+                            "review_of": {"review_of": {"task_id": "w", "changed": [{"path": owner[0], "sha256": owner[1]}]}},
+                            "status": {"status": "DONE"}, "reason": {"blocked_reason": "REVIEW_BLOCKED"},
+                            "route": {"route": {"verdict": "UNVERIFIED"}},
+                            "outcome": {"evidence": {"review_outcome": "BLOCKED", "violations": []}}}.items():
+            with self.subTest(label):
+                self.assertFalse(R._s0_quoted_context_only(stored | over, *owner))
+
+    def test_the_pinned_owner_context_task_does_not_taint_the_owner_record_but_default_is_fail_closed(self):
+        self.assertIsNone(self.problem())
+        entry = self.pinned_owner_context()
+        self.assertIn("S0 test_owner", self.problem())  # default table: the stored rejection still stands
+        self.assertIn("did not approve", self.problem())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (*R.S0_CONTEXT_EXCEPTIONS, entry)):
+            self.assertIsNone(self.problem())
+
+    def test_pinned_owner_context_fails_closed_on_any_id_prompt_primary_subject_binding_or_record_mutation(self):
+        entry = self.pinned_owner_context()
+        original, prompt = dict(self.history[entry["task_id"]]), self.history[entry["task_id"]]["prompt"]
+        ref = {"path": self.TOWNER, "sha256": self.sha(self.TOWNER)}
+        task_cases = {
+            "renamed": {"id": "renamed"}, "prompt-bytes": {"prompt": prompt + " "},
+            "primary-path-gone": {"prompt": prompt.replace(entry["primary_path"], "x")},
+            "primary-sha-gone": {"prompt": prompt.replace(entry["primary_sha256"], "d" * 64)},
+            "review_of": {"review_of": {"task_id": "w"}}, "review_of-none": {"review_of": {"task_id": "w", "changed": None}},
+            "review_of-subject": {"role": "code-review", "review_of": {"task_id": "w", "changed": [ref]}},
+            "review_of-other": {"role": "code-review", "review_of": {"task_id": "w", "changed": [{"path": self.RUN, "sha256": "7" * 64}]}},
+            "status": {"status": "DONE"}, "reason": {"blocked_reason": "REVIEW_BLOCKED"}, "route": {"route": {}},
+            "unverified-route": {"route": {"verdict": "UNVERIFIED"}},
+            "reported-only": {"evidence": {"review_outcome_reported": "CHANGES_REQUESTED", "violations": []}},
+            "blocked-outcome": {"evidence": {"review_outcome": "BLOCKED", "violations": []}},
+        }
+        for label, over in task_cases.items():
+            with self.subTest(f"task {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+                self.history[entry["task_id"]] = original | over
+                self.assertIn("S0 test_owner", self.problem())
+                self.assertIn("did not approve", self.problem())
+            self.history[entry["task_id"]] = original
+        entry_cases = {
+            "task_id": {"task_id": "x"}, "prompt_sha256": {"prompt_sha256": "d" * 64},
+            "primary_path": {"primary_path": "contracts/engineering/unrelated.json"}, "primary_sha256": {"primary_sha256": "e" * 64},
+            "subject-sha": {"subjects": ((self.TOWNER, "f" * 64),)}, "subject-path": {"subjects": ((self.RUN, self.sha(self.TOWNER)),)},
+            "subjects-empty": {"subjects": ()},
+        }
+        for label, over in entry_cases.items():
+            with self.subTest(f"entry {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry | over,)):
+                self.assertIn("S0 test_owner", self.problem())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.problem())
+
+    def test_a_genuine_negative_review_of_the_owner_bytes_still_blocks_beside_the_pinned_exception(self):
+        entry = self.pinned_owner_context()
+        sha = self.sha(self.TOWNER)
+        prompts = {
+            "primary": f"Review EXACT file {self.TOWNER} SHA-256 {sha}\n",
+            "primary beside another runner": f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {entry['primary_sha256']}\n"
+                                              f"Review EXACT file {self.TOWNER} SHA-256 {sha}\n",
+            "bytes": f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {'7' * 64}\nsha {sha}\n{(self.repo / self.TOWNER).read_text()}"}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.problem())
+            for label, prompt in prompts.items():
+                for outcome in ("CHANGES_REQUESTED", "BLOCKED"):
+                    with self.subTest(f"{label} {outcome}"):
+                        self.history["adverse"] = {"id": "adverse", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                                   "prompt": prompt, "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_" + outcome,
+                                                   "evidence": {"review_outcome": outcome, "violations": ["REVIEW_" + outcome]}}
+                        reason = self.problem()
+                        self.assertIn("S0 test_owner", reason)
+                        self.assertIn("did not approve", reason)
+                        del self.history["adverse"]
+            self.assertIsNone(self.problem())
 
 
     # --- the historical recovery and doc receipts stay byte-identical evidence
