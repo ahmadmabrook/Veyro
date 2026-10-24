@@ -5692,7 +5692,7 @@ class Mod004S0DocLane(S0Fixture):
     def table(self, entries):
         return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
 
-    def test_context_exception_table_is_exactly_the_five_audited_entries(self):
+    def test_context_exception_table_is_exactly_the_six_audited_entries(self):
         self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
                                                      "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
         doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
@@ -5728,8 +5728,14 @@ class Mod004S0DocLane(S0Fixture):
              "primary_path": "tools/mission_runner/runner.py",
              "primary_sha256": "cf8b7e5af12f03686c6596cc9cf7cbe7c83d622bbeb3fca5206b47923cf8f589",
              "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
-                           "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),)}))
-        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 5)
+                           "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),)},
+            {"task_id": "mod004-fullscope-gate-opus-security-20261024",
+             "prompt_sha256": "700f62df69b6393b540c1f07d98a1377668d820d11264f17ab1264dac0d868a2",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "23cbe13b223a3ffff0db592378633aebfc872254f3da5e080d9df6f57f17714c",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-fullscope-recovery.md",
+                           "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"),)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 6)
 
     def test_pinned_loop_owner_review_artifact_is_the_runner_recorded_output_hash(self):
         self.assertEqual(R.S0_LOOP_OWNER_REVIEW, "owner-product-remediation-loop-opus-r3-20261024")
@@ -10569,6 +10575,112 @@ class Mod004NonCapDesign(S0Fixture):
         for label, f in cases.items():
             with self.subTest(label):
                 self.unverified(self.gate(tweak(f)))
+
+    # --- pinned context-only attribution of the OLD two-file runner review that only quoted the owner record
+    OLD_TEST_FILE = "tools/mission_runner/tests/test_runner.py"
+
+    def pinned_old_runner_review(self):
+        """A stored negative review of an OLD runner+test candidate whose prompt only quotes the owner record (fixture
+        bytes) under Authority, plus its exception-table entry."""
+        prompt = (f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {'a' * 64}\nReview EXACT file {self.OLD_TEST_FILE} "
+                  f"SHA-256 {'b' * 64}\nAuthority:\n{self.OWNER_REC} SHA-256 {self.owner['sha256']}\n")
+        tid = "mod004-fullscope-gate-opus-security-20261024"
+        self.history[tid] = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
+                             "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                             "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        return {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "primary_path": R.S0_RUNNER_FILE,
+                "primary_sha256": "a" * 64, "subjects": ((self.OWNER_REC, self.owner["sha256"]),)}
+
+    def test_the_real_old_runner_review_entry_is_pinned_for_exactly_the_fullscope_owner_record(self):
+        e = R.S0_CONTEXT_EXCEPTIONS[5]
+        self.assertEqual(e["task_id"], "mod004-fullscope-gate-opus-security-20261024")
+        self.assertEqual(e["prompt_sha256"], "700f62df69b6393b540c1f07d98a1377668d820d11264f17ab1264dac0d868a2")
+        self.assertEqual((e["primary_path"], e["primary_sha256"]),
+                         (R.S0_RUNNER_FILE, "23cbe13b223a3ffff0db592378633aebfc872254f3da5e080d9df6f57f17714c"))
+        self.assertEqual(e["subjects"], ((self.REAL_PINS["NONCAP_OWNER_PATH"], self.REAL_PINS["NONCAP_OWNER_SHA"]),))
+        old_test = "2f783dde15cf9c92b85564a957508384da6bddfd9b022841db0185e27536e9b5"
+        stored = {"id": e["task_id"], "role": "architecture", "status": "BLOCKED", "review_of": None,
+                  "prompt": f"{e['primary_path']} {e['primary_sha256']} {self.OLD_TEST_FILE} {old_test} "
+                            f"{e['subjects'][0][0]} {e['subjects'][0][1]}",
+                  "blocked_reason": "REVIEW_CHANGES_REQUESTED", "route": {"verdict": "VERIFIED"},
+                  "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS",
+                               (e | {"prompt_sha256": hashlib.sha256(stored["prompt"].encode()).hexdigest()},)):
+            self.assertTrue(R._s0_quoted_context_only(stored, *e["subjects"][0]))
+            self.assertFalse(R._s0_quoted_context_only(stored, R.S0_RUNNER_FILE, e["primary_sha256"]))
+            self.assertFalse(R._s0_quoted_context_only(stored, self.OLD_TEST_FILE, old_test))
+            self.assertFalse(R._s0_quoted_context_only(stored, R.S0_TEST_OWNER_PATH, R.S0_TEST_OWNER_SHA))
+
+    def test_the_pinned_old_runner_review_does_not_poison_the_owner_record_but_default_is_fail_closed(self):
+        self.assertIsNone(self.gate())
+        entry = self.pinned_old_runner_review()
+        self.unverified(self.gate())  # default table: the stored rejection still stands
+        self.assertIn("did not approve", self.gate())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (*R.S0_CONTEXT_EXCEPTIONS, entry)):
+            self.assertIsNone(self.gate())
+
+    def test_pinned_old_runner_review_fails_closed_on_any_id_prompt_hash_route_verdict_or_binding_change(self):
+        entry = self.pinned_old_runner_review()
+        original, prompt = dict(self.history[entry["task_id"]]), self.history[entry["task_id"]]["prompt"]
+        ref = {"path": self.OWNER_REC, "sha256": self.owner["sha256"]}
+        task_cases = {
+            "renamed": {"id": "renamed"}, "prompt-bytes": {"prompt": prompt + " "},
+            "primary-path-gone": {"prompt": prompt.replace(entry["primary_path"], "x")},
+            "primary-sha-gone": {"prompt": prompt.replace(entry["primary_sha256"], "d" * 64)},
+            "review_of": {"review_of": {"task_id": "w"}},
+            "review_of-subject": {"role": "code-review", "review_of": {"task_id": "w", "changed": [ref]}},
+            "status": {"status": "DONE"}, "reason": {"blocked_reason": "REVIEW_BLOCKED"}, "route": {"route": {}},
+            "unverified-route": {"route": {"verdict": "UNVERIFIED"}},
+            "reported-only": {"evidence": {"review_outcome_reported": "CHANGES_REQUESTED", "violations": []}},
+            "blocked-outcome": {"evidence": {"review_outcome": "BLOCKED", "violations": []}},
+        }
+        for label, over in task_cases.items():
+            with self.subTest(f"task {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+                self.history[entry["task_id"]] = original | over
+                self.unverified(self.gate())
+                self.assertIn("did not approve", self.gate())
+            self.history[entry["task_id"]] = original
+        entry_cases = {
+            "task_id": {"task_id": "x"}, "prompt_sha256": {"prompt_sha256": "d" * 64},
+            "primary_path": {"primary_path": "contracts/engineering/unrelated.json"}, "primary_sha256": {"primary_sha256": "e" * 64},
+            "subject-sha": {"subjects": ((self.OWNER_REC, "f" * 64),)}, "subjects-empty": {"subjects": ()},
+        }
+        for label, over in entry_cases.items():
+            with self.subTest(f"entry {label}"), mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry | over,)):
+                self.unverified(self.gate())
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.gate())
+
+    def test_a_genuine_negative_review_of_the_owner_record_still_blocks_beside_the_pinned_old_runner_review(self):
+        entry = self.pinned_old_runner_review()
+        sha = self.owner["sha256"]
+        prompts = {
+            "primary": f"Review EXACT file {self.OWNER_REC} SHA-256 {sha}\n",
+            "primary beside another runner": f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {entry['primary_sha256']}\n"
+                                              f"Review EXACT file {self.OWNER_REC} SHA-256 {sha}\n"}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (entry,)):
+            self.assertIsNone(self.gate())
+            for label, prompt in prompts.items():
+                for outcome in ("CHANGES_REQUESTED", "BLOCKED"):
+                    with self.subTest(f"{label} {outcome}"):
+                        self.history["adverse"] = {"id": "adverse", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                                   "prompt": prompt, "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_" + outcome,
+                                                   "evidence": {"review_outcome": outcome, "violations": ["REVIEW_" + outcome]}}
+                        self.unverified(self.gate())
+                        self.assertIn("did not approve", self.gate())
+                        del self.history["adverse"]
+            self.assertIsNone(self.gate())
+
+    def test_cap_and_s0_product_stay_refused_with_the_pinned_old_runner_review(self):
+        entry = self.pinned_old_runner_review()
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (*R.S0_CONTEXT_EXCEPTIONS, entry)):
+            cap, s0 = list(R.ACCOUNTING_RECOVERY_PATHS), list(R.S0_PATHS)
+            t = self.design(allowed_paths=cap, expected_changes=cap)
+            self.assertTrue(R.noncap_shape_problem(self.history, t))
+            self.assertFalse((R.gate_reason(self.cfg, t, self.history) or "").startswith("NONCAP"))
+            t = self.design(allowed_paths=s0, expected_changes=s0)
+            self.assertTrue(R.noncap_shape_problem(self.history, t))
+            self.assertTrue(R.gate_reason(self.cfg, t, self.history).startswith("S0_UNTAGGED"))
 
     # --- what is and is not admitted
     def test_cap_paths_and_spoofs_stay_trapped_by_the_historical_chain(self):

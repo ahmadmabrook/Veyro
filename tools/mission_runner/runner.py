@@ -1897,7 +1897,7 @@ def _s0_binds_subject(y, path, sha):
 
 
 # Audited, immutable historical exceptions. Default is fail-closed: a negative Opus review that mentions a subject's
-# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These five tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These six tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1934,6 +1934,14 @@ S0_CONTEXT_EXCEPTIONS = (
      "primary_sha256": "cf8b7e5af12f03686c6596cc9cf7cbe7c83d622bbeb3fca5206b47923cf8f589",
      "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
                    "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"),)},
+    # OLD two-file runner candidate (its test file hash is fixed by the prompt sha256) that only quoted the full-scope
+    # recovery owner record under "Authority"; see OWNER-2026-10-25-mod004-context-attribution-recovery.md.
+    {"task_id": "mod004-fullscope-gate-opus-security-20261024",
+     "prompt_sha256": "700f62df69b6393b540c1f07d98a1377668d820d11264f17ab1264dac0d868a2",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "23cbe13b223a3ffff0db592378633aebfc872254f3da5e080d9df6f57f17714c",
+     "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-fullscope-recovery.md",
+                   "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"),)},
 )
 
 
