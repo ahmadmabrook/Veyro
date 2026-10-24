@@ -17,26 +17,26 @@
     },
     "runner_gate": {
       "path": "tools/mission_runner/runner.py",
-      "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e"
+      "sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904"
     },
-    "published_runner_gate_commit": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
+    "published_runner_gate_commit": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
     "runner_gate_ci": {
-      "run_id": "40073841512",
-      "name": "Veyro Foundation CI",
+      "conclusion": "success",
       "event": "push",
-      "status": "completed",
-      "head_sha": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
-      "conclusion": "success"
+      "head_sha": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
+      "name": "Veyro Foundation CI",
+      "run_id": "40121602649",
+      "status": "completed"
     }
   },
   "runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e"
+    "sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904"
   },
   "immediate_prior_runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "fb4fc3c7f55d5dca3a3f512a7f2058718d55c21416b72bb4845e38550a314d2a",
-    "note": "Historical and NOT currently loaded: reviewed runner published at commit efc70b8a24adedca2d94dacbe7dda8ab39e4c08f. Earlier historical runners were ae2abae32073545d8cb638d860cd24df43004654f76e03427a5c4f1349068deb (commit 3287d4a) and 3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad. Reviews of these earlier runners do not grant approval to the current runner code."
+    "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e",
+    "note": "Historical and NOT currently loaded: former top-level runner SHA-256 41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e is historical. Earlier historical runners were fb4fc3c7f55d5dca3a3f512a7f2058718d55c21416b72bb4845e38550a314d2a, ae2abae32073545d8cb638d860cd24df43004654f76e03427a5c4f1349068deb and 3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad. Reviews of these earlier runners do not grant approval to the current runner code."
   },
   "historical_runner_gate": {
     "path": "tools/mission_runner/runner.py",
@@ -101,8 +101,8 @@
   },
   "scenario_qa_packet": {
     "path": "contracts/engineering/mod004-s0-scenario-qa.md",
-    "sha256": "78e1c8ecc3da2167e5f4feff736ff7873a04979964ee6b69f8ef123b56f83e58",
-    "sha256_note": "Operator-precomputed SHA-256 of the exact current packet bytes (the starting packet with only the Review and recovery status paragraph refreshed); the drafting agent did not compute it. No review or publication of this current certificate/packet pair has occurred yet. The previous packet hash 08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680 is superseded by this refresh. The earlier published packet hash 349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45 is historical and was APPROVED for its old bytes only (task mod004-s0-doc-remediation1-opus-review-20261023). The earlier hash ffa4f968... belonged to a rejected (CHANGES_REQUESTED) packet and is void. No review of the current bytes has occurred yet."
+    "sha256": "ea79fe0fe2d926fe2131ccf81431cb12762e7bb25c76b32ae7f4258d41fdaf60",
+    "sha256_note": "Operator-precomputed SHA-256 of the exact starting packet with only its Review and recovery status paragraph changed; the drafting agent did not compute it. Starting hash 78e1c8ecc3da2167e5f4feff736ff7873a04979964ee6b69f8ef123b56f83e58 and earlier 08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680 are superseded. Earlier packet 349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45 was APPROVED for its old bytes only; rejected ffa4f968... remains void. Frozen earlier prose in this certificate's effectiveness_rule, scenario_review_requirement and capability_declaration.note is historical; the packet status paragraph holds current product and runner evidence. No independent review or publication of this NEW pair has happened yet."
   },
   "capability_declaration": {
     "path": "contracts/engineering/mod004-s0-capability.json",
@@ -175,19 +175,19 @@
       }
     },
     "runner_gate": {
-      "commit": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
+      "commit": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
       "push": "non-force",
       "ci": {
-        "run_id": "40073841512",
-        "name": "Veyro Foundation CI",
+        "conclusion": "success",
         "event": "push",
-        "status": "completed",
-        "head_sha": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
-        "conclusion": "success"
+        "head_sha": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
+        "name": "Veyro Foundation CI",
+        "run_id": "40121602649",
+        "status": "completed"
       },
       "review": {
-        "task_id": "mod004-s0-test-rebind-repair-opus-security-v2-20261024",
-        "output_sha256": "df48441896bb69fdad9bcf4054423e44d56b6d218d54cf1655f7842335626293",
+        "task_id": "s0-complete-candidate-opus-security-20261024",
+        "output_sha256": "5800cc21e2bafc59afb862858f9fc0080d201e96a7a26f671ad2ca0afcda4339",
         "route": "verified Opus",
         "outcome": "APPROVED"
       }
@@ -214,11 +214,11 @@
   },
   "operator_observed_local_python": "Python 3.13.13 at /opt/homebrew/bin/python3.13 on 2026-10-23; this is operator observation, not a reviewer-executed command.",
   "runner_load_observation": {
-    "observed_at": "2026-10-24",
+    "observed_at": "2026-10-24 operator observation after exact-SHA CI and one safe reload",
     "context": "Operator verified after one new authorized reload; this is not claimed to be the only reload historically.",
-    "loaded_runner_sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e",
+    "loaded_runner_sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904",
     "sole_loaded_runner": true,
-    "reload_status": "one authorized safe launchd reload completed; sole loaded runner PID 15647, fresh heartbeat, preserved 320-task history, free writer lock, no quarantine; recovery receipt MOD-004-S0-TEST-RECOVERY.json refreshed with verification and rebind authority both PASS",
+    "reload_status": "One conditional safe reload completed; sole PID 66974 loaded reviewed runner SHA 7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904, fresh heartbeat, free writer lock, 345 historical tasks preserved, no duplicate runner.",
     "evidence_class": "Operator-observed evidence supplied in the write instruction; the drafting agent did not independently inspect the host (PID, heartbeat, writer lock, quarantine or receipt). Not a future guarantee.",
     "ongoing_requirement": "Runner gate rechecks current sole-runner code hash and fresh heartbeat before S0 enqueue; this observation alone does not grant dispatch."
   },
