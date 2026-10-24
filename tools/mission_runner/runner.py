@@ -2367,7 +2367,7 @@ def s0_refresh_review_reason(cfg, t, tasks):
 
 # ------------------------------------------------ MOD-004 S0 test-only remediation (OWNER-2026-10-24-mod004-s0-test-remediation.md)
 # Infrastructure eligibility only; it performs no correction and approves no product. Two further separate chains, neither
-# the original MOD004-S0 entitlement nor the CAP chain, and neither uses remediation_of:
+# the original MOD004-S0 entitlement nor the CAP chain; only the one repair of the rebind uses remediation_of:
 #   * MOD004-S0-DOC-REBIND: ONE Sonnet write of exactly the two slice documents (from their published hashes), ONE
 #     exact-bound Opus review, no retry. It may run although the historical S0 product write exists, but only while the
 #     recovery authority holds and no S0 receipt sits in acceptances/.
@@ -2383,6 +2383,14 @@ S0_TEST_MARKER = "MOD004-S0-TEST-REMEDIATION"
 S0_REBIND_BASE = {
     "contracts/engineering/mod004-s0-eligibility.json": "17d5120ef0e99b5a36cabf62e5a2c6f86349ad5d9c73e0ad294d43b54479c8d1",
     "contracts/engineering/mod004-s0-scenario-qa.md": "08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680"}
+# The one bounded repair of the incomplete rebind (cert packet hash was a placeholder; runner evidence stale after this
+# runner changed): same marker, remediation_of the DONE two-file root write at these exact bytes, one more Sonnet write
+# of the same two files, one Opus review bound to the repair's two changed hashes. The root is never reviewed.
+S0_REBIND_ROOT_ID = "mod004-s0-test-doc-rebind-sonnet-20261024"
+S0_REBIND_REPAIR_ID = "mod004-s0-test-doc-rebind-repair-sonnet-20261024"
+S0_REBIND_ROOT_DONE = {
+    "contracts/engineering/mod004-s0-eligibility.json": "4dff29375ecb75cad21fe1a14897397e9a0d2840b64b115bb890fadf46b738e4",
+    "contracts/engineering/mod004-s0-scenario-qa.md": "ee4aea12fc9ad4a08bf90138570859f0e0ebad56b9a428aec4a0cb88b3c354e6"}
 S0_TEST_RECOVERY_RECEIPT = "MOD-004-S0-TEST-RECOVERY"  # operator-written <home>/acceptances/MOD-004-S0-TEST-RECOVERY.json
 S0_TEST_CHECKPOINT = "checkpoints/MOD-004-S0.pre-test-remediation.json"  # fixed path under the runner home
 S0_PRE_TEST_RECEIPT_SHA = "a02beb42243981ed2997a8a9525db99e410201e31b90cfce6de83d9f1589876f"  # the current six-subject receipt
@@ -2402,6 +2410,10 @@ S0_TEST_SUBJECTS = {  # four distinct exact subjects, each with its own distinct
 
 def s0_rebind_marked(t):
     return t.get("plan_phase") == S0_REBIND_MARKER
+
+
+def s0_rebind_repair_marked(t):
+    return s0_rebind_marked(t) and t.get("id") == S0_REBIND_REPAIR_ID
 
 
 def s0_test_marked(t):
@@ -2502,10 +2514,145 @@ def s0_rebind_shape_problem(t):
     return None
 
 
+def s0_rebind_repair_shape_problem(t):
+    if t.get("id") != S0_REBIND_REPAIR_ID:
+        return f"the only admitted repair task id is {S0_REBIND_REPAIR_ID}"
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the S0 document rebind repair is a MOD-004 implement task only"
+    if t.get("source") == "handoff":
+        return "the planner cannot propose the S0 document rebind repair"
+    if t.get("remediation_of") != S0_REBIND_ROOT_ID:
+        return "remediation_of must be exactly the incomplete rebind write"
+    if any(t.get(k) is not None for k in ("review_retry_of", "accounting_recovery_of", "review_of", "review_candidate")):
+        return "review_retry_of, accounting_recovery_of and review binding fields are rejected"
+    if sorted(t.get("allowed_paths") or []) != sorted(S0_DOC_PATHS) or sorted(t.get("expected_changes") or []) != sorted(S0_DOC_PATHS):
+        return "allowed_paths and expected_changes must be exactly the two S0 document files"
+    if t.get("verify_cmd") != []:
+        return "the document rebind repair runs no verifier"
+    if t.get("doc_base") != S0_REBIND_ROOT_DONE:
+        return "doc_base must be exactly the two document hashes the incomplete rebind write left"
+    return None
+
+
+def _s0_rebind_root_pairs():
+    return _changed_pairs([{"path": p, "sha256": h} for p, h in S0_REBIND_ROOT_DONE.items()])
+
+
+def _s0_rebind_is_pinned_root(w):
+    return w.get("id") == S0_REBIND_ROOT_ID or _changed_pairs((w.get("evidence") or {}).get("changed")) == _s0_rebind_root_pairs()
+
+
+def _s0_rebind_root_problem(tasks):
+    """The incomplete root write must stay exactly as recorded (DONE, one attempt, the two pinned hashes, never reviewed).
+    Record-only: it does not look at the working tree, which the repair legitimately changes."""
+    w = tasks.get(S0_REBIND_ROOT_ID)
+    if not (isinstance(w, dict) and w.get("id") == S0_REBIND_ROOT_ID and s0_rebind_marked(w) and not s0_rebind_repair_marked(w)
+            and w.get("role") == "implement" and w.get("status") == "DONE" and w.get("attempts") == 1
+            and s0_rebind_shape_problem(w) is None and (w.get("evidence") or {}).get("violations") == []
+            and _changed_pairs((w.get("evidence") or {}).get("changed")) == _s0_rebind_root_pairs()):
+        return "the incomplete rebind write is not the pinned DONE two-file write with one attempt"
+    if any(isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == S0_REBIND_ROOT_ID for x in tasks.values()):
+        return "the incomplete rebind write has a review task; it is repaired, never reviewed"
+    return None
+
+
+def _s0_rebind_repair_write_problem(w):
+    """Record-only: the repair write is DONE, one attempt, and changed exactly both documents to bytes that differ from
+    the root write's."""
+    ev = w.get("evidence") or {}
+    changed = _changed_pairs(ev.get("changed"))
+    if not (s0_rebind_repair_marked(w) and w.get("status") == "DONE" and w.get("attempts") == 1
+            and s0_rebind_repair_shape_problem(w) is None and ev.get("violations") == []
+            and sorted(str(c["path"]) for c in changed) == sorted(S0_DOC_PATHS)
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) and c["sha256"] != S0_REBIND_ROOT_DONE[c["path"]]
+                    for c in changed)):
+        return "the repair write is not DONE with one attempt and both documents changed from the root write's bytes"
+    return None
+
+
+def _s0_rebind_packet_problem(cfg, hashes=None):
+    """The certificate's scenario_qa_packet names the packet file and its exact current sha256 (never a placeholder).
+    With `hashes`, both documents must also be exactly those bytes."""
+    cert_path, qa_path = S0_DOC_PATHS
+    try:
+        cert_bytes = _read_bounded(Path(cfg.repo) / cert_path, REVIEW_MAX_BYTES)
+        qa_sha = hashlib.sha256(_read_bounded(Path(cfg.repo) / qa_path, REVIEW_MAX_BYTES)).hexdigest()
+        if hashes is not None and (hashlib.sha256(cert_bytes).hexdigest() != hashes.get(cert_path) or qa_sha != hashes.get(qa_path)):
+            return "a document is not the repair's recorded content"
+        ref = _s0_json(cert_bytes, "S0 certificate").get("scenario_qa_packet")
+    except (GateError, OSError) as e:
+        return f"cannot read the repaired documents: {str(e)[:100]}"
+    if not (isinstance(ref, dict) and ref.get("path") == qa_path and isinstance(ref.get("sha256"), str)
+            and SHA256_RE.fullmatch(ref["sha256"]) and ref["sha256"] == qa_sha):
+        return "certificate scenario_qa_packet.sha256 is not the final packet hash (or is a placeholder)"
+    return None
+
+
+def s0_rebind_repair_gate_reason(cfg, t, tasks):
+    """The one fully authorised repair of the incomplete rebind write; else an explicit S0_REBIND_REPAIR_* reason."""
+    problem = s0_rebind_repair_shape_problem(t)
+    if problem:
+        return f"S0_REBIND_REPAIR_INVALID_TASK {t['id']}: {problem}"
+    if any(s0_test_marked(x) and x.get("role") in WRITE_ROLES for x in tasks.values()):
+        return "S0_REBIND_REPAIR_CLOSED: the test-only correction exists; the slice documents may no longer change"
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        return "S0_REBIND_REPAIR_CLOSED: an S0 authority receipt exists in acceptances/ and binds the slice documents"
+    if t.get("attempts"):
+        return f"S0_REBIND_REPAIR_ATTEMPT_USED {t['id']}: the single repair write attempt was already started"
+    others = sorted(x["id"] for x in tasks.values() if x.get("id") not in (t["id"], S0_REBIND_ROOT_ID)
+                    and s0_rebind_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_REBIND_REPAIR_SECOND_WRITE: rebind write {others[0]} already exists; the repair is one-time"
+    problem = _s0_rebind_root_problem(tasks)
+    if problem:
+        return f"S0_REBIND_REPAIR_ROOT_INVALID: {problem}"
+    busy = _s0_competing_writes(tasks, t)
+    if busy:
+        return f"S0_REBIND_REPAIR_CONCURRENT_WRITE: {busy[0]} is a pending write in an S0 chain or touching S0 files"
+    if {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS} != S0_REBIND_ROOT_DONE:
+        return "S0_REBIND_REPAIR_STALE_DRAFT: a document is not the content the incomplete rebind write left"
+    try:
+        verify_s0_rebind_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_REBIND_REPAIR_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
+def _s0_rebind_repair_review_reason(cfg, t, w, tasks):
+    """The one Opus review of the repair write, bound to its two changed hashes; the incomplete root is never reviewed."""
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"):
+        return "S0_REBIND_REVIEW_UNSUPPORTED: only the DONE MOD-004 repair write can be reviewed here"
+    problem = _s0_rebind_root_problem(tasks) or _s0_rebind_repair_write_problem(w)
+    if problem:
+        return f"S0_REBIND_REVIEW_UNSUPPORTED: {problem}"
+    ids = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and s0_rebind_marked(x) and x.get("role") in WRITE_ROLES)
+    if ids != sorted([S0_REBIND_ROOT_ID, S0_REBIND_REPAIR_ID]):
+        return "S0_REBIND_REVIEW_UNSUPPORTED: only the incomplete root write and its one repair may exist"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if _changed_pairs((t.get("review_of") or {}).get("changed")) != want:
+        return "S0_REBIND_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of both document files"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_REBIND_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review rebind repair {w['id']}"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_REBIND_REVIEW_BINDING_STALE: the document files no longer match the write's recorded hashes"
+    problem = _s0_rebind_packet_problem(cfg, {c["path"]: c["sha256"] for c in want})
+    if problem:
+        return f"S0_REBIND_REVIEW_UNSUPPORTED: {problem}; the one review slot is not spent on an unfinished repair"
+    try:
+        verify_s0_rebind_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_REBIND_REVIEW_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
 def s0_rebind_gate_reason(cfg, t, tasks):
     """None for a task outside the rebind or the one fully authorised rebind write; else an explicit S0_REBIND_* reason."""
     if not s0_rebind_marked(t):
         return None
+    if s0_rebind_repair_marked(t):
+        return s0_rebind_repair_gate_reason(cfg, t, tasks)
     problem = s0_rebind_shape_problem(t)
     if problem:
         return f"S0_REBIND_INVALID_TASK {t['id']}: {problem}"
@@ -2540,6 +2687,14 @@ def s0_rebind_review_reason(cfg, t, tasks):
         return "S0_REBIND_REVIEW_UNSUPPORTED: the planner cannot propose a rebind review; it is owner-routed"
     if t.get("review_retry_of") or t.get("review_candidate"):
         return "S0_REBIND_REVIEW_UNSUPPORTED: the rebind write gets one bound review and no retry"
+    if s0_rebind_repair_marked(w):
+        return _s0_rebind_repair_review_reason(cfg, t, w, tasks)
+    if any(isinstance(x, dict) and s0_rebind_marked(x) and (s0_rebind_repair_marked(x) or _s0_rebind_is_pinned_root(x))
+           for x in tasks.values()):
+        return "S0_REBIND_REVIEW_UNSUPPORTED: the incomplete root rebind write is repaired, never reviewed"
+    problem = s0_rebind_shape_problem(w)
+    if problem:
+        return f"S0_REBIND_REVIEW_UNSUPPORTED: {problem}"
     if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"):
         return "S0_REBIND_REVIEW_UNSUPPORTED: only a DONE MOD-004 rebind write can be reviewed here"
     want = _changed_pairs((w.get("evidence") or {}).get("changed"))
@@ -2557,11 +2712,42 @@ def s0_rebind_review_reason(cfg, t, tasks):
     return None
 
 
+def _s0_rebind_one_approved_review(tasks, w):
+    reviews = [x for x in tasks.values() if isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == w["id"]]
+    return (len(reviews) == 1 and reviews[0].get("role") == "code-review" and reviews[0].get("status") == "DONE"
+            and reviews[0].get("module") == w.get("module") == S0_MODULE
+            and reviews[0].get("source") != "handoff" and not reviews[0].get("review_retry_of")
+            and (reviews[0].get("evidence") or {}).get("review_outcome") == "APPROVED"
+            and review_verdict(tasks, w["id"]) == "APPROVED" and _bound_review_ok(w, reviews[0]))
+
+
+def _s0_rebind_repair_done(cfg, tasks, ws):
+    """The pinned incomplete root plus its one repair, no other rebind write; the repair is DONE, its one bound review
+    APPROVED both changed documents, they still hash to what was reviewed, and the certificate carries the final packet hash."""
+    if sorted(x["id"] for x in ws) != sorted([S0_REBIND_ROOT_ID, S0_REBIND_REPAIR_ID]):
+        raise GateError("S0 rebind: exactly the incomplete root write and its one repair must exist")
+    problem = _s0_rebind_root_problem(tasks) or _s0_rebind_repair_write_problem(tasks[S0_REBIND_REPAIR_ID])
+    if problem:
+        raise GateError(f"S0 rebind: {problem}")
+    w = tasks[S0_REBIND_REPAIR_ID]
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        raise GateError("S0 rebind: the repair write's documents are not still current")
+    if not _s0_rebind_one_approved_review(tasks, w):
+        raise GateError("S0 rebind: the repair write lacks its one exact-bound, verified-Opus APPROVED review")
+    hashes = {c["path"]: c["sha256"] for c in _changed_pairs((w.get("evidence") or {}).get("changed"))}
+    problem = _s0_rebind_packet_problem(cfg, hashes)
+    if problem:
+        raise GateError(f"S0 rebind: {problem}")
+    return hashes
+
+
 def _s0_rebind_done(cfg, tasks):
-    """The one rebind write is DONE, changed both documents, and its single exact-bound Opus review APPROVED them;
-    the documents still hash to what was reviewed. Returns the approved {path: sha256} of both documents.
-    Raises GateError otherwise."""
+    """The rebind is complete and approved; the documents still hash to what was reviewed. Returns the approved
+    {path: sha256} of both documents. Once the pinned incomplete root exists or any repair exists, ONLY the exact
+    root+repair lineage completes it (the root is never reviewed). Raises GateError otherwise."""
     ws = [x for x in tasks.values() if isinstance(x, dict) and s0_rebind_marked(x) and x.get("role") in WRITE_ROLES]
+    if any(s0_rebind_repair_marked(x) or _s0_rebind_is_pinned_root(x) for x in ws):
+        return _s0_rebind_repair_done(cfg, tasks, ws)
     if len(ws) != 1:
         raise GateError("S0 rebind: exactly one document rebind write must exist")
     w = ws[0]
@@ -2572,11 +2758,7 @@ def _s0_rebind_done(cfg, tasks):
                     for c in changed)
             and _hashes_current(cfg, (w.get("evidence") or {}).get("changed"))):
         raise GateError("S0 rebind: the rebind write is not DONE with both documents changed and still current")
-    reviews = [x for x in tasks.values() if isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == w["id"]]
-    if not (len(reviews) == 1 and reviews[0].get("role") == "code-review" and reviews[0].get("status") == "DONE"
-            and reviews[0].get("source") != "handoff" and not reviews[0].get("review_retry_of")
-            and (reviews[0].get("evidence") or {}).get("review_outcome") == "APPROVED"
-            and review_verdict(tasks, w["id"]) == "APPROVED" and _bound_review_ok(w, reviews[0])):
+    if not _s0_rebind_one_approved_review(tasks, w):
         raise GateError("S0 rebind: the rebind write lacks its one exact-bound, verified-Opus APPROVED review")
     return {c["path"]: c["sha256"] for c in changed}
 
@@ -3869,6 +4051,16 @@ class Runner:
                 bad.append(("S0_REBIND_AUTHORITY_WITHDRAWN", str(e)[:200]))
             except Exception as e:
                 bad.append(("S0_REBIND_AUTHORITY_WITHDRAWN", type(e).__name__))
+        if write and s0_rebind_repair_marked(t):  # the root record must be untouched and the certificate must carry the final packet hash
+            try:
+                problem = _s0_rebind_root_problem(self.state["tasks"])
+                if problem:
+                    bad.append(("S0_REBIND_REPAIR_ROOT_CHANGED", problem[:200]))
+                problem = _s0_rebind_packet_problem(self.cfg)
+                if problem:
+                    bad.append(("S0_REBIND_REPAIR_PACKET_UNBOUND", problem[:200]))
+            except Exception as e:
+                bad.append(("S0_REBIND_REPAIR_PACKET_UNBOUND", type(e).__name__))
         if write and s0_test_marked(t):  # recovery/full S0 authority or the validator may have changed during the child
             try:
                 verify_s0_test_authority(self.cfg, self.state["tasks"])
@@ -4423,7 +4615,7 @@ def main(argv=None):
     e.add_argument("--review-of", help="code-review only: id of the DONE write task this review is bound to (changed-file hashes are filled from runner evidence)")
     e.add_argument("--review-retry-of", help="owner-audited operational BLOCKED review id; permits one unchanged-candidate retry only")
     e.add_argument("--accounting-recovery-of", help="one audited MOD-004 source-inaccessible accounting review id; fresh write only")
-    e.add_argument("--remediation-of", help="MOD004-S0-DOC only: the document write whose exact-bound review requested changes")
+    e.add_argument("--remediation-of", help="MOD004-S0-DOC: the document write whose exact-bound review requested changes; or the one MOD004-S0-DOC-REBIND repair (its exact id only): the incomplete rebind write")
     e.add_argument("--doc-base", action="append", default=[], metavar="PATH=SHA256|absent",
                    help="MOD004-S0-DOC / -REFRESH / -REBIND only, once per document: the exact current content hash this write starts from")
     for c in ("pause", "resume", "stop"):
@@ -4469,8 +4661,10 @@ def main(argv=None):
         return dashboard.serve(cfg, a.port)
     if a.cmd == "enqueue":
         try:
-            if a.remediation_of and a.plan_phase != S0_DOC_MARKER:
-                raise ValueError("--remediation-of is accepted here only for MOD004-S0-DOC document writes")
+            repair = (a.plan_phase, a.id, a.remediation_of) == (S0_REBIND_MARKER, S0_REBIND_REPAIR_ID, S0_REBIND_ROOT_ID)
+            if a.remediation_of and a.plan_phase != S0_DOC_MARKER and not repair:
+                raise ValueError("--remediation-of is accepted here only for MOD004-S0-DOC document writes and the one "
+                                 "MOD004-S0-DOC-REBIND repair task")
             p = enqueue(cfg, {"id": a.id, "module": a.module, "role": a.role, "title": a.title,
                               "plan_phase": a.plan_phase, "allowed_paths": a.allow, "expected_changes": a.expect,
                               "verify_cmd": json.loads(a.verify_cmd) if a.verify_cmd else None,

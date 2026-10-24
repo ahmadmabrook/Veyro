@@ -7732,6 +7732,778 @@ class Mod004S0DocRebind(S0TestFixture):
         self.assertEqual(u["status"], "FAILED")
 
 
+class Mod004S0DocRebindRepair(S0TestFixture):
+    """The one bounded repair of the incomplete rebind write: the pinned DONE two-file root (never reviewed), one more
+    runner-recorded Sonnet write of the same two documents from the root's exact bytes, and ONE Opus review bound to the
+    repair's two changed hashes. The fixture patches S0_REBIND_ROOT_DONE to synthetic root bytes; the real pins are
+    asserted separately from REAL_ROOT."""
+    ROOT, REP = R.S0_REBIND_ROOT_ID, R.S0_REBIND_REPAIR_ID
+    REAL_ROOT = dict(R.S0_REBIND_ROOT_DONE)
+    STATUSES = ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED")
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.put_docs("root")
+        patcher = mock.patch.object(R, "S0_REBIND_ROOT_DONE", dict(self.root))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.history[self.ROOT] = self.rebind(id=self.ROOT) | {
+            "status": "DONE", "attempts": 1, "created_at": "2026-10-24T01:00:00Z", "route": {"verdict": "VERIFIED"},
+            "evidence": {"changed": [{"path": p, "sha256": h} for p, h in self.root.items()], "violations": []}}
+        self.sync()
+
+    # --- fixtures
+    def rpraw(self, **over):
+        return {"id": self.REP, "module": "MOD-004", "role": "implement", "prompt": "repair the S0 documents",
+                "plan_phase": R.S0_REBIND_MARKER, "allowed_paths": list(R.S0_DOC_PATHS),
+                "expected_changes": list(R.S0_DOC_PATHS), "verify_cmd": [], "doc_base": dict(self.root),
+                "remediation_of": self.ROOT} | over
+
+    def repair(self, post=None, **over):
+        return R.validate_task(self.rpraw(**over), self.cfg) | (post or {})
+
+    def rpreason(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.repair(post, **over), self.history if tasks is None else tasks)
+
+    def put_final(self, packet="ok"):
+        """The final documents. The certificate names the packet and its hash; `packet` selects a broken variant."""
+        self.write(self.DOC_QA, "final packet\n")
+        ref = {"path": self.DOC_QA, "sha256": self.sha(self.DOC_QA)}
+        if packet == "placeholder":
+            ref["sha256"] = "PENDING_OPERATOR_SHASUM_NOT_COMPUTED"
+        elif packet == "wrong":
+            ref["sha256"] = "1" * 64
+        elif packet == "wrong path":
+            ref["path"] = self.DOC_CERT
+        cert = {"schema": 1, "status": "S0_ELIGIBLE"} | ({} if packet == "missing" else {"scenario_qa_packet": ref})
+        self.write(self.DOC_CERT, "{" if packet == "bad json" else json.dumps(cert))
+        return {p: self.sha(p) for p in R.S0_DOC_PATHS}
+
+    def done_repair(self, hashes=None, review=True, tasks=None, **over):
+        hashes = hashes or self.put_final()
+        changed = [{"path": p, "sha256": h} for p, h in hashes.items()]
+        w = self.repair(id=self.REP, **over) | {
+            "status": "DONE", "attempts": 1, "created_at": "2026-10-24T03:00:00Z", "route": {"verdict": "VERIFIED"},
+            "evidence": {"changed": changed, "violations": []}}
+        out = dict(self.history if tasks is None else tasks) | {self.REP: w}
+        if review:
+            out["rep-rev"] = {"id": "rep-rev", "module": "MOD-004", "role": "code-review", "status": "DONE",
+                              "created_at": "2026-10-24T03:01:00Z",
+                              "review_of": {"task_id": self.REP, "changed": [dict(c) for c in changed]},
+                              "route": {"verdict": "VERIFIED"},
+                              "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True, "violations": []}}
+        return out, hashes
+
+    def advance_repair(self):
+        """The repair is DONE and approved, and a NEW six-subject S0 receipt is rebuilt whose eligibility subject is the
+        final certificate (which carries the packet hash), published with the final packet at one CI-attested commit."""
+        self.write(self.DOC_QA, "final packet\n")
+        self.build(cert={"scenario_qa_packet": {"path": self.DOC_QA, "sha256": self.sha(self.DOC_QA)}})
+        hashes = {p: self.sha(p) for p in R.S0_DOC_PATHS}
+        tasks, _ = self.done_repair(hashes=hashes)
+        self.history.update(tasks)
+        self.sync()
+        return hashes
+
+    def copy(self, tasks):
+        return json.loads(json.dumps(tasks))
+
+    # --- pins
+    def test_the_real_pins_are_exactly_the_owner_recorded_values(self):
+        self.assertEqual(R.S0_REBIND_ROOT_ID, "mod004-s0-test-doc-rebind-sonnet-20261024")
+        self.assertEqual(R.S0_REBIND_REPAIR_ID, "mod004-s0-test-doc-rebind-repair-sonnet-20261024")
+        self.assertEqual(self.REAL_ROOT, {
+            "contracts/engineering/mod004-s0-eligibility.json": "4dff29375ecb75cad21fe1a14897397e9a0d2840b64b115bb890fadf46b738e4",
+            "contracts/engineering/mod004-s0-scenario-qa.md": "ee4aea12fc9ad4a08bf90138570859f0e0ebad56b9a428aec4a0cb88b3c354e6"})
+        self.assertEqual(set(self.REAL_ROOT), set(R.S0_DOC_PATHS))
+
+    # --- the repair write gate
+    def test_authorised_repair_passes_and_leaves_history_untouched(self):
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.rpreason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+        t = self.repair()
+        self.assertTrue(R.s0_single_attempt(t))
+        self.assertTrue(R.s0_rebind_marked(t) and R.s0_rebind_repair_marked(t))
+        self.assertFalse(R.s0_rebind_repair_marked(self.history[self.ROOT]))
+        self.assertFalse(any(f(t) for f in (R.s0_marked, R.s0_doc_marked, R.s0_refresh_marked, R.s0_test_marked, R.s0_touches)))
+        self.assertTrue(R.s0_doc_touches(t))
+
+    def test_repair_leaves_the_cap_chain_and_the_s0_product_gate_closed(self):
+        cap = self.cap_next()
+        before = (R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history))
+        self.assertIsNotNone(before[0])
+        self.assertIsNone(self.rpreason())
+        self.assertEqual((R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history)), before)
+        self.live()
+        self.assertIsNotNone(R.s0_probe(self.cfg))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "s0-probe"])
+        self.assertEqual((code, json.loads(buf.getvalue())["s0_route"]), (1, "closed"))
+        tasks, _ = self.done_repair()
+        self.assertEqual((R.gate_reason(self.cfg, cap, tasks), R.review_gate_reason(self.cfg, cap, tasks)), before)
+        self.assertEqual(R.review_attempts(tasks, self.OLD), [])
+
+    def test_shape_mismatches_are_refused(self):
+        one = R.S0_DOC_PATHS[:1]
+        cases = {
+            "module": {"module": "MOD-003"},
+            "other id": {"id": "mod004-s0-test-doc-rebind-repair-sonnet-20261025"},
+            "other remediation target": {"remediation_of": "doc-1"},
+            "remediation of itself": {"remediation_of": self.REP},
+            "extra allowed path": {"allowed_paths": [*R.S0_DOC_PATHS, "contracts/engineering/other.json"]},
+            "directory scope": {"allowed_paths": ["contracts/engineering/"]},
+            "glob scope": {"allowed_paths": ["contracts/engineering/mod004-s0-*"]},
+            "one path only": {"allowed_paths": list(one), "expected_changes": list(one)},
+            "one expected path": {"expected_changes": list(one)},
+            "product path": {"allowed_paths": [*R.S0_DOC_PATHS, R.S0_PATHS[0]], "expected_changes": [*R.S0_DOC_PATHS, R.S0_PATHS[0]]},
+            "test path": {"allowed_paths": [*R.S0_DOC_PATHS, R.S0_TEST_PATH], "expected_changes": [*R.S0_DOC_PATHS, R.S0_TEST_PATH]},
+            "verifier": {"verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]},
+            "doc_base none": {"doc_base": {p: None for p in R.S0_DOC_PATHS}},
+            "doc_base one stale": {"doc_base": dict(self.root) | {R.S0_DOC_PATHS[0]: "a" * 64}},
+            "doc_base swapped": {"doc_base": dict(zip(R.S0_DOC_PATHS, reversed(list(self.root.values()))))},
+            "doc_base is the published base": {"doc_base": dict(self.pub)},
+            "doc_base is the real root pins": {"doc_base": dict(self.REAL_ROOT)},
+        }
+        for name, over in cases.items():
+            with self.subTest(name):
+                try:
+                    reason = self.rpreason(**over)
+                except ValueError:
+                    continue
+                self.assertTrue(reason and reason.startswith(("S0_REBIND_REPAIR_INVALID_TASK", "S0_REBIND_INVALID_TASK", "S0_DOC_",
+                                                              "S0_UNTAGGED", "GATE_UNVERIFIABLE")), reason)
+        for name, post in {
+            "role": {"role": "gatekeeper"}, "test role": {"role": "test"}, "handoff source": {"source": "handoff"},
+            "review retry": {"review_retry_of": "x"}, "accounting recovery": {"accounting_recovery_of": "x"},
+            "review binding": {"review_of": {"task_id": self.OLD}}, "review candidate": {"review_candidate": "x"},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(self.rpreason(post=post).startswith("S0_REBIND_REPAIR_INVALID_TASK"), name)
+
+    def test_a_repair_shaped_task_without_remediation_is_only_a_second_root_write_and_the_root_cannot_rerun(self):
+        t = self.rebind(id="rb-2")
+        self.assertFalse(R.s0_rebind_repair_marked(t))
+        self.assertIn("S0_REBIND_SECOND_WRITE", self.rbreason(id="rb-2"))
+        for label, over in {"no remediation": {}, "wrong parent": {"remediation_of": "doc-1"}, "self parent": {"remediation_of": self.REP},
+                            "root-shaped doc_base": {"remediation_of": self.ROOT, "doc_base": dict(R.S0_REBIND_BASE)}}.items():
+            with self.subTest(f"exact repair id, {label}"):
+                t = self.rebind(id=self.REP) | {"doc_base": dict(self.root)} | over
+                self.assertTrue(R.s0_rebind_repair_marked(t))
+                self.assertTrue(R.gate_reason(self.cfg, t, self.history).startswith("S0_REBIND_REPAIR_INVALID_TASK"))
+        for label, over in {"foreign id, root parent": {"id": "rp-x", "remediation_of": self.ROOT},
+                            "foreign id, foreign parent": {"id": "rp-x", "remediation_of": "doc-1"}}.items():
+            with self.subTest(label):
+                t = self.rebind(id="rp-x") | {"doc_base": dict(self.root)} | over
+                self.assertFalse(R.s0_rebind_repair_marked(t))
+                self.assertTrue(R.gate_reason(self.cfg, t, self.history).startswith("S0_REBIND_INVALID_TASK"))
+        self.assertIn("S0_REBIND_STALE_DRAFT", self.rbreason(tasks={}, id=self.ROOT))  # the pinned base is gone from the tree
+        self.assertIn("S0_REBIND_ATTEMPT_USED", self.rbreason(tasks={}, id=self.ROOT, post={"attempts": 1}))
+
+    def test_remediation_shaped_writes_with_another_id_are_neither_repaired_nor_reviewed_nor_complete(self):
+        hashes = self.put_final()
+        changed = [{"path": p, "sha256": h} for p, h in hashes.items()]
+        stray = self.rebind(id="rp-x") | {"remediation_of": self.ROOT, "doc_base": dict(self.root), "status": "DONE", "attempts": 1,
+                                         "route": {"verdict": "VERIFIED"}, "evidence": {"changed": changed, "violations": []}}
+        for label, tasks in {"with root": self.history | {"rp-x": stray},
+                             "without root": {k: v for k, v in self.history.items() if k != self.ROOT} | {"rp-x": stray}}.items():
+            with self.subTest(label):
+                self.assertFalse(R.s0_rebind_repair_marked(stray))
+                self.assertTrue(R.s0_rebind_review_reason(self.cfg, self.rb_review(tasks, "rp-x"), tasks).startswith("S0_REBIND_REVIEW_UNSUPPORTED"))
+                with self.assertRaises(R.GateError):
+                    R._s0_rebind_done(self.cfg, tasks)
+
+    def test_second_foreign_or_cloned_rebind_writes_are_refused_in_any_status(self):
+        for status in self.STATUSES:
+            others = {
+                "second repair": self.repair(id="rp-x"),
+                "root shaped": self.rebind(id="rb-0"),
+                "cloned root": self.history[self.ROOT] | {"id": "rb-clone"},
+            }
+            for label, other in others.items():
+                with self.subTest(f"{status} {label}"):
+                    reason = self.rpreason(tasks=self.history | {other["id"]: other | {"status": status}})
+                    self.assertIn("S0_REBIND_REPAIR_SECOND_WRITE", reason)
+        done = self.history | {"other": self.foreign(module="MOD-003") | {"status": "DONE"}}
+        self.assertIsNone(self.rpreason(tasks=done))
+
+    def test_a_started_attempt_is_never_rerun_and_other_pending_writers_block_it(self):
+        self.assertIn("S0_REBIND_REPAIR_ATTEMPT_USED", self.rpreason(post={"attempts": 1}))
+        for status in ("QUEUED", "RUNNING"):
+            for label, other in {"document writer": self.foreign(module="MOD-003"),
+                                 "refresh writer": self.foreign(module="MOD-004", plan_phase=R.S0_REFRESH_MARKER),
+                                 "product writer": self.task(id="s0-x")}.items():
+                with self.subTest(f"{status} {label}"):
+                    self.assertIn("S0_REBIND_REPAIR_CONCURRENT_WRITE",
+                                  self.rpreason(tasks=self.history | {other["id"]: other | {"status": status}}))
+
+    def test_the_root_must_be_the_pinned_done_two_file_write_and_never_reviewed(self):
+        def root_mut(fn):
+            def mutate(tasks):
+                if fn is None:
+                    tasks.pop(self.ROOT)
+                else:
+                    fn(tasks[self.ROOT])
+            return mutate
+        cases = {"absent": root_mut(None),
+                 "attempts 0": root_mut(lambda w: w.update(attempts=0)), "attempts 2": root_mut(lambda w: w.update(attempts=2)),
+                 "violations": root_mut(lambda w: w["evidence"].update(violations=["X"])),
+                 "changed hash": root_mut(lambda w: w["evidence"]["changed"][0].update(sha256="2" * 64)),
+                 "extra changed file": root_mut(lambda w: w["evidence"]["changed"].append({"path": "x", "sha256": "1" * 64})),
+                 "one changed file": root_mut(lambda w: w["evidence"]["changed"].pop()),
+                 "no evidence": root_mut(lambda w: w.pop("evidence")),
+                 "root doc_base altered": root_mut(lambda w: w.update(doc_base=dict(self.root))),
+                 "root marked as repair": root_mut(lambda w: w.update(remediation_of="x")),
+                 "root unmarked": root_mut(lambda w: w.update(plan_phase=None))}
+        for status in ("QUEUED", "RUNNING", "BLOCKED", "FAILED"):
+            cases[f"root {status}"] = root_mut(lambda w, s=status: w.update(status=s))
+        for status in self.STATUSES:
+            cases[f"root review {status}"] = (lambda tasks, s=status: tasks.update({"rv-root": {
+                "id": "rv-root", "module": "MOD-004", "role": "code-review", "status": s, "review_of": {"task_id": self.ROOT}}}))
+        for name, mutate in cases.items():
+            with self.subTest(name):
+                tasks = self.copy(self.history)
+                mutate(tasks)
+                self.assertIn("S0_REBIND_REPAIR_ROOT_INVALID", self.rpreason(tasks=tasks))
+
+    def test_stale_or_missing_documents_are_refused(self):
+        self.assertIsNone(self.rpreason())
+        for p in R.S0_DOC_PATHS:
+            original = (self.repo / p).read_bytes()
+            for label, mutate in {"edited": lambda q: q.write_bytes(original + b"x"), "emptied": lambda q: q.write_bytes(b""),
+                                  "removed": lambda q: q.unlink(),
+                                  "symlink": lambda q: (q.unlink(), q.symlink_to(self.repo / self.OWNER))}.items():
+                with self.subTest(f"{p} {label}"):
+                    mutate(self.repo / p)
+                    self.assertIn("S0_REBIND_REPAIR_STALE_DRAFT", self.rpreason())
+                    (self.repo / p).unlink(missing_ok=True)
+                    (self.repo / p).write_bytes(original)
+        self.assertIsNone(self.rpreason())
+        self.put_docs("published")
+        self.assertIn("S0_REBIND_REPAIR_STALE_DRAFT", self.rpreason())  # the pre-root base is not the repair's start
+        self.put_final()
+        self.assertIn("S0_REBIND_REPAIR_STALE_DRAFT", self.rpreason())  # already repaired by somebody else
+
+    def test_the_repair_closes_once_the_test_correction_or_an_s0_receipt_exists(self):
+        for status in self.STATUSES:
+            with self.subTest(status):
+                tasks = self.history | {"tc-1": self.tcorr() | {"status": status}}
+                self.assertTrue(self.rpreason(tasks=tasks).startswith("S0_REBIND_REPAIR_CLOSED"))
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        s0.write_text("{}")
+        self.assertTrue(self.rpreason().startswith("S0_REBIND_REPAIR_CLOSED"))
+        s0.unlink()
+        self.assertIsNone(self.rpreason())
+
+    def test_recovery_authority_must_verify_for_the_current_runner(self):
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        receipt, checkpoint = rec.read_bytes(), self.checkpoint.read_bytes()
+        withdrawals = {
+            "recovery receipt removed": lambda: rec.unlink(),
+            "recovery receipt corrupted": lambda: rec.write_text("{"),
+            "checkpoint mutated": lambda: self.checkpoint.write_bytes(b"x"),
+            "checkpoint removed": lambda: self.checkpoint.unlink(),
+            "test owner edited": lambda: self.write(self.TOWNER, "edited\n"),
+            "validator edited": lambda: self.write(self.VALIDATOR, "import uuid\n# x\n"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                withdraw()
+                self.assertUnverified(self.rpreason(), "S0_REBIND_REPAIR_AUTHORITY_UNVERIFIED")
+                rec.write_bytes(receipt)
+                self.checkpoint.write_bytes(checkpoint)
+                self.write(self.TOWNER, "test remediation owner record\n")
+                self.write(self.VALIDATOR, "import uuid\n")
+        self.assertIsNone(self.rpreason())
+        with mock.patch.object(R, "CODE_SHA", "0" * 64):
+            self.assertUnverified(self.rpreason(), "S0_REBIND_REPAIR_AUTHORITY_UNVERIFIED")
+
+    def test_planner_cannot_propose_the_repair(self):
+        r = self.runner()
+        r.state["tasks"][self.ROOT] = self.history[self.ROOT]
+        raw = {k: v for k, v in self.rpraw().items() if k not in ("verify_cmd",)} | {"title": "p"}
+        with self.assertRaisesRegex(ValueError, "owner CLI"):
+            r.enqueue_proposal(raw)
+        self.assertNotIn(self.REP, r.state["tasks"])
+
+    # --- review routing: one exact-bound Opus review of the repair
+    def test_exact_bound_review_passes_and_uses_the_one_slot(self):
+        tasks, _ = self.done_repair(review=False)
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+        for status in self.STATUSES:
+            with self.subTest(status):
+                used = tasks | {"earlier": {"id": "earlier", "module": "MOD-004", "role": "code-review", "status": status,
+                                            "review_of": {"task_id": self.REP}}}
+                self.assertIn("S0_REBIND_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.rb_review(used, self.REP), used))
+
+    def test_unsupported_repair_reviews_fail_closed(self):
+        tasks, _ = self.done_repair(review=False)
+        good = self.rb_review(tasks, self.REP)
+        pairs = [dict(c) for c in good["review_of"]["changed"]]
+        bad = [dict(c) for c in pairs]
+        bad[0]["sha256"] = "0" * 64
+        root_pairs = [{"path": p, "sha256": h} for p, h in self.root.items()]
+        swapped = [{"path": pairs[0]["path"], "sha256": pairs[1]["sha256"]}, {"path": pairs[1]["path"], "sha256": pairs[0]["sha256"]}]
+        for name, over in {
+            "retry lineage": {"review_retry_of": "x"}, "candidate": {"review_candidate": "x"}, "planner": {"source": "handoff"},
+            "one file only": {"review_of": {"task_id": self.REP, "changed": pairs[:1]}},
+            "wrong hash": {"review_of": {"task_id": self.REP, "changed": bad}},
+            "root hashes": {"review_of": {"task_id": self.REP, "changed": root_pairs}},
+            "swapped hashes": {"review_of": {"task_id": self.REP, "changed": swapped}},
+            "extra file": {"review_of": {"task_id": self.REP, "changed": [*pairs, {"path": "x", "sha256": "1" * 64}]}},
+            "no changed": {"review_of": {"task_id": self.REP, "changed": None}}, "other module": {"module": "MOD-003"},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(R.gate_reason(self.cfg, good | over, tasks).startswith(("S0_REBIND_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), name)
+        extra_write = self.rebind(id="rb-9") | {"status": "DONE", "attempts": 1}
+        mutations = {
+            "write not DONE": lambda t: t[self.REP].update(status="BLOCKED"), "write queued": lambda t: t[self.REP].update(status="QUEUED"),
+            "extra changed file": lambda t: t[self.REP]["evidence"]["changed"].append({"path": "x", "sha256": "1" * 64}),
+            "off-lane path": lambda t: t[self.REP]["evidence"]["changed"][0].update(path="contracts/engineering/x.json"),
+            "only one doc changed": lambda t: t[self.REP]["evidence"]["changed"].pop(),
+            "unchanged from the root": lambda t: t[self.REP]["evidence"]["changed"][0].update(
+                sha256=self.root[t[self.REP]["evidence"]["changed"][0]["path"]]),
+            "attempts 2": lambda t: t[self.REP].update(attempts=2),
+            "violations": lambda t: t[self.REP]["evidence"].update(violations=["X"]),
+            "module": lambda t: t[self.REP].update(module="MOD-003"), "role": lambda t: t[self.REP].update(role="test"),
+            "extra rebind write": lambda t: t.update({"rb-9": extra_write}),
+            "root altered": lambda t: t[self.ROOT].update(status="BLOCKED"),
+            "root attempts": lambda t: t[self.ROOT].update(attempts=2),
+            "root absent": lambda t: t.pop(self.ROOT),
+            "root reviewed": lambda t: t.update({"rv-root": {"id": "rv-root", "module": "MOD-004", "role": "code-review",
+                                                             "status": "BLOCKED", "review_of": {"task_id": self.ROOT}}}),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name):
+                t2 = self.copy(tasks)
+                mutate(t2)
+                reason = R.gate_reason(self.cfg, self.rb_review(t2, self.REP), t2)
+                self.assertTrue(reason.startswith(("S0_REBIND_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), reason)
+
+    def test_the_incomplete_root_is_never_reviewed(self):
+        for label, tasks in {"before the repair": self.history, "after the repair": self.done_repair(review=False)[0]}.items():
+            with self.subTest(label):
+                reason = R.gate_reason(self.cfg, self.rb_review(tasks, self.ROOT), tasks)
+                self.assertTrue(reason.startswith("S0_REBIND_REVIEW_UNSUPPORTED"), reason)
+        tasks, hashes = self.done_repair(review=False)
+        tasks, _ = self.done_rebind_of(hashes, "rb-1", tasks)  # an old-style approved root-shaped write beside the repair
+        tasks.pop("rb-1-rev")
+        reason = R.gate_reason(self.cfg, self.rb_review(tasks, "rb-1"), tasks)
+        self.assertTrue(reason.startswith("S0_REBIND_REVIEW_UNSUPPORTED"), reason)
+
+    def test_the_review_slot_is_not_spent_until_the_packet_hash_is_final(self):
+        for variant in ("placeholder", "wrong", "missing", "bad json", "wrong path"):
+            with self.subTest(variant):
+                tasks, _ = self.done_repair(hashes=self.put_final(variant), review=False)
+                reason = R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks)
+                self.assertTrue(reason.startswith("S0_REBIND_REVIEW_UNSUPPORTED"), reason)
+                self.assertIn("the one review slot is not spent", reason)
+        tasks, _ = self.done_repair(review=False)
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+
+    def test_review_is_stale_or_unauthorised_when_a_document_changes_or_an_s0_receipt_appears(self):
+        tasks, _ = self.done_repair(review=False)
+        self.write(self.DOC_QA, "changed after the write finished\n")
+        self.assertIn("S0_REBIND_REVIEW_BINDING_STALE", R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+        tasks, _ = self.done_repair(review=False)
+        (self.home / "acceptances" / "MOD-004-S0.json").write_text("{}")
+        self.assertUnverified(R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks), "S0_REBIND_REVIEW_AUTHORITY_UNVERIFIED")
+
+    def test_planner_review_of_the_repair_is_refused_at_enqueue_proposal(self):
+        tasks, _ = self.done_repair(review=False)
+        r = self.runner()
+        r.state["tasks"].update({k: tasks[k] for k in (self.ROOT, self.REP)})
+        raw = self.rb_review(tasks, self.REP) | {"id": "pp-rev", "prompt": "review", "title": "r"}
+        raw.pop("status")
+        with self.assertRaisesRegex(ValueError, "S0_REBIND_REVIEW_UNSUPPORTED"):
+            r.enqueue_proposal(raw)
+        self.assertNotIn("pp-rev", r.state["tasks"])
+
+    def test_owner_enqueue_fills_the_binding_and_refuses_a_second_review(self):
+        tasks, hashes = self.done_repair(review=False)
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"][self.REP] = tasks[self.REP]
+        store.save(state)
+        with self.assertRaises(ValueError):  # the root can never be reviewed, whatever the route
+            R.enqueue(self.cfg, {"id": "rv0", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                 "review_of": {"task_id": self.ROOT}})
+        path = R.enqueue(self.cfg, {"id": "rv1", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                    "review_of": {"task_id": self.REP}})
+        queued = json.loads(path.read_text())
+        self.assertEqual(sorted((c["path"], c["sha256"]) for c in queued["review_of"]["changed"]), sorted(hashes.items()))
+        state = store.load()
+        state["tasks"]["rv1"] = R.validate_task(queued, self.cfg) | {"status": "QUEUED"}
+        store.save(state)
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "rv2", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                 "review_of": {"task_id": self.REP}})
+
+    # --- completion: what verify_s0_test_authority sees
+    def test_correct_root_repair_review_progression_returns_the_final_hashes(self):
+        self.assertIsNone(self.rpreason())
+        tasks, hashes = self.done_repair(review=False)
+        self.assertNotEqual(hashes, self.root)
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+        with self.assertRaises(R.GateError):
+            R._s0_rebind_done(self.cfg, tasks)  # written but not yet reviewed
+        tasks, _ = self.done_repair(hashes=hashes)
+        self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)
+        self.assertNotIn(self.ROOT, [x["review_of"]["task_id"] for x in tasks.values() if x.get("review_of")])
+        self.advance_repair()
+        self.assertIsNone(self.treason())  # the correction opens only on the repaired, approved, published lineage
+        self.assertEqual(R._s0_rebind_done(self.cfg, self.history), {p: self.sha(p) for p in R.S0_DOC_PATHS})
+
+    def test_the_root_alone_or_a_forged_root_approval_never_completes_the_rebind(self):
+        with self.assertRaises(R.GateError):
+            R._s0_rebind_done(self.cfg, self.history)
+        forged = self.copy(self.history)
+        forged["rv-root"] = {"id": "rv-root", "module": "MOD-004", "role": "code-review", "status": "DONE",
+                             "review_of": {"task_id": self.ROOT, "changed": [{"path": p, "sha256": h} for p, h in self.root.items()]},
+                             "route": {"verdict": "VERIFIED"},
+                             "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True, "violations": []}}
+        with self.assertRaises(R.GateError):
+            R._s0_rebind_done(self.cfg, forged)
+        clone, _ = self.done_rebind_of(self.root, "rb-1", {})  # a non-pinned id whose bytes equal the root's is still the root
+        with self.assertRaises(R.GateError):
+            R._s0_rebind_done(self.cfg, clone)
+        both, hashes = self.done_repair(review=False)
+        both, _ = self.done_rebind_of(hashes, "rb-1", both)  # an old-style approval beside the repair is no bypass
+        with self.assertRaises(R.GateError):
+            R._s0_rebind_done(self.cfg, both)
+
+    def test_the_old_single_root_path_is_unchanged_without_the_pinned_root(self):
+        tasks, hashes = self.done_rebind(tasks={})
+        self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)
+
+    def test_an_approved_review_of_another_module_never_completes_either_lineage(self):
+        for wrong in ("MOD-003", None):
+            with self.subTest(f"repair lineage, review module {wrong!r}"):
+                tasks, hashes = self.done_repair()
+                self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)  # the same record passes with MOD-004
+                self.assertTrue(R._s0_rebind_one_approved_review(tasks, tasks[self.REP]))
+                forged = self.copy(tasks)
+                forged["rep-rev"]["module"] = wrong
+                self.assertFalse(R._s0_rebind_one_approved_review(forged, forged[self.REP]))
+                with self.assertRaises(R.GateError):
+                    R._s0_rebind_done(self.cfg, forged)
+            with self.subTest(f"single root, review module {wrong!r}"):
+                tasks, hashes = self.done_rebind(tasks={})
+                self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)
+                forged = self.copy(tasks)
+                forged["rb-1-rev"]["module"] = wrong
+                with self.assertRaises(R.GateError):
+                    R._s0_rebind_done(self.cfg, forged)
+        with self.subTest("write module"):
+            tasks, _ = self.done_repair()
+            forged = self.copy(tasks)
+            forged["rep-rev"]["module"] = "MOD-003"
+            forged[self.REP]["module"] = "MOD-003"
+            self.assertFalse(R._s0_rebind_one_approved_review(forged, forged[self.REP]))
+        self.advance_repair()
+        self.assertIsNone(self.treason())
+        forged = self.copy(self.history)
+        forged["rep-rev"]["module"] = "MOD-003"
+        self.assertIsNotNone(self.treason(tasks=forged))
+
+    def test_completion_requires_the_exact_lineage_review_documents_and_packet(self):
+        tasks, hashes = self.done_repair()
+        self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)
+        extra = {"id": "rp-x", "module": "MOD-004", "role": "code-review", "status": "QUEUED", "review_of": {"task_id": self.REP}}
+        mutations = {
+            "repair absent": lambda t: t.pop(self.REP), "review absent": lambda t: t.pop("rep-rev"),
+            "changes requested": lambda t: t["rep-rev"]["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "unverified route": lambda t: t["rep-rev"]["route"].update(verdict="UNVERIFIED"),
+            "not bound verified": lambda t: t["rep-rev"]["evidence"].update(review_bound_verified=False),
+            "review binds one doc": lambda t: t["rep-rev"]["review_of"].update(changed=t["rep-rev"]["review_of"]["changed"][:1]),
+            "review binds root hashes": lambda t: t["rep-rev"]["review_of"].update(
+                changed=[{"path": p, "sha256": h} for p, h in self.root.items()]),
+            "planner review": lambda t: t["rep-rev"].update(source="handoff"),
+            "retry review": lambda t: t["rep-rev"].update(review_retry_of="x"),
+            "review not done": lambda t: t["rep-rev"].update(status="BLOCKED"),
+            "second review": lambda t: t.update({"rp-x": extra}),
+            "second repair": lambda t: t.update({"rp-y": t[self.REP] | {"id": "rp-y"}}),
+            "second rebind write": lambda t: t.update({"rb-2": self.rebind(id="rb-2") | {"status": "QUEUED"}}),
+            "root absent": lambda t: t.pop(self.ROOT), "root not done": lambda t: t[self.ROOT].update(status="BLOCKED"),
+            "root attempts": lambda t: t[self.ROOT].update(attempts=2),
+            "root hashes altered": lambda t: t[self.ROOT]["evidence"]["changed"][0].update(sha256="2" * 64),
+            "root reviewed": lambda t: t.update({"rv-root": {"id": "rv-root", "module": "MOD-004", "role": "code-review",
+                                                             "status": "BLOCKED", "review_of": {"task_id": self.ROOT}}}),
+            "repair not done": lambda t: t[self.REP].update(status="BLOCKED"),
+            "repair attempts": lambda t: t[self.REP].update(attempts=2),
+            "repair violations": lambda t: t[self.REP]["evidence"].update(violations=["X"]),
+            "repair hashes equal the root's": lambda t: (t[self.REP]["evidence"].update(
+                changed=[{"path": p, "sha256": h} for p, h in self.root.items()]), t["rep-rev"]["review_of"].update(
+                changed=[{"path": p, "sha256": h} for p, h in self.root.items()])),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name):
+                t2 = self.copy(tasks)
+                mutate(t2)
+                with self.assertRaises(R.GateError):
+                    R._s0_rebind_done(self.cfg, t2)
+        for variant in ("placeholder", "wrong", "missing", "bad json", "wrong path"):
+            with self.subTest(f"packet {variant}"):
+                broken, _ = self.done_repair(hashes=self.put_final(variant))
+                with self.assertRaises(R.GateError):
+                    R._s0_rebind_done(self.cfg, broken)
+        self.put_final()
+        self.assertEqual(R._s0_rebind_done(self.cfg, tasks), hashes)
+        for p in R.S0_DOC_PATHS:  # bytes changed after the approved review
+            original = (self.repo / p).read_bytes()
+            (self.repo / p).write_bytes(original + b" ")
+            with self.assertRaises(R.GateError):
+                R._s0_rebind_done(self.cfg, tasks)
+            (self.repo / p).write_bytes(original)
+
+    def test_the_test_correction_stays_closed_through_every_incomplete_repair_state(self):
+        self.advance_repair()
+        self.assertIsNone(self.treason())
+        steps = {
+            "repair unreviewed": lambda t: t.pop("rep-rev"),
+            "review changes requested": lambda t: t["rep-rev"]["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "root reviewed": lambda t: t.update({"rv-root": {"id": "rv-root", "module": "MOD-004", "role": "code-review",
+                                                             "status": "BLOCKED", "review_of": {"task_id": self.ROOT}}}),
+            "second repair": lambda t: t.update({"rp-y": t[self.REP] | {"id": "rp-y"}}),
+            "root altered": lambda t: t[self.ROOT].update(status="BLOCKED"),
+        }
+        for label, mutate in steps.items():
+            with self.subTest(label):
+                t2 = self.copy(self.history)
+                mutate(t2)
+                self.assertTrue(self.treason(tasks=t2).startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")), label)
+        cert = self.repo / self.DOC_CERT
+        original = cert.read_bytes()
+        cert.write_bytes(original + b" ")  # the published certificate drifted from the reviewed bytes
+        self.assertTrue(self.treason().startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")))
+        cert.write_bytes(original)
+        self.assertIsNone(self.treason())
+
+    # --- enqueue and dispatch
+    def child_prompt(self, sha=None):
+        cert = json.dumps({"scenario_qa_packet": {"path": self.DOC_QA, "sha256": sha or hashlib.sha256(b"second").hexdigest()}})
+        return f"WRITE={self.DOC_CERT}\nCONTENT={cert}\nWRITE2={self.DOC_QA}"  # the fake child writes "second" to WRITE2
+
+    def reset_repair(self):
+        for q in (self.home / "queue").glob("*"):
+            q.unlink()
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"] = {k: v for k, v in state["tasks"].items() if k != self.REP}
+        store.save(state)
+
+    def dispatch_repair(self, prompt=None, before=None, **over):
+        self.live()
+        r = self.runner()
+        R.enqueue(self.cfg, self.rpraw(prompt=prompt or self.child_prompt(), **over))
+        r.ingest_queue()
+        if before:
+            before()
+        t = r.state["tasks"][self.REP]
+        n = r.next_ready()
+        if n is not None:
+            r.dispatch(n)
+        return r, t
+
+    def test_owner_enqueue_requires_a_loaded_runner_and_live_authority(self):
+        path = R.enqueue(self.cfg, self.rpraw())
+        queued = json.loads(path.read_text())
+        self.assertEqual((queued["plan_phase"], queued["remediation_of"]), (R.S0_REBIND_MARKER, self.ROOT))
+        self.reset_repair()
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": "0" * 64}
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_"):
+            R.enqueue(self.cfg, self.rpraw())
+        state["runner"] = None
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_LOADED"):
+            R.enqueue(self.cfg, self.rpraw())
+        self.live()
+        (self.home / "acceptances" / "MOD-004-S0.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "S0_REBIND_REPAIR_CLOSED"):
+            R.enqueue(self.cfg, self.rpraw())
+
+    def test_the_repair_is_credited_once_and_the_product_route_stays_closed(self):
+        r, t = self.dispatch_repair()
+        self.assertEqual((t["status"], t["attempts"], t["evidence"]["violations"]), ("DONE", 1, []))
+        self.assertEqual(sorted(c["path"] for c in t["evidence"]["changed"]), sorted(R.S0_DOC_PATHS))
+        self.assertTrue(all(c["sha256"] != self.root[c["path"]] for c in t["evidence"]["changed"]))
+        self.assertIsNone(r.next_ready())
+        tasks = r.state["tasks"]
+        self.assertEqual(tasks[self.ROOT]["status"], "DONE")
+        self.assertIn("S0_REBIND_SECOND_WRITE", R.gate_reason(self.cfg, self.rebind(id="rb-again"), tasks))
+        self.assertTrue(R.gate_reason(self.cfg, self.repair(id="rp-again"), tasks).startswith("S0_REBIND_INVALID_TASK"))
+        self.assertIn("S0_REBIND_REPAIR_ATTEMPT_USED", R.gate_reason(self.cfg, tasks[self.REP] | {"status": "QUEUED"}, tasks))
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+        self.assertTrue(R.gate_reason(self.cfg, self.rb_review(tasks, self.ROOT), tasks).startswith("S0_REBIND_REVIEW_UNSUPPORTED"))
+        self.live()
+        self.assertIsNotNone(R.s0_probe(self.cfg))
+
+    def test_a_repair_whose_certificate_lacks_the_final_packet_hash_earns_no_done(self):
+        for label, sha in {"placeholder": "PENDING_OPERATOR_SHASUM_NOT_COMPUTED", "wrong hash": "1" * 64}.items():
+            with self.subTest(label):
+                self.reset_repair()
+                self.put_docs("root")
+                self.sync()
+                r, t = self.dispatch_repair(prompt=self.child_prompt(sha))
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_REPAIR_PACKET_UNBOUND", 1))
+                self.assertIn("S0_REBIND_REPAIR_PACKET_UNBOUND", t["evidence"]["violations"])
+                tasks = r.state["tasks"]
+                self.assertIn("S0_REBIND_REVIEW_UNSUPPORTED", R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+                self.assertIn("S0_REBIND_REPAIR_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, tasks))
+                self.assertIsNone(r.next_ready())
+
+    def test_the_root_record_changing_during_the_child_earns_no_done(self):
+        real = R.verify_s0_rebind_authority
+
+        def hit(cfg, tasks):
+            if (tasks.get(self.REP) or {}).get("attempts"):  # only the postworker recheck: the child has started
+                tasks[self.ROOT]["attempts"] = 2
+            return real(cfg, tasks)
+        with mock.patch.object(R, "verify_s0_rebind_authority", side_effect=hit):
+            r, t = self.dispatch_repair()
+        self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_REPAIR_ROOT_CHANGED", 1))
+        self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+        self.assertIsNone(r.next_ready())
+
+    def test_authority_withdrawn_during_the_child_earns_no_done(self):
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        saved = {"rec": rec.read_bytes(), "checkpoint": self.checkpoint.read_bytes()}
+        real = R.verify_s0_rebind_authority
+        withdrawals = {
+            "recovery receipt removed": lambda tasks: rec.unlink(),
+            "checkpoint mutated": lambda tasks: self.checkpoint.write_bytes(b"x"),
+            "s0 receipt installed": lambda tasks: s0.write_text("{}"),
+            "test owner edited": lambda tasks: self.write(self.TOWNER, "edited while the child ran\n"),
+            "validator edited": lambda tasks: self.write(self.VALIDATOR, "import uuid\n# edited while the child ran\n"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                self.reset_repair()
+                self.put_docs("root")
+                self.live()
+
+                def hit(cfg, tasks, withdraw=withdraw):
+                    if (tasks.get(self.REP) or {}).get("attempts"):
+                        withdraw(tasks)
+                    return real(cfg, tasks)
+                with mock.patch.object(R, "verify_s0_rebind_authority", side_effect=hit):
+                    r, t = self.dispatch_repair()
+                rec.write_bytes(saved["rec"])
+                self.checkpoint.write_bytes(saved["checkpoint"])
+                s0.unlink(missing_ok=True)
+                self.write(self.TOWNER, "test remediation owner record\n")
+                self.write(self.VALIDATOR, "import uuid\n")
+                self.sync()
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_AUTHORITY_WITHDRAWN", 1))
+                self.assertIn("S0_REBIND_AUTHORITY_WITHDRAWN", t["evidence"]["violations"])
+                tasks = r.state["tasks"]
+                self.assertIn("S0_REBIND_REVIEW_UNSUPPORTED", R.gate_reason(self.cfg, self.rb_review(tasks, self.REP), tasks))
+
+    def test_dispatch_rechecks_the_gate_so_no_child_starts_without_authority(self):
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        receipt, checkpoint = rec.read_bytes(), self.checkpoint.read_bytes()
+        withdrawals = {
+            "recovery receipt removed": lambda: rec.unlink(),
+            "checkpoint mutated": lambda: self.checkpoint.write_bytes(b"x"),
+            "s0 receipt installed": lambda: s0.write_text("{}"),
+            "document drifted": lambda: self.write(self.DOC_QA, "drifted\n"),
+            "root document reverted to the published base": lambda: self.put_docs("published"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                self.reset_repair()
+                r, t = self.dispatch_repair(before=withdraw)
+                self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))  # the gate stopped it before any child
+                rec.write_bytes(receipt)
+                self.checkpoint.write_bytes(checkpoint)
+                s0.unlink(missing_ok=True)
+                self.put_docs("root")
+
+    def started(self, r, **over):
+        t = self.repair(**over) | {"status": "RUNNING", "attempts": 1, "stage": None, "child": None}
+        r.state["tasks"][t["id"]] = t
+        return t
+
+    def test_stop_signal_timeout_and_transport_failure_never_rerun_the_single_attempt(self):
+        r = self.runner(max_attempts=3, timeout=7)
+        for outcome in ("stopped", "signal"):
+            with self.subTest(outcome):
+                t = self.started(r)
+                r.settle(t, f"{t['id']}:1", outcome, None, None, None, None, None)
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_ATTEMPT_INTERRUPTED", 1))
+                self.assertIn("S0_REBIND_REPAIR_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, self.history))
+                self.assertIsNone(r.next_ready())
+        t = self.started(r)
+        r.settle(t, f"{t['id']}:1", "timeout", None, None, None, None, None)
+        self.assertEqual((t["status"], t["attempts"]), ("FAILED", 1))
+        self.assertIn("timeout after 7s", t["last_error"])
+        u = self.started(r)
+        r.requeue_or_fail(u, "spawn failed")
+        self.assertEqual(u["status"], "FAILED")
+
+    # --- the owner CLI
+    def enq(self, **over):
+        spec = {"id": self.REP, "plan_phase": R.S0_REBIND_MARKER, "remediation_of": self.ROOT} | over
+        pf = Path(self.tmp.name, "prompt.txt")
+        pf.write_text("WRITE=x")
+        argv = ["--home", str(self.home), "--repo", str(self.repo), "enqueue", "--id", spec["id"], "--module", "MOD-004",
+                "--role", "implement", "--prompt-file", str(pf), "--verify-cmd", "[]"]
+        for p in R.S0_DOC_PATHS:
+            argv += ["--allow", p, "--expect", p, "--doc-base", f"{p}={self.root[p]}"]
+        if spec["plan_phase"]:
+            argv += ["--plan-phase", spec["plan_phase"]]
+        if spec["remediation_of"]:
+            argv += ["--remediation-of", spec["remediation_of"]]
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            code = R.main(argv)
+        return code, err.getvalue()
+
+    def test_cli_accepts_remediation_of_only_for_the_exact_repair_and_the_document_lane(self):
+        self.live()
+        queue = self.home / "queue"
+        for label, over in {
+            "wrong id": {"id": self.REP + "-x"}, "wrong remediation target": {"remediation_of": "doc-1"},
+            "root as its own remediation": {"id": self.ROOT, "remediation_of": self.ROOT},
+            "no plan phase": {"plan_phase": None}, "other phase": {"plan_phase": "P1"},
+            "refresh phase": {"plan_phase": R.S0_REFRESH_MARKER}, "test phase": {"plan_phase": R.S0_TEST_MARKER},
+            "product phase": {"plan_phase": R.S0_MARKER}, "look-alike phase": {"plan_phase": "MOD004-S0-DOC-REBIND-X"},
+        }.items():
+            with self.subTest(label):
+                code, err = self.enq(**over)
+                self.assertEqual(code, 2)
+                self.assertIn("enqueue refused", err)
+                if over.get("plan_phase", R.S0_REBIND_MARKER) != R.S0_REBIND_MARKER or over.get("id", self.REP) != self.REP or \
+                        over.get("remediation_of", self.ROOT) != self.ROOT:
+                    self.assertIn("--remediation-of is accepted here only", err)
+                self.assertEqual(list(queue.glob("*")), [])
+        code, err = self.enq(plan_phase=R.S0_DOC_MARKER)  # the original document lane keeps its own gate, not this restriction
+        self.assertNotIn("--remediation-of is accepted here only", err)
+        self.assertEqual(list(queue.glob("*")), [])
+        code, err = self.enq()
+        self.assertEqual((code, err), (0, ""))
+        queued = [json.loads(p.read_text()) for p in queue.glob("*")]
+        self.assertEqual([(q["id"], q["plan_phase"], q["remediation_of"]) for q in queued],
+                         [(self.REP, R.S0_REBIND_MARKER, self.ROOT)])
+
+    def test_cli_default_still_rejects_remediation_of_for_ordinary_tasks(self):
+        pf = Path(self.tmp.name, "p.txt")
+        pf.write_text("x")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "enqueue", "--id", "plain-1", "--module",
+                           "MOD-000", "--role", "implement", "--allow", "out/", "--expect", "out/a.txt", "--verify-cmd",
+                           '["python3","-m","unittest"]', "--remediation-of", self.REP, "--prompt-file", str(pf)])
+        self.assertEqual(code, 2)
+        self.assertIn("--remediation-of is accepted here only", err.getvalue())
+
+
 class Mod004S0TestCorrection(S0TestFixture):
     """The one MOD004-S0-TEST-REMEDIATION write of backend/tests/test_tenancy_s0.py and its one review bound to the
     corrected test AND the unchanged validator. It starts only after the rebind and a rebuilt six-subject receipt."""
