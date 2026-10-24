@@ -1957,6 +1957,42 @@ def _s0_quoted_context_only(y, path, sha):
             and yev.get("review_outcome") == "CHANGES_REQUESTED")
 
 
+def _s0_candidate_pairs(pairs):
+    """frozenset of canonical, path-unique (path, sha256) pairs, or None when any pair is malformed or a path repeats."""
+    pairs = list(pairs)
+    paths = [p for p, _ in pairs]
+    ok = all(isinstance(p, str) and p and not p.startswith("/") and "\\" not in p and not re.search(r"\s", p)
+             and all(seg not in ("", ".", "..") for seg in p.split("/")) and isinstance(h, str) and SHA256_RE.fullmatch(h)
+             for p, h in pairs)
+    return frozenset(pairs) if ok and len(set(paths)) == len(paths) else None
+
+
+def _s0_complete_candidate(y):
+    """The COMPLETE candidate a review covers, as a frozenset of (path, sha256), or None when it cannot be trusted: a
+    runner-verified review_of.changed with no conflicting prompt header, or (no review_of) an EXCLUSIVE primary prompt
+    declaration. A contextual mention or one shared file hash is never a complete identity."""
+    verified = _s0_verified_changed(y)
+    if verified is not None:
+        if _s0_header_conflicts(y, verified):
+            return None
+        return _s0_candidate_pairs(sorted((c["path"], c["sha256"]) for c in y["review_of"]["changed"]))
+    if y.get("review_of") is not None:
+        return None
+    d = _s0_prompt_declarations(y.get("prompt"))
+    if d is None or not (d[0] and d[1]):
+        return None
+    return _s0_candidate_pairs(sorted(d[0]))
+
+
+def _s0_distinct_candidate(x, y, path, sha):
+    """True only when approved review x and negative review y each have a trustworthy complete candidate over the SAME
+    paths (>=2 files, both containing (path, sha)) that differ in at least one other file hash: y reviewed another
+    candidate that merely shares this file. Identical, missing, malformed or ambiguous identities stay blocking."""
+    a, b = _s0_complete_candidate(x), _s0_complete_candidate(y)
+    return (a is not None and b is not None and len(a) >= 2 and (path, sha) in a and (path, sha) in b
+            and {p for p, _ in a} == {p for p, _ in b} and a != b)
+
+
 def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
     """Bind to an existing runner review task, never to receipt booleans: the task must be DONE with a verified Opus
     route and APPROVED evidence, its output file (path derived from its dispatch op) must hash to the receipt and
@@ -1990,6 +2026,8 @@ def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
         if isinstance(y, dict) and y is not x and y.get("role") in OPUS_ROLES and any(_s0_names_subject(y, path, sha, text)):
             if _s0_quoted_context_only(y, path, sha) or _s0_subject_role(y, path, sha) == "context":
                 continue  # this subject was only quoted context of a review of something else; ambiguity still blocks
+            if _s0_distinct_candidate(x, y, path, sha):
+                continue  # another complete candidate that only shares this file's hash
             yev = y.get("evidence") or {}
             marks = [y.get("blocked_reason"), *(yev["violations"] if isinstance(yev.get("violations"), list) else [])]
             no_verdict = (y.get("status") == "BLOCKED" and (y.get("route") or {}).get("verdict") == "VERIFIED"

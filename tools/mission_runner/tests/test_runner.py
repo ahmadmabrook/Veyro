@@ -6110,6 +6110,70 @@ Decide whether this new record accurately NARROWS the fresh owner authorization 
         self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "context")
         self.assertTrue(R._s0_binds_subject(y, other, other_sha))
 
+    def cand_prompt(self, *pairs):
+        return "Exact subjects:\n" + "".join(f"- {p} SHA-256 {h}\n" for p, h in pairs)
+
+    def cand_pair(self, owner_sha, other_sha, other=None):
+        return [(self.OWNER, owner_sha), (other or self.RUN, other_sha)]
+
+    def test_complete_candidate_identity_needs_a_trustworthy_exclusive_set(self):
+        a, b, c = "a" * 64, "b" * 64, "c" * 64
+        ver = {"review_bound_verified": True}
+        chg = lambda *ps: {"task_id": "w", "changed": [{"path": p, "sha256": h} for p, h in ps]}
+        pairs = [(self.OWNER, a), (self.RUN, b)]
+        want = frozenset(pairs)
+        self.assertEqual(R._s0_complete_candidate({"prompt": self.cand_prompt(*pairs)}), want)
+        self.assertEqual(R._s0_complete_candidate({"prompt": "x", "evidence": ver, "review_of": chg(*pairs)}), want)
+        for name, y in {
+            "mention only": {"prompt": f"Please review {self.OWNER} SHA-256 {a} and {self.RUN} SHA-256 {b}\n"},
+            "non-exclusive primary": {"prompt": f"Review EXACT file {self.OWNER} SHA-256 {a}\n"},
+            "unverified binding": {"prompt": self.cand_prompt(*pairs), "review_of": chg(*pairs)},
+            "verified binding conflicts with header": {"prompt": self.cand_prompt((self.OWNER, a), (self.RUN, c)),
+                                                       "evidence": ver, "review_of": chg(*pairs)},
+            "duplicate path": {"prompt": "x", "evidence": ver, "review_of": chg((self.OWNER, a), (self.OWNER, b))},
+            "short sha": {"prompt": "x", "evidence": ver, "review_of": chg((self.OWNER, a), (self.RUN, b[:-1]))},
+            "traversal": {"prompt": "x", "evidence": ver, "review_of": chg((self.OWNER, a), ("../x.py", b))},
+            "ambiguous prompt": {"prompt": self.cand_prompt(*pairs) + f"- {self.RUN} sha {b}\n"},
+            "no prompt": {},
+        }.items():
+            with self.subTest(name):
+                self.assertIsNone(R._s0_complete_candidate(y))
+
+    def test_shared_file_hash_distinct_complete_candidates_do_not_block_but_identical_ones_do(self):
+        owner_sha, run_a, run_b = self.sha(self.OWNER), "a" * 64, "b" * 64
+        approved = {"prompt": self.cand_prompt(*self.cand_pair(owner_sha, run_b))}
+        neg = {"prompt": self.cand_prompt(*self.cand_pair(owner_sha, run_a))}
+        self.assertTrue(R._s0_distinct_candidate(approved, neg, self.OWNER, owner_sha))
+        for name, y in {
+            "identical set": approved,
+            "different path set": {"prompt": self.cand_prompt((self.OWNER, owner_sha), (self.ADR, run_a))},
+            "single file": {"prompt": self.cand_prompt((self.OWNER, owner_sha))},
+            "excludes subject": {"prompt": self.cand_prompt((self.OWNER, "d" * 64), (self.RUN, run_a))},
+            "ambiguous": {"prompt": f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}\n"},
+        }.items():
+            with self.subTest(name):
+                self.assertFalse(R._s0_distinct_candidate(approved, y, self.OWNER, owner_sha))
+        self.assertFalse(R._s0_distinct_candidate({"prompt": "no identity"}, neg, self.OWNER, owner_sha))
+        # integrated through the review gate: only the distinct complete candidate is ignored
+        self.doc_receipt["subjects"]["owner"]["review"] = self.review(self.OWNER, "cand-ok", prompt=approved["prompt"])
+        self.write_doc_receipt()
+        self.negative_prior("cand-neg", neg["prompt"])
+        self.assertIsNone(self.doc_reason())
+        self.negative_prior("cand-neg", approved["prompt"])  # same complete candidate rejected: blocks
+        self.assertIn("did not approve", self.doc_reason())
+        self.negative_prior("cand-neg", f"Please review {self.OWNER} SHA-256 {owner_sha}\n")  # missing identity: blocks
+        self.assertIn("did not approve", self.doc_reason())
+        # verified binding that conflicts with its own exclusive header blocks
+        self.negative_prior("cand-neg", self.cand_prompt((self.OWNER, owner_sha), (self.RUN, run_a)),
+                            review_of={"task_id": "w", "changed": [{"path": self.OWNER, "sha256": owner_sha},
+                                                                   {"path": self.RUN, "sha256": run_b}]},
+                            evidence={"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True,
+                                      "violations": ["REVIEW_CHANGES_REQUESTED"]})
+        self.assertIn("did not approve", self.doc_reason())
+        # the same negative with a verified binding that agrees with its header is a distinct candidate
+        self.history["cand-neg"]["review_of"]["changed"][1]["sha256"] = run_a
+        self.assertIsNone(self.doc_reason())
+
     def test_pinned_legacy_approved_reviews_bind_only_with_immutable_prompt_hash_and_status(self):
         entry = R.S0_LEGACY_APPROVED_REVIEWS[0]
         self.assertEqual(len(R.S0_LEGACY_APPROVED_REVIEWS), 3)
