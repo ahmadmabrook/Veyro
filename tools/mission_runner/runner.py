@@ -1052,11 +1052,11 @@ Context (inspect it yourself, read-only; do not trust this summary):
 Hard rules:
 1. Base every decision on actual evidence in files/state (module records, acceptance receipts, task evidence, git HEAD). Prose, memory or earlier chat is not evidence.
 2. Respect all mandatory gates: prerequisite modules must be accepted, no active same-module blocker for gatekeeper/scenario-review, the baseline must be healthy, roles route by the runner (implement/test = Sonnet; architecture, scenario-review, code-review, manual-qa, security, performance, gatekeeper = Opus). Never downgrade an Opus role.
-3. Mandatory review: after a DONE implement/test task in a module, the only legal next write or gatekeeper is preceded by an independent Opus code-review of that exact task. Propose that code-review first, with `review_of` binding the exact write task id and its recorded changed files (path + sha256 from the task's evidence). After CHANGES_REQUESTED propose only a bounded remediation write (at most 2 rounds, inside the original allowed paths); after APPROVED the gatekeeper may follow. The runner re-checks all of this; a proposal that violates it is refused.
+3. Mandatory review: after a DONE implement/test task in a module, the only legal next write or gatekeeper is preceded by an independent Opus code-review of that exact task. Propose that code-review first, with `review_of` binding the exact write task id and its recorded changed files (path + sha256 from the task's evidence). Correction cycles (prospective; only for already-authorized generic product root tasks): up to THREE correction cycles in total per immutable root, counting all findings and children. Each correction must be a new runner-recorded write inside the original allowed scope with `remediation_of` set to the immediate rejected parent. Propose a correction only after a runner-verified, exactly bound Opus CHANGES_REQUESTED review, or a recorded failed lint/unit verification with changed-file evidence; the correction must carry a fresh material diff and tests, and is followed by a fresh exact-bound Opus code-review. Do not propose a correction if the same root-cause fingerprint repeats or there is no progress, if the three cycles are exhausted, if the root is blocked for other reasons, for special S0/CAP/infrastructure tasks, or without exact bound evidence. Existing historical and special remediation limits are unchanged. After APPROVED, continue with ordinary CI or the next legal task; the gatekeeper may follow only when the module's own gates are met, and approval alone does not imply it. The runner re-checks all of this; a proposal that violates it is refused.
 4. Follow accepted-module transitions: once a module is ACCEPTED with a verified receipt, move to the next module the catalog and EIP/TSD allow; do not redo accepted work. Continue the next UNACCEPTED product module (currently MOD-003) from its last valid checkpoint. Owner-approved policy is recorded in "/Users/ahmadmabrouk/Library/Application Support/Veyro/mission-runner/policy/owner-execution-infrastructure-boundary-20261017.md": Execution Infrastructure is separate from Veyro product modules, so never reinterpret historical runner/dashboard maintenance under an accepted product module as an unfinished product review gate, and never propose any task for an accepted module (the runner refuses it). Rule 3 still applies in full to actual Veyro product write tasks.
 5. Make no owner decisions. If progress needs an owner approval, acceptance, scope or policy decision, propose nothing and answer WAITING_FOR_OWNER.
 6. Do NOT edit, create, delete or commit any file, run the runner CLI, enqueue anything, write queue/command/approval/receipt files, certify or accept any module, or perform the worker task yourself. The runner alone validates and enqueues your proposal.
-7. If a task is BLOCKED, propose only unrelated legal work, never a retry of the blocked task unless the evidence shows its blocker is resolved.
+7. If a task is BLOCKED, propose only unrelated legal work, never a retry of the blocked task unless the evidence shows its blocker is resolved. The only exception is the bounded correction described in rule 3, and only when every one of its conditions holds.
 
 Your final assistant message must be exactly one JSON object and nothing else (no markdown, no code fence, no prose).
 The reason value MUST be one non-empty string of at most 500 characters; aim for under 300. Put detailed evidence in the task prompt, not reason:
@@ -2095,7 +2095,8 @@ def s0_doc_touches(t):
 
 
 def s0_single_attempt(t):
-    return s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
+    return (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
+            or s0_loop_marked(t))
 
 
 def s0_doc_shape_problem(t):
@@ -2163,7 +2164,8 @@ def _s0_doc_chain(tasks, write):
 def s0_doc_gate_reason(cfg, t, tasks):
     """None for a task outside the lane or a fully authorised document write; else an explicit S0_DOC_* reason."""
     if not s0_doc_marked(t):
-        if s0_doc_touches(t) and not s0_refresh_marked(t) and not s0_rebind_marked(t):  # the refresh and rebind are admitted only by their own, stricter gates
+        if (s0_doc_touches(t) and not s0_refresh_marked(t) and not s0_rebind_marked(t)
+                and not s0_loop_marked(t)):  # the refresh, rebind and loop rebind are admitted only by their own, stricter gates
             return f"S0_DOC_UNTAGGED {t['id']}: a write naming or covering the S0 slice documents is not admitted"
         return None
     problem = s0_doc_shape_problem(t)
@@ -2402,6 +2404,15 @@ S0_ORIG_REVIEW_OUTPUT_SHA = "638a07e242f6dbcd5030809f5f4685276ad0baecdada62524e0
 S0_VALIDATOR_PATH, S0_TEST_PATH = S0_PATHS
 S0_VALIDATOR_SHA = "5543353a0b95250bcde2b59681c8295f7ecb2c99f88097f793db1a7761196314"
 S0_TEST_START_SHA = "a610232abb813b2981ccd9d5c68ec720ff17c72d544f55ad8c0d5b8dbcf52969"
+S0_LOOP_MARKER = "MOD004-S0-LOOP-REBIND"
+S0_LOOP_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md"
+S0_LOOP_OWNER_SHA = "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"
+S0_LOOP_PRIOR_RECEIPT_SHA = "4a59bc08d501d2e3be0303be1950329bf225dbe57f833471a64299e9e440d1fe"  # the S0 receipt to be preserved
+S0_LOOP_CHECKPOINT = "checkpoints/MOD-004-S0.pre-product-loop.json"  # fixed path under the runner home
+S0_LOOP_RECOVERY_RECEIPT = "MOD-004-S0-LOOP-RECOVERY"  # operator-written <home>/acceptances/MOD-004-S0-LOOP-RECOVERY.json
+S0_LOOP_BASE = {
+    "contracts/engineering/mod004-s0-eligibility.json": "b8da4817ff24298eb70138d41edf119c80ec4a01d3afc0045affa6ffc8d5c667",
+    "contracts/engineering/mod004-s0-scenario-qa.md": "78e1c8ecc3da2167e5f4feff736ff7873a04979964ee6b69f8ef123b56f83e58"}
 S0_TEST_SUBJECTS = {  # four distinct exact subjects, each with its own distinct Opus-APPROVED review
     "owner": S0_SUBJECTS["owner"], "adr": S0_SUBJECTS["adr"], "test_owner": re.compile(re.escape(S0_TEST_OWNER_PATH)),
     "runner_gate": S0_SUBJECTS["runner_gate"],
@@ -2418,6 +2429,27 @@ def s0_rebind_repair_marked(t):
 
 def s0_test_marked(t):
     return t.get("plan_phase") == S0_TEST_MARKER
+
+
+def s0_loop_marked(t):
+    return t.get("plan_phase") == S0_LOOP_MARKER
+
+
+def s0_loop_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the S0 loop document rebind is a MOD-004 implement task only"
+    if t.get("source") is not None:
+        return "the S0 loop document rebind is admitted only from the owner CLI"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of", "review_of",
+                                          "review_candidate")):
+        return "remediation_of, review_retry_of, accounting_recovery_of and review binding fields are rejected"
+    if sorted(t.get("allowed_paths") or []) != sorted(S0_DOC_PATHS) or sorted(t.get("expected_changes") or []) != sorted(S0_DOC_PATHS):
+        return "allowed_paths and expected_changes must be exactly the two S0 document files"
+    if t.get("verify_cmd") != []:
+        return "the S0 loop document rebind runs no verifier"
+    if t.get("doc_base") != S0_LOOP_BASE:
+        return "doc_base must be exactly the two pinned published document hashes"
+    return None
 
 
 def _s0_original_pins(cfg, tasks):
@@ -2490,11 +2522,60 @@ def verify_s0_rebind_authority(cfg, tasks):
     verify_s0_test_recovery_authority(cfg, tasks)
 
 
+S0_LOOP_SUBJECTS = {  # three-plus-one distinct exact subjects, each with its own distinct Opus-APPROVED review
+    "owner": S0_SUBJECTS["owner"], "adr": S0_SUBJECTS["adr"], "loop_owner": re.compile(re.escape(S0_LOOP_OWNER_PATH)),
+    "runner_gate": S0_SUBJECTS["runner_gate"],
+}
+S0_LOOP_OWNER_REVIEW = "owner-product-remediation-loop-opus-r3-20261024"
+S0_LOOP_OWNER_REVIEW_OUTPUT_SHA = "869205a32ec078526db2bcfea6adef4640cca41a63d1b402397e4d8ef7764c12"
+S0_LOOP_OWNER_COMMIT = "7a877c7b6075d91928c4a6b465716a2b9430f8ea"
+S0_LOOP_OWNER_CI_RUN = "40079271823"
+
+
+def verify_s0_loop_authority(cfg, tasks, require_base=True):
+    """Offline re-verification of the product-remediation-loop recovery authority: no active S0 receipt, the pre-loop
+    checkpoint holds the pinned receipt byte-identically, the four distinct subjects (S0 owner, ADR D12.5, the loop
+    owner record, this very runner file) are committed, CI-green and independently Opus-APPROVED, the loop owner record
+    is bound to its pinned sha256, review task, output, commit and CI run, and (only with require_base, i.e. for the
+    write gate) the two S0 documents are still the pinned starting content. It grants nothing to the S0 product gate."""
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        raise GateError("S0 loop: an S0 authority receipt exists in acceptances/; the loop rebind runs only while it is absent")
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_LOOP_RECOVERY_RECEIPT}.json", RECEIPT_MAX_BYTES),
+                 "S0 loop-recovery receipt")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "preserved_receipt", "subjects"}
+            and r["schema"] == SCHEMA and r["module"] == S0_MODULE and r["kind"] == "mod004-s0-loop-recovery-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip() and isinstance(r["recorded_at"], str)
+            and isinstance(r["subjects"], dict) and set(r["subjects"]) == set(S0_LOOP_SUBJECTS)):
+        raise GateError("S0 loop-recovery receipt schema mismatch")
+    _s0_preserved_receipt(cfg, r["preserved_receipt"], S0_LOOP_CHECKPOINT, S0_LOOP_PRIOR_RECEIPT_SHA)
+    owner = r["subjects"]["loop_owner"]
+    rv, ci = (owner.get("review"), owner.get("ci")) if isinstance(owner, dict) else (None, None)
+    if not (isinstance(rv, dict) and isinstance(ci, dict) and owner.get("path") == S0_LOOP_OWNER_PATH
+            and owner.get("sha256") == S0_LOOP_OWNER_SHA and owner.get("commit") == S0_LOOP_OWNER_COMMIT
+            and ci.get("run_id") == S0_LOOP_OWNER_CI_RUN and rv.get("task_id") == S0_LOOP_OWNER_REVIEW
+            and rv.get("output_sha256") == S0_LOOP_OWNER_REVIEW_OUTPUT_SHA):
+        raise GateError("S0 loop recovery: loop_owner is not the pinned committed owner record, review and CI run")
+    seen = set()
+    data = {name: _s0_subject(cfg, name, r["subjects"][name], tasks, seen, S0_LOOP_SUBJECTS) for name in S0_LOOP_SUBJECTS}
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+        raise GateError("S0 loop recovery runner_gate: the loaded runner is not the reviewed, CI-green runner file")
+    if b"D12.5" not in data["adr"]:
+        raise GateError("S0 loop recovery adr: no D12.5 S0 amendment")
+    if not require_base:
+        return
+    try:
+        docs = {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS}
+    except OSError:
+        raise GateError("S0 loop recovery: an S0 document cannot be read")
+    if docs != S0_LOOP_BASE:
+        raise GateError("S0 loop recovery: a starting S0 document is not the pinned content")
+
+
 def _s0_competing_writes(tasks, t):
     return sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t["id"]
                   and x.get("role") in WRITE_ROLES and x.get("status") in ("QUEUED", "RUNNING")
                   and (s0_touches(x) or s0_doc_touches(x) or s0_marked(x) or s0_doc_marked(x) or s0_refresh_marked(x)
-                       or s0_rebind_marked(x) or s0_test_marked(x)))
+                       or s0_rebind_marked(x) or s0_test_marked(x) or s0_loop_marked(x)))
 
 
 def s0_rebind_shape_problem(t):
@@ -2712,6 +2793,166 @@ def s0_rebind_review_reason(cfg, t, tasks):
     return None
 
 
+S0_LOOP_REF_COMMIT = "5f3b0de66eebf0f44894430ad9770958c51f1e7a"  # the published commit holding the pinned starting documents
+S0_LOOP_PACKET_STATUS = b"**Review and recovery status:**"
+
+
+def _s0_loop_ref_blob(cfg, path):
+    if path not in S0_LOOP_BASE:
+        raise GateError(f"S0 loop reference: {path} is not a pinned starting S0 document")
+    data = _s0_git_blob(cfg, S0_LOOP_REF_COMMIT, path, "S0 loop reference")
+    if len(data) > REVIEW_MAX_BYTES or hashlib.sha256(data).hexdigest() != S0_LOOP_BASE[path]:
+        raise GateError(f"S0 loop reference: {path} at {S0_LOOP_REF_COMMIT[:12]} is not the pinned starting content")
+    return data
+
+
+def _s0_loop_runner_subject(cfg):
+    """The loop-recovery receipt's runner_gate subject (sha256, commit, CI), shape-checked; fail closed when the receipt is
+    missing or malformed. Full subject verification stays in verify_s0_loop_authority."""
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_LOOP_RECOVERY_RECEIPT}.json", RECEIPT_MAX_BYTES),
+                 "S0 loop-recovery receipt")
+    subjects = r.get("subjects")
+    e = subjects.get("runner_gate") if isinstance(subjects, dict) else None
+    if not (isinstance(e, dict) and e.get("path") == "tools/mission_runner/runner.py" and e.get("sha256") == CODE_SHA
+            and isinstance(e.get("commit"), str) and SHA_RE.fullmatch(e["commit"]) and isinstance(e.get("ci"), dict)):
+        raise GateError("S0 loop-recovery receipt has no well-formed runner_gate subject for the loaded runner")
+    return e
+
+
+def _s0_loop_docs_problem(cfg):
+    """The cert differs from the pinned starting cert only in its current-runner evidence (top-level runner_gate.sha256,
+    authority.runner_gate.sha256, authority.published_runner_gate_commit, authority.runner_gate_ci and the whole
+    authority_publication.runner_gate, taken from the loop-recovery receipt's runner_gate subject, plus
+    immediate_prior_runner_gate.sha256 moving the former top-level sha to history with a note naming it, and the
+    runner_load_observation's observed_at/reload_status/loaded_runner_sha256/sole_loaded_runner) and in
+    scenario_qa_packet.sha256/sha256_note; the packet differs from the pinned starting packet only in
+    its `**Review and recovery status:**` paragraph, so every scenario row and the PASS rule stay byte-identical."""
+    cert_path, qa_path = S0_DOC_PATHS
+    try:
+        base_qa, base_cert = _s0_loop_ref_blob(cfg, qa_path), _s0_loop_ref_blob(cfg, cert_path)
+        cur_qa = _read_bounded(Path(cfg.repo) / qa_path, REVIEW_MAX_BYTES)
+        cur_cert = _read_bounded(Path(cfg.repo) / cert_path, REVIEW_MAX_BYTES)
+        want = _s0_json(base_cert, "S0 loop starting certificate")
+        got = _s0_json(cur_cert, "S0 loop certificate")
+        subject = _s0_loop_runner_subject(cfg)
+    except (GateError, OSError) as e:
+        return f"cannot verify the loop documents: {str(e)[:120]}"
+    top, auth, prior, packet = (want.get("runner_gate"), want.get("authority"), want.get("immediate_prior_runner_gate"),
+                                want.get("scenario_qa_packet"))
+    obs, pub = want.get("runner_load_observation"), want.get("authority_publication")
+    if not (isinstance(top, dict) and isinstance(auth, dict) and isinstance(auth.get("runner_gate"), dict)
+            and isinstance(prior, dict) and isinstance(packet, dict) and isinstance(obs, dict)
+            and isinstance(pub, dict) and isinstance(pub.get("runner_gate"), dict)):
+        return "the pinned starting certificate lacks its runner evidence objects"
+    old_top_sha = top.get("sha256")
+    top["sha256"] = auth["runner_gate"]["sha256"] = CODE_SHA
+    auth["published_runner_gate_commit"] = subject["commit"]
+    auth["runner_gate_ci"] = subject["ci"]
+    prior["sha256"] = old_top_sha
+    packet["sha256"] = hashlib.sha256(cur_qa).hexdigest()
+    gp = got.get("scenario_qa_packet")
+    if not (isinstance(gp, dict) and isinstance(gp.get("sha256_note"), str) and gp["sha256_note"].strip()):
+        return "the certificate's scenario_qa_packet has no sha256_note"
+    packet["sha256_note"] = gp["sha256_note"]
+    nonempty = lambda v: isinstance(v, str) and bool(v.strip())
+    go, gprior, gpub = got.get("runner_load_observation"), got.get("immediate_prior_runner_gate"), got.get("authority_publication")
+    if not (isinstance(go, dict) and go.get("loaded_runner_sha256") == CODE_SHA and go.get("sole_loaded_runner") is True
+            and obs.get("loaded_runner_sha256") == old_top_sha and nonempty(go.get("observed_at"))
+            and nonempty(go.get("reload_status"))):
+        return ("the certificate's runner_load_observation must name the loaded runner, sole_loaded_runner true, "
+                "and a nonempty observed_at and reload_status")
+    for k in ("observed_at", "reload_status", "loaded_runner_sha256", "sole_loaded_runner"):
+        obs[k] = go[k]
+    if not (isinstance(gprior, dict) and nonempty(gprior.get("note")) and isinstance(old_top_sha, str)
+            and old_top_sha in gprior["note"]):
+        return "the certificate's immediate_prior_runner_gate.note must be nonempty and name the former runner sha256"
+    prior["note"] = gprior["note"]
+    rv = subject.get("review")
+    if not (isinstance(rv, dict) and nonempty(rv.get("task_id")) and nonempty(rv.get("output_sha256"))):
+        return "the loop-recovery receipt's runner_gate subject has no review task_id/output_sha256"
+    pub["runner_gate"] = {"commit": subject["commit"], "push": "non-force", "ci": subject["ci"],
+                          "review": {"task_id": rv["task_id"], "output_sha256": rv["output_sha256"],
+                                     "route": "verified Opus", "outcome": "APPROVED"}}
+    if old_top_sha == CODE_SHA or got != want:
+        return ("the certificate differs from the pinned starting one beyond the current-runner evidence "
+                "(runner_gate.sha256, authority.runner_gate.sha256/published_runner_gate_commit/runner_gate_ci and "
+                "authority_publication.runner_gate taken from the receipt's runner_gate subject, immediate_prior_runner_gate."
+                "sha256/note, runner_load_observation current-runner fields) and scenario_qa_packet.sha256/sha256_note")
+    old, new = base_qa.split(b"\n\n"), cur_qa.split(b"\n\n")
+    oi = [i for i, x in enumerate(old) if x.startswith(S0_LOOP_PACKET_STATUS)]
+    ni = [i for i, x in enumerate(new) if x.startswith(S0_LOOP_PACKET_STATUS)]
+    if not (len(oi) == len(ni) == 1 and len(old) == len(new)
+            and old[:oi[0]] + old[oi[0] + 1:] == new[:ni[0]] + new[ni[0] + 1:] and oi[0] == ni[0]):
+        return "the packet differs from the pinned starting one beyond its one `**Review and recovery status:**` paragraph"
+    return None
+
+
+def s0_loop_gate_reason(cfg, t, tasks):
+    """None for a task outside the loop or the one fully authorised loop write; else an explicit S0_LOOP_* reason."""
+    if not s0_loop_marked(t):
+        return None
+    problem = s0_loop_shape_problem(t)
+    if problem:
+        return f"S0_LOOP_INVALID_TASK {t['id']}: {problem}"
+    if os.path.lexists(cfg.home / "acceptances" / f"{S0_RECEIPT}.json"):
+        return "S0_LOOP_CLOSED: an S0 authority receipt exists in acceptances/ and binds the slice documents"
+    if t.get("attempts"):
+        return f"S0_LOOP_ATTEMPT_USED {t['id']}: the single loop write attempt was already started"
+    others = sorted(x["id"] for x in tasks.values() if x.get("id") != t["id"] and s0_loop_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_LOOP_SECOND_WRITE: loop write {others[0]} already exists; the loop rebind is one-time"
+    busy = _s0_competing_writes(tasks, t)
+    if busy:
+        return f"S0_LOOP_CONCURRENT_WRITE: {busy[0]} is a pending write in an S0 chain or touching S0 files"
+    try:
+        if {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS} != S0_LOOP_BASE:
+            return "S0_LOOP_STALE_DRAFT: a document is not the pinned current content"
+        verify_s0_loop_authority(cfg, tasks, require_base=True)
+    except GateError as e:
+        return f"S0_LOOP_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
+def s0_loop_review_reason(cfg, t, tasks):
+    """The one exact-bound owner-CLI Opus review of the sole DONE loop write: any other review task bound to it, in any
+    status, has used the slot; there is no retry or review shopping."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and s0_loop_marked(w)):
+        return None
+    if t.get("source") is not None:
+        return "S0_LOOP_REVIEW_UNSUPPORTED: the loop review is owner-CLI routed only"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_LOOP_REVIEW_UNSUPPORTED: the loop write gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"
+            and w.get("attempts") == 1 and (w.get("evidence") or {}).get("violations") == []):
+        return "S0_LOOP_REVIEW_UNSUPPORTED: only a DONE one-attempt MOD-004 loop write can be reviewed here"
+    problem = s0_loop_shape_problem(w)
+    if problem:
+        return f"S0_LOOP_REVIEW_UNSUPPORTED: {problem}"
+    if [x["id"] for x in tasks.values() if isinstance(x, dict) and s0_loop_marked(x) and x.get("role") in WRITE_ROLES] != [w["id"]]:
+        return "S0_LOOP_REVIEW_UNSUPPORTED: the loop write must be the only loop write"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not (len(want) == len(S0_DOC_PATHS) and sorted(c["path"] for c in want) == sorted(S0_DOC_PATHS)
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) and c["sha256"] != S0_LOOP_BASE[c["path"]]
+                    for c in want)
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_LOOP_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of both document files, each different from the base"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_LOOP_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review loop write {w['id']}"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_LOOP_REVIEW_BINDING_STALE: the document files no longer match the write's recorded hashes"
+    problem = _s0_loop_docs_problem(cfg)
+    if problem:
+        return f"S0_LOOP_REVIEW_UNSUPPORTED: {problem}; the one review slot is not spent on an unfinished write"
+    try:
+        verify_s0_loop_authority(cfg, tasks, require_base=False)
+    except GateError as e:
+        return f"S0_LOOP_REVIEW_AUTHORITY_UNVERIFIED: {e}"
+    return None
+
+
 def _s0_rebind_one_approved_review(tasks, w):
     reviews = [x for x in tasks.values() if isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == w["id"]]
     return (len(reviews) == 1 and reviews[0].get("role") == "code-review" and reviews[0].get("status") == "DONE"
@@ -2763,14 +3004,18 @@ def _s0_rebind_done(cfg, tasks):
     return {c["path"]: c["sha256"] for c in changed}
 
 
-def _s0_git_blob_sha(cfg, commit, path, label):
+def _s0_git_blob(cfg, commit, path, label):
     try:
         shown = git_run(cfg.repo, "show", f"{commit}:{path}", timeout=10)
     except (OSError, subprocess.SubprocessError):
         raise GateError(f"{label}: cannot read {path} at {commit[:12]}")
     if shown.returncode != 0:
         raise GateError(f"{label}: {path} is not committed at {commit[:12]}")
-    return hashlib.sha256(shown.stdout).hexdigest()
+    return shown.stdout
+
+
+def _s0_git_blob_sha(cfg, commit, path, label):
+    return hashlib.sha256(_s0_git_blob(cfg, commit, path, label)).hexdigest()
 
 
 def _s0_rebound_docs_published(cfg, receipt, rebound):
@@ -2901,6 +3146,230 @@ def s0_test_review_reason(cfg, t, tasks):
     return None
 
 
+MAX_PRODUCT_CORRECTIONS = 3  # total correction cycles per root product task, across all findings, ids, sessions and restarts
+CAP_ACCOUNTING_WRITES = (ACCOUNTING_RECOVERY_WRITE, "mod004-cap-budget-accounting-sonnet-20261019")
+_FINDING_NOISE = re.compile(r"[0-9a-f]{7,}|\d+")
+
+
+def product_loop_eligible(tasks, t):
+    """Generic product writes only: never MOD-000 infrastructure, any S0 lane, the CAP accounting chain or a review retry."""
+    if t.get("role") not in WRITE_ROLES or t.get("module") in (None, "MOD-000"):
+        return False
+    if t.get("accounting_recovery_of") or t.get("review_retry_of") or t.get("id") in CAP_ACCOUNTING_WRITES:
+        return False
+    if any(f(t) for f in (s0_marked, s0_test_marked, s0_touches, s0_doc_marked, s0_refresh_marked, s0_rebind_marked,
+                          s0_loop_marked, s0_doc_touches)):
+        return False
+    return not accounting_recovery_chain(tasks, t)
+
+
+def product_policy_root(tasks, t):
+    """True when t's remediation ancestry (walked iteratively, no recursion into the chain validators) ends at a root
+    stamped by the new loop policy. Unmarked historical roots and their corrections keep the old MAX_REMEDIATIONS rule."""
+    seen = set()
+    while isinstance(t, dict) and t.get("id") not in seen and len(seen) <= 64:
+        seen.add(t.get("id"))
+        if not t.get("remediation_of"):
+            return t.get("remediation_root") == t.get("id") and t.get("remediation_cycle") == 0
+        t = tasks.get(t["remediation_of"])
+    return False
+
+
+def product_new_policy(tasks, t):
+    """True for a product write that belongs to the new loop: a correction of a policy-stamped chain, a stamped root, or a
+    root not yet recorded (newly proposed or ingested). A recorded unstamped root is historical."""
+    if t.get("remediation_of"):
+        return product_policy_root(tasks, tasks.get(t["remediation_of"]))
+    return "remediation_root" in t or t.get("id") not in tasks
+
+
+def _finding_fingerprint(kind, text):
+    """Conservative textual fingerprint of recorded review/verifier output (lowercased, digits and hex ids masked,
+    whitespace collapsed). Equal fingerprints stop the loop; different wording of one root cause is NOT detected
+    (only the cycle cap bounds that). Missing or empty evidence yields None, which callers treat as unverifiable."""
+    norm = " ".join(_FINDING_NOISE.sub("#", text.lower()).split()) if isinstance(text, str) else ""
+    return hashlib.sha256(f"{kind}\0{norm}".encode()).hexdigest() if norm else None
+
+
+def product_rejection(tasks, w):
+    """(kind, fingerprint) when write w was rejected by a runner-verified bound Opus CHANGES_REQUESTED review or by a
+    recorded failed verification (verifier genuinely executed, exit > 0) that left changed-file evidence and NO other violation; else None. A BLOCKED write
+    with any mixed or other violation is not correctable. Never relabels any verdict."""
+    ev = w.get("evidence") or {}
+    if w.get("status") == "DONE":
+        cr = [a for a in review_attempts(tasks, w["id"]) if _bound_review_ok(w, a)
+              and a.get("status") == "BLOCKED" and a.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
+              and (a.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
+              and a["evidence"]["review_outcome"] == "CHANGES_REQUESTED"]
+        return ("CHANGES_REQUESTED", _finding_fingerprint("review", cr[0].get("result"))) if cr else None
+    v = ev.get("verify") or {}
+    if (w.get("status") == "BLOCKED" and w.get("blocked_reason") == "VERIFICATION_FAILED"
+            and ev.get("violations") == ["VERIFICATION_FAILED"] and ev.get("changed")
+            and isinstance(v.get("exit"), int) and not isinstance(v["exit"], bool) and v["exit"] > 0):  # -1 = sandbox refusal/timeout/could not run
+        return "VERIFICATION_FAILED", _finding_fingerprint("verify", " ".join(map(str, v.get("cmd") or [])) + "\n" + str(v.get("tail") or ""))
+    return None
+
+
+def _candidate(pairs):
+    return frozenset((c["path"], c["sha256"]) for c in _changed_pairs(pairs))
+
+
+def product_chain(tasks, w):
+    """Root-first remediation ancestry of w, reconstructed from state. Raises ValueError (message starts with its
+    REMEDIATION_ code) for a cycle, a missing/foreign/ineligible ancestor, a disagreeing persisted counter or a
+    correction whose changed bytes equal an earlier candidate of the same root."""
+    chain, seen = [], set()
+    while w is not None:
+        if w["id"] in seen or len(chain) > 64:
+            raise ValueError("REMEDIATION_LINEAGE_INVALID: cyclic remediation ancestry")
+        seen.add(w["id"])
+        chain.append(w)
+        parent = w.get("remediation_of")
+        if not parent:
+            break
+        w = tasks.get(parent)
+        if w is None:
+            raise ValueError(f"REMEDIATION_LINEAGE_INVALID: remediation_of {parent} is not recorded")
+    chain.reverse()
+    root, earlier = chain[0], []
+    for i, n in enumerate(chain):
+        if not product_loop_eligible(tasks, n) or n.get("module") != root.get("module"):
+            raise ValueError(f"REMEDIATION_LINEAGE_INVALID: {n['id']} is not a product write of the root's module")
+        if "remediation_root" in n and (n["remediation_root"], n.get("remediation_cycle")) != (root["id"], i):
+            raise ValueError(f"REMEDIATION_COUNTER_MISMATCH: persisted counter of {n['id']} disagrees with its ancestry")
+        cand = _candidate((n.get("evidence") or {}).get("changed"))
+        if i and cand and cand in earlier:
+            raise ValueError(f"REMEDIATION_NO_PROGRESS: {n['id']} changed the same bytes as an earlier candidate")
+        earlier.append(cand)
+    return chain
+
+
+def product_progress_problem(tasks, t, new_changed):
+    """None, or why the just-written correction t carries no new bytes relative to its own ancestry."""
+    cand = _candidate(new_changed)
+    if not cand:
+        return "the correction changed no files"
+    w = tasks.get(t.get("remediation_of"))
+    for _ in range(64):
+        if w is None:
+            return None
+        if _candidate((w.get("evidence") or {}).get("changed")) == cand:
+            return f"identical changed bytes to {w['id']}"
+        w = tasks.get(w.get("remediation_of"))
+    return "remediation ancestry too deep"
+
+
+def product_correction_reason(cfg, tasks, t, tip):
+    """Gate for a product correction t of the rejected write `tip`; None when allowed, else an explicit reason."""
+    module = t["module"]
+    if t.get("remediation_of") != tip["id"]:
+        return (f"REMEDIATION_LINEAGE_REQUIRED {module}: a correction must name the rejected write {tip['id']} "
+                "as remediation_of; a new task id never starts a new budget")
+    try:
+        chain = product_chain(tasks, tip)
+    except ValueError as e:
+        return str(e)
+    rej = [product_rejection(tasks, w) for w in chain]
+    if not all(rej):
+        return (f"REMEDIATION_LINEAGE_INVALID {module}: every ancestor of {tip['id']} must be a bound Opus "
+                "CHANGES_REQUESTED review or a recorded failed verification")
+    if tip.get("status") == "DONE" and not _hashes_current(cfg, (tip.get("evidence") or {}).get("changed")):
+        return f"REMEDIATION_BINDING_STALE {module}: files of {tip['id']} no longer match the rejected candidate"
+    if len(chain) > MAX_PRODUCT_CORRECTIONS:
+        return (f"REMEDIATION_LIMIT {module}: root {chain[0]['id']} already used {MAX_PRODUCT_CORRECTIONS} "
+                "correction cycles")
+    fps = [r[1] for r in rej]
+    if None in fps:
+        return f"REMEDIATION_FINGERPRINT_UNVERIFIABLE {module}: a rejection of {chain[0]['id']} left no recorded finding text"
+    if len(set(fps)) < len(fps):
+        return (f"REMEDIATION_NO_PROGRESS {module}: root {chain[0]['id']} was rejected again with an identical "
+                "recorded finding/failure")
+    if any(x.get("remediation_of") == tip["id"] and x.get("id") != t.get("id") for x in tasks.values()):
+        return f"REMEDIATION_BRANCH {module}: {tip['id']} already has another correction"
+    if "remediation_root" in t and (t["remediation_root"], t.get("remediation_cycle")) != (chain[0]["id"], len(chain)):
+        return f"REMEDIATION_COUNTER_MISMATCH {module}: persisted counter disagrees with the task ancestry"
+    if not all(in_scope(p, chain[0].get("allowed_paths") or []) for p in t.get("allowed_paths") or []):
+        return f"REMEDIATION_OUT_OF_SCOPE {module}: a correction must stay inside root {chain[0]['id']}'s allowed paths"
+    return None
+
+
+def stamp_product_remediation(tasks, t):
+    """Persist the root identity and cycle derived from ancestry on a newly accepted eligible product write."""
+    if not product_loop_eligible(tasks, t):
+        return
+    if not t.get("remediation_of"):
+        t["remediation_root"], t["remediation_cycle"] = t["id"], 0
+        return
+    parent = tasks.get(t["remediation_of"])
+    if not product_policy_root(tasks, parent):
+        return  # a correction of an unmarked historical root stays under the old rule
+    try:
+        chain = product_chain(tasks, parent)
+    except ValueError:
+        return  # left unstamped: the gate refuses it with the precise reason
+    t["remediation_root"], t["remediation_cycle"] = chain[0]["id"], len(chain)
+
+
+def product_lineage_reason(cfg, tasks, t):
+    """(decided, reason) from a durable per-root inspection for a new eligible product write t: every stamped root of t's module is rebuilt
+    from state and its single leaf judged. A BLOCKED/FAILED leaf that is not a genuine product rejection blocks every
+    new root and correction of the module; a genuinely rejected leaf (failed verification, or DONE with a bound
+    CHANGES_REQUESTED) admits only a correction naming it; approved leaves do not block. An unfinished (QUEUED/RUNNING/unknown) leaf, or a DONE leaf without a bound review, blocks
+    every other new root, sibling and correction; t itself is excluded, so its own legitimate correction can still run.
+    Only roots stamped by the new policy are inspected."""
+    module = t["module"]
+    nodes = {}
+    for x in tasks.values():
+        if (isinstance(x, dict) and x.get("id") != t.get("id") and x.get("module") == module and x.get("role") in WRITE_ROLES
+                and ("remediation_root" in x or x.get("remediation_of")) and product_loop_eligible(tasks, x)):
+            try:
+                nodes[x["id"]] = (product_chain(tasks, x)[0]["id"], x)
+            except ValueError as e:
+                if "remediation_root" in x:
+                    return True, str(e)
+    groups = {}
+    for root, x in nodes.values():
+        groups.setdefault(root, []).append(x)
+    blocked, tips = [], {}
+    for root in sorted(groups):
+        members = groups[root]
+        if not product_policy_root(tasks, members[0]):
+            continue
+        parents = {}
+        for x in members:
+            if x.get("remediation_of"):
+                parents.setdefault(x["remediation_of"], []).append(x["id"])
+        branched = sorted(p for p, kids in parents.items() if len(kids) > 1)
+        if branched:
+            return True, f"REMEDIATION_BRANCH {module}: {branched[0]} already has more than one correction"
+        leaves = [x for x in members if x["id"] not in parents]
+        if len(leaves) != 1:
+            return True, f"REMEDIATION_LINEAGE_INVALID {module}: root {root} does not have exactly one leaf"
+        leaf = leaves[0]
+        if leaf.get("status") not in ("BLOCKED", "FAILED", "DONE"):
+            return True, (f"REMEDIATION_ROOT_PENDING {module}: root {root} has unfinished leaf {leaf['id']} "
+                          f"({leaf.get('status')}); no new root, sibling or correction is admitted until it ends")
+        if product_rejection(tasks, leaf):
+            tips[leaf["id"]] = leaf
+        elif leaf["status"] != "DONE":
+            blocked.append((root, leaf))
+        elif not any(_bound_review_ok(leaf, a) and (a.get("evidence") or {}).get("review_outcome") in ("APPROVED", "CHANGES_REQUESTED")
+                     for a in review_attempts(tasks, leaf["id"])):
+            return True, (f"REVIEW_REQUIRED {module}: root {root} leaf {leaf['id']} has no independent Opus code-review "
+                          "attempt bound to it; no new root is admitted until it is reviewed")
+    if blocked:
+        root, leaf = blocked[0]
+        return True, (f"REMEDIATION_ROOT_BLOCKED {module}: root {root} ended at {leaf['id']} ({leaf['status']}"
+                f"{'/' + str(leaf['blocked_reason']) if leaf.get('blocked_reason') else ''}) which is not a correctable "
+                "product rejection; no new root or correction is admitted until it is resolved")
+    if t.get("remediation_of") in tips:
+        return True, product_correction_reason(cfg, tasks, t, tips[t["remediation_of"]])
+    if tips:
+        return True, (f"REMEDIATION_LINEAGE_REQUIRED {module}: rejected write {sorted(tips)[0]} must be corrected "
+                "through remediation_of; a new task id never starts a new budget")
+    return False, None
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -2908,20 +3377,35 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if s0_marked(t) or s0_test_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
         return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
-    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_doc_touches(t):
+    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_loop_marked(t) or s0_doc_touches(t):
         return f"S0_DOC_INVALID_TASK {t['id']}: document tasks are admitted only by the S0 document gate"
     module = t["module"]
     # the S0, document and refresh chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
                      and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
                      and not s0_doc_marked(x) and not s0_refresh_marked(x) and not s0_rebind_marked(x)
-                     and not s0_test_marked(x)), key=_when)
+                     and not s0_test_marked(x) and not s0_loop_marked(x)), key=_when)
+    product_t = product_loop_eligible(tasks, t) and product_new_policy(tasks, t)
+    if product_t:
+        decided, lineage = product_lineage_reason(cfg, tasks, t)
+        if decided:
+            return lineage
+        if not t.get("remediation_of") and "remediation_root" in t and (t["remediation_root"], t.get("remediation_cycle")) != (t.get("id"), 0):
+            return f"REMEDIATION_COUNTER_MISMATCH {module}: persisted counter disagrees with the task ancestry"
     if not writes:
         return None
     last = writes[-1]
     if t.get("accounting_recovery_of"):
         return None if last["id"] == "mod004-cap-budget-accounting-sonnet-20261019" and accounting_recovery_valid(cfg, t, tasks) else "ACCOUNTING_RECOVERY_INVALID"
-    verdict = review_verdict(tasks, last["id"])
+    if product_loop_eligible(tasks, last) and product_policy_root(tasks, last):  # created under the product loop: bound reviews only
+        try:
+            product_chain(tasks, last)
+        except ValueError as e:
+            return str(e)
+        bound = [a["evidence"]["review_outcome"] for a in review_attempts(tasks, last["id"]) if _bound_review_ok(last, a)]
+        verdict = None if not bound else "CHANGES_REQUESTED" if "CHANGES_REQUESTED" in bound else "APPROVED"
+    else:
+        verdict = review_verdict(tasks, last["id"])
     if verdict is None:
         return f"REVIEW_REQUIRED {module}: write task {last['id']} has no independent Opus code-review attempt bound to it"
     if verdict == "APPROVED":
@@ -2931,6 +3415,8 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if t["role"] == "gatekeeper":
         return f"REVIEW_CHANGES_REQUESTED {module}: a review of {last['id']} requests changes; only a remediation write may follow"
+    if product_t and product_loop_eligible(tasks, last) and product_policy_root(tasks, last):
+        return product_correction_reason(cfg, tasks, t, last)
     # The historical source-inaccessible write is not a remediation round of the new candidate.
     # This leaves MAX_REMEDIATIONS unchanged and applies only to the exact audited recovery chain.
     if accounting_recovery_chain(tasks, last):
@@ -3006,11 +3492,13 @@ def gate_reason(cfg, t, tasks):
     try:
         if t["role"] == "code-review":
             return (s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
-                    or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks))
+                    or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
+                    or s0_loop_review_reason(cfg, t, tasks))
         if t["role"] not in GATED_ROLES:
             return None
         reason = (s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks) or s0_refresh_gate_reason(cfg, t, tasks)
-                  or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks))
+                  or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks)
+                  or s0_loop_gate_reason(cfg, t, tasks))
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -3023,7 +3511,7 @@ def gate_reason(cfg, t, tasks):
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
         if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-                or s0_test_marked(t)):  # the sole S0 write and the document, refresh, rebind and test chains: separate chains, historical blockers stay untouched
+                or s0_test_marked(t) or s0_loop_marked(t)):  # the sole S0 write and the document, refresh, rebind and test chains: separate chains, historical blockers stay untouched
             return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
@@ -3424,15 +3912,20 @@ class Runner:
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
         if (s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_doc_touches(t)
-                or s0_rebind_marked(t) or s0_test_marked(t)):
-            raise ValueError("tasks for the MOD004-S0, MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND or "
-                             "MOD004-S0-TEST-REMEDIATION files require the owner CLI; the planner cannot propose them")
+                or s0_rebind_marked(t) or s0_test_marked(t) or s0_loop_marked(t)):
+            raise ValueError("tasks for the MOD004-S0, MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND, "
+                             "MOD004-S0-TEST-REMEDIATION or MOD004-S0-LOOP-REBIND files require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
             w = self.state["tasks"].get(t["remediation_of"])
-            if not (w and w.get("module") == t["module"] and w.get("role") in WRITE_ROLES and w.get("status") == "DONE"
-                    and review_verdict(self.state["tasks"], w["id"]) == "CHANGES_REQUESTED"):
+            if product_loop_eligible(self.state["tasks"], t) and product_policy_root(self.state["tasks"], w):
+                if not (w and w.get("module") == t["module"] and w.get("role") in WRITE_ROLES
+                        and product_rejection(self.state["tasks"], w)):
+                    raise ValueError("remediation_of must name a write of this module whose bound review requested changes "
+                                     "or whose recorded verification failed")
+            elif not (w and w.get("module") == t["module"] and w.get("role") in WRITE_ROLES and w.get("status") == "DONE"
+                      and review_verdict(self.state["tasks"], w["id"]) == "CHANGES_REQUESTED"):
                 raise ValueError("remediation_of must name a DONE write of this module whose bound review requested changes")
             if not all(in_scope(p, w.get("allowed_paths") or []) for p in t["allowed_paths"]):
                 raise ValueError("remediation must stay inside the reviewed write's allowed paths")
@@ -3440,6 +3933,7 @@ class Runner:
         reason = gate_reason(self.cfg, t, self.state["tasks"])
         if reason:
             raise ValueError(f"refused by gate: {reason}")
+        stamp_product_remediation(self.state["tasks"], t)
         self.state["tasks"][t["id"]] = t  # persisted by the caller together with the closed request
         self.store.event("task-queued", f"{t['id']}:0", task_id=t["id"], module=t["module"], role=t["role"], source="handoff")
         return t["id"]
@@ -3532,6 +4026,7 @@ class Runner:
                 self.store.event("task-rejected", file=f.name, reason=str(e))
                 continue
             if t["id"] not in self.state["tasks"]:  # idempotent re-ingest
+                stamp_product_remediation(self.state["tasks"], t)
                 self.state["tasks"][t["id"]] = t
                 self.store.save(self.state)  # durable BEFORE the queue file is consumed
                 self.store.event("task-queued", f"{t['id']}:0", task_id=t["id"], module=t["module"], role=t["role"])
@@ -3919,7 +4414,8 @@ class Runner:
             code = ("S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
                     "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else
                     "S0_REBIND_ATTEMPT_INTERRUPTED" if s0_rebind_marked(t) else
-                    "S0_TEST_ATTEMPT_INTERRUPTED" if s0_test_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
+                    "S0_TEST_ATTEMPT_INTERRUPTED" if s0_test_marked(t) else
+                    "S0_LOOP_ATTEMPT_INTERRUPTED" if s0_loop_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
             t.update(status="BLOCKED", blocked_reason=code, stage=None,
                      last_error="the only attempt of this S0 write was interrupted; repo may hold partial edits")
             return self.store.event("task-blocked", op, task_id=t["id"], code=code)
@@ -4051,6 +4547,19 @@ class Runner:
                 bad.append(("S0_REBIND_AUTHORITY_WITHDRAWN", str(e)[:200]))
             except Exception as e:
                 bad.append(("S0_REBIND_AUTHORITY_WITHDRAWN", type(e).__name__))
+        if write and s0_loop_marked(t):  # recovery authority may have been withdrawn, or an S0 receipt installed, during the child; the documents must keep their pinned shape
+            try:
+                verify_s0_loop_authority(self.cfg, self.state["tasks"], require_base=False)
+            except GateError as e:
+                bad.append(("S0_LOOP_AUTHORITY_WITHDRAWN", str(e)[:200]))
+            except Exception as e:
+                bad.append(("S0_LOOP_AUTHORITY_WITHDRAWN", type(e).__name__))
+            try:
+                problem = _s0_loop_docs_problem(self.cfg)
+                if problem:
+                    bad.append(("S0_LOOP_DOCUMENT_SHAPE", problem[:200]))
+            except Exception as e:
+                bad.append(("S0_LOOP_DOCUMENT_SHAPE", type(e).__name__))
         if write and s0_rebind_repair_marked(t):  # the root record must be untouched and the certificate must carry the final packet hash
             try:
                 problem = _s0_rebind_root_problem(self.state["tasks"])
@@ -4073,6 +4582,15 @@ class Runner:
                     bad.append(("S0_TEST_VALIDATOR_CHANGED", "the validator is not the pinned sha256"))
             except OSError:
                 bad.append(("S0_TEST_VALIDATOR_CHANGED", "the validator cannot be read"))
+        if (write and t.get("remediation_of") and product_loop_eligible(self.state["tasks"], t)
+                and product_policy_root(self.state["tasks"], t)):
+            try:
+                problem = product_progress_problem(self.state["tasks"], t, [
+                    {"path": c, "sha256": _path_hash(Path(self.cfg.repo) / c)} for c in changed])
+                if problem:
+                    bad.append(("REMEDIATION_NO_PROGRESS", problem[:200]))
+            except Exception as e:
+                bad.append(("REMEDIATION_NO_PROGRESS", type(e).__name__))
         base = Path(self.cfg.repo)
         evidence = {"op": op, "at": now_iso(), "subtype": parsed.get("subtype"),
                     "permission_denials": len(denials) if isinstance(denials, list) else None,
@@ -4330,10 +4848,10 @@ def validate_task(d, cfg):
                                      isinstance(retry_of, str) and ID_RE.match(retry_of)):
         raise ValueError("review_retry_of is only for a bound code-review")
     doc_base = d.get("doc_base")
-    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and set(doc_base) == set(S0_DOC_PATHS)
                                      and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())):
-        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH or MOD004-S0-DOC-REBIND write: {path: sha256 or null} for exactly the two document paths")
+        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND or MOD004-S0-LOOP-REBIND write: {path: sha256 or null} for exactly the two document paths")
     candidate = d.get("review_candidate")
     if candidate is not None and not (retry_of and isinstance(candidate, dict)
                                       and set(candidate) == {"head", "files", "diff_sha256", "candidate_sha256"}):
@@ -4374,7 +4892,7 @@ def enqueue(cfg, task):
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
     if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-            or s0_test_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+            or s0_test_marked(t) or s0_loop_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
         problem = s0_runner_problem(state)
         if problem:
             raise ValueError(f"task refused by S0 gate: {problem}")
@@ -4617,7 +5135,7 @@ def main(argv=None):
     e.add_argument("--accounting-recovery-of", help="one audited MOD-004 source-inaccessible accounting review id; fresh write only")
     e.add_argument("--remediation-of", help="MOD004-S0-DOC: the document write whose exact-bound review requested changes; or the one MOD004-S0-DOC-REBIND repair (its exact id only): the incomplete rebind write")
     e.add_argument("--doc-base", action="append", default=[], metavar="PATH=SHA256|absent",
-                   help="MOD004-S0-DOC / -REFRESH / -REBIND only, once per document: the exact current content hash this write starts from")
+                   help="MOD004-S0-DOC / -REFRESH / -REBIND / MOD004-S0-LOOP-REBIND only, once per document: the exact current content hash this write starts from")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")

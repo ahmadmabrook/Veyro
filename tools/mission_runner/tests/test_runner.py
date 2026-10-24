@@ -2779,6 +2779,306 @@ class Handoff(Base):
         tasks["r4"]["evidence"] = {"review_outcome": None}  # a review without an explicit verdict is not an attempt
         self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, write, tasks))
 
+    def loop_step(self, tasks, n, outcome, text, module="MOD-003", content=None, parent=None, bound=True, path=None, historical=False, **kw):
+        """A recorded product write wN with real bytes on disk and, for CHANGES_REQUESTED/APPROVED, a bound Opus review rN.
+        A root is stamped by the new policy unless historical=True (an unmarked pre-policy root)."""
+        path = path or f"out/f{n}.txt"
+        (self.repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / path).write_text(content if content is not None else f"candidate {n}")
+        w = {"id": f"w{n}", "module": module, "role": "implement", "status": "DONE", "review_gate": 1,
+             "finished_at": f"2026-10-24T10:{n:02d}:00Z", "allowed_paths": ["out/"],
+             "evidence": {"changed": [{"path": path, "sha256": R._path_hash(self.repo / path)}], "violations": []}}
+        if not parent and not historical:
+            w |= {"remediation_root": w["id"], "remediation_cycle": 0}
+        w |= kw
+        if parent:
+            w["remediation_of"] = parent
+        tasks[w["id"]] = w
+        if outcome:
+            tasks[f"r{n}"] = {"id": f"r{n}", "module": module, "role": "code-review", "status": "BLOCKED" if outcome != "APPROVED" else "DONE",
+                              "blocked_reason": "REVIEW_CHANGES_REQUESTED" if outcome == "CHANGES_REQUESTED" else None,
+                              "review_of": {"task_id": w["id"], "changed": list(w["evidence"]["changed"])}, "result": text,
+                              "evidence": {"review_outcome": outcome, "review_bound_verified": bound,
+                                           "violations": ["REVIEW_CHANGES_REQUESTED"] if outcome == "CHANGES_REQUESTED" else []},
+                              "route": {"verdict": "VERIFIED"}, "updated_at": f"2026-10-24T10:{n:02d}:30Z"}
+        return w
+
+    def loop_write(self, **kw):
+        return {"module": "MOD-003", "role": "implement", "allowed_paths": ["out/"]} | kw
+
+    def test_product_loop_allows_three_lineage_bound_corrections_then_stops(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: tenant filter missing in list view")
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks))
+        for n, finding in ((1, "Finding: pagination off by one"), (2, "Finding: error body leaks stack"), (3, "Finding: missing audit log")):
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id=f"c{n}", remediation_of=f"w{n-1}"), tasks), n)
+            self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id=f"new{n}"), tasks))
+            self.loop_step(tasks, n, "CHANGES_REQUESTED", finding, parent=f"w{n-1}")
+        reason = R.review_gate_reason(self.cfg, self.loop_write(id="c4", remediation_of="w3"), tasks)
+        self.assertIn("REMEDIATION_LIMIT", reason)  # root + three corrections, all rejected: no fourth cycle
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="reset"), tasks))
+        self.assertEqual([w["id"] for w in R.product_chain(tasks, tasks["w3"])], ["w0", "w1", "w2", "w3"])
+        self.assertEqual(R.review_verdict(tasks, "w0"), "CHANGES_REQUESTED")  # earlier verdicts are never relabeled
+
+    def test_product_loop_counter_is_reconstructed_from_ancestry_after_restart(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: alpha")
+        self.loop_step(tasks, 1, "CHANGES_REQUESTED", "Finding: beta", parent="w0", remediation_root="w0", remediation_cycle=1)
+        tasks = json.loads(json.dumps(tasks))  # durable state round trip: nothing but the persisted records remain
+        stamped = self.loop_write(id="c2", remediation_of="w1", remediation_root="w0", remediation_cycle=2)
+        self.assertIsNone(R.review_gate_reason(self.cfg, stamped, tasks))
+        for bad in ({"remediation_root": "c2", "remediation_cycle": 0}, {"remediation_cycle": 1}):  # a reset or rewind is refused
+            self.assertIn("REMEDIATION_COUNTER_MISMATCH", R.review_gate_reason(self.cfg, stamped | bad, tasks))
+        tasks["w1"]["remediation_cycle"] = 0  # tampered ancestor counter
+        self.assertIn("REMEDIATION_COUNTER_MISMATCH", R.review_gate_reason(self.cfg, stamped, tasks))
+        t = {"id": "c9", "module": "MOD-003", "role": "implement", "remediation_of": "w1"}
+        tasks["w1"]["remediation_cycle"] = 1
+        R.stamp_product_remediation(tasks, t)
+        self.assertEqual((t["remediation_root"], t["remediation_cycle"]), ("w0", 2))
+        fresh = {"id": "f1", "module": "MOD-003", "role": "implement"}
+        R.stamp_product_remediation(tasks, fresh)
+        self.assertEqual((fresh["remediation_root"], fresh["remediation_cycle"]), ("f1", 0))
+
+    def test_product_loop_mixed_review_violation_cannot_authorize_correction(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: tenant filter missing")
+        review = tasks["r0"]
+        for reason, violations in (
+            ("PERMISSION_DENIED", ["PERMISSION_DENIED", "REVIEW_CHANGES_REQUESTED"]),
+            ("MODEL_ASSURANCE_UNVERIFIED", ["MODEL_ASSURANCE_UNVERIFIED", "REVIEW_CHANGES_REQUESTED"]),
+            ("REVIEW_CHANGES_REQUESTED", ["REVIEW_CHANGES_REQUESTED", "POST_RUN_BASELINE_MISMATCH"]),
+        ):
+            review["blocked_reason"] = reason
+            review["evidence"]["violations"] = violations
+            self.assertIsNone(R.product_rejection(tasks, tasks["w0"]))
+            reason = R.review_gate_reason(self.cfg, self.loop_write(id="c1", remediation_of="w0"), tasks)
+            self.assertIn("REMEDIATION_LINEAGE_INVALID", reason)
+
+    def test_product_loop_refuses_repeated_finding_unverifiable_lineage_and_unchanged_candidate(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: tenant filter missing at line 41 (abc1234def)")
+        self.loop_step(tasks, 1, "CHANGES_REQUESTED", "FINDING:  tenant filter missing at line 57 (0123456789)", parent="w0")
+        self.assertIn("REMEDIATION_NO_PROGRESS", R.review_gate_reason(self.cfg, self.loop_write(id="c2", remediation_of="w1"), tasks))
+        self.loop_step(tasks, 5, "CHANGES_REQUESTED", "   ")  # no recorded finding text: fail closed, never guess equivalence
+        self.assertIn("REMEDIATION_FINGERPRINT_UNVERIFIABLE", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w5"), tasks))
+        self.loop_step(tasks, 6, "CHANGES_REQUESTED", "Finding: x", bound=False)  # review not runner-bound to the exact bytes
+        self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w6"), tasks))
+        self.loop_step(tasks, 7, "APPROVED", "ok")  # approved bytes are not a rejection to correct
+        self.assertIn("REMEDIATION_LINEAGE_INVALID", R.product_correction_reason(
+            self.cfg, tasks, self.loop_write(id="c", remediation_of="w7"), tasks["w7"]))
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: alpha", content="same bytes", path="out/same.txt")
+        self.loop_step(tasks, 1, "APPROVED", "ok", parent="w0", content="same bytes", path="out/same.txt", remediation_root="w0", remediation_cycle=1)  # a re-review of unchanged path and bytes
+        self.assertEqual(tasks["w0"]["evidence"]["changed"], tasks["w1"]["evidence"]["changed"])
+        gatekeeper = {"module": "MOD-003", "role": "gatekeeper"}
+        self.assertIn("REMEDIATION_NO_PROGRESS", R.review_gate_reason(self.cfg, gatekeeper, tasks) or "")
+        self.assertIn("REMEDIATION_NO_PROGRESS", R.review_gate_reason(self.cfg, self.loop_write(id="next"), tasks) or "")
+        del tasks["w1"]["remediation_root"], tasks["w1"]["remediation_cycle"]  # an unstamped correction is still judged by its ancestry
+        self.assertIn("REMEDIATION_NO_PROGRESS", R.review_gate_reason(self.cfg, gatekeeper, tasks) or "")
+        tasks["w1"]["remediation_root"], tasks["w1"]["remediation_cycle"] = "w0", 1
+        (self.repo / "out" / "same.txt").write_text("different bytes")  # a changed candidate at the same path is real progress
+        tasks["w1"]["evidence"]["changed"] = [{"path": "out/same.txt", "sha256": R._path_hash(self.repo / "out" / "same.txt")}]
+        tasks["r1"]["review_of"]["changed"] = list(tasks["w1"]["evidence"]["changed"])
+        self.assertIsNone(R.review_gate_reason(self.cfg, gatekeeper, tasks))
+        self.assertIn("identical changed bytes", R.product_progress_problem(tasks, {"remediation_of": "w0"}, tasks["w0"]["evidence"]["changed"]))
+        self.assertIsNone(R.product_progress_problem(tasks, {"remediation_of": "w0"}, [{"path": "out/new.txt", "sha256": "1" * 64}]))
+        self.assertIn("no files", R.product_progress_problem(tasks, {"remediation_of": "w0"}, []))
+
+    def test_product_loop_failed_verification_consumes_the_root_budget(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: alpha", remediation_root="w0", remediation_cycle=0)
+        w1 = self.loop_step(tasks, 1, None, "", parent="w0", remediation_root="w0", remediation_cycle=1, status="BLOCKED",
+                            blocked_reason="VERIFICATION_FAILED", updated_at="2026-10-24T10:01:00Z")
+        w1["evidence"] |= {"violations": ["VERIFICATION_FAILED"], "verify": {"exit": 1, "cmd": ["python3", "-m", "unittest", "backend.tests.x"],
+                                                                         "tail": "FAIL: test_x 3 failures"}}
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks))  # no reset by new id
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c2", remediation_of="w1"), tasks))
+        self.loop_step(tasks, 2, "CHANGES_REQUESTED", "Finding: beta", parent="w1")
+        self.loop_step(tasks, 3, "CHANGES_REQUESTED", "Finding: gamma", parent="w2")
+        self.assertEqual(len(R.product_chain(tasks, tasks["w3"])), 4)
+        self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, self.loop_write(id="c4", remediation_of="w3"), tasks))
+        tasks["w1"]["evidence"]["verify"]["tail"] = ""  # failed verification without recorded output cannot be fingerprinted
+        tasks["w2"]["status"] = "BLOCKED"
+        self.assertIn("REMEDIATION", R.review_gate_reason(self.cfg, self.loop_write(id="c5", remediation_of="w2"), tasks))
+
+    def test_product_loop_scope_ceiling_single_branch_and_stale_candidate(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: alpha", allowed_paths=["out/", "docs/"])
+        self.loop_step(tasks, 1, "CHANGES_REQUESTED", "Finding: beta", parent="w0", allowed_paths=["out/"])
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w1", allowed_paths=["docs/"]), tasks))  # root ceiling
+        self.assertIn("REMEDIATION_OUT_OF_SCOPE", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w1", allowed_paths=["services/"]), tasks))
+        tasks["other"] = self.loop_write(id="other", remediation_of="w1", status="QUEUED")  # a second correction of the same rejected write
+        self.assertIn("REMEDIATION_ROOT_PENDING", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w1"), tasks))
+        tasks["other"]["status"] = "RUNNING"
+        self.assertIn("REMEDIATION_ROOT_PENDING", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w1"), tasks))
+        del tasks["other"]
+        (self.repo / "out" / "f1.txt").write_text("edited after the rejecting review")
+        self.assertIn("REMEDIATION_BINDING_STALE", R.review_gate_reason(self.cfg, self.loop_write(id="c", remediation_of="w1"), tasks))
+
+    def blocked_step(self, tasks, n, reason, parent=None, violations=None, verify=True, **kw):
+        w = self.loop_step(tasks, n, None, "", parent=parent, status=kw.pop("status", "BLOCKED"), blocked_reason=reason,
+                           remediation_root="w0", remediation_cycle=n, updated_at=f"2026-10-24T10:{n:02d}:10Z", **kw)
+        w["evidence"]["violations"] = [reason] if violations is None else violations
+        if verify:
+            w["evidence"]["verify"] = {"exit": 1, "cmd": ["python3", "-m", "unittest", "backend.tests.x"], "tail": f"FAIL: {'alpha beta gamma delta'.split()[n % 4]} broke"}
+        return w
+
+    def test_product_loop_abandoned_leaf_blocks_every_new_root_and_correction(self):
+        self.cfg.review_gate = True
+        for reason in ("EXPECTED_CHANGE_MISSING", "NO_DELIVERABLE_CHANGE", "OUT_OF_SCOPE_CHANGE", "PERMISSION_DENIED",
+                       "REMEDIATION_NO_PROGRESS"):
+            tasks = {}
+            self.blocked_step(tasks, 0, "VERIFICATION_FAILED")  # genuine rejection of the root
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c1", remediation_of="w0"), tasks))
+            self.blocked_step(tasks, 1, reason, parent="w0")  # the correction was abandoned for an unrelated reason
+            for t in (self.loop_write(id="fresh"), self.loop_write(id="c2", remediation_of="w1"),
+                      self.loop_write(id="c2b", remediation_of="w0")):
+                self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, t, tasks) or "", (reason, t["id"]))
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="o", module="MOD-004"), tasks), reason)  # other modules stay eligible
+        tasks = {}
+        self.blocked_step(tasks, 0, "VERIFICATION_FAILED")
+        self.blocked_step(tasks, 1, "FAILED", parent="w0", status="FAILED", violations=[], verify=False)  # timeout/crash leaf
+        for t in (self.loop_write(id="fresh"), self.loop_write(id="c2", remediation_of="w1")):
+            self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, t, tasks) or "")
+        tasks = {}
+        self.blocked_step(tasks, 0, "EXPECTED_CHANGE_MISSING", verify=False)  # a root that never produced a correctable rejection
+        self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks) or "")
+        self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, self.loop_write(id="c1", remediation_of="w0"), tasks) or "")
+
+    def test_product_loop_verifier_rejection_requires_exact_verification_failed_only(self):
+        tasks = {}
+        w = self.blocked_step(tasks, 0, "VERIFICATION_FAILED")
+        self.assertEqual(R.product_rejection(tasks, w)[0], "VERIFICATION_FAILED")
+        for mixed in (["VERIFICATION_FAILED", "VERIFY_MUTATED_REPO"], ["VERIFICATION_FAILED", "MODEL_ASSURANCE_UNVERIFIED"],
+                      ["VERIFICATION_FAILED", "PERMISSION_DENIED"], ["VERIFICATION_FAILED", "POST_RUN_BASELINE_MISMATCH"],
+                      ["PERMISSION_DENIED", "VERIFICATION_FAILED"], []):
+            w["evidence"]["violations"] = mixed
+            self.assertIsNone(R.product_rejection(tasks, w), mixed)
+        w["evidence"]["violations"] = ["VERIFICATION_FAILED"]
+        w["blocked_reason"] = "PERMISSION_DENIED"  # first blocked reason must be the verifier too
+        self.assertIsNone(R.product_rejection(tasks, w))
+        w["blocked_reason"] = "VERIFICATION_FAILED"
+        w["evidence"]["verify"]["exit"] = 0
+        self.assertIsNone(R.product_rejection(tasks, w))
+        w["evidence"]["verify"]["exit"] = 1
+        w["evidence"]["changed"] = []
+        self.assertIsNone(R.product_rejection(tasks, w))
+        self.cfg.review_gate = True
+        w["evidence"]["changed"] = [{"path": "out/f0.txt", "sha256": "0" * 64}]
+        w["evidence"]["violations"] = ["VERIFICATION_FAILED", "VERIFY_MUTATED_REPO"]
+        self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, self.loop_write(id="c1", remediation_of="w0"), tasks) or "")
+
+    def test_product_loop_genuine_leaf_budget_cannot_be_reset_and_approved_root_frees_the_module(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.blocked_step(tasks, 0, "VERIFICATION_FAILED")
+        self.blocked_step(tasks, 1, "VERIFICATION_FAILED", parent="w0")
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c2", remediation_of="w1"), tasks))
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks))
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="c2", remediation_of="w0"), tasks))
+        self.blocked_step(tasks, 2, "VERIFICATION_FAILED", parent="w1")
+        self.blocked_step(tasks, 3, "VERIFICATION_FAILED", parent="w2")
+        self.assertIn("REMEDIATION_LIMIT", R.review_gate_reason(self.cfg, self.loop_write(id="c4", remediation_of="w3"), tasks))
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="reset"), tasks))
+        tasks["w2b"] = tasks["w2"] | {"id": "w2b"}  # a branch of w1 is invalid lineage
+        self.assertIn("REMEDIATION_BRANCH", R.review_gate_reason(self.cfg, self.loop_write(id="x", remediation_of="w3"), tasks))
+        tasks = {}
+        self.loop_step(tasks, 0, "APPROVED", "ok", remediation_root="w0", remediation_cycle=0)
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="next"), tasks))  # approved root: next root is free
+        self.loop_step(tasks, 1, None, "", remediation_root="w1", remediation_cycle=0)  # unreviewed leaf keeps review-required semantics
+        self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="next"), tasks))
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: a", remediation_root="w0", remediation_cycle=0)
+        self.loop_step(tasks, 1, "APPROVED", "ok", parent="w0", content="fixed", remediation_root="w0", remediation_cycle=1)
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="next"), tasks))
+
+    def test_product_loop_pending_or_unreviewed_root_leaf_blocks_fresh_root_and_sibling(self):
+        self.cfg.review_gate = True
+        for pending in ("QUEUED", "RUNNING", "WEIRD"):
+            tasks = {}
+            self.blocked_step(tasks, 0, "VERIFICATION_FAILED")
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c1", remediation_of="w0"), tasks))
+            tasks["c1"] = self.loop_write(id="c1", remediation_of="w0", status=pending)  # the correction is recorded but not finished
+            self.assertIsNone(R.review_gate_reason(self.cfg, tasks["c1"], tasks), pending)  # its own dispatch still passes
+            for t in (self.loop_write(id="fresh"), self.loop_write(id="c1b", remediation_of="w0"), self.loop_write(id="c2", remediation_of="c1")):
+                self.assertIn("REMEDIATION_ROOT_PENDING", R.review_gate_reason(self.cfg, t, tasks) or "", (pending, t["id"]))
+            self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="o", module="MOD-004"), tasks))
+        tasks = {}  # a queued fresh root also blocks a second fresh root
+        tasks["q"] = self.loop_write(id="q", status="QUEUED", remediation_root="q", remediation_cycle=0)
+        self.assertIn("REMEDIATION_ROOT_PENDING", R.review_gate_reason(self.cfg, self.loop_write(id="q2"), tasks) or "")
+        self.assertIsNone(R.review_gate_reason(self.cfg, tasks["q"], tasks))
+        tasks = {}
+        self.loop_step(tasks, 0, None, "")  # DONE stamped root leaf without any bound review
+        self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks) or "")
+        tasks["r0"] = {"id": "r0", "module": "MOD-003", "role": "code-review", "status": "DONE", "review_of": {"task_id": "w0", "changed": list(tasks["w0"]["evidence"]["changed"])},
+                       "evidence": {"review_outcome": "APPROVED", "review_bound_verified": False, "violations": []}, "route": {"verdict": "VERIFIED"}}
+        self.assertIn("REVIEW_REQUIRED", R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks) or "")  # unbound review
+        tasks["r0"]["evidence"]["review_bound_verified"] = True
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="fresh"), tasks))  # approved leaf frees the module
+
+    def test_product_loop_verifier_exit_minus_one_is_not_a_genuine_failure(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        w = self.blocked_step(tasks, 0, "VERIFICATION_FAILED")
+        for bad in (-1, -9, 0):
+            w["evidence"]["verify"]["exit"] = bad
+            self.assertIsNone(R.product_rejection(tasks, w), bad)
+            for t in (self.loop_write(id="c1", remediation_of="w0"), self.loop_write(id="fresh")):
+                self.assertIn("REMEDIATION_ROOT_BLOCKED", R.review_gate_reason(self.cfg, t, tasks) or "", (bad, t["id"]))
+        w["evidence"]["verify"]["exit"] = 2
+        self.assertEqual(R.product_rejection(tasks, w)[0], "VERIFICATION_FAILED")
+        w["evidence"]["violations"] = ["VERIFICATION_FAILED", "PERMISSION_DENIED"]  # mixed violations stay refused
+        self.assertIsNone(R.product_rejection(tasks, w))
+
+    def test_product_loop_is_prospective_only_for_historical_unmarked_chains(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: a", historical=True)
+        self.loop_step(tasks, 1, "CHANGES_REQUESTED", "Finding: b", parent="w0")
+        self.assertFalse(R.product_policy_root(tasks, tasks["w1"]))
+        self.assertIsNone(R.review_gate_reason(self.cfg, self.loop_write(id="c2", remediation_of="w1"), tasks))  # second old round
+        self.loop_step(tasks, 2, "CHANGES_REQUESTED", "Finding: c", parent="w1")
+        reason = R.review_gate_reason(self.cfg, self.loop_write(id="c3", remediation_of="w2"), tasks)
+        self.assertIn("REMEDIATION_LIMIT", reason)  # the old MAX_REMEDIATIONS=2 rule, not the new 3-cycle loop
+        self.assertIn("remediation rounds already used", reason)
+        for tid, parent in (("c3", "w2"), ("c1", "w0")):  # a correction of a historical chain is never stamped as new
+            t = {"id": tid, "module": "MOD-003", "role": "implement", "remediation_of": parent}
+            R.stamp_product_remediation(tasks, t)
+            self.assertNotIn("remediation_root", t)
+            self.assertNotIn("remediation_cycle", t)
+        self.assertFalse(R.product_new_policy(tasks, tasks["w0"]))  # a recorded unmarked root stays historical
+        fresh = {"id": "fresh", "module": "MOD-003", "role": "implement"}
+        self.assertTrue(R.product_new_policy(tasks, fresh))
+        R.stamp_product_remediation(tasks, fresh)
+        self.assertEqual((fresh["remediation_root"], fresh["remediation_cycle"]), ("fresh", 0))
+        tasks["fresh"] = fresh | {"status": "DONE"}  # the new root's descendants use the 3-cycle loop
+        self.assertTrue(R.product_policy_root(tasks, tasks["fresh"]))
+        self.assertFalse(R.product_policy_root(tasks, {"id": "z", "remediation_of": "z"}))  # cyclic ancestry fails closed
+
+    def test_product_loop_excludes_infrastructure_cap_and_s0_lanes(self):
+        self.cfg.review_gate = True
+        tasks = {}
+        for mod in ("MOD-000",):  # infrastructure keeps the two-round limit and needs no lineage
+            self.loop_step(tasks, 0, "CHANGES_REQUESTED", "Finding: a", module=mod)
+        self.assertFalse(R.product_loop_eligible(tasks, tasks["w0"]))
+        self.assertIsNone(R.review_gate_reason(self.cfg, {"module": "MOD-000", "role": "implement", "allowed_paths": ["out/"]}, tasks))
+        base = {"id": "x", "module": "MOD-004", "role": "implement", "allowed_paths": ["services/"]}
+        self.assertTrue(R.product_loop_eligible({}, base))
+        for special in ({"plan_phase": R.S0_MARKER}, {"plan_phase": R.S0_REBIND_MARKER}, {"plan_phase": R.S0_TEST_MARKER},
+                        {"plan_phase": R.S0_DOC_MARKER}, {"allowed_paths": list(R.S0_PATHS)}, {"allowed_paths": list(R.S0_DOC_PATHS)},
+                        {"id": R.ACCOUNTING_RECOVERY_WRITE}, {"id": "mod004-cap-budget-accounting-sonnet-20261019"},
+                        {"accounting_recovery_of": R.ACCOUNTING_RECOVERY_REVIEW}, {"review_retry_of": "x"}, {"role": "code-review"}):
+            self.assertFalse(R.product_loop_eligible({}, base | special), special)
+        t = dict(base, id="y", remediation_of="x")
+        self.assertIn("REMEDIATION_LINEAGE_INVALID", R.product_correction_reason(self.cfg, {"x": base | {"plan_phase": R.S0_MARKER}}, t,
+                                                                                   {"x": base | {"plan_phase": R.S0_MARKER}}["x"]))
+
     def test_stale_approved_review_does_not_unlock_write_or_gatekeeper(self):
         self.cfg.review_gate = True
         r = self.runner()
@@ -3412,6 +3712,21 @@ class Handoff(Base):
         self.assertIn("3. Mandatory review: after a DONE implement/test task", prompt)
         self.assertIn("independent Opus code-review of that exact task", prompt)
         self.assertIn("Rule 3 still applies in full to actual Veyro product write tasks", prompt)
+
+    def test_handoff_prompt_bounds_product_correction_cycles(self):
+        prompt = R.handoff_prompt(self.cfg, "r1", "f" * 12, "none")
+        self.assertNotIn("at most 2 rounds", prompt)
+        for text in ("up to THREE correction cycles in total per immutable root",
+                     "`remediation_of` set to the immediate rejected parent",
+                     "runner-verified, exactly bound Opus CHANGES_REQUESTED",
+                     "recorded failed lint/unit verification with changed-file evidence",
+                     "fresh material diff and tests",
+                     "fresh exact-bound Opus code-review",
+                     "same root-cause fingerprint repeats",
+                     "special S0/CAP/infrastructure",
+                     "approval alone does not imply it",
+                     "The only exception is the bounded correction described in rule 3"):
+            self.assertIn(text, prompt)
 
     def test_disabled_without_orchestrator_bin(self):
         r = self.runner()
@@ -9317,6 +9632,349 @@ class Mod004S0TestCorrection(S0TestFixture):
         with self.assertRaises(ValueError):
             R.enqueue(self.cfg, {"id": "tc-rev4", "module": "MOD-004", "role": "code-review", "prompt": prompt,
                                  "review_of": {"task_id": "tc-1"}})
+
+
+class Mod004S0LoopRebind(S0TestFixture):
+    """MOD-004 S0 product-remediation-loop document rebind: marker shape, the one-write gate, the one bound review, the
+    synthetic cert/packet docs check against a patched pinned base blob, and tamper of the loop-recovery authority."""
+    LOOP_OWNER = R.S0_LOOP_OWNER_PATH
+    OLD_TOP = "c" * 64
+    BASE_QA = (b"# Scenario QA\n\nrow 1: scenario one | expect A\n\nrow 2: scenario two | expect B\n\n"
+               b"PASS rule: every row passes\n\n**Review and recovery status:** pending first review\n\ntrailer\n")
+
+    def setUp(self):
+        super().setUp()
+        self.pre_loop = self.pre
+        ckpt = self.home / R.S0_LOOP_CHECKPOINT
+        ckpt.parent.mkdir(parents=True, exist_ok=True)
+        ckpt.write_bytes(self.pre_loop)
+        self.write(self.LOOP_OWNER, "loop owner record\n")
+        self.base_cert = {
+            "schema": 1, "status": "S0_ELIGIBLE", "no_ui": True,
+            "runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": self.OLD_TOP},
+            "authority": {"runner_gate": {"sha256": self.OLD_TOP}, "published_runner_gate_commit": "a" * 40,
+                          "runner_gate_ci": {"run_id": "1"}},
+            "immediate_prior_runner_gate": {"sha256": "b" * 64, "note": "earlier"},
+            "scenario_qa_packet": {"path": self.DOC_QA, "sha256": "d" * 64, "sha256_note": "starting note"},
+            "runner_load_observation": {"observed_at": "2026-10-23T00:00:00Z", "reload_status": "old",
+                                        "loaded_runner_sha256": self.OLD_TOP, "sole_loaded_runner": True},
+            "authority_publication": {"runner_gate": {"commit": "a" * 40, "push": "non-force", "ci": {"run_id": "1"}}}}
+        self.write(self.DOC_CERT, json.dumps(self.base_cert))
+        self.write(self.DOC_QA, self.BASE_QA.decode())
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "loop owner record and pinned starting documents")
+        self.loop_base = {p: self.sha(p) for p in R.S0_DOC_PATHS}
+        owner = self.entry(self.LOOP_OWNER, "loop-owner")
+        for name, value in {"S0_LOOP_BASE": dict(self.loop_base), "S0_LOOP_REF_COMMIT": self.head(),
+                            "S0_LOOP_PRIOR_RECEIPT_SHA": hashlib.sha256(self.pre_loop).hexdigest(),
+                            "S0_LOOP_OWNER_SHA": owner["sha256"], "S0_LOOP_OWNER_COMMIT": owner["commit"],
+                            "S0_LOOP_OWNER_CI_RUN": owner["ci"]["run_id"], "S0_LOOP_OWNER_REVIEW": owner["review"]["task_id"],
+                            "S0_LOOP_OWNER_REVIEW_OUTPUT_SHA": owner["review"]["output_sha256"]}.items():
+            patcher = mock.patch.object(R, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        subjects = {n: json.loads(self.pre_loop)["subjects"][n] for n in ("owner", "adr", "runner_gate")}
+        subjects["loop_owner"] = owner
+        self.lrec = {"schema": 1, "module": "MOD-004", "kind": "mod004-s0-loop-recovery-authority", "operator": "op",
+                     "recorded_at": R.now_iso(), "preserved_receipt": {"path": R.S0_LOOP_CHECKPOINT,
+                                                                       "sha256": R.S0_LOOP_PRIOR_RECEIPT_SHA},
+                     "subjects": subjects}
+        self.write_lrec()
+        self.sync()
+
+    # --- fixtures
+    def write_lrec(self, receipt=None):
+        (self.home / "acceptances" / f"{R.S0_LOOP_RECOVERY_RECEIPT}.json").write_text(json.dumps(receipt or self.lrec))
+
+    def lmutate(self, mutate):
+        r = json.loads(json.dumps(self.lrec))
+        mutate(r)
+        self.write_lrec(r)
+
+    def lraw(self, **over):
+        return {"id": "loop-1", "module": "MOD-004", "role": "implement", "prompt": "loop rebind of the S0 documents",
+                "plan_phase": R.S0_LOOP_MARKER, "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS),
+                "verify_cmd": [], "doc_base": dict(R.S0_LOOP_BASE)} | over
+
+    def loop(self, post=None, **over):
+        return R.validate_task(self.lraw(**over), self.cfg) | (post or {})
+
+    def lreason(self, tasks=None, post=None, **over):
+        return R.s0_loop_gate_reason(self.cfg, self.loop(post, **over), self.history if tasks is None else tasks)
+
+    def install(self, qa=None, cert_edit=None):
+        """Write the loop-rebound documents: the packet with only its status paragraph changed, and the cert carrying
+        the current-runner evidence taken from the receipt's runner_gate subject."""
+        qa = qa if qa is not None else self.BASE_QA.replace(b"pending first review", b"reviewed and recovered")
+        self.write(self.DOC_QA, qa.decode())
+        e = self.lrec["subjects"]["runner_gate"]
+        cert = json.loads(json.dumps(self.base_cert))
+        cert["runner_gate"]["sha256"] = cert["authority"]["runner_gate"]["sha256"] = R.CODE_SHA
+        cert["authority"]["published_runner_gate_commit"] = e["commit"]
+        cert["authority"]["runner_gate_ci"] = e["ci"]
+        cert["immediate_prior_runner_gate"] = {"sha256": self.OLD_TOP, "note": f"former runner {self.OLD_TOP}"}
+        cert["scenario_qa_packet"] = {"path": self.DOC_QA, "sha256": hashlib.sha256(qa).hexdigest(), "sha256_note": "rebound note"}
+        cert["runner_load_observation"] = {"observed_at": "2026-10-24T05:00:00Z", "reload_status": "reloaded",
+                                           "loaded_runner_sha256": R.CODE_SHA, "sole_loaded_runner": True}
+        cert["authority_publication"] = {"runner_gate": {
+            "commit": e["commit"], "push": "non-force", "ci": e["ci"], "review": {
+                "task_id": e["review"]["task_id"], "output_sha256": e["review"]["output_sha256"],
+                "route": "verified Opus", "outcome": "APPROVED"}}}
+        if cert_edit:
+            cert_edit(cert)
+        self.write(self.DOC_CERT, json.dumps(cert))
+        return {p: self.sha(p) for p in R.S0_DOC_PATHS}
+
+    def done_loop(self, tid="loop-1", hashes=None, tasks=None, post=None, **over):
+        hashes = hashes or self.install()
+        changed = [{"path": p, "sha256": h} for p, h in hashes.items()]
+        w = self.loop(id=tid, **over) | {"status": "DONE", "attempts": 1, "created_at": "2026-10-24T01:00:00Z",
+                                         "route": {"verdict": "VERIFIED"}, "evidence": {"changed": changed, "violations": []}} | (post or {})
+        return dict(self.history if tasks is None else tasks) | {tid: w}
+
+    def lrev(self, tasks, wid="loop-1", **over):
+        return {"id": "loop-review", "module": "MOD-004", "role": "code-review", "status": "QUEUED",
+                "review_of": {"task_id": wid, "changed": [dict(c) for c in tasks[wid]["evidence"]["changed"]]}} | over
+
+    def rreason(self, tasks, review=None):
+        return R.s0_loop_review_reason(self.cfg, review or self.lrev(tasks), tasks)
+
+    def aproblem(self, **kw):
+        try:
+            R.verify_s0_loop_authority(self.cfg, self.history, **kw)
+        except R.GateError as e:
+            return str(e)
+        return None
+
+    # --- marker shape
+    def test_s0_loop_marker_shape(self):
+        self.assertNotIn(R.S0_LOOP_MARKER, (R.S0_MARKER, R.S0_DOC_MARKER, R.S0_REFRESH_MARKER, R.S0_REBIND_MARKER, R.S0_TEST_MARKER))
+        self.assertTrue(R.s0_loop_marked(self.loop()))
+        self.assertIsNone(R.s0_loop_shape_problem(self.loop()))
+        other = list(R.S0_DOC_PATHS)[:1]
+        bad = {
+            "handoff source": {"source": "handoff"}, "wrong module": {"module": "MOD-003"}, "wrong role": {"role": "code-review"},
+            "analysis role": {"role": "architecture"}, "broader allowed": {"allowed_paths": list(R.S0_DOC_PATHS) + ["src/"]},
+            "directory scope": {"allowed_paths": ["contracts/engineering/"]},
+            "broader expected": {"expected_changes": list(R.S0_DOC_PATHS) + ["src/x.py"]},
+            "one expected only": {"expected_changes": other}, "one allowed only": {"allowed_paths": other},
+            "verifier": {"verify_cmd": ["true"]}, "no doc_base": {"doc_base": None},
+            "doc_base one stale": {"doc_base": dict(R.S0_LOOP_BASE) | {R.S0_DOC_PATHS[0]: "a" * 64}},
+            "doc_base swapped": {"doc_base": dict(zip(R.S0_DOC_PATHS, reversed(list(R.S0_LOOP_BASE.values()))))},
+            "doc_base extra": {"doc_base": dict(R.S0_LOOP_BASE) | {"src/x.py": "a" * 64}},
+            "remediation": {"remediation_of": "x"}, "review retry": {"review_retry_of": "x"},
+            "accounting recovery": {"accounting_recovery_of": "x"}, "review_of": {"review_of": {"task_id": "x"}},
+            "review candidate": {"review_candidate": {"files": []}}}
+        for label, post in bad.items():
+            with self.subTest(label):
+                t = self.loop(post=post)
+                self.assertTrue(R.s0_loop_shape_problem(t))
+                self.assertTrue(R.s0_loop_gate_reason(self.cfg, t, self.history).startswith("S0_LOOP_INVALID_TASK"), label)
+
+    def test_s0_loop_unmarked_task_is_not_gated(self):
+        self.assertIsNone(R.s0_loop_gate_reason(self.cfg, self.other_write(), self.history))
+        self.assertIsNone(R.s0_loop_review_reason(self.cfg, {"role": "code-review", "review_of": {"task_id": "nope"}}, self.history))
+
+    # --- one-write gate
+    def test_s0_loop_gate_grants_only_with_verified_authority(self):
+        calls = []
+        real = R.verify_s0_loop_authority
+        with mock.patch.object(R, "verify_s0_loop_authority", side_effect=lambda *a, **k: calls.append(k) or real(*a, **k)):
+            self.assertIsNone(self.lreason())
+            self.assertEqual(calls, [{"require_base": True}])
+        self.assertIsNone(self.problem(lambda cfg, tasks: R.verify_s0_loop_authority(cfg, tasks)))
+        with mock.patch.object(R, "verify_s0_loop_authority", side_effect=R.GateError("boom")):
+            reason = self.lreason()
+        self.assertTrue(reason.startswith("S0_LOOP_AUTHORITY_UNVERIFIED") and "boom" in reason, reason)
+
+    def test_s0_loop_gate_rejections(self):
+        self.assertIsNone(self.lreason())
+        (self.home / "acceptances" / "MOD-004-S0.json").write_bytes(self.pre_loop)
+        self.assertTrue(self.lreason().startswith("S0_LOOP_CLOSED"))
+        (self.home / "acceptances" / "MOD-004-S0.json").unlink()
+        self.assertTrue(self.lreason(post={"attempts": 1}).startswith("S0_LOOP_ATTEMPT_USED"))
+        second = self.history | {"loop-0": self.loop(id="loop-0") | {"status": "DONE", "attempts": 1}}
+        self.assertTrue(self.lreason(second).startswith("S0_LOOP_SECOND_WRITE"))
+        for status in ("QUEUED", "RUNNING"):
+            for marker in (R.S0_MARKER, R.S0_REBIND_MARKER, R.S0_TEST_MARKER, None):
+                with self.subTest(status=status, marker=marker):
+                    other = self.other_write() | {"id": "busy", "status": status}
+                    if marker:
+                        other["plan_phase"] = marker
+                    else:
+                        other["allowed_paths"] = list(R.S0_DOC_PATHS)
+                    self.assertTrue(self.lreason(self.history | {"busy": other}).startswith("S0_LOOP_CONCURRENT_WRITE"))
+        self.assertIsNone(self.lreason(self.history | {"busy": self.other_write() | {"id": "busy", "status": "DONE"}}))
+
+    def test_s0_loop_gate_stale_base_and_authority_failures(self):
+        for p in R.S0_DOC_PATHS:
+            with self.subTest(p):
+                orig = (self.repo / p).read_bytes()
+                (self.repo / p).write_bytes(orig + b"x")
+                self.assertTrue(self.lreason().startswith("S0_LOOP_STALE_DRAFT"))
+                (self.repo / p).write_bytes(orig)
+        self.assertIsNone(self.lreason())
+        (self.home / "acceptances" / f"{R.S0_LOOP_RECOVERY_RECEIPT}.json").unlink()
+        self.assertTrue(self.lreason().startswith("S0_LOOP_AUTHORITY_UNVERIFIED"))
+        self.write_lrec()
+        (self.home / R.S0_LOOP_CHECKPOINT).write_bytes(b"tampered")
+        self.assertTrue(self.lreason().startswith("S0_LOOP_AUTHORITY_UNVERIFIED"))
+
+    def test_s0_loop_gate_runs_inside_gate_reason(self):
+        self.assertIsNone(R.gate_reason(self.cfg, self.loop(), self.history))
+        self.assertTrue(R.gate_reason(self.cfg, self.loop(post={"attempts": 1}), self.history).startswith("S0_LOOP_ATTEMPT_USED"))
+
+    # --- authority receipt tamper
+    def test_s0_loop_authority_receipt_tamper(self):
+        self.assertIsNone(self.aproblem())
+        self.assertIsNone(self.aproblem(require_base=False))
+        flip = lambda s: ("0" if s[0] != "0" else "1") + s[1:]
+        cases = {
+            "kind": lambda r: r.update(kind="mod004-s0-test-recovery-authority"),
+            "extra key": lambda r: r.update(extra=1), "module": lambda r: r.update(module="MOD-003"),
+            "operator": lambda r: r.update(operator=" "),
+            "preserved sha": lambda r: r["preserved_receipt"].update(sha256=flip(r["preserved_receipt"]["sha256"])),
+            "preserved path": lambda r: r["preserved_receipt"].update(path=R.S0_TEST_CHECKPOINT),
+            "owner sha": lambda r: r["subjects"]["loop_owner"].update(sha256=flip(r["subjects"]["loop_owner"]["sha256"])),
+            "owner commit": lambda r: r["subjects"]["loop_owner"].update(commit="1" * 40),
+            "owner ci run": lambda r: r["subjects"]["loop_owner"]["ci"].update(run_id="999"),
+            "owner review task": lambda r: r["subjects"]["loop_owner"]["review"].update(task_id="rev-s0-owner"),
+            "owner review output": lambda r: r["subjects"]["loop_owner"]["review"].update(
+                output_sha256=flip(r["subjects"]["loop_owner"]["review"]["output_sha256"])),
+            "runner sha": lambda r: r["subjects"]["runner_gate"].update(sha256=flip(r["subjects"]["runner_gate"]["sha256"])),
+            "runner ci": lambda r: r["subjects"]["runner_gate"]["ci"].update(conclusion="failure"),
+            "adr review shared": lambda r: r["subjects"]["adr"].update(review=r["subjects"]["owner"]["review"]),
+            "missing subject": lambda r: r["subjects"].pop("adr"),
+            "extra subject": lambda r: r["subjects"].update(eligibility=r["subjects"]["owner"])}
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                self.lmutate(mutate)
+                self.assertTrue(self.aproblem(), label)
+                self.assertTrue(self.lreason().startswith("S0_LOOP_AUTHORITY_UNVERIFIED"), label)
+                self.write_lrec()
+        self.assertIsNone(self.aproblem())
+
+    def test_s0_loop_authority_base_required_only_for_write(self):
+        self.install()
+        self.assertTrue(self.aproblem(require_base=True))
+        self.assertIsNone(self.aproblem(require_base=False))
+
+    # --- the one bound review
+    def test_s0_loop_review_binds_two_changed_hashes_and_one_slot(self):
+        tasks = self.done_loop()
+        review = self.lrev(tasks)
+        self.assertEqual(len(review["review_of"]["changed"]), 2)
+        self.assertIsNone(self.rreason(tasks))
+        self.assertIsNone(R.gate_reason(self.cfg, R.validate_task(
+            {"id": "loop-review", "module": "MOD-004", "role": "code-review", "prompt": "review",
+             "review_of": {"task_id": "loop-1", "changed": review["review_of"]["changed"]}}, self.cfg), tasks))
+        for status in ("QUEUED", "RUNNING", "BLOCKED", "DONE", "FAILED"):
+            with self.subTest(slot=status):
+                used = tasks | {"earlier": {"id": "earlier", "module": "MOD-004", "role": "code-review", "status": status,
+                                            "review_of": {"task_id": "loop-1"}}}
+                self.assertTrue(self.rreason(used).startswith("S0_LOOP_REVIEW_SLOT_USED"))
+        own = tasks | {"loop-review": review}
+        self.assertIsNone(self.rreason(own), "the review being gated does not count as having used the slot")
+
+    def test_s0_loop_review_rejects_wrong_binding_retry_and_shape(self):
+        tasks = self.done_loop()
+        ch = self.lrev(tasks)["review_of"]["changed"]
+        unsupported = lambda r: self.assertTrue(r.startswith("S0_LOOP_REVIEW_UNSUPPORTED"), r)
+        for label, review in {
+                "one hash": self.lrev(tasks, review_of={"task_id": "loop-1", "changed": ch[:1]}),
+                "no hashes": self.lrev(tasks, review_of={"task_id": "loop-1"}),
+                "wrong hash": self.lrev(tasks, review_of={"task_id": "loop-1", "changed": [dict(ch[0], sha256="e" * 64), ch[1]]}),
+                "extra file": self.lrev(tasks, review_of={"task_id": "loop-1", "changed": ch + [{"path": "src/x.py", "sha256": "e" * 64}]}),
+                "retry": self.lrev(tasks, review_retry_of="loop-review-0"),
+                "candidate": self.lrev(tasks, review_candidate={"files": []}),
+                "handoff": self.lrev(tasks, source="handoff"),
+                "other module": self.lrev(tasks, module="MOD-003")}.items():
+            with self.subTest(label):
+                unsupported(self.rreason(tasks, review))
+        bad_tasks = {
+            "unchanged hashes": self.done_loop(hashes=dict(R.S0_LOOP_BASE)),
+            "one doc unchanged": self.done_loop(hashes={R.S0_DOC_PATHS[0]: self.install()[R.S0_DOC_PATHS[0]],
+                                                       R.S0_DOC_PATHS[1]: R.S0_LOOP_BASE[R.S0_DOC_PATHS[1]]}),
+            "second attempt": self.done_loop(post={"attempts": 2}),
+            "not done": self.done_loop(post={"status": "RUNNING"}),
+            "violations": self.done_loop(post={"evidence": {"changed": ch, "violations": ["OUT_OF_SCOPE"]}}),
+            "malformed write": self.done_loop(post={"allowed_paths": ["src/"]}),
+            "second loop write": self.done_loop() | {"loop-0": self.loop(id="loop-0") | {"status": "FAILED", "attempts": 1}}}
+        for label, tasks_ in bad_tasks.items():
+            with self.subTest(label):
+                unsupported(self.rreason(tasks_, self.lrev(tasks_)))
+
+    def test_s0_loop_review_stale_binding_and_docs_not_spent(self):
+        tasks = self.done_loop()
+        self.write(self.DOC_QA, self.BASE_QA.decode() + "late edit\n")
+        self.assertTrue(self.rreason(tasks).startswith("S0_LOOP_REVIEW_BINDING_STALE"))
+        hashes = self.install(qa=self.BASE_QA.replace(b"row 2", b"row 9").replace(b"pending first review", b"done"))
+        reason = self.rreason(self.done_loop(hashes=hashes))
+        self.assertTrue(reason.startswith("S0_LOOP_REVIEW_UNSUPPORTED") and "one review slot is not spent" in reason, reason)
+
+    def test_s0_loop_review_authority_failures(self):
+        tasks = self.done_loop()
+        self.assertIsNone(self.rreason(tasks))
+        calls = []
+        real = R.verify_s0_loop_authority
+        with mock.patch.object(R, "verify_s0_loop_authority", side_effect=lambda *a, **k: calls.append(k) or real(*a, **k)):
+            self.assertIsNone(self.rreason(tasks))
+        self.assertEqual(calls, [{"require_base": False}])
+        self.lmutate(lambda r: r["subjects"]["loop_owner"].update(commit="1" * 40))
+        self.assertTrue(self.rreason(tasks).startswith("S0_LOOP_REVIEW_AUTHORITY_UNVERIFIED"))
+        self.write_lrec()
+        (self.home / "acceptances" / "MOD-004-S0.json").write_bytes(self.pre_loop)
+        self.assertTrue(self.rreason(tasks).startswith("S0_LOOP_REVIEW_AUTHORITY_UNVERIFIED"))
+
+    # --- _s0_loop_docs_problem
+    def test_s0_loop_docs_problem_positive(self):
+        self.assertNotEqual(self.install(), self.loop_base)
+        self.assertNotEqual((self.repo / R.S0_DOC_PATHS[1]).read_bytes(), self.BASE_QA)
+        self.assertIsNone(R._s0_loop_docs_problem(self.cfg))
+        self.assertEqual(R._s0_loop_runner_subject(self.cfg)["sha256"], R.CODE_SHA)
+
+    def test_s0_loop_docs_problem_negative_packet_and_cert(self):
+        packet_cases = {
+            "scenario row": self.BASE_QA.replace(b"expect B", b"expect Z"),
+            "scenario row removed": self.BASE_QA.replace(b"row 2: scenario two | expect B\n\n", b""),
+            "PASS rule": self.BASE_QA.replace(b"every row passes", b"any row passes"),
+            "second status paragraph": self.BASE_QA.replace(b"trailer", b"**Review and recovery status:** extra"),
+            "status removed": self.BASE_QA.replace(b"**Review and recovery status:** pending first review\n\n", b"")}
+        for label, qa in packet_cases.items():
+            with self.subTest(label):
+                self.install(qa=qa.replace(b"pending first review", b"changed"))
+                self.assertIn("packet differs from the pinned starting one", R._s0_loop_docs_problem(self.cfg) or "", label)
+        cert_cases = {
+            "unrelated field": lambda c: c.update(status="S0_BLOCKED"),
+            "new field": lambda c: c.update(extra=True),
+            "no_ui": lambda c: c.update(no_ui=False),
+            "authority extra": lambda c: c["authority"].update(extra=1),
+            "wrong runner sha": lambda c: c["runner_gate"].update(sha256="f" * 64),
+            "wrong published commit": lambda c: c["authority"].update(published_runner_gate_commit="9" * 40),
+            "wrong ci": lambda c: c["authority"].update(runner_gate_ci={"run_id": "7"}),
+            "publication review": lambda c: c["authority_publication"]["runner_gate"]["review"].update(outcome="CHANGES_REQUESTED"),
+            "wrong packet sha": lambda c: c["scenario_qa_packet"].update(sha256="f" * 64),
+            "packet path": lambda c: c["scenario_qa_packet"].update(path="x.md"),
+            "prior note lacks sha": lambda c: c["immediate_prior_runner_gate"].update(note="no hash"),
+            "prior sha": lambda c: c["immediate_prior_runner_gate"].update(sha256="f" * 64, note="f" * 64),
+            "not sole runner": lambda c: c["runner_load_observation"].update(sole_loaded_runner=False),
+            "load observation": lambda c: c["runner_load_observation"].update(loaded_runner_sha256="f" * 64)}
+        for label, edit in cert_cases.items():
+            with self.subTest(label):
+                self.install(cert_edit=edit)
+                self.assertTrue(R._s0_loop_docs_problem(self.cfg), label)
+        self.install()
+        self.assertIsNone(R._s0_loop_docs_problem(self.cfg))
+
+    def test_s0_loop_docs_problem_needs_pinned_base_and_receipt(self):
+        self.install()
+        with mock.patch.object(R, "S0_LOOP_BASE", {p: "0" * 64 for p in R.S0_DOC_PATHS}):
+            self.assertIn("pinned starting content", R._s0_loop_docs_problem(self.cfg))
+        (self.home / "acceptances" / f"{R.S0_LOOP_RECOVERY_RECEIPT}.json").unlink()
+        self.assertIn("cannot verify the loop documents", R._s0_loop_docs_problem(self.cfg))
+        self.write_lrec()
+        self.lmutate(lambda r: r["subjects"]["runner_gate"].update(sha256="f" * 64))
+        self.assertIn("cannot verify the loop documents", R._s0_loop_docs_problem(self.cfg))
 
 
 if __name__ == "__main__":
