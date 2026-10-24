@@ -17,26 +17,26 @@
     },
     "runner_gate": {
       "path": "tools/mission_runner/runner.py",
-      "sha256": "3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad"
+      "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e"
     },
-    "published_runner_gate_commit": "8b40eea0b6a741acf07f9a3c72c656b9f75aac3c",
+    "published_runner_gate_commit": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
     "runner_gate_ci": {
-      "run_id": "40036606571",
+      "run_id": "40073841512",
       "name": "Veyro Foundation CI",
       "event": "push",
       "status": "completed",
-      "head_sha": "8b40eea0b6a741acf07f9a3c72c656b9f75aac3c",
+      "head_sha": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
       "conclusion": "success"
     }
   },
   "runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad"
+    "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e"
   },
   "immediate_prior_runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "c7020ecbf9ada11cebdf79f98109657ba5fa6ba0aa42536fdc4098114e052296",
-    "note": "Historical and NOT currently loaded. The earlier doc-lane review of this runner does not grant approval to the current runner code."
+    "sha256": "fb4fc3c7f55d5dca3a3f512a7f2058718d55c21416b72bb4845e38550a314d2a",
+    "note": "Historical and NOT currently loaded: reviewed runner published at commit efc70b8a24adedca2d94dacbe7dda8ab39e4c08f. Earlier historical runners were ae2abae32073545d8cb638d860cd24df43004654f76e03427a5c4f1349068deb (commit 3287d4a) and 3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad. Reviews of these earlier runners do not grant approval to the current runner code."
   },
   "historical_runner_gate": {
     "path": "tools/mission_runner/runner.py",
@@ -45,7 +45,7 @@
   "historical_runner_gate_note": "historical_runner_gate restates the capability declaration's embedded authority.runner_gate exactly. It is the runner as of that declaration's publication and is NOT the loaded runner; the current reviewed runner is top-level runner_gate.",
   "status": "S0_ELIGIBLE",
   "lifecycle": "EFFECTIVE",
-  "effectiveness_rule": "The lifecycle field is a target state, not self-effectuating, and this document refresh does not itself declare S0 effective. The immediately prior certificate and packet at f5c6cd821e66395b80eb419e210fdc2859e8675a were BOTH independently APPROVED by runner-recorded Opus task mod004-s0-doc-remediation1-opus-review-20261023, then non-force published with successful exact-SHA push CI run 40003372919; that approval applies ONLY to those old bytes, not to this refresh. Earlier CHANGES_REQUESTED reviews on superseded bytes are preserved in scenario_review_requirement. This new exact certificate/packet pair requires ONE fresh runner-bound verified Opus APPROVED review naming BOTH new path/hash pairs; that review is PENDING, as are non-force publication and successful exact-SHA push CI. An unbound review cannot substitute. If that one bound review requests changes, blocks, or yields no verdict, stop: no retry or review shopping. The operator must verify the scenario review independently because the machine product receipt has no scenario subject. The capability declaration's independent Opus review and exact-SHA CI are complete (see capability_declaration), while its S0 effectiveness remains conditional on this rule. The published owner, ADR, edge and current runner-gate evidence must remain valid; the current reviewed runner must be solely loaded with fresh heartbeat and free writer lock; and the new S0 receipt must bind six current reviewed subjects, including the current runner and this revised certificate. The runner rechecks its six receipt subjects but does not machine-check the scenario review. The read-only S0 probe must open before any S0 product code dispatch. Scope stays S0-only stdlib/no-IO shape validation: no S1, tenant-isolation certification, CAP reset/qualification bypass, module Ready, product acceptance or UI.",
+  "effectiveness_rule": "The lifecycle field is a target state, not self-effectuating, and this document refresh does not itself declare S0 effective. Current state: the original S0 product write (mod004-s0-product-sonnet-20261024) exists as untracked, unpublished files (backend/app/tenancy_s0.py SHA-256 5543353a0b95250bcde2b59681c8295f7ecb2c99f88097f793db1a7761196314; backend/tests/test_tenancy_s0.py SHA-256 a610232abb813b2981ccd9d5c68ec720ff17c72d544f55ad8c0d5b8dbcf52969); its sole Opus product review mod004-s0-product-opus-code-review-20261024 is CHANGES_REQUESTED (Ruff test issues, missing UUID-instance tests). It is not corrected, re-reviewed, published or CI-verified; there is no product acceptance. The owner authorized exactly one test-only correction (knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md, published a418ed4), which is PENDING until this document rebind, one independent two-document review, non-force publication with exact-SHA CI, and a newly built six-subject receipt are complete; the prior six-subject receipt is preserved at checkpoints/MOD-004-S0.pre-test-remediation.json and is not active. The original general S0 product write gate remains closed. MOD-004 CAP budget is exhausted and the module stays blocked; this is CAP-independent S0 input-shape work only. The immediately prior certificate and packet at f5c6cd821e66395b80eb419e210fdc2859e8675a were BOTH independently APPROVED by runner-recorded Opus task mod004-s0-doc-remediation1-opus-review-20261023, then non-force published with successful exact-SHA push CI run 40003372919; that approval applies ONLY to those old bytes, not to this refresh. Earlier CHANGES_REQUESTED reviews on superseded bytes are preserved in scenario_review_requirement. This new exact certificate/packet pair requires ONE fresh runner-bound verified Opus APPROVED review naming BOTH new path/hash pairs; that review is PENDING, as are non-force publication and successful exact-SHA push CI. An unbound review cannot substitute. If that one bound review requests changes, blocks, or yields no verdict, stop: no retry or review shopping. The operator must verify the scenario review independently because the machine product receipt has no scenario subject. The capability declaration's independent Opus review and exact-SHA CI are complete (see capability_declaration), while its S0 effectiveness remains conditional on this rule. The published owner, ADR, edge and current runner-gate evidence must remain valid; the current reviewed runner must be solely loaded with fresh heartbeat and free writer lock; and the new S0 receipt must bind six current reviewed subjects, including the current runner and this revised certificate. The runner rechecks its six receipt subjects but does not machine-check the scenario review. The read-only S0 probe must open before any S0 product code dispatch. Scope stays S0-only stdlib/no-IO shape validation: no S1, tenant-isolation certification, CAP reset/qualification bypass, module Ready, product acceptance or UI.",
   "judgment_scope": "Eligibility for one exact S0 two-file input-shape write, not MOD-004 READY or product acceptance.",
   "dependency_receipts": {
     "MOD-001": "2c0bd7a8e844338717a78e2c6bcd9b0b2f6e731d3a89bae666cd816bb87e4cd3",
@@ -101,8 +101,8 @@
   },
   "scenario_qa_packet": {
     "path": "contracts/engineering/mod004-s0-scenario-qa.md",
-    "sha256": "08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680",
-    "sha256_note": "The hash above is the operator-calculated SHA-256 of the exact 12614-byte packet; the drafting agent did not compute it. The earlier published packet hash 349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45 is historical and was APPROVED for its old bytes only (task mod004-s0-doc-remediation1-opus-review-20261023). The earlier hash ffa4f968... belonged to a rejected (CHANGES_REQUESTED) packet and is void. No review of the current bytes has occurred yet."
+    "sha256": "78e1c8ecc3da2167e5f4feff736ff7873a04979964ee6b69f8ef123b56f83e58",
+    "sha256_note": "Operator-precomputed SHA-256 of the exact current packet bytes (the starting packet with only the Review and recovery status paragraph refreshed); the drafting agent did not compute it. No review or publication of this current certificate/packet pair has occurred yet. The previous packet hash 08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680 is superseded by this refresh. The earlier published packet hash 349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45 is historical and was APPROVED for its old bytes only (task mod004-s0-doc-remediation1-opus-review-20261023). The earlier hash ffa4f968... belonged to a rejected (CHANGES_REQUESTED) packet and is void. No review of the current bytes has occurred yet."
   },
   "capability_declaration": {
     "path": "contracts/engineering/mod004-s0-capability.json",
@@ -175,19 +175,19 @@
       }
     },
     "runner_gate": {
-      "commit": "8b40eea0b6a741acf07f9a3c72c656b9f75aac3c",
+      "commit": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
       "push": "non-force",
       "ci": {
-        "run_id": "40036606571",
+        "run_id": "40073841512",
         "name": "Veyro Foundation CI",
         "event": "push",
         "status": "completed",
-        "head_sha": "8b40eea0b6a741acf07f9a3c72c656b9f75aac3c",
+        "head_sha": "2e57fbaff542c75c3ec3d6337d59ba2c11f29830",
         "conclusion": "success"
       },
       "review": {
-        "task_id": "mod004-s0-edge-recovery-runner-opus-security-review-20261024",
-        "output_sha256": "c1b5b90f5228237ae866c60951f80957ac8c8c876ec401dcbe4fa8fc30ca7d37",
+        "task_id": "mod004-s0-test-rebind-repair-opus-security-v2-20261024",
+        "output_sha256": "df48441896bb69fdad9bcf4054423e44d56b6d218d54cf1655f7842335626293",
         "route": "verified Opus",
         "outcome": "APPROVED"
       }
@@ -216,15 +216,10 @@
   "runner_load_observation": {
     "observed_at": "2026-10-24",
     "context": "Operator verified after one new authorized reload; this is not claimed to be the only reload historically.",
-    "prior_pid": 28500,
-    "new_pid_at_check": 83847,
-    "loaded_runner_sha256": "3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad",
-    "task_history_preserved": true,
-    "task_history_count": "307/307",
-    "sole_process_and_free_writer_lock_at_check": true,
-    "fresh_heartbeat_at_check": true,
-    "no_quarantine_at_check": true,
-    "evidence_class": "Operator-reported, point-in-time observation at check; not a future guarantee and not independently rechecked by the drafting agent.",
+    "loaded_runner_sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e",
+    "sole_loaded_runner": true,
+    "reload_status": "one authorized safe launchd reload completed; sole loaded runner PID 15647, fresh heartbeat, preserved 320-task history, free writer lock, no quarantine; recovery receipt MOD-004-S0-TEST-RECOVERY.json refreshed with verification and rebind authority both PASS",
+    "evidence_class": "Operator-observed evidence supplied in the write instruction; the drafting agent did not independently inspect the host (PID, heartbeat, writer lock, quarantine or receipt). Not a future guarantee.",
     "ongoing_requirement": "Runner gate rechecks current sole-runner code hash and fresh heartbeat before S0 enqueue; this observation alone does not grant dispatch."
   },
   "scenario_review_requirement": {
