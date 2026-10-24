@@ -2314,7 +2314,7 @@ def s0_doc_touches(t):
 
 def s0_single_attempt(t):
     return (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
-            or s0_loop_marked(t))
+            or s0_loop_marked(t) or s0_qa_marked(t))
 
 
 def s0_doc_shape_problem(t):
@@ -2383,7 +2383,7 @@ def s0_doc_gate_reason(cfg, t, tasks):
     """None for a task outside the lane or a fully authorised document write; else an explicit S0_DOC_* reason."""
     if not s0_doc_marked(t):
         if (s0_doc_touches(t) and not s0_refresh_marked(t) and not s0_rebind_marked(t)
-                and not s0_loop_marked(t)):  # the refresh, rebind and loop rebind are admitted only by their own, stricter gates
+                and not s0_loop_marked(t) and not s0_qa_marked(t)):  # the refresh, rebind, loop rebind and QA evidence lane are admitted only by their own, stricter gates
             return f"S0_DOC_UNTAGGED {t['id']}: a write naming or covering the S0 slice documents is not admitted"
         return None
     problem = s0_doc_shape_problem(t)
@@ -2793,7 +2793,7 @@ def _s0_competing_writes(tasks, t):
     return sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t["id"]
                   and x.get("role") in WRITE_ROLES and x.get("status") in ("QUEUED", "RUNNING")
                   and (s0_touches(x) or s0_doc_touches(x) or s0_marked(x) or s0_doc_marked(x) or s0_refresh_marked(x)
-                       or s0_rebind_marked(x) or s0_test_marked(x) or s0_loop_marked(x)))
+                       or s0_rebind_marked(x) or s0_test_marked(x) or s0_loop_marked(x) or s0_qa_marked(x)))
 
 
 def s0_rebind_shape_problem(t):
@@ -3376,7 +3376,7 @@ def product_loop_eligible(tasks, t):
     if t.get("accounting_recovery_of") or t.get("review_retry_of") or t.get("id") in CAP_ACCOUNTING_WRITES:
         return False
     if any(f(t) for f in (s0_marked, s0_test_marked, s0_touches, s0_doc_marked, s0_refresh_marked, s0_rebind_marked,
-                          s0_loop_marked, s0_doc_touches)):
+                          s0_loop_marked, s0_doc_touches, s0_qa_marked)):
         return False
     return not accounting_recovery_chain(tasks, t)
 
@@ -3588,6 +3588,363 @@ def product_lineage_reason(cfg, tasks, t):
     return False, None
 
 
+# ------------------------------------------------ MOD-004 non-CAP design/documentation admission
+# OWNER-2026-10-24-mod004-fullscope-recovery.md: the terminal CAP-accounting write (and its BLOCKED review) is a closed,
+# immutable historical chain. It must not be the predecessor of a NEW non-CAP documentation/design write, but it stays
+# blocked for every CAP path and is never rewritten. Pure read-only checks; admission fails closed on any doubt.
+NONCAP_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-mod004-fullscope-recovery.md"
+NONCAP_OWNER_SHA = "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"
+NONCAP_OWNER_COMMIT = "9c7289e389463a8b780cf41c15c54f40ec46c496"
+NONCAP_OWNER_CI_RUN = "40126487225"
+NONCAP_RECEIPT = "MOD-004-NONCAP-DESIGN"  # operator-written <home>/acceptances/MOD-004-NONCAP-DESIGN.json: one noncap_owner subject
+NONCAP_TERMINAL_WRITE = "mod004-cap-exception-accounting-remed2-sonnet-20261019"
+NONCAP_TERMINAL_REVIEW = "mod004-cap-exception-accounting-remed2-opus-review-20261019"
+NONCAP_CAP_CHAIN = ("mod004-cap-budget-accounting-sonnet-20261019", ACCOUNTING_RECOVERY_WRITE,
+                    "mod004-cap-exception-accounting-remed-sonnet-20261019", NONCAP_TERMINAL_WRITE)
+# exactly the three files the owner record Covers for design work; no directory wildcard or name heuristic widens this
+NONCAP_DESIGN_PATHS = frozenset({"knowledge/03-Modules/MOD-004/MOD-004.md", "knowledge/03-Modules/MOD-004/REQUIREMENTS.md",
+                                 "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md"})
+NONCAP_FORBIDDEN_NAME = re.compile(r"(?i)(?:^|[^a-z])(?:cap|manifest|lock|rules?|candidates?)(?:[^a-z]|$)")
+
+
+def _noncap_path_ok(p):
+    return (isinstance(p, str) and p in NONCAP_DESIGN_PATHS and ".." not in Path(p).parts
+            and not NONCAP_FORBIDDEN_NAME.search(Path(p).name))
+
+
+def noncap_shape_problem(tasks, t):
+    """None only for a NEW MOD-004 implement write confined to exact design/documentation files; never a planner task,
+    S0 or CAP-accounting task, review retry, or a correction whose ancestry touches the CAP chain or other paths."""
+    if t.get("module") != "MOD-004" or t.get("role") != "implement":
+        return "a MOD-004 implement task only"
+    if t.get("source") is not None or t.get("review_retry_of") or t.get("accounting_recovery_of") or t.get("review_of"):
+        return "planner, retry, accounting-recovery and review-bound tasks are excluded"
+    if t.get("id") in NONCAP_CAP_CHAIN:
+        return "a CAP-accounting task id"
+    if t.get("plan_phase") and re.search(r"(?i)cap|s0", str(t["plan_phase"])):
+        return "CAP or S0 plan phase"
+    if any(f(t) for f in (s0_marked, s0_test_marked, s0_touches, s0_doc_marked, s0_refresh_marked, s0_rebind_marked,
+                          s0_loop_marked, s0_doc_touches, s0_qa_marked)):
+        return "S0 task"
+    allowed, expected = t.get("allowed_paths") or [], t.get("expected_changes") or []
+    if not (allowed and expected and all(_noncap_path_ok(p) for p in allowed + expected)):
+        return "paths must be exact owner-covered design/documentation files"
+    anc, seen = t.get("remediation_of"), set()
+    while anc:
+        a = tasks.get(anc)
+        if not (isinstance(a, dict) and anc not in seen and len(seen) < 64 and anc not in NONCAP_CAP_CHAIN
+                and a.get("module") == "MOD-004" and all(_noncap_path_ok(p) for p in a.get("allowed_paths") or [])):
+            return "remediation ancestry is not a non-CAP design chain"
+        seen.add(anc)
+        anc = a.get("remediation_of")
+    return None
+
+
+def verify_noncap_authority(cfg, tasks):
+    """Offline re-verification (read-only, no queue/lock/write): the exact historical CAP chain is terminal and
+    unchanged in meaning, and the pinned owner record is committed, CI-green and independently Opus-APPROVED."""
+    ws = [tasks.get(i) for i in NONCAP_CAP_CHAIN]
+    if not all(isinstance(w, dict) and w.get("module") == "MOD-004" and w.get("role") in WRITE_ROLES
+               and w.get("status") == "DONE" for w in ws):
+        raise GateError("non-CAP: the historical CAP-accounting writes are not the exact DONE chain")
+    term = tasks[NONCAP_TERMINAL_WRITE]
+    if not accounting_recovery_chain(tasks, term) or any(x.get("remediation_of") == NONCAP_TERMINAL_WRITE
+                                                         for x in tasks.values() if isinstance(x, dict)):
+        raise GateError("non-CAP: the terminal CAP-accounting write is not the terminal link of the audited chain")
+    bound = [r for r in tasks.values() if isinstance(r, dict) and r.get("role") == "code-review"
+             and (r.get("review_of") or {}).get("task_id") == NONCAP_TERMINAL_WRITE]
+    rv = bound[0] if len(bound) == 1 else {}
+    ev = rv.get("evidence") or {}
+    if not (rv.get("id") == NONCAP_TERMINAL_REVIEW and rv.get("status") == "BLOCKED" and rv.get("blocked_reason") == "REVIEW_BLOCKED"
+            and ev.get("review_outcome") == "BLOCKED" and ev.get("review_bound_verified") is True
+            and _bound_review_ok(term, rv) and review_verdict(tasks, NONCAP_TERMINAL_WRITE) is None):
+        raise GateError("non-CAP: the terminal CAP-accounting review is missing, ambiguous or not the bound BLOCKED review")
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{NONCAP_RECEIPT}.json", RECEIPT_MAX_BYTES), "non-CAP receipt")
+    sub = r.get("subjects")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"} and r["schema"] == SCHEMA
+            and r["module"] == "MOD-004" and r["kind"] == "mod004-noncap-design-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip() and isinstance(sub, dict)
+            and set(sub) == {"noncap_owner"}):
+        raise GateError("non-CAP receipt schema mismatch")
+    o = sub["noncap_owner"]
+    if not (isinstance(o, dict) and o.get("path") == NONCAP_OWNER_PATH and o.get("sha256") == NONCAP_OWNER_SHA
+            and o.get("commit") == NONCAP_OWNER_COMMIT and (o.get("ci") or {}).get("run_id") == NONCAP_OWNER_CI_RUN):
+        raise GateError("non-CAP: the owner record is not the pinned file, commit and CI run")
+    _s0_subject(cfg, "noncap_owner", o, tasks, set(), {"noncap_owner": re.compile(re.escape(NONCAP_OWNER_PATH))})
+
+
+def noncap_probe(cfg):
+    """Read-only gate probe (reads state.json and the repo; queues, locks and writes nothing, consumes no entitlement).
+    Returns {case: refusal-or-None}; a healthy gate admits only 'design' and refuses every other case."""
+    state = json.loads(_read_bounded(cfg.home / "state.json", 64 * 1024 * 1024))
+    base = {"module": "MOD-004", "role": "implement", "prompt": "read-only probe"}
+    d = "knowledge/03-Modules/MOD-004/MOD-004.md"
+    cases = {"design": {"allowed_paths": [d], "expected_changes": [d]},
+             "cap": {"allowed_paths": list(ACCOUNTING_RECOVERY_PATHS), "expected_changes": list(ACCOUNTING_RECOVERY_PATHS)},
+             "s0_product": {"allowed_paths": list(S0_PATHS), "expected_changes": list(S0_PATHS)}}
+    out = {}
+    for name, extra in cases.items():
+        try:
+            out[name] = gate_reason(cfg, validate_task(base | {"id": f"noncap-probe-{name}"} | extra, cfg), state["tasks"])
+        except Exception as e:
+            out[name] = f"NONCAP_PROBE_UNVERIFIABLE: {type(e).__name__}"
+    return out
+
+
+# ------------------------------------------------ MOD-004 S0 evidence-only QA lane
+# OWNER-2026-10-24-mod004-fullscope-recovery.md "S0 evidence-only route": ONE owner-CLI runner-recorded Sonnet write of the
+# scenario/QA packet (the eligibility certificate only to rebind its packet hash), ONE bound Opus review of the exact
+# resulting changed-file set, no retry, correction or second write. It has its own marker: the consumed S0 product,
+# document, refresh, rebind and loop lanes stay closed and are never reused. The packet may change only in the evidence
+# and disposition cells of its 14 table rows, its status paragraph and one appended evidence section; every scenario ID,
+# category, stimulus, boundary and the PASS rule stay byte-identical. A row claiming PASS must carry the structural
+# evidence the PASS rule names (the reviewer judges whether it is true). No product code, CAP file or history changes.
+S0_QA_MARKER = "MOD004-S0-QA-EVIDENCE"
+S0_QA_CERT, S0_QA_PACKET = S0_DOC_PATHS
+S0_QA_RECEIPT = "MOD-004-S0-QA"  # operator-written <home>/acceptances/MOD-004-S0-QA.json: qa_owner (the pinned owner record), runner_gate
+S0_QA_SUBJECTS = {"qa_owner": re.compile(re.escape(NONCAP_OWNER_PATH)), "runner_gate": S0_SUBJECTS["runner_gate"]}
+S0_QA_SCOPES = (sorted([S0_QA_PACKET]), sorted(S0_DOC_PATHS))  # packet only, or packet plus the certificate that binds its hash
+S0_QA_PROTECTED = tuple(S0_PATHS) + tuple(ACCOUNTING_RECOVERY_PATHS)  # published S0 product and the CAP files: never changed here
+S0_QA_IDS = tuple(f"S0-{i:02d}" for i in range(1, 15))
+S0_QA_HEADING = "\n## QA execution evidence\n"
+S0_QA_STATUS = "**Review and recovery status:**"
+
+
+def s0_qa_marked(t):
+    return t.get("plan_phase") == S0_QA_MARKER
+
+
+def s0_qa_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the S0 evidence-only QA write is a MOD-004 implement task only"
+    if t.get("source") is not None:
+        return "the S0 evidence-only QA write is admitted only from the owner CLI"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of", "review_of",
+                                          "review_candidate")):
+        return "remediation_of, review_retry_of, accounting_recovery_of and review binding fields are rejected"
+    allowed, expected = t.get("allowed_paths"), t.get("expected_changes")
+    if not (isinstance(allowed, list) and isinstance(expected, list) and sorted(allowed) in S0_QA_SCOPES
+            and sorted(expected) == sorted(allowed)):
+        return "allowed_paths and expected_changes must be exactly the scenario/QA packet, optionally with the eligibility certificate"
+    if t.get("verify_cmd") != []:
+        return "the S0 evidence-only QA write runs no verifier"
+    base = t.get("doc_base")
+    if not (isinstance(base, dict) and set(base) == set(allowed)
+            and all(isinstance(v, str) and SHA256_RE.fullmatch(v) for v in base.values())):
+        return "doc_base must pin the exact starting sha256 of the packet (and of the certificate when it is named)"
+    return None
+
+
+def _s0_qa_git_clean(cfg, paths, label):
+    try:
+        status = git_run(cfg.repo, "status", "--porcelain=v1", "--untracked-files=all", "--", *paths, timeout=20)
+        flags = git_run(cfg.repo, "ls-files", "-v", "--", *paths, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"{label}: cannot check the working-tree state")
+    tracked = [ln[:2] for ln in flags.stdout.decode("utf-8", "replace").splitlines()]
+    if not (status.returncode == 0 and status.stdout == b"" and flags.returncode == 0 and tracked == ["H "] * len(paths)):
+        raise GateError(f"{label}: the files must be clean, tracked and committed")
+
+
+def _s0_qa_split(data, label):
+    """(skeleton, rows, evidence tail or None) of a packet. The skeleton is the packet with each table row's evidence and
+    disposition cells and the status paragraph blanked and the appended evidence section cut off, so two packets with
+    equal skeletons agree on every ID, category, stimulus, boundary and the PASS rule."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise GateError(f"{label}: not UTF-8")
+    head, sep, tail = text.partition(S0_QA_HEADING)
+    if S0_QA_HEADING in tail:
+        raise GateError(f"{label}: more than one QA execution evidence section")
+    out, rows, status = [], {}, 0
+    for para in head.split("\n\n"):
+        if para.startswith(S0_QA_STATUS):
+            status, para = status + 1, "<status>"
+        lines = []
+        for ln in para.split("\n"):
+            if re.match(r"\| S0-\d\d \| ", ln):
+                cells = ln[2:-2].split(" | ") if ln.endswith(" |") else []
+                if len(cells) != 5 or cells[0] in rows:
+                    raise GateError(f"{label}: a scenario row must have exactly five cells and a unique ID")
+                rows[cells[0]] = cells
+                ln = "| " + " | ".join(cells[:3]) + " | <evidence> |"
+            lines.append(ln)
+        out.append("\n".join(lines))
+    if status != 1 or tuple(rows) != S0_QA_IDS:
+        raise GateError(f"{label}: needs exactly one status paragraph and the fourteen rows S0-01..S0-14 in order")
+    return "\n\n".join(out).rstrip("\n"), rows, tail if sep else None
+
+
+def _s0_qa_missing(cfg, text):
+    """The structural PASS-rule evidence absent from a row's evidence/disposition text (a presence check, not a judgement)."""
+    miss = []
+    if not re.search(r"\btests\.test_tenancy_s0\.\w+\.test\w*", text):
+        miss.append("exact unittest test IDs")
+    if not any(_is_ancestor(cfg, c) for c in re.findall(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", text)):
+        miss.append("a published product commit")
+    if not re.search(r"(?i)\bverifier\b", text):
+        miss.append("the runner verifier result")
+    if not (re.search(r"\bCI\b", text) and re.search(r"(?<![0-9A-Za-z])[0-9]{8,}(?![0-9A-Za-z])", text)):
+        miss.append("the exact-SHA CI run")
+    if not (re.search(r"\bAPPROVED\b", text) and any("review" in w for w in re.findall(r"[a-z0-9][a-z0-9._-]{7,}", text))):
+        miss.append("the bound APPROVED product review task")
+    if not re.search(r"(?i)\bmanual\b", text):
+        miss.append("manual-step evidence")
+    return miss
+
+
+def _s0_qa_packet_problem(cfg, base, cur):
+    try:
+        bskel, _, btail = _s0_qa_split(base, "S0 QA starting packet")
+        cskel, rows, ctail = _s0_qa_split(cur, "S0 QA packet")
+    except GateError as e:
+        return str(e)
+    if btail is not None:
+        return "the starting packet already carries an evidence section"
+    if bskel != cskel:
+        return ("the packet differs from its pinned start beyond the evidence/disposition cells, the status paragraph and one "
+                "appended evidence section (scenario IDs, categories, stimuli, boundaries and the PASS rule must not change)")
+    if ctail is not None and re.search(r"(?m)^\| S0-", ctail):
+        return "the appended evidence section must not hold scenario rows"
+    for sid, cells in rows.items():
+        verdicts = [" ".join(v.upper().split()) for v in
+                    re.findall(r"(?i)(?<![A-Za-z])(?:NOT[ \t]+)?PASS(?![A-Za-z])", cells[4])]
+        if len(verdicts) > 1:
+            return f"{sid} disposition holds more than one PASS/NOT PASS token; it must be one unambiguous disposition"
+        if verdicts == ["PASS"]:
+            miss = _s0_qa_missing(cfg, " ".join(cells[3:]))
+            if miss:
+                return f"{sid} claims PASS without {', '.join(miss)}"
+    return None
+
+
+def _s0_qa_cert_problem(base, cur, packet):
+    try:
+        want, got = _s0_json(base, "S0 QA starting certificate"), _s0_json(cur, "S0 QA certificate")
+    except GateError as e:
+        return str(e)
+    bp, gp = want.get("scenario_qa_packet"), got.get("scenario_qa_packet")
+    if not (isinstance(bp, dict) and isinstance(gp, dict) and gp.get("sha256") == hashlib.sha256(packet).hexdigest()
+            and isinstance(gp.get("sha256_note"), str) and gp["sha256_note"].strip()):
+        return "the certificate must bind the new packet sha256 with a nonempty sha256_note"
+    bp["sha256"], bp["sha256_note"] = gp["sha256"], gp["sha256_note"]
+    if want != got:
+        return "the certificate differs from its pinned start beyond scenario_qa_packet.sha256/sha256_note"
+    return None
+
+
+def _s0_qa_result_problem(cfg, w):
+    """None only while the S0 product, CAP files and any unnamed document are untouched and committed, HEAD still holds the
+    pinned doc_base, and the current documents keep the packet structure (and, if named, the certificate binding)."""
+    base, repo = w["doc_base"], Path(cfg.repo)
+    try:
+        _s0_qa_git_clean(cfg, [*S0_QA_PROTECTED, *(p for p in S0_DOC_PATHS if p not in w["allowed_paths"])], "S0 QA protected files")
+        blobs = {p: _s0_git_blob(cfg, "HEAD", p, "S0 QA start") for p in w["allowed_paths"]}
+        if any(hashlib.sha256(b).hexdigest() != base[p] for p, b in blobs.items()):
+            return "the documents at HEAD are not the pinned doc_base"
+        cur = {p: _read_bounded(repo / p, REVIEW_MAX_BYTES) for p in w["allowed_paths"]}
+    except (GateError, OSError) as e:
+        return f"cannot verify the S0 QA documents: {str(e)[:120]}"
+    return (_s0_qa_packet_problem(cfg, blobs[S0_QA_PACKET], cur[S0_QA_PACKET])
+            or (_s0_qa_cert_problem(blobs[S0_QA_CERT], cur[S0_QA_CERT], cur[S0_QA_PACKET]) if S0_QA_CERT in cur else None))
+
+
+def verify_s0_qa_authority(cfg, tasks):
+    """Offline re-verification (read-only): the pinned owner record is committed, CI-green and independently Opus-APPROVED,
+    and the runner file the receipt names is this loaded, reviewed, CI-green runner. A mechanical runner_gate rebind after a
+    reload changes only that one subject; the owner subject stays pinned to the constants above. Grants nothing else."""
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_QA_RECEIPT}.json", RECEIPT_MAX_BYTES), "S0 QA receipt")
+    sub = r.get("subjects")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"} and r["schema"] == SCHEMA
+            and r["module"] == S0_MODULE and r["kind"] == "mod004-s0-qa-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip() and isinstance(r["recorded_at"], str)
+            and isinstance(sub, dict) and set(sub) == set(S0_QA_SUBJECTS)):
+        raise GateError("S0 QA receipt schema mismatch")
+    o = sub["qa_owner"]
+    if not (isinstance(o, dict) and o.get("path") == NONCAP_OWNER_PATH and o.get("sha256") == NONCAP_OWNER_SHA
+            and o.get("commit") == NONCAP_OWNER_COMMIT and (o.get("ci") or {}).get("run_id") == NONCAP_OWNER_CI_RUN):
+        raise GateError("S0 QA: the owner record is not the pinned file, commit and CI run")
+    seen = set()
+    data = {name: _s0_subject(cfg, name, sub[name], tasks, seen, S0_QA_SUBJECTS) for name in S0_QA_SUBJECTS}
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+        raise GateError("S0 QA runner_gate: the loaded runner is not the reviewed, CI-green runner file")
+
+
+def s0_qa_gate_reason(cfg, t, tasks):
+    """None for a task outside the lane or the one fully authorised evidence-only write; else an explicit S0_QA_* reason."""
+    if not s0_qa_marked(t):
+        return None
+    problem = s0_qa_shape_problem(t)
+    if problem:
+        return f"S0_QA_INVALID_TASK {t['id']}: {problem}"
+    if t.get("attempts"):
+        return f"S0_QA_ATTEMPT_USED {t['id']}: the single evidence-only write attempt was already started"
+    others = sorted(x["id"] for x in tasks.values() if x.get("id") != t["id"] and s0_qa_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_QA_SECOND_WRITE: evidence-only write {others[0]} already exists; the lane is one-shot"
+    busy = _s0_competing_writes(tasks, t)
+    if busy:
+        return f"S0_QA_CONCURRENT_WRITE: {busy[0]} is a pending write in an S0 chain or touching S0 files"
+    try:
+        _s0_qa_git_clean(cfg, [*S0_QA_PROTECTED, *S0_DOC_PATHS], "S0 QA start")
+        for p, sha in t["doc_base"].items():
+            if _path_hash(Path(cfg.repo) / p) != sha or _s0_git_blob_sha(cfg, "HEAD", p, "S0 QA start") != sha:
+                return "S0_QA_STALE_BASE: a document is not the pinned published doc_base"
+        problem = _s0_qa_packet_problem(cfg, _s0_git_blob(cfg, "HEAD", S0_QA_PACKET, "S0 QA start"),
+                                        _s0_git_blob(cfg, "HEAD", S0_QA_PACKET, "S0 QA start"))
+        if problem:
+            return f"S0_QA_BASE_UNSOUND: {problem}"
+        verify_s0_qa_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_QA_AUTHORITY_UNVERIFIED: {e}"
+    except OSError as e:
+        return f"S0_QA_AUTHORITY_UNVERIFIED: {type(e).__name__}"
+    return None
+
+
+def s0_qa_review_reason(cfg, t, tasks):
+    """The one exact-bound owner-CLI Opus review of the sole DONE evidence-only write: any other review task bound to it, in
+    any status, has used the slot; there is no retry, correction or review shopping."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and s0_qa_marked(w)):
+        return None
+    if t.get("source") is not None:
+        return "S0_QA_REVIEW_UNSUPPORTED: the evidence-only review is owner-CLI routed only"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_QA_REVIEW_UNSUPPORTED: the evidence-only write gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"
+            and w.get("attempts") == 1 and (w.get("evidence") or {}).get("violations") == []):
+        return "S0_QA_REVIEW_UNSUPPORTED: only a DONE one-attempt MOD-004 evidence-only write can be reviewed here"
+    problem = s0_qa_shape_problem(w)
+    if problem:
+        return f"S0_QA_REVIEW_UNSUPPORTED: {problem}"
+    if [x["id"] for x in tasks.values() if isinstance(x, dict) and s0_qa_marked(x) and x.get("role") in WRITE_ROLES] != [w["id"]]:
+        return "S0_QA_REVIEW_UNSUPPORTED: the evidence-only write must be the only one in the lane"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not (sorted(c["path"] for c in want) == sorted(w["allowed_paths"])
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) and c["sha256"] != w["doc_base"][c["path"]]
+                    for c in want)
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_QA_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of every named document, each different from its base"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_QA_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review evidence-only write {w['id']}"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_QA_REVIEW_BINDING_STALE: the documents no longer match the write's recorded hashes"
+    problem = _s0_qa_result_problem(cfg, w)
+    if problem:
+        return f"S0_QA_REVIEW_UNSUPPORTED: {problem}; the one review slot is not spent on an unsound candidate"
+    try:
+        verify_s0_qa_authority(cfg, tasks)
+    except GateError as e:
+        return f"S0_QA_REVIEW_AUTHORITY_UNVERIFIED: {e}"
+    except OSError as e:
+        return f"S0_QA_REVIEW_AUTHORITY_UNVERIFIED: {type(e).__name__}"
+    return None
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -3595,14 +3952,28 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if s0_marked(t) or s0_test_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
         return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
-    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_loop_marked(t) or s0_doc_touches(t):
+    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_loop_marked(t) or s0_qa_marked(t) or s0_doc_touches(t):
         return f"S0_DOC_INVALID_TASK {t['id']}: document tasks are admitted only by the S0 document gate"
     module = t["module"]
+    cap_chain = ()  # the closed historical CAP chain is set aside only for a verified new non-CAP design task
+    if NONCAP_TERMINAL_WRITE in tasks and not noncap_shape_problem(tasks, t):
+        try:
+            verify_noncap_authority(cfg, tasks)
+        except GateError as e:
+            return f"NONCAP_DESIGN_UNVERIFIED {t['id']}: {e}"
+        cap_chain = NONCAP_CAP_CHAIN
+    elif module == "MOD-004" and NONCAP_TERMINAL_WRITE in tasks:
+        # fail closed regardless of the historical review's status: a design-only owner authority never reopens CAP/product/other
+        # MOD-004 work, even if that review is later tampered to APPROVED, missing or malformed (separate owner authority required)
+        return (f"REVIEW_REQUIRED {module}: write task {NONCAP_TERMINAL_WRITE} has no independent Opus code-review attempt "
+                f"bound to it (terminal review {NONCAP_TERMINAL_REVIEW} is BLOCKED); {t['id']} is refused, only an exact "
+                "owner-covered design task is admitted under the non-CAP owner record")
     # the S0, document and refresh chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
+                     and x.get("id") not in cap_chain
                      and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
                      and not s0_doc_marked(x) and not s0_refresh_marked(x) and not s0_rebind_marked(x)
-                     and not s0_test_marked(x) and not s0_loop_marked(x)), key=_when)
+                     and not s0_test_marked(x) and not s0_loop_marked(x) and not s0_qa_marked(x)), key=_when)
     product_t = product_loop_eligible(tasks, t) and product_new_policy(tasks, t)
     if product_t:
         decided, lineage = product_lineage_reason(cfg, tasks, t)
@@ -3711,12 +4082,12 @@ def gate_reason(cfg, t, tasks):
         if t["role"] == "code-review":
             return (s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
-                    or s0_loop_review_reason(cfg, t, tasks))
+                    or s0_loop_review_reason(cfg, t, tasks) or s0_qa_review_reason(cfg, t, tasks))
         if t["role"] not in GATED_ROLES:
             return None
         reason = (s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks) or s0_refresh_gate_reason(cfg, t, tasks)
                   or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks)
-                  or s0_loop_gate_reason(cfg, t, tasks))
+                  or s0_loop_gate_reason(cfg, t, tasks) or s0_qa_gate_reason(cfg, t, tasks))
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -3729,7 +4100,7 @@ def gate_reason(cfg, t, tasks):
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
         if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-                or s0_test_marked(t) or s0_loop_marked(t)):  # the sole S0 write and the document, refresh, rebind and test chains: separate chains, historical blockers stay untouched
+                or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):  # the sole S0 write and the document, refresh, rebind, test and QA evidence chains: separate chains, historical blockers stay untouched
             return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
@@ -4130,9 +4501,9 @@ class Runner:
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
         if (s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_doc_touches(t)
-                or s0_rebind_marked(t) or s0_test_marked(t) or s0_loop_marked(t)):
+                or s0_rebind_marked(t) or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):
             raise ValueError("tasks for the MOD004-S0, MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND, "
-                             "MOD004-S0-TEST-REMEDIATION or MOD004-S0-LOOP-REBIND files require the owner CLI; the planner cannot propose them")
+                             "MOD004-S0-TEST-REMEDIATION, MOD004-S0-LOOP-REBIND or MOD004-S0-QA-EVIDENCE files require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -4453,6 +4824,12 @@ class Runner:
                       f"({S0_VALIDATOR_PATH} sha256 {S0_VALIDATOR_SHA}). Review the whole candidate, not only the test edit, and "
                       f"evaluate the findings of the earlier CHANGES_REQUESTED review {S0_ORIG_REVIEW} against it. "
                       "Report CHANGES_REQUESTED if the validator differs from that sha256."]
+        if s0_qa_marked(w):
+            lines += ["- This is the S0 EVIDENCE-ONLY QA candidate. Judge whether every PASS row is factually supported by its named "
+                      "test IDs, published product commit, runner verifier result, exact-SHA CI run, bound APPROVED product review "
+                      "and manual-step evidence; a failed scenario must stay failed and a missing test or review must stay OPEN. "
+                      "Report CHANGES_REQUESTED if any scenario ID, category, stimulus or the PASS rule changed, or if the candidate "
+                      "implies CAP qualification, MOD-004 Ready or module acceptance."]
         lines += [f"- Declared write scope: {', '.join(w.get('allowed_paths') or []) or 'none'}; "
                   f"expected changes: {', '.join(w.get('expected_changes') or []) or 'none'}.",
                   "- Runner verifier outcome for that write: " +
@@ -4633,7 +5010,8 @@ class Runner:
                     "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else
                     "S0_REBIND_ATTEMPT_INTERRUPTED" if s0_rebind_marked(t) else
                     "S0_TEST_ATTEMPT_INTERRUPTED" if s0_test_marked(t) else
-                    "S0_LOOP_ATTEMPT_INTERRUPTED" if s0_loop_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
+                    "S0_LOOP_ATTEMPT_INTERRUPTED" if s0_loop_marked(t) else
+                    "S0_QA_ATTEMPT_INTERRUPTED" if s0_qa_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
             t.update(status="BLOCKED", blocked_reason=code, stage=None,
                      last_error="the only attempt of this S0 write was interrupted; repo may hold partial edits")
             return self.store.event("task-blocked", op, task_id=t["id"], code=code)
@@ -4778,6 +5156,19 @@ class Runner:
                     bad.append(("S0_LOOP_DOCUMENT_SHAPE", problem[:200]))
             except Exception as e:
                 bad.append(("S0_LOOP_DOCUMENT_SHAPE", type(e).__name__))
+        if write and s0_qa_marked(t):  # authority may have been withdrawn during the child; product, CAP files and the packet structure must hold
+            try:
+                verify_s0_qa_authority(self.cfg, self.state["tasks"])
+            except GateError as e:
+                bad.append(("S0_QA_AUTHORITY_WITHDRAWN", str(e)[:200]))
+            except Exception as e:
+                bad.append(("S0_QA_AUTHORITY_WITHDRAWN", type(e).__name__))
+            try:
+                problem = _s0_qa_result_problem(self.cfg, t)
+                if problem:
+                    bad.append(("S0_QA_RESULT_UNSOUND", problem[:200]))
+            except Exception as e:
+                bad.append(("S0_QA_RESULT_UNSOUND", type(e).__name__))
         if write and s0_rebind_repair_marked(t):  # the root record must be untouched and the certificate must carry the final packet hash
             try:
                 problem = _s0_rebind_root_problem(self.state["tasks"])
@@ -5068,8 +5459,12 @@ def validate_task(d, cfg):
     doc_base = d.get("doc_base")
     if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and set(doc_base) == set(S0_DOC_PATHS)
-                                     and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())):
-        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND or MOD004-S0-LOOP-REBIND write: {path: sha256 or null} for exactly the two document paths")
+                                     and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())
+                                     or plan_phase == S0_QA_MARKER and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+                                     and S0_QA_PACKET in doc_base and set(doc_base) <= set(S0_DOC_PATHS)
+                                     and all(isinstance(v, str) and SHA256_RE.fullmatch(v) for v in doc_base.values())):
+        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND or MOD004-S0-LOOP-REBIND write: {path: sha256 or null} for exactly the two document paths; "
+                         "a MOD004-S0-QA-EVIDENCE write pins the packet sha256 (and the certificate's when named)")
     candidate = d.get("review_candidate")
     if candidate is not None and not (retry_of and isinstance(candidate, dict)
                                       and set(candidate) == {"head", "files", "diff_sha256", "candidate_sha256"}):
@@ -5110,7 +5505,7 @@ def enqueue(cfg, task):
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
     if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-            or s0_test_marked(t) or s0_loop_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+            or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
         problem = s0_runner_problem(state)
         if problem:
             raise ValueError(f"task refused by S0 gate: {problem}")
@@ -5353,7 +5748,7 @@ def main(argv=None):
     e.add_argument("--accounting-recovery-of", help="one audited MOD-004 source-inaccessible accounting review id; fresh write only")
     e.add_argument("--remediation-of", help="MOD004-S0-DOC: the document write whose exact-bound review requested changes; or the one MOD004-S0-DOC-REBIND repair (its exact id only): the incomplete rebind write")
     e.add_argument("--doc-base", action="append", default=[], metavar="PATH=SHA256|absent",
-                   help="MOD004-S0-DOC / -REFRESH / -REBIND / MOD004-S0-LOOP-REBIND only, once per document: the exact current content hash this write starts from")
+                   help="MOD004-S0-DOC / -REFRESH / -REBIND / MOD004-S0-LOOP-REBIND / MOD004-S0-QA-EVIDENCE (packet, +certificate if named) only, once per document: the exact current content hash this write starts from")
     for c in ("pause", "resume", "stop"):
         x = sub.add_parser(c)
         x.add_argument("--op-id")
@@ -5367,6 +5762,7 @@ def main(argv=None):
     sub.add_parser("ci-observe-public", help=argparse.SUPPRESS)  # internal: supervised child of the public observer
     sub.add_parser("verify-baseline", help="check the repo against the out-of-repo pin")
     sub.add_parser("s0-probe", help="read-only MOD-004 S0 gate probe: queues, locks and writes nothing; exit 0 only if open")
+    sub.add_parser("noncap-probe", help="read-only MOD-004 non-CAP design gate probe: queues, locks and writes nothing; exit 0 only if healthy")
     pb =sub.add_parser("pin-baseline", help="OWNER STEP: pin PROJECT_INDEX.md + source hashes outside the repo (one time)")
     pb.add_argument("--confirm-index-sha256", help="sha256 of the PROJECT_INDEX.md you reviewed (shasum -a 256)")
     la = sub.add_parser("launchagent", help="print (default) or write LaunchAgent plists; never loads them")
@@ -5438,6 +5834,11 @@ def main(argv=None):
         reason = s0_probe(cfg)
         print(json.dumps({"s0_route": "open" if reason is None else "closed", "reason": reason}))
         return 0 if reason is None else 1
+    if a.cmd == "noncap-probe":
+        res = noncap_probe(cfg)
+        ok = res.get("design") is None and all(res.get(k) for k in ("cap", "s0_product"))
+        print(json.dumps({"noncap_route": "healthy" if ok else "closed", "cases": res}))
+        return 0 if ok else 1
     if a.cmd == "status":
         s = snapshot(cfg)
         s.pop("events")
