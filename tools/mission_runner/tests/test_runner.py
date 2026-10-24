@@ -6491,5 +6491,1912 @@ class Mod004S0DocRefresh(S0Fixture):
         self.assertIsNone(r2.next_ready())
 
 
+class S0TestFixture(S0Fixture):
+    """MOD-004 S0 test-only remediation: the fixture holds a preserved six-subject receipt, the historical recovery
+    evidence, the pinned original write and its CHANGES_REQUESTED review, and the new MOD-004-S0-TEST-RECOVERY receipt."""
+    DOC_CERT, DOC_QA = R.S0_DOC_PATHS
+    CERT = DOC_CERT  # the rebuilt receipt's eligibility subject is the rebound certificate, never another JSON
+    ALT_CERT = "contracts/engineering/s0/eligibility.json"
+    SUBJECTS = tuple((n, R.S0_DOC_PATHS[0] if n == "eligibility" else rel) for n, rel in S0Fixture.SUBJECTS)
+    VALIDATOR, TEST, TOWNER = R.S0_VALIDATOR_PATH, R.S0_TEST_PATH, R.S0_TEST_OWNER_PATH
+    REAL = {k: getattr(R, k) for k in ("S0_VALIDATOR_SHA", "S0_TEST_START_SHA", "S0_TEST_OWNER_SHA", "S0_PRE_TEST_RECEIPT_SHA",
+                                       "S0_ORIG_REVIEW_OUTPUT_SHA", "S0_OLD_RECEIPT_SHA", "S0_RECOVERY_RECEIPT_SHA",
+                                       "S0_DOC_RECEIPT_SHA")}
+    REAL_BASE = dict(R.S0_REBIND_BASE)
+    SUBJECT_PATHS = {"owner": S0Fixture.OWNER, "adr": S0Fixture.ADR, "test_owner": R.S0_TEST_OWNER_PATH,
+                     "runner_gate": S0Fixture.RUN}
+
+    def setUp(self):
+        super().setUp()
+        acc = self.home / "acceptances"
+        s0 = acc / "MOD-004-S0.json"
+        receipt = json.loads(s0.read_text())
+        self.pre = s0.read_bytes()
+        self.checkpoint = self.home / R.S0_TEST_CHECKPOINT
+        self.old_checkpoint = self.home / R.S0_RECOVERY_CHECKPOINT
+        self.checkpoint.parent.mkdir(parents=True)
+        self.checkpoint.write_bytes(self.pre)
+        s0.unlink()  # the current six-subject receipt leaves acceptances/ and is preserved byte-identical
+        self.old = b'{"pre-recovery": "receipt"}'
+        self.old_checkpoint.write_bytes(self.old)
+        self.hist = {R.S0_RECOVERY_RECEIPT: b'{"historical": "recovery"}', R.S0_DOC_RECEIPT: b'{"historical": "doc"}'}
+        self.restore_hist()
+        self.write(self.VALIDATOR, "import uuid\n")
+        self.write(self.TEST, "import unittest\n")
+        self.write(self.TOWNER, "test remediation owner record\n")
+        self.pub = self.put_docs("published")
+        self.vsha, self.tsha = self.sha(self.VALIDATOR), self.sha(self.TEST)
+        self.orig_op = f"{R.S0_ORIG_REVIEW}:1"
+        orig_out = b"original CHANGES_REQUESTED review output"
+        (self.home / "runs").mkdir(exist_ok=True)
+        (self.home / "runs" / f"{R.S0_ORIG_REVIEW}-1.out").write_bytes(orig_out)
+        self.pins = {
+            "S0_PRE_TEST_RECEIPT_SHA": hashlib.sha256(self.pre).hexdigest(), "S0_OLD_RECEIPT_SHA": hashlib.sha256(self.old).hexdigest(),
+            "S0_TEST_OWNER_SHA": self.sha(self.TOWNER), "S0_REBIND_BASE": dict(self.pub), "S0_VALIDATOR_SHA": self.vsha,
+            "S0_TEST_START_SHA": self.tsha, "S0_ORIG_REVIEW_OUTPUT_SHA": hashlib.sha256(orig_out).hexdigest(),
+            "S0_RECOVERY_RECEIPT_SHA": hashlib.sha256(self.hist[R.S0_RECOVERY_RECEIPT]).hexdigest(),
+            "S0_DOC_RECEIPT_SHA": hashlib.sha256(self.hist[R.S0_DOC_RECEIPT]).hexdigest()}
+        for name, value in self.pins.items():
+            patcher = mock.patch.object(R, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        pairs = [{"path": self.VALIDATOR, "sha256": self.vsha}, {"path": self.TEST, "sha256": self.tsha}]
+        self.history[R.S0_ORIG_WRITE] = self.task(id=R.S0_ORIG_WRITE) | {
+            "status": "DONE", "attempts": 1, "created_at": "2026-10-24T00:00:00Z", "route": {"verdict": "VERIFIED"},
+            "evidence": {"changed": [dict(p) for p in pairs], "violations": []}}
+        self.history[R.S0_ORIG_REVIEW] = {
+            "id": R.S0_ORIG_REVIEW, "module": "MOD-004", "role": "code-review", "status": "BLOCKED",
+            "blocked_reason": "REVIEW_CHANGES_REQUESTED", "created_at": "2026-10-24T00:01:00Z",
+            "review_of": {"task_id": R.S0_ORIG_WRITE, "changed": [dict(p) for p in pairs]},
+            "route": {"verdict": "VERIFIED", "dispatch_op": self.orig_op},
+            "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True,
+                         "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "test remediation owner record, documents and S0 product files")
+        subjects = {n: receipt["subjects"][n] for n in ("owner", "adr", "runner_gate")}
+        subjects["test_owner"] = self.entry(self.TOWNER, "tr-test_owner")
+        self.rec = {"schema": 1, "module": "MOD-004", "kind": "mod004-s0-test-recovery-authority", "operator": "op",
+                    "recorded_at": R.now_iso(), "preserved_receipt": {"path": R.S0_TEST_CHECKPOINT, "sha256": self.pins["S0_PRE_TEST_RECEIPT_SHA"]},
+                    "subjects": subjects}
+        self.write_rec()
+        self.sync()
+
+    # --- fixtures
+    def entry(self, rel, name):
+        commit = self.head()
+        return {"path": rel, "sha256": self.sha(rel), "commit": commit, "ci": self.ci(commit), "review": self.review(rel, name)}
+
+    def sync(self):
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"].update(self.history)
+        store.save(state)
+
+    def write_rec(self, receipt=None):
+        (self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json").write_text(json.dumps(receipt or self.rec))
+
+    def restore_hist(self):
+        for twin in (self.home / "acceptances").glob("*.twin"):
+            twin.unlink()
+        for name, data in self.hist.items():
+            p = self.home / "acceptances" / f"{name}.json"
+            if p.is_symlink() or p.is_file():
+                p.unlink()
+            elif p.is_dir():
+                p.rmdir()
+            p.write_bytes(data)
+
+    def put_docs(self, text="draft"):
+        for p in R.S0_DOC_PATHS:
+            self.write(p, f"{text} {p}\n")
+        return {p: self.sha(p) for p in R.S0_DOC_PATHS}
+
+    def mutated(self, mutate, probe=None):
+        r = json.loads(json.dumps(self.rec))
+        mutate(r)
+        self.write_rec(r)
+        return (probe or self.rbreason)()
+
+    def live(self):
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": R.CODE_SHA}
+        store.save(state)
+
+    def assertUnverified(self, reason, code="S0_REBIND_AUTHORITY_UNVERIFIED"):
+        self.assertTrue(reason and reason.startswith((code, "GATE_UNVERIFIABLE")), reason)
+
+    def problem(self, fn=None):
+        try:
+            (fn or R.verify_s0_test_recovery_authority)(self.cfg, self.history)
+        except R.GateError as e:
+            return str(e)
+        return None
+
+    # --- the rebind (documents) lane
+    def rbraw(self, **over):
+        return {"id": "rb-1", "module": "MOD-004", "role": "implement", "prompt": "rebind the S0 documents",
+                "plan_phase": R.S0_REBIND_MARKER, "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS),
+                "verify_cmd": [], "doc_base": dict(R.S0_REBIND_BASE)} | over
+
+    def rebind(self, post=None, **over):
+        return R.validate_task(self.rbraw(**over), self.cfg) | (post or {})
+
+    def rbreason(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.rebind(post, **over), self.history if tasks is None else tasks)
+
+    def done_rebind(self, tid="rb-1", text="rebound", tasks=None, **over):
+        return self.done_rebind_of(self.put_docs(text), tid, tasks, **over)
+
+    def done_rebind_of(self, hashes, tid="rb-1", tasks=None, **over):
+        changed = [{"path": p, "sha256": h} for p, h in hashes.items()]
+        w = self.rebind(id=tid, **over) | {
+            "status": "DONE", "attempts": 1, "created_at": "2026-10-24T01:00:00Z", "route": {"verdict": "VERIFIED"},
+            "evidence": {"changed": changed, "violations": []}}
+        rv = {"id": f"{tid}-rev", "module": "MOD-004", "role": "code-review", "status": "DONE", "created_at": "2026-10-24T01:01:00Z",
+              "review_of": {"task_id": tid, "changed": [dict(c) for c in changed]}, "route": {"verdict": "VERIFIED"},
+              "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True, "violations": []}}
+        return (dict(self.history if tasks is None else tasks) | {tid: w, rv["id"]: rv}), hashes
+
+    def rb_review(self, tasks, wid="rb-1", **over):
+        w = tasks[wid]
+        return {"id": "rb-review", "module": "MOD-004", "role": "code-review", "status": "QUEUED",
+                "review_of": {"task_id": wid, "changed": [dict(c) for c in w["evidence"]["changed"]]}} | over
+
+    def advance(self, qa_after=None, rebuild=False):
+        """The rebind is DONE and approved, and a NEW six-subject S0 receipt is rebuilt for this runner whose eligibility
+        subject is the rebound certificate (valid S0_ELIGIBLE JSON at the rebind path), published with the rebound QA
+        packet at one CI-attested commit. With `qa_after` the receipt is first built while the QA packet is still the
+        published one and the rebound packet only appears afterwards ("committed" or "working-tree"); `rebuild` then
+        builds a second receipt after the QA commit. The first receipt stays in `self.early` as (commit, bytes)."""
+        self.write(self.DOC_QA, f"{'published' if qa_after else 'rebound'} {self.DOC_QA}\n")
+        self.build()
+        self.early = (self.head(), (self.home / "acceptances" / "MOD-004-S0.json").read_bytes())
+        if qa_after:
+            self.write(self.DOC_QA, f"rebound {self.DOC_QA}\n")
+            if qa_after == "committed":
+                git(self.repo, "add", "-A")
+                git(self.repo, "commit", "-qm", "rebound QA packet, after the eligibility commit")
+        if rebuild:
+            self.build()
+        tasks, _ = self.done_rebind_of({p: self.sha(p) for p in R.S0_DOC_PATHS})
+        self.history.update(tasks)
+        self.sync()
+        self.assertNotEqual(self.sha(self.DOC_CERT), self.REAL_BASE[self.DOC_CERT])
+        self.assertFalse(hashlib.sha256((self.home / "acceptances" / "MOD-004-S0.json").read_bytes()).hexdigest()
+                         in (self.pins["S0_PRE_TEST_RECEIPT_SHA"], self.pins["S0_OLD_RECEIPT_SHA"]))
+        eligibility = json.loads((self.home / "acceptances" / "MOD-004-S0.json").read_text())["subjects"]["eligibility"]
+        self.assertEqual((eligibility["path"], eligibility["sha256"]), (self.DOC_CERT, self.sha(self.DOC_CERT)))
+
+    def historical_mutations(self):
+        recovery, doc = R.S0_RECOVERY_RECEIPT, R.S0_DOC_RECEIPT
+        acc = self.home / "acceptances"
+        kept = self.hist
+        def put(name, data):
+            p = acc / f"{name}.json"
+            p.unlink()
+            p.write_bytes(data)
+        def symlink(name):
+            twin = acc / f"{name}.twin"
+            twin.write_bytes(kept[name])
+            (acc / f"{name}.json").unlink()
+            (acc / f"{name}.json").symlink_to(twin)
+        def as_dir(name):
+            (acc / f"{name}.json").unlink()
+            (acc / f"{name}.json").mkdir()
+        cases = {}
+        for name in (recovery, doc):
+            cases[f"{name} appended"] = (lambda n=name: put(n, kept[n] + b"\n"))
+            cases[f"{name} truncated"] = (lambda n=name: put(n, kept[n][:len(kept[n]) // 2]))
+            cases[f"{name} emptied"] = (lambda n=name: put(n, b""))
+            cases[f"{name} reformatted"] = (lambda n=name: put(n, json.dumps(json.loads(kept[n]), indent=2).encode()))
+            cases[f"{name} replaced"] = (lambda n=name: put(n, b'{"historical": "forged"}'))
+            cases[f"{name} oversize"] = (lambda n=name: put(n, kept[n] + b" " * (R.RECEIPT_MAX_BYTES + 1)))
+            cases[f"{name} byte-identical symlink"] = (lambda n=name: symlink(n))
+            cases[f"{name} directory"] = (lambda n=name: as_dir(n))
+            cases[f"{name} removed"] = (lambda n=name: (acc / f"{n}.json").unlink())
+        cases["receipts swapped"] = lambda: (put(recovery, kept[doc]), put(doc, kept[recovery]))
+        return cases
+
+    def snapshot(self):
+        base = Path(self.tmp.name) / "snap"
+        shutil.rmtree(base, ignore_errors=True)
+        shutil.copytree(self.repo, base / "repo", symlinks=True)
+        shutil.copytree(self.home, base / "home", symlinks=True)
+        return base, json.loads(json.dumps(self.history))
+
+    def restore(self, snap):
+        base, history = snap
+        for live, kept in ((self.repo, base / "repo"), (self.home, base / "home")):
+            shutil.rmtree(live)
+            shutil.copytree(kept, live, symlinks=True)
+        self.history.clear()
+        self.history.update(json.loads(json.dumps(history)))
+
+    def rebuild_with_cert_at(self, path):
+        """A fully valid, committed, reviewed six-subject receipt whose eligibility subject is some OTHER certificate JSON."""
+        saved = self.CERT, self.SUBJECTS
+        self.CERT, self.SUBJECTS = path, tuple((n, path if n == "eligibility" else rel) for n, rel in saved[1])
+        try:
+            self.build()
+        finally:
+            self.CERT, self.SUBJECTS = saved
+
+    # --- the test-correction lane
+    def traw(self, **over):
+        return {"id": "tc-1", "module": "MOD-004", "role": "implement", "prompt": "correct the S0 test file",
+                "plan_phase": R.S0_TEST_MARKER, "allowed_paths": [R.S0_TEST_PATH], "expected_changes": [R.S0_TEST_PATH],
+                "verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]} | over
+
+    def tcorr(self, post=None, **over):
+        return R.validate_task(self.traw(**over), self.cfg) | (post or {})
+
+    def treason(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.tcorr(post, **over), self.history if tasks is None else tasks)
+
+    def done_test(self, tid="tc-1", text="corrected tests\n", tasks=None):
+        self.write(self.TEST, text)
+        new = self.sha(self.TEST)
+        w = self.tcorr(id=tid) | {"status": "DONE", "attempts": 1, "created_at": "2026-10-24T02:00:00Z",
+                                  "route": {"verdict": "VERIFIED"},
+                                  "evidence": {"changed": [{"path": self.TEST, "sha256": new}], "violations": []}}
+        return dict(self.history if tasks is None else tasks) | {tid: w}, new
+
+    def both(self, new):
+        return [{"path": self.TEST, "sha256": new}, {"path": self.VALIDATOR, "sha256": self.vsha}]
+
+    def t_review(self, tasks, new, wid="tc-1", **over):
+        return {"id": "tc-review", "module": "MOD-004", "role": "code-review", "status": "QUEUED",
+                "prompt": f"Review {self.TEST} sha256 {new} together with {self.VALIDATOR} sha256 {self.vsha}",
+                "review_of": {"task_id": wid, "changed": self.both(new)}} | over
+
+    def cap_next(self):
+        return R.validate_task({"id": "cap-next", "module": "MOD-004", "role": "implement", "prompt": "x",
+                                "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]}, self.cfg)
+
+    def foreign(self, module="MOD-003", **over):
+        scope = {k: over.pop(k) for k in ("allowed_paths", "expected_changes") if k in over}
+        t = R.validate_task({"id": "other", "module": module, "role": "implement", "prompt": "x",
+                             "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]} | over, self.cfg)
+        return t | ({"allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS)} | scope)
+
+
+class Mod004S0TestRecoveryAuthority(S0TestFixture):
+    """The separately named MOD-004-S0-TEST-RECOVERY receipt, machine-verified, never operator say-so."""
+
+    def test_the_real_pins_are_exactly_the_owner_recorded_values(self):
+        self.assertEqual(self.REAL, {
+            "S0_VALIDATOR_SHA": "5543353a0b95250bcde2b59681c8295f7ecb2c99f88097f793db1a7761196314",
+            "S0_TEST_START_SHA": "a610232abb813b2981ccd9d5c68ec720ff17c72d544f55ad8c0d5b8dbcf52969",
+            "S0_TEST_OWNER_SHA": "731307b358ae904f1457a494d3a83b962987b223a04c86c356859b1ae9181228",
+            "S0_PRE_TEST_RECEIPT_SHA": "a02beb42243981ed2997a8a9525db99e410201e31b90cfce6de83d9f1589876f",
+            "S0_ORIG_REVIEW_OUTPUT_SHA": "638a07e242f6dbcd5030809f5f4685276ad0baecdada62524e09a76bac1a1976",
+            "S0_OLD_RECEIPT_SHA": "0bb98e348496413779ce83414325d8286a678dccf982c304ca257316dd30894f",
+            "S0_RECOVERY_RECEIPT_SHA": "1b21fe3d6201b5d65e545e3a4190fd891f673120177724c2dfb025fcb7d3ec20",
+            "S0_DOC_RECEIPT_SHA": "2f3e909576a2bcacb1c19544bb6411bff835dace10ad2d5b2bcc395397b59380"})
+        self.assertEqual(self.REAL_BASE, {
+            "contracts/engineering/mod004-s0-eligibility.json": "17d5120ef0e99b5a36cabf62e5a2c6f86349ad5d9c73e0ad294d43b54479c8d1",
+            "contracts/engineering/mod004-s0-scenario-qa.md": "08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680"})
+        self.assertEqual((R.S0_ORIG_WRITE, R.S0_ORIG_REVIEW),
+                         ("mod004-s0-product-sonnet-20261024", "mod004-s0-product-opus-code-review-20261024"))
+        self.assertEqual((R.S0_REBIND_MARKER, R.S0_TEST_MARKER, R.S0_TEST_RECOVERY_RECEIPT, R.S0_TEST_CHECKPOINT),
+                         ("MOD004-S0-DOC-REBIND", "MOD004-S0-TEST-REMEDIATION", "MOD-004-S0-TEST-RECOVERY",
+                          "checkpoints/MOD-004-S0.pre-test-remediation.json"))
+        self.assertEqual(R.S0_TEST_OWNER_PATH, "knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-test-remediation.md")
+        self.assertEqual((R.S0_VALIDATOR_PATH, R.S0_TEST_PATH), tuple(R.S0_PATHS))
+        self.assertEqual(sorted(R.S0_TEST_SUBJECTS), ["adr", "owner", "runner_gate", "test_owner"])
+        self.assertEqual(len({R.S0_MARKER, R.S0_DOC_MARKER, R.S0_REFRESH_MARKER, R.S0_REBIND_MARKER, R.S0_TEST_MARKER}), 5)
+        self.assertEqual(len({R.S0_RECEIPT, R.S0_DOC_RECEIPT, R.S0_RECOVERY_RECEIPT, R.S0_TEST_RECOVERY_RECEIPT}), 4)
+        self.assertNotEqual(R.S0_TEST_CHECKPOINT, R.S0_RECOVERY_CHECKPOINT)
+
+
+    # --- the historical recovery and doc receipts stay byte-identical evidence
+    def test_the_real_historical_receipt_pins_are_consulted_not_the_fixture_values(self):
+        self.assertEqual(R.S0_RECOVERY_RECEIPT_SHA, hashlib.sha256(self.hist[R.S0_RECOVERY_RECEIPT]).hexdigest())
+        self.assertNotEqual(R.S0_RECOVERY_RECEIPT_SHA, self.REAL["S0_RECOVERY_RECEIPT_SHA"])
+        self.assertNotEqual(R.S0_DOC_RECEIPT_SHA, self.REAL["S0_DOC_RECEIPT_SHA"])
+        self.assertIsNone(self.problem())
+        for name in ("S0_RECOVERY_RECEIPT_SHA", "S0_DOC_RECEIPT_SHA"):
+            with self.subTest(name):
+                with mock.patch.object(R, name, self.REAL[name]):
+                    self.assertIn("not byte-identical to its pinned sha256", self.problem())
+        self.assertIsNone(self.problem())
+
+    def test_each_historical_receipt_mutation_is_refused_by_the_recovery_authority(self):
+        self.assertIsNone(self.problem())
+        for label, mutate in self.historical_mutations().items():
+            with self.subTest(label):
+                mutate()
+                reason = self.problem()
+                self.assertIsNotNone(reason)
+                if not any(w in label for w in ("symlink", "directory", "removed", "oversize")):
+                    self.assertIn("not byte-identical to its pinned sha256", reason)
+                self.restore_hist()
+                self.assertIsNone(self.problem())
+
+    def test_complete_authority_verifies_and_leaves_history_untouched(self):
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.problem())
+        self.assertIsNone(self.problem(R.verify_s0_rebind_authority))
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+        self.assertFalse((self.home / "acceptances" / "MOD-004-S0.json").exists())
+
+    def test_receipt_schema_is_exact(self):
+        cases = {
+            "extra key": lambda r: r.update(extra=1), "missing operator": lambda r: r.pop("operator"),
+            "blank operator": lambda r: r.update(operator="  "), "wrong schema": lambda r: r.update(schema=2),
+            "wrong module": lambda r: r.update(module="MOD-003"), "wrong kind": lambda r: r.update(kind="mod004-s0-authority"),
+            "recovery kind": lambda r: r.update(kind="mod004-s0-recovery-authority"),
+            "no preserved_receipt": lambda r: r.pop("preserved_receipt"), "no recorded_at": lambda r: r.pop("recorded_at"),
+            "no subjects": lambda r: r.pop("subjects"), "subjects list": lambda r: r.update(subjects=[]),
+            "extra subject": lambda r: r["subjects"].update(eligibility=r["subjects"]["owner"]),
+            "edge subject": lambda r: r["subjects"].update(edge=r["subjects"]["owner"]),
+            "doc_owner subject": lambda r: r["subjects"].update(doc_owner=r["subjects"]["owner"]),
+            "test_owner under another name": lambda r: r["subjects"].update(extra=r["subjects"].pop("test_owner")),
+        }
+        for name in R.S0_TEST_SUBJECTS:
+            cases[f"missing {name}"] = lambda r, n=name: r["subjects"].pop(n)
+        for name, mutate in cases.items():
+            with self.subTest(name):
+                self.assertUnverified(self.mutated(mutate))
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_missing_or_unrelated_receipts_are_never_authority(self):
+        path = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        path.unlink()
+        self.assertUnverified(self.rbreason())
+        for old in (R.S0_RECOVERY_RECEIPT, R.S0_DOC_RECEIPT):  # the earlier lanes' receipts cannot substitute
+            with self.subTest(old):
+                (self.home / "acceptances" / f"{old}.json").write_text(json.dumps(self.rec))
+                self.assertUnverified(self.rbreason())
+        self.restore_hist()
+        path.write_text("not json")
+        self.assertUnverified(self.rbreason())
+        path.unlink()
+        path.symlink_to(self.home / "acceptances" / f"{R.S0_RECOVERY_RECEIPT}.json")
+        self.assertUnverified(self.rbreason())
+        path.unlink()
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_every_subject_must_be_committed_ci_green_and_its_own_distinct_exact_path(self):
+        orphan = git(self.repo, "commit-tree", "HEAD^{tree}", "-m", "force-pushed away").stdout.strip()
+        wrong = "2" * 40
+        cases = {
+            "ci failure": lambda e: e["ci"].update(conclusion="failure"), "ci cancelled": lambda e: e["ci"].update(conclusion="cancelled"),
+            "ci in progress": lambda e: e["ci"].update(status="in_progress"), "ci pull_request": lambda e: e["ci"].update(event="pull_request"),
+            "ci other workflow": lambda e: e["ci"].update(name="Other"), "ci other sha": lambda e: e["ci"].update(head_sha=wrong),
+            "ci missing": lambda e: e.pop("ci"), "ci empty": lambda e: e.update(ci={}),
+            "unknown commit": lambda e: e.update(commit="1" * 40, ci=self.ci("1" * 40)),
+            "orphan commit": lambda e: e.update(commit=orphan, ci=self.ci(orphan)), "malformed commit": lambda e: e.update(commit="HEAD"),
+            "wrong sha": lambda e: e.update(sha256="0" * 64), "extra key": lambda e: e.update(note="x"),
+            "review missing": lambda e: e.pop("review"), "review unknown task": lambda e: e["review"].update(task_id="rev-nope"),
+            "review wrong output sha": lambda e: e["review"].update(output_sha256="0" * 64),
+            "review extra key": lambda e: e["review"].update(note="x"),
+        }
+        for name in R.S0_TEST_SUBJECTS:
+            for label, mutate in cases.items():
+                with self.subTest(f"{name} {label}"):
+                    reason = self.mutated(lambda r, m=mutate, n=name: m(r["subjects"][n]))
+                    self.assertUnverified(reason)
+                    self.assertIn(name, reason)
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_each_subject_is_pinned_to_its_exact_path_and_paths_cannot_be_swapped(self):
+        for name, wrong in {"owner": self.TOWNER, "adr": self.OWNER, "test_owner": self.OWNER, "runner_gate": self.EDGE}.items():
+            with self.subTest(f"swap {name}"):
+                self.assertUnverified(self.mutated(lambda r, n=name, w=wrong: r["subjects"][n].update(path=w, sha256=self.sha(w))))
+        for label, rel in {"traversal": "knowledge/00-Decisions/../00-Decisions/" + self.TOWNER.rsplit("/", 1)[1],
+                           "case variant": self.TOWNER.replace("OWNER-", "owner-"), "sibling": self.TOWNER + ".bak",
+                           "earlier recovery owner": "knowledge/00-Decisions/OWNER-2026-10-24-mod004-s0-edge-context-recovery.md",
+                           "s0 receipt path": "acceptances/MOD-004-S0.json"}.items():
+            with self.subTest(f"test_owner {label}"):
+                self.assertIn("test_owner", self.mutated(lambda r, p=rel: r["subjects"]["test_owner"].update(path=p)))
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_the_test_owner_record_must_be_the_pinned_committed_bytes(self):
+        with mock.patch.object(R, "S0_TEST_OWNER_SHA", self.REAL["S0_TEST_OWNER_SHA"]):  # a record that is not the owner-approved one
+            reason = self.rbreason()
+            self.assertUnverified(reason)
+            self.assertIn("test_owner", reason)
+        self.write(self.TOWNER, "edited after review\n")
+        self.assertIn("S0 test_owner", self.rbreason())
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "committed edit")
+        self.assertUnverified(self.rbreason())
+
+    def test_reviews_must_be_distinct_and_one_subject_cannot_borrow_anothers(self):
+        names = list(R.S0_TEST_SUBJECTS)
+        for a in names:
+            for b in names:
+                if a != b:
+                    with self.subTest(f"{a} borrows {b}"):
+                        self.assertUnverified(self.mutated(lambda r, x=a, y=b: r["subjects"][x].update(review=r["subjects"][y]["review"])))
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_committed_bytes_must_still_be_what_was_reviewed(self):
+        for name, rel in self.SUBJECT_PATHS.items():
+            with self.subTest(name):
+                original = (self.repo / rel).read_bytes()
+                (self.repo / rel).write_bytes(original + b"edited after review\n")
+                self.assertIn(f"S0 {name}", self.rbreason())
+                git(self.repo, "add", "-A")
+                git(self.repo, "commit", "-qm", "committed edit")  # a later commit with new bytes is not the reviewed content
+                self.assertUnverified(self.rbreason())
+                git(self.repo, "reset", "-q", "--hard", "HEAD^")
+                (self.repo / rel).write_bytes(original)
+        self.assertIsNone(self.rbreason())
+
+    def test_reviews_must_be_verified_opus_approved_runner_tasks_with_matching_output(self):
+        for name in R.S0_TEST_SUBJECTS:
+            rid = self.rec["subjects"][name]["review"]["task_id"]
+            saved = json.dumps(self.history[rid])
+            out = self.home / "runs" / f"{rid}-1.out"
+            out_saved = out.read_bytes()
+            cases = {
+                "changes requested": lambda x: x["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+                "blocked": lambda x: x.update(status="BLOCKED"), "queued": lambda x: x.update(status="QUEUED"),
+                "planner proposed": lambda x: x.update(source="handoff"), "sonnet role": lambda x: x.update(role="implement"),
+                "unverified route": lambda x: x["route"].update(verdict="UNVERIFIED"),
+                "no route op": lambda x: x["route"].pop("dispatch_op"),
+                "violations": lambda x: x["evidence"].update(violations=["X"]),
+                "prompt names nothing": lambda x: x.update(prompt="Review something else entirely"),
+                "prompt wrong sha": lambda x: x.update(prompt=x["prompt"].replace(self.rec["subjects"][name]["sha256"], "d" * 64)),
+                "result mismatch": lambda x: x.update(result="fine\nOUTCOME: APPROVED extra"),
+            }
+            for label, mutate in cases.items():
+                with self.subTest(f"{name} {label}"):
+                    mutate(self.history[rid])
+                    self.assertIn(f"S0 {name}", self.rbreason())
+                    self.history[rid] = json.loads(saved)
+            for label, data in {"output tampered": out_saved + b" ", "output not json": b"nope",
+                                "output changes requested": out_saved.replace(b"OUTCOME: APPROVED", b"OUTCOME: CHANGES_REQUESTED"),
+                                "output not opus": out_saved.replace(b"claude-opus-5-5", b"claude-sonnet-5-5")}.items():
+                with self.subTest(f"{name} {label}"):
+                    out.write_bytes(data)
+                    self.assertIn(f"S0 {name}", self.rbreason())
+            out.write_bytes(out_saved)
+            out.unlink()
+            with self.subTest(f"{name} output missing"):
+                self.assertUnverified(self.rbreason())
+            out.write_bytes(out_saved)
+            self.assertIsNone(self.rbreason())
+
+    def test_a_genuine_adverse_review_of_any_subject_blocks_it(self):
+        for name, rel in self.SUBJECT_PATHS.items():
+            sha = self.sha(rel)
+            self.history["adverse"] = {"id": "adverse", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                       "prompt": f"Review EXACT file {rel} SHA-256 {sha}\n", "route": {"verdict": "VERIFIED"},
+                                       "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                                       "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+            with self.subTest(name):
+                reason = self.rbreason()
+                self.assertIn(f"S0 {name}", reason)
+                self.assertIn("did not approve", reason)
+            del self.history["adverse"]
+        self.assertIsNone(self.rbreason())
+
+    def test_runner_gate_must_be_the_loaded_reviewed_runner_and_the_adr_must_carry_d12_5(self):
+        with mock.patch.object(R, "CODE_SHA", "f" * 64):
+            self.assertUnverified(self.rbreason())
+        self.assertIsNone(self.rbreason())
+        self.write(self.RUN, "a different runner file\n")
+        self.assertIn("S0 runner_gate", self.rbreason())
+        self.write(self.RUN, "reviewed runner bytes\n")
+        self.write(self.ADR, "ADR without the amendment\n")
+        self.assertIn("S0 adr", self.rbreason())
+        self.write(self.ADR, "ADR\nD12.5 S0 amendment\n")
+        self.assertIsNone(self.rbreason())
+        self.write(self.ADR, "ADR without the amendment\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "adr without D12.5")
+        adr = self.rec["subjects"]["adr"]
+        adr.update(sha256=self.sha(self.ADR), commit=self.head(), ci=self.ci(self.head()), review=self.review(self.ADR, "tr-adr2"))
+        self.sync()
+        self.write_rec()
+        self.assertTrue(self.problem() and "D12.5" in self.problem())
+
+    # --- the preserved receipts
+    def test_the_current_receipt_must_be_preserved_at_the_fixed_regular_non_symlink_checkpoint(self):
+        copy = Path(self.tmp.name) / "elsewhere.json"
+        data = self.checkpoint.read_bytes()
+        copy.write_bytes(data)
+        cases = {
+            "missing": lambda: self.checkpoint.unlink(),
+            "mutated": lambda: self.checkpoint.write_bytes(data + b" "),
+            "emptied": lambda: self.checkpoint.write_bytes(b""),
+            "file symlink": lambda: (self.checkpoint.unlink(), self.checkpoint.symlink_to(copy)),
+            "dangling symlink": lambda: (self.checkpoint.unlink(), self.checkpoint.symlink_to(self.home / "nowhere")),
+            "directory as file": lambda: (self.checkpoint.unlink(), self.checkpoint.mkdir()),
+            "checkpoint dir symlink": lambda: (self.checkpoint.unlink(), self.old_checkpoint.unlink(), self.checkpoint.parent.rmdir(),
+                                               self.checkpoint.parent.symlink_to(copy.parent),
+                                               (copy.parent / self.checkpoint.name).write_bytes(data)),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                try:
+                    mutate()
+                    self.assertUnverified(self.rbreason())
+                finally:
+                    if self.checkpoint.parent.is_symlink():
+                        self.checkpoint.parent.unlink()
+                        (copy.parent / self.checkpoint.name).unlink()
+                        self.checkpoint.parent.mkdir()
+                    if self.checkpoint.is_symlink() or self.checkpoint.is_file():
+                        self.checkpoint.unlink()
+                    elif self.checkpoint.is_dir():
+                        self.checkpoint.rmdir()
+                    self.checkpoint.write_bytes(data)
+                    self.old_checkpoint.write_bytes(self.old)
+                self.assertIsNone(self.rbreason())
+
+    def test_the_receipt_must_record_exactly_the_fixed_checkpoint_path_and_the_pinned_hash(self):
+        other = self.home / "checkpoints" / "other.json"
+        other.write_bytes(self.checkpoint.read_bytes())
+        cases = {
+            "other path": lambda r: r["preserved_receipt"].update(path="checkpoints/other.json"),
+            "acceptances path": lambda r: r["preserved_receipt"].update(path="acceptances/MOD-004-S0.json"),
+            "earlier checkpoint": lambda r: r["preserved_receipt"].update(path=R.S0_RECOVERY_CHECKPOINT,
+                                                                           sha256=self.pins["S0_OLD_RECEIPT_SHA"]),
+            "traversal": lambda r: r["preserved_receipt"].update(path="checkpoints/../checkpoints/MOD-004-S0.pre-test-remediation.json"),
+            "absolute": lambda r: r["preserved_receipt"].update(path=str(self.checkpoint)),
+            "wrong sha": lambda r: r["preserved_receipt"].update(sha256="0" * 64),
+            "uppercase sha": lambda r: r["preserved_receipt"].update(sha256=self.pins["S0_PRE_TEST_RECEIPT_SHA"].upper()),
+            "extra key": lambda r: r["preserved_receipt"].update(note="x"),
+            "missing sha": lambda r: r["preserved_receipt"].pop("sha256"),
+            "null": lambda r: r.update(preserved_receipt=None), "string": lambda r: r.update(preserved_receipt=str(self.checkpoint)),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                self.assertUnverified(self.mutated(mutate))
+        self.write_rec()
+        self.assertIsNone(self.rbreason())
+
+    def test_the_checkpoint_must_hash_to_the_pinned_constant_not_merely_to_the_receipt(self):
+        with mock.patch.object(R, "S0_PRE_TEST_RECEIPT_SHA", self.REAL["S0_PRE_TEST_RECEIPT_SHA"]):
+            self.assertUnverified(self.rbreason())
+
+    def test_the_earlier_recovery_history_must_stay_byte_identical_and_in_place(self):
+        acc = self.home / "acceptances"
+        cases = {
+            "pre-recovery checkpoint removed": lambda: self.old_checkpoint.unlink(),
+            "pre-recovery checkpoint mutated": lambda: self.old_checkpoint.write_bytes(self.old + b" "),
+            "pre-recovery checkpoint symlink": lambda: (self.old_checkpoint.unlink(), self.old_checkpoint.symlink_to(self.checkpoint)),
+            "recovery receipt removed": lambda: (acc / f"{R.S0_RECOVERY_RECEIPT}.json").unlink(),
+            "recovery receipt symlink": lambda: ((acc / f"{R.S0_RECOVERY_RECEIPT}.json").unlink(),
+                                                 (acc / f"{R.S0_RECOVERY_RECEIPT}.json").symlink_to(acc / f"{R.S0_DOC_RECEIPT}.json")),
+            "recovery receipt directory": lambda: ((acc / f"{R.S0_RECOVERY_RECEIPT}.json").unlink(),
+                                                   (acc / f"{R.S0_RECOVERY_RECEIPT}.json").mkdir()),
+            "doc receipt removed": lambda: (acc / f"{R.S0_DOC_RECEIPT}.json").unlink(),
+            "doc receipt symlink": lambda: ((acc / f"{R.S0_DOC_RECEIPT}.json").unlink(),
+                                            (acc / f"{R.S0_DOC_RECEIPT}.json").symlink_to(acc / f"{R.S0_RECOVERY_RECEIPT}.json")),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                mutate()
+                self.assertUnverified(self.rbreason())
+                for p in (self.old_checkpoint, acc / f"{R.S0_RECOVERY_RECEIPT}.json", acc / f"{R.S0_DOC_RECEIPT}.json"):
+                    if p.is_symlink() or p.is_file():
+                        p.unlink()
+                    elif p.is_dir():
+                        p.rmdir()
+                self.old_checkpoint.write_bytes(self.old)
+                self.restore_hist()
+                self.assertIsNone(self.rbreason())
+
+    def test_a_valid_looking_s0_receipt_left_in_acceptances_closes_the_rebind(self):
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        for label, install in {"preserved bytes": lambda: s0.write_bytes(self.pre), "empty": lambda: s0.write_text("{}"),
+                               "zero bytes": lambda: s0.write_bytes(b""), "symlink": lambda: s0.symlink_to(self.checkpoint),
+                               "dangling symlink": lambda: s0.symlink_to(self.home / "nowhere")}.items():
+            with self.subTest(label):
+                install()
+                self.assertTrue(self.rbreason().startswith("S0_REBIND_CLOSED"))
+                with self.assertRaises(R.GateError):
+                    R.verify_s0_rebind_authority(self.cfg, self.history)
+                s0.unlink()
+        self.assertIsNone(self.rbreason())
+
+    # --- the pinned original write and review
+    def test_the_original_write_and_rejected_review_are_pinned_exactly(self):
+        orig = json.dumps(self.history[R.S0_ORIG_WRITE]), json.dumps(self.history[R.S0_ORIG_REVIEW])
+        write = {
+            "not done": lambda w: w.update(status="BLOCKED"), "no marker": lambda w: w.update(plan_phase=None),
+            "other module": lambda w: w.update(module="MOD-003"), "other role": lambda w: w.update(role="test"),
+            "validator hash": lambda w: w["evidence"]["changed"][0].update(sha256="0" * 64),
+            "test hash": lambda w: w["evidence"]["changed"][1].update(sha256="0" * 64),
+            "one file": lambda w: w["evidence"]["changed"].pop(), "extra file": lambda w: w["evidence"]["changed"].append(
+                {"path": "x", "sha256": "1" * 64}),
+        }
+        review = {
+            "approved": lambda r: (r.update(status="DONE", blocked_reason=None), r["evidence"].update(review_outcome="APPROVED")),
+            "no blocked reason": lambda r: r.update(blocked_reason=None), "no verdict": lambda r: r["evidence"].pop("review_outcome"),
+            "unverified": lambda r: r["route"].update(verdict="UNVERIFIED"),
+            "not bound verified": lambda r: r["evidence"].update(review_bound_verified=False),
+            "no dispatch op": lambda r: r["route"].pop("dispatch_op"),
+            "other dispatch op": lambda r: r["route"].update(dispatch_op="someone-else:1"),
+            "other write": lambda r: r["review_of"].update(task_id="other"),
+            "binding drops the test": lambda r: r["review_of"].update(changed=r["review_of"]["changed"][:1]),
+            "not a review": lambda r: r.update(role="implement"),
+        }
+        for label, mutate in write.items():
+            with self.subTest(f"write {label}"):
+                mutate(self.history[R.S0_ORIG_WRITE])
+                self.assertIn("S0 original write", self.problem())
+                self.assertUnverified(self.rbreason())
+                self.history[R.S0_ORIG_WRITE] = json.loads(orig[0])
+        for label, mutate in review.items():
+            with self.subTest(f"review {label}"):
+                mutate(self.history[R.S0_ORIG_REVIEW])
+                self.assertIn("S0 original review", self.problem())
+                self.history[R.S0_ORIG_REVIEW] = json.loads(orig[1])
+        for tid in (R.S0_ORIG_WRITE, R.S0_ORIG_REVIEW):
+            with self.subTest(f"{tid} missing"):
+                saved = self.history.pop(tid)
+                self.assertIn("S0 original", self.problem())
+                self.history[tid] = saved
+        self.history["second-review"] = {"id": "second-review", "module": "MOD-004", "role": "code-review", "status": "QUEUED",
+                                         "review_of": {"task_id": R.S0_ORIG_WRITE}}
+        self.assertIn("besides the pinned one", self.problem())
+        del self.history["second-review"]
+        self.assertIsNone(self.problem())
+
+    def test_the_original_review_output_and_the_validator_must_be_unchanged(self):
+        out = self.home / "runs" / f"{R.S0_ORIG_REVIEW}-1.out"
+        data = out.read_bytes()
+        out.write_bytes(data + b" ")
+        self.assertIn("pinned sha256", self.problem())
+        out.unlink()
+        self.assertIsNotNone(self.problem())
+        out.write_bytes(data)
+        self.assertIsNone(self.problem())
+        self.write(self.VALIDATOR, "import uuid\n# edited\n")
+        self.assertIn("validator", self.problem())
+        self.assertUnverified(self.rbreason())
+        (self.repo / self.VALIDATOR).unlink()
+        self.assertIn("validator", self.problem())
+        self.write(self.VALIDATOR, "import uuid\n")
+        self.assertIsNone(self.problem())
+
+    def test_the_validator_pin_is_the_real_constant_not_the_fixture_value(self):
+        with mock.patch.object(R, "S0_VALIDATOR_SHA", self.REAL["S0_VALIDATOR_SHA"]):
+            self.assertIsNotNone(self.problem())
+        with mock.patch.object(R, "S0_ORIG_REVIEW_OUTPUT_SHA", self.REAL["S0_ORIG_REVIEW_OUTPUT_SHA"]):
+            self.assertIn("pinned sha256", self.problem())
+
+
+class Mod004S0DocRebind(S0TestFixture):
+    """The one MOD004-S0-DOC-REBIND write: exactly the two S0 documents from their pinned published hashes, one exact-bound
+    Opus review, authorised only by the test-recovery authority while no S0 receipt sits in acceptances/."""
+
+    def test_authorised_rebind_passes_and_leaves_history_untouched(self):
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.rbreason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+        t = self.rebind()
+        self.assertTrue(R.s0_single_attempt(t))
+        self.assertTrue(R.s0_rebind_marked(t))
+        self.assertFalse(any(f(t) for f in (R.s0_marked, R.s0_doc_marked, R.s0_refresh_marked, R.s0_test_marked, R.s0_touches)))
+        self.assertTrue(R.s0_doc_touches(t))
+
+    def test_rebind_leaves_the_cap_chain_and_the_s0_product_gate_closed(self):
+        cap = self.cap_next()
+        before = (R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history))
+        self.assertIsNotNone(before[0])
+        self.assertIsNone(self.rbreason())
+        self.assertEqual((R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history)), before)
+        self.live()
+        self.assertIn("S0_", R.s0_probe(self.cfg))
+        self.assertIsNotNone(R.s0_probe(self.cfg))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "s0-probe"])
+        self.assertEqual((code, json.loads(buf.getvalue())["s0_route"]), (1, "closed"))
+        self.assertTrue(R.review_gate_reason(self.cfg, self.rebind(), self.history).startswith("S0_DOC_INVALID_TASK"))
+
+    def test_a_done_rebind_with_an_approved_review_unblocks_neither_cap_nor_s0_product(self):
+        cap = self.cap_next()
+        before = (R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history))
+        tasks, _ = self.done_rebind()
+        tasks["rb-1"]["review_gate"] = 1
+        self.assertEqual((R.gate_reason(self.cfg, cap, tasks), R.review_gate_reason(self.cfg, cap, tasks)), before)
+        self.assertEqual(R.review_attempts(tasks, self.OLD), [])
+        self.assertIn("S0_REBIND_SECOND_WRITE", self.rbreason(tasks=tasks, id="rb-2"))
+
+    def test_shape_mismatches_are_refused(self):
+        one = R.S0_DOC_PATHS[:1]
+        cases = {
+            "module": {"module": "MOD-003"},
+            "extra allowed path": {"allowed_paths": [*R.S0_DOC_PATHS, "contracts/engineering/other.json"]},
+            "directory scope": {"allowed_paths": ["contracts/engineering/"]},
+            "glob scope": {"allowed_paths": ["contracts/engineering/mod004-s0-*"]},
+            "case variant": {"allowed_paths": [p.upper() for p in R.S0_DOC_PATHS], "expected_changes": [p.upper() for p in R.S0_DOC_PATHS]},
+            "one path only": {"allowed_paths": list(one), "expected_changes": list(one)},
+            "one expected path": {"expected_changes": list(one)},
+            "product path": {"allowed_paths": [*R.S0_DOC_PATHS, R.S0_PATHS[0]], "expected_changes": [*R.S0_DOC_PATHS, R.S0_PATHS[0]]},
+            "test path": {"allowed_paths": [*R.S0_DOC_PATHS, R.S0_TEST_PATH], "expected_changes": [*R.S0_DOC_PATHS, R.S0_TEST_PATH]},
+            "verifier": {"verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]},
+            "doc_base none": {"doc_base": {p: None for p in R.S0_DOC_PATHS}},
+            "doc_base one stale": {"doc_base": dict(R.S0_REBIND_BASE) | {R.S0_DOC_PATHS[0]: "a" * 64}},
+            "doc_base swapped": {"doc_base": dict(zip(R.S0_DOC_PATHS, reversed(list(R.S0_REBIND_BASE.values()))))},
+            "doc_base real hashes while fixture pins others": {"doc_base": dict(self.REAL_BASE)},
+        }
+        for name, over in cases.items():
+            with self.subTest(name):
+                try:
+                    reason = self.rbreason(**over)
+                except ValueError:
+                    continue
+                self.assertTrue(reason.startswith(("S0_REBIND_INVALID_TASK", "S0_DOC_", "S0_UNTAGGED", "GATE_UNVERIFIABLE")), reason)
+        for name, post in {
+            "role": {"role": "gatekeeper"}, "test role": {"role": "test"}, "handoff source": {"source": "handoff"},
+            "remediation": {"remediation_of": "doc-1"}, "review retry": {"review_retry_of": "x"},
+            "accounting recovery": {"accounting_recovery_of": "x"}, "review binding": {"review_of": {"task_id": self.OLD}},
+            "review candidate": {"review_candidate": "x"},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(self.rbreason(post=post).startswith("S0_REBIND_INVALID_TASK"), name)
+
+    def test_marker_validation_is_confined_to_the_rebind_write(self):
+        with self.assertRaises(ValueError):
+            R.validate_task(self.rbraw(plan_phase=None), self.cfg)  # doc_base needs a marker
+        with self.assertRaises(ValueError):
+            R.validate_task(self.rbraw(role="code-review"), self.cfg)
+        with self.assertRaises(ValueError):
+            R.validate_task(self.rbraw(plan_phase=R.S0_TEST_MARKER), self.cfg)  # the test lane takes no doc_base
+        self.assertEqual(R.validate_task(self.rbraw(), self.cfg)["plan_phase"], R.S0_REBIND_MARKER)
+        for phase in ("MOD004-S0-DOC-REBIND-X", "MOD004-S0-DOC-REBIND ", "mod004-s0-doc-rebind", R.S0_REFRESH_MARKER):
+            self.assertFalse(R.s0_rebind_marked({"plan_phase": phase}))
+
+    def test_unmarked_mistagged_wide_and_foreign_writers_of_the_documents_stay_refused(self):
+        cert = R.S0_DOC_PATHS[0]
+        scopes = {
+            "exact": {}, "one file": {"allowed_paths": [R.S0_DOC_PATHS[1]], "expected_changes": [R.S0_DOC_PATHS[1]]},
+            "directory": {"allowed_paths": ["contracts/engineering/"], "expected_changes": [cert]},
+            "glob": {"allowed_paths": ["contracts/engineering/*.json"], "expected_changes": [cert]},
+            "case variant": {"allowed_paths": [cert.upper()], "expected_changes": [cert.upper()]},
+        }
+        for name, over in scopes.items():
+            for module in ("MOD-003", "MOD-004"):
+                for phase in (None, "other-phase", R.S0_MARKER, R.S0_DOC_MARKER, R.S0_REFRESH_MARKER):
+                    with self.subTest(f"{name} {module} {phase}"):
+                        reason = R.gate_reason(self.cfg, self.foreign(module=module, plan_phase=phase, **over), self.history)
+                        self.assertTrue(reason, reason)
+                        self.assertNotIn("S0_REBIND_AUTHORITY", reason)
+        for name, over in scopes.items():  # a rebind marker on any non-exact, wide, case-variant or foreign scope is invalid
+            if name == "exact":
+                continue
+            for module in ("MOD-003", "MOD-004"):
+                with self.subTest(f"marked {name} {module}"):
+                    reason = R.gate_reason(self.cfg, self.foreign(module=module, plan_phase=R.S0_REBIND_MARKER,
+                                                                  doc_base=dict(R.S0_REBIND_BASE), **over), self.history)
+                    self.assertTrue(reason.startswith(("S0_REBIND_INVALID_TASK", "S0_UNTAGGED", "S0_DOC_")), reason)
+        reason = R.gate_reason(self.cfg, self.foreign(module="MOD-003", plan_phase=R.S0_REBIND_MARKER,
+                                                      doc_base=dict(R.S0_REBIND_BASE)), self.history)
+        self.assertTrue(reason.startswith("S0_REBIND_INVALID_TASK"), reason)
+
+    def test_the_other_document_lanes_and_the_product_route_never_admit_the_rebind(self):
+        for marker in (R.S0_DOC_MARKER, R.S0_REFRESH_MARKER):
+            with self.subTest(marker):
+                reason = R.gate_reason(self.cfg, self.rebind(plan_phase=marker), self.history)
+                self.assertTrue(reason and not reason.startswith("S0_REBIND"), reason)
+        product = self.rebind(allowed_paths=list(R.S0_PATHS), expected_changes=list(R.S0_PATHS))
+        self.assertTrue(R.gate_reason(self.cfg, product, self.history).startswith(("S0_REBIND_INVALID_TASK", "S0_UNTAGGED")))
+        self.assertFalse(R.s0_touches(self.rebind()))
+        lane = R.validate_task({"id": "doc-x", "module": "MOD-004", "role": "implement", "prompt": "x", "plan_phase": R.S0_DOC_MARKER,
+                                "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS), "verify_cmd": [],
+                                "doc_base": {p: None for p in R.S0_DOC_PATHS}}, self.cfg)
+        self.assertTrue(R.gate_reason(self.cfg, lane, self.history).startswith("S0_DOC_"))
+
+    def test_planner_cannot_propose_the_rebind_or_the_test_correction(self):
+        r = self.runner()
+        base = {"id": "pp", "module": "MOD-004", "role": "implement", "title": "p", "prompt": "x",
+                "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS)}
+        for phase in (R.S0_REBIND_MARKER, R.S0_TEST_MARKER):
+            for module in ("MOD-003", "MOD-004"):
+                with self.subTest(f"{module} {phase}"):
+                    raw = base | {"module": module, "plan_phase": phase}
+                    if phase == R.S0_REBIND_MARKER:
+                        raw["doc_base"] = dict(R.S0_REBIND_BASE)
+                    else:
+                        raw |= {"allowed_paths": [R.S0_TEST_PATH], "expected_changes": [R.S0_TEST_PATH],
+                                "verify_cmd": [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE]}
+                    with self.assertRaises(ValueError):
+                        r.enqueue_proposal(raw)
+                    self.assertNotIn("pp", r.state["tasks"])
+        with self.assertRaisesRegex(ValueError, "MOD004-S0-TEST-REMEDIATION"):
+            r.enqueue_proposal(base | {"plan_phase": R.S0_REBIND_MARKER, "doc_base": dict(R.S0_REBIND_BASE)})
+
+    def test_stale_or_missing_documents_are_refused(self):
+        self.assertIsNone(self.rbreason())
+        for p in R.S0_DOC_PATHS:
+            original = (self.repo / p).read_bytes()
+            for label, mutate in {"edited": lambda q: q.write_bytes(original + b"x"), "emptied": lambda q: q.write_bytes(b""),
+                                  "removed": lambda q: q.unlink(),
+                                  "symlink": lambda q: (q.unlink(), q.symlink_to(self.repo / self.OWNER))}.items():
+                with self.subTest(f"{p} {label}"):
+                    mutate(self.repo / p)
+                    self.assertIn("S0_REBIND_STALE_DRAFT", self.rbreason())
+                    (self.repo / p).unlink(missing_ok=True)
+                    (self.repo / p).write_bytes(original)
+        self.assertIsNone(self.rbreason())
+        self.write(self.DOC_QA, "already rebound by somebody else\n")
+        self.assertIn("S0_REBIND_STALE_DRAFT", self.rbreason())
+
+    def test_second_rebind_write_in_any_status_is_refused(self):
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                tasks = self.history | {"rb-0": self.rebind(id="rb-0") | {"status": status}}
+                self.assertIn("S0_REBIND_SECOND_WRITE", self.rbreason(tasks=tasks))
+
+    def test_a_started_attempt_is_never_rerun_and_other_pending_writers_block_it(self):
+        self.assertIn("S0_REBIND_ATTEMPT_USED", self.rbreason(post={"attempts": 1}))
+        for status in ("QUEUED", "RUNNING"):
+            for label, other in {"document writer": self.foreign(module="MOD-003"),
+                                 "refresh writer": self.foreign(module="MOD-004", plan_phase=R.S0_REFRESH_MARKER),
+                                 "product writer": self.task(id="s0-x")}.items():
+                with self.subTest(f"{status} {label}"):
+                    self.assertIn("S0_REBIND_CONCURRENT_WRITE", self.rbreason(tasks=self.history | {other["id"]: other | {"status": status}}))
+        done = self.history | {"other": self.foreign(module="MOD-003") | {"status": "DONE"}}
+        self.assertIsNone(self.rbreason(tasks=done))
+
+    def test_the_rebind_closes_once_the_test_correction_exists(self):
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                tasks = self.history | {"tc-1": self.tcorr() | {"status": status}}
+                self.assertTrue(self.rbreason(tasks=tasks).startswith("S0_REBIND_CLOSED"))
+
+    # --- review routing: one exact-bound Opus review
+    def test_exact_bound_review_passes_and_uses_the_one_slot(self):
+        tasks, _ = self.done_rebind()
+        tasks.pop("rb-1-rev")
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(tasks), tasks))
+        for status in ("QUEUED", "RUNNING", "FAILED", "BLOCKED", "DONE"):
+            with self.subTest(status):
+                used = tasks | {"earlier": {"id": "earlier", "module": "MOD-004", "role": "code-review", "status": status,
+                                            "review_of": {"task_id": "rb-1"}}}
+                self.assertIn("S0_REBIND_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.rb_review(used), used))
+
+    def test_unsupported_rebind_reviews_fail_closed(self):
+        tasks, _ = self.done_rebind()
+        tasks.pop("rb-1-rev")
+        good = self.rb_review(tasks)
+        pairs = [dict(c) for c in good["review_of"]["changed"]]
+        bad = [dict(c) for c in pairs]
+        bad[0]["sha256"] = "0" * 64
+        base_pair = [dict(pairs[0]), {"path": pairs[1]["path"], "sha256": self.pub[pairs[1]["path"]]}]
+        swapped = [{"path": pairs[0]["path"], "sha256": pairs[1]["sha256"]}, {"path": pairs[1]["path"], "sha256": pairs[0]["sha256"]}]
+        for name, over in {
+            "retry lineage": {"review_retry_of": "x"}, "candidate": {"review_candidate": "x"}, "planner": {"source": "handoff"},
+            "one file only": {"review_of": {"task_id": "rb-1", "changed": pairs[:1]}},
+            "wrong hash": {"review_of": {"task_id": "rb-1", "changed": bad}},
+            "base hash not changed": {"review_of": {"task_id": "rb-1", "changed": base_pair}},
+            "swapped hashes": {"review_of": {"task_id": "rb-1", "changed": swapped}},
+            "extra file": {"review_of": {"task_id": "rb-1", "changed": [*pairs, {"path": "x", "sha256": "1" * 64}]}},
+            "no changed": {"review_of": {"task_id": "rb-1", "changed": None}}, "other module": {"module": "MOD-003"},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(R.gate_reason(self.cfg, good | over, tasks).startswith(("S0_REBIND_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), name)
+        for name, mutate in {"write not DONE": lambda w: w.update(status="BLOCKED"), "write queued": lambda w: w.update(status="QUEUED"),
+                             "extra changed file": lambda w: w["evidence"]["changed"].append({"path": "x", "sha256": "1" * 64}),
+                             "off-lane path": lambda w: w["evidence"]["changed"][0].update(path="contracts/engineering/x.json"),
+                             "only one doc changed": lambda w: w["evidence"]["changed"].pop(),
+                             "unchanged from base": lambda w: w["evidence"]["changed"][0].update(sha256=self.pub[w["evidence"]["changed"][0]["path"]]),
+                             "module": lambda w: w.update(module="MOD-003"), "role": lambda w: w.update(role="test")}.items():
+            with self.subTest(name):
+                t2 = json.loads(json.dumps(tasks))
+                mutate(t2["rb-1"])
+                reason = R.gate_reason(self.cfg, self.rb_review(t2) | {"review_of": {"task_id": "rb-1", "changed": t2["rb-1"]["evidence"]["changed"]}}, t2)
+                self.assertTrue(reason.startswith(("S0_REBIND_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), reason)
+
+    def test_review_is_stale_when_a_document_changes_after_the_write(self):
+        tasks, _ = self.done_rebind()
+        tasks.pop("rb-1-rev")
+        self.write(self.DOC_QA, "changed after the write finished\n")
+        self.assertIn("S0_REBIND_REVIEW_BINDING_STALE", R.gate_reason(self.cfg, self.rb_review(tasks), tasks))
+
+    def test_planner_review_of_the_rebind_is_refused_at_enqueue_proposal(self):
+        tasks, _ = self.done_rebind()
+        r = self.runner()
+        r.state["tasks"]["rb-1"] = tasks["rb-1"]
+        raw = self.rb_review(tasks) | {"id": "pp-rev", "prompt": "review", "title": "r"}
+        raw.pop("status")
+        with self.assertRaisesRegex(ValueError, "S0_REBIND_REVIEW_UNSUPPORTED"):
+            r.enqueue_proposal(raw)
+        self.assertNotIn("pp-rev", r.state["tasks"])
+
+    def test_owner_enqueue_fills_the_binding_and_refuses_a_second_review(self):
+        tasks, hashes = self.done_rebind()
+        tasks.pop("rb-1-rev")
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"]["rb-1"] = tasks["rb-1"]
+        store.save(state)
+        path = R.enqueue(self.cfg, {"id": "rv1", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                    "review_of": {"task_id": "rb-1"}})
+        queued = json.loads(path.read_text())
+        self.assertEqual(sorted((c["path"], c["sha256"]) for c in queued["review_of"]["changed"]), sorted(hashes.items()))
+        state = store.load()
+        state["tasks"]["rv1"] = R.validate_task(queued, self.cfg) | {"status": "QUEUED"}
+        store.save(state)
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "rv2", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                 "review_of": {"task_id": "rb-1"}})
+
+    # --- enqueue and dispatch
+    def test_owner_enqueue_requires_a_loaded_runner_and_live_authority(self):
+        path = R.enqueue(self.cfg, self.rbraw())
+        self.assertEqual(json.loads(path.read_text())["plan_phase"], R.S0_REBIND_MARKER)
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": "0" * 64}
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_"):
+            R.enqueue(self.cfg, self.rbraw(id="rb-2"))
+        state["runner"] = None
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_LOADED"):
+            R.enqueue(self.cfg, self.rbraw(id="rb-3"))
+        self.live()
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        rec.unlink()
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.rbraw(id="rb-4"))
+        self.write_rec()
+        self.checkpoint.write_bytes(b"{}")
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.rbraw(id="rb-5"))
+
+    def reset_attempt(self):
+        for q in (self.home / "queue").glob("*"):
+            q.unlink()
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"] = {k: v for k, v in state["tasks"].items() if not k.startswith("rb-")}
+        store.save(state)
+
+    def dispatch_rebind(self, prompt=None, before=None, **over):
+        a, b = R.S0_DOC_PATHS
+        self.live()
+        r = self.runner()
+        R.enqueue(self.cfg, self.rbraw(prompt=prompt or f"WRITE={a}\nCONTENT=rebound\nWRITE2={b}", **over))
+        r.ingest_queue()
+        if before:
+            before()
+        t = r.state["tasks"]["rb-1"]
+        n = r.next_ready()
+        if n is not None:
+            r.dispatch(n)
+        return r, t
+
+    def test_the_rebind_is_credited_once_and_the_product_route_stays_closed(self):
+        r, t = self.dispatch_rebind()
+        self.assertEqual((t["status"], t["attempts"], t["evidence"]["violations"]), ("DONE", 1, []))
+        self.assertEqual(sorted(c["path"] for c in t["evidence"]["changed"]), sorted(R.S0_DOC_PATHS))
+        self.assertTrue(all(c["sha256"] != self.pub[c["path"]] for c in t["evidence"]["changed"]))
+        self.assertIsNone(r.next_ready())
+        self.assertIn("S0_REBIND_SECOND_WRITE", R.gate_reason(self.cfg, self.rebind(id="rb-again"), r.state["tasks"]))
+        self.assertIsNone(R.gate_reason(self.cfg, self.rb_review(r.state["tasks"]), r.state["tasks"]))
+        self.live()
+        self.assertIsNotNone(R.s0_probe(self.cfg))
+
+    def test_dispatch_rechecks_the_gate_so_no_child_starts_without_authority(self):
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        checkpoint = self.checkpoint.read_bytes()
+        receipt = rec.read_bytes()
+        withdrawals = {
+            "test recovery receipt removed": lambda: rec.unlink(),
+            "checkpoint mutated": lambda: self.checkpoint.write_bytes(b"x"),
+            "s0 receipt installed": lambda: s0.write_text("{}"),
+            "document drifted": lambda: self.write(self.DOC_QA, "drifted\n"),
+            "test owner edited": lambda: self.write(self.TOWNER, "edited\n"),
+            "validator edited": lambda: self.write(self.VALIDATOR, "import uuid\n# x\n"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                self.reset_attempt()
+                r, t = self.dispatch_rebind(before=withdraw)
+                self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))  # the gate stopped it before any child
+                rec.write_bytes(receipt)
+                self.checkpoint.write_bytes(checkpoint)
+                s0.unlink(missing_ok=True)
+                self.write(self.TOWNER, "test remediation owner record\n")
+                self.write(self.VALIDATOR, "import uuid\n")
+                self.put_docs("published")
+
+    def test_authority_withdrawn_during_the_child_earns_no_done(self):
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        saved = {"rec": rec.read_bytes(), "checkpoint": self.checkpoint.read_bytes()}
+        real = R.verify_s0_rebind_authority
+        withdrawals = {
+            "test recovery receipt removed": lambda tasks: rec.unlink(),
+            "test recovery receipt corrupted": lambda tasks: rec.write_text("{"),
+            "checkpoint removed": lambda tasks: self.checkpoint.unlink(),
+            "checkpoint mutated": lambda tasks: self.checkpoint.write_bytes(b"x"),
+            "s0 receipt installed": lambda tasks: s0.write_text("{}"),
+            "test owner edited": lambda tasks: self.write(self.TOWNER, "edited while the child ran\n"),
+            "review withdrawn": lambda tasks: tasks.pop("rev-tr-test_owner"),
+            "original review approved": lambda tasks: tasks[R.S0_ORIG_REVIEW]["evidence"].update(review_outcome="APPROVED"),
+            "validator edited": lambda tasks: self.write(self.VALIDATOR, "import uuid\n# edited while the child ran\n"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                self.reset_attempt()
+                self.live()
+
+                def hit(cfg, tasks, withdraw=withdraw):
+                    if (tasks.get("rb-1") or {}).get("attempts"):  # only the postworker recheck: the child has started
+                        withdraw(tasks)
+                    return real(cfg, tasks)
+                with mock.patch.object(R, "verify_s0_rebind_authority", side_effect=hit):
+                    r, t = self.dispatch_rebind()
+                rec.write_bytes(saved["rec"])
+                self.checkpoint.write_bytes(saved["checkpoint"])
+                s0.unlink(missing_ok=True)
+                self.write(self.TOWNER, "test remediation owner record\n")
+                self.write(self.VALIDATOR, "import uuid\n")
+                self.put_docs("published")
+                self.sync()
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_AUTHORITY_WITHDRAWN", 1))
+                self.assertIn("S0_REBIND_AUTHORITY_WITHDRAWN", t["evidence"]["violations"])
+                self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+                self.assertIsNone(r.next_ready())
+                tasks = {t["id"]: t}
+                self.assertIn("S0_REBIND_SECOND_WRITE", R.gate_reason(self.cfg, self.rebind(id="rb-again"), tasks))
+                self.assertIn("S0_REBIND_REVIEW_UNSUPPORTED", R.gate_reason(self.cfg, self.rb_review(tasks), tasks))
+
+    def started(self, r, **over):
+        t = self.rebind(**over) | {"status": "RUNNING", "attempts": 1, "stage": None, "child": None}
+        r.state["tasks"][t["id"]] = t
+        return t
+
+    def test_stop_signal_timeout_and_transport_failure_never_rerun_the_single_attempt(self):
+        r = self.runner(max_attempts=3, timeout=7)
+        for outcome in ("stopped", "signal"):
+            with self.subTest(outcome):
+                t = self.started(r, id=f"rb-{outcome}")
+                r.settle(t, f"{t['id']}:1", outcome, None, None, None, None, None)
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_REBIND_ATTEMPT_INTERRUPTED", 1))
+                self.assertIn("S0_REBIND_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, self.history))
+                self.assertIsNone(r.next_ready())
+        for marker, code in ((R.S0_DOC_MARKER, "S0_DOC_ATTEMPT_INTERRUPTED"), (R.S0_MARKER, "S0_ATTEMPT_INTERRUPTED"),
+                             (R.S0_TEST_MARKER, "S0_TEST_ATTEMPT_INTERRUPTED")):
+            other = {"id": f"o-{marker}", "status": "RUNNING", "attempts": 1, "stage": None, "plan_phase": marker}
+            r.settle(other, "o:1", "signal", None, None, None, None, None)
+            self.assertEqual((other["status"], other["blocked_reason"]), ("BLOCKED", code))
+        for phase in (None, "MOD004-S0-DOC-REBIND-X", "MOD004-S0-DOC-REBIND "):
+            plain = {"id": f"plain{phase}", "status": "RUNNING", "attempts": 1, "plan_phase": phase}
+            r.settle(plain, "plain:1", "stopped", None, None, None, None, None)
+            self.assertEqual((plain["status"], plain["attempts"]), ("QUEUED", 0))
+        t = self.started(r, id="rb-timeout")
+        r.settle(t, "rb-timeout:1", "timeout", None, None, None, None, None)
+        self.assertEqual((t["status"], t["attempts"]), ("FAILED", 1))
+        self.assertIn("timeout after 7s", t["last_error"])
+        u = self.started(r, id="rb-spawn")
+        r.requeue_or_fail(u, "spawn failed")
+        self.assertEqual(u["status"], "FAILED")
+
+
+class Mod004S0TestCorrection(S0TestFixture):
+    """The one MOD004-S0-TEST-REMEDIATION write of backend/tests/test_tenancy_s0.py and its one review bound to the
+    corrected test AND the unchanged validator. It starts only after the rebind and a rebuilt six-subject receipt."""
+
+    def test_gate_is_closed_until_the_rebind_is_done_approved_and_the_receipt_is_rebuilt(self):
+        self.assertTrue(self.treason().startswith("S0_TEST_AUTHORITY_UNVERIFIED"))  # no S0 receipt at all, no rebind
+        tasks, _ = self.done_rebind()
+        self.assertTrue(self.treason(tasks=tasks).startswith("S0_TEST_AUTHORITY_UNVERIFIED"))  # rebind done, receipt not rebuilt
+        self.advance()
+        self.assertIsNone(self.treason())
+        steps = {
+            "rebind not done": lambda t: t["rb-1"].update(status="BLOCKED"),
+            "rebind unreviewed": lambda t: t.pop("rb-1-rev"),
+            "rebind review changes requested": lambda t: t["rb-1-rev"]["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "rebind review unverified": lambda t: t["rb-1-rev"]["route"].update(verdict="UNVERIFIED"),
+            "rebind review not bound verified": lambda t: t["rb-1-rev"]["evidence"].update(review_bound_verified=False),
+            "rebind review binds one doc": lambda t: t["rb-1-rev"]["review_of"].update(changed=t["rb-1-rev"]["review_of"]["changed"][:1]),
+            "rebind review planner": lambda t: t["rb-1-rev"].update(source="handoff"),
+            "rebind second review": lambda t: t.update({"rb-x": {"id": "rb-x", "module": "MOD-004", "role": "code-review",
+                                                                 "status": "QUEUED", "review_of": {"task_id": "rb-1"}}}),
+            "rebind write absent": lambda t: t.pop("rb-1"),
+            "rebind documents unchanged": lambda t: t["rb-1"]["evidence"]["changed"][0].update(sha256=self.pub[R.S0_DOC_PATHS[0]]),
+            "second rebind write": lambda t: t.update({"rb-2": t["rb-1"] | {"id": "rb-2"}}),
+        }
+        for label, mutate in steps.items():
+            with self.subTest(label):
+                t2 = json.loads(json.dumps(self.history))
+                mutate(t2)
+                self.assertTrue(self.treason(tasks=t2).startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")), label)
+
+    def test_a_stale_or_preserved_receipt_in_acceptances_is_not_a_rebuilt_one(self):
+        self.advance()
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        rebuilt = s0.read_bytes()
+        for label, data in {"a02b-equivalent preserved receipt": self.pre,
+                            "pre-recovery receipt": self.old}.items():
+            with self.subTest(label):
+                s0.write_bytes(data)
+                self.assertTrue(self.treason().startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")))
+        s0.write_bytes(rebuilt)
+        self.assertIsNone(self.treason())
+        with mock.patch.object(R, "S0_PRE_TEST_RECEIPT_SHA", hashlib.sha256(rebuilt).hexdigest()):
+            self.assertTrue(self.treason().startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")))
+
+    def test_the_rebuilt_receipt_must_fully_verify_for_the_current_runner(self):
+        self.advance()
+        self.assertIsNone(self.treason())
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        rebuilt = s0.read_bytes()
+        cases = {
+            "receipt removed": lambda: s0.unlink(), "receipt corrupted": lambda: s0.write_text("{"),
+            "receipt symlink": lambda: (s0.unlink(), s0.symlink_to(self.checkpoint)),
+            "certificate edited": lambda: self.write(self.CERT, "{}"), "declaration edited": lambda: self.write(self.CAP, "{}"),
+            "edge edited": lambda: self.write(self.EDGE, "edited\n"), "owner edited": lambda: self.write(self.OWNER, "edited\n"),
+            "adr edited": lambda: self.write(self.ADR, "edited\n"), "runner edited": lambda: self.write(self.RUN, "edited\n"),
+            "dependency receipt removed": lambda: (self.home / "acceptances" / "MOD-001.json").unlink(),
+            "subject review withdrawn": lambda: self.history.pop("rev-s0-eligibility"),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                saved = {p: (self.repo / p).read_bytes() for p in (self.CERT, self.CAP, self.EDGE, self.OWNER, self.ADR, self.RUN)}
+                hist = dict(self.history)
+                mod1 = (self.home / "acceptances" / "MOD-001.json").read_bytes()
+                mutate()
+                self.assertTrue(self.treason().startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")), label)
+                for p, data in saved.items():
+                    (self.repo / p).write_bytes(data)
+                self.history.clear()
+                self.history.update(hist)
+                (self.home / "acceptances" / "MOD-001.json").write_bytes(mod1)
+                if s0.is_symlink() or s0.exists():
+                    s0.unlink()
+                s0.write_bytes(rebuilt)
+        self.assertIsNone(self.treason())
+
+    def test_the_test_authority_is_not_the_recovery_authority_alone(self):
+        self.advance()
+        for label, mutate in {
+            "recovery receipt removed": lambda: (self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json").unlink(),
+            "checkpoint mutated": lambda: self.checkpoint.write_bytes(b"x"),
+            "test owner edited": lambda: self.write(self.TOWNER, "edited\n"),
+            "historical doc receipt removed": lambda: (self.home / "acceptances" / f"{R.S0_DOC_RECEIPT}.json").unlink(),
+        }.items():
+            with self.subTest(label):
+                saved = {"rec": (self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json").read_bytes(),
+                         "ck": self.checkpoint.read_bytes(), "owner": (self.repo / self.TOWNER).read_bytes()}
+                mutate()
+                self.assertTrue(self.treason().startswith(("S0_TEST_AUTHORITY_UNVERIFIED", "GATE_UNVERIFIABLE")), label)
+                (self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json").write_bytes(saved["rec"])
+                self.checkpoint.write_bytes(saved["ck"])
+                (self.repo / self.TOWNER).write_bytes(saved["owner"])
+                self.restore_hist()
+        self.assertIsNone(self.treason())
+
+    def test_authorised_correction_passes_and_leaves_history_untouched(self):
+        self.advance()
+        before = json.dumps(self.history, sort_keys=True)
+        self.assertIsNone(self.treason())
+        self.assertEqual(json.dumps(self.history, sort_keys=True), before)
+        t = self.tcorr()
+        self.assertTrue(R.s0_single_attempt(t))
+        self.assertTrue(R.s0_test_marked(t))
+        self.assertFalse(any(f(t) for f in (R.s0_marked, R.s0_doc_marked, R.s0_refresh_marked, R.s0_rebind_marked)))
+        self.assertTrue(R.s0_touches(t))
+        self.assertFalse(R.s0_doc_touches(t))
+
+    def test_the_marker_is_distinct_and_never_uses_remediation_lineage(self):
+        self.advance()
+        self.assertNotEqual(R.S0_TEST_MARKER, R.S0_MARKER)
+        with self.assertRaises(ValueError):
+            R.validate_task(self.traw(doc_base=dict(R.S0_REBIND_BASE)), self.cfg)
+        self.assertTrue(self.treason(post={"remediation_of": R.S0_ORIG_WRITE}).startswith("S0_TEST_INVALID_TASK"))
+        w = self.tcorr()
+        self.assertNotIn("remediation_of", w)
+        self.assertIsNone(w["review_of"])
+
+    def test_shape_mismatches_are_refused(self):
+        self.advance()
+        cases = {
+            "module": {"module": "MOD-003"},
+            "validator included": {"allowed_paths": list(R.S0_PATHS), "expected_changes": list(R.S0_PATHS)},
+            "validator only": {"allowed_paths": [R.S0_VALIDATOR_PATH], "expected_changes": [R.S0_VALIDATOR_PATH]},
+            "documents": {"allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS)},
+            "test plus document": {"allowed_paths": [R.S0_TEST_PATH, R.S0_DOC_PATHS[0]], "expected_changes": [R.S0_TEST_PATH]},
+            "directory scope": {"allowed_paths": ["backend/tests/"], "expected_changes": [R.S0_TEST_PATH]},
+            "wider directory": {"allowed_paths": ["backend/"], "expected_changes": [R.S0_TEST_PATH]},
+            "glob scope": {"allowed_paths": ["backend/tests/test_tenancy_*.py"], "expected_changes": [R.S0_TEST_PATH]},
+            "case variant": {"allowed_paths": [R.S0_TEST_PATH.upper()], "expected_changes": [R.S0_TEST_PATH.upper()]},
+            "no expected change": {"expected_changes": []},
+            "other module's test": {"allowed_paths": ["backend/tests/test_other.py"], "expected_changes": ["backend/tests/test_other.py"]},
+            "no verifier": {"verify_cmd": []},
+            "other verifier": {"verify_cmd": [R.S0_PYTHON, "-m", "unittest", "backend.tests.test_other"]},
+            "python flags": {"verify_cmd": [R.S0_PYTHON, "-E", "-m", "unittest", R.S0_VERIFY_MODULE]},
+            "other interpreter": {"verify_cmd": ["/usr/bin/python3", "-m", "unittest", R.S0_VERIFY_MODULE]},
+        }
+        for name, over in cases.items():
+            with self.subTest(name):
+                try:
+                    reason = self.treason(**over)
+                except ValueError:
+                    continue
+                self.assertTrue(reason.startswith(("S0_TEST_INVALID_TASK", "S0_UNTAGGED", "S0_DOC_", "GATE_UNVERIFIABLE")), reason)
+        for name, post in {
+            "role": {"role": "gatekeeper"}, "test role": {"role": "test"}, "handoff source": {"source": "handoff"},
+            "remediation": {"remediation_of": R.S0_ORIG_WRITE}, "review retry": {"review_retry_of": "x"},
+            "accounting recovery": {"accounting_recovery_of": "x"}, "review binding": {"review_of": {"task_id": R.S0_ORIG_WRITE}},
+            "review candidate": {"review_candidate": "x"}, "doc_base": {"doc_base": dict(R.S0_REBIND_BASE)},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(self.treason(post=post).startswith("S0_TEST_INVALID_TASK"), name)
+
+    def test_unmarked_or_mistagged_writers_of_the_test_file_stay_refused(self):
+        self.advance()
+        for module in ("MOD-003", "MOD-004"):
+            for phase in (None, "other-phase", R.S0_DOC_MARKER, R.S0_REFRESH_MARKER, R.S0_REBIND_MARKER):
+                with self.subTest(f"{module} {phase}"):
+                    t = R.validate_task({"id": "x-w", "module": module, "role": "implement", "prompt": "x", "plan_phase": phase,
+                                         "allowed_paths": [R.S0_TEST_PATH], "expected_changes": [R.S0_TEST_PATH]}, self.cfg) \
+                        if phase not in (R.S0_DOC_MARKER, R.S0_REFRESH_MARKER, R.S0_REBIND_MARKER) else \
+                        self.foreign(module=module, plan_phase=phase, allowed_paths=[R.S0_TEST_PATH], expected_changes=[R.S0_TEST_PATH])
+                    reason = R.gate_reason(self.cfg, t, self.history)
+                    self.assertTrue(reason, reason)
+                    self.assertNotIn("S0_TEST_AUTHORITY", reason)
+        for module in ("MOD-003", "MOD-001"):
+            with self.subTest(f"marked {module}"):
+                self.assertTrue(R.gate_reason(self.cfg, self.tcorr() | {"module": module}, self.history).startswith("S0_TEST_INVALID_TASK"))
+
+    def test_the_generic_s0_gate_still_refuses_every_other_s0_write_and_the_probe_still_refuses(self):
+        self.advance()
+        self.assertIsNone(self.treason())
+        reason = self.reason(id="s0-second")
+        self.assertTrue(reason.startswith(("S0_PRIOR_REVIEW_NOT_APPROVED", "S0_SECOND_WRITE")), reason)
+        self.live()
+        probe = R.s0_probe(self.cfg)
+        self.assertTrue(probe and probe.startswith(("S0_PRIOR_REVIEW_NOT_APPROVED", "S0_SECOND_WRITE")), probe)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = R.main(["--home", str(self.home), "--repo", str(self.repo), "s0-probe"])
+        self.assertEqual((code, json.loads(buf.getvalue())["s0_route"]), (1, "closed"))
+        cap = self.cap_next()
+        before = (R.gate_reason(self.cfg, cap, self.history), R.review_gate_reason(self.cfg, cap, self.history))
+        self.assertIsNotNone(before[0])
+        tasks, new = self.done_test()
+        tasks["tc-1"]["review_gate"] = 1
+        tasks["tc-rev"] = {"id": "tc-rev", "module": "MOD-004", "role": "code-review", "status": "DONE",
+                           "review_of": {"task_id": "tc-1", "changed": self.both(new)}, "route": {"verdict": "VERIFIED"},
+                           "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}
+        self.assertEqual((R.gate_reason(self.cfg, cap, tasks), R.review_gate_reason(self.cfg, cap, tasks)), before)
+        self.assertEqual(R.review_attempts(tasks, self.OLD), [])
+        reason = R.gate_reason(self.cfg, self.task(id="s0-third"), tasks)
+        self.assertTrue(reason.startswith(("S0_PRIOR_REVIEW_NOT_APPROVED", "S0_SECOND_WRITE")), reason)
+
+    def test_the_original_review_is_never_relabelled_by_a_test_correction(self):
+        self.advance()
+        tasks, new = self.done_test()
+        tasks["tc-rev"] = {"id": "tc-rev", "module": "MOD-004", "role": "code-review", "status": "DONE",
+                           "review_of": {"task_id": "tc-1", "changed": self.both(new)}, "route": {"verdict": "VERIFIED"},
+                           "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}
+        self.assertEqual(R.review_verdict(tasks, R.S0_ORIG_WRITE), "CHANGES_REQUESTED")
+        orig = tasks[R.S0_ORIG_REVIEW]
+        self.assertEqual((orig["status"], orig["blocked_reason"], orig["evidence"]["review_outcome"]),
+                         ("BLOCKED", "REVIEW_CHANGES_REQUESTED", "CHANGES_REQUESTED"))
+        self.assertIsNone(R.s0_test_review_reason(self.cfg, self.t_review(tasks, new), {k: v for k, v in tasks.items() if k != "tc-rev"}))
+        self.assertTrue(R.s0_test_review_reason(self.cfg, self.t_review(tasks, new), tasks).startswith("S0_TEST_REVIEW_SLOT_USED"))
+
+    def test_second_test_write_in_any_status_is_refused(self):
+        self.advance()
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                tasks = self.history | {"tc-0": self.tcorr(id="tc-0") | {"status": status}}
+                self.assertIn("S0_TEST_SECOND_WRITE", self.treason(tasks=tasks))
+
+    def test_a_started_attempt_is_never_rerun_and_other_pending_writers_block_it(self):
+        self.advance()
+        self.assertIn("S0_TEST_ATTEMPT_USED", self.treason(post={"attempts": 1}))
+        self.assertIsNone(self.treason(post={"attempts": 1, "stage": "verify_pending"}))  # a paused verification resumes, no new child
+        for status in ("QUEUED", "RUNNING"):
+            for label, other in {"document writer": self.foreign(module="MOD-003"),
+                                 "refresh writer": self.foreign(module="MOD-004", plan_phase=R.S0_REFRESH_MARKER),
+                                 "rebind writer": self.rebind(id="rb-9"), "product writer": self.task(id="s0-x"),
+                                 "general test-file writer": R.validate_task({"id": "gen", "module": "MOD-003", "role": "implement",
+                                                                              "prompt": "x", "allowed_paths": ["backend/tests/"],
+                                                                              "expected_changes": [R.S0_TEST_PATH]}, self.cfg)}.items():
+                with self.subTest(f"{status} {label}"):
+                    self.assertIn("S0_TEST_CONCURRENT_WRITE", self.treason(tasks=self.history | {other["id"]: other | {"status": status}}))
+        done = self.history | {"other": self.foreign(module="MOD-003") | {"status": "DONE"}}
+        self.assertIsNone(self.treason(tasks=done))
+
+    def test_stale_test_start_and_changed_validator_stop_the_correction(self):
+        self.advance()
+        self.write(self.TEST, "import unittest\n# somebody edited it\n")
+        self.assertIn("S0_TEST_STALE_START", self.treason())
+        (self.repo / self.TEST).unlink()
+        self.assertTrue(self.treason().startswith(("S0_TEST_UNVERIFIABLE", "S0_TEST_STALE_START", "GATE_UNVERIFIABLE")))
+        self.write(self.TEST, "import unittest\n")
+        self.assertIsNone(self.treason())
+        self.write(self.VALIDATOR, "import uuid\n# changed\n")
+        self.assertIn("S0_TEST_VALIDATOR_CHANGED", self.treason())
+        (self.repo / self.VALIDATOR).unlink()
+        self.assertTrue(self.treason().startswith(("S0_TEST_UNVERIFIABLE", "S0_TEST_VALIDATOR_CHANGED", "GATE_UNVERIFIABLE")))
+        self.write(self.VALIDATOR, "import uuid\n")
+        self.assertIsNone(self.treason())
+        with mock.patch.object(R, "S0_TEST_START_SHA", self.REAL["S0_TEST_START_SHA"]):
+            self.assertIn("S0_TEST_STALE_START", self.treason())
+        with mock.patch.object(R, "S0_VALIDATOR_SHA", self.REAL["S0_VALIDATOR_SHA"]):
+            self.assertTrue(self.treason().startswith(("S0_TEST_VALIDATOR_CHANGED", "S0_TEST_AUTHORITY_UNVERIFIED")))
+
+    def test_stale_documents_after_the_rebind_stop_the_correction(self):
+        self.advance()
+        self.write(self.DOC_QA, "edited after the rebind was reviewed\n")
+        self.assertTrue(self.treason().startswith("S0_TEST_AUTHORITY_UNVERIFIED"))
+
+    # --- the rebuilt receipt must publish exactly the rebound documents
+    def receipt_path(self):
+        return self.home / "acceptances" / "MOD-004-S0.json"
+
+    def edit_receipt(self, edit):
+        receipt = json.loads(self.receipt_path().read_text())
+        edit(receipt)
+        self.receipt_path().write_text(json.dumps(receipt))
+
+    def to_early_receipt(self, reset=False):
+        commit, data = self.early
+        if reset:
+            git(self.repo, "reset", "-q", "--mixed", commit)
+        self.receipt_path().write_bytes(data)
+
+    def dirty(self, path, how):
+        full = self.repo / path
+        if how == "chmod":
+            os.chmod(full, 0o755)
+        elif how == "assume-unchanged":
+            git(self.repo, "update-index", "--assume-unchanged", path)
+        elif how == "skip-worktree":
+            git(self.repo, "update-index", "--skip-worktree", path)
+        elif how == "staged chmod":
+            git(self.repo, "update-index", "--chmod=+x", path)
+        elif how == "symlink":
+            twin = full.with_name(full.name + ".twin")
+            twin.write_bytes(full.read_bytes())
+            full.unlink()
+            full.symlink_to(twin)
+        elif how == "edited":
+            full.write_bytes(full.read_bytes() + b"x")
+
+    def published_bad_states(self):
+        """label -> (mutation applied to a VALID published state, text the new check must report or None, whether the
+        original six-subject verification alone still passes, so only the new binding can be what refuses it)."""
+        doc_cert, doc_qa = R.S0_DOC_PATHS
+        states = {
+            "alternate valid eligibility JSON": (lambda: (self.rebuild_with_cert_at(self.ALT_CERT)), "not the rebound certificate", True),
+            "receipt eligibility hash mismatched": (lambda: self.edit_receipt(
+                lambda r: r["subjects"]["eligibility"].update(sha256="0" * 64)), None, False),
+            "QA committed only after the eligibility commit": (lambda: self.to_early_receipt(),
+                                                                "at the eligibility commit is not the approved rebound content", True),
+            "QA uncommitted at the eligibility commit": (lambda: self.to_early_receipt(reset=True),
+                                                         "at the eligibility commit is not the approved rebound content", True),
+        }
+        for how in ("chmod", "assume-unchanged", "skip-worktree", "staged chmod", "symlink"):
+            for label, path in (("QA", doc_qa), ("certificate", doc_cert)):
+                states[f"dirty {label}: {how}"] = ((lambda p=path, h=how: self.dirty(p, h)), None, None)
+        history = self.historical_mutations()
+        for label in (f"{R.S0_RECOVERY_RECEIPT} appended", f"{R.S0_DOC_RECEIPT} truncated", f"{R.S0_DOC_RECEIPT} replaced",
+                      f"{R.S0_RECOVERY_RECEIPT} byte-identical symlink", "receipts swapped"):
+            states[f"historical receipt: {label}"] = (history[label], None, None)
+        states["edited QA"] = ((lambda: self.dirty(doc_qa, "edited")), None, False)
+        states["edited certificate"] = ((lambda: self.dirty(doc_cert, "edited")), None, False)
+        return states
+
+    def test_unpublished_or_misbound_rebound_documents_fail_at_the_gate_enqueue_dispatch_and_after_the_child(self):
+        self.advance(qa_after="committed", rebuild=True)
+        self.assertIsNone(self.treason())
+        snap = self.snapshot()
+        for label, (mutate, text, isolated) in self.published_bad_states().items():
+            with self.subTest(label):
+                self.restore(snap)
+                mutate()
+                self.assertTrue(self.treason().startswith("S0_TEST_AUTHORITY_UNVERIFIED"), label)
+                if text:
+                    self.assertIn(text, self.problem(R.verify_s0_test_authority))
+                if isolated:
+                    R.verify_s0_authority(self.cfg, self.history)  # the six-subject receipt alone still verifies
+                self.live()
+                with self.assertRaisesRegex(ValueError, "S0_TEST_AUTHORITY_UNVERIFIED"):
+                    R.enqueue(self.cfg, self.traw())
+                self.restore(snap)
+                self.live()
+                r = self.runner()
+                R.enqueue(self.cfg, self.traw(prompt=f"WRITE={self.TEST}\nCONTENT=import uuid"))
+                r.ingest_queue()
+                mutate()
+                self.assertIsNone(r.next_ready())
+                queued = r.state["tasks"]["tc-1"]
+                self.assertEqual((queued["status"], queued.get("attempts", 0)), ("QUEUED", 0))
+                self.assertTrue(queued["gate_reason"].startswith("S0_TEST_AUTHORITY_UNVERIFIED"))
+                self.restore(snap)
+                r, t = self.dispatch_test(verify=lambda r: mutate())
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_TEST_AUTHORITY_WITHDRAWN", 1), label)
+                self.assertIn("S0_TEST_AUTHORITY_WITHDRAWN", t["evidence"]["violations"])
+                self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+
+    def test_an_early_receipt_for_a_later_published_qa_is_the_forgery_the_binding_refuses(self):
+        self.advance(qa_after="committed", rebuild=True)
+        commit, early = self.early
+        self.assertNotEqual(commit, self.head())
+        self.assertNotEqual(early, self.receipt_path().read_bytes())
+        blob = subprocess.run(["git", "show", f"{commit}:{self.DOC_QA}"], cwd=self.repo, capture_output=True, check=True).stdout
+        self.assertNotEqual(hashlib.sha256(blob).hexdigest(), self.sha(self.DOC_QA))
+        self.assertIsNone(self.treason())
+        self.to_early_receipt()
+        R.verify_s0_authority(self.cfg, self.history)
+        self.assertIn("at the eligibility commit", self.problem(R.verify_s0_test_authority))
+        self.assertTrue(self.treason().startswith("S0_TEST_AUTHORITY_UNVERIFIED"))
+
+    def test_the_eligibility_binding_checks_every_part_against_the_rebind_evidence(self):
+        self.advance()
+        cert, qa = R.S0_DOC_PATHS
+        receipt = self.receipt_path().read_bytes()
+        rebound = R._s0_rebind_done(self.cfg, self.history)
+        self.assertEqual(rebound, {cert: self.sha(cert), qa: self.sha(qa)})
+        self.assertIsNone(R._s0_rebound_docs_published(self.cfg, receipt, rebound))
+        cases = {
+            "certificate hash differs": ({cert: "0" * 64, qa: rebound[qa]}, "not the rebound certificate"),
+            "certificate missing": ({qa: rebound[qa]}, "not the rebound certificate"),
+            "QA hash differs": ({cert: rebound[cert], qa: "0" * 64}, "is not the approved rebound content"),
+        }
+        for label, (altered, text) in cases.items():
+            with self.subTest(label):
+                with self.assertRaisesRegex(R.GateError, text):
+                    R._s0_rebound_docs_published(self.cfg, receipt, altered)
+        def receipt_with(edit):
+            doc = json.loads(receipt)
+            edit(doc)
+            return json.dumps(doc).encode()
+        shaped = {
+            "eligibility path differs": lambda d: d["subjects"]["eligibility"].update(path=self.ALT_CERT),
+            "eligibility hash differs": lambda d: d["subjects"]["eligibility"].update(sha256="0" * 64),
+            "eligibility subject absent": lambda d: d["subjects"].pop("eligibility"),
+            "eligibility subject not an object": lambda d: d["subjects"].update(eligibility="x"),
+            "commit not a sha": lambda d: d["subjects"]["eligibility"].update(commit="HEAD"),
+            "commit unknown": lambda d: d["subjects"]["eligibility"].update(commit="0" * 40),
+            "ci missing": lambda d: d["subjects"]["eligibility"].pop("ci"),
+        }
+        for label, edit in shaped.items():
+            with self.subTest(label):
+                with self.assertRaises(R.GateError):
+                    R._s0_rebound_docs_published(self.cfg, receipt_with(edit), rebound)
+
+    def test_a_rebind_hash_that_disagrees_with_the_receipt_is_refused_at_the_gate_and_after_the_child(self):
+        self.advance()
+        cert, qa = R.S0_DOC_PATHS
+        real = R._s0_rebind_done(self.cfg, self.history)
+        lying = {cert: "0" * 64, qa: real[qa]}
+        with mock.patch.object(R, "_s0_rebind_done", return_value=lying):
+            self.assertTrue(self.treason().startswith("S0_TEST_AUTHORITY_UNVERIFIED"))
+            self.assertIn("not the rebound certificate", self.problem(R.verify_s0_test_authority))
+        self.assertIsNone(self.treason())
+
+        def lie(r):
+            patcher = mock.patch.object(R, "_s0_rebind_done", return_value=lying)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        r, t = self.dispatch_test(verify=lie)
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_TEST_AUTHORITY_WITHDRAWN"))
+
+    def test_the_review_slot_is_not_opened_while_the_rebound_publication_is_withdrawn(self):
+        self.advance(qa_after="committed", rebuild=True)
+        tasks, new = self.done_test()
+        review = self.t_review(tasks, new)
+        self.assertIsNone(R.s0_test_review_reason(self.cfg, review, tasks))
+        self.to_early_receipt()
+        reason = R.s0_test_review_reason(self.cfg, review, tasks)
+        self.assertTrue(reason.startswith("S0_TEST_REVIEW_AUTHORITY_UNVERIFIED"), reason)
+        self.assertIn("at the eligibility commit", reason)
+
+
+    # --- enqueue and dispatch
+    def test_owner_enqueue_requires_a_loaded_runner_and_live_authority(self):
+        self.advance()
+        path = R.enqueue(self.cfg, self.traw())
+        self.assertEqual(json.loads(path.read_text())["plan_phase"], R.S0_TEST_MARKER)
+        store = R.Store(self.home)
+        state = store.load()
+        state["runner"] = {"pid": os.getpid(), "heartbeat_at": R.now_iso(), "code_sha256": "0" * 64}
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_"):
+            R.enqueue(self.cfg, self.traw(id="tc-2"))
+        state["runner"] = None
+        store.save(state)
+        with self.assertRaisesRegex(ValueError, "S0_RUNNER_NOT_LOADED"):
+            R.enqueue(self.cfg, self.traw(id="tc-3"))
+        self.live()
+        (self.home / "acceptances" / "MOD-004-S0.json").unlink()
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.traw(id="tc-4"))
+
+    def dispatch_test(self, body="import uuid", verify=lambda r: None, **over):
+        """Dispatch the test correction; `verify(r)` stands in for the sandboxed Python 3.13 verifier (exit 0) and may
+        change the authority or the validator while it 'runs'."""
+        self.live()
+        r = self.runner()
+        R.enqueue(self.cfg, self.traw(prompt=f"WRITE={self.TEST}\nCONTENT={body}", **over))
+        r.ingest_queue()
+        t = r.state["tasks"]["tc-1"]
+
+        def run_verify(task):
+            verify(r)
+            return {"cmd": task["verify_cmd"], "exit": 0, "tail": ""}
+        with mock.patch.object(R.Runner, "run_verify", side_effect=run_verify):
+            n = r.next_ready()
+            if n is not None:
+                r.dispatch(n)
+        return r, t
+
+    def test_the_correction_is_credited_once_and_touches_only_the_test_file(self):
+        self.advance()
+        r, t = self.dispatch_test()
+        self.assertEqual((t["status"], t["attempts"], t["evidence"]["violations"]), ("DONE", 1, []))
+        self.assertEqual([c["path"] for c in t["evidence"]["changed"]], [self.TEST])
+        self.assertNotEqual(t["evidence"]["changed"][0]["sha256"], self.tsha)
+        self.assertEqual(self.sha(self.VALIDATOR), self.vsha)
+        self.assertIsNone(r.next_ready())
+        self.assertIn("S0_TEST_SECOND_WRITE", R.gate_reason(self.cfg, self.tcorr(id="tc-again"), r.state["tasks"]))
+        self.live()
+        probe = R.s0_probe(self.cfg)
+        self.assertTrue(probe and probe.startswith(("S0_PRIOR_REVIEW_NOT_APPROVED", "S0_SECOND_WRITE")), probe)
+
+    def test_the_verifier_is_the_pinned_sandboxed_python_313_one(self):
+        self.advance()
+        seen = []
+        self.dispatch_test(verify=lambda r: seen.append(True))
+        self.assertEqual(seen, [True])  # the verifier hook runs exactly once: no transport retry
+        t = self.tcorr()
+        self.assertEqual(t["verify_cmd"], [R.S0_PYTHON, "-m", "unittest", R.S0_VERIFY_MODULE])
+        r = self.runner()
+        marker = Path(self.tmp.name) / "ran"
+        code = f"open({str(marker)!r}, 'w').write('x')"
+        r.cfg.sandbox = "off"
+        res = r.run_verify(t | {"verify_cmd": [R.S0_PYTHON, "-c", code]})
+        self.assertEqual(res["exit"], -1)
+        self.assertIn("sandbox required", res["tail"])
+        r.cfg.sandbox = "auto"
+        self.assertIn("sandbox required", r.run_verify(t | {"verify_cmd": [sys.executable, "-c", code]})["tail"])
+        self.assertFalse(marker.exists())
+
+    def test_forbidden_imports_block_the_correction_before_verification(self):
+        self.advance()
+        for body in ("import socket", "__import__('socket')"):
+            with self.subTest(body):
+                self.reset_attempt()
+                r, t = self.dispatch_test(body)
+                self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_FORBIDDEN_IMPORT"))
+                self.assertIsNone(t["evidence"]["verify"])
+
+    def reset_attempt(self):
+        for q in (self.home / "queue").glob("*"):
+            q.unlink()
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"] = {k: v for k, v in state["tasks"].items() if not k.startswith("tc-")}
+        store.save(state)
+        self.write(self.TEST, "import unittest\n")
+
+    def test_authority_withdrawn_during_the_child_earns_no_done(self):
+        self.advance()
+        s0 = self.home / "acceptances" / "MOD-004-S0.json"
+        rec = self.home / "acceptances" / f"{R.S0_TEST_RECOVERY_RECEIPT}.json"
+        saved = {"s0": s0.read_bytes(), "rec": rec.read_bytes(), "ck": self.checkpoint.read_bytes()}
+        saved_files = {p: (self.repo / p).read_bytes() for p in (self.CERT, self.CAP, self.OWNER, self.TOWNER, *R.S0_DOC_PATHS)}
+        withdrawals = {
+            "rebuilt receipt removed": lambda r: s0.unlink(),
+            "test recovery receipt removed": lambda r: rec.unlink(),
+            "checkpoint mutated": lambda r: self.checkpoint.write_bytes(b"x"),
+            "certificate edited": lambda r: (self.repo / self.CAP).write_text("{}"),
+            "owner edited": lambda r: (self.repo / self.OWNER).write_text("changed after review"),
+            "test owner edited": lambda r: (self.repo / self.TOWNER).write_text("changed after review"),
+            "review withdrawn": lambda r: r.state["tasks"].pop("rev-s0-owner"),
+            "rebind review withdrawn": lambda r: r.state["tasks"].pop("rb-1-rev"),
+            "rebind documents drifted": lambda r: (self.repo / self.DOC_QA).write_text("drifted"),
+            "original review approved": lambda r: r.state["tasks"][R.S0_ORIG_REVIEW]["evidence"].update(review_outcome="APPROVED"),
+        }
+        for label, withdraw in withdrawals.items():
+            with self.subTest(label):
+                self.reset_attempt()
+                r, t = self.dispatch_test(verify=withdraw)
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_TEST_AUTHORITY_WITHDRAWN", 1))
+                self.assertIn("S0_TEST_AUTHORITY_WITHDRAWN", t["evidence"]["violations"])
+                self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+                self.assertIn("S0_TEST_SECOND_WRITE", R.gate_reason(self.cfg, self.tcorr(id="tc-again"), {t["id"]: t}))
+                self.assertIn("S0_TEST_REVIEW_UNSUPPORTED", R.gate_reason(self.cfg, self.t_review({t["id"]: t}, "0" * 64), {t["id"]: t}))
+                s0.write_bytes(saved["s0"])
+                rec.write_bytes(saved["rec"])
+                self.checkpoint.write_bytes(saved["ck"])
+                for p, data in saved_files.items():
+                    (self.repo / p).write_bytes(data)
+                self.sync()
+
+    def test_a_changed_validator_during_the_child_earns_no_done(self):
+        self.advance()
+        r, t = self.dispatch_test(verify=lambda r: (self.repo / self.VALIDATOR).write_text("import uuid\n# changed while the child ran\n"))
+        self.assertEqual((t["status"], t["attempts"]), ("BLOCKED", 1))
+        self.assertIn("S0_TEST_VALIDATOR_CHANGED", t["evidence"]["violations"])
+        self.assertEqual(t["blocked_reason"] in ("S0_TEST_AUTHORITY_WITHDRAWN", "S0_TEST_VALIDATOR_CHANGED"), True)
+        self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+
+    def test_a_failing_verifier_or_a_child_that_edits_the_validator_earns_no_done(self):
+        self.advance()
+        self.live()
+        r = self.runner()
+        R.enqueue(self.cfg, self.traw(prompt=f"WRITE={self.TEST}\nCONTENT=import uuid"))
+        r.ingest_queue()
+        t = r.state["tasks"]["tc-1"]
+        with mock.patch.object(R.Runner, "run_verify", return_value={"cmd": t["verify_cmd"], "exit": 1, "tail": "FAILED"}):
+            r.dispatch(r.next_ready())
+        self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "VERIFICATION_FAILED", 1))
+        self.assertIn("S0_TEST_SECOND_WRITE", R.gate_reason(self.cfg, self.tcorr(id="tc-again"), r.state["tasks"]))
+        self.reset_attempt()
+        a, b = R.S0_PATHS
+        self.live()
+        r = self.runner()
+        R.enqueue(self.cfg, self.traw(prompt=f"WRITE={self.TEST}\nCONTENT=import uuid\nWRITE2={a}"))
+        r.ingest_queue()
+        t = r.state["tasks"]["tc-1"]
+        with mock.patch.object(R.Runner, "run_verify", return_value={"cmd": t["verify_cmd"], "exit": 0, "tail": ""}):
+            r.dispatch(r.next_ready())
+        self.assertEqual(t["status"], "BLOCKED")
+        self.assertTrue({"OUT_OF_SCOPE_CHANGE"} & set(t["evidence"]["violations"]), t["evidence"]["violations"])
+        self.assertNotEqual(self.sha(a), self.vsha)
+        self.assertIsNone(R.review_verdict(r.state["tasks"], t["id"]))
+
+    def started(self, r, **over):
+        t = self.tcorr(**over) | {"status": "RUNNING", "attempts": 1, "stage": None, "child": None}
+        r.state["tasks"][t["id"]] = t
+        return t
+
+    def test_stop_signal_timeout_and_transport_failure_never_rerun_the_single_attempt(self):
+        self.advance()
+        r = self.runner(max_attempts=3, timeout=7)
+        for outcome in ("stopped", "signal"):
+            with self.subTest(outcome):
+                t = self.started(r, id=f"tc-{outcome}")
+                r.settle(t, f"{t['id']}:1", outcome, None, None, None, None, None)
+                self.assertEqual((t["status"], t["blocked_reason"], t["attempts"]), ("BLOCKED", "S0_TEST_ATTEMPT_INTERRUPTED", 1))
+                self.assertIn("S0_TEST_ATTEMPT_USED", R.gate_reason(self.cfg, t | {"status": "QUEUED"}, self.history))
+                self.assertIsNone(r.next_ready())
+        t = self.started(r, id="tc-timeout")
+        r.settle(t, "tc-timeout:1", "timeout", None, None, None, None, None)
+        self.assertEqual((t["status"], t["attempts"]), ("FAILED", 1))
+        u = self.started(r, id="tc-spawn")
+        r.requeue_or_fail(u, "spawn failed")
+        self.assertEqual(u["status"], "FAILED")
+        for phase in (None, "MOD004-S0-TEST-REMEDIATION-X", "MOD004-S0-TEST-REMEDIATION "):
+            plain = {"id": f"plain{phase}", "status": "RUNNING", "attempts": 1, "plan_phase": phase}
+            r.settle(plain, "plain:1", "stopped", None, None, None, None, None)
+            self.assertEqual((plain["status"], plain["attempts"]), ("QUEUED", 0))
+
+    # --- the one review, bound to BOTH the corrected test and the unchanged validator
+    def test_exact_two_file_review_passes_and_uses_the_one_slot(self):
+        self.advance()
+        tasks, new = self.done_test()
+        self.assertIsNone(R.gate_reason(self.cfg, self.t_review(tasks, new), tasks))
+        for status in ("QUEUED", "RUNNING", "FAILED", "BLOCKED", "DONE"):
+            for extra in ({}, {"evidence": {"review_outcome": "CHANGES_REQUESTED"}}, {"evidence": {}}):  # with or without a verdict
+                with self.subTest(f"{status} {extra}"):
+                    used = tasks | {"earlier": {"id": "earlier", "module": "MOD-004", "role": "code-review", "status": status,
+                                                "review_of": {"task_id": "tc-1"}} | extra}
+                    self.assertIn("S0_TEST_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.t_review(used, new), used))
+
+    def test_a_review_must_bind_both_files_and_name_both_pairs(self):
+        self.advance()
+        tasks, new = self.done_test()
+        good = self.t_review(tasks, new)
+        test_only, validator_only = self.both(new)[:1], self.both(new)[1:]
+        wrong_validator = [self.both(new)[0], {"path": self.VALIDATOR, "sha256": "0" * 64}]
+        wrong_test = [{"path": self.TEST, "sha256": self.tsha}, self.both(new)[1]]
+        swapped = [{"path": self.TEST, "sha256": self.vsha}, {"path": self.VALIDATOR, "sha256": new}]
+        for name, over in {
+            "retry lineage": {"review_retry_of": "x"}, "candidate": {"review_candidate": "x"}, "planner": {"source": "handoff"},
+            "test file only": {"review_of": {"task_id": "tc-1", "changed": test_only}},
+            "validator only": {"review_of": {"task_id": "tc-1", "changed": validator_only}},
+            "wrong validator hash": {"review_of": {"task_id": "tc-1", "changed": wrong_validator}},
+            "stale test hash": {"review_of": {"task_id": "tc-1", "changed": wrong_test}},
+            "swapped hashes": {"review_of": {"task_id": "tc-1", "changed": swapped}},
+            "extra file": {"review_of": {"task_id": "tc-1", "changed": [*self.both(new), {"path": "x", "sha256": "1" * 64}]}},
+            "no changed": {"review_of": {"task_id": "tc-1", "changed": None}}, "other module": {"module": "MOD-003"},
+            "prompt names nothing": {"prompt": "Review the tests"},
+            "prompt names only the test": {"prompt": f"Review {self.TEST} sha256 {new}"},
+            "prompt names only the validator": {"prompt": f"Review {self.VALIDATOR} sha256 {self.vsha}"},
+            "prompt wrong validator sha": {"prompt": f"Review {self.TEST} sha256 {new} and {self.VALIDATOR} sha256 {'0' * 64}"},
+            "prompt wrong test sha": {"prompt": f"Review {self.TEST} sha256 {self.tsha} and {self.VALIDATOR} sha256 {self.vsha}"},
+        }.items():
+            with self.subTest(name):
+                reason = R.gate_reason(self.cfg, good | over, tasks)
+                self.assertTrue(reason.startswith(("S0_TEST_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), reason)
+        for name, mutate in {"write not DONE": lambda w: w.update(status="BLOCKED"), "write queued": lambda w: w.update(status="QUEUED"),
+                             "extra changed file": lambda w: w["evidence"]["changed"].append({"path": "x", "sha256": "1" * 64}),
+                             "validator changed by the write": lambda w: w["evidence"]["changed"].append(
+                                 {"path": self.VALIDATOR, "sha256": self.vsha}),
+                             "off-lane path": lambda w: w["evidence"]["changed"][0].update(path="backend/tests/test_other.py"),
+                             "test unchanged from start": lambda w: w["evidence"]["changed"][0].update(sha256=self.tsha),
+                             "module": lambda w: w.update(module="MOD-003"), "role": lambda w: w.update(role="test")}.items():
+            with self.subTest(name):
+                t2 = json.loads(json.dumps(tasks))
+                mutate(t2["tc-1"])
+                reason = R.gate_reason(self.cfg, good | {"review_of": {"task_id": "tc-1", "changed": self.both(new)}}, t2)
+                self.assertTrue(reason.startswith(("S0_TEST_REVIEW_UNSUPPORTED", "GATE_UNVERIFIABLE")), reason)
+
+    def test_a_changed_test_or_validator_makes_the_review_stale_before_and_after_dispatch(self):
+        self.advance()
+        tasks, new = self.done_test()
+        review = self.t_review(tasks, new)
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))
+        self.write(self.TEST, "edited after the write finished\n")
+        self.assertIn("S0_TEST_REVIEW_BINDING_STALE", R.gate_reason(self.cfg, review, tasks))
+        self.assertTrue(R.bound_review_problems(self.cfg, tasks, review))
+        self.write(self.TEST, "corrected tests\n")
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))
+        self.assertEqual(R.bound_review_problems(self.cfg, tasks, review), [])
+        self.write(self.VALIDATOR, "import uuid\n# changed\n")
+        reason = R.gate_reason(self.cfg, review, tasks)
+        self.assertTrue(reason.startswith(("S0_TEST_REVIEW_BINDING_STALE", "S0_TEST_REVIEW_ORIGINAL_CHANGED")), reason)
+        self.assertTrue(any(self.VALIDATOR in p for p in R.bound_review_problems(self.cfg, tasks, review)))
+        (self.repo / self.VALIDATOR).unlink()
+        self.assertTrue(R.bound_review_problems(self.cfg, tasks, review))
+        self.write(self.VALIDATOR, "import uuid\n")
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))
+
+    def test_a_review_of_a_changed_original_write_or_review_is_refused(self):
+        self.advance()
+        tasks, new = self.done_test()
+        review = self.t_review(tasks, new)
+        for label, mutate in {
+            "original review approved": lambda t: t[R.S0_ORIG_REVIEW]["evidence"].update(review_outcome="APPROVED"),
+            "original review missing": lambda t: t.pop(R.S0_ORIG_REVIEW),
+            "original write missing": lambda t: t.pop(R.S0_ORIG_WRITE),
+            "original write at other hashes": lambda t: t[R.S0_ORIG_WRITE]["evidence"]["changed"][0].update(sha256="0" * 64),
+        }.items():
+            with self.subTest(label):
+                t2 = json.loads(json.dumps(tasks))
+                mutate(t2)
+                reason = R.gate_reason(self.cfg, review, t2)
+                self.assertTrue(reason.startswith(("S0_TEST_REVIEW_ORIGINAL_CHANGED", "GATE_UNVERIFIABLE")), reason)
+
+    def test_planner_review_of_the_correction_is_refused_at_enqueue_proposal(self):
+        self.advance()
+        tasks, new = self.done_test()
+        r = self.runner()
+        r.state["tasks"]["tc-1"] = tasks["tc-1"]
+        raw = self.t_review(tasks, new) | {"id": "pp-rev", "title": "r"}
+        raw.pop("status")
+        with self.assertRaisesRegex(ValueError, "S0_TEST_REVIEW_UNSUPPORTED"):
+            r.enqueue_proposal(raw)
+        self.assertNotIn("pp-rev", r.state["tasks"])
+
+    def test_owner_enqueue_fills_both_pairs_and_refuses_a_second_review(self):
+        self.advance()
+        r, t = self.dispatch_test()
+        self.assertEqual(t["status"], "DONE")
+        new = t["evidence"]["changed"][0]["sha256"]
+        prompt = f"Review {self.TEST} sha256 {new} together with {self.VALIDATOR} sha256 {self.vsha}"
+        with self.assertRaises(ValueError):  # a prompt that does not name both pairs
+            R.enqueue(self.cfg, {"id": "rv0", "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                 "review_of": {"task_id": "tc-1"}})
+        path = R.enqueue(self.cfg, {"id": "rv1", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                                    "review_of": {"task_id": "tc-1"}})
+        queued = json.loads(path.read_text())
+        self.assertEqual(sorted((c["path"], c["sha256"]) for c in queued["review_of"]["changed"]),
+                         sorted([(self.TEST, new), (self.VALIDATOR, self.vsha)]))
+        r.ingest_queue()
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "rv2", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                                 "review_of": {"task_id": "tc-1"}})
+        stale = json.loads(json.dumps(queued))
+        stale["review_of"]["changed"] = stale["review_of"]["changed"][:1]
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, stale | {"id": "rv3"})
+        self.write(self.VALIDATOR, "import uuid\n# changed\n")
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "rv4", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                                 "review_of": {"task_id": "tc-1"}})
+
+    def review_run(self, outcome="APPROVED", tamper=None, **over):
+        """Dispatch the correction, then its one review through the fake reviewer."""
+        r, t = self.dispatch_test()
+        self.assertEqual(t["status"], "DONE")
+        new = t["evidence"]["changed"][0]["sha256"]
+        prompt = (f"Review {self.TEST} sha256 {new} together with {self.VALIDATOR} sha256 {self.vsha}\nOUTCOME_LINE={outcome}"
+                  + (f"\nTAMPER={tamper}" if tamper else ""))
+        R.enqueue(self.cfg, {"id": "tc-rev", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                             "review_of": {"task_id": "tc-1"}} | over)
+        r.ingest_queue()
+        rv = r.state["tasks"]["tc-rev"]
+        n = r.next_ready()
+        if n is not None:
+            r.dispatch(n)
+        return r, t, rv
+
+    def test_the_review_dispatches_once_with_a_runner_authored_two_file_binding(self):
+        self.advance()
+        r, t, rv = self.review_run()
+        self.assertEqual((rv["status"], rv["evidence"]["review_outcome"], rv["evidence"]["review_bound_verified"]),
+                         ("DONE", "APPROVED", True))
+        self.assertEqual(sorted(c["path"] for c in rv["review_of"]["changed"]), sorted(R.S0_PATHS))
+        self.assertEqual(R.review_verdict(r.state["tasks"], "tc-1"), "APPROVED")
+        self.assertEqual(R.review_verdict(r.state["tasks"], R.S0_ORIG_WRITE), "CHANGES_REQUESTED")  # the first rejected review is not relabelled
+        orig = r.state["tasks"][R.S0_ORIG_REVIEW]
+        self.assertEqual((orig["status"], orig["evidence"]["review_outcome"]), ("BLOCKED", "CHANGES_REQUESTED"))
+        self.assertIn("S0_TEST_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.t_review(r.state["tasks"], t["evidence"]["changed"][0]["sha256"], id="tc-rev2"), r.state["tasks"]))
+        self.live()
+        self.assertTrue(R.s0_probe(self.cfg).startswith(("S0_PRIOR_REVIEW_NOT_APPROVED", "S0_SECOND_WRITE")))
+        block = r.review_binding_block(rv)
+        self.assertIn(f"{self.VALIDATOR} sha256 {self.vsha}", block)
+        self.assertIn(R.S0_ORIG_REVIEW, block)
+        self.assertIn("COMPLETE two-file S0 candidate", block)
+
+    def test_the_review_binding_block_is_only_added_for_the_correction(self):
+        self.advance()
+        r = self.runner()
+        rb, _ = self.done_rebind()
+        r.state["tasks"].update(rb)
+        block = r.review_binding_block(self.rb_review(rb))
+        self.assertNotIn("COMPLETE two-file S0 candidate", block)
+
+    def test_a_validator_changed_during_the_review_gives_no_verdict_credit(self):
+        self.advance()
+        r, t, rv = self.review_run(tamper=self.VALIDATOR)
+        self.assertEqual(rv["status"], "BLOCKED")
+        self.assertIn("REVIEW_BINDING_STALE", rv["evidence"]["violations"])
+        self.assertIsNone(rv["evidence"]["review_outcome"])
+        self.assertFalse(rv["evidence"]["review_bound_verified"])
+        self.assertIsNone(R.review_verdict(r.state["tasks"], "tc-1"))
+        self.assertIn("S0_TEST_REVIEW_SLOT_USED", R.gate_reason(
+            self.cfg, self.t_review(r.state["tasks"], t["evidence"]["changed"][0]["sha256"], id="tc-rev2"), r.state["tasks"]))
+
+    def test_a_test_file_changed_during_the_review_gives_no_verdict_credit(self):
+        self.advance()
+        r, t, rv = self.review_run(tamper=self.TEST)
+        self.assertEqual(rv["status"], "BLOCKED")
+        self.assertIn("REVIEW_BINDING_STALE", rv["evidence"]["violations"])
+        self.assertIsNone(R.review_verdict(r.state["tasks"], "tc-1"))
+
+    def test_changes_requested_or_no_verdict_stops_the_exception(self):
+        self.advance()
+        r, t, rv = self.review_run(outcome="CHANGES_REQUESTED")
+        self.assertEqual((rv["status"], rv["blocked_reason"]), ("BLOCKED", "REVIEW_CHANGES_REQUESTED"))
+        tasks, new = r.state["tasks"], t["evidence"]["changed"][0]["sha256"]
+        self.assertEqual(R.review_verdict(tasks, "tc-1"), "CHANGES_REQUESTED")
+        self.assertIn("S0_TEST_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.t_review(tasks, new, id="tc-rev2"), tasks))
+        self.assertIn("S0_TEST_SECOND_WRITE", R.gate_reason(self.cfg, self.tcorr(id="tc-again"), tasks))
+        self.assertTrue(R.gate_reason(self.cfg, self.tcorr(id="tc-again", remediation_of="tc-1"), tasks).startswith("S0_TEST_INVALID_TASK"))
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "tc-rev3", "module": "MOD-004", "role": "code-review", "prompt": "x",
+                                 "review_of": {"task_id": "tc-1"}, "review_retry_of": "tc-rev"})
+        self.reset_attempt()
+
+    def test_a_review_without_a_verdict_stops_the_exception(self):
+        self.advance()
+        r, t = self.dispatch_test()
+        new = t["evidence"]["changed"][0]["sha256"]
+        prompt = f"Review {self.TEST} sha256 {new} together with {self.VALIDATOR} sha256 {self.vsha}\nOUTCOME_LINE=none"
+        R.enqueue(self.cfg, {"id": "tc-rev", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                             "review_of": {"task_id": "tc-1"}})
+        r.ingest_queue()
+        r.dispatch(r.next_ready())
+        rv = r.state["tasks"]["tc-rev"]
+        self.assertEqual(rv["status"], "BLOCKED")
+        self.assertIsNone(R.review_verdict(r.state["tasks"], "tc-1"))
+        tasks = r.state["tasks"]
+        self.assertIn("S0_TEST_REVIEW_SLOT_USED", R.gate_reason(self.cfg, self.t_review(tasks, new, id="tc-rev2"), tasks))
+        self.assertIn("S0_TEST_SECOND_WRITE", R.gate_reason(self.cfg, self.tcorr(id="tc-again"), tasks))
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {"id": "tc-rev4", "module": "MOD-004", "role": "code-review", "prompt": prompt,
+                                 "review_of": {"task_id": "tc-1"}})
+
+
 if __name__ == "__main__":
     unittest.main()
