@@ -1714,15 +1714,190 @@ def _s0_ci_ok(ci, sha):
 
 
 def _s0_names_subject(y, path, sha, text):
-    """(prompt names the path-or-exact-bytes and full sha256, review_of.changed lists {path, sha256}) for a task."""
+    """(prompt mentions the path-or-exact-bytes and full sha256, review_of.changed lists {path, sha256}) for a task.
+    A mention is NOT attribution: see _s0_subject_role."""
     prompt = y.get("prompt")
     named = isinstance(prompt, str) and sha in prompt and (path in prompt or (text is not None and text in prompt))
-    changed = (y.get("review_of") or {}).get("changed")
+    binding = y.get("review_of")
+    changed = binding.get("changed") if isinstance(binding, dict) else None
     return named, isinstance(changed, list) and {"path": path, "sha256": sha} in changed
 
 
-# Audited, immutable historical exceptions. Default is fail-closed: ANY negative Opus review whose prompt names a subject's
-# exact path+sha (or exact bytes) blocks it. These five tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+_S0_PATH, _S0_HASH = r"`?([^\s`'\"<>|*]+)`?", r"`?(?<![0-9A-Za-z])([0-9a-f]{64})(?![0-9A-Za-z])`?"
+_S0_ONLY_RE = re.compile(rf"(?:^[ \t]*(?:[-*][ \t]+)?|(?<=[.!?])[ \t]+)Review ONLY the exact proposed new record[ \t]+{_S0_PATH}"
+                         rf"[ \t]+SHA-256[ \t]+{_S0_HASH}", re.M)
+_S0_PRIMARY_RES = (
+    re.compile(rf"^[ \t]*(?:[-*][ \t]+)?Review EXACT file[ \t]+{_S0_PATH}[ \t]+SHA-256[ \t]+{_S0_HASH}", re.M),
+    re.compile(rf"^[ \t]*(?:[-*][ \t]+)?Operator-computed subject:[ \t]+{_S0_PATH}[ \t]+SHA-256[ \t]+{_S0_HASH}", re.M),
+)
+_S0_LIST_HEAD_RE = re.compile(r"^[ \t]*Exact (?:revised )?subjects:[ \t]*$")
+_S0_LIST_ITEM_RE = re.compile(rf"^[ \t]*[-*][ \t]+{_S0_PATH}[ \t]+(?:SHA-256|sha256)[ \t]+{_S0_HASH}[ \t]*$")
+_S0_BULLET_RE = re.compile(r"^[ \t]*[-*][ \t]+(.*)$")
+
+
+def _s0_file_looking(entry):
+    """True when an entry's first token looks like a repo file (has a '/' or a file extension)."""
+    tok = (entry.split() or [""])[0].strip("`")
+    return "/" in tok or re.search(r"\.[A-Za-z0-9]{1,6}$", tok) is not None
+
+
+_S0_MARKER_RE = re.compile(r"^[ \t]*(?:#+[ \t]*)?(?:EXACT RECORD|DIFF|PREVIOUS REVIEW|CONTEXT|PASTED|QUOTED)\b|^[ \t]*(?:```|diff --git |>)"
+                            r"|^[ \t]*(?i:(?:EXACT[ \t]+)?(?:CURRENT[ \t]+)?(?:DIFF|RECORD|PROMPT)[ \t]*:)|^[ \t]*(?:@@|\+)", re.M)
+_S0_SHAPE_RE = re.compile(r"Review ONLY the exact proposed new record|Review EXACT file|Operator-computed subject:|Exact (?:revised )?subjects:")
+
+
+def _s0_prompt_split(prompt):
+    """(header, tail): the authoritative header is the prompt's first two paragraphs, cut at the first content marker line
+    (EXACT RECORD / DIFF / PREVIOUS REVIEW / CONTEXT / PASTED / QUOTED, a case-insensitive Diff:/Record:/Prompt: label with optional
+    EXACT/CURRENT, a code fence, a diff header, a hunk '@@' or added '+' line, or a quote line)."""
+    m = _S0_MARKER_RE.search(prompt)
+    head = prompt[:m.start()] if m else prompt
+    paras = list(re.finditer(r"\n[ \t]*\n", head))
+    if len(paras) >= 2:
+        head = head[:paras[1].start()]
+    return head, prompt[len(head):]
+
+
+def _s0_prompt_declarations(prompt, header_only=False):
+    """(primaries, exclusive) for an immutable recorded prompt. primaries: the set of (path, sha256) the prompt HEADER
+    (see _s0_prompt_split) explicitly declares as its primary review subject(s), from the five audited declaration shapes
+    only; the body (pasted diffs, records, earlier prompts) is never parsed. frozenset() = no declaration;
+    None = ambiguous or conflicting (a 'Review ONLY' that disagrees with another declaration, a malformed subject list,
+    or, unless header_only, any declaration-looking shape in the body that could contaminate attribution), which every
+    caller must treat as fail-closed.
+    exclusive: the prompt says 'Review ONLY' or gives an exhaustive 'Exact subjects:' list, so a pair outside primaries is
+    NOT a subject; a lone 'Review EXACT file'/'Operator-computed subject:' line is never exclusive."""
+    if not isinstance(prompt, str):
+        return frozenset(), False
+    prompt, tail = _s0_prompt_split(prompt)
+    if not header_only and _S0_SHAPE_RE.search(tail):
+        return None
+    only = {(m[1], m[2]) for m in _S0_ONLY_RE.finditer(prompt)}
+    found, listed = set(), False
+    for rx in _S0_PRIMARY_RES:
+        found |= {(m[1], m[2]) for m in rx.finditer(prompt)}
+    lines = prompt.splitlines()
+    for i, ln in enumerate(lines):
+        if not _S0_LIST_HEAD_RE.match(ln):
+            continue
+        items = []
+        for nxt in lines[i + 1:]:
+            if not nxt.strip():
+                break
+            m = _S0_LIST_ITEM_RE.match(nxt)
+            if m:
+                items.append((m[1], m[2]))
+                continue
+            bullet = _S0_BULLET_RE.match(nxt)
+            if _s0_file_looking(bullet[1] if bullet else nxt):
+                return None  # a malformed file-looking entry is never skipped as context
+            if not bullet:
+                break  # prose ends the list; non-file bullets (diff hash, base commit) are context
+        if not items:
+            return None
+        found |= set(items)
+        listed = True
+    if only and (len(only) > 1 or found - only):
+        return None
+    return frozenset(only | found), bool(only) or listed
+
+
+def _s0_prompt_primaries(prompt):
+    d = _s0_prompt_declarations(prompt)
+    return None if d is None else d[0]
+
+
+def _s0_verified_changed(y):
+    """The runner-verified review_of.changed pairs, or None when there is no authoritative, well-formed binding."""
+    binding = y.get("review_of")
+    changed = binding.get("changed") if isinstance(binding, dict) else None
+    if not ((y.get("evidence") or {}).get("review_bound_verified") is True and isinstance(changed, list) and changed
+            and all(isinstance(c, dict) and isinstance(c.get("path"), str) and isinstance(c.get("sha256"), str) for c in changed)):
+        return None
+    return frozenset((c["path"], c["sha256"]) for c in changed)
+
+
+def _s0_header_conflicts(y, verified):
+    """True when the prompt header's explicit declaration disagrees with the runner-verified review_of.changed (or is itself
+    malformed): the header names a pair the binding lacks, or an exclusive header omits a bound pair."""
+    d = _s0_prompt_declarations(y.get("prompt"), header_only=True)
+    if d is None:
+        return True
+    primaries, exclusive = d
+    return bool(primaries) and bool(primaries - verified or (exclusive and verified - primaries))
+
+
+def _s0_subject_role(y, path, sha):
+    """How a task that MENTIONS (path, sha) relates to it: 'subject' (it reviews this exact pair), 'context' (it reviews
+    something else and only quotes this pair) or 'ambiguous' (cannot tell: callers fail closed). review_of.changed
+    (any {path, sha256} listing) or an explicit primary declaration in the prompt makes it the subject. 'context' needs
+    a runner-verified review_of.changed that excludes the pair, or (with no review_of at all) an EXCLUSIVE prompt
+    declaration ('Review ONLY' / exhaustive 'Exact subjects:') that excludes it; a mere different 'Review EXACT file'
+    primary is not exclusive, and an unverified review_of never lets the prompt excuse a quote."""
+    binding = y.get("review_of")
+    changed = binding.get("changed") if isinstance(binding, dict) else None
+    if isinstance(changed, list) and {"path": path, "sha256": sha} in changed:
+        return "subject"
+    verified = _s0_verified_changed(y)
+    if verified is not None:  # the runner-verified binding is authoritative unless the prompt header contradicts it
+        if (path, sha) in verified:
+            return "subject"
+        return "ambiguous" if _s0_header_conflicts(y, verified) else "context"
+    if y.get("review_of") is not None:
+        return "ambiguous"
+    d = _s0_prompt_declarations(y.get("prompt"))
+    if d is None:
+        return "ambiguous"
+    primaries, exclusive = d
+    if (path, sha) in primaries:
+        return "subject"
+    return "context" if primaries and exclusive else "ambiguous"
+
+
+# Immutable legacy APPROVED reviews recorded before explicit primary-declaration syntax existed: each is pinned by task id,
+# full recorded-prompt sha256 and the one exact (path, sha256) it reviewed. They only supply the positive binding; the
+# DONE/verified-Opus/APPROVED evidence checks in _s0_review still apply, so no failed review can be legitimised here.
+S0_LEGACY_APPROVED_REVIEWS = (
+    {"task_id": "mod004-s0-owner-record-final-opus-review-20261019",
+     "prompt_sha256": "d3444833523b309a30b677c0f553f19546f2d21f3d316b11629893ac03dc11db",
+     "path": "knowledge/00-Decisions/OWNER-2026-10-19-mod004-s0-only.md", "sha256": "c781a1d928dc1b94164320a927d0c725a8dffe84987af1677bd929935564f33f"},
+    {"task_id": "mod004-s0-adr-amendment-opus-remediation-review-20261023",
+     "prompt_sha256": "13777b98c315dd2e6330c57a4cd338ba1df8ef3ff064ee1b5cafeb10d58d0d13",
+     "path": "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md", "sha256": "84ecd1d2ae14bee3ea3c6698fc0ee75bbde3affd6a515828ce51fd220e0e9493"},
+    {"task_id": "owner-product-remediation-loop-opus-r3-20261024",
+     "prompt_sha256": "25fd9c3768c083cab65f0cd4b12c7cf871a50df782b4a6be178aff8393a9c816",
+     "path": "knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
+     "sha256": "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"},
+)
+
+
+def _s0_legacy_approved(y, path, sha):
+    prompt, ev = y.get("prompt"), y.get("evidence") or {}
+    if not (isinstance(prompt, str) and y.get("review_of") is None and y.get("status") == "DONE"
+            and ev.get("review_outcome") == "APPROVED" and (y.get("route") or {}).get("verdict") == "VERIFIED"):
+        return False
+    digest = hashlib.sha256(prompt.encode("utf-8", "surrogatepass")).hexdigest()
+    return any(y.get("id") == e["task_id"] and digest == e["prompt_sha256"] and (path, sha) == (e["path"], e["sha256"])
+               for e in S0_LEGACY_APPROVED_REVIEWS)
+
+
+def _s0_binds_subject(y, path, sha):
+    """Positive attribution: this task's review is of exactly (path, sha), not merely a mention. A verified review_of.changed
+    is authoritative whenever present; otherwise an unambiguous primary declaration in the recorded prompt, or a pinned
+    immutable legacy APPROVED review, binds."""
+    if _s0_legacy_approved(y, path, sha):
+        return True
+    verified = _s0_verified_changed(y)
+    if verified is not None:
+        return (path, sha) in verified and not _s0_header_conflicts(y, verified)
+    if y.get("review_of") is not None:  # an unverified/malformed binding never falls back to the prompt for positive authority
+        return False
+    primaries = _s0_prompt_primaries(y.get("prompt"))
+    return primaries is not None and (path, sha) in primaries
+
+
+# Audited, immutable historical exceptions. Default is fail-closed: a negative Opus review that mentions a subject's
+# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These five tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1766,7 +1941,7 @@ def _s0_pinned_context(y, path, sha):
     """True only for a task that IS one pinned exception for exactly this (path, sha) subject: exact id, exact immutable
     prompt hash, no review_of binding, and its exact primary path and sha256 present in that prompt."""
     prompt = y.get("prompt")
-    if not (isinstance(prompt, str) and not y.get("review_of")):
+    if not (isinstance(prompt, str) and y.get("review_of") is None):
         return False
     digest = hashlib.sha256(prompt.encode("utf-8", "surrogatepass")).hexdigest()
     return any(y.get("id") == e["task_id"] and digest == e["prompt_sha256"] and (path, sha) in e["subjects"]
@@ -1785,8 +1960,8 @@ def _s0_quoted_context_only(y, path, sha):
 def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
     """Bind to an existing runner review task, never to receipt booleans: the task must be DONE with a verified Opus
     route and APPROVED evidence, its output file (path derived from its dispatch op) must hash to the receipt and
-    carry the same APPROVED final-line result, and its immutable recorded prompt (or runner-verified review binding)
-    must name the exact subject: path and full sha256, or full sha256 plus the exact current bytes."""
+    carry the same APPROVED final-line result, and its runner-verified review binding or immutable recorded prompt must
+    declare the exact (path, sha256) as a PRIMARY subject; a contextual mention never approves."""
     if not (isinstance(rv, dict) and set(rv) == {"task_id", "output_sha256"} and isinstance(rv["task_id"], str)
             and ID_RE.match(rv["task_id"]) and isinstance(rv["output_sha256"], str)
             and SHA256_RE.fullmatch(rv["output_sha256"]) and rv["task_id"] not in seen):
@@ -1807,15 +1982,14 @@ def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
         text = data.decode()
     except UnicodeDecodeError:
         text = None
-    named, paired = _s0_names_subject(x, path, sha, text)
-    if not (named or (paired and ev.get("review_bound_verified") is True)):
+    if not _s0_binds_subject(x, path, sha):
         raise GateError(f"{label}: the review task's recorded prompt/binding does not name the exact subject and sha256")
     if _s0_pinned_context(x, path, sha):  # a pinned context-only task never approves what it only quoted
         raise GateError(f"{label}: task {x['id']} only quotes this subject as context and cannot approve it")
     for y in tasks.values():  # one bad verdict on these exact bytes stands: no re-review shopping
         if isinstance(y, dict) and y is not x and y.get("role") in OPUS_ROLES and any(_s0_names_subject(y, path, sha, text)):
-            if _s0_quoted_context_only(y, path, sha):
-                continue  # audited historical exception: this subject was only quoted context
+            if _s0_quoted_context_only(y, path, sha) or _s0_subject_role(y, path, sha) == "context":
+                continue  # this subject was only quoted context of a review of something else; ambiguity still blocks
             yev = y.get("evidence") or {}
             marks = [y.get("blocked_reason"), *(yev["violations"] if isinstance(yev.get("violations"), list) else [])]
             no_verdict = (y.get("status") == "BLOCKED" and (y.get("route") or {}).get("verdict") == "VERIFIED"

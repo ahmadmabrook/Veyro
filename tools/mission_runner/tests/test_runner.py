@@ -4022,7 +4022,7 @@ class S0Fixture(Base):
         (self.home / "runs" / f"{tid}-1.out").write_bytes(out)
         self.history[tid] = {
             "id": tid, "module": "MOD-004", "role": role, "status": "DONE", "result": result[:500],
-            "prompt": f"Review {rel}. Its SHA-256 is {sha}. Last line OUTCOME." if prompt is None else prompt,
+            "prompt": f"Review EXACT file {rel} SHA-256 {sha}\nLast line OUTCOME." if prompt is None else prompt,
             "route": {"verdict": "VERIFIED", "dispatch_op": op, "intended": "opus"},
             "evidence": {"op": op, "review_outcome": verdict, "route_verdict": "VERIFIED", "subtype": "success",
                          "violations": []}} | (record or {})
@@ -4376,7 +4376,7 @@ class Mod004S0Gate(S0Fixture):
             out.unlink()
             self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
 
-    def test_existing_owner_and_adr_style_review_tasks_are_accepted_without_a_rereview(self):
+    def test_unpinned_legacy_style_reviews_fail_closed_but_explicit_or_verified_bindings_work(self):
         text = (self.repo / self.OWNER).read_text()
         owner_prompt = f"Review of the final unpublished record. Exact record SHA-256 {self.sha(self.OWNER)}.\n\nEXACT RECORD:\n\n{text}"
         adr_prompt = (f"Review the ADR. ADR SHA-256: {self.sha(self.ADR)}.\nEXACT CURRENT DIFF:\ndiff --git a/{self.ADR} b/{self.ADR}\n"
@@ -4392,6 +4392,10 @@ class Mod004S0Gate(S0Fixture):
             r["subjects"]["adr"]["review"] = self.review(self.ADR, "adr-style", prompt=adr_prompt)
             r["subjects"]["edge"]["review"] = self.review(self.EDGE, "edge", prompt=edge_record["prompt"], record=edge_record,
                                                            role="code-review")
+        self.build(patch=patch)
+        self.assertIn("does not name the exact subject", self.reason())
+        owner_prompt = f"Review EXACT file {self.OWNER} SHA-256 {self.sha(self.OWNER)}\n"
+        adr_prompt = f"Review EXACT file {self.ADR} SHA-256 {self.sha(self.ADR)}\n"
         self.build(patch=patch)
         self.assertIsNone(self.reason())
         before = json.dumps(self.history, sort_keys=True)
@@ -4581,26 +4585,53 @@ class Mod004S0Gate(S0Fixture):
         ci.write_text(json.dumps({"scope": R.CI_SCOPE, "head_sha": commit, "runs": []}))
         self.assertIn("S0_AUTHORITY_UNVERIFIED", self.reason())
 
-    def test_negative_review_quoting_the_subject_blocks_whatever_its_declared_primary_or_binding(self):
+    def test_negative_review_quoting_the_subject_blocks_unless_exclusively_or_verifiably_about_something_else(self):
         owner_sha = self.sha(self.OWNER)
         text = (self.repo / self.OWNER).read_text()
         other, other_sha = "contracts/engineering/other.json", "7" * 64
+        third, third_sha = "contracts/engineering/third.json", "8" * 64
         quoted = f"\nContext certificate quoting {self.OWNER} SHA-256 {owner_sha}:\n{text}"
-        declared = f"Review EXACT file {other} SHA-256 {other_sha}" + quoted
-        for name, (prompt, over) in {
-            "decoy-primary": (declared, {}),
-            "decoy-primary-bound-to-other": (declared, {"role": "code-review", "review_of": {
-                "task_id": "w", "changed": [{"path": other, "sha256": other_sha}]}}),
+        declared = f"Review EXACT file {other} SHA-256 {other_sha}" + quoted  # EXACT is not exclusive
+        only = f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}" + quoted
+        bound = {"role": "code-review", "review_of": {"task_id": "w", "changed": [{"path": other, "sha256": other_sha}]}}
+        verified = bound | {"evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True}}
+        blocks = {
             "same-exact": (f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}" + quoted, {}),
             "no-declaration": (quoted, {}),
             "bytes-only": (f"sha {owner_sha}\n{text}", {}),
-        }.items():
-            with self.subTest(name):
-                self.history["neg"] = {"id": "neg", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
-                                       "prompt": prompt, "evidence": {"review_outcome": "CHANGES_REQUESTED"},
-                                       "blocked_reason": "REVIEW_CHANGES_REQUESTED"} | over
-                self.build()
-                self.assertIn("did not approve", self.reason())
+            "bound-to-the-subject": (declared, {"role": "code-review", "review_of": {
+                "task_id": "w", "changed": [{"path": self.OWNER, "sha256": owner_sha}]}}),
+            "exact-other-is-not-exclusive": (declared, {}),
+            "exact-other-unverified-binding": (declared, bound),
+            "review-only-unverified-binding": (only, bound),  # an unverified review_of never lets the prompt excuse a quote
+            "review-only-malformed-binding": (only, {"role": "code-review", "review_of": {"task_id": "w", "changed": None}}),
+            "review-only-partly-verified-binding": (only, verified | {"review_of": {"task_id": "w", "changed": [
+                {"path": other, "sha256": other_sha}, {"path": third}]}}),
+            "review-only-conflicts-with-exact": (f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}\n"
+                                                 f"Review EXACT file {third} SHA-256 {third_sha}" + quoted, {}),
+            "subject-among-several-primaries": (f"Exact subjects:\n- {other} SHA-256 {other_sha}\n"
+                                                f"- {self.OWNER} SHA-256 {owner_sha}\n" + quoted, {}),
+            "malformed-subject-list": (f"Exact subjects:\n- {other} SHA-256 {other_sha[:-1]}\n" + quoted, {}),
+            "empty-subject-list": ("Exact subjects:\n\n" + quoted, {}),
+        }
+        context = {  # exclusive prompt declaration, or a runner-verified binding, that excludes the subject
+            "review-only-other": (only, {}),
+            "exhaustive-subject-list": (f"Exact subjects:\n- {other} SHA-256 {other_sha}\n"
+                                        f"- {third} SHA-256 {owner_sha[:-1]}0\n" + quoted, {}),
+            "exact-other-verified-binding": (declared, verified),
+            "no-declaration-verified-binding": (quoted, verified),
+        }
+        for expect_block, shapes in ((True, blocks), (False, context)):
+            for name, (prompt, over) in shapes.items():
+                with self.subTest(name):
+                    self.history["neg"] = {"id": "neg", "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                           "prompt": prompt, "evidence": {"review_outcome": "CHANGES_REQUESTED"},
+                                           "blocked_reason": "REVIEW_CHANGES_REQUESTED"} | over
+                    self.build()
+                    if expect_block:
+                        self.assertIn("did not approve", self.reason())
+                    else:
+                        self.assertIsNone(self.reason())
         del self.history["neg"]
         self.build()
         self.assertIsNone(self.reason())
@@ -5837,14 +5868,14 @@ class Mod004S0DocLane(S0Fixture):
         rv = self.review(self.DOC_OWNER, "pinned-approved", prompt=prompt)
         self.doc_receipt["subjects"]["doc_owner"]["review"] = rv
         self.write_doc_receipt()
-        self.assertIsNone(self.doc_reason())  # an ordinary approving task naming the subject is positive evidence
+        self.assertIn("does not name the exact subject", self.doc_reason())  # a context-only approval is never authority
         entry = {"task_id": rv["task_id"], "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                  "primary_path": self.RUN, "primary_sha256": "b" * 64, "subjects": ((self.DOC_OWNER, self.sha(self.DOC_OWNER)),)}
         with self.table((entry,)):
             self.assertIn("S0 doc_owner", self.doc_reason())
-            self.assertIn("cannot approve", self.doc_reason())
+            self.assertIn("does not name the exact subject", self.doc_reason())
 
-    def test_direct_negative_review_of_a_subject_blocks_even_under_a_pinned_id_or_decoy_shape(self):
+    def test_direct_negative_review_of_a_subject_blocks_even_under_a_pinned_id_or_a_non_exclusive_decoy_primary(self):
         other, other_sha = self.RUN, "7" * 64
         for name, rel in (("owner", self.OWNER), ("adr", self.ADR), ("doc_owner", self.DOC_OWNER)):
             sha, text = self.sha(rel), (self.repo / rel).read_text()
@@ -5852,6 +5883,7 @@ class Mod004S0DocLane(S0Fixture):
                 "direct": f"Review EXACT file {rel} SHA-256 {sha}\n", "independent": f"Independent judgment of {rel} SHA-256 {sha}\n",
                 "decoy-primary": f"Review EXACT file {other} SHA-256 {other_sha}\n" + self.quoting(rel),
                 "decoy-bytes": f"Review EXACT file {other} SHA-256 {other_sha}\nsha {sha}\n{text}",
+                "only-other": f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}\n" + self.quoting(rel),
             }
             for label, prompt in prompts.items():
                 for tid in ("neg", "hist-pinned"):
@@ -5859,24 +5891,251 @@ class Mod004S0DocLane(S0Fixture):
                            "primary_path": other, "primary_sha256": other_sha, "subjects": ((rel, sha),)}
                     self.negative_prior(tid, prompt)
                     with self.subTest(f"{name} {label} {tid}"):
-                        self.assertIn(f"S0 {name}", self.doc_reason())
-                        if label != "decoy-primary" and label != "decoy-bytes":
-                            with self.table((pin,)):  # a pin whose prompt lacks its primary is not an exception
-                                self.assertIn("did not approve", self.doc_reason())
+                        if label == "only-other":  # 'Review ONLY' another file is exclusive: the subject is only quoted context
+                            self.assertIsNone(self.doc_reason())
+                        else:
+                            self.assertIn(f"S0 {name}", self.doc_reason())
+                            with self.table((pin,)):
+                                if label.startswith("decoy"):
+                                    self.assertIsNone(self.doc_reason())  # an explicit audited pin can excuse this quote
+                                else:
+                                    self.assertIn("did not approve", self.doc_reason())  # pin primary is absent
                     del self.history[tid]
         self.assertIsNone(self.doc_reason())
 
-    def test_decoy_primary_approved_review_gains_no_exception_and_its_negative_twin_blocks(self):
+    def test_decoy_primary_approved_review_cannot_authorize_and_its_negative_twin_still_blocks(self):
         decoy = f"Review EXACT file {self.RUN} SHA-256 {'7' * 64}\n" + self.quoting(self.OWNER)
         rv = self.review(self.OWNER, "decoy-approved", prompt=decoy)
         self.doc_receipt["subjects"]["owner"]["review"] = rv
         self.write_doc_receipt()
-        self.assertIsNone(self.doc_reason())  # positive binding is unchanged: the approval names the exact subject
-        self.negative_prior("decoy-neg", decoy)  # the same-shape CHANGES_REQUESTED twin stays binding: no shopping
-        self.assertIn("S0 owner", self.doc_reason())
+        self.assertIn("does not name the exact subject", self.doc_reason())  # a quote never approves
+        self.negative_prior("decoy-neg", decoy)  # 'Review EXACT file' other is not exclusive: the twin stays ambiguous = blocking
+        self.doc_receipt["subjects"]["owner"]["review"] = self.review(self.OWNER, "exact-approved")
+        self.write_doc_receipt()
         self.assertIn("did not approve", self.doc_reason())
+        self.negative_prior("decoy-neg", decoy.replace("Review EXACT file", "Review ONLY the exact proposed new record"))
+        self.assertIsNone(self.doc_reason())  # an exclusive declaration makes the quote context
         del self.history["decoy-neg"]
         self.assertIsNone(self.doc_reason())
+
+    def test_unverified_or_malformed_review_of_never_binds_via_the_prompt(self):
+        owner_sha, other, other_sha = self.sha(self.OWNER), self.RUN, "7" * 64
+        prompt = f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}\n"
+        for name, binding in {"empty-binding": {}, "nonobject-binding": "bad",
+                              "unverified-other": {"task_id": "w", "changed": [{"path": other, "sha256": other_sha}]},
+                              "no-changed": {"task_id": "w", "changed": None},
+                              "malformed-entry": {"task_id": "w", "changed": [{"path": other}]}}.items():
+            y = {"id": "x", "prompt": prompt, "review_of": binding, "evidence": {}}
+            with self.subTest(name):
+                self.assertFalse(R._s0_binds_subject(y, self.OWNER, owner_sha))
+                self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "ambiguous")  # never context: negatives block
+                self.assertEqual(R._s0_subject_role(y, "x/y.md", "9" * 64), "ambiguous")
+        self.assertTrue(R._s0_binds_subject({"id": "x", "prompt": prompt}, self.OWNER, owner_sha))
+        ok = {"id": "x", "prompt": prompt, "evidence": {"review_bound_verified": True},
+              "review_of": {"task_id": "w", "changed": [{"path": other, "sha256": other_sha}]}}
+        self.assertFalse(R._s0_binds_subject(ok, self.OWNER, owner_sha))
+        self.assertEqual(R._s0_subject_role(ok, self.OWNER, owner_sha), "ambiguous")  # verified binding vs header declaration conflict
+
+    def test_context_only_approvals_never_authorize_and_ambiguous_declarations_fail_closed(self):
+        owner_sha, other, other_sha = self.sha(self.OWNER), self.RUN, "7" * 64
+        quote = self.quoting(self.OWNER)
+        shapes = {
+            "mention-only": f"Please review {self.OWNER} SHA-256 {owner_sha}\n",
+            "quote-under-other-primary": f"Review EXACT file {other} SHA-256 {other_sha}\n" + quote,
+            "quote-under-other-subject-list": f"Exact subjects:\n- {other} SHA-256 {other_sha}\n\n" + quote,
+            "review-only-other": f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}\n" + quote,
+            "review-only-conflicts": (f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}\n"
+                                      f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}\n"),
+            "malformed-subject-list": f"Exact subjects:\n- {self.OWNER} SHA-256 {owner_sha[:-1]}\n",
+            "malformed-file-entry-hides-subject": (f"Exact subjects:\n- {other} SHA-256 {other_sha}\n"
+                                                   f"- {self.OWNER} sha {owner_sha}\n"),
+        }
+        for name, prompt in shapes.items():
+            rv = self.review(self.OWNER, f"ctx-{name}", prompt=prompt)
+            self.doc_receipt["subjects"]["owner"]["review"] = rv
+            self.write_doc_receipt()
+            with self.subTest(name):
+                self.assertIn("does not name the exact subject", self.doc_reason())
+        # multiple explicit file subjects: the one that names the exact (path, sha) binds, a near-miss hash does not
+        both = f"Exact subjects:\n- {other} SHA-256 {other_sha}\n- {self.OWNER} SHA-256 {owner_sha}\n"
+        near = f"Exact subjects:\n- {other} SHA-256 {other_sha}\n- {self.OWNER} SHA-256 {owner_sha[:-1]}0\n"
+        for name, prompt, ok in (("exact-among-several", both, True), ("near-miss-hash", near, False)):
+            self.doc_receipt["subjects"]["owner"]["review"] = self.review(self.OWNER, f"multi-{name}", prompt=prompt)
+            self.write_doc_receipt()
+            with self.subTest(name):
+                if ok:
+                    self.assertIsNone(self.doc_reason())
+                else:
+                    self.assertIn("does not name the exact subject", self.doc_reason())
+
+    # The immutable recorded prompt of historical task owner-s0-evidence-pin-recovery-opus-20261024 (CHANGES_REQUESTED),
+    # copied verbatim; no live state is read at test time.
+    HIST_OWNER_ID = "owner-s0-evidence-pin-recovery-opus-20261024"
+    HIST_OWNER_PROMPT_SHA = "635c2e658f10e0dc88a42209c384e4f4046aab6907ee29124c92a3bf5067cc29"
+    HIST_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-24-s0-evidence-pin-recovery.md"
+    HIST_OWNER_SHA = "78a375dfddf45ce2eff6e220f21fbe94f62114751599c97f8135ba7731bf7012"
+    HIST_RUNNER_SHA = "87b9405a57b1d6e108d4f4993d4a6ace081c69f407a75116ce1d0c0dee787fbc"
+    HIST_OWNER_PROMPT = """Independent Claude Opus owner-authority review, READ ONLY. The verified owner sent an explicit direct OpenClaw WebChat authorization on 2026-10-24 for one re-arm, the exact two-file S0 evidence-pin correction, receipt owner-review-hash repair, fresh Opus review, non-force publication/exact-SHA CI, and one additional conditional safe reload. Review ONLY the exact proposed new record `knowledge/00-Decisions/OWNER-2026-10-24-s0-evidence-pin-recovery.md` SHA-256 `78a375dfddf45ce2eff6e220f21fbe94f62114751599c97f8135ba7731bf7012`, along with prior record `knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md` and relevant ADR D12.5. No shell/hash tool is exposed; operator computed SHA immediately before enqueue. If inaccessible, BLOCKED; do not demand shell hashing.
+
+Decide whether this new record accurately NARROWS the fresh owner authorization and leaves historical one-reload use, CAP block, S0 product one-write gate, exact-code review, CI, single writer, and no gate waiver intact. The record must not imply authority for another generic runner change or S0 product write. The only code candidate, separately Opus-APPROVED in runner task product-loop-context-pin-opus-security-r3-20261024, is `tools/mission_runner/runner.py` SHA-256 `87b9405a57b1d6e108d4f4993d4a6ace081c69f407a75116ce1d0c0dee787fbc` and `tools/mission_runner/tests/test_runner.py` SHA-256 `4b075456d7e5ebd15475db3d8a747680805a287541d548653b4bdb39ce7495b0`; do not review it again here. The owner re-arm has already completed, no publication/reload of this candidate has occurred. Do not write, commit, push or enqueue. End exactly OUTCOME: APPROVED, OUTCOME: CHANGES_REQUESTED or OUTCOME: BLOCKED.
+"""
+
+    def test_rejected_runner_exact_sha_blocks_but_the_actual_historical_owner_review_quotes_it_as_context(self):
+        prompt = self.HIST_OWNER_PROMPT
+        self.assertEqual(len(prompt), 1691)
+        self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(), self.HIST_OWNER_PROMPT_SHA)
+        run_sha = self.sha(self.RUN)
+        self.assertIsNone(self.doc_reason())
+        # a CHANGES_REQUESTED review whose declared primary IS the runner's exact bytes blocks it, even under the pinned id
+        for tid in ("runner-rejected", self.HIST_OWNER_ID):
+            self.negative_prior(tid, f"Review EXACT file {self.RUN} SHA-256 {run_sha}\n")
+            with self.subTest(tid):
+                self.assertIn("S0 runner_gate", self.doc_reason())
+                self.assertIn("did not approve", self.doc_reason())
+            del self.history[tid]
+        # the real historical record: primary is the recovery owner record (Review ONLY), the runner is context
+        h = {"id": self.HIST_OWNER_ID, "module": "MOD-004", "role": "architecture", "status": "BLOCKED", "prompt": prompt,
+             "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+             "evidence": {"review_outcome": "CHANGES_REQUESTED", "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        before = json.dumps(h, sort_keys=True)
+        runner = (self.RUN, self.HIST_RUNNER_SHA)
+        self.assertEqual(R._s0_subject_role(h, self.HIST_OWNER_PATH, self.HIST_OWNER_SHA), "subject")
+        self.assertTrue(R._s0_binds_subject(h, self.HIST_OWNER_PATH, self.HIST_OWNER_SHA))
+        self.assertEqual(R._s0_subject_role(h, *runner), "context")
+        self.assertFalse(R._s0_binds_subject(h, *runner))
+        self.assertEqual(R._s0_prompt_declarations(prompt), (frozenset({(self.HIST_OWNER_PATH, self.HIST_OWNER_SHA)}), True))
+        # integrated: the same record (runner sha swapped to the fixture's) does not poison the runner's approval
+        self.history[self.HIST_OWNER_ID] = h | {"prompt": prompt.replace(self.HIST_RUNNER_SHA, run_sha)}
+        self.assertIsNone(self.doc_reason())
+        self.assertEqual(json.dumps(h, sort_keys=True), before)
+        stored = self.history[self.HIST_OWNER_ID]
+        self.assertEqual((stored["status"], stored["evidence"]["review_outcome"]), ("BLOCKED", "CHANGES_REQUESTED"))
+        # fail-closed twin: the same quote under a non-exclusive 'Review EXACT file' declaration blocks the runner
+        twin = prompt.replace("Review ONLY the exact proposed new record", "Review EXACT file")
+        self.history[self.HIST_OWNER_ID] = stored | {"prompt": twin.replace(self.HIST_RUNNER_SHA, run_sha)}
+        self.assertIn("did not approve", self.doc_reason())
+
+    def test_header_only_declarations_quoted_historical_owner_review_cannot_launder_a_rejection(self):
+        run_sha = self.sha(self.RUN)
+        quoted = "```diff\n+    HIST = \"\"\"Intro. Review ONLY the exact proposed new record " \
+                 f"`{self.HIST_OWNER_PATH}` SHA-256 `{self.HIST_OWNER_SHA}`, along with x.\"\"\"\n```\n"
+        pasted = f"Please review the runner {self.RUN}. Its SHA-256 is {run_sha}.\n\nDIFF follows:\n" + quoted
+        self.negative_prior("runner-rejected-pasted", pasted)
+        self.assertIn("did not approve", self.doc_reason())  # base behaviour kept: the pasted quote is never a declaration
+        y = self.history["runner-rejected-pasted"]
+        self.assertIsNone(R._s0_prompt_declarations(pasted))
+        self.assertEqual(R._s0_subject_role(y, self.RUN, run_sha), "ambiguous")
+        self.assertEqual(R._s0_prompt_declarations(self.HIST_OWNER_PROMPT),
+                         (frozenset({(self.HIST_OWNER_PATH, self.HIST_OWNER_SHA)}), True))  # real historical task unchanged
+        del self.history["runner-rejected-pasted"]
+        self.assertIsNone(self.doc_reason())
+
+    def test_header_only_declarations_quoted_subjects_in_the_body_cannot_approve(self):
+        owner_sha, other, other_sha = self.sha(self.OWNER), self.RUN, "7" * 64
+        pasted = {
+            "exact-subjects-list": f"Exact subjects:\n- {self.OWNER} SHA-256 {owner_sha}\n",
+            "review-exact-line": f"Review EXACT file {self.OWNER} SHA-256 {owner_sha}\n",
+            "review-only-midline": f"Prior. Review ONLY the exact proposed new record {self.OWNER} SHA-256 {owner_sha}\n",
+        }
+        for name, body in pasted.items():
+            prompt = (f"Review EXACT file {other} SHA-256 {other_sha}\n\nPREVIOUS REVIEW PROMPT:\n" + body)
+            with self.subTest(name):
+                self.assertFalse(R._s0_binds_subject({"id": "x", "prompt": prompt}, self.OWNER, owner_sha))
+                self.assertFalse(R._s0_binds_subject({"id": "x", "prompt": prompt}, other, other_sha))  # contaminated: no approval
+                rv = self.review(self.OWNER, f"quoted-{name}", prompt=prompt)
+                self.doc_receipt["subjects"]["owner"]["review"] = rv
+                self.write_doc_receipt()
+                self.assertIn("does not name the exact subject", self.doc_reason())
+        # header lists (second paragraph) bind; the same list after a content marker does not
+        listing = f"Intro review.\n\nExact revised subjects:\n- {other} SHA-256 {other_sha}\n- {self.OWNER} SHA-256 {owner_sha}\n"
+        self.assertTrue(R._s0_binds_subject({"id": "x", "prompt": listing + "\nDetails.\n"}, self.OWNER, owner_sha))
+        self.assertFalse(R._s0_binds_subject({"id": "x", "prompt": "Intro.\n\nEXACT RECORD:\n" + listing}, self.OWNER, owner_sha))
+
+    def test_header_only_declarations_unmarked_paste_labels_hunks_and_plus_lines_are_content(self):
+        owner_sha, other, other_sha = self.sha(self.OWNER), self.RUN, "7" * 64
+        # no blank line anywhere before the quote: without a marker the quote sits inside the two-paragraph header window
+        head = f"Review ONLY the exact proposed new record {other} SHA-256 {other_sha}\nReview the change below.\n"
+        quoted = f"Review ONLY the exact proposed new record {self.OWNER} SHA-256 {owner_sha}\n"
+        header = (frozenset({(other, other_sha)}), True)
+        # control (no marker): the quote is parsed as a second 'Review ONLY' declaration and conflicts (None), proving the
+        # markers below, not paragraph position, are what keep it out of the header. One control serves every marker: each
+        # marker only truncates the header at its own line, and the '+' marker line is itself the quote (control = bare quote).
+        control = {"id": "x", "prompt": head + quoted}
+        self.assertEqual(len(re.split(r"\n[ \t]*\n", control["prompt"].rstrip("\n"))), 1)
+        self.assertIsNone(R._s0_prompt_declarations(control["prompt"], header_only=True))
+        markers = ["diff:", "Diff:", "EXACT CURRENT DIFF:", "Exact Current Diff:", "record:", "Record:", "PROMPT:", "prompt:",
+                   "@@ -1,2 +1,3 @@", "+" + quoted.rstrip("\n"), "+++ b/x"]
+        for n, marker in enumerate(markers):
+            prompt = f"{head}{marker}\n" + ("" if marker.startswith("+Review") else quoted)
+            y = {"id": "x", "prompt": prompt}
+            with self.subTest(marker):
+                self.assertNotIn("\n\n", prompt)  # marker and quote are within the header window
+                # the marker cuts the header before the quote: header_only sees only the real declaration
+                self.assertEqual(R._s0_prompt_declarations(prompt, header_only=True), header)
+                # the quoted declaration is tail content: full parse is ambiguous, role ambiguous, never a positive binding
+                self.assertIsNone(R._s0_prompt_declarations(prompt))
+                self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "ambiguous")
+                self.assertFalse(R._s0_binds_subject(y, self.OWNER, owner_sha))
+                # a negative review of that prompt is not excused as context: it still blocks the subject
+                self.negative_prior(f"quoted-{n}", prompt)
+                self.assertIn("did not approve", self.doc_reason())
+                del self.history[f"quoted-{n}"]
+        self.assertIsNone(self.doc_reason())
+        # an ordinary opening 'Review ...' sentence is not a marker: the exclusive header still makes the quote context
+        y = {"id": "x", "prompt": head}
+        self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "context")
+
+    def test_header_only_declarations_verified_binding_must_agree_with_the_prompt_header(self):
+        owner_sha, other, other_sha = self.sha(self.OWNER), self.RUN, "7" * 64
+        ver = {"review_bound_verified": True}
+        def task(binding_pair, declared):
+            return {"id": "x", "evidence": ver, "status": "BLOCKED",
+                    "prompt": f"Review ONLY the exact proposed new record {declared[0]} SHA-256 {declared[1]}\n",
+                    "review_of": {"task_id": "w", "changed": [{"path": binding_pair[0], "sha256": binding_pair[1]}]}}
+        # binding excludes the subject while the header declares it: ambiguous (negatives block), never positive
+        y = task((other, other_sha), (self.OWNER, owner_sha))
+        self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "ambiguous")
+        self.assertFalse(R._s0_binds_subject(y, self.OWNER, owner_sha))
+        # converse: binding includes the subject while an exclusive header declares something else
+        y = task((self.OWNER, owner_sha), (other, other_sha))
+        self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "subject")
+        self.assertFalse(R._s0_binds_subject(y, self.OWNER, owner_sha))
+        self.assertFalse(R._s0_binds_subject(y, other, other_sha))
+        # agreement and an undeclared header keep the verified binding authoritative
+        y = task((self.OWNER, owner_sha), (self.OWNER, owner_sha))
+        self.assertTrue(R._s0_binds_subject(y, self.OWNER, owner_sha))
+        y = task((other, other_sha), (other, other_sha))
+        self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "context")
+        y["prompt"] = "Review the runner."
+        self.assertEqual(R._s0_subject_role(y, self.OWNER, owner_sha), "context")
+        self.assertTrue(R._s0_binds_subject(y, other, other_sha))
+
+    def test_pinned_legacy_approved_reviews_bind_only_with_immutable_prompt_hash_and_status(self):
+        entry = R.S0_LEGACY_APPROVED_REVIEWS[0]
+        self.assertEqual(len(R.S0_LEGACY_APPROVED_REVIEWS), 3)
+        self.assertEqual({e["task_id"] for e in R.S0_LEGACY_APPROVED_REVIEWS}, {
+            "mod004-s0-owner-record-final-opus-review-20261019", "mod004-s0-adr-amendment-opus-remediation-review-20261023",
+            "owner-product-remediation-loop-opus-r3-20261024"})
+        pair = (entry["path"], entry["sha256"])
+        prompt = "legacy prompt without an explicit primary declaration"
+        good = {"id": entry["task_id"], "prompt": prompt, "status": "DONE", "route": {"verdict": "VERIFIED"},
+                "evidence": {"review_outcome": "APPROVED"}}
+        pinned = dict(entry, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest())
+        with mock.patch.object(R, "S0_LEGACY_APPROVED_REVIEWS", (pinned,)):
+            self.assertTrue(R._s0_binds_subject(good, *pair))
+            variants = {
+                "other prompt": good | {"prompt": prompt + " edited"}, "other id": good | {"id": "other-id"},
+                "not done": good | {"status": "BLOCKED"}, "unverified": good | {"route": {"verdict": "UNVERIFIED"}},
+                "not approved": good | {"evidence": {"review_outcome": "CHANGES_REQUESTED"}},
+                "review_of present": good | {"review_of": {"changed": []}},
+                "empty review_of": good | {"review_of": {}},
+            }
+            for name, y in variants.items():
+                with self.subTest(name):
+                    self.assertFalse(R._s0_binds_subject(y, *pair))
+            self.assertFalse(R._s0_binds_subject(good, entry["path"], "0" * 64))  # only the one exact pair
+            self.assertFalse(R._s0_binds_subject(good, "knowledge/other.md", entry["sha256"]))
+        self.assertFalse(R._s0_binds_subject(good, *pair))  # the real table pins other prompt hashes: no match
 
     def test_doc_owner_path_is_the_exact_record_only(self):
         entries = {"s0 owner record": self.OWNER, "adr": self.ADR, "runner": self.RUN,
