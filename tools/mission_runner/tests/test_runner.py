@@ -11656,6 +11656,400 @@ class Mod004NonCapDesign(S0Fixture):
             code_ = R.main(["--home", str(self.home), "--repo", str(self.repo), "d16-successor-probe"])
         self.assertEqual((code_, json.loads(out.getvalue())["d16_successor_route"]), (1, "closed"))
 
+    # --- MOD-004 D16 architecture root: a second, separately pinned, single-use design root beside BOTH exhausted chains
+    ARCH = R.D16_ARCH_ID
+    ARCH_REAL_PINS = {k: getattr(R, k) for k in ("D16_ARCH_OWNER_PATH", "D16_ARCH_OWNER_SHA", "D16_ARCH_OWNER_COMMIT",
+                                                 "D16_ARCH_OWNER_CI_RUN", "D16_ARCH_OWNER_REVIEW", "D16_ARCH_ID", "D16_SUCC_TERMINAL",
+                                                 "D16_SUCC_TERMINAL_REVIEW")}
+    ARCH_WORDS = ("alpha", "bravo", "charlie")
+
+    def arch_arrange(self, receipt=True):
+        """Original exhausted chain (adr-root..adr-fix-3) + exhausted successor chain (SUCC..succ-fix-3), both rejected four
+        times, a restored published ADR, and a committed, CI-green, APPROVED architecture owner record whose pins replace the real ones."""
+        self.d16_arrange()
+        self.d16_record(text="successor finding root")
+        parent = self.SUCC
+        for n, word in enumerate(self.ARCH_WORDS, 1):
+            self.d16_correction(parent, n, f"successor finding {word}")
+            parent = f"succ-fix-{n}"
+        self.write(R.D16_ARCH_OWNER_PATH, "d16 architecture owner record\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "d16 architecture owner record")
+        self.arch_owner = {"path": R.D16_ARCH_OWNER_PATH, "sha256": self.sha(R.D16_ARCH_OWNER_PATH), "commit": self.head(),
+                           "ci": self.ci(self.head()), "review": self.review(R.D16_ARCH_OWNER_PATH, "d16-arch-owner")}
+        pins = {"D16_ARCH_OWNER_SHA": self.arch_owner["sha256"], "D16_ARCH_OWNER_COMMIT": self.arch_owner["commit"],
+                "D16_ARCH_OWNER_CI_RUN": self.arch_owner["ci"]["run_id"], "D16_ARCH_OWNER_REVIEW": self.arch_owner["review"]["task_id"],
+                "D16_SUCC_TERMINAL": parent, "D16_SUCC_TERMINAL_REVIEW": f"rev-{parent}"}
+        for name, value in pins.items():
+            patcher = mock.patch.object(R, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        if receipt:
+            self.arch_receipt()
+        self.save_history()
+
+    def arch_receipt(self, mutate=None):
+        r = {"schema": 1, "module": "MOD-004", "kind": "mod004-d16-architecture-authority", "operator": "op",
+             "recorded_at": R.now_iso(), "subjects": {"d16_arch_owner": json.loads(json.dumps(self.arch_owner))}}
+        if mutate:
+            mutate(r)
+        (self.home / "acceptances" / f"{R.D16_ARCH_RECEIPT}.json").write_text(json.dumps(r))
+
+    def arch_gate(self, tasks=None, post=None, **over):
+        return self.d16_gate(tasks, post, **({"id": self.ARCH} | over))
+
+    def arch_unverified(self, reason, label=""):
+        self.assertTrue(reason and reason.startswith("D16_ARCH_UNVERIFIED"), (label, reason))
+
+    def arch_fails_closed(self, reason, label):
+        self.assertTrue(reason and (reason.startswith("D16_ARCH_UNVERIFIED") or reason.startswith("GATE_UNVERIFIABLE")
+                                    or reason.startswith("REMEDIATION_")), (label, reason))
+
+    def arch_record(self, status="DONE", rejected=True, text="arch finding root", attempts=1):
+        """The recorded architecture root as the runner would hold it, stamped from ancestry, with its candidate bytes current."""
+        self.write(self.ADR_DOC, f"arch draft {text}\n")
+        t = self.d16_task(id=self.ARCH)
+        R.stamp_product_remediation(self.history, t)
+        t.update(status=status, attempts=attempts, created_at="2026-10-27T00:00:00+00:00", finished_at="2026-10-27T00:00:00+00:00",
+                 evidence={"changed": [{"path": self.ADR_DOC, "sha256": self.sha(self.ADR_DOC)}]})
+        self.history[self.ARCH] = t
+        if rejected:
+            self.d16_reject(self.ARCH, text)
+        return t
+
+    def arch_correction(self, parent, n, text):
+        self.write(self.ADR_DOC, f"arch draft {text}\n")
+        t = self.d16_task(id=f"arch-fix-{n}", remediation_of=parent)
+        R.stamp_product_remediation(self.history, t)
+        t.update(status="DONE", attempts=1, created_at=f"2026-10-27T0{n}:00:00+00:00", finished_at=f"2026-10-27T0{n}:00:00+00:00",
+                 evidence={"changed": [{"path": self.ADR_DOC, "sha256": self.sha(self.ADR_DOC)}]})
+        self.history[t["id"]] = t
+        self.d16_reject(t["id"], text)
+        return t
+
+    def arch_fourth(self, tip, **over):
+        """Gate a fourth correction of an exhausted chain's terminal with its rejected bytes current, so only the limit can refuse it."""
+        spots = [self.history[tip]["evidence"]["changed"][0], self.history[f"rev-{tip}"]["review_of"]["changed"][0]]
+        saved = [c["sha256"] for c in spots]
+        for c in spots:
+            c["sha256"] = self.sha(self.ADR_DOC)
+        try:
+            return self.d16_gate(**({"id": "adr-fix-4", "remediation_of": tip} | over))
+        finally:
+            for c, v in zip(spots, saved):
+                c["sha256"] = v
+
+    def test_arch_pins_are_the_published_owner_record_and_exhausted_successor_chain(self):
+        self.assertEqual(self.ARCH_REAL_PINS, {
+            "D16_ARCH_OWNER_PATH": "knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-architecture-reassessment.md",
+            "D16_ARCH_OWNER_SHA": "c2b5c7016b65d6f1e1073dfb5e940f505193dad40c785aef5e5e9bd590933a42",
+            "D16_ARCH_OWNER_COMMIT": "7c07abab5e9e361e711d6d48e47fc91f7bf5c9a3", "D16_ARCH_OWNER_CI_RUN": "40196359396",
+            "D16_ARCH_OWNER_REVIEW": "mod004-d16-architecture-owner-opus-r3-20261025",
+            "D16_ARCH_ID": "mod004-d16-assurance-architecture-sonnet-20261025",
+            "D16_SUCC_TERMINAL": "mod004-d16-db-command-successor-remed3-sonnet-20261025",
+            "D16_SUCC_TERMINAL_REVIEW": "mod004-d16-db-command-successor-remed3-opus-review-20261025"})
+        self.assertNotEqual(R.D16_ARCH_ID, R.D16_SUCCESSOR_ID)
+        published = Path(__file__).resolve().parents[3] / self.ARCH_REAL_PINS["D16_ARCH_OWNER_PATH"]
+        self.assertEqual(hashlib.sha256(published.read_bytes()).hexdigest(), self.ARCH_REAL_PINS["D16_ARCH_OWNER_SHA"])
+        self.assertEqual(R.MAX_PRODUCT_CORRECTIONS, 3)
+
+    def test_arch_root_is_admitted_once_read_only_and_both_old_chains_stay_closed(self):
+        self.arch_arrange()
+        before, snap = json.dumps(self.history, sort_keys=True), self.d16_snapshot()
+        self.assertIsNone(self.arch_gate())
+        self.assertEqual((json.dumps(self.history, sort_keys=True), self.d16_snapshot()), (before, snap))
+        # the old successor entitlement stays consumed; the new id is not a correction of anything
+        self.assertIn("already consumed", self.d16_gate())
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", self.arch_gate(id=self.ARCH + "-2"))
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", self.d16_gate(id="design-x"))
+        # no fourth correction of either exhausted root, whether or not the new root exists; once the new root is queued the
+        # refusal is its pending state (REMEDIATION_ROOT_PENDING), so only the "before" phase pins the exact limit reason
+        for phase in ("before", "after"):
+            with self.subTest(phase):
+                old4, succ4 = self.arch_fourth(R.D16_OLD_TERMINAL), self.arch_fourth("succ-fix-3", id="succ-fix-4")
+                if phase == "before":
+                    self.assertIn("REMEDIATION_LIMIT", old4)
+                    self.assertIn("REMEDIATION_LIMIT", succ4)
+                else:
+                    self.assertTrue(old4)
+                    self.assertTrue(succ4)
+                self.assertTrue(self.d16_gate(id="adr-fix-4", remediation_of=R.D16_OLD_ROOT))
+                self.assertTrue(self.d16_gate(id="succ-fix-4", remediation_of=self.SUCC))
+                self.arch_record("QUEUED", rejected=False, attempts=0)
+        self.assertEqual(R.review_verdict(self.history, R.D16_OLD_TERMINAL), "CHANGES_REQUESTED")
+        self.assertEqual(R.review_verdict(self.history, "succ-fix-3"), "CHANGES_REQUESTED")
+
+    def test_arch_enqueue_admits_the_one_root_and_it_is_consumed_in_every_status(self):
+        self.arch_arrange()
+        raw = {"id": self.ARCH, "module": "MOD-004", "role": "implement", "prompt": "design", "verify_cmd": [],
+               "allowed_paths": [self.ADR_DOC], "expected_changes": [self.ADR_DOC]}
+        code_, err = self.enq_cli(id=self.ARCH, remediation_of=None)
+        self.assertEqual((code_, err), (0, ""))
+        self.assertEqual([json.loads(q.read_text())["id"] for q in self.queued()], [self.ARCH])
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                t = self.arch_record(status, rejected=False, attempts=1)
+                if status == "QUEUED":
+                    self.assertIsNone(R.gate_reason(self.cfg, t, self.history))  # the recorded root itself is still admitted
+                self.assertIn("already consumed", self.arch_gate())  # a second candidate with the fixed id
+                self.assertIn("already consumed", R.gate_reason(self.cfg, R.validate_task(raw, self.cfg), self.history))
+                self.assertTrue(self.arch_gate(id=self.ARCH + "-2"))
+                self.assertTrue(self.d16_gate(id="design-x"))
+                self.history.pop(self.ARCH)
+        # a duplicate stored under another key consumes it too
+        self.history["elsewhere"] = {"id": self.ARCH, "module": "MOD-004", "role": "implement", "status": "FAILED"}
+        self.assertIn("already consumed", self.arch_gate())
+
+    def test_arch_wrong_identity_scope_and_lane_are_refused(self):
+        self.arch_arrange()
+        cap, s0 = list(R.ACCOUNTING_RECOVERY_PATHS), list(R.S0_PATHS)
+        other_md, code = "knowledge/03-Modules/MOD-004/MOD-004.md", "backend/app/mod004/service.py"
+        cases = {
+            "other design file": {"allowed_paths": [other_md], "expected_changes": [other_md]},
+            "adr plus design": {"allowed_paths": [self.ADR_DOC, other_md]},
+            "directory scope": {"allowed_paths": ["knowledge/00-Decisions/"]},
+            "no expected": {"expected_changes": []}, "cap": {"allowed_paths": cap, "expected_changes": cap},
+            "s0 product": {"allowed_paths": s0, "expected_changes": s0},
+            "product code": {"allowed_paths": [code], "expected_changes": [code]},
+            "adr plus code": {"allowed_paths": [self.ADR_DOC, code], "expected_changes": [self.ADR_DOC]},
+            "test role": {"role": "test"}, "review role": {"role": "code-review", "allowed_paths": [], "expected_changes": []},
+            "gatekeeper": {"role": "gatekeeper", "allowed_paths": [], "expected_changes": []},
+            "other module": {"module": "MOD-005"}, "mod000": {"module": "MOD-000"},
+            "plan phase": {"plan_phase": "P1"}, "s0 phase": {"plan_phase": R.S0_MARKER}, "cap phase": {"plan_phase": "CAP-1"},
+            "remediation_of old root": {"remediation_of": R.D16_OLD_ROOT},
+            "remediation_of old tip": {"remediation_of": R.D16_OLD_TERMINAL},
+            "remediation_of successor root": {"remediation_of": self.SUCC},
+            "remediation_of successor tip": {"remediation_of": "succ-fix-3"},
+            "accounting recovery": {"accounting_recovery_of": R.ACCOUNTING_RECOVERY_REVIEW},
+            "doc base": {"plan_phase": R.S0_QA_MARKER, "doc_base": {R.S0_QA_PACKET: "0" * 64}},
+            "other id": {"id": "mod004-d16-assurance-architecture-sonnet-20261026"},
+        }
+        for label, over in cases.items():
+            with self.subTest(label):
+                try:
+                    reason = self.arch_gate(**over)
+                except ValueError:  # validate_task itself refuses the combination
+                    continue
+                self.assertTrue(reason, label)
+        for label, post in {"planner source": {"source": "handoff"}, "any source": {"source": "cli"},
+                            "review binding": {"review_of": {"task_id": self.ADR_ROOT, "changed": []}},
+                            "retry": {"review_retry_of": "x"}, "candidate": {"review_candidate": {"head": "x"}},
+                            "doc base": {"doc_base": {"a": "b"}}}.items():
+            with self.subTest(label):
+                self.assertTrue(self.arch_gate(post=post), label)
+        code_, err = self.enq_cli(id=self.ARCH, remediation_of=R.D16_OLD_TERMINAL)
+        self.assertEqual(code_, 2)
+        self.assertEqual(self.queued(), [])
+        # the verifier of the unsandboxed owner CLI must stay empty for the architecture root and its corrections
+        for cmd in (self.d16_verify_attacks()[0]["cap"], self.d16_verify_attacks()[0]["unittest"]):
+            self.d16_refused(self.arch_gate(verify_cmd=cmd))
+            code_, err = self.enq_cli(id=self.ARCH, remediation_of=None, verify=json.dumps(cmd))
+            self.assertEqual(code_, 2)
+            self.assertEqual(self.queued(), [])
+        self.assertTrue(R.d16_successor_lineage(self.history, {"id": "arch-fix-1", "remediation_of": self.ARCH}))
+
+    def test_arch_receipt_owner_ci_and_review_must_be_exact_or_it_fails_closed(self):
+        self.arch_arrange()
+        (self.home / "acceptances" / f"{R.D16_ARCH_RECEIPT}.json").unlink()
+        self.arch_unverified(self.arch_gate())
+        # the original D16 receipt is a different authority and never stands in for the architecture one
+        self.assertTrue((self.home / "acceptances" / f"{R.D16_RECEIPT}.json").exists())
+        owner = lambda r: r["subjects"]["d16_arch_owner"]
+        for label, mutate in {
+            "extra key": lambda r: r.update(extra=1), "wrong kind": lambda r: r.update(kind="mod004-d16-successor-authority"),
+            "wrong module": lambda r: r.update(module="MOD-005"), "extra subject": lambda r: r["subjects"].update(adr={}),
+            "wrong subject name": lambda r: r["subjects"].update(d16_owner=r["subjects"].pop("d16_arch_owner")),
+            "no operator": lambda r: r.update(operator=" "), "other path": lambda r: owner(r).update(path=R.D16_OWNER_PATH),
+            "other sha": lambda r: owner(r).update(sha256="0" * 64), "other commit": lambda r: owner(r).update(commit="0" * 40),
+            "other ci run": lambda r: owner(r)["ci"].update(run_id="999"),
+            "ci failed": lambda r: owner(r)["ci"].update(conclusion="failure"),
+            "ci pull request": lambda r: owner(r)["ci"].update(event="pull_request"),
+            "ci other head": lambda r: owner(r)["ci"].update(head_sha="0" * 40),
+            "review output": lambda r: owner(r)["review"].update(output_sha256="0" * 64),
+            "other review task": lambda r: owner(r)["review"].update(task_id="d16-owner"),
+            "no review": lambda r: owner(r).pop("review")}.items():
+            with self.subTest(label):
+                self.arch_receipt(mutate)
+                self.arch_unverified(self.arch_gate(), label)
+        self.arch_receipt()
+        self.assertIsNone(self.arch_gate())
+
+    def test_arch_owner_record_bytes_and_review_evidence_must_be_exact_and_unambiguous(self):
+        self.arch_arrange()
+        rid = self.arch_owner["review"]["task_id"]
+        saved = json.dumps(self.history)
+        def reset():
+            self.history.clear()
+            self.history.update(json.loads(saved))
+        self.write(R.D16_ARCH_OWNER_PATH, "edited architecture owner record\n")  # moved on from the committed, reviewed bytes
+        self.arch_unverified(self.arch_gate())
+        git(self.repo, "checkout", "--", R.D16_ARCH_OWNER_PATH)
+        self.assertIsNone(self.arch_gate())
+        for label, mutate in {
+            "review not approved": lambda h: h[rid]["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "review not done": lambda h: h[rid].update(status="BLOCKED"),
+            "review unverified route": lambda h: h[rid]["route"].update(verdict="UNVERIFIED"),
+            "review sonnet role": lambda h: h[rid].update(role="implement"),
+            "review planner proposed": lambda h: h[rid].update(source="handoff"),
+            "review missing": lambda h: h.pop(rid),
+            "review names other bytes": lambda h: h[rid].update(prompt="Review EXACT file x.md SHA-256 " + "1" * 64),
+            "second approval": lambda h: h.update({"rev-dup": json.loads(json.dumps(h[rid])) | {"id": "rev-dup"}}),
+            "rejecting review": lambda h: h.update({"rev-bad": json.loads(json.dumps(h[rid])) | {"id": "rev-bad", "status": "BLOCKED",
+                                                    "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True}}}),
+        }.items():
+            with self.subTest(label):
+                mutate(self.history)
+                self.assertTrue(self.arch_gate(), label)
+                reset()
+        self.assertIsNone(self.arch_gate())
+
+    def test_arch_historical_tamper_of_either_chain_fails_closed(self):
+        self.arch_arrange()
+        saved = json.dumps(self.history)
+        old_term, succ_term = R.D16_OLD_TERMINAL, "succ-fix-3"
+        def reset():
+            self.history.clear()
+            self.history.update(json.loads(saved))
+        def add_task(tid, **extra):
+            self.history[tid] = {"id": tid, "module": "MOD-004", "role": "implement", "status": "QUEUED", "review_gate": 1,
+                                 "created_at": "2026-10-28T09:00:00+00:00", "allowed_paths": [self.ADR_DOC]} | extra
+        cases = {
+            "old counter cycle": lambda h: h["adr-fix-2"].update(remediation_cycle=1),
+            "old root unstamped": lambda h: (h[self.ADR_ROOT].pop("remediation_root"), h[self.ADR_ROOT].pop("remediation_cycle")),
+            "old terminal review approved": lambda h: (h[f"rev-{old_term}"]["evidence"].update(review_outcome="APPROVED", violations=[]),
+                                                       h[f"rev-{old_term}"].update(status="DONE")),
+            "old review unbound hash": lambda h: h["rev-adr-fix-1"]["review_of"]["changed"][0].update(sha256="0" * 64),
+            "old terminal missing": lambda h: h.pop(old_term),
+            "old fifth correction": lambda h: add_task("adr-fix-4", remediation_of=old_term),
+            "succ counter cycle": lambda h: h["succ-fix-2"].update(remediation_cycle=1),
+            "succ counter root": lambda h: h["succ-fix-1"].update(remediation_root="elsewhere"),
+            "succ root unstamped": lambda h: (h[self.SUCC].pop("remediation_root"), h[self.SUCC].pop("remediation_cycle")),
+            "succ terminal review approved": lambda h: (h["rev-succ-fix-3"]["evidence"].update(review_outcome="APPROVED", violations=[]),
+                                                        h["rev-succ-fix-3"].update(status="DONE")),
+            "succ mid review approved": lambda h: (h["rev-succ-fix-1"]["evidence"].update(review_outcome="APPROVED", violations=[]),
+                                                   h["rev-succ-fix-1"].update(status="DONE")),
+            "succ review unverified": lambda h: h["rev-succ-fix-2"]["route"].update(verdict="UNVERIFIED"),
+            "succ review not verified-bound": lambda h: h["rev-succ-fix-3"]["evidence"].update(review_bound_verified=False),
+            "succ review unbound hash": lambda h: h["rev-succ-fix-1"]["review_of"]["changed"][0].update(sha256="0" * 64),
+            "succ changed hash malformed": lambda h: h[succ_term]["evidence"]["changed"][0].update(sha256="zz"),
+            "succ changed outside design set": lambda h: h["succ-fix-1"]["evidence"]["changed"][0].update(path="backend/app/x.py"),
+            "succ no changed evidence": lambda h: h["succ-fix-2"]["evidence"].update(changed=[]),
+            "succ write not done": lambda h: h["succ-fix-1"].update(status="BLOCKED"),
+            "succ finding erased": lambda h: h["rev-succ-fix-2"].update(result=""),
+            "succ same finding twice": lambda h: h["rev-succ-fix-2"].update(result=h["rev-succ-fix-1"]["result"]),
+            "second review on one succ write": lambda h: h.update({"rev-extra": json.loads(json.dumps(h["rev-succ-fix-1"])) | {"id": "rev-extra"}}),
+            "approved review alternate": lambda h: h.update({"rev-alt": json.loads(json.dumps(h["rev-succ-fix-1"])) | {
+                "id": "rev-alt", "status": "DONE", "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}}),
+            "succ branch off the root": lambda h: add_task("branch-1", remediation_of=self.SUCC),
+            "succ branch off a middle write": lambda h: add_task("branch-2", remediation_of="succ-fix-1"),
+            "succ fifth correction": lambda h: add_task("succ-fix-4", remediation_of=succ_term),
+            "succ foreign claimant": lambda h: add_task("claimant", remediation_root=self.SUCC, remediation_cycle=2),
+            "succ terminal missing": lambda h: h.pop(succ_term),
+            "succ root missing": lambda h: h.pop(self.SUCC),
+            "succ middle missing": lambda h: h.pop("succ-fix-2"),
+            "succ terminal review missing": lambda h: h.pop("rev-succ-fix-3"),
+            "succ terminal review other id": lambda h: h.update({"rev-other": h.pop("rev-succ-fix-3") | {"id": "rev-other"}}),
+            "succ other module": lambda h: h["succ-fix-2"].update(module="MOD-005"),
+            "cross-chain same finding": lambda h: h["rev-succ-fix-1"].update(result=h["rev-adr-fix-1"]["result"]),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                mutate(self.history)
+                self.arch_fails_closed(self.arch_gate(), label)
+                reset()
+        self.assertIsNone(self.arch_gate())
+        # only a fully exhausted successor chain counts: a three-write chain (root plus two corrections) is not enough
+        with mock.patch.object(R, "D16_SUCC_TERMINAL", "succ-fix-2"):
+            self.arch_unverified(self.arch_gate(), "successor chain not exhausted")
+
+    def test_arch_successor_terminal_review_must_be_the_pinned_review_id(self):
+        self.arch_arrange()
+        self.assertEqual(R.D16_SUCC_TERMINAL_REVIEW, "rev-succ-fix-3")  # the patched pin names the fixture's terminal review
+        self.assertIsNone(self.arch_gate())
+        # an otherwise identical, valid terminal rejection under a different review id does not count
+        with mock.patch.object(R, "D16_SUCC_TERMINAL_REVIEW", "rev-some-other-review"):
+            reason = self.arch_gate()
+        self.arch_unverified(reason, "wrong pinned successor terminal review")
+        self.assertIn("terminal rejection is not the pinned terminal review", reason)
+        # the same bound review recorded under another id is refused with the real pin in force
+        self.history["rev-other"] = self.history.pop("rev-succ-fix-3") | {"id": "rev-other"}
+        self.arch_fails_closed(self.arch_gate(), "terminal review renamed")
+        # the original chain keeps its own pin: the successor pin cannot stand in for it
+        self.history["rev-succ-fix-3"] = self.history.pop("rev-other") | {"id": "rev-succ-fix-3"}
+        self.assertIsNone(self.arch_gate())
+        with mock.patch.object(R, "D16_OLD_TERMINAL_REVIEW", R.D16_SUCC_TERMINAL_REVIEW):
+            self.arch_unverified(self.arch_gate(), "original terminal review pin")
+
+    def test_arch_stale_dirty_or_rejected_design_bytes_are_refused(self):
+        self.arch_arrange()
+        for tip in (R.D16_OLD_TERMINAL, "succ-fix-3", "adr-fix-1", self.SUCC):
+            with self.subTest(tip):
+                spot = self.history[tip]["evidence"]["changed"][0]
+                kept = spot["sha256"]
+                spot["sha256"] = self.sha(self.ADR_DOC)  # the working file equals one of the eight rejected candidates
+                self.arch_fails_closed(self.arch_gate(), tip)
+                spot["sha256"] = kept
+        self.assertIsNone(self.arch_gate())
+        self.write(self.ADR_DOC, "uncommitted edit\n")  # dirty before the first attempt
+        self.arch_unverified(self.arch_gate())
+        (self.repo / self.ADR_DOC).unlink()
+        self.arch_unverified(self.arch_gate())
+        git(self.repo, "checkout", "--", self.ADR_DOC)
+        self.assertIsNone(self.arch_gate())
+
+    def test_arch_recorded_retry_may_continue_dirty_but_never_on_a_rejected_candidate(self):
+        self.arch_arrange()
+        t = self.arch_record("QUEUED", rejected=False, attempts=1)  # the failed first attempt left partial work in the tree
+        self.assertIsNone(R.gate_reason(self.cfg, t, self.history))
+        self.write(self.ADR_DOC, "")
+        self.history["succ-fix-3"]["evidence"]["changed"][0]["sha256"] = self.sha(self.ADR_DOC)
+        self.arch_fails_closed(R.gate_reason(self.cfg, t, self.history), "retry on rejected bytes")
+
+    def test_arch_ordinary_prerequisites_noncap_authority_and_cap_block_are_not_bypassed(self):
+        self.arch_arrange()
+        cap = list(R.ACCOUNTING_RECOVERY_PATHS)
+        self.assertTrue(self.arch_gate(allowed_paths=cap, expected_changes=cap))
+        (self.home / "acceptances" / f"{R.NONCAP_RECEIPT}.json").unlink()
+        self.assertTrue(self.arch_gate().startswith("NONCAP_DESIGN_UNVERIFIED"))
+        self.write_receipt()
+        self.assertIsNone(self.arch_gate())
+        self.history[R.NONCAP_TERMINAL_REVIEW]["status"] = "DONE"  # tampering the CAP block does not widen anything
+        self.assertTrue(self.arch_gate())
+        self.history[R.NONCAP_TERMINAL_REVIEW]["status"] = "BLOCKED"
+        (self.home / "acceptances" / "MOD-001.json").unlink()
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.arch_gate())
+
+    def test_arch_planner_cannot_start_or_correct_the_architecture_root(self):
+        self.arch_arrange()
+        self.assertTrue(self.arch_gate(post={"source": "handoff"}))
+        self.arch_record()
+        self.assertTrue(self.arch_gate(id="arch-fix-1", remediation_of=self.ARCH, post={"source": "handoff"}))
+
+    def test_arch_root_corrections_use_their_own_three_cycles_and_open_nothing_else(self):
+        self.arch_arrange()
+        before_old = json.dumps({k: v for k, v in self.history.items() if k.startswith(("adr-", "rev-adr", "succ-", "rev-succ"))
+                                 or k == self.SUCC or k == f"rev-{self.SUCC}"}, sort_keys=True)
+        root = self.arch_record()
+        self.assertEqual((root["remediation_root"], root["remediation_cycle"]), (self.ARCH, 0))
+        self.assertIsNone(self.arch_gate(id="arch-fix-1", remediation_of=self.ARCH))  # the only thing admitted
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", self.d16_gate(id="design-z"))     # no other root, and the id is not reusable
+        self.assertIn("already consumed", self.arch_gate())
+        self.assertTrue(self.d16_gate(id="arch-fix-1", remediation_of=R.D16_OLD_TERMINAL))  # not an old-root round
+        self.assertTrue(self.d16_gate(id="arch-fix-1", remediation_of="succ-fix-3"))        # nor a successor-root round
+        parent = self.ARCH
+        for n, word in enumerate(self.ARCH_WORDS, 1):
+            fix = self.arch_correction(parent, n, f"arch finding {word}")
+            self.assertEqual((fix["remediation_root"], fix["remediation_cycle"]), (self.ARCH, n))
+            parent = fix["id"]
+            if n < 3:
+                self.assertIsNone(self.d16_gate(id=f"arch-fix-{n + 1}", remediation_of=parent), n)
+        self.assertIn("REMEDIATION_LIMIT", self.d16_gate(id="arch-fix-4", remediation_of=parent))  # its own fourth is refused
+        self.assertTrue(self.d16_gate(id="arch-fix-1b", remediation_of=self.ARCH))                # no branch off the root either
+        self.assertIn("REMEDIATION_LIMIT", self.arch_fourth(R.D16_OLD_TERMINAL))
+        self.assertIn("REMEDIATION_LIMIT", self.arch_fourth("succ-fix-3", id="succ-fix-4"))
+        self.assertEqual(before_old, json.dumps({k: v for k, v in self.history.items() if k.startswith(("adr-", "rev-adr", "succ-", "rev-succ"))
+                                                 or k == self.SUCC or k == f"rev-{self.SUCC}"}, sort_keys=True))
+
 
 class Mod004S0QaEvidence(S0Fixture):
     """The distinct one-shot S0 EVIDENCE-ONLY QA lane (OWNER-2026-10-24 full-scope recovery): one owner-CLI write of the
