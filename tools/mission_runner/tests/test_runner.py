@@ -11380,12 +11380,21 @@ class Mod004S0QaEvidence(S0Fixture):
         skeleton, rows, tail = R._s0_qa_split(real, "real packet")
         self.assertEqual(tuple(rows), R.S0_QA_IDS)
         self.assertEqual(len(rows), 14)
-        self.assertIsNone(tail)
+        self.assertTrue(tail and tail.strip())  # the published packet carries its appended evidence section
         self.assertIn("**PASS rule.**", skeleton)
-        self.assertIsNone(R._s0_qa_packet_problem(self.cfg, real, real))
-        marked = real.replace(b"| REQUIRED \xc2\xb7 NOT RUN |", b"| PASS |", 1)
+        self.assertTrue(all(
+            re.search(r"(?<![A-Za-z])PASS(?![A-Za-z])", cells[4]) and not re.search(r"NOT\s+(?:PASS|RUN)", cells[4])
+            for cells in rows.values()))
+        start = real.decode("utf-8").partition(R.S0_QA_HEADING)[0].rstrip("\n").encode("utf-8") + b"\n"  # the pre-evidence packet
+        first = rows["S0-01"]
+        line = "| " + " | ".join(first) + " |"
+        self.assertIn(line.encode("utf-8"), real)
+        thin = "| " + " | ".join([*first[:3], "no evidence recorded", "PASS"]) + " |"
+        marked = real.replace(line.encode("utf-8"), thin.encode("utf-8"), 1)
         self.assertNotEqual(marked, real)
-        self.assertIn("claims PASS without", R._s0_qa_packet_problem(self.cfg, real, marked))
+        with mock.patch.object(R, "_is_ancestor", return_value=True):  # structure only; shallow CI lacks the product commit
+            self.assertIsNone(R._s0_qa_packet_problem(self.cfg, start, real))
+            self.assertIn("claims PASS without", R._s0_qa_packet_problem(self.cfg, start, marked))
 
     def test_evidence_cells_status_and_appended_section_may_change(self):
         for label, text in {
