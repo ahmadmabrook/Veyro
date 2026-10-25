@@ -3536,17 +3536,19 @@ def stamp_product_remediation(tasks, t):
     t["remediation_root"], t["remediation_cycle"] = chain[0]["id"], len(chain)
 
 
-def product_lineage_reason(cfg, tasks, t):
+def product_lineage_reason(cfg, tasks, t, set_aside=frozenset()):
     """(decided, reason) from a durable per-root inspection for a new eligible product write t: every stamped root of t's module is rebuilt
     from state and its single leaf judged. A BLOCKED/FAILED leaf that is not a genuine product rejection blocks every
     new root and correction of the module; a genuinely rejected leaf (failed verification, or DONE with a bound
     CHANGES_REQUESTED) admits only a correction naming it; approved leaves do not block. An unfinished (QUEUED/RUNNING/unknown) leaf, or a DONE leaf without a bound review, blocks
     every other new root, sibling and correction; t itself is excluded, so its own legitimate correction can still run.
-    Only roots stamped by the new policy are inspected."""
+    Only roots stamped by the new policy are inspected. `set_aside` (ids, only ever the verified exhausted D16 chain, for the
+    one verified D16 successor root) are not inspected."""
     module = t["module"]
     nodes = {}
     for x in tasks.values():
-        if (isinstance(x, dict) and x.get("id") != t.get("id") and x.get("module") == module and x.get("role") in WRITE_ROLES
+        if (isinstance(x, dict) and x.get("id") != t.get("id") and x.get("id") not in set_aside
+                and x.get("module") == module and x.get("role") in WRITE_ROLES
                 and ("remediation_root" in x or x.get("remediation_of")) and product_loop_eligible(tasks, x)):
             try:
                 nodes[x["id"]] = (product_chain(tasks, x)[0]["id"], x)
@@ -3706,6 +3708,166 @@ def noncap_probe(cfg):
             out[name] = gate_reason(cfg, validate_task(base | {"id": f"noncap-probe-{name}"} | extra, cfg), state["tasks"])
         except Exception as e:
             out[name] = f"NONCAP_PROBE_UNVERIFIABLE: {type(e).__name__}"
+    return out
+
+
+# ------------------------------------------------ MOD-004 D16 design successor (single-use admission)
+# OWNER-2026-10-25-mod004-d16-design-successor.md: ONE owner-CLI, non-CAP, ADR-only design root with a fixed id may start although
+# the exhausted D16 root is a rejected tip. Read-only and fail-closed; it consumes nothing, rewrites no history, opens no other
+# root, and the successor's own corrections stay under the ordinary per-root three-cycle policy.
+D16_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md"
+D16_OWNER_SHA = "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"
+D16_OWNER_COMMIT = "65ef7f00d6c05d0b4ec343f05ebb6526fbc36be9"
+D16_OWNER_CI_RUN = "40169965655"
+D16_OWNER_REVIEW = "mod004-d16-successor-owner-opus-20261025"
+D16_RECEIPT = "MOD-004-D16-SUCCESSOR"  # operator-written <home>/acceptances/MOD-004-D16-SUCCESSOR.json: one d16_owner subject
+D16_ADR_PATH = "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md"
+D16_SUCCESSOR_ID = "mod004-d16-db-command-successor-sonnet-20261025"
+D16_OLD_ROOT = "mod004-fullscope-contained-adr-sonnet-20261025"
+D16_OLD_TERMINAL = "mod004-fullscope-contained-adr-remed3-sonnet-20261025"
+D16_OLD_TERMINAL_REVIEW = "mod004-fullscope-contained-adr-remed3-opus-review-20261025"
+
+
+def d16_successor_shape_problem(t):
+    """None only for the exact fixed-id, owner-CLI, ADR-only MOD-004 implement root with no lineage, phase or binding field."""
+    if not (t.get("id") == D16_SUCCESSOR_ID and t.get("module") == "MOD-004" and t.get("role") == "implement"):
+        return "only the fixed MOD-004 implement successor id"
+    if t.get("source") is not None:
+        return "the successor is admitted only from the owner CLI"
+    if any(t.get(k) is not None for k in ("plan_phase", "remediation_of", "review_retry_of", "accounting_recovery_of", "review_of",
+                                          "review_candidate", "doc_base")):
+        return "plan_phase, remediation, retry, accounting-recovery, review and doc_base fields are rejected"
+    if t.get("allowed_paths") != [D16_ADR_PATH] or t.get("expected_changes") != [D16_ADR_PATH]:
+        return "allowed_paths and expected_changes must be exactly the ADR-0002 design file"
+    if any(f(t) for f in (s0_marked, s0_test_marked, s0_touches, s0_doc_marked, s0_refresh_marked, s0_rebind_marked,
+                          s0_loop_marked, s0_doc_touches, s0_qa_marked)):
+        return "S0 task"
+    return None
+
+
+def d16_successor_lineage(tasks, t):
+    """True when t is the fixed successor id or its remediation ancestry (walked iteratively by name and recorded id) reaches it.
+    Fails closed: an ancestry too deep to walk counts as reaching it; a missing parent or a cycle that never meets the fixed id does
+    not (the existing lineage validation refuses those)."""
+    seen, cur = set(), t
+    for _ in range(66):
+        if not isinstance(cur, dict):
+            return False
+        if cur.get("id") == D16_SUCCESSOR_ID:
+            return True
+        parent = cur.get("remediation_of")
+        if not parent:
+            return False
+        if parent == D16_SUCCESSOR_ID:
+            return True
+        if parent in seen:
+            return False
+        seen.add(parent)
+        cur = tasks.get(parent)
+    return True
+
+
+def _d16_exhausted_chain(tasks):
+    """The exact exhausted historical root chain (root-first) rebuilt from immutable state, or GateError."""
+    terminal = tasks.get(D16_OLD_TERMINAL)
+    if not (isinstance(terminal, dict) and product_policy_root(tasks, terminal)):
+        raise GateError("D16: the historical root is not a recorded, policy-stamped chain")
+    try:
+        chain = product_chain(tasks, terminal)
+    except ValueError as e:
+        raise GateError(f"D16: {e}")
+    if not (len(chain) == MAX_PRODUCT_CORRECTIONS + 1 and chain[0]["id"] == D16_OLD_ROOT and chain[-1]["id"] == D16_OLD_TERMINAL):
+        raise GateError("D16: the historical root is not the exact exhausted chain of the root and its three corrections")
+    ids, fps = {w["id"] for w in chain}, []
+    for i, w in enumerate(chain):
+        changed = _changed_pairs((w.get("evidence") or {}).get("changed"))
+        if not (w.get("module") == "MOD-004" and w.get("role") == "implement" and w.get("status") == "DONE"
+                and (w.get("remediation_root"), w.get("remediation_cycle")) == (D16_OLD_ROOT, i)
+                and w.get("allowed_paths") and all(p in NONCAP_DESIGN_PATHS for p in w["allowed_paths"])
+                and changed and all(c["path"] in NONCAP_DESIGN_PATHS and isinstance(c["sha256"], str)
+                                    and SHA256_RE.fullmatch(c["sha256"]) for c in changed)):
+            raise GateError(f"D16: {w['id']} is not a DONE, counter-stamped, design-scoped write with changed-file evidence")
+        bound = [r for r in tasks.values() if isinstance(r, dict) and isinstance(r.get("review_of"), dict)
+                 and r["review_of"].get("task_id") == w["id"]]
+        rej = product_rejection(tasks, w)
+        if not (len(bound) == 1 and bound[0].get("role") == "code-review" and rej and rej[0] == "CHANGES_REQUESTED" and rej[1]):
+            raise GateError(f"D16: {w['id']} needs exactly one bound, verified Opus CHANGES_REQUESTED review and no other review task")
+        if w["id"] == D16_OLD_TERMINAL and bound[0].get("id") != D16_OLD_TERMINAL_REVIEW:
+            raise GateError("D16: the terminal rejection is not the pinned terminal review")
+        kids = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("remediation_of") == w["id"])
+        if kids != ([chain[i + 1]["id"]] if i + 1 < len(chain) else []):
+            raise GateError(f"D16: {w['id']} has a branch or an extra correction")
+        fps.append(rej[1])
+    if len(set(fps)) != len(fps):
+        raise GateError("D16: the historical rejections are not four distinct recorded findings")
+    if any(isinstance(x, dict) and x.get("remediation_root") == D16_OLD_ROOT and x.get("id") not in ids for x in tasks.values()):
+        raise GateError("D16: a foreign task claims the historical root")
+    return chain
+
+
+def _d16_adr_problem(cfg, t, chain):
+    """The design file must not be a rejected candidate and, before the successor's first attempt, must be the clean published ADR."""
+    rejected = {c["sha256"] for w in chain for c in _changed_pairs((w.get("evidence") or {}).get("changed"))
+                if c["path"] == D16_ADR_PATH}
+    try:
+        current = _path_hash(Path(cfg.repo) / D16_ADR_PATH)
+        if current is None or current in rejected:
+            raise GateError("D16: the design file is missing or is a rejected historical candidate (stale)")
+        if not t.get("attempts"):
+            _s0_qa_git_clean(cfg, [D16_ADR_PATH], "D16 design file")
+            if _s0_git_blob_sha(cfg, "HEAD", D16_ADR_PATH, "D16 design file") != current:
+                raise GateError("D16: the design file is not the published ADR at HEAD (stale)")
+    except OSError as e:
+        raise GateError(f"D16: cannot read the design file ({type(e).__name__})")
+
+
+def verify_d16_successor(cfg, tasks, t):
+    """Read-only. Returns the frozenset of historical root ids the successor sets aside, or raises GateError. Single-use: any
+    recorded task with the fixed id other than t (any status) consumed the entitlement."""
+    problem = d16_successor_shape_problem(t)
+    if problem:
+        raise GateError(problem)
+    recorded = tasks.get(D16_SUCCESSOR_ID)
+    if (recorded is not None and recorded is not t) or any(
+            isinstance(x, dict) and x.get("id") == D16_SUCCESSOR_ID and x is not t for x in tasks.values()):
+        raise GateError("the single-use successor entitlement is already consumed")
+    chain = _d16_exhausted_chain(tasks)
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{D16_RECEIPT}.json", RECEIPT_MAX_BYTES), "D16 receipt")
+    sub = r.get("subjects")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"} and r["schema"] == SCHEMA
+            and r["module"] == "MOD-004" and r["kind"] == "mod004-d16-successor-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip() and isinstance(sub, dict) and set(sub) == {"d16_owner"}):
+        raise GateError("D16 receipt schema mismatch")
+    o = sub["d16_owner"]
+    if not (isinstance(o, dict) and o.get("path") == D16_OWNER_PATH and o.get("sha256") == D16_OWNER_SHA
+            and o.get("commit") == D16_OWNER_COMMIT and (o.get("ci") or {}).get("run_id") == D16_OWNER_CI_RUN
+            and (o.get("review") or {}).get("task_id") == D16_OWNER_REVIEW):
+        raise GateError("D16: the owner record is not the pinned file, commit, CI run and review")
+    _s0_subject(cfg, "d16_owner", o, tasks, set(), {"d16_owner": re.compile(re.escape(D16_OWNER_PATH))})
+    approvals = [x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("role") in OPUS_ROLES
+                 and (x.get("evidence") or {}).get("review_outcome") == "APPROVED" and _s0_binds_subject(x, D16_OWNER_PATH, D16_OWNER_SHA)]
+    if approvals != [D16_OWNER_REVIEW]:
+        raise GateError("D16: the owner record needs exactly one APPROVED exact-subject Opus review")
+    _d16_adr_problem(cfg, t, chain)
+    return frozenset(w["id"] for w in chain)
+
+
+def d16_successor_probe(cfg):
+    """Read-only gate probe (reads state.json and the repo; queues, locks and writes nothing, consumes no entitlement).
+    Returns {case: refusal-or-None}; a healthy, unconsumed gate admits only 'successor' and refuses every other case."""
+    state = json.loads(_read_bounded(cfg.home / "state.json", 64 * 1024 * 1024))
+    adr, cap = [D16_ADR_PATH], list(ACCOUNTING_RECOVERY_PATHS)
+    base = {"module": "MOD-004", "role": "implement", "prompt": "read-only probe", "allowed_paths": adr, "expected_changes": adr}
+    cases = {"successor": {"id": D16_SUCCESSOR_ID},
+             "other_id": {"id": "d16-probe-other-id"},
+             "cap": {"id": D16_SUCCESSOR_ID, "allowed_paths": cap, "expected_changes": cap},
+             "old_root_fourth": {"id": "d16-probe-fourth", "remediation_of": D16_OLD_TERMINAL}}
+    out = {}
+    for name, extra in cases.items():
+        try:
+            out[name] = gate_reason(cfg, validate_task(base | extra, cfg), state["tasks"])
+        except Exception as e:
+            out[name] = f"D16_PROBE_UNVERIFIABLE: {type(e).__name__}"
     return out
 
 
@@ -3966,6 +4128,8 @@ def s0_qa_review_reason(cfg, t, tasks):
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
+    if t.get("id") == D16_SUCCESSOR_ID and not cfg.review_gate:
+        return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is admitted only under the mandatory review gate"
     if not cfg.review_gate or t["role"] not in WRITE_ROLES | {"gatekeeper"}:
         return None
     if s0_marked(t) or s0_test_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
@@ -3986,15 +4150,25 @@ def review_gate_reason(cfg, t, tasks):
         return (f"REVIEW_REQUIRED {module}: write task {NONCAP_TERMINAL_WRITE} has no independent Opus code-review attempt "
                 f"bound to it (terminal review {NONCAP_TERMINAL_REVIEW} is BLOCKED); {t['id']} is refused, only an exact "
                 "owner-covered design task is admitted under the non-CAP owner record")
+    set_aside = frozenset()  # the exhausted D16 root is set aside only for the one verified successor root
+    if t.get("id") == D16_SUCCESSOR_ID:
+        if not cap_chain:
+            return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is admitted only as a verified MOD-004 non-CAP design task"
+        try:
+            set_aside = verify_d16_successor(cfg, tasks, t)
+        except GateError as e:
+            return f"D16_SUCCESSOR_UNVERIFIED {t['id']}: {e}"
+        except OSError as e:
+            return f"D16_SUCCESSOR_UNVERIFIED {t['id']}: {type(e).__name__}"
     # the S0, document and refresh chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
-                     and x.get("id") not in cap_chain
+                     and x.get("id") not in cap_chain and x.get("id") not in set_aside
                      and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
                      and not s0_doc_marked(x) and not s0_refresh_marked(x) and not s0_rebind_marked(x)
                      and not s0_test_marked(x) and not s0_loop_marked(x) and not s0_qa_marked(x)), key=_when)
     product_t = product_loop_eligible(tasks, t) and product_new_policy(tasks, t)
     if product_t:
-        decided, lineage = product_lineage_reason(cfg, tasks, t)
+        decided, lineage = product_lineage_reason(cfg, tasks, t, set_aside)
         if decided:
             return lineage
         if not t.get("remediation_of") and "remediation_root" in t and (t["remediation_root"], t.get("remediation_cycle")) != (t.get("id"), 0):
@@ -4102,6 +4276,11 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
+        if t.get("id") == D16_SUCCESSOR_ID and t["role"] != "implement":
+            return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is reserved for the one reviewed implement root"
+        if t["role"] in WRITE_ROLES and t.get("verify_cmd") != [] and d16_successor_lineage(tasks, t):
+            return (f"D16_SUCCESSOR_INVALID {t['id']}: verify_cmd must be empty for the ADR-only successor and its corrections "
+                    "(the owner-CLI verifier runs unsandboxed after the scope check)")
         if t["role"] == "code-review":
             return (s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
@@ -5785,6 +5964,7 @@ def main(argv=None):
     sub.add_parser("ci-observe-public", help=argparse.SUPPRESS)  # internal: supervised child of the public observer
     sub.add_parser("verify-baseline", help="check the repo against the out-of-repo pin")
     sub.add_parser("s0-probe", help="read-only MOD-004 S0 gate probe: queues, locks and writes nothing; exit 0 only if open")
+    sub.add_parser("d16-successor-probe", help="read-only MOD-004 D16 successor gate probe: queues, locks and writes nothing; exit 0 only if open and every other case is refused")
     sub.add_parser("noncap-probe", help="read-only MOD-004 non-CAP design gate probe: queues, locks and writes nothing; exit 0 only if healthy")
     pb =sub.add_parser("pin-baseline", help="OWNER STEP: pin PROJECT_INDEX.md + source hashes outside the repo (one time)")
     pb.add_argument("--confirm-index-sha256", help="sha256 of the PROJECT_INDEX.md you reviewed (shasum -a 256)")
@@ -5857,6 +6037,11 @@ def main(argv=None):
         reason = s0_probe(cfg)
         print(json.dumps({"s0_route": "open" if reason is None else "closed", "reason": reason}))
         return 0 if reason is None else 1
+    if a.cmd == "d16-successor-probe":
+        res = d16_successor_probe(cfg)
+        ok = res.get("successor") is None and all(res.get(k) for k in ("other_id", "cap", "old_root_fourth"))
+        print(json.dumps({"d16_successor_route": "open" if ok else "closed", "cases": res}))
+        return 0 if ok else 1
     if a.cmd == "noncap-probe":
         res = noncap_probe(cfg)
         ok = res.get("design") is None and all(res.get(k) for k in ("cap", "s0_product"))

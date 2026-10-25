@@ -10809,11 +10809,11 @@ class Mod004NonCapDesign(S0Fixture):
 
     def enq_cli(self, **over):
         spec = {"id": "adr-fix-1", "module": "MOD-004", "role": "implement", "plan_phase": None, "remediation_of": self.ADR_ROOT,
-                "allow": [self.ADR_DOC], "expect": [self.ADR_DOC]} | over
+                "allow": [self.ADR_DOC], "expect": [self.ADR_DOC], "verify": "[]"} | over
         pf = Path(self.tmp.name, "prompt.txt")
         pf.write_text("correct the ADR")
         argv = ["--home", str(self.home), "--repo", str(self.repo), "enqueue", "--id", spec["id"], "--module", spec["module"],
-                "--role", spec["role"], "--prompt-file", str(pf), "--verify-cmd", "[]"]
+                "--role", spec["role"], "--prompt-file", str(pf), "--verify-cmd", spec["verify"]]
         for flag, key in (("--allow", "allow"), ("--expect", "expect")):
             for p in spec[key]:
                 argv += [flag, p]
@@ -11090,6 +11090,537 @@ class Mod004NonCapDesign(S0Fixture):
         self.assertIn("NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED", self.gate(id="design-1-fix", post={"remediation_of": "design-1"}))
         # nonexistent parent: noncap_shape_problem refuses it fail-closed before the unstamped-ancestry guard
         self.assertIn("only an exact owner-covered design task", self.gate(id="ghost-fix", post={"remediation_of": "no-such-write"}))
+
+    # --- MOD-004 D16 design successor: one fixed, single-use, ADR-only root beside the exhausted historical root
+    SUCC = R.D16_SUCCESSOR_ID
+    D16_TEXTS = ("finding a", "finding b", "finding c", "finding d")
+    D16_REAL_PINS = {k: getattr(R, k) for k in ("D16_OWNER_PATH", "D16_OWNER_SHA", "D16_OWNER_COMMIT", "D16_OWNER_CI_RUN",
+                                                "D16_OWNER_REVIEW", "D16_SUCCESSOR_ID", "D16_OLD_ROOT", "D16_OLD_TERMINAL",
+                                                "D16_OLD_TERMINAL_REVIEW", "D16_ADR_PATH")}
+
+    def d16_arrange(self, texts=D16_TEXTS, receipt=True):
+        """Exhausted historical root (root + three rejected corrections) with a restored published ADR, plus a committed,
+        CI-green, independently APPROVED owner record whose pins replace the real ones for this synthetic repo."""
+        self.rejected_adr_chain(texts)
+        self.write(self.ADR_DOC, "published adr baseline\n")  # the rejected candidate was moved aside; HEAD holds the baseline
+        self.write(R.D16_OWNER_PATH, "d16 successor owner record\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "restored adr and d16 owner record")
+        self.d16_owner = {"path": R.D16_OWNER_PATH, "sha256": self.sha(R.D16_OWNER_PATH), "commit": self.head(),
+                          "ci": self.ci(self.head()), "review": self.review(R.D16_OWNER_PATH, "d16-owner")}
+        pins = {"D16_OWNER_SHA": self.d16_owner["sha256"], "D16_OWNER_COMMIT": self.d16_owner["commit"],
+                "D16_OWNER_CI_RUN": self.d16_owner["ci"]["run_id"], "D16_OWNER_REVIEW": self.d16_owner["review"]["task_id"],
+                "D16_OLD_ROOT": self.ADR_ROOT, "D16_OLD_TERMINAL": f"adr-fix-{len(texts) - 1}",
+                "D16_OLD_TERMINAL_REVIEW": f"rev-adr-fix-{len(texts) - 1}"}
+        for name, value in pins.items():
+            patcher = mock.patch.object(R, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        if receipt:
+            self.d16_receipt()
+        self.save_history()
+
+    def d16_receipt(self, mutate=None):
+        r = {"schema": 1, "module": "MOD-004", "kind": "mod004-d16-successor-authority", "operator": "op",
+             "recorded_at": R.now_iso(), "subjects": {"d16_owner": json.loads(json.dumps(self.d16_owner))}}
+        if mutate:
+            mutate(r)
+        (self.home / "acceptances" / f"{R.D16_RECEIPT}.json").write_text(json.dumps(r))
+
+    def d16_task(self, post=None, **over):
+        raw = {"id": self.SUCC, "module": "MOD-004", "role": "implement", "prompt": "design the DB-owned command path",
+               "allowed_paths": [self.ADR_DOC], "expected_changes": [self.ADR_DOC]} | over
+        return R.validate_task(raw, self.cfg) | (post or {})
+
+    def d16_gate(self, tasks=None, post=None, **over):
+        return R.gate_reason(self.cfg, self.d16_task(post, **over), self.history if tasks is None else tasks)
+
+    def d16_unverified(self, reason):
+        self.assertTrue(reason and reason.startswith("D16_SUCCESSOR_UNVERIFIED"), reason)
+
+    def d16_record(self, status="DONE", rejected=True, text="successor finding", attempts=1):
+        """The recorded successor root as the runner would hold it, stamped from ancestry."""
+        t = self.d16_task()
+        R.stamp_product_remediation(self.history, t)
+        sha = hashlib.sha256(f"successor draft {text}".encode()).hexdigest()
+        t.update(status=status, attempts=attempts, created_at="2026-10-26T00:00:00+00:00", finished_at="2026-10-26T00:00:00+00:00",
+                 evidence={"changed": [{"path": self.ADR_DOC, "sha256": sha}]})
+        self.history[self.SUCC] = t
+        if rejected:
+            self.d16_reject(self.SUCC, text)
+        return t
+
+    def d16_reject(self, tid, text):
+        changed = [dict(c) for c in self.history[tid]["evidence"]["changed"]]
+        self.history[f"rev-{tid}"] = {
+            "id": f"rev-{tid}", "module": "MOD-004", "role": "code-review", "status": "BLOCKED",
+            "blocked_reason": "REVIEW_CHANGES_REQUESTED", "created_at": "2026-10-26T00:00:00+00:00", "route": {"verdict": "VERIFIED"},
+            "review_of": {"task_id": tid, "changed": changed}, "result": text,
+            "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True, "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+
+    def d16_correction(self, parent, n, text):
+        """A recorded, rejected correction of `parent` whose candidate bytes are current in the working tree."""
+        t = self.d16_task(id=f"succ-fix-{n}", remediation_of=parent)
+        R.stamp_product_remediation(self.history, t)
+        sha = hashlib.sha256(f"successor draft {text}".encode()).hexdigest()
+        t.update(status="DONE", attempts=1, created_at=f"2026-10-26T0{n}:00:00+00:00", finished_at=f"2026-10-26T0{n}:00:00+00:00",
+                 evidence={"changed": [{"path": self.ADR_DOC, "sha256": sha}]})
+        self.history[t["id"]] = t
+        self.d16_reject(t["id"], text)
+        return t
+
+    def d16_fourth(self, **over):
+        """Gate a fourth correction of the old terminal write with its rejected bytes current, so only the limit can refuse it."""
+        spots = [self.history[R.D16_OLD_TERMINAL]["evidence"]["changed"][0],
+                 self.history[R.D16_OLD_TERMINAL_REVIEW]["review_of"]["changed"][0]]
+        saved = [c["sha256"] for c in spots]
+        for c in spots:
+            c["sha256"] = self.sha(self.ADR_DOC)
+        try:
+            return self.d16_gate(**({"id": "adr-fix-4", "remediation_of": R.D16_OLD_TERMINAL} | over))
+        finally:
+            for c, v in zip(spots, saved):
+                c["sha256"] = v
+
+    def d16_snapshot(self):
+        return sorted((str(p.relative_to(self.home)), p.stat().st_mtime_ns, p.stat().st_size)
+                      for p in self.home.rglob("*") if p.is_file())
+
+    def test_d16_pins_are_the_published_owner_record_and_exhausted_root(self):
+        self.assertEqual(self.D16_REAL_PINS, {
+            "D16_OWNER_PATH": "knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
+            "D16_OWNER_SHA": "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a",
+            "D16_OWNER_COMMIT": "65ef7f00d6c05d0b4ec343f05ebb6526fbc36be9", "D16_OWNER_CI_RUN": "40169965655",
+            "D16_OWNER_REVIEW": "mod004-d16-successor-owner-opus-20261025",
+            "D16_SUCCESSOR_ID": "mod004-d16-db-command-successor-sonnet-20261025",
+            "D16_OLD_ROOT": "mod004-fullscope-contained-adr-sonnet-20261025",
+            "D16_OLD_TERMINAL": "mod004-fullscope-contained-adr-remed3-sonnet-20261025",
+            "D16_OLD_TERMINAL_REVIEW": "mod004-fullscope-contained-adr-remed3-opus-review-20261025",
+            "D16_ADR_PATH": self.ADR_DOC})
+        published = Path(__file__).resolve().parents[3] / self.D16_REAL_PINS["D16_OWNER_PATH"]
+        self.assertEqual(hashlib.sha256(published.read_bytes()).hexdigest(), self.D16_REAL_PINS["D16_OWNER_SHA"])
+
+    def test_d16_successor_is_admitted_once_read_only_and_history_is_untouched(self):
+        self.d16_arrange()
+        before, snap = json.dumps(self.history, sort_keys=True), self.d16_snapshot()
+        self.assertIsNone(self.d16_gate())
+        self.assertEqual((json.dumps(self.history, sort_keys=True), self.d16_snapshot()), (before, snap))
+        # the old root is still exhausted for every other request, including a fresh id on the very same shape
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", self.d16_gate(id="mod004-d16-db-command-successor-sonnet-20261026"))
+        self.assertTrue(self.d16_gate(id="adr-fix-4", remediation_of=R.D16_OLD_TERMINAL))
+        self.assertIn("REMEDIATION_LIMIT", self.d16_fourth())
+        self.assertEqual(R.review_verdict(self.history, R.D16_OLD_TERMINAL), "CHANGES_REQUESTED")
+
+    def test_d16_enqueue_admits_the_one_root_and_survives_restart_as_consumed(self):
+        self.d16_arrange()
+        raw = {"id": self.SUCC, "module": "MOD-004", "role": "implement", "prompt": "design", "verify_cmd": [],
+               "allowed_paths": [self.ADR_DOC], "expected_changes": [self.ADR_DOC]}
+        queued = R.enqueue(self.cfg, raw)
+        t = R.validate_task(json.loads(queued.read_text()), self.cfg)  # what ingest_queue records after a restart
+        state = R.Store(self.home).load()
+        R.stamp_product_remediation(state["tasks"], t)
+        self.assertEqual((t["remediation_root"], t["remediation_cycle"]), (self.SUCC, 0))
+        state["tasks"][t["id"]] = t
+        R.Store(self.home).save(state)
+        tasks = R.Store(self.home).load()["tasks"]  # fresh objects, as after a runner restart
+        self.assertIsNone(R.gate_reason(self.cfg, tasks[self.SUCC], tasks))  # the recorded QUEUED root is still admitted
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                tasks[self.SUCC]["status"] = status
+                R.Store(self.home).save(state)
+                with self.assertRaisesRegex(ValueError, "already exists"):
+                    R.enqueue(self.cfg, raw)
+                again = R.validate_task(raw, self.cfg)  # a second candidate with the fixed id
+                self.assertIn("already consumed", R.gate_reason(self.cfg, again, tasks))
+                for other in ("a-different-id", self.SUCC + "-2"):
+                    reason = R.gate_reason(self.cfg, self.d16_task(id=other), tasks)
+                    expected = {"QUEUED": "REMEDIATION_ROOT_PENDING", "RUNNING": "REMEDIATION_ROOT_PENDING",
+                                "DONE": "REVIEW_REQUIRED", "BLOCKED": "REMEDIATION_ROOT_BLOCKED",
+                                "FAILED": "REMEDIATION_ROOT_BLOCKED"}[status]
+                    self.assertTrue(reason and reason.startswith(f"{expected} MOD-004: root {self.SUCC} "), reason)
+
+    def test_d16_consumed_even_when_the_recorded_successor_is_in_any_final_state(self):
+        self.d16_arrange()
+        for status in ("QUEUED", "RUNNING", "DONE", "BLOCKED", "FAILED"):
+            with self.subTest(status):
+                self.d16_record(status, rejected=False, attempts=0)
+                self.d16_unverified(self.d16_gate())
+                self.assertIn("already consumed", self.d16_gate())
+                self.assertTrue(self.d16_gate(id="mod004-d16-db-command-successor-sonnet-20261026"))
+                self.assertTrue(self.d16_gate(id="design-x"))  # no other root opens while this root exists
+                self.history.pop(self.SUCC)
+
+    def test_d16_wrong_shape_is_refused_and_never_falls_back_to_a_wider_admission(self):
+        self.d16_arrange()
+        cap, s0 = list(R.ACCOUNTING_RECOVERY_PATHS), list(R.S0_PATHS)
+        other_md, code = "knowledge/03-Modules/MOD-004/MOD-004.md", "backend/app/mod004/service.py"
+        cases = {
+            "other design file": {"allowed_paths": [other_md], "expected_changes": [other_md]},
+            "adr plus design": {"allowed_paths": [self.ADR_DOC, other_md]},
+            "directory scope": {"allowed_paths": ["knowledge/00-Decisions/"]},
+            "no expected": {"expected_changes": []}, "cap": {"allowed_paths": cap, "expected_changes": cap},
+            "s0 product": {"allowed_paths": s0, "expected_changes": s0},
+            "product code": {"allowed_paths": [code], "expected_changes": [code]},
+            "adr plus code": {"allowed_paths": [self.ADR_DOC, code], "expected_changes": [self.ADR_DOC]},
+            "test role": {"role": "test"}, "review role": {"role": "code-review", "allowed_paths": [], "expected_changes": []},
+            "gatekeeper": {"role": "gatekeeper", "allowed_paths": [], "expected_changes": []},
+            "other module": {"module": "MOD-005"}, "mod000": {"module": "MOD-000"},
+            "plan phase": {"plan_phase": "P1"}, "s0 phase": {"plan_phase": R.S0_MARKER},
+            "cap phase": {"plan_phase": "CAP-1"},
+            "remediation_of old root": {"remediation_of": R.D16_OLD_ROOT},
+            "remediation_of old tip": {"remediation_of": R.D16_OLD_TERMINAL},
+            "remediation_of approved": {"remediation_of": self.DESIGN_REVIEW_OF},
+            "accounting recovery": {"accounting_recovery_of": R.ACCOUNTING_RECOVERY_REVIEW},
+            "doc base": {"plan_phase": R.S0_QA_MARKER, "doc_base": {R.S0_QA_PACKET: "0" * 64}},
+        }
+        for label, over in cases.items():
+            with self.subTest(label):
+                try:
+                    reason = self.d16_gate(**over)
+                except ValueError:  # validate_task itself refuses the combination
+                    continue
+                self.assertTrue(reason, label)
+                self.assertNotIn("D16_SUCCESSOR_UNVERIFIED: only", reason or "")
+        for label, post in {"planner source": {"source": "handoff"}, "any source": {"source": "cli"},
+                            "review binding": {"review_of": {"task_id": self.ADR_ROOT, "changed": []}},
+                            "retry": {"review_retry_of": "x"}, "candidate": {"review_candidate": {"head": "x"}},
+                            "doc base": {"doc_base": {"a": "b"}}}.items():
+            with self.subTest(label):
+                self.assertTrue(self.d16_gate(post=post), label)
+        # the CLI refuses a remediation_of for the fixed id (the prefilter routes, the gate decides)
+        code_, err = self.enq_cli(id=self.SUCC, remediation_of=R.D16_OLD_TERMINAL)
+        self.assertEqual(code_, 2)
+        self.assertEqual(self.queued(), [])
+
+    def d16_tip_current(self, tid):
+        """Make the rejected tip's recorded candidate bytes equal the working tree, as the lineage gate requires."""
+        for c in (self.history[tid]["evidence"]["changed"][0], self.history[f"rev-{tid}"]["review_of"]["changed"][0]):
+            c["sha256"] = self.sha(self.ADR_DOC)
+
+    def d16_verify_attacks(self):
+        """Verifier argv that would write a CAP or product path (owner-CLI verifiers run unsandboxed), plus a benign unittest one."""
+        cap, product = list(R.ACCOUNTING_RECOVERY_PATHS)[0], "backend/app/mod004/service.py"
+        marks = {"cap": self.repo / cap, "product": self.repo / product}
+        attacks = {name: ["sh", "-c", f"echo pwned > {path}"] for name, path in marks.items()}
+        attacks["unittest"] = [sys.executable, "-m", "unittest", "backend.tests.test_mod004"]
+        return attacks, marks
+
+    def d16_refused(self, reason):
+        self.assertTrue(reason and reason.startswith("D16_SUCCESSOR_INVALID") and "verify_cmd must be empty" in reason, reason)
+
+    def test_d16_successor_root_requires_an_empty_verify_cmd_via_gate_and_owner_cli(self):
+        self.d16_arrange()
+        attacks, marks = self.d16_verify_attacks()
+        for name, cmd in attacks.items():
+            with self.subTest(name):
+                self.d16_refused(self.d16_gate(verify_cmd=cmd))
+                code_, err = self.enq_cli(id=self.SUCC, remediation_of=None, verify=json.dumps(cmd))
+                self.assertEqual(code_, 2)
+                self.assertIn("D16_SUCCESSOR_INVALID", err)
+                self.assertIn("verify_cmd must be empty", err)
+                self.assertEqual(self.queued(), [])
+        self.assertFalse(any(m.exists() for m in marks.values()))  # nothing executed
+        self.assertEqual(R.Store(self.home).load()["tasks"].get(self.SUCC), None)
+        self.assertIsNone(self.d16_gate())  # the normal empty-verify successor stays admissible
+        self.assertIsNone(self.d16_gate(verify_cmd=[]))
+        code_, err = self.enq_cli(id=self.SUCC, remediation_of=None)
+        self.assertEqual((code_, err), (0, ""))
+        self.assertEqual([json.loads(q.read_text())["id"] for q in self.queued()], [self.SUCC])
+
+    def test_d16_successor_corrections_require_an_empty_verify_cmd_via_gate_and_owner_cli(self):
+        self.d16_arrange()
+        attacks, marks = self.d16_verify_attacks()
+        self.d16_record()
+        self.d16_tip_current(self.SUCC)
+        self.save_history()
+        for name, cmd in attacks.items():
+            with self.subTest(f"first correction {name}"):
+                self.d16_refused(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC, verify_cmd=cmd))
+                code_, err = self.enq_cli(id="succ-fix-1", remediation_of=self.SUCC, verify=json.dumps(cmd))
+                self.assertEqual(code_, 2)
+                self.assertIn("D16_SUCCESSOR_INVALID", err)
+                self.assertEqual(self.queued(), [])
+        self.assertIsNone(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC))
+        self.d16_correction(self.SUCC, 1, "successor correction finding")  # a deeper correction inherits the rule through its ancestry
+        for c in (self.history[self.SUCC]["evidence"]["changed"][0], self.history[f"rev-{self.SUCC}"]["review_of"]["changed"][0]):
+            c["sha256"] = hashlib.sha256(b"successor root candidate").hexdigest()  # distinct bytes from the new tip
+        self.d16_tip_current("succ-fix-1")
+        self.save_history()
+        for name, cmd in attacks.items():
+            with self.subTest(f"second correction {name}"):
+                self.d16_refused(self.d16_gate(id="succ-fix-2", remediation_of="succ-fix-1", verify_cmd=cmd))
+                code_, err = self.enq_cli(id="succ-fix-2", remediation_of="succ-fix-1", verify=json.dumps(cmd))
+                self.assertEqual(code_, 2)
+                self.assertIn("D16_SUCCESSOR_INVALID", err)
+                self.assertEqual(self.queued(), [])
+        self.assertFalse(any(m.exists() for m in marks.values()))
+        self.assertIsNone(self.d16_gate(id="succ-fix-2", remediation_of="succ-fix-1"))
+        code_, err = self.enq_cli(id="succ-fix-2", remediation_of="succ-fix-1")
+        self.assertEqual((code_, err), (0, ""))
+        self.assertEqual([json.loads(q.read_text())["id"] for q in self.queued()], ["succ-fix-2"])
+
+    def test_d16_verify_rule_is_not_bypassed_by_malformed_ancestry_or_a_changed_id(self):
+        self.d16_arrange()
+        cmd = self.d16_verify_attacks()[0]["cap"]
+        # the parent is named but not recorded yet: the ancestry still names the fixed id, so the command is refused first
+        self.d16_refused(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC, verify_cmd=cmd))
+        # a cycle through the fixed id and an over-deep chain both count as reaching it
+        for label, graph in {
+            "cycle through successor": {self.SUCC: "loop-a", "loop-a": self.SUCC},
+            "over-deep chain": {f"deep-{i}": f"deep-{i + 1}" for i in range(80)},
+        }.items():
+            with self.subTest(label):
+                tasks = {k: {"id": k, "remediation_of": v} for k, v in graph.items()}
+                start = {"id": "succ-fix-1", "remediation_of": next(iter(graph))}
+                self.assertTrue(R.d16_successor_lineage(tasks, start))
+        # ancestry that never meets the fixed id is left to the existing lineage validation
+        loose = {"x": {"id": "x", "remediation_of": "y"}, "y": {"id": "y", "remediation_of": "x"}}
+        self.assertFalse(R.d16_successor_lineage(loose, {"id": "z", "remediation_of": "x"}))
+        self.assertFalse(R.d16_successor_lineage({}, {"id": "z", "remediation_of": "missing"}))
+        # another id with the same shape is refused by the lineage gate, and the old chain keeps its own refusal
+        self.assertTrue(self.d16_gate(id="mod004-d16-db-command-successor-sonnet-20261026", verify_cmd=cmd))
+        for tip in (R.D16_OLD_TERMINAL, R.D16_OLD_ROOT):
+            reason = self.d16_gate(id="adr-fix-4", remediation_of=tip, verify_cmd=cmd)
+            self.assertTrue(reason and not reason.startswith("D16_SUCCESSOR_INVALID"), reason)
+        # a record stored under the fixed key is recognised even if its own id field was altered
+        self.history[self.SUCC] = {"id": "renamed", "remediation_of": None}
+        self.d16_refused(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC, verify_cmd=cmd))
+
+    def test_d16_verify_rule_leaves_unrelated_non_cap_chains_unchanged(self):
+        self.rejected_adr_chain()
+        cmd = [sys.executable, "-m", "unittest", "backend.tests.test_mod004"]
+        self.assertFalse(R.d16_successor_lineage(self.history, self.d16_task(id="adr-fix-1", remediation_of=self.ADR_ROOT)))
+        code_, err = self.enq_cli(verify=json.dumps(cmd))  # an ordinary non-CAP correction keeps its existing behaviour
+        self.assertEqual((code_, err), (0, ""))
+
+    def test_d16_old_root_gets_no_fourth_correction_before_or_after_the_successor(self):
+        self.d16_arrange()
+        for tip in (R.D16_OLD_TERMINAL, R.D16_OLD_ROOT, "adr-fix-1"):
+            with self.subTest(tip):
+                reason = self.d16_gate(id="adr-fix-4", remediation_of=tip)
+                self.assertRegex(reason, "REMEDIATION_LIMIT|REMEDIATION_BRANCH|REMEDIATION_LINEAGE|REMEDIATION_BINDING_STALE")
+        self.assertIn("REMEDIATION_LIMIT", self.d16_fourth())
+        code_, err = self.enq_cli(id="adr-fix-4", remediation_of=R.D16_OLD_TERMINAL)
+        self.assertEqual(code_, 2)
+        self.assertEqual(self.queued(), [])
+        self.d16_record()
+        self.assertIn("REMEDIATION_LIMIT", self.d16_fourth())
+        self.assertEqual({k: v["remediation_cycle"] for k, v in self.history.items() if v.get("remediation_root") == R.D16_OLD_ROOT},
+                         {self.ADR_ROOT: 0, "adr-fix-1": 1, "adr-fix-2": 2, "adr-fix-3": 3})
+
+    def test_d16_authority_fails_closed_when_missing_or_changed(self):
+        self.d16_arrange()
+        (self.home / "acceptances" / f"{R.D16_RECEIPT}.json").unlink()
+        self.d16_unverified(self.d16_gate())
+        owner = lambda r: r["subjects"]["d16_owner"]
+        for label, mutate in {
+            "extra key": lambda r: r.update(extra=1), "wrong kind": lambda r: r.update(kind="mod004-noncap-design-authority"),
+            "wrong module": lambda r: r.update(module="MOD-005"), "extra subject": lambda r: r["subjects"].update(adr={}),
+            "wrong subject name": lambda r: r["subjects"].update(noncap_owner=r["subjects"].pop("d16_owner")),
+            "no operator": lambda r: r.update(operator=" "), "other path": lambda r: owner(r).update(path=self.ADR_DOC),
+            "other sha": lambda r: owner(r).update(sha256="0" * 64), "other commit": lambda r: owner(r).update(commit="0" * 40),
+            "other ci run": lambda r: owner(r)["ci"].update(run_id="999"),
+            "ci failed": lambda r: owner(r)["ci"].update(conclusion="failure"),
+            "ci pull request": lambda r: owner(r)["ci"].update(event="pull_request"),
+            "ci other head": lambda r: owner(r)["ci"].update(head_sha="0" * 40),
+            "review output": lambda r: owner(r)["review"].update(output_sha256="0" * 64),
+            "other review task": lambda r: owner(r)["review"].update(task_id="rev-noncap-owner"),
+            "no review": lambda r: owner(r).pop("review")}.items():
+            with self.subTest(label):
+                self.d16_receipt(mutate)
+                self.d16_unverified(self.d16_gate())
+        self.d16_receipt()
+        self.assertIsNone(self.d16_gate())
+
+    def test_d16_owner_record_and_review_evidence_must_be_exact_and_unambiguous(self):
+        self.d16_arrange()
+        rid = self.d16_owner["review"]["task_id"]
+        saved = json.dumps(self.history)
+        def reset():
+            self.history.clear()
+            self.history.update(json.loads(saved))
+        # the working record moved on from the committed, reviewed bytes
+        self.write(R.D16_OWNER_PATH, "edited owner record\n")
+        self.d16_unverified(self.d16_gate())
+        git(self.repo, "checkout", "--", R.D16_OWNER_PATH)
+        self.assertIsNone(self.d16_gate())
+        for label, mutate in {
+            "review not approved": lambda h: h[rid]["evidence"].update(review_outcome="CHANGES_REQUESTED"),
+            "review not done": lambda h: h[rid].update(status="BLOCKED"),
+            "review unverified route": lambda h: h[rid]["route"].update(verdict="UNVERIFIED"),
+            "review sonnet role": lambda h: h[rid].update(role="implement"),
+            "review planner proposed": lambda h: h[rid].update(source="handoff"),
+            "review missing": lambda h: h.pop(rid),
+            "review names other bytes": lambda h: h[rid].update(prompt="Review EXACT file x.md SHA-256 " + "1" * 64),
+            "second approval": lambda h: h.update({"rev-dup": json.loads(json.dumps(h[rid])) | {"id": "rev-dup"}}),
+            "rejecting review": lambda h: h.update({"rev-bad": json.loads(json.dumps(h[rid])) | {"id": "rev-bad", "status": "BLOCKED",
+                                                    "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True}}}),
+        }.items():
+            with self.subTest(label):
+                mutate(self.history)
+                self.assertTrue(self.d16_gate(), label)
+                reset()
+        self.assertIsNone(self.d16_gate())
+
+    def test_d16_noncap_authority_is_still_required_and_cap_block_is_not_reopened(self):
+        self.d16_arrange()
+        (self.home / "acceptances" / f"{R.NONCAP_RECEIPT}.json").unlink()
+        self.assertTrue(self.d16_gate().startswith("NONCAP_DESIGN_UNVERIFIED"))
+        self.write_receipt()
+        self.assertIsNone(self.d16_gate())
+        cap = list(R.ACCOUNTING_RECOVERY_PATHS)
+        self.assertTrue(self.d16_gate(allowed_paths=cap, expected_changes=cap))
+        self.assertIsNone(R.review_verdict(self.history, self.REMED2))  # the terminal CAP-accounting review stays BLOCKED
+        self.assertEqual(self.history[R.NONCAP_TERMINAL_REVIEW]["status"], "BLOCKED")
+        self.history[R.NONCAP_TERMINAL_REVIEW]["status"] = "DONE"  # tampering the CAP block does not widen anything either
+        self.assertTrue(self.d16_gate())
+
+    def test_d16_module_prerequisites_are_not_bypassed(self):
+        self.d16_arrange()
+        (self.home / "acceptances" / "MOD-001.json").unlink()
+        self.assertIn("PREREQ_NOT_ACCEPTED", self.d16_gate())
+
+    def test_d16_historical_tamper_fails_closed(self):
+        self.d16_arrange()
+        saved = json.dumps(self.history)
+        term, rterm = R.D16_OLD_TERMINAL, R.D16_OLD_TERMINAL_REVIEW
+        def reset():
+            self.history.clear()
+            self.history.update(json.loads(saved))
+        def add_task(tid, **extra):
+            self.history[tid] = {"id": tid, "module": "MOD-004", "role": "implement", "status": "QUEUED", "review_gate": 1,
+                                 "created_at": "2026-10-26T09:00:00+00:00", "allowed_paths": [self.ADR_DOC]} | extra
+        cases = {
+            "counter cycle": lambda h: h["adr-fix-2"].update(remediation_cycle=1),
+            "counter root": lambda h: h["adr-fix-1"].update(remediation_root="elsewhere"),
+            "root unstamped": lambda h: (h[self.ADR_ROOT].pop("remediation_root"), h[self.ADR_ROOT].pop("remediation_cycle")),
+            "terminal review approved": lambda h: (h[rterm]["evidence"].update(review_outcome="APPROVED", violations=[]),
+                                                   h[rterm].update(status="DONE")),
+            "mid review approved": lambda h: (h["rev-adr-fix-1"]["evidence"].update(review_outcome="APPROVED", violations=[]),
+                                              h["rev-adr-fix-1"].update(status="DONE")),
+            "review unverified": lambda h: h["rev-adr-fix-2"]["route"].update(verdict="UNVERIFIED"),
+            "review unbound hash": lambda h: h["rev-adr-fix-1"]["review_of"]["changed"][0].update(sha256="0" * 64),
+            "review not verified-bound": lambda h: h[rterm]["evidence"].update(review_bound_verified=False),
+            "changed hash edited": lambda h: h["adr-fix-1"]["evidence"]["changed"][0].update(sha256="2" * 64),
+            "changed hash malformed": lambda h: h[term]["evidence"]["changed"][0].update(sha256="zz"),
+            "changed outside design set": lambda h: h["adr-fix-1"]["evidence"]["changed"][0].update(path="backend/app/x.py"),
+            "no changed evidence": lambda h: h["adr-fix-2"]["evidence"].update(changed=[]),
+            "write not done": lambda h: h["adr-fix-1"].update(status="BLOCKED"),
+            "same finding twice": lambda h: h["rev-adr-fix-2"].update(result=h["rev-adr-fix-1"]["result"]),
+            "finding text erased": lambda h: h["rev-adr-fix-2"].update(result=""),
+            "second review on one write": lambda h: h.update({"rev-extra": json.loads(json.dumps(h["rev-adr-fix-1"])) | {"id": "rev-extra"}}),
+            "approved review alternate": lambda h: h.update({"rev-alt": json.loads(json.dumps(h["rev-adr-fix-1"])) | {
+                "id": "rev-alt", "status": "DONE", "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True}}}),
+            "retry review": lambda h: h.update({"rev-retry": json.loads(json.dumps(h[rterm])) | {"id": "rev-retry", "review_retry_of": rterm}}),
+            "branch off the root": lambda h: add_task("branch-1", remediation_of=self.ADR_ROOT),
+            "branch off a middle write": lambda h: add_task("branch-2", remediation_of="adr-fix-1"),
+            "fifth correction": lambda h: add_task("adr-fix-4", remediation_of=term),
+            "foreign claimant": lambda h: add_task("claimant", remediation_root=self.ADR_ROOT, remediation_cycle=2),
+            "terminal missing": lambda h: h.pop(term),
+            "root missing": lambda h: h.pop(self.ADR_ROOT),
+            "middle missing": lambda h: h.pop("adr-fix-2"),
+            "terminal review missing": lambda h: h.pop(rterm),
+            "other module": lambda h: h["adr-fix-2"].update(module="MOD-005"),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                mutate(self.history)
+                self.d16_unverified_or_refused(self.d16_gate(), label)
+                reset()
+        self.assertIsNone(self.d16_gate())
+
+    def d16_unverified_or_refused(self, reason, label):
+        self.assertTrue(reason and (reason.startswith("D16_SUCCESSOR_UNVERIFIED") or reason.startswith("GATE_UNVERIFIABLE")
+                                    or reason.startswith("REMEDIATION_")), (label, reason))
+
+    def test_d16_chain_of_two_or_three_rejections_is_not_exhausted(self):
+        self.d16_arrange(("finding a", "finding b", "finding c"))
+        self.assertTrue(self.d16_gate())  # a three-write chain still has a correction left: the old root is not exhausted
+
+    def test_d16_stale_or_moved_design_bytes_are_refused(self):
+        self.d16_arrange()
+        rejected_tip = dict(self.history[R.D16_OLD_TERMINAL]["evidence"]["changed"][0])
+        # the working file equals a rejected historical candidate
+        self.history[R.D16_OLD_TERMINAL]["evidence"]["changed"][0]["sha256"] = self.sha(self.ADR_DOC)
+        self.d16_unverified(self.d16_gate())
+        self.history[R.D16_OLD_TERMINAL]["evidence"]["changed"][0] = rejected_tip
+        self.assertIsNone(self.d16_gate())
+        self.write(self.ADR_DOC, "uncommitted edit\n")  # dirty before the first attempt
+        self.d16_unverified(self.d16_gate())
+        (self.repo / self.ADR_DOC).unlink()
+        self.d16_unverified(self.d16_gate())
+        git(self.repo, "checkout", "--", self.ADR_DOC)
+        self.assertIsNone(self.d16_gate())
+        self.write(self.ADR_DOC, "committed but unreviewed other bytes\n")
+        git(self.repo, "commit", "-qam", "adr moves")
+        self.assertIsNone(self.d16_gate())  # a newer published baseline is still the clean published ADR
+
+    def test_d16_recorded_retry_may_continue_dirty_but_never_on_a_rejected_candidate(self):
+        self.d16_arrange()
+        tasks = self.history
+        t = self.d16_record("QUEUED", rejected=False, attempts=1)
+        self.write(self.ADR_DOC, "partial work of the failed first attempt\n")
+        self.assertIsNone(R.gate_reason(self.cfg, t, tasks))
+        self.write(self.ADR_DOC, "")
+        tasks[R.D16_OLD_TERMINAL]["evidence"]["changed"][0]["sha256"] = self.sha(self.ADR_DOC)
+        self.d16_unverified(R.gate_reason(self.cfg, t, tasks))
+
+    def test_d16_successor_corrections_use_their_own_three_cycles_and_open_nothing_else(self):
+        self.d16_arrange()
+        t = self.d16_record()
+        before_old = json.dumps({k: v for k, v in self.history.items() if k.startswith("adr-") or k.startswith("rev-adr")}, sort_keys=True)
+        self.write(self.ADR_DOC, "successor draft successor finding")  # keep tip bytes current for the binding check
+        self.history[self.SUCC]["evidence"]["changed"][0]["sha256"] = self.sha(self.ADR_DOC)
+        self.save_history()
+        self.assertEqual((t["remediation_root"], t["remediation_cycle"]), (self.SUCC, 0))
+        # a bound-review correction of the successor is the only thing admitted, then the next, then the third
+        self.assertIsNone(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC))
+        self.assertTrue(self.d16_gate(id="design-z"))                                           # no other root
+        self.assertIn("REMEDIATION_LINEAGE_REQUIRED", self.d16_gate(id="design-z"))
+        self.assertTrue(self.d16_gate(id="succ-fix-1", remediation_of=R.D16_OLD_TERMINAL))        # not the old root's round
+        parent = self.SUCC
+        for n in (1, 2, 3):
+            word = ("alpha", "bravo", "charlie")[n - 1]
+            fix = self.d16_correction(parent, n, f"successor finding {word}")
+            self.assertEqual((fix["remediation_root"], fix["remediation_cycle"]), (self.SUCC, n))
+            self.write(self.ADR_DOC, f"successor draft successor finding {word}")
+            parent = fix["id"]
+            if n < 3:
+                self.assertIsNone(self.d16_gate(id=f"succ-fix-{n + 1}", remediation_of=parent), n)
+        self.assertIn("REMEDIATION_LIMIT", self.d16_gate(id="succ-fix-4", remediation_of=parent))  # its own fourth is refused
+        self.assertIn("REMEDIATION_LIMIT", self.d16_fourth())
+        self.assertTrue(self.d16_gate(id="succ-fix-1b", remediation_of=self.SUCC))  # no branch off the successor root either
+        self.assertEqual(before_old, json.dumps({k: v for k, v in self.history.items()
+                                                 if k.startswith("adr-") or k.startswith("rev-adr")}, sort_keys=True))
+
+    def test_d16_planner_cannot_correct_or_start_the_successor(self):
+        self.d16_arrange()
+        self.assertTrue(self.d16_gate(post={"source": "handoff"}))
+        self.d16_record()
+        self.write(self.ADR_DOC, "successor draft successor finding")
+        self.history[self.SUCC]["evidence"]["changed"][0]["sha256"] = self.sha(self.ADR_DOC)
+        self.assertTrue(self.d16_gate(id="succ-fix-1", remediation_of=self.SUCC, post={"source": "handoff"}))
+
+    def test_d16_probe_is_read_only_open_only_for_the_unconsumed_successor(self):
+        self.d16_arrange()
+        snap = self.d16_snapshot()
+        res = R.d16_successor_probe(self.cfg)
+        self.assertEqual(self.d16_snapshot(), snap)
+        self.assertIsNone(res["successor"])
+        self.assertTrue(all(res[k] for k in ("other_id", "cap", "old_root_fourth")), res)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code_ = R.main(["--home", str(self.home), "--repo", str(self.repo), "d16-successor-probe"])
+        self.assertEqual((code_, json.loads(out.getvalue())["d16_successor_route"]), (0, "open"))
+        (self.home / "acceptances" / f"{R.D16_RECEIPT}.json").unlink()
+        self.d16_unverified(R.d16_successor_probe(self.cfg)["successor"])
+        self.d16_receipt()
+        self.history[self.SUCC] = self.d16_record("QUEUED", rejected=False, attempts=0)
+        self.save_history()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code_ = R.main(["--home", str(self.home), "--repo", str(self.repo), "d16-successor-probe"])
+        self.assertEqual((code_, json.loads(out.getvalue())["d16_successor_route"]), (1, "closed"))
 
 
 class Mod004S0QaEvidence(S0Fixture):
