@@ -5692,7 +5692,7 @@ class Mod004S0DocLane(S0Fixture):
     def table(self, entries):
         return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
 
-    def test_context_exception_table_is_exactly_the_seven_audited_entries(self):
+    def test_context_exception_table_is_exactly_the_eight_audited_entries(self):
         self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
                                                      "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
         doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
@@ -5740,8 +5740,14 @@ class Mod004S0DocLane(S0Fixture):
              "primary_path": "tools/mission_runner/runner.py",
              "primary_sha256": "f88d05f922130e57f533aa88992e976e474526d676f556d32e4c32ad6b2d87f6",
              "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
-                           "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"),)}))
-        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 7)
+                           "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"),)},
+            {"task_id": "mod004-d16-f34-final-gate-opus-security-20261025",
+             "prompt_sha256": "9527fd8eed81a88540db5c37e1370e0bc7cff09bb4f090009771db13b6a23ca2",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "a56784fc50ad82e918d551ea10e487a698cffad451f5d3c9e2b22585457097b6",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-f34-final-correction.md",
+                           "f71ccb59b89cf376a7c0dbc8f126b897f44444292b9cf931060ab2ea76285e73"),)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 8)
 
     def test_pinned_loop_owner_review_artifact_is_the_runner_recorded_output_hash(self):
         self.assertEqual(R.S0_LOOP_OWNER_REVIEW, "owner-product-remediation-loop-opus-r3-20261024")
@@ -12049,6 +12055,178 @@ class Mod004NonCapDesign(S0Fixture):
         self.assertIn("REMEDIATION_LIMIT", self.arch_fourth("succ-fix-3", id="succ-fix-4"))
         self.assertEqual(before_old, json.dumps({k: v for k, v in self.history.items() if k.startswith(("adr-", "rev-adr", "succ-", "rev-succ"))
                                                  or k == self.SUCC or k == f"rev-{self.SUCC}"}, sort_keys=True))
+
+    def f34_arrange(self):
+        """Synthetic exact fourth-cycle authority, leaving both earlier exhausted roots untouched."""
+        self.arch_arrange()
+        self.arch_record()
+        parent = self.ARCH
+        for n, word in enumerate(self.ARCH_WORDS, 1):
+            parent = self.arch_correction(parent, n, f"arch finding {word}")["id"]
+        self.write(R.D16_F34_OWNER_PATH, "one final F34 owner authority\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "final F34 owner authority")
+        owner = {"path": R.D16_F34_OWNER_PATH, "sha256": self.sha(R.D16_F34_OWNER_PATH), "commit": self.head(),
+                 "ci": self.ci(self.head()), "review": self.review(R.D16_F34_OWNER_PATH, "f34-owner")}
+        pins = {"D16_F34_OWNER_SHA": owner["sha256"], "D16_F34_OWNER_COMMIT": owner["commit"],
+                "D16_F34_OWNER_CI_RUN": owner["ci"]["run_id"], "D16_F34_OWNER_REVIEW": owner["review"]["task_id"],
+                "D16_F34_ROOT": self.ARCH, "D16_F34_TIP": parent,
+                "D16_F34_START_SHA": self.sha(self.ADR_DOC),
+                "D16_F34_HISTORY": tuple((wid, self.history[wid]["evidence"]["changed"][0]["sha256"],
+                                           f"rev-{wid}") for wid in (self.ARCH, "arch-fix-1", "arch-fix-2", parent))}
+        for name, value in pins.items():
+            patcher = mock.patch.object(R, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        receipt = {"schema": 1, "module": "MOD-004", "kind": "mod004-d16-f34-final-authority", "operator": "op",
+                   "recorded_at": R.now_iso(), "subjects": {"d16_f34_owner": owner}}
+        (self.home / "acceptances" / f"{R.D16_F34_RECEIPT}.json").write_text(json.dumps(receipt))
+        self.save_history()
+        return parent
+
+    def test_f34_exact_cycle_four_only_and_one_bound_review_slot(self):
+        parent = self.f34_arrange()
+        fixed = self.d16_task(id=R.D16_F34_WRITE, remediation_of=parent)
+        self.assertIsNone(R.gate_reason(self.cfg, fixed, self.history))
+        self.assertIn("REMEDIATION_LIMIT", self.d16_gate(id="another-fourth", remediation_of=parent))
+        self.assertIn("REVIEW_REQUIRED", R.gate_reason(self.cfg, fixed | {"source": "handoff"}, self.history))
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed | {"allowed_paths": [self.DESIGN]}, self.history))
+        self.assertIn("D16_SUCCESSOR_INVALID", R.gate_reason(self.cfg, fixed | {"verify_cmd": ["true"]}, self.history))
+        R.stamp_product_remediation(self.history, fixed)
+        self.assertEqual((fixed["remediation_root"], fixed["remediation_cycle"]), (self.ARCH, 4))
+        self.history[fixed["id"]] = fixed
+        self.assertIsNone(R.gate_reason(self.cfg, fixed, self.history))  # queued task recheck is still allowed
+        self.assertIn("REMEDIATION_ROOT_PENDING", self.d16_gate(id="other-child", remediation_of=parent))
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed | {"remediation_cycle": 5}, self.history))
+        fixed.update(status="DONE", evidence={"changed": [{"path": self.ADR_DOC, "sha256": R.D16_F34_RESULT_SHA}]})
+        review = R.validate_task({"id": R.D16_F34_REVIEW, "module": "MOD-004", "role": "code-review", "prompt": "review",
+                                  "review_of": {"task_id": fixed["id"], "changed": fixed["evidence"]["changed"]}}, self.cfg)
+        self.assertIsNone(R.d16_f34_review_reason(review, self.history))
+        self.assertIsNone(R.gate_reason(self.cfg, review, self.history))
+        self.assertIn("D16_F34_REVIEW_INVALID", R.d16_f34_review_reason(review | {"id": "review-shop"}, self.history))
+        self.assertIn("D16_F34_REVIEW_INVALID", R.gate_reason(self.cfg, review | {"id": "review-shop"}, self.history))
+        self.assertIn("D16_F34_REVIEW_INVALID", R.d16_f34_review_reason(review | {"review_of": {"task_id": parent}}, self.history))
+
+    def test_f34_authority_fails_closed_on_history_receipt_and_start_bytes(self):
+        parent = self.f34_arrange()
+        fixed = self.d16_task(id=R.D16_F34_WRITE, remediation_of=parent)
+        self.assertIsNone(R.gate_reason(self.cfg, fixed, self.history))
+        path = self.home / "acceptances" / f"{R.D16_F34_RECEIPT}.json"
+        receipt = path.read_bytes()
+        path.unlink()
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        path.write_bytes(receipt)
+        for field in ("sha256", "commit"):
+            r = json.loads(receipt)
+            r["subjects"]["d16_f34_owner"][field] = "0" * (64 if field == "sha256" else 40)
+            path.write_text(json.dumps(r))
+            self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history), field)
+        r = json.loads(receipt)
+        r["subjects"]["d16_f34_owner"]["ci"]["run_id"] = "0"
+        path.write_text(json.dumps(r))
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        path.write_bytes(receipt)
+        changed = self.history[parent]["evidence"]["changed"]
+        old = changed[0]["sha256"]
+        changed[0]["sha256"] = "0" * 64
+        self.assertIn("REVIEW_REQUIRED", R.gate_reason(self.cfg, fixed, self.history))
+        changed[0]["sha256"] = old
+        old_review = self.history[f"rev-{parent}"]["id"]
+        self.history[f"rev-{parent}"]["id"] = "wrong-review-id"
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        self.history[f"rev-{parent}"]["id"] = old_review
+        wrong_pins = R.D16_F34_HISTORY[:-1] + ((parent, "0" * 64, f"rev-{parent}"),)
+        with mock.patch.object(R, "D16_F34_HISTORY", wrong_pins):
+            self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        self.history["extra-review"] = dict(self.history[f"rev-{parent}"], id="extra-review")
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        self.history.pop("extra-review")
+        owner_review = R.D16_F34_OWNER_REVIEW
+        self.history["extra-owner-approval"] = dict(self.history[owner_review], id="extra-owner-approval")
+        self.assertIn("D16_F34_UNVERIFIED", R.gate_reason(self.cfg, fixed, self.history))
+        self.history.pop("extra-owner-approval")
+        for paths in ([self.DESIGN], list(R.ACCOUNTING_RECOVERY_PATHS), list(R.S0_PATHS), ["backend/app/mod004/service.py"]):
+            self.assertTrue(R.gate_reason(self.cfg, fixed | {"allowed_paths": paths, "expected_changes": paths}, self.history))
+        self.write(self.ADR_DOC, "different rejected bytes\n")
+        self.assertIn("REMEDIATION_BINDING_STALE", R.gate_reason(self.cfg, fixed, self.history))
+
+    def test_f34_write_and_review_fail_once_without_transport_retries(self):
+        runner = R.Runner(self.cfg)
+        for tid in (R.D16_F34_WRITE, R.D16_F34_REVIEW):
+            with self.subTest(tid=tid):
+                t = {"id": tid, "attempts": 1, "status": "RUNNING"}
+                runner.requeue_or_fail(t, "transport failed")
+                self.assertEqual(t["status"], "FAILED")
+                self.assertNotIn("next_attempt_at", t)
+                interrupted = {"id": tid, "attempts": 1, "status": "RUNNING"}
+                runner.settle(interrupted, f"{tid}:1", "stopped", None, None, None, None, None)
+                self.assertEqual((interrupted["status"], interrupted["blocked_reason"], interrupted["attempts"]),
+                                 ("BLOCKED", "D16_F34_ATTEMPT_INTERRUPTED", 1))
+
+    def test_f34_result_is_exact_full_file_and_hash_errors_fail_closed(self):
+        self.write(self.ADR_DOC, "owner-approved full file\n")
+        with mock.patch.object(R, "D16_F34_RESULT_SHA", self.sha(self.ADR_DOC)):
+            self.assertIsNone(R.d16_f34_result_problem(self.repo, [self.ADR_DOC]))
+            self.assertTrue(R.d16_f34_result_problem(self.repo, [self.ADR_DOC, self.DESIGN]))
+            self.assertTrue(R.d16_f34_result_problem(self.repo, []))
+            self.write(self.ADR_DOC, "wrong bytes\n")
+            self.assertIn("hash differs", R.d16_f34_result_problem(self.repo, [self.ADR_DOC]))
+            with mock.patch.object(R, "_path_hash", side_effect=OSError("unreadable")):
+                self.assertIn("could not be hashed", R.d16_f34_result_problem(self.repo, [self.ADR_DOC]))
+
+    def test_f34_fifth_cycle_still_hits_original_three_cycle_limit(self):
+        parent = self.f34_arrange()
+        self.write(self.ADR_DOC, "final rejected proposal\n")
+        fixed = self.d16_task(id=R.D16_F34_WRITE, remediation_of=parent)
+        R.stamp_product_remediation(self.history, fixed)
+        fixed.update(status="DONE", attempts=1, created_at="2026-10-27T04:00:00+00:00",
+                     evidence={"changed": [{"path": self.ADR_DOC, "sha256": self.sha(self.ADR_DOC)}]})
+        self.history[fixed["id"]] = fixed
+        self.d16_reject(fixed["id"], "a distinct final finding")
+        self.assertIn("REMEDIATION_LIMIT", self.d16_gate(id="fifth-correction", remediation_of=fixed["id"]))
+
+    def test_f34_context_pin_only_excludes_the_exact_negative_runner_review(self):
+        e = next(x for x in R.S0_CONTEXT_EXCEPTIONS if x["task_id"] == "mod004-d16-f34-final-gate-opus-security-20261025")
+        self.assertEqual(e["subjects"], ((R.D16_F34_OWNER_PATH, R.D16_F34_OWNER_SHA),))
+        prompt = (f"Review EXACT file {e['primary_path']} SHA-256 {e['primary_sha256']}\n"
+                  f"Governing context: {R.D16_F34_OWNER_PATH} SHA-256 {R.D16_F34_OWNER_SHA}\n")
+        task = {"id": e["task_id"], "role": "security", "status": "BLOCKED", "review_of": None,
+                "prompt": prompt, "blocked_reason": "REVIEW_CHANGES_REQUESTED", "route": {"verdict": "VERIFIED"},
+                "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (e | {"prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()},)):
+            pair = (R.D16_F34_OWNER_PATH, R.D16_F34_OWNER_SHA)
+            self.assertTrue(R._s0_quoted_context_only(task, *pair))
+            self.assertFalse(R._s0_quoted_context_only(task, e["primary_path"], e["primary_sha256"]))
+            self.assertFalse(R._s0_quoted_context_only(task, pair[0], "0" * 64))
+            for change in ({"id": "other"}, {"prompt": prompt + " "}, {"review_of": {}}, {"status": "DONE"},
+                           {"blocked_reason": "OTHER"}, {"route": {"verdict": "UNVERIFIED"}},
+                           {"evidence": {"review_outcome": "APPROVED"}}):
+                self.assertFalse(R._s0_quoted_context_only(task | change, *pair), change)
+            primary_owner = f"Review EXACT file {pair[0]} SHA-256 {pair[1]}\n{prompt}"
+            with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (e | {"prompt_sha256": hashlib.sha256(primary_owner.encode()).hexdigest()},)):
+                self.assertFalse(R._s0_quoted_context_only(task | {"prompt": primary_owner}, *pair))
+
+    def test_f34_context_quote_does_not_erase_a_real_owner_rejection(self):
+        parent = self.f34_arrange()
+        fixed = self.d16_task(id=R.D16_F34_WRITE, remediation_of=parent)
+        self.assertIsNone(R.gate_reason(self.cfg, fixed, self.history))
+        pair = (R.D16_F34_OWNER_PATH, R.D16_F34_OWNER_SHA)
+        prompt = f"Review EXACT file {R.S0_RUNNER_FILE} SHA-256 {'a' * 64}\nContext: {pair[0]} SHA-256 {pair[1]}\n"
+        tid = "mod004-d16-f34-final-gate-opus-security-20261025"
+        self.history[tid] = {"id": tid, "module": "MOD-004", "role": "security", "status": "BLOCKED", "prompt": prompt,
+                             "review_of": None, "route": {"verdict": "VERIFIED"}, "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                             "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        self.assertIn("did not approve", R.gate_reason(self.cfg, fixed, self.history))
+        entry = {"task_id": tid, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                 "primary_path": R.S0_RUNNER_FILE, "primary_sha256": "a" * 64, "subjects": (pair,)}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", (*R.S0_CONTEXT_EXCEPTIONS, entry)):
+            self.assertIsNone(R.gate_reason(self.cfg, fixed, self.history))
+            genuine = "genuine-owner-rejection"
+            self.history[genuine] = {"id": genuine, "module": "MOD-004", "role": "architecture", "status": "BLOCKED",
+                                     "prompt": f"Review EXACT file {pair[0]} SHA-256 {pair[1]}\n",
+                                     "review_of": None, "route": {"verdict": "VERIFIED"},
+                                     "blocked_reason": "REVIEW_CHANGES_REQUESTED", "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+            self.assertIn("did not approve", R.gate_reason(self.cfg, fixed, self.history))
 
 
 class Mod004S0QaEvidence(S0Fixture):

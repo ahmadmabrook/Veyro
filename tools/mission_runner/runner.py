@@ -1901,7 +1901,7 @@ def _s0_binds_subject(y, path, sha):
 
 
 # Audited, immutable historical exceptions. Default is fail-closed: a negative Opus review that mentions a subject's
-# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These seven tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These eight tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1954,6 +1954,14 @@ S0_CONTEXT_EXCEPTIONS = (
      "primary_sha256": "f88d05f922130e57f533aa88992e976e474526d676f556d32e4c32ad6b2d87f6",
      "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
                    "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"),)},
+    # Rejected review of the first two-file F34 RUNNER candidate, not of the separately APPROVED owner record it quoted.
+    # Exact prompt, primary runner hash and verified negative verdict are all required by _s0_quoted_context_only.
+    {"task_id": "mod004-d16-f34-final-gate-opus-security-20261025",
+     "prompt_sha256": "9527fd8eed81a88540db5c37e1370e0bc7cff09bb4f090009771db13b6a23ca2",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "a56784fc50ad82e918d551ea10e487a698cffad451f5d3c9e2b22585457097b6",
+     "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-f34-final-correction.md",
+                   "f71ccb59b89cf376a7c0dbc8f126b897f44444292b9cf931060ab2ea76285e73"),)},
 )
 
 
@@ -1965,6 +1973,7 @@ def _s0_pinned_context(y, path, sha):
         return False
     digest = hashlib.sha256(prompt.encode("utf-8", "surrogatepass")).hexdigest()
     return any(y.get("id") == e["task_id"] and digest == e["prompt_sha256"] and (path, sha) in e["subjects"]
+               and (path, sha) not in (_s0_prompt_primaries(prompt) or ())
                and e["primary_path"] in prompt and e["primary_sha256"] in prompt for e in S0_CONTEXT_EXCEPTIONS)
 
 
@@ -3514,8 +3523,14 @@ def product_correction_reason(cfg, tasks, t, tip):
     if tip.get("status") == "DONE" and not _hashes_current(cfg, (tip.get("evidence") or {}).get("changed")):
         return f"REMEDIATION_BINDING_STALE {module}: files of {tip['id']} no longer match the rejected candidate"
     if len(chain) > MAX_PRODUCT_CORRECTIONS:
-        return (f"REMEDIATION_LIMIT {module}: root {chain[0]['id']} already used {MAX_PRODUCT_CORRECTIONS} "
-                "correction cycles")
+        if len(chain) == MAX_PRODUCT_CORRECTIONS + 1 and t.get("id") == D16_F34_WRITE:
+            try:
+                verify_d16_f34_authority(cfg, tasks, t)
+            except (GateError, OSError) as e:
+                return f"D16_F34_UNVERIFIED {t['id']}: {e}"
+        else:
+            return (f"REMEDIATION_LIMIT {module}: root {chain[0]['id']} already used {MAX_PRODUCT_CORRECTIONS} "
+                    "correction cycles")
     fps = [r[1] for r in rej]
     if None in fps:
         return f"REMEDIATION_FINGERPRINT_UNVERIFIABLE {module}: a rejection of {chain[0]['id']} left no recorded finding text"
@@ -3901,6 +3916,99 @@ D16_ARCH_RECEIPT = "MOD-004-D16-ARCHITECTURE"  # operator-written <home>/accepta
 D16_ARCH_ID = "mod004-d16-assurance-architecture-sonnet-20261025"
 D16_SUCC_TERMINAL = "mod004-d16-db-command-successor-remed3-sonnet-20261025"
 D16_SUCC_TERMINAL_REVIEW = "mod004-d16-db-command-successor-remed3-opus-review-20261025"
+
+# One owner-approved fourth correction of the SAME D16 architecture root. This is not a general limit increase.
+D16_F34_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-f34-final-correction.md"
+D16_F34_OWNER_SHA = "f71ccb59b89cf376a7c0dbc8f126b897f44444292b9cf931060ab2ea76285e73"
+D16_F34_OWNER_COMMIT = "2f69abe36b30de2930d252f139863b9117ee4bcb"
+D16_F34_OWNER_CI_RUN = "40202958073"
+D16_F34_OWNER_REVIEW = "mod004-d16-f34-final-owner-opus-r3-20261025"
+D16_F34_RECEIPT = "MOD-004-D16-F34-FINAL"
+D16_F34_WRITE = "mod004-d16-assurance-architecture-remed4-sonnet-20261025"
+D16_F34_REVIEW = "mod004-d16-assurance-architecture-remed4-opus-review-20261025"
+D16_F34_ROOT = D16_ARCH_ID
+D16_F34_TIP = "mod004-d16-assurance-architecture-remed3-sonnet-20261025"
+D16_F34_START_SHA = "e286d581dd74da74309e03859fb04105cb5de522b1a01aa2fe5c2f411fcfeb80"
+D16_F34_RESULT_SHA = "f5338001b4e2eb5a5122419d381171447ed3de34ceebd2be226d4ecb1accca82"
+D16_F34_HISTORY = (
+    (D16_F34_ROOT, "8996ee6f36747c2cd7a126fdbfe8f9947aebdca99bff36e276a1b40891ec0f48", "mod004-d16-assurance-architecture-opus-review-20261025"),
+    ("mod004-d16-assurance-architecture-remed1-sonnet-20261025", "f109b1c435e2f8f2f7eeff2b1504f373489d59a72de3fa52275b936d5465f245", "mod004-d16-assurance-architecture-remed1-opus-review-20261025"),
+    ("mod004-d16-assurance-architecture-remed2-sonnet-20261025", "e8b73d0836c3f29894ccbe02c4d97252d023d6eac84977ceb9a6c6f0d621de23", "mod004-d16-assurance-architecture-remed2-opus-review-20261025"),
+    (D16_F34_TIP, D16_F34_START_SHA, "mod004-d16-assurance-architecture-remed3-opus-review-20261025"),
+)
+
+
+def verify_d16_f34_authority(cfg, tasks, t):
+    """Fail-closed read-only authorization for exactly one original-root cycle-four F34 correction."""
+    if not (t.get("id") == D16_F34_WRITE and t.get("module") == "MOD-004" and t.get("role") == "implement"
+            and t.get("source") is None and t.get("plan_phase") is None
+            and t.get("remediation_of") == D16_F34_TIP
+            and t.get("allowed_paths") == [D16_ADR_PATH] and t.get("expected_changes") == [D16_ADR_PATH]
+            and t.get("verify_cmd") == []
+            and all(t.get(k) is None for k in ("review_of", "review_retry_of", "accounting_recovery_of", "doc_base"))):
+        raise GateError("F34 task shape is not the fixed owner-CLI, ADR-only, cycle-four correction")
+    recorded = tasks.get(D16_F34_WRITE)
+    if recorded is not None and recorded is not t:
+        raise GateError("F34 single-use task id was already consumed")
+    prior = {k: v for k, v in tasks.items() if v is not t}
+    chain = _d16_exhausted_chain(prior, D16_F34_ROOT, D16_F34_TIP, D16_F34_HISTORY[-1][2])
+    for w, (wid, sha, rid) in zip(chain, D16_F34_HISTORY):
+        if w["id"] != wid or (w.get("evidence") or {}).get("changed") != [{"path": D16_ADR_PATH, "sha256": sha}]:
+            raise GateError("F34 historical write ids or exact changed bytes disagree with the preserved lineage")
+        reviews = [r for r in prior.values() if isinstance(r, dict) and (r.get("review_of") or {}).get("task_id") == wid]
+        if len(reviews) != 1 or reviews[0].get("id") != rid:
+            raise GateError("F34 historical review ids disagree with the preserved lineage")
+    if (t.get("remediation_root"), t.get("remediation_cycle")) not in ((None, None), (D16_F34_ROOT, 4)):
+        raise GateError("F34 persisted root/cycle disagrees with the single fourth correction")
+    r = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{D16_F34_RECEIPT}.json", RECEIPT_MAX_BYTES), "D16 F34 receipt")
+    sub = r.get("subjects")
+    if not (set(r) == {"schema", "module", "kind", "operator", "recorded_at", "subjects"}
+            and r["schema"] == SCHEMA and r["module"] == "MOD-004" and r["kind"] == "mod004-d16-f34-final-authority"
+            and isinstance(r["operator"], str) and r["operator"].strip()
+            and isinstance(sub, dict) and set(sub) == {"d16_f34_owner"}):
+        raise GateError("D16 F34 receipt schema mismatch")
+    o = sub["d16_f34_owner"]
+    if not (isinstance(o, dict) and o.get("path") == D16_F34_OWNER_PATH and o.get("sha256") == D16_F34_OWNER_SHA
+            and o.get("commit") == D16_F34_OWNER_COMMIT and (o.get("ci") or {}).get("run_id") == D16_F34_OWNER_CI_RUN
+            and (o.get("review") or {}).get("task_id") == D16_F34_OWNER_REVIEW):
+        raise GateError("D16 F34 owner record is not the pinned file, commit, CI run and exact review")
+    _s0_subject(cfg, "d16_f34_owner", o, tasks, set(), {"d16_f34_owner": re.compile(re.escape(D16_F34_OWNER_PATH))})
+    approvals = [x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("role") in OPUS_ROLES
+                 and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                 and _s0_binds_subject(x, D16_F34_OWNER_PATH, D16_F34_OWNER_SHA)]
+    if approvals != [D16_F34_OWNER_REVIEW]:
+        raise GateError("D16 F34 owner record needs its single pinned APPROVED exact-subject Opus review")
+    if _path_hash(Path(cfg.repo) / D16_ADR_PATH) != D16_F34_START_SHA:
+        raise GateError("D16 F34 starting ADR is not the exact preserved rejected candidate")
+    return True
+
+
+def d16_f34_review_reason(t, tasks):
+    """The one final candidate has exactly one named, bound review slot; other reviews remain unaffected."""
+    b = t.get("review_of") or {}
+    if t.get("id") != D16_F34_REVIEW and b.get("task_id") != D16_F34_WRITE:
+        return None
+    if t.get("id") != D16_F34_REVIEW or b.get("task_id") != D16_F34_WRITE or t.get("module") != "MOD-004":
+        return "D16_F34_REVIEW_INVALID: only the fixed review id may review the final F34 write"
+    w = tasks.get(D16_F34_WRITE)
+    if not (isinstance(w, dict) and w.get("status") == "DONE" and w.get("remediation_root") == D16_F34_ROOT
+            and w.get("remediation_cycle") == 4 and (w.get("evidence") or {}).get("changed") ==
+            [{"path": D16_ADR_PATH, "sha256": D16_F34_RESULT_SHA}]):
+        return "D16_F34_REVIEW_INVALID: corrected design is not the exact DONE cycle-four candidate"
+    if b.get("changed") != [{"path": D16_ADR_PATH, "sha256": D16_F34_RESULT_SHA}]:
+        return "D16_F34_REVIEW_INVALID: review binding is not the exact final ADR hash"
+    return None
+
+
+def d16_f34_result_problem(repo, changed):
+    """The single final write must leave precisely the owner-approved complete ADR bytes."""
+    if changed != [D16_ADR_PATH]:
+        return "final F34 write changed a path other than the sole ADR, or did not change the ADR"
+    try:
+        actual = _path_hash(Path(repo) / D16_ADR_PATH)
+    except OSError:
+        return "final F34 ADR could not be hashed"
+    return None if actual == D16_F34_RESULT_SHA else "final F34 ADR hash differs from the owner-approved result"
 
 
 def verify_d16_architecture(cfg, tasks, t):
@@ -4356,13 +4464,15 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
-        if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID) and t["role"] != "implement":
+        if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID, D16_F34_WRITE) and t["role"] != "implement":
             return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is reserved for the one reviewed implement root"
+        if t.get("id") == D16_F34_REVIEW and t["role"] != "code-review":
+            return f"D16_F34_REVIEW_INVALID {t['id']}: the fixed final review id is reserved for code-review"
         if t["role"] in WRITE_ROLES and t.get("verify_cmd") != [] and d16_successor_lineage(tasks, t):
             return (f"D16_SUCCESSOR_INVALID {t['id']}: verify_cmd must be empty for the ADR-only successor and its corrections "
                     "(the owner-CLI verifier runs unsandboxed after the scope check)")
         if t["role"] == "code-review":
-            return (s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
+            return (d16_f34_review_reason(t, tasks) or s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
                     or s0_loop_review_reason(cfg, t, tasks) or s0_qa_review_reason(cfg, t, tasks))
         if t["role"] not in GATED_ROLES:
@@ -5287,15 +5397,17 @@ class Runner:
     # --- settle: DONE is earned only by external evidence, never by exit code or prose
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
-        if outcome in ("stopped", "signal") and s0_single_attempt(t):  # the single S0/document attempt started: triage, never re-run
-            code = ("S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
+        if outcome in ("stopped", "signal") and (s0_single_attempt(t) or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
+            # No retry after an interrupted one-shot F34 write or review; partial edits or a review judgement may exist.
+            code = ("D16_F34_ATTEMPT_INTERRUPTED" if t["id"] in (D16_F34_WRITE, D16_F34_REVIEW) else
+                    "S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
                     "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else
                     "S0_REBIND_ATTEMPT_INTERRUPTED" if s0_rebind_marked(t) else
                     "S0_TEST_ATTEMPT_INTERRUPTED" if s0_test_marked(t) else
                     "S0_LOOP_ATTEMPT_INTERRUPTED" if s0_loop_marked(t) else
                     "S0_QA_ATTEMPT_INTERRUPTED" if s0_qa_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
             t.update(status="BLOCKED", blocked_reason=code, stage=None,
-                     last_error="the only attempt of this S0 write was interrupted; repo may hold partial edits")
+                     last_error="the only authorized attempt was interrupted; partial edits or a review judgement may exist")
             return self.store.event("task-blocked", op, task_id=t["id"], code=code)
         if outcome in ("stopped", "signal"):  # operator/launchd action is not a task failure
             t.update(status="QUEUED", attempts=t["attempts"] - 1, stage=None)
@@ -5351,6 +5463,10 @@ class Runner:
         write = t["role"] in WRITE_ROLES
         if write and not changed:
             bad.append(("NO_DELIVERABLE_CHANGE", "writing task changed no repository file"))
+        if write and t["id"] == D16_F34_WRITE:
+            problem = d16_f34_result_problem(self.cfg.repo, changed)
+            if problem:
+                bad.append(("D16_F34_RESULT_MISMATCH", problem))
         if head_moved:
             bad.append(("HEAD_MOVED", "the child changed git HEAD"))
         stray = [c for c in changed if not in_scope(c, t["allowed_paths"])]
@@ -5659,7 +5775,8 @@ class Runner:
 
     def requeue_or_fail(self, t, reason):
         t["last_error"], t["updated_at"] = reason, now_iso()
-        if t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t):  # S0 and its documents: one attempt, no transport retry
+        if t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t) or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW):
+            # The owner's final F34 write and its sole review have no transport retry entitlement.
             t["status"] = "FAILED"
             self.store.event("task-failed", f"{t['id']}:{t['attempts']}", task_id=t["id"], reason=reason)
         else:
