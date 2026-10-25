@@ -10771,6 +10771,218 @@ class Mod004NonCapDesign(S0Fixture):
                                  "allowed_paths": list(R.ACCOUNTING_RECOVERY_PATHS),
                                  "expected_changes": list(R.ACCOUNTING_RECOVERY_PATHS)})
 
+    # --- owner CLI: non-CAP design remediation (the CLI prefilter only routes; the gate alone decides)
+    ADR_DOC = "knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md"
+    ADR_ROOT = "adr-root"
+
+    def rejected_adr_chain(self, texts=("D16 defect a",)):
+        """len(texts) DONE ADR writes, each rejected by a bound runner-verified CHANGES_REQUESTED review; the tip's bytes are current."""
+        self.write(self.ADR_DOC, "adr v0\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "adr")
+        prev = None
+        for i, text in enumerate(texts):
+            tid = self.ADR_ROOT if i == 0 else f"adr-fix-{i}"
+            sha = self.sha(self.ADR_DOC) if i == len(texts) - 1 else hashlib.sha256(f"adr v{i}".encode()).hexdigest()
+            when = f"2026-10-25T0{i}:00:00+00:00"
+            changed = [{"path": self.ADR_DOC, "sha256": sha}]
+            self.history[tid] = {
+                "id": tid, "module": "MOD-004", "role": "implement", "status": "DONE", "review_gate": 1, "created_at": when,
+                "finished_at": when, "allowed_paths": [self.ADR_DOC], "expected_changes": [self.ADR_DOC],
+                "remediation_root": self.ADR_ROOT, "remediation_cycle": i, "evidence": {"changed": changed}}
+            if prev:
+                self.history[tid]["remediation_of"] = prev
+            self.history[f"rev-{tid}"] = {
+                "id": f"rev-{tid}", "module": "MOD-004", "role": "code-review", "status": "BLOCKED",
+                "blocked_reason": "REVIEW_CHANGES_REQUESTED", "created_at": when, "route": {"verdict": "VERIFIED"},
+                "review_of": {"task_id": tid, "changed": [dict(c) for c in changed]}, "result": text,
+                "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True,
+                             "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+            prev = tid
+        self.save_history()
+
+    def save_history(self):
+        store = R.Store(self.home)
+        state = store.load()
+        state["tasks"].update(self.history)
+        store.save(state)
+
+    def enq_cli(self, **over):
+        spec = {"id": "adr-fix-1", "module": "MOD-004", "role": "implement", "plan_phase": None, "remediation_of": self.ADR_ROOT,
+                "allow": [self.ADR_DOC], "expect": [self.ADR_DOC]} | over
+        pf = Path(self.tmp.name, "prompt.txt")
+        pf.write_text("correct the ADR")
+        argv = ["--home", str(self.home), "--repo", str(self.repo), "enqueue", "--id", spec["id"], "--module", spec["module"],
+                "--role", spec["role"], "--prompt-file", str(pf), "--verify-cmd", "[]"]
+        for flag, key in (("--allow", "allow"), ("--expect", "expect")):
+            for p in spec[key]:
+                argv += [flag, p]
+        for flag, key in (("--plan-phase", "plan_phase"), ("--remediation-of", "remediation_of")):
+            if spec[key]:
+                argv += [flag, spec[key]]
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            code = R.main(argv)
+        return code, err.getvalue()
+
+    def queued(self):
+        return sorted((self.home / "queue").glob("*"))
+
+    def test_cli_admits_one_exact_adr_correction_of_a_rejected_done_write_and_records_lineage(self):
+        self.rejected_adr_chain()
+        before = json.dumps(R.Store(self.home).load()["tasks"], sort_keys=True)
+        self.assertEqual(R.review_verdict(self.history, self.ADR_ROOT), "CHANGES_REQUESTED")
+        code, err = self.enq_cli()
+        self.assertEqual((code, err), (0, ""))
+        q = [json.loads(p.read_text()) for p in self.queued()]
+        self.assertEqual([(x["id"], x["remediation_of"], x["allowed_paths"], x["expected_changes"]) for x in q],
+                         [("adr-fix-1", self.ADR_ROOT, [self.ADR_DOC], [self.ADR_DOC])])
+        tasks = R.Store(self.home).load()["tasks"]
+        t = R.validate_task(q[0], self.cfg)
+        R.stamp_product_remediation(tasks, t)  # the ingest stamp derives root and cycle from ancestry, not from the CLI
+        self.assertEqual((t["remediation_root"], t["remediation_cycle"]), (self.ADR_ROOT, 1))
+        self.assertEqual(json.dumps(tasks, sort_keys=True), before)  # history and the CHANGES_REQUESTED verdict are untouched
+        self.assertEqual(R.review_verdict(tasks, self.ADR_ROOT), "CHANGES_REQUESTED")
+
+    def approve_adr(self, tid):
+        r = self.history[f"rev-{tid}"]
+        r["status"] = "DONE"
+        r.pop("blocked_reason")
+        r["evidence"] = {"review_outcome": "APPROVED", "review_bound_verified": True}
+        self.save_history()
+
+    def test_cli_refuses_a_stamped_approved_root_as_remediation_parent(self):
+        self.rejected_adr_chain()
+        self.approve_adr(self.ADR_ROOT)
+        self.assertEqual(R.review_verdict(self.history, self.ADR_ROOT), "APPROVED")
+        code, err = self.enq_cli()
+        self.assertEqual(code, 2)
+        self.assertIn(f"NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED adr-fix-1: parent {self.ADR_ROOT}", err)
+        self.assertEqual(self.queued(), [])
+
+    def test_cli_refuses_a_mid_chain_parent_under_a_stamped_approved_leaf(self):
+        self.rejected_adr_chain(("finding a", "finding b"))  # root rejected -> adr-fix-1 (leaf)
+        self.approve_adr("adr-fix-1")
+        for parent in (self.ADR_ROOT, "adr-fix-1"):  # mid-chain parent, and the approved leaf itself
+            with self.subTest(parent):
+                code, err = self.enq_cli(id="adr-fix-2", remediation_of=parent)
+                self.assertEqual(code, 2)
+                self.assertIn(f"NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED adr-fix-2: parent {parent}", err)
+                self.assertEqual(self.queued(), [])
+
+    def test_cli_refuses_an_unstamped_rejected_legacy_parent(self):
+        self.rejected_adr_chain()
+        self.history[self.ADR_ROOT].pop("remediation_root")
+        self.history[self.ADR_ROOT].pop("remediation_cycle")
+        self.save_history()
+        self.assertEqual(R.review_verdict(self.history, self.ADR_ROOT), "CHANGES_REQUESTED")
+        code, err = self.enq_cli()
+        self.assertEqual(code, 2)
+        self.assertIn(f"NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED adr-fix-1: parent {self.ADR_ROOT}", err)
+        self.assertEqual(self.queued(), [])
+
+    def test_cli_prefilter_is_not_the_authority_the_gate_refuses_what_the_cli_lets_through(self):
+        self.rejected_adr_chain()
+        for label, over, text in (
+                ("no remediation_of", {"remediation_of": None, "id": "adr-new"}, "REMEDIATION_LINEAGE_REQUIRED"),
+                ("wrong parent", {"remediation_of": "nope-1"}, "REVIEW_REQUIRED|REMEDIATION_"),
+                ("approved unrelated parent", {"remediation_of": self.DESIGN_REVIEW_OF},
+                 "NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED|REVIEW_REQUIRED"),
+                ("foreign scope", {"allow": [self.DESIGN], "expect": [self.DESIGN]}, "REMEDIATION_OUT_OF_SCOPE")):
+            with self.subTest(label):
+                for leftover in self.queued():  # each case stands alone: no queue artifact carries into the next
+                    leftover.unlink()
+                code, err = self.enq_cli(**over)
+                queued = self.queued()
+                for leftover in queued:
+                    leftover.unlink()
+                self.assertEqual(code, 2)
+                self.assertRegex(err, text)
+                self.assertNotIn("--remediation-of is accepted here only", err)
+                self.assertEqual(queued, [])
+        self.write(self.ADR_DOC, "adr edited after the review\n")  # the reviewed candidate bytes moved on
+        code, err = self.enq_cli()
+        self.assertEqual(code, 2)
+        self.assertIn("REMEDIATION_BINDING_STALE", err)
+        self.assertEqual(self.queued(), [])
+
+    def test_cli_fails_closed_for_cap_s0_product_foreign_and_malformed_requests_before_any_gate(self):
+        self.rejected_adr_chain()
+        cap, s0 = list(R.ACCOUNTING_RECOVERY_PATHS), list(R.S0_PATHS)
+        manifest = "knowledge/03-Modules/MOD-004/module-manifest.md"
+        cases = {
+            "cap path": {"allow": cap, "expect": cap}, "s0 product path": {"allow": s0, "expect": s0},
+            "product code": {"allow": ["backend/app/mod004/service.py"], "expect": ["backend/app/mod004/service.py"]},
+            "mixed adr and cap": {"allow": [self.ADR_DOC, cap[0]], "expect": [self.ADR_DOC]},
+            "manifest named": {"allow": [manifest], "expect": [manifest]},
+            "directory": {"allow": ["knowledge/00-Decisions/"], "expect": [self.ADR_DOC]},
+            "no expect": {"expect": []}, "no allow": {"allow": []},
+            "s0 plan phase": {"plan_phase": R.S0_MARKER}, "s0 test phase": {"plan_phase": R.S0_TEST_MARKER},
+            "any plan phase": {"plan_phase": "P1"}, "other module": {"module": "MOD-005"},
+            "review role": {"role": "code-review"}, "test role": {"role": "test"},
+            "malformed id": {"remediation_of": "bad id!"}}
+        for label, over in cases.items():
+            with self.subTest(label):
+                for leftover in self.queued():
+                    leftover.unlink()
+                code, err = self.enq_cli(**over)
+                queued = self.queued()
+                for leftover in queued:
+                    leftover.unlink()
+                self.assertEqual(code, 2)
+                self.assertIn("enqueue refused", err)
+                self.assertEqual(queued, [])
+
+        class A:
+            module, role, plan_phase, allow, expect = "MOD-004", "implement", None, [self.ADR_DOC], [self.ADR_DOC]
+            review_of = review_retry_of = accounting_recovery_of = None
+            doc_base = []
+        self.assertTrue(R.noncap_cli_remediation_shape(A))
+        for field, value in (("review_of", "x"), ("review_retry_of", "x"), ("accounting_recovery_of", "x"),
+                             ("doc_base", [f"{self.ADR_DOC}=absent"]), ("plan_phase", R.S0_DOC_MARKER)):
+            with self.subTest(field):
+                self.assertFalse(R.noncap_cli_remediation_shape(type("B", (A,), {field: value})))
+
+    def test_planner_source_and_a_second_writer_on_the_rejected_tip_are_refused_by_the_gate(self):
+        self.rejected_adr_chain()
+        planner = self.design(post={"source": "handoff", "remediation_of": self.ADR_ROOT})
+        self.assertTrue(R.noncap_shape_problem(self.history, planner))
+        self.assertTrue(R.gate_reason(self.cfg, planner, self.history))
+        self.history["branch"] = {"id": "branch", "module": "MOD-004", "role": "implement", "status": "QUEUED", "review_gate": 1,
+                                  "created_at": "2026-10-25T05:00:00+00:00", "remediation_of": self.ADR_ROOT,
+                                  "allowed_paths": [self.ADR_DOC], "expected_changes": [self.ADR_DOC]}
+        self.save_history()
+        code, err = self.enq_cli()  # another correction/writer already sits on the same rejected tip
+        self.assertEqual(code, 2)
+        self.assertRegex(err, "REMEDIATION_(BRANCH|ROOT_PENDING)")
+        self.assertEqual(self.queued(), [])
+
+    def test_max_three_corrections_and_repeated_finding_are_enforced_by_the_gate_not_the_cli(self):
+        self.rejected_adr_chain(("finding a", "finding b", "finding c", "finding d"))  # root + 3 rejected corrections
+        code, err = self.enq_cli(id="adr-next", remediation_of="adr-fix-3")
+        self.assertEqual(code, 2)
+        self.assertIn("REMEDIATION_LIMIT", err)
+        self.assertEqual(self.queued(), [])
+
+    def test_repeated_finding_on_one_root_is_refused_by_the_gate_not_the_cli(self):
+        self.rejected_adr_chain(("same finding", "same finding"))
+        code, err = self.enq_cli(id="adr-next", remediation_of="adr-fix-1")
+        self.assertEqual(code, 2)
+        self.assertIn("REMEDIATION_NO_PROGRESS", err)
+        self.assertEqual(self.queued(), [])
+
+    def test_historical_generic_cli_rejection_and_document_lane_routing_are_unchanged(self):
+        self.rejected_adr_chain()
+        for over in ({"module": "MOD-000", "allow": ["out/"], "expect": ["out/a.txt"]},
+                     {"allow": [self.ADR_DOC, "out/x.txt"], "expect": [self.ADR_DOC]}):
+            code, err = self.enq_cli(**over)
+            self.assertEqual(code, 2)
+            self.assertIn("--remediation-of is accepted here only for MOD004-S0-DOC document writes", err)
+        code, err = self.enq_cli(plan_phase=R.S0_DOC_MARKER)  # the document lane keeps its own gate, not the prefilter
+        self.assertEqual(code, 2)
+        self.assertNotIn("--remediation-of is accepted here only", err)
+        self.assertEqual(self.queued(), [])
+
     # --- non-mutating probe
     def test_probe_admits_design_only_and_writes_nothing(self):
         store = R.Store(self.home)
@@ -10864,12 +11076,20 @@ class Mod004NonCapDesign(S0Fixture):
                 self.history.clear()
                 self.history.update(json.loads(saved))
 
-    def test_design_chain_remediation_still_works_after_an_approved_design_write(self):
+    def test_unstamped_rejected_design_write_is_no_longer_a_remediation_target_after_an_approved_design_write(self):
         self.add_approved_design()
         self.history["rev-design-1"]["evidence"]["review_outcome"] = "CHANGES_REQUESTED"
-        self.assertIsNone(self.gate(id="design-1-fix", post={"remediation_of": "design-1"}))
+        # the artificial root carries no remediation_root stamp: the legacy branch (no freshness/branch/fingerprint/max-three) is closed
+        self.assertIn("NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED design-1-fix: parent design-1",
+                      self.gate(id="design-1-fix", post={"remediation_of": "design-1"}))
         self.assertIn("REVIEW_REQUIRED", self.gate(allowed_paths=list(R.ACCOUNTING_RECOVERY_PATHS),
                                                     expected_changes=list(R.ACCOUNTING_RECOVERY_PATHS)))
+
+    def test_unstamped_approved_historical_parent_is_not_a_remediation_target(self):
+        self.add_approved_design()  # design-1 stays APPROVED: nothing to correct
+        self.assertIn("NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED", self.gate(id="design-1-fix", post={"remediation_of": "design-1"}))
+        # nonexistent parent: noncap_shape_problem refuses it fail-closed before the unstamped-ancestry guard
+        self.assertIn("only an exact owner-covered design task", self.gate(id="ghost-fix", post={"remediation_of": "no-such-write"}))
 
 
 class Mod004S0QaEvidence(S0Fixture):

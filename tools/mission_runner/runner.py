@@ -3620,6 +3620,16 @@ def _noncap_path_ok(p):
             and not NONCAP_FORBIDDEN_NAME.search(Path(p).name))
 
 
+def noncap_cli_remediation_shape(a):
+    """Owner-CLI prefilter ONLY (no authority): True for a plain MOD-004 implement write confined to the exact non-CAP
+    design paths. Whether the correction is allowed (parent, bound review, root/cycle, fingerprints, max-three, fresh
+    diff, sole writer) is decided only by enqueue -> gate_reason -> product_lineage_reason / noncap_shape_problem."""
+    paths = (a.allow or []) + (a.expect or [])
+    return (a.module == "MOD-004" and a.role == "implement" and not a.plan_phase and bool(a.allow) and bool(a.expect)
+            and not (a.review_of or a.review_retry_of or a.accounting_recovery_of or a.doc_base)
+            and all(_noncap_path_ok(p) for p in paths))
+
+
 def noncap_shape_problem(tasks, t):
     """None only for a NEW MOD-004 implement write confined to exact design/documentation files; never a planner task,
     S0 or CAP-accounting task, review retry, or a correction whose ancestry touches the CAP chain or other paths."""
@@ -3989,6 +3999,11 @@ def review_gate_reason(cfg, t, tasks):
             return lineage
         if not t.get("remediation_of") and "remediation_root" in t and (t["remediation_root"], t.get("remediation_cycle")) != (t.get("id"), 0):
             return f"REMEDIATION_COUNTER_MISMATCH {module}: persisted counter disagrees with the task ancestry"
+    if cap_chain and t.get("remediation_of"):
+        # a verified non-CAP correction is admitted only through product_lineage_reason's decided path (stamped rejected tip,
+        # returned above); a stamped approved/mid-chain parent or an unstamped (legacy) parent never reaches the legacy branch
+        return (f"NONCAP_REMEDIATION_ANCESTRY_UNSTAMPED {t['id']}: parent {t['remediation_of']} is not the sole "
+                "product-policy-stamped rejected tip of a remediation chain; refused")
     if not writes:
         return None
     last = writes[-1]
@@ -5802,9 +5817,9 @@ def main(argv=None):
     if a.cmd == "enqueue":
         try:
             repair = (a.plan_phase, a.id, a.remediation_of) == (S0_REBIND_MARKER, S0_REBIND_REPAIR_ID, S0_REBIND_ROOT_ID)
-            if a.remediation_of and a.plan_phase != S0_DOC_MARKER and not repair:
-                raise ValueError("--remediation-of is accepted here only for MOD004-S0-DOC document writes and the one "
-                                 "MOD004-S0-DOC-REBIND repair task")
+            if a.remediation_of and a.plan_phase != S0_DOC_MARKER and not repair and not noncap_cli_remediation_shape(a):
+                raise ValueError("--remediation-of is accepted here only for MOD004-S0-DOC document writes, the one "
+                                 "MOD004-S0-DOC-REBIND repair task and exact MOD-004 non-CAP design/documentation writes")
             p = enqueue(cfg, {"id": a.id, "module": a.module, "role": a.role, "title": a.title,
                               "plan_phase": a.plan_phase, "allowed_paths": a.allow, "expected_changes": a.expect,
                               "verify_cmd": json.loads(a.verify_cmd) if a.verify_cmd else None,
