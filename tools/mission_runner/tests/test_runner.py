@@ -5692,7 +5692,7 @@ class Mod004S0DocLane(S0Fixture):
     def table(self, entries):
         return mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS", tuple(entries))
 
-    def test_context_exception_table_is_exactly_the_six_audited_entries(self):
+    def test_context_exception_table_is_exactly_the_seven_audited_entries(self):
         self.assertFalse(any(hasattr(R, n) for n in ("_s0_other_primary", "_s0_bound_to_other_files", "S0_PRIMARY_RE",
                                                      "S0_DOC_OWNER_CONTEXT_EXCEPTION")))
         doc_owner = ("knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md",
@@ -5734,8 +5734,14 @@ class Mod004S0DocLane(S0Fixture):
              "primary_path": "tools/mission_runner/runner.py",
              "primary_sha256": "23cbe13b223a3ffff0db592378633aebfc872254f3da5e080d9df6f57f17714c",
              "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-fullscope-recovery.md",
-                           "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"),)}))
-        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 6)
+                           "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"),)},
+            {"task_id": "mod004-d16-successor-gate-opus-security-20261025",
+             "prompt_sha256": "2dd917b12c3b97cdfcc4b789ec9a27e75d56af4359c4a8be3ff2fc1b89291ed3",
+             "primary_path": "tools/mission_runner/runner.py",
+             "primary_sha256": "f88d05f922130e57f533aa88992e976e474526d676f556d32e4c32ad6b2d87f6",
+             "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
+                           "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"),)}))
+        self.assertEqual(len({e["task_id"] for e in R.S0_CONTEXT_EXCEPTIONS}), 7)
 
     def test_pinned_loop_owner_review_artifact_is_the_runner_recorded_output_hash(self):
         self.assertEqual(R.S0_LOOP_OWNER_REVIEW, "owner-product-remediation-loop-opus-r3-20261024")
@@ -6182,10 +6188,10 @@ Decide whether this new record accurately NARROWS the fresh owner authorization 
 
     def test_pinned_legacy_approved_reviews_bind_only_with_immutable_prompt_hash_and_status(self):
         entry = R.S0_LEGACY_APPROVED_REVIEWS[0]
-        self.assertEqual(len(R.S0_LEGACY_APPROVED_REVIEWS), 3)
+        self.assertEqual(len(R.S0_LEGACY_APPROVED_REVIEWS), 4)
         self.assertEqual({e["task_id"] for e in R.S0_LEGACY_APPROVED_REVIEWS}, {
             "mod004-s0-owner-record-final-opus-review-20261019", "mod004-s0-adr-amendment-opus-remediation-review-20261023",
-            "owner-product-remediation-loop-opus-r3-20261024"})
+            "owner-product-remediation-loop-opus-r3-20261024", "mod004-d16-successor-owner-opus-20261025"})
         pair = (entry["path"], entry["sha256"])
         prompt = "legacy prompt without an explicit primary declaration"
         good = {"id": entry["task_id"], "prompt": prompt, "status": "DONE", "route": {"verdict": "VERIFIED"},
@@ -6206,6 +6212,34 @@ Decide whether this new record accurately NARROWS the fresh owner authorization 
             self.assertFalse(R._s0_binds_subject(good, entry["path"], "0" * 64))  # only the one exact pair
             self.assertFalse(R._s0_binds_subject(good, "knowledge/other.md", entry["sha256"]))
         self.assertFalse(R._s0_binds_subject(good, *pair))  # the real table pins other prompt hashes: no match
+
+    def test_the_real_d16_owner_attribution_pins_credit_one_review_and_exclude_one_quote(self):
+        pos = next(e for e in R.S0_LEGACY_APPROVED_REVIEWS if e["task_id"] == R.D16_OWNER_REVIEW)
+        self.assertEqual((pos["path"], pos["sha256"]), (R.D16_OWNER_PATH, R.D16_OWNER_SHA))
+        self.assertEqual(pos["prompt_sha256"], "3ab11c89a0cb9f447ce805d3f720035aa20a5b4e99474ba09d1a1ba34f696400")
+        prompt = "d16 owner review prompt with Review EXACT file mid-line"
+        good = {"id": pos["task_id"], "prompt": prompt, "status": "DONE", "route": {"verdict": "VERIFIED"},
+                "evidence": {"review_outcome": "APPROVED"}}
+        with mock.patch.object(R, "S0_LEGACY_APPROVED_REVIEWS", (dict(pos, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest()),)):
+            self.assertTrue(R._s0_binds_subject(good, R.D16_OWNER_PATH, R.D16_OWNER_SHA))
+            self.assertFalse(R._s0_binds_subject(good, R.D16_OWNER_PATH, "0" * 64))
+            self.assertFalse(R._s0_binds_subject(good | {"evidence": {"review_outcome": "CHANGES_REQUESTED"}},
+                                                 R.D16_OWNER_PATH, R.D16_OWNER_SHA))
+        e = next(x for x in R.S0_CONTEXT_EXCEPTIONS if x["task_id"] == "mod004-d16-successor-gate-opus-security-20261025")
+        self.assertEqual(e["subjects"], ((R.D16_OWNER_PATH, R.D16_OWNER_SHA),))
+        self.assertEqual((e["primary_path"], e["primary_sha256"]),
+                         (R.S0_RUNNER_FILE, "f88d05f922130e57f533aa88992e976e474526d676f556d32e4c32ad6b2d87f6"))
+        stored = {"id": e["task_id"], "role": "security", "status": "BLOCKED", "review_of": None,
+                  "prompt": f"{e['primary_path']} {e['primary_sha256']} {R.D16_OWNER_PATH} {R.D16_OWNER_SHA}",
+                  "blocked_reason": "REVIEW_CHANGES_REQUESTED", "route": {"verdict": "VERIFIED"},
+                  "evidence": {"review_outcome": "CHANGES_REQUESTED"}}
+        with mock.patch.object(R, "S0_CONTEXT_EXCEPTIONS",
+                               (e | {"prompt_sha256": hashlib.sha256(stored["prompt"].encode()).hexdigest()},)):
+            self.assertTrue(R._s0_quoted_context_only(stored, R.D16_OWNER_PATH, R.D16_OWNER_SHA))
+            self.assertFalse(R._s0_quoted_context_only(stored, R.S0_RUNNER_FILE, e["primary_sha256"]))
+            self.assertFalse(R._s0_quoted_context_only(stored | {"evidence": {"review_outcome": "APPROVED"}},
+                                                       R.D16_OWNER_PATH, R.D16_OWNER_SHA))
+        self.assertFalse(R._s0_quoted_context_only(stored, R.D16_OWNER_PATH, R.D16_OWNER_SHA))  # real table pins another prompt hash
 
     def test_doc_owner_path_is_the_exact_record_only(self):
         entries = {"s0 owner record": self.OWNER, "adr": self.ADR, "runner": self.RUN,

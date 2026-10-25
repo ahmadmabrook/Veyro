@@ -1868,6 +1868,10 @@ S0_LEGACY_APPROVED_REVIEWS = (
      "prompt_sha256": "25fd9c3768c083cab65f0cd4b12c7cf871a50df782b4a6be178aff8393a9c816",
      "path": "knowledge/00-Decisions/OWNER-2026-10-24-product-remediation-loop.md",
      "sha256": "7ad9557534e4c34a597e64eafbe8113341ec0d7b482486964e8c63d66cceebea"},
+    {"task_id": "mod004-d16-successor-owner-opus-20261025",
+     "prompt_sha256": "3ab11c89a0cb9f447ce805d3f720035aa20a5b4e99474ba09d1a1ba34f696400",
+     "path": "knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
+     "sha256": "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"},
 )
 
 
@@ -1897,7 +1901,7 @@ def _s0_binds_subject(y, path, sha):
 
 
 # Audited, immutable historical exceptions. Default is fail-closed: a negative Opus review that mentions a subject's
-# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These six tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
+# exact path+sha (or exact bytes) blocks it unless _s0_subject_role proves the pair is only context of another primary. These seven tasks were CHANGES_REQUESTED reviews of a DIFFERENT primary file
 # that merely quoted an authority record as context; each is pinned by task id, immutable prompt sha256, primary
 # path+sha256 and the exact (path, sha256) subject pairs it quoted. No inference from task names, prompt shape or review_of.
 S0_DOC_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-23-mod004-s0-doc-lane.md"
@@ -1942,6 +1946,14 @@ S0_CONTEXT_EXCEPTIONS = (
      "primary_sha256": "23cbe13b223a3ffff0db592378633aebfc872254f3da5e080d9df6f57f17714c",
      "subjects": (("knowledge/00-Decisions/OWNER-2026-10-24-mod004-fullscope-recovery.md",
                    "5a80cf3b11d4940a93d57cc8ef9900eb1a4955d49703b91fbb8d49fcb85ab44a"),)},
+    # OLD two-file runner candidate (its test file hash is fixed by the prompt sha256) that only quoted the D16 successor
+    # owner record under "Authority"; not a review of that record.
+    {"task_id": "mod004-d16-successor-gate-opus-security-20261025",
+     "prompt_sha256": "2dd917b12c3b97cdfcc4b789ec9a27e75d56af4359c4a8be3ff2fc1b89291ed3",
+     "primary_path": S0_RUNNER_FILE,
+     "primary_sha256": "f88d05f922130e57f533aa88992e976e474526d676f556d32e4c32ad6b2d87f6",
+     "subjects": (("knowledge/00-Decisions/OWNER-2026-10-25-mod004-d16-design-successor.md",
+                   "b9e497ef48211e14203d7444f7f35e2ad4ecab6e743faaba6aee7a5d90eabb0a"),)},
 )
 
 
