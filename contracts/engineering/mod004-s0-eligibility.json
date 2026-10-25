@@ -54,7 +54,7 @@
   "dependency_validation": {
     "MOD-001": "Operator-attested local verify_receipt PASS and current receipt hash; operator independently observed exact activation push CI run 38883415070 on 8e0f20d493b46a0867b1ddbb464db4ed0caa0972 successful.",
     "MOD-002": "Operator-attested local verify_receipt PASS and current receipt hash; operator independently observed exact activation push CI run 38907796747 on f9804beb2576c2520d377a27c275f00a4685c47e successful.",
-    "edge_interpretation": "published owner edge decision permits APPROVED — FOUNDATION ONLY for this dependency edge; not Module Ready or capability activation"
+    "edge_interpretation": "published owner edge decision permits APPROVED \u2014 FOUNDATION ONLY for this dependency edge; not Module Ready or capability activation"
   },
   "edge_decision": {
     "path": "knowledge/00-Decisions/OWNER-2026-10-18-mod004-foundation-dependency.md",
@@ -96,13 +96,13 @@
     "input": "synthetic ProvisionTenant envelope with opaque external key, claimed actor/correlation UUIDs, idempotency UUID and optional expected-version metadata",
     "allowed": "parse and normalize shape; reject malformed, missing or extra fields",
     "forbidden": "authentication, authorization, tenant choice or creation, state mutation, tenant context, API, file/network/process/database/SQL I/O",
-    "expected_version": "optional metadata only; no invented requirement for initial provisioning; TSD ¶1237 and ADR-0002 D6.3 discrepancy remains open",
+    "expected_version": "optional metadata only; no invented requirement for initial provisioning; TSD \u00b61237 and ADR-0002 D6.3 discrepancy remains open",
     "success_meaning": "shape-valid only, never trusted identity or tenant isolation"
   },
   "scenario_qa_packet": {
     "path": "contracts/engineering/mod004-s0-scenario-qa.md",
-    "sha256": "ea79fe0fe2d926fe2131ccf81431cb12762e7bb25c76b32ae7f4258d41fdaf60",
-    "sha256_note": "Operator-precomputed SHA-256 of the exact starting packet with only its Review and recovery status paragraph changed; the drafting agent did not compute it. Starting hash 78e1c8ecc3da2167e5f4feff736ff7873a04979964ee6b69f8ef123b56f83e58 and earlier 08334df3280e834becd45332f75b170741f612f98d623cc8e99d246b1634f680 are superseded. Earlier packet 349fc85b5b24c7556e291826894aea075660dbf80c004049cb706db166c57e45 was APPROVED for its old bytes only; rejected ffa4f968... remains void. Frozen earlier prose in this certificate's effectiveness_rule, scenario_review_requirement and capability_declaration.note is historical; the packet status paragraph holds current product and runner evidence. No independent review or publication of this NEW pair has happened yet."
+    "sha256": "11e34ab548a627ef7a675c4e5b875411b21f8840f54c4f98affac02572a2620f",
+    "sha256_note": "Operator-computed SHA-256 of the exact 2026-10-25 S0-01..S0-14 QA evidence candidate packet (tests, runner verifier, product Opus review, exact-SHA CI and representative manual spot checks recorded per row). This packet/certificate pair remains a draft until its one exact-bound two-document Opus review, non-force publication and exact-SHA CI; no module Ready, CAP qualification or tenant-isolation certification follows. Earlier immutable certificate prose remains historical."
   },
   "capability_declaration": {
     "path": "contracts/engineering/mod004-s0-capability.json",
@@ -210,7 +210,7 @@
       "route": "verified Opus",
       "outcome": "APPROVED"
     },
-    "status_note": "The edge record’s in-file publication-pending wording is stale; its exact bytes were subsequently independently reviewed and published at this commit. Its scope remains dependency edge only."
+    "status_note": "The edge record\u2019s in-file publication-pending wording is stale; its exact bytes were subsequently independently reviewed and published at this commit. Its scope remains dependency edge only."
   },
   "operator_observed_local_python": "Python 3.13.13 at /opt/homebrew/bin/python3.13 on 2026-10-23; this is operator observation, not a reviewer-executed command.",
   "runner_load_observation": {
