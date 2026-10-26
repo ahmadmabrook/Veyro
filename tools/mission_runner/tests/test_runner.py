@@ -12802,26 +12802,58 @@ class TestS0D16Quarantine(Base):
 
     # ---- helpers -------------------------------------------------------
 
-    # A fake activation commit SHA — distinct from D16_BOOT_COMMIT (which is its required parent).
-    _ACTIVATION_COMMIT = "d" * 40
-
     def _valid_tok(self, **overrides):
-        """A minimal valid boot activation token for the current CODE_SHA.
-        The commit field is a placeholder; tests that call _enter_quarantine_from_activation
-        must mock _observe_ci_for_commit and git_run to satisfy authentication checks."""
+        """A minimal valid boot activation token for the current CODE_SHA and the real-hash test chain.
+        Tests that call _enter_quarantine_from_activation must use _mock_valid_activation."""
         tok = {"schema": 1, "code_sha256": R.CODE_SHA,
                "commit": self._ACTIVATION_COMMIT, "consumed": False}
         tok.update(overrides)
         return tok
 
-    def _mock_valid_activation(self):
-        """Return a context manager that patches _observe_ci_for_commit and git_run so that
-        _enter_quarantine_from_activation succeeds for _ACTIVATION_COMMIT."""
+    _ROOT = "c" * 40
+
+    @staticmethod
+    def _commit_body(parent, extra=b""):
+        """A raw commit object body; parent may be None, a SHA, or a list of SHAs."""
+        parents = [] if parent is None else [parent] if isinstance(parent, str) else parent
+        return (b"tree " + b"0" * 40 + b"\n" + b"".join(b"parent " + x.encode() + b"\n" for x in parents)
+                + b"author a <a@x> 1 +0000\ncommitter a <a@x> 1 +0000\n" + extra + b"\nmsg\n")
+
+    @staticmethod
+    def _oid(body):
+        return hashlib.sha1(b"commit " + str(len(body)).encode() + b"\0" + body).hexdigest()
+
+    def _make_chain(self, bodies=None):
+        """Real-hash chain root <- first amendment <- prior tip <- activation. bodies overrides a link's body
+        (keyed first/prior/act); overridden bodies keep the ORIGINAL object id, as a locally altered store would."""
+        bodies = bodies or {}
+        first_b = self._commit_body(self._ROOT)
+        first = self._oid(first_b)
+        prior_b = self._commit_body(first)
+        prior = self._oid(prior_b)
+        act_b = self._commit_body(prior)
+        act = self._oid(act_b)
+        ids = {"first": first, "prior": prior, "act": act}
+        raw = {first: first_b, prior: prior_b, act: act_b}
+        for k, b in bodies.items():
+            raw[ids[k]] = b
+        return ids, raw
+
+    @property
+    def _ACTIVATION_COMMIT(self):
+        return self._make_chain()[0]["act"]
+
+    _prior_blob = b"prior tip runner"
+
+    def _mock_valid_activation(self, bodies=None):
+        """Return a context manager that patches _observe_ci_for_commit, git_run and the pinned lineage so that
+        _enter_quarantine_from_activation succeeds for the real-hash chain of _make_chain()."""
         import unittest.mock as _mock
+        ids, raw = self._make_chain(bodies)
 
         def _fake_git_run(repo, *args, **kwargs):
-            cmd = list(args)
-            if cmd[:1] == ["show"] and cmd[1].startswith(self._ACTIVATION_COMMIT + ":"):
+            cmd = [a for a in args if a != "--no-replace-objects"]
+            if cmd[:1] == ["show"] and cmd[1].startswith(ids["act"] + ":"):
                 # Return runner.py bytes that hash to CODE_SHA
                 import pathlib
                 blob = pathlib.Path(R.__file__).read_bytes()
@@ -12829,10 +12861,15 @@ class TestS0D16Quarantine(Base):
                 result.returncode = 0
                 result.stdout = blob
                 return result
-            if cmd[:1] == ["rev-parse"] and cmd[1] == self._ACTIVATION_COMMIT + "^":
+            if cmd[:1] == ["show"] and cmd[1].startswith(ids["prior"] + ":"):
                 result = _mock.MagicMock()
                 result.returncode = 0
-                result.stdout = (R.D16_BOOT_COMMIT + "\n").encode()
+                result.stdout = self._prior_blob
+                return result
+            if cmd[:2] == ["-c", "core.commitGraph=false"] and cmd[2:4] == ["cat-file", "commit"]:
+                result = _mock.MagicMock()
+                result.returncode = 0 if cmd[4] in raw else 128
+                result.stdout = raw.get(cmd[4], b"")
                 return result
             # fallback: normal git_run
             return R.git_run(repo, *args, **kwargs)
@@ -12841,6 +12878,10 @@ class TestS0D16Quarantine(Base):
             R,
             _observe_ci_for_commit=_mock.MagicMock(return_value=None),
             git_run=_mock.MagicMock(side_effect=_fake_git_run),
+            D16_BOOT_PRIOR_RUNNER_SHA=hashlib.sha256(self._prior_blob).hexdigest(),
+            D16_BOOT_COMMIT=self._ROOT,
+            D16_BOOT_FIRST_AMENDMENT=ids["first"],
+            D16_BOOT_PRIOR_TIP=ids["prior"],
         )
 
     def _write_tok(self, tok_dict):
@@ -13032,7 +13073,7 @@ class TestS0D16Quarantine(Base):
         self._write_tok(self._valid_tok())
         # CI succeeds, but the blob at the commit is wrong bytes
         def _fake_git_run(repo, *args, **kwargs):
-            cmd = list(args)
+            cmd = [a for a in args if a != "--no-replace-objects"]
             if cmd[:1] == ["show"]:
                 result = _mock.MagicMock()
                 result.returncode = 0
@@ -13048,33 +13089,185 @@ class TestS0D16Quarantine(Base):
                 R._enter_quarantine_from_activation(self.cfg)
         self.assertIn("code hash", str(cm.exception))
 
-    def test_activation_wrong_parent_commit_raises(self):
-        """If activation commit's parent is not D16_BOOT_COMMIT, activation must fail."""
+    def _lineage_run(self, bodies=None):
+        """Run activation with (possibly altered) raw bodies; returns the raised GateError message or None."""
+        self._write_tok(self._valid_tok(commit=self._ACTIVATION_COMMIT))
+        with self._mock_valid_activation(bodies):
+            try:
+                R._enter_quarantine_from_activation(self.cfg)
+            except R.GateError as e:
+                return str(e)
+        return None
+
+    def test_activation_auth_reads_use_no_replace_objects(self):
+        """Ancestry uses raw cat-file with no replace refs or commit-graph; both blob reads bypass replace refs."""
         import unittest.mock as _mock
-        import pathlib
+        ids, _raw = self._make_chain()
         self._write_tok(self._valid_tok())
-        blob = pathlib.Path(R.__file__).read_bytes()
-        def _fake_git_run(repo, *args, **kwargs):
-            cmd = list(args)
-            if cmd[:1] == ["show"]:
-                result = _mock.MagicMock()
-                result.returncode = 0
-                result.stdout = blob
-                return result
-            if cmd[:1] == ["rev-parse"]:
-                result = _mock.MagicMock()
-                result.returncode = 0
-                result.stdout = ("e" * 40 + "\n").encode()  # wrong parent
-                return result
-            result = _mock.MagicMock()
-            result.returncode = 1
-            result.stdout = b""
-            return result
-        with _mock.patch.object(R, "_observe_ci_for_commit", return_value=None), \
-             _mock.patch.object(R, "git_run", side_effect=_fake_git_run):
+        with self._mock_valid_activation():
+            inner = R.git_run
+            seen = []
+
+            def _spy(repo, *args, **kwargs):
+                seen.append(args)
+                return inner(repo, *args, **kwargs)
+            with _mock.patch.object(R, "git_run", side_effect=_spy):
+                R._enter_quarantine_from_activation(self.cfg)
+        flag = "--no-replace-objects"
+        cats = [a for a in seen if "cat-file" in a]
+        shows = [a for a in seen if "show" in a]
+        self.assertFalse([a for a in seen if "rev-list" in a])
+        self.assertEqual(len(cats), 3)
+        self.assertEqual(len(shows), 2)
+        for a in cats + shows:
+            self.assertEqual(a[0], flag, a)
+        for a in cats:
+            self.assertEqual(a[1:5], ("-c", "core.commitGraph=false", "cat-file", "commit"))
+        self.assertEqual({a[-1] for a in cats}, {ids["act"], ids["prior"], ids["first"]})
+        self.assertEqual({a[-1] for a in shows},
+                         {f"{ids['act']}:tools/mission_runner/runner.py",
+                          f"{ids['prior']}:tools/mission_runner/runner.py"})
+
+    def test_activation_exact_two_amendment_lineage_accepted(self):
+        self.assertIsNone(self._lineage_run())
+        self.assertIsNotNone(R._load_qled(self.cfg))
+
+    def test_activation_parent_c11_direct_child_rejected(self):
+        """The old binding (direct child of the owner record) is no longer accepted."""
+        self.assertIn("single parent", self._lineage_run({"act": self._commit_body(self._ROOT)}))
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_activation_unrelated_commit_rejected(self):
+        self.assertIn("single parent", self._lineage_run({"act": self._commit_body("e" * 40)}))
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_activation_interposed_or_altered_intermediate_rejected(self):
+        for link in ("prior", "first"):
+            with self.subTest(link=link):
+                self.assertIn("single parent", self._lineage_run({link: self._commit_body("a" * 40)}))
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_activation_merge_commit_rejected(self):
+        ids, _ = self._make_chain()
+        for link, want in (("act", ids["prior"]), ("prior", ids["first"]), ("first", self._ROOT)):
+            with self.subTest(link=link):
+                self.assertIn("single parent", self._lineage_run({link: self._commit_body([want, "f" * 40])}))
+
+    def test_activation_malformed_raw_commit_rejected(self):
+        ids, _ = self._make_chain()
+        good = self._commit_body(ids["prior"])
+        bad = {
+            "no parent": self._commit_body(None),
+            "unknown field": self._commit_body(ids["prior"], b"mergetag object x\n"),
+            "missing blank line": good.split(b"\n\n")[0],
+            "parent in message only": self._commit_body(None).replace(b"msg", b"\nparent " + ids["prior"].encode()),
+            "tree not first": b"author a <a@x> 1 +0000\n" + good,
+            "short parent": good.replace(ids["prior"].encode(), b"abc"),
+        }
+        for name, body in bad.items():
+            with self.subTest(name):
+                self.assertIn("single parent", self._lineage_run({"act": body}))
+
+    def test_activation_raw_body_failing_object_id_rejected(self):
+        """A locally altered object body that no longer hashes to its SHA is refused, even with a valid shape."""
+        ids, _ = self._make_chain()
+        altered = self._commit_body(ids["prior"]).replace(b"msg", b"tampered")
+        self.assertIn("single parent", self._lineage_run({"act": altered}))
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_activation_missing_commit_object_rejected(self):
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok(commit=self._ACTIVATION_COMMIT))
+        with self._mock_valid_activation():
+            inner = R.git_run
+
+            def _git(repo, *args, **kwargs):
+                if "cat-file" in args:
+                    r = _mock.MagicMock()
+                    r.returncode = 128
+                    r.stdout = b""
+                    return r
+                return inner(repo, *args, **kwargs)
+            with _mock.patch.object(R, "git_run", side_effect=_git):
+                with self.assertRaises(R.GateError) as cm:
+                    R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("single parent", str(cm.exception))
+
+    def test_raw_commit_parents_real_git_ignores_grafts(self):
+        """Real repo: .git/info/grafts spoofs a parent for rev-list, but raw-object verification rejects it."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d) / "repo"
+            repo.mkdir()
+            env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x", "GIT_COMMITTER_NAME": "t",
+                   "GIT_COMMITTER_EMAIL": "t@x", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+
+            def g(*a):
+                return subprocess.run(["git", "-C", str(repo), *a], env=env, capture_output=True, check=True).stdout
+
+            g("init", "-q")
+            ids = []
+            for n in range(3):
+                g("commit", "-q", "--allow-empty", "-m", f"c{n}")
+                ids.append(g("rev-parse", "HEAD").decode().strip())
+            a, b, c = ids
+            (repo / ".git" / "info").mkdir(exist_ok=True)
+            (repo / ".git" / "info" / "grafts").write_text(f"{c} {a}\n")
+            spoofed = g("--no-replace-objects", "rev-list", "--parents", "-n", "1", c).decode().split()
+            if spoofed[1:] != [a]:
+                self.skipTest("this git ignores info/grafts; the graft vector cannot be exercised")
+            raw = g("--no-replace-objects", "-c", "core.commitGraph=false", "cat-file", "commit", c)
+            self.assertEqual(R._raw_commit_parents(c, raw), [b])
+            self.assertNotEqual(R._raw_commit_parents(c, raw), [a])
+            self.assertIsNone(R._raw_commit_parents(c, raw.replace(b"c2", b"cX")))
+            self.assertEqual(R._raw_commit_parents(b, g("cat-file", "commit", b)), [a])
+
+    def test_prior_tip_pins_verified_ci_run_and_runner_hash(self):
+        self.assertEqual(R.D16_BOOT_PRIOR_CI_RUN, "40312084619")
+        self.assertNotEqual(R.D16_BOOT_PRIOR_CI_RUN, "40305049317")
+        self.assertEqual(R.D16_BOOT_PRIOR_RUNNER_SHA,
+                         "6d8ff2ca1f9898a4f1234ea9805d2a74468c4b25e79f4cce05e18c95d6a54394")
+        # Shallow CI checkouts may lack the object; only assert when it is present.
+        repo = Path(R.__file__).resolve().parents[2]
+        try:
+            out = subprocess.run(["git", "-C", str(repo), "--no-replace-objects", "show",
+                                  f"{R.D16_BOOT_PRIOR_TIP}:tools/mission_runner/runner.py"],
+                                 capture_output=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return
+        if out.returncode == 0:
+            self.assertEqual(hashlib.sha256(out.stdout).hexdigest(), R.D16_BOOT_PRIOR_RUNNER_SHA)
+
+    def test_activation_prior_tip_blob_mismatch_rejected(self):
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation(), _mock.patch.object(R, "D16_BOOT_PRIOR_RUNNER_SHA", "0" * 64):
             with self.assertRaises(R.GateError) as cm:
                 R._enter_quarantine_from_activation(self.cfg)
-        self.assertIn("owner-record commit", str(cm.exception))
+        self.assertIn("prior runner-amendment tip", str(cm.exception))
+
+    def test_activation_prior_tip_ci_required_and_first_amendment_ci_not(self):
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation():
+            R._enter_quarantine_from_activation(self.cfg)
+            observed = [c.args[1] for c in R._observe_ci_for_commit.call_args_list]
+            kwargs = [c.kwargs for c in R._observe_ci_for_commit.call_args_list]
+        ids, _ = self._make_chain()
+        self.assertEqual(observed, [ids["act"], ids["prior"]])
+        self.assertEqual(kwargs, [{}, {"run_id": "40312084619"}])
+        self.assertNotIn(ids["first"], observed)
+
+    def test_activation_prior_tip_ci_failure_rejected(self):
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation():
+            def _ci(cfg, commit, **kw):
+                if commit == R.D16_BOOT_PRIOR_TIP:
+                    raise R.GateError("no completed successful push run")
+            R._observe_ci_for_commit.side_effect = _ci
+            with self.assertRaises(R.GateError):
+                R._enter_quarantine_from_activation(self.cfg)
+        self.assertIsNone(R._load_qled(self.cfg))
 
     def test_activation_valid_writes_ledger_and_consumes_token(self):
         self._write_tok(self._valid_tok())

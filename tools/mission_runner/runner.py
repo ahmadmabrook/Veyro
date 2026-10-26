@@ -4078,10 +4078,50 @@ D16_DUAL_ID = "mod004-d16-dual-version-sonnet-20261026"
 D16_DUAL_RECEIPT = "MOD-004-D16-DUAL"
 D16_DUAL_MAX_CORRECTIONS = 2
 D16_BOOT_ACTIVATION_NAME = "s0_d16_boot_activation.json"
-# D16_BOOT_COMMIT is the required PARENT of the activation commit (the published owner-record HEAD).
-# It is NOT the activation commit itself; the activation commit is the reviewed runner-code commit whose
-# runner.py blob hash equals CODE_SHA and whose CI was observed green on that exact commit.
+# D16_BOOT_COMMIT is the published owner-record HEAD and the root of the pinned runner-amendment lineage.
+# The activation commit is a DIRECT CHILD of D16_BOOT_PRIOR_TIP and must satisfy:
+#   D16_BOOT_COMMIT -> D16_BOOT_FIRST_AMENDMENT -> D16_BOOT_PRIOR_TIP -> activation commit
+# (each link the sole parent of the next). The activation commit's runner.py blob hash equals CODE_SHA and its
+# CI was observed green on that exact commit; the prior tip's runner blob and CI are verified too. The first
+# amendment's own CI failed (fixed by the prior tip), so none is required for it.
 D16_BOOT_COMMIT = "c11d4208f36e00c0f47cf1a7b86164d10a9b625c"
+D16_BOOT_FIRST_AMENDMENT = "39887257f780df5dda57402238af2ce6a85134ae"
+D16_BOOT_PRIOR_TIP = "3a7acabb00ff043eb00cf0b76e60a3ee17925d21"
+D16_BOOT_PRIOR_RUNNER_SHA = "6d8ff2ca1f9898a4f1234ea9805d2a74468c4b25e79f4cce05e18c95d6a54394"
+# The verified successful Foundation push run for the prior tip. The first amendment's run (40305049317) FAILED
+# and is never a green observation.
+D16_BOOT_PRIOR_CI_RUN = "40312084619"
+_RAW_COMMIT_FIELDS = (b"tree", b"parent", b"author", b"committer", b"encoding", b"gpgsig", b"gpgsig-sha256")
+
+
+def _raw_commit_parents(sha, body):
+    """Parents from a raw commit object body, or None when it fails integrity or shape checks.
+
+    The body must hash to its own 40-hex SHA-1 object id (local object storage is mutable), and the header
+    (before the first blank line) may hold only known fields, with `tree` first. Unlike rev-list this reads
+    no graft, replace or commit-graph metadata."""
+    if not (isinstance(sha, str) and SHA_RE.fullmatch(sha) and isinstance(body, bytes)):
+        return None
+    if hashlib.sha1(b"commit " + str(len(body)).encode("ascii") + b"\0" + body).hexdigest() != sha:
+        return None
+    header, sep, _msg = body.partition(b"\n\n")
+    if not sep:
+        return None
+    parents, in_sig = [], False
+    for i, line in enumerate(header.split(b"\n")):
+        if line.startswith(b" "):
+            if not in_sig:
+                return None
+            continue
+        key, _, val = line.partition(b" ")
+        if key not in _RAW_COMMIT_FIELDS or (i == 0) != (key == b"tree"):
+            return None
+        in_sig = key in (b"gpgsig", b"gpgsig-sha256")
+        if key == b"parent":
+            if not SHA_RE.fullmatch(val.decode("ascii", "replace")):
+                return None
+            parents.append(val.decode("ascii"))
+    return parents
 S0_DUAL_REBIND_SUBJECTS = {
     "dual_rebind_runner": re.compile(re.escape(S0_RUNNER_FILE)),
     "dual_rebind_owner": re.compile(re.escape(D16_DUAL_OWNER_PATH)),
@@ -4619,7 +4659,7 @@ def _enter_quarantine_from_activation(cfg):
     Any second call (consumed==True) raises GateError. Write order: mark consumed first, then write ledger
     so an interrupted write never leaves an unconsumed token paired with an absent ledger.
     Authentication: the token's commit must have observed push-event CI, must contain runner.py at CODE_SHA,
-    and must be a direct child of the published owner-record commit (D16_BOOT_COMMIT)."""
+    and must be a direct child of D16_BOOT_PRIOR_TIP, whose exact ancestry is pinned back to D16_BOOT_COMMIT."""
     p = _boot_activation_path(cfg)
     try:
         raw = p.read_bytes()
@@ -4643,24 +4683,37 @@ def _enter_quarantine_from_activation(cfg):
     atomic_write(p, json.dumps({**tok, "consumed": True}, sort_keys=True).encode())
     # Authenticate via provider-observed CI: live GitHub API call, not operator-attested ci.json
     _observe_ci_for_commit(cfg, tok["commit"])
+    # Authentication reads use --no-replace-objects so local replace refs cannot substitute pinned objects.
     # Verify runner.py at the activation commit has the exact loaded hash
     try:
-        blob_result = git_run(cfg.repo, "show", f"{tok['commit']}:tools/mission_runner/runner.py", timeout=10)
+        blob_result = git_run(cfg.repo, "--no-replace-objects", "show", f"{tok['commit']}:tools/mission_runner/runner.py", timeout=10)
     except (OSError, subprocess.SubprocessError):
         raise GateError("S0/D16 boot activation: cannot read runner.py at the activation commit")
     if not (blob_result.returncode == 0 and hashlib.sha256(blob_result.stdout).hexdigest() == CODE_SHA):
         raise GateError(
             "S0/D16 boot activation: runner.py at the activation commit does not match the loaded code hash")
-    # Verify the activation commit's direct parent is the authorized owner-record commit
+    # Verify the exact pinned lineage: activation -> prior tip -> first amendment -> owner-record commit,
+    # each commit having exactly one parent, so no arbitrary descendant or interposed commit is accepted.
+    for child, want in ((tok["commit"], D16_BOOT_PRIOR_TIP), (D16_BOOT_PRIOR_TIP, D16_BOOT_FIRST_AMENDMENT),
+                        (D16_BOOT_FIRST_AMENDMENT, D16_BOOT_COMMIT)):
+        try:
+            raw_commit = git_run(cfg.repo, "--no-replace-objects", "-c", "core.commitGraph=false",
+                                 "cat-file", "commit", child, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            raise GateError("S0/D16 boot activation: cannot determine commit ancestry")
+        parents = _raw_commit_parents(child, raw_commit.stdout) if raw_commit.returncode == 0 else None
+        if parents != [want]:
+            raise GateError(
+                f"S0/D16 boot activation: commit {child[:12]} must have the single parent {want[:12]} "
+                f"in the pinned runner-amendment lineage")
+    # The prior tip must carry the exact reviewed runner blob and have provider-observed successful CI.
     try:
-        parent_result = git_run(cfg.repo, "rev-parse", f"{tok['commit']}^", timeout=10)
+        prior_blob = git_run(cfg.repo, "--no-replace-objects", "show", f"{D16_BOOT_PRIOR_TIP}:tools/mission_runner/runner.py", timeout=10)
     except (OSError, subprocess.SubprocessError):
-        raise GateError("S0/D16 boot activation: cannot determine the activation commit's parent")
-    actual_parent = parent_result.stdout.decode().strip() if parent_result.returncode == 0 else ""
-    if actual_parent != D16_BOOT_COMMIT:
-        raise GateError(
-            f"S0/D16 boot activation: commit parent {actual_parent[:12]!r} is not the authorized "
-            f"owner-record commit {D16_BOOT_COMMIT[:12]}")
+        raise GateError("S0/D16 boot activation: cannot read runner.py at the prior runner-amendment tip")
+    if not (prior_blob.returncode == 0 and hashlib.sha256(prior_blob.stdout).hexdigest() == D16_BOOT_PRIOR_RUNNER_SHA):
+        raise GateError("S0/D16 boot activation: prior runner-amendment tip runner.py blob hash mismatch")
+    _observe_ci_for_commit(cfg, D16_BOOT_PRIOR_TIP, run_id=D16_BOOT_PRIOR_CI_RUN)
     # A crash before the ledger write leaves the token consumed and no ledger: both lanes stay blocked.
     _write_qled(cfg, {"schema": 1, "entered_at": now_iso(), "runner_pid": os.getpid(),
                       "runner_boot_nonce": _PROCESS_BOOT_NONCE,
