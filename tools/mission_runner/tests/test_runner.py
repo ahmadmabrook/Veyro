@@ -1606,6 +1606,11 @@ class PrerequisiteGate(Base):
         patch = mock.patch.object(dashboard, "DISPOSITIONS_PATH", path)
         patch.start()
         self.addCleanup(patch.stop)
+        # This lifecycle fixture intentionally injects a test registry into the
+        # already-imported dashboard module; production loads pinned source.
+        trusted = mock.patch.object(R, "_TRUSTED_DASHBOARD", dashboard)
+        trusted.start()
+        self.addCleanup(trusted.stop)
 
     def history(self, r, module, id, at, **fields):
         """Persisted historical task of any module (MOD-000 has no prerequisites, so it enqueues freely)."""
@@ -12790,6 +12795,1352 @@ class Mod004S0QaEvidence(S0Fixture):
         r.settle(started, "qa-int:1", "stopped", None, None, None, None, None)
         self.assertEqual((started["status"], started["blocked_reason"]), ("BLOCKED", "S0_QA_ATTEMPT_INTERRUPTED"))
         self.assertEqual(started["attempts"], 1)
+
+
+class TestS0D16Quarantine(Base):
+    """S0/D16 quarantine ledger, boot activation, liveness gate and dual-rebind lane tests."""
+
+    # ---- helpers -------------------------------------------------------
+
+    # A fake activation commit SHA — distinct from D16_BOOT_COMMIT (which is its required parent).
+    _ACTIVATION_COMMIT = "d" * 40
+
+    def _valid_tok(self, **overrides):
+        """A minimal valid boot activation token for the current CODE_SHA.
+        The commit field is a placeholder; tests that call _enter_quarantine_from_activation
+        must mock _observe_ci_for_commit and git_run to satisfy authentication checks."""
+        tok = {"schema": 1, "code_sha256": R.CODE_SHA,
+               "commit": self._ACTIVATION_COMMIT, "consumed": False}
+        tok.update(overrides)
+        return tok
+
+    def _mock_valid_activation(self):
+        """Return a context manager that patches _observe_ci_for_commit and git_run so that
+        _enter_quarantine_from_activation succeeds for _ACTIVATION_COMMIT."""
+        import unittest.mock as _mock
+
+        def _fake_git_run(repo, *args, **kwargs):
+            cmd = list(args)
+            if cmd[:1] == ["show"] and cmd[1].startswith(self._ACTIVATION_COMMIT + ":"):
+                # Return runner.py bytes that hash to CODE_SHA
+                import pathlib
+                blob = pathlib.Path(R.__file__).read_bytes()
+                result = _mock.MagicMock()
+                result.returncode = 0
+                result.stdout = blob
+                return result
+            if cmd[:1] == ["rev-parse"] and cmd[1] == self._ACTIVATION_COMMIT + "^":
+                result = _mock.MagicMock()
+                result.returncode = 0
+                result.stdout = (R.D16_BOOT_COMMIT + "\n").encode()
+                return result
+            # fallback: normal git_run
+            return R.git_run(repo, *args, **kwargs)
+
+        return _mock.patch.multiple(
+            R,
+            _observe_ci_for_commit=_mock.MagicMock(return_value=None),
+            git_run=_mock.MagicMock(side_effect=_fake_git_run),
+        )
+
+    def _write_tok(self, tok_dict):
+        """Write tok_dict as the boot activation token. Pass self._valid_tok(**overrides) to build one."""
+        p = R._boot_activation_path(self.cfg)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        R.atomic_write(p, json.dumps(tok_dict, sort_keys=True).encode())
+
+    def _write_qled(self, **overrides):
+        """Write a consumed activation token and a matching quarantine ledger, simulating a fully entered
+        quarantine. Tests that exercise quarantine_state (directly or via gate functions) must use this
+        helper, because the token-present-and-consumed invariant is now enforced by quarantine_state."""
+        self._write_tok(self._valid_tok(consumed=True))
+        d = {"schema": 1, "entered_at": R.now_iso(), "runner_pid": os.getpid(),
+             "runner_boot_nonce": R._PROCESS_BOOT_NONCE,
+             "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False}
+        d.update(overrides)
+        R._write_qled(self.cfg, d)
+        R.Store(self.cfg.home).event("s0-d16-quarantine-entered",
+                                     pid=d["runner_pid"], boot_nonce=d["runner_boot_nonce"],
+                                     code_sha256=d["code_sha256"])
+
+    def _live_state(self, pid=None):
+        """State dict that looks like a live runner for the current code hash."""
+        return {"schema": R.SCHEMA, "control": "RUN", "health": {"status": "OK"},
+                "tasks": {}, "applied_ops": [], "mr_counters": {}, "usage": {},
+                "recoveries": 0, "baseline": None,
+                "runner": {"pid": pid or os.getpid(), "boot_nonce": R._PROCESS_BOOT_NONCE,
+                           "code_sha256": R.CODE_SHA,
+                           "heartbeat_at": R.now_iso(), "started_at": R.now_iso()}}
+
+    def _save_state(self, state):
+        R.Store(self.cfg.home).save(state)
+
+    # ---- _load_qled ----------------------------------------------------
+
+    def test_load_qled_absent_returns_none(self):
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_load_qled_corrupt_raises_gate_error(self):
+        R._write_qled(self.cfg, {"schema": 1, "entered_at": R.now_iso(), "runner_pid": os.getpid(),
+                                 "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False})
+        R._qled_path(self.cfg).write_bytes(b"not json{")
+        with self.assertRaises(R.GateError):
+            R._load_qled(self.cfg)
+
+    def test_load_qled_truncated_schema_raises_gate_error(self):
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b'{"schema": 1, "entered_at": "x"}')
+        with self.assertRaises(R.GateError):
+            R._load_qled(self.cfg)
+
+    def test_load_qled_valid(self):
+        self._write_qled()
+        d = R._load_qled(self.cfg)
+        self.assertEqual(d["code_sha256"], R.CODE_SHA)
+        self.assertFalse(d["dual_rebind_consumed"])
+
+    # ---- _qled_runner_is_live ------------------------------------------
+
+    def test_qled_runner_is_live_same_pid(self):
+        """Runner dispatch context: same PID + correct boot nonce → live."""
+        self._write_qled(runner_pid=os.getpid())
+        qled = R._load_qled(self.cfg)
+        self.assertTrue(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_cli_context_live_runner(self):
+        """CLI context: ledger PID differs from current process but state.json runner is live → live."""
+        # Use parent PID so ledger PID != os.getpid(), forcing the state.json path
+        parent_pid = os.getppid()
+        self._save_state(self._live_state(pid=parent_pid))
+        self._write_qled(runner_pid=parent_pid)
+        qled = R._load_qled(self.cfg)
+        self.assertTrue(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_cli_context_pid_mismatch(self):
+        """CLI context: state.json runner PID doesn't match ledger PID → not live."""
+        state = self._live_state(pid=os.getpid())
+        self._save_state(state)
+        self._write_qled(runner_pid=os.getppid())  # ledger says parent, state says current
+        qled = R._load_qled(self.cfg)
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_cli_context_reused_pid_new_boot(self):
+        """A fresh process reusing the recorded PID cannot reopen the one-shot lane."""
+        parent_pid = os.getppid()
+        state = self._live_state(pid=parent_pid)
+        state["runner"]["boot_nonce"] = "new-process-boot"
+        self._save_state(state)
+        self._write_qled(runner_pid=parent_pid)
+        self.assertFalse(R._qled_runner_is_live(self.cfg, R._load_qled(self.cfg)))
+
+    def test_local_gate_module_is_loaded_from_pinned_source(self):
+        """The lazy dashboard projection used by active-blocker gating is integrity-pinned."""
+        source = Path(R.__file__).with_name("dashboard.py").read_bytes()
+        self.assertEqual(hashlib.sha256(source).hexdigest(), R.DASHBOARD_SHA)
+        self.assertEqual(R._trusted_dashboard().__file__, str(Path(R.__file__).with_name("dashboard.py")))
+        with mock.patch.object(R, "DASHBOARD_SHA", "0" * 64):
+            with self.assertRaises(R.GateError):
+                R._trusted_dashboard()
+
+    def test_qled_runner_is_live_stopped_runner(self):
+        """CLI context: runner has stopped_at → s0_runner_problem reports NOT_LIVE → not live."""
+        parent_pid = os.getppid()
+        state = self._live_state(pid=parent_pid)
+        state["runner"]["stopped_at"] = R.now_iso()
+        self._save_state(state)
+        self._write_qled(runner_pid=parent_pid)
+        qled = R._load_qled(self.cfg)
+        self.assertIsNotNone(R.s0_runner_problem(state))
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_stale_heartbeat(self):
+        """CLI context: heartbeat older than S0_HEARTBEAT_MAX_AGE → not live."""
+        import datetime as _dt
+        stale = (_dt.datetime.now(_dt.timezone.utc)
+                 - _dt.timedelta(seconds=R.S0_HEARTBEAT_MAX_AGE + 5)).isoformat()
+        parent_pid = os.getppid()
+        state = self._live_state(pid=parent_pid)
+        state["runner"]["heartbeat_at"] = stale
+        self._save_state(state)
+        self._write_qled(runner_pid=parent_pid)
+        qled = R._load_qled(self.cfg)
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_wrong_code_sha(self):
+        """CLI context: state.json runner code_sha256 doesn't match CODE_SHA → s0_runner_problem fires."""
+        parent_pid = os.getppid()
+        state = self._live_state(pid=parent_pid)
+        state["runner"]["code_sha256"] = "a" * 64  # wrong sha
+        self._save_state(state)
+        self._write_qled(runner_pid=parent_pid)
+        qled = R._load_qled(self.cfg)
+        self.assertIsNotNone(R.s0_runner_problem(state))
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_qled_runner_is_live_corrupt_state(self):
+        """CLI context: corrupt state.json → not live (fail-closed)."""
+        (self.cfg.home / "state.json").parent.mkdir(parents=True, exist_ok=True)
+        (self.cfg.home / "state.json").write_bytes(b"not json")
+        self._write_qled(runner_pid=99998888)
+        qled = R._load_qled(self.cfg)
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    # ---- _enter_quarantine_from_activation ----------------------------
+
+    def test_activation_absent_no_ledger(self):
+        """No activation token → no ledger written, no error."""
+        R._enter_quarantine_from_activation(self.cfg)
+        self.assertIsNone(R._load_qled(self.cfg))
+
+    def test_activation_corrupt_raises(self):
+        self._write_tok({"bad": True})
+        with self.assertRaises(R.GateError):
+            R._enter_quarantine_from_activation(self.cfg)
+
+    def test_activation_not_json_raises(self):
+        p = R._boot_activation_path(self.cfg)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"not json{")
+        with self.assertRaises(R.GateError):
+            R._enter_quarantine_from_activation(self.cfg)
+
+    def test_activation_already_consumed_raises(self):
+        self._write_tok(self._valid_tok(consumed=True))
+        with self.assertRaises(R.GateError) as cm:
+            R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("already consumed", str(cm.exception))
+
+    def test_activation_wrong_code_sha_raises(self):
+        self._write_tok(self._valid_tok(code_sha256="b" * 64))
+        with self.assertRaises(R.GateError) as cm:
+            R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("code_sha256", str(cm.exception))
+
+    def test_activation_operator_attested_ci_raises(self):
+        """Provider-observed CI is required; _observe_ci_for_commit raising means activation is refused."""
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        with _mock.patch.object(R, "_observe_ci_for_commit",
+                                side_effect=R.GateError("no completed successful push run")):
+            with self.assertRaises(R.GateError) as cm:
+                R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("push run", str(cm.exception))
+
+    def test_activation_wrong_runner_blob_raises(self):
+        """If runner.py at the activation commit does not match CODE_SHA, activation must fail."""
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        # CI succeeds, but the blob at the commit is wrong bytes
+        def _fake_git_run(repo, *args, **kwargs):
+            cmd = list(args)
+            if cmd[:1] == ["show"]:
+                result = _mock.MagicMock()
+                result.returncode = 0
+                result.stdout = b"wrong content"  # hash will differ from CODE_SHA
+                return result
+            result = _mock.MagicMock()
+            result.returncode = 1
+            result.stdout = b""
+            return result
+        with _mock.patch.object(R, "_observe_ci_for_commit", return_value=None), \
+             _mock.patch.object(R, "git_run", side_effect=_fake_git_run):
+            with self.assertRaises(R.GateError) as cm:
+                R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("code hash", str(cm.exception))
+
+    def test_activation_wrong_parent_commit_raises(self):
+        """If activation commit's parent is not D16_BOOT_COMMIT, activation must fail."""
+        import unittest.mock as _mock
+        import pathlib
+        self._write_tok(self._valid_tok())
+        blob = pathlib.Path(R.__file__).read_bytes()
+        def _fake_git_run(repo, *args, **kwargs):
+            cmd = list(args)
+            if cmd[:1] == ["show"]:
+                result = _mock.MagicMock()
+                result.returncode = 0
+                result.stdout = blob
+                return result
+            if cmd[:1] == ["rev-parse"]:
+                result = _mock.MagicMock()
+                result.returncode = 0
+                result.stdout = ("e" * 40 + "\n").encode()  # wrong parent
+                return result
+            result = _mock.MagicMock()
+            result.returncode = 1
+            result.stdout = b""
+            return result
+        with _mock.patch.object(R, "_observe_ci_for_commit", return_value=None), \
+             _mock.patch.object(R, "git_run", side_effect=_fake_git_run):
+            with self.assertRaises(R.GateError) as cm:
+                R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("owner-record commit", str(cm.exception))
+
+    def test_activation_valid_writes_ledger_and_consumes_token(self):
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation():
+            R._enter_quarantine_from_activation(self.cfg)
+        qled = R._load_qled(self.cfg)
+        self.assertIsNotNone(qled)
+        self.assertEqual(qled["runner_pid"], os.getpid())
+        self.assertEqual(qled["code_sha256"], R.CODE_SHA)
+        self.assertFalse(qled["dual_rebind_consumed"])
+        self.assertEqual(qled["runner_boot_nonce"], R._PROCESS_BOOT_NONCE)
+        # Token must now be consumed
+        tok = json.loads(R._boot_activation_path(self.cfg).read_bytes())
+        self.assertTrue(tok["consumed"])
+
+    def test_runner_run_consumes_token_and_binds_entry_to_its_boot(self):
+        self._write_tok(self._valid_tok())
+        runner = R.Runner(self.cfg)
+        state = runner.store.load()
+        state["control"] = "STOP"
+        runner.store.save(state)
+        with (self._mock_valid_activation(),
+              mock.patch.object(R, "_d16_policy_active", return_value=True),
+              mock.patch.object(R, "_trusted_dashboard"),
+              mock.patch.object(runner, "recover"),
+              mock.patch.object(runner, "apply_commands")):
+            self.assertEqual(runner.run(), 0)
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE)
+        qled = R._load_qled(self.cfg)
+        self.assertTrue(R._qled_bound_entry(self.cfg, qled))
+        self.assertTrue(json.loads(R._boot_activation_path(self.cfg).read_bytes())["consumed"])
+
+    def test_activation_second_call_after_consumed_raises(self):
+        """Token marked consumed on first call; second call (same hash) is refused."""
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation():
+            R._enter_quarantine_from_activation(self.cfg)
+        # Delete the ledger to simulate a theoretical second-boot attempt
+        R._qled_path(self.cfg).unlink()
+        with self.assertRaises(R.GateError) as cm:
+            R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("already consumed", str(cm.exception))
+
+    # ---- enqueue quarantine check ------------------------------------
+
+    def test_enqueue_refused_when_quarantine_active_and_runner_dead(self):
+        """CLI enqueue is blocked when the quarantine ledger's runner is no longer live."""
+        self._write_qled(runner_pid=1)  # PID 1 is never this process
+        # state.json absent → s0_runner_problem fires → _qled_runner_is_live → False
+        with self.assertRaises(ValueError) as cm:
+            R.enqueue(self.cfg, {"id": "t-dead", "module": "MOD-000", "role": "implement",
+                                 "prompt": "x", "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]})
+        self.assertIn("quarantine", str(cm.exception).lower())
+
+    def test_enqueue_refused_with_corrupt_ledger(self):
+        """Corrupt ledger → enqueue raises ValueError (fail-closed)."""
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b'{"schema": 1}')  # invalid schema
+        with self.assertRaises(ValueError) as cm:
+            R.enqueue(self.cfg, {"id": "t-bad", "module": "MOD-000", "role": "implement",
+                                 "prompt": "x", "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]})
+        self.assertIn("quarantine", str(cm.exception).lower())
+
+    def test_enqueue_refused_with_consumed_token_and_missing_ledger(self):
+        """Interrupted activation blocks every ingress lane, not just D16 dispatch."""
+        self._write_tok(self._valid_tok(consumed=True))
+        with self.assertRaises(ValueError) as cm:
+            R.enqueue(self.cfg, {"id": "t-interrupted", "module": "MOD-000",
+                                 "role": "implement", "prompt": "x",
+                                 "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]})
+        self.assertIn("quarantine DENY", str(cm.exception))
+
+    def test_enqueue_allowed_with_no_quarantine(self):
+        """No quarantine ledger → enqueue proceeds normally for an ordinary task."""
+        # bootstrap_pin was already called in setUp
+        r = self.runner()
+        self._save_state(r.state)
+        # Should not raise — no quarantine, normal task
+        R.enqueue(self.cfg, {"id": "t-ok", "module": "MOD-000", "role": "implement",
+                             "prompt": "WRITE=out/a.txt\nCONTENT=hi",
+                             "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]})
+
+    def test_enqueue_allowed_with_live_quarantine_runner(self):
+        """Quarantine active but runner is live (same PID in ledger) → enqueue proceeds."""
+        r = self.runner()
+        self._save_state(r.state)
+        self._write_qled(runner_pid=os.getpid())
+        # Should not raise — quarantine is active but runner is live (same PID)
+        R.enqueue(self.cfg, {"id": "t-live", "module": "MOD-000", "role": "implement",
+                             "prompt": "WRITE=out/a.txt\nCONTENT=hi",
+                             "allowed_paths": ["out/"], "expected_changes": ["out/a.txt"]})
+
+    # ---- s0_dual_rebind_gate_reason liveness check -------------------
+
+    def _rebind_task(self, **overrides):
+        t = {"id": R.S0_DUAL_REBIND_ID, "module": R.S0_MODULE, "role": "implement",
+             "plan_phase": R.S0_DUAL_REBIND_MARKER, "source": None,
+             "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": list(R.S0_DOC_PATHS),
+             "verify_cmd": [],
+             "doc_base": {R.S0_DOC_PATHS[0]: "a" * 64, R.S0_DOC_PATHS[1]: "b" * 64}}
+        t.update(overrides)
+        return t
+
+    def test_dual_rebind_gate_not_rebind_task_returns_none(self):
+        t = {"id": "other", "module": R.S0_MODULE, "role": "implement", "plan_phase": "OTHER"}
+        self.assertIsNone(R.s0_dual_rebind_gate_reason(self.cfg, t, {}))
+
+    def test_dual_rebind_gate_no_quarantine_returns_refusal(self):
+        t = self._rebind_task()
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("QUARANTINE_NOT_ENTERED", reason)
+
+    def test_dual_rebind_gate_dead_runner_returns_refusal(self):
+        """Quarantine active but recorded runner is dead → refusal with RESTARTED reason."""
+        self._write_qled(runner_pid=1)  # PID 1 is not this process
+        t = self._rebind_task()
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("RESTARTED", reason)
+
+    def test_dual_rebind_gate_code_drift_returns_refusal(self):
+        """Quarantine ledger has a different code hash → DENY state → refusal."""
+        self._write_qled(code_sha256="c" * 64)
+        t = self._rebind_task()
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        # quarantine_state returns _QS_DENY with "code hash" message; gate wraps it as UNVERIFIABLE
+        self.assertIn("UNVERIFIABLE", reason)
+
+    def test_dual_rebind_gate_consumed_slot_returns_refusal(self):
+        self._write_qled(dual_rebind_consumed=True)
+        t = self._rebind_task()
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("CONSUMED", reason)
+
+    def test_dual_rebind_gate_wrong_id_not_in_lane(self):
+        """A task with the rebind marker but wrong ID is not recognised as a rebind task (gate returns None)."""
+        self._write_qled()
+        t = self._rebind_task(id="wrong-id", plan_phase=R.S0_DUAL_REBIND_MARKER)
+        # s0_dual_rebind_marked checks both marker AND id, so wrong-id → not a rebind task → None
+        self.assertFalse(R.s0_dual_rebind_marked(t))
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNone(reason)  # gate ignores non-rebind tasks
+
+    def test_dual_rebind_gate_wrong_role_returns_refusal(self):
+        self._write_qled()
+        t = self._rebind_task(role="code-review")
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("S0_DUAL_REBIND_INVALID_TASK", reason)
+
+    def test_dual_rebind_gate_wrong_paths_returns_refusal(self):
+        self._write_qled()
+        t = self._rebind_task(allowed_paths=["other/file.json"],
+                              expected_changes=["other/file.json"])
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("S0_DUAL_REBIND_INVALID_TASK", reason)
+
+    def test_dual_rebind_gate_corrupt_ledger_returns_refusal(self):
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b"corrupt{}")
+        t = self._rebind_task()
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("UNVERIFIABLE", reason)
+
+    def test_dual_rebind_gate_already_in_tasks_with_attempt_refuses(self):
+        """A rebind task already recorded with one attempt blocks further attempts."""
+        self._write_qled()
+        t = self._rebind_task(attempts=1)
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {t["id"]: t})
+        self.assertIsNotNone(reason)
+        self.assertIn("ATTEMPT_USED", reason)
+
+    def test_dual_rebind_gate_attempt_used_returns_refusal(self):
+        """Task with attempts > 0 → single attempt was already started."""
+        self._write_qled()
+        t = self._rebind_task(attempts=1)
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {})
+        self.assertIsNotNone(reason)
+        self.assertIn("ATTEMPT_USED", reason)
+
+    def test_dual_rebind_gate_live_runner_passes_quarantine_checks(self):
+        """Quarantine active, live runner (same PID), valid task → passes quarantine portion of gate."""
+        self._write_qled()
+        t = self._rebind_task()
+        # Gate should not return a quarantine-related reason
+        reason = R.s0_dual_rebind_gate_reason(self.cfg, t, {t["id"]: t})
+        # At this point it fails on competing writes check, not quarantine
+        self.assertNotIn("QUARANTINE", reason or "")
+        self.assertNotIn("RESTARTED", reason or "")
+        self.assertNotIn("CODE_DRIFT", reason or "")
+
+    # ---- runner.py as its own subject (document-write exclusion) ------
+
+    def test_runner_code_hash_not_changed_by_doc_write(self):
+        """runner.py must not appear in S0_DOC_PATHS (document writes cannot touch runner identity)."""
+        runner_path = R.S0_RUNNER_FILE
+        self.assertNotIn(runner_path, R.S0_DOC_PATHS)
+
+    def test_s0_doc_paths_not_runner(self):
+        """S0 document paths are the two evidence docs, not runner code."""
+        for p in R.S0_DOC_PATHS:
+            self.assertNotEqual(p, R.S0_RUNNER_FILE)
+
+    # ---- _s0_doc_commit_scope ----------------------------------------
+
+    def _git(self, *args):
+        import subprocess
+        return subprocess.run(["git", "-C", str(self.repo), "-c", "user.email=t@t", "-c", "user.name=t",
+                               "-c", "core.hooksPath=/dev/null", *args],
+                              capture_output=True, text=True, check=True)
+
+    def _commit_only_files(self, paths_and_content):
+        """Commit exactly the given files in the test repo; return the new commit sha."""
+        import subprocess
+        for path, content in paths_and_content.items():
+            full = self.repo / path
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_text(content)
+            self._git("add", path)
+        result = self._git("commit", "-qm", "scope-test")
+        sha = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        return sha
+
+    def test_s0_doc_commit_scope_exact_two_paths_ok(self):
+        """Commit that changes exactly the two S0 doc paths → no error."""
+        sha = self._commit_only_files({R.S0_DOC_PATHS[0]: "cert-v2", R.S0_DOC_PATHS[1]: "qa-v2"})
+        # Should not raise
+        R._s0_doc_commit_scope(self.cfg, sha, R.S0_DOC_PATHS)
+
+    def test_s0_doc_commit_scope_extra_file_raises(self):
+        """Commit with extra file beyond the two S0 docs → GateError."""
+        sha = self._commit_only_files({R.S0_DOC_PATHS[0]: "cert-v2",
+                                       R.S0_DOC_PATHS[1]: "qa-v2",
+                                       "extra/unwanted.txt": "extra"})
+        with self.assertRaises(R.GateError) as cm:
+            R._s0_doc_commit_scope(self.cfg, sha, R.S0_DOC_PATHS)
+        self.assertIn("scope", str(cm.exception).lower())
+
+    def test_s0_doc_commit_scope_only_one_doc_raises(self):
+        """Commit with only one S0 doc → GateError (both are required)."""
+        sha = self._commit_only_files({R.S0_DOC_PATHS[0]: "cert-v2"})
+        with self.assertRaises(R.GateError):
+            R._s0_doc_commit_scope(self.cfg, sha, R.S0_DOC_PATHS)
+
+    def test_s0_doc_commit_scope_runner_file_raises(self):
+        """Commit that includes runner.py (even alongside the two docs) → GateError."""
+        sha = self._commit_only_files({R.S0_DOC_PATHS[0]: "cert-v2",
+                                       R.S0_DOC_PATHS[1]: "qa-v2",
+                                       R.S0_RUNNER_FILE: "# tampered"})
+        with self.assertRaises(R.GateError):
+            R._s0_doc_commit_scope(self.cfg, sha, R.S0_DOC_PATHS)
+
+    def test_s0_doc_commit_scope_bad_sha_raises(self):
+        """Non-existent commit sha → GateError."""
+        with self.assertRaises(R.GateError):
+            R._s0_doc_commit_scope(self.cfg, "a" * 40, R.S0_DOC_PATHS)
+
+    # ---- verify_d16_dual scope check wired in -------------------------
+
+    def test_verify_d16_dual_fails_without_chain(self):
+        """verify_d16_dual raises GateError immediately when the exhausted D16 chain is not present."""
+        t = {"id": R.D16_DUAL_ID, "module": "MOD-004", "role": "implement",
+             "source": None, "plan_phase": None, "remediation_of": None,
+             "allowed_paths": [R.D16_ADR_PATH], "expected_changes": [R.D16_ADR_PATH],
+             "verify_cmd": [], "review_of": None, "review_retry_of": None,
+             "accounting_recovery_of": None, "doc_base": None}
+        tasks = {R.D16_DUAL_ID: t}
+        with self.assertRaises(R.GateError):
+            R.verify_d16_dual(self.cfg, tasks, t)
+
+    # ---- old negative S0 product review does not pass new gate --------
+
+    def test_old_negative_s0_product_review_not_approved(self):
+        """An S0 product write review with CHANGES_REQUESTED must not pass as APPROVED in any check."""
+        tasks = {
+            "s0-write": {"id": "s0-write", "module": R.S0_MODULE, "role": "implement",
+                         "plan_phase": R.S0_MARKER, "status": "DONE"},
+            "s0-review": {"id": "s0-review", "module": R.S0_MODULE, "role": "code-review",
+                          "status": "DONE",
+                          "review_of": {"task_id": "s0-write"},
+                          "evidence": {"review_outcome": "CHANGES_REQUESTED"}},
+        }
+        # The D16 dual gate checks that no S0 product write is APPROVED
+        # A CHANGES_REQUESTED outcome must not trigger the "APPROVED" gate check
+        approved = [x for x in tasks.values() if isinstance(x, dict)
+                    and x.get("role") in R.OPUS_ROLES
+                    and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                    and R.s0_marked(tasks.get((x.get("review_of") or {}).get("task_id")) or {})]
+        self.assertEqual(approved, [], "old CHANGES_REQUESTED review must not appear as APPROVED")
+
+    def test_forged_operator_approved_s0_review_detected_by_d16_gate_logic(self):
+        """An S0 product write with a forged APPROVED review is detected by verify_d16_dual's predicate."""
+        s0_write = {"id": "s0-write", "module": R.S0_MODULE, "role": "implement",
+                    "plan_phase": R.S0_MARKER, "status": "DONE"}
+        forged_review = {"id": "forged-review", "module": R.S0_MODULE, "role": "code-review",
+                         "status": "DONE",
+                         "review_of": {"task_id": "s0-write"},
+                         "evidence": {"review_outcome": "APPROVED", "violations": []}}
+        tasks = {"s0-write": s0_write, "forged-review": forged_review}
+        # Replicate verify_d16_dual's S0 product approved check directly
+        s0_product_approved = [x for x in tasks.values() if isinstance(x, dict)
+                               and x.get("role") in R.OPUS_ROLES
+                               and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                               and R.s0_marked(tasks.get((x.get("review_of") or {}).get("task_id")) or {})]
+        self.assertTrue(s0_product_approved, "forged APPROVED S0 product review must be detectable")
+        # verify_d16_dual fails before reaching this check due to shape constraints; the logic
+        # is verified here directly and the full gate test is in test_verify_d16_dual_rejects_s0_approved.
+
+    # ---- D16 dual correction budget exhaustion ------------------------
+
+    def test_d16_dual_max_corrections_constant(self):
+        """The correction budget constant is exactly 2, matching the owner decision."""
+        self.assertEqual(R.D16_DUAL_MAX_CORRECTIONS, 2)
+
+    def test_d16_dual_id_is_fixed(self):
+        """The fixed root task id is exactly the owner-authorized string."""
+        self.assertEqual(R.D16_DUAL_ID, "mod004-d16-dual-version-sonnet-20261026")
+
+    def test_s0_dual_rebind_id_is_fixed(self):
+        """The fixed rebind task id is exactly the owner-authorized string."""
+        self.assertEqual(R.S0_DUAL_REBIND_ID, "mod004-s0-d16-evidence-rebind-sonnet-20261026")
+
+    # ---- d16_dual_lineage correctness --------------------------------
+
+    def test_d16_dual_lineage_root_matches(self):
+        t = {"id": R.D16_DUAL_ID}
+        self.assertTrue(R.d16_dual_lineage({}, t))
+
+    def test_d16_dual_lineage_non_d16_task_false(self):
+        t = {"id": "other-task"}
+        self.assertFalse(R.d16_dual_lineage({}, t))
+
+    def test_d16_dual_lineage_remediation_traces_to_root(self):
+        tasks = {R.D16_DUAL_ID: {"id": R.D16_DUAL_ID, "role": "implement"}}
+        child = {"id": "child-1", "remediation_of": R.D16_DUAL_ID}
+        self.assertTrue(R.d16_dual_lineage(tasks, child))
+
+    def test_d16_dual_lineage_wrong_chain_false(self):
+        tasks = {"other-root": {"id": "other-root"}}
+        child = {"id": "child-1", "remediation_of": "other-root"}
+        self.assertFalse(R.d16_dual_lineage(tasks, child))
+
+    # ---- d16_dual_gate_reason shape checks ---------------------------
+
+    def test_d16_dual_gate_wrong_id_for_non_implement_role_blocked(self):
+        """D16_DUAL_ID reserved for implement; a code-review task with that id is refused."""
+        t = {"id": R.D16_DUAL_ID, "role": "code-review",
+             "module": "MOD-004", "plan_phase": None}
+        tasks = {R.D16_DUAL_ID: t}
+        reason = R.d16_dual_gate_reason(self.cfg, t, tasks)
+        self.assertIsNotNone(reason)
+        self.assertIn("D16_DUAL_INVALID", reason)
+
+    # ---- boot activation constants match owner record ----------------
+
+    def test_boot_activation_constants_match_owner_record(self):
+        """Activation constants must match the values in the published owner record.
+        D16_BOOT_COMMIT is the required PARENT of the activation commit (the owner-record HEAD).
+        D16_BOOT_CI_RUN is no longer used for authentication; CI is verified via observed CI on the runner commit."""
+        self.assertEqual(R.D16_BOOT_COMMIT, "c11d4208f36e00c0f47cf1a7b86164d10a9b625c")
+        self.assertEqual(R.D16_DUAL_OWNER_SHA,
+                         "a36e27640d214a128179e60ffe4c91769864f7736874ba85e66bf9ad02efde48")
+        # Verify there is no longer a hardcoded CI run constant pinning the owner-record CI
+        self.assertFalse(hasattr(R, "D16_BOOT_CI_RUN"),
+                         "D16_BOOT_CI_RUN must not exist: CI is now authenticated via observed runner-code CI")
+
+    def test_boot_activation_name_constant(self):
+        self.assertEqual(R.D16_BOOT_ACTIVATION_NAME, "s0_d16_boot_activation.json")
+
+    # ---- focused quarantine_state defect-fix tests -------------------
+
+    def test_quarantine_state_both_absent_returns_none(self):
+        """Pre-reload state: both token and ledger absent, no entered event → NONE."""
+        qs, _ = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_NONE)
+
+    def test_quarantine_state_both_absent_event_prevents_rearm(self):
+        """Both files deleted after entry, but quarantine-entered event present → DENY (no re-arm)."""
+        Store = R.Store
+        Store(self.cfg.home).event("s0-d16-quarantine-entered", pid=os.getpid(), code_sha256=R.CODE_SHA)
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("previously entered", reason)
+
+    def test_quarantine_state_ledger_present_token_absent_deny(self):
+        """Ledger present but token file absent (deleted after entry) → DENY."""
+        R._write_qled(self.cfg, {"schema": 1, "entered_at": R.now_iso(),
+                                 "runner_pid": os.getpid(),
+                                 "runner_boot_nonce": R._PROCESS_BOOT_NONCE,
+                                 "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False})
+        # Token deliberately absent
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("token", reason)
+
+    def test_quarantine_state_ledger_present_token_not_consumed_deny(self):
+        """Ledger present but unconsumed token (contradictory state) → DENY."""
+        self._write_tok(self._valid_tok(consumed=False))
+        R._write_qled(self.cfg, {"schema": 1, "entered_at": R.now_iso(),
+                                 "runner_pid": os.getpid(),
+                                 "runner_boot_nonce": R._PROCESS_BOOT_NONCE,
+                                 "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False})
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("consumed", reason)
+
+    def test_quarantine_state_corrupt_token_deny(self):
+        """Corrupt token file → DENY."""
+        tok_path = R._boot_activation_path(self.cfg)
+        tok_path.parent.mkdir(parents=True, exist_ok=True)
+        tok_path.write_bytes(b"not valid json{")
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("corrupt", reason)
+
+    def test_quarantine_state_corrupt_ledger_deny(self):
+        """Corrupt ledger file → DENY."""
+        self._write_tok(self._valid_tok(consumed=True))
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b'{"schema": 1}')  # missing required fields
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("corrupt", reason)
+
+    def test_quarantine_state_consumed_token_no_ledger_deny(self):
+        """Consumed token but absent ledger (interrupted entry) → DENY."""
+        self._write_tok(self._valid_tok(consumed=True))
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("interrupted", reason)
+
+    def test_qled_same_pid_absent_nonce_not_live(self):
+        """Same PID but ledger has no runner_boot_nonce → invalid ledger (fail-closed)."""
+        R._write_qled(self.cfg, {"schema": 1, "entered_at": R.now_iso(),
+                                 "runner_pid": os.getpid(),
+                                 "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False})
+        with self.assertRaises(R.GateError):
+            R._load_qled(self.cfg)
+
+    def test_qled_same_pid_wrong_nonce_not_live(self):
+        """Same PID but mismatched boot nonce (PID reused by new process) → not live."""
+        R._write_qled(self.cfg, {"schema": 1, "entered_at": R.now_iso(),
+                                 "runner_pid": os.getpid(),
+                                 "runner_boot_nonce": "wrong_nonce_not_matching",
+                                 "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False})
+        qled = R._load_qled(self.cfg)
+        self.assertFalse(R._qled_runner_is_live(self.cfg, qled))
+
+    def test_activation_ci_not_observed_raises(self):
+        """_observe_ci_for_commit raising GateError (no push CI at exact SHA) must refuse activation."""
+        import unittest.mock as _mock
+        self._write_tok(self._valid_tok())
+        with _mock.patch.object(R, "_observe_ci_for_commit",
+                                side_effect=R.GateError("no completed successful push run on main")):
+            with self.assertRaises(R.GateError) as cm:
+                R._enter_quarantine_from_activation(self.cfg)
+        self.assertIn("push run", str(cm.exception))
+        self.assertTrue(json.loads(R._boot_activation_path(self.cfg).read_text())["consumed"])
+        with self.assertRaises(R.GateError):
+            R._enter_quarantine_from_activation(self.cfg)
+
+    def test_failed_activation_ledger_denies_even_with_consumed_token(self):
+        """A failed controlled startup cannot turn into a live quarantine on restart."""
+        self._write_qled(activation_failed=True)
+        qs, reason = R.quarantine_state(self.cfg)
+        self.assertEqual(qs, R._QS_DENY)
+        self.assertIn("cannot be retried", reason)
+
+    def test_activation_valid_writes_boot_nonce_in_ledger(self):
+        """Valid activation writes the current process boot nonce into the quarantine ledger."""
+        self._write_tok(self._valid_tok())
+        with self._mock_valid_activation():
+            R._enter_quarantine_from_activation(self.cfg)
+        qled = R._load_qled(self.cfg)
+        self.assertIsNotNone(qled)
+        self.assertIn("runner_boot_nonce", qled)
+        self.assertEqual(qled["runner_boot_nonce"], R._PROCESS_BOOT_NONCE)
+
+
+class TestD16DualAdmission(Base):
+    """Gate tests for verify_d16_dual / d16_dual_gate_reason / review_gate_reason for D16 dual-version admission."""
+
+    # ---- helpers -------------------------------------------------------
+
+    def _write_qled(self, **overrides):
+        """Write a consumed activation token and a matching quarantine ledger."""
+        R.atomic_write(R._boot_activation_path(self.cfg),
+                       json.dumps({"schema": 1, "code_sha256": R.CODE_SHA,
+                                   "commit": "d" * 40, "consumed": True},
+                                  sort_keys=True).encode())
+        d = {"schema": 1, "entered_at": R.now_iso(), "runner_pid": os.getpid(),
+             "runner_boot_nonce": R._PROCESS_BOOT_NONCE,
+             "code_sha256": R.CODE_SHA, "dual_rebind_consumed": False}
+        d.update(overrides)
+        R._write_qled(self.cfg, d)
+        R.Store(self.cfg.home).event("s0-d16-quarantine-entered",
+                                     pid=d["runner_pid"], boot_nonce=d["runner_boot_nonce"],
+                                     code_sha256=d["code_sha256"])
+
+    def _write_live_qled_with_rebind_consumed(self):
+        self._write_qled(dual_rebind_consumed=True)
+
+    def _d16_root_task(self, **overrides):
+        t = {"id": R.D16_DUAL_ID, "module": "MOD-004", "role": "implement",
+             "plan_phase": None, "source": None, "status": "QUEUED",
+             "allowed_paths": [R.D16_ADR_PATH], "expected_changes": [R.D16_ADR_PATH],
+             "verify_cmd": [], "attempts": 0}
+        t.update(overrides)
+        return t
+
+    def test_published_owner_decisions_require_committed_bytes_review_and_ci(self):
+        quarantine = b"quarantine owner decision\n"
+        design = b"dual-version design owner decision\n"
+        qreview = b"Independent exact-subject review\nOUTCOME: APPROVED\n"
+        dreview = b"Independent exact-subject review\nOUTCOME: APPROVED\n"
+        for path, data in ((R.D16_DUAL_OWNER_PATH, quarantine),
+                           (R.D16_DUAL_DESIGN_PATH, design)):
+            dest = self.repo / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+        for path, data in ((R.D16_DUAL_OWNER_REVIEW, qreview),
+                           (R.D16_DUAL_DESIGN_REVIEW, dreview)):
+            dest = self.home / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+        blobs = {f"{R.D16_BOOT_COMMIT}:{R.D16_DUAL_OWNER_PATH}": quarantine,
+                 f"{R.D16_DUAL_DESIGN_COMMIT}:{R.D16_DUAL_DESIGN_PATH}": design}
+        def shown(repo, *args, **kwargs):
+            return mock.Mock(returncode=0, stdout=blobs[args[1]])
+        with (mock.patch.multiple(R,
+               D16_DUAL_OWNER_SHA=hashlib.sha256(quarantine).hexdigest(),
+               D16_DUAL_DESIGN_SHA=hashlib.sha256(design).hexdigest(),
+               D16_DUAL_OWNER_REVIEW_SHA=hashlib.sha256(qreview).hexdigest(),
+               D16_DUAL_DESIGN_REVIEW_SHA=hashlib.sha256(dreview).hexdigest()),
+              mock.patch.object(R, "git_run", side_effect=shown),
+              mock.patch.object(R, "_is_ancestor", return_value=True),
+              mock.patch.object(R, "_observe_ci_for_commit") as observed):
+            R.verify_d16_published_owners(self.cfg, R.D16_BOOT_COMMIT)
+            self.assertEqual(observed.call_args_list,
+                             [mock.call(self.cfg, R.D16_BOOT_COMMIT, run_id=R.D16_DUAL_OWNER_CI_RUN),
+                              mock.call(self.cfg, R.D16_DUAL_DESIGN_COMMIT, run_id=R.D16_DUAL_DESIGN_CI_RUN)])
+            with self.assertRaises(R.GateError):
+                R.verify_d16_published_owners(self.cfg, "e" * 40)
+            blobs[f"{R.D16_DUAL_DESIGN_COMMIT}:{R.D16_DUAL_DESIGN_PATH}"] = b"different committed bytes"
+            with self.assertRaisesRegex(R.GateError, "committed bytes"):
+                R.verify_d16_published_owners(self.cfg, R.D16_BOOT_COMMIT)
+            blobs[f"{R.D16_DUAL_DESIGN_COMMIT}:{R.D16_DUAL_DESIGN_PATH}"] = design
+            (self.home / R.D16_DUAL_DESIGN_REVIEW).write_bytes(b"OUTCOME: CHANGES_REQUESTED\n")
+            with self.assertRaisesRegex(R.GateError, "Opus APPROVED"):
+                R.verify_d16_published_owners(self.cfg, R.D16_BOOT_COMMIT)
+
+    def test_review_of_dual_lane_is_blocked_after_restart(self):
+        self._write_qled(runner_pid=1)
+        parent = self._d16_root_task(status="DONE")
+        review = {"id": "dual-review-after-restart", "module": "MOD-004", "role": "code-review",
+                  "review_of": {"task_id": parent["id"]}, "status": "QUEUED"}
+        self.assertIn("S0_D16_REVIEW_QUARANTINED",
+                      R.gate_reason(self.cfg, review, {parent["id"]: parent, review["id"]: review}))
+
+    def test_queue_file_cannot_record_d16_root_before_quarantine_entry(self):
+        runner = R.Runner(self.cfg)
+        runner.state = runner.store.load()
+        queue_file = self.home / "queue" / "dual-root.json"
+        queue_file.parent.mkdir(parents=True, exist_ok=True)
+        queue_file.write_text("{}")
+        root = self._d16_root_task()
+        with (mock.patch.object(R, "validate_task", return_value=root),
+              mock.patch.object(R, "review_binding")):
+            runner.ingest_queue()
+        self.assertTrue(queue_file.with_suffix(".rejected").exists())
+        self.assertNotIn(root["id"], runner.state["tasks"])
+
+    def test_positive_bound_rebind_and_receipts_reach_d16_gate(self):
+        """A coherent one-reload/rebind evidence set reaches D16 admission.
+
+        Provider CI, old historical-chain validation and established S0 receipt
+        verifiers are separately tested; this fixture exercises their combined
+        binding and admission order without publishing or reloading a runner.
+        """
+        self._write_live_qled_with_rebind_consumed()
+        root = self._d16_root_task()
+        cert, qa = R.S0_DOC_PATHS
+        doc_hashes = {cert: "a" * 64, qa: "b" * 64}
+        changed = [{"path": p, "sha256": doc_hashes[p]} for p in R.S0_DOC_PATHS]
+        rebind = {"id": R.S0_DUAL_REBIND_ID, "module": R.S0_MODULE,
+                  "role": "implement", "plan_phase": R.S0_DUAL_REBIND_MARKER,
+                  "status": "DONE", "attempts": 1,
+                  "evidence": {"changed": changed, "violations": []}}
+        review = {"id": "dual-rebind-opus-review", "role": "code-review",
+                  "status": "DONE", "route": {"verdict": "VERIFIED"},
+                  "review_of": {"task_id": rebind["id"], "changed": changed},
+                  "evidence": {"review_outcome": "APPROVED", "review_bound_verified": True,
+                               "violations": []}}
+        f34_changed = [{"path": R.D16_ADR_PATH, "sha256": "1" * 64}]
+        f34 = {"id": R.D16_F34_WRITE, "status": "DONE", "role": "implement",
+               "remediation_root": R.D16_F34_ROOT, "remediation_of": R.D16_F34_TIP,
+               "evidence": {"changed": f34_changed}}
+        f34_review = {"id": R.D16_F34_REVIEW, "status": "BLOCKED", "role": "code-review",
+                      "blocked_reason": "REVIEW_CHANGES_REQUESTED", "route": {"verdict": "VERIFIED"},
+                      "review_of": {"task_id": f34["id"], "changed": f34_changed},
+                      "evidence": {"review_outcome": "CHANGES_REQUESTED",
+                                   "review_bound_verified": True,
+                                   "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        tasks = {x["id"]: x for x in (root, rebind, review, f34, f34_review)}
+        runner_commit, owner_commit, doc_commit = "c" * 40, R.D16_BOOT_COMMIT, "e" * 40
+        ci = {"run_id": "123"}
+        runner_subject = {"path": R.S0_RUNNER_FILE, "sha256": R.CODE_SHA,
+                          "commit": runner_commit, "ci": ci, "review": {}}
+        cert_subject = {"path": cert, "sha256": doc_hashes[cert],
+                        "commit": doc_commit, "ci": ci, "review": {}}
+        qa_subject = {"path": qa, "sha256": doc_hashes[qa],
+                      "commit": doc_commit, "ci": ci, "review": {}}
+        receipt_dir = self.cfg.home / "acceptances"
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        (receipt_dir / f"{R.S0_DUAL_REBIND_RECEIPT}.json").write_text(json.dumps({
+            "schema": R.SCHEMA, "module": "MOD-004", "kind": "mod004-s0-d16-rebind-authority",
+            "subjects": {
+                "dual_rebind_runner": {"sha256": R.CODE_SHA, "commit": runner_commit},
+                "dual_rebind_owner": {"path": R.D16_DUAL_OWNER_PATH,
+                                      "sha256": R.D16_DUAL_OWNER_SHA, "commit": owner_commit},
+                "s0_cert": cert_subject, "s0_qa": qa_subject}}))
+        (receipt_dir / f"{R.S0_RECEIPT}.json").write_text(json.dumps({
+            "subjects": {"runner_gate": runner_subject, "eligibility": cert_subject}}))
+        (receipt_dir / f"{R.S0_QA_RECEIPT}.json").write_text(json.dumps({
+            "subjects": {"runner_gate": runner_subject}}))
+        owner_src = R.REPO / R.D16_DUAL_OWNER_PATH
+        owner_dest = self.repo / R.D16_DUAL_OWNER_PATH
+        owner_dest.parent.mkdir(parents=True, exist_ok=True)
+        owner_dest.write_bytes(owner_src.read_bytes())
+        runner_bytes = Path(R.__file__).read_bytes()
+        original_git_run = R.git_run
+        def git_for_runner(repo, *args, **kwargs):
+            if args[:2] == ("show", f"{runner_commit}:tools/mission_runner/runner.py"):
+                return mock.Mock(returncode=0, stdout=runner_bytes)
+            return original_git_run(repo, *args, **kwargs)
+        with (mock.patch.object(R, "_d16_exhausted_chain", return_value=[]),
+              mock.patch.object(R, "_observe_ci_for_commit"),
+              mock.patch.object(R, "_s0_subject"),
+              mock.patch.object(R, "_s0_doc_commit_scope"),
+              mock.patch.object(R, "verify_s0_authority"),
+              mock.patch.object(R, "verify_s0_qa_authority"),
+              mock.patch.object(R, "verify_d16_published_owners"),
+              mock.patch.object(R, "_is_ancestor", return_value=True),
+              mock.patch.object(R, "_d16_adr_problem") as adr_start,
+              mock.patch.object(R, "git_run", side_effect=git_for_runner)):
+            self.assertIn(R.D16_F34_WRITE, R.verify_d16_dual(self.cfg, tasks, root))
+            self.assertIsNone(R.d16_dual_gate_reason(self.cfg, root, tasks))
+            adr_path = self.repo / R.D16_ADR_PATH
+            adr_path.parent.mkdir(parents=True, exist_ok=True)
+            adr_path.write_text("rejected dual-version draft\n")
+            root_changed = [{"path": R.D16_ADR_PATH,
+                             "sha256": hashlib.sha256(adr_path.read_bytes()).hexdigest()}]
+            root.update(status="DONE", attempts=1,
+                        evidence={"changed": root_changed, "violations": []})
+            root_review = {"id": "dual-root-opus-review", "role": "code-review", "status": "BLOCKED",
+                           "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                           "route": {"verdict": "VERIFIED"},
+                           "review_of": {"task_id": root["id"], "changed": root_changed},
+                           "evidence": {"review_outcome": "CHANGES_REQUESTED",
+                                        "review_bound_verified": True,
+                                        "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+            tasks[root_review["id"]] = root_review
+            correction = {**self._d16_root_task(), "id": "dual-correction-one",
+                          "remediation_of": root["id"], "remediation_root": root["id"]}
+            tasks[correction["id"]] = correction
+            self.assertIn(R.D16_F34_WRITE, R.verify_d16_dual(self.cfg, tasks, correction))
+            self.assertIsNone(R.d16_dual_gate_reason(self.cfg, correction, tasks))
+            adr_path.write_text("first rejected correction\n")
+            correction_changed = [{"path": R.D16_ADR_PATH,
+                                   "sha256": hashlib.sha256(adr_path.read_bytes()).hexdigest()}]
+            correction.update(status="DONE", attempts=1,
+                              evidence={"changed": correction_changed, "violations": []})
+            correction_review = {"id": "dual-correction-one-review", "role": "code-review",
+                                 "status": "BLOCKED", "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                                 "route": {"verdict": "VERIFIED"},
+                                 "review_of": {"task_id": correction["id"], "changed": correction_changed},
+                                 "evidence": {"review_outcome": "CHANGES_REQUESTED",
+                                              "review_bound_verified": True,
+                                              "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+            tasks[correction_review["id"]] = correction_review
+            correction2 = {**self._d16_root_task(), "id": "dual-correction-two",
+                           "remediation_of": correction["id"], "remediation_root": root["id"]}
+            tasks[correction2["id"]] = correction2
+            self.assertIn(R.D16_F34_WRITE, R.verify_d16_dual(self.cfg, tasks, correction2))
+            adr_path.write_text("second rejected correction\n")
+            correction2_changed = [{"path": R.D16_ADR_PATH,
+                                    "sha256": hashlib.sha256(adr_path.read_bytes()).hexdigest()}]
+            correction2.update(status="DONE", attempts=1,
+                               evidence={"changed": correction2_changed, "violations": []})
+            correction2_review = {"id": "dual-correction-two-review", "role": "code-review",
+                                  "status": "BLOCKED", "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+                                  "route": {"verdict": "VERIFIED"},
+                                  "review_of": {"task_id": correction2["id"], "changed": correction2_changed},
+                                  "evidence": {"review_outcome": "CHANGES_REQUESTED",
+                                               "review_bound_verified": True,
+                                               "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+            tasks[correction2_review["id"]] = correction2_review
+            correction3 = {**self._d16_root_task(), "id": "dual-correction-three",
+                           "remediation_of": correction2["id"], "remediation_root": root["id"]}
+            tasks[correction3["id"]] = correction3
+            with self.assertRaisesRegex(R.GateError, "correction limit"):
+                R.verify_d16_dual(self.cfg, tasks, correction3)
+            self.assertEqual(adr_start.call_count, 2)  # root only; rejected correction is not HEAD
+            self.assertIn(f34, adr_start.call_args_list[0].args[2])
+
+    # ---- quarantine predicate checks (P0-1, P0-2) -------------------
+
+    def test_d16_dual_denied_when_no_quarantine(self):
+        """D16 root must be denied when quarantine has not been entered."""
+        t = self._d16_root_task()
+        tasks = {R.D16_DUAL_ID: t}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks, t)
+        self.assertIn("quarantine", str(cm.exception).lower())
+
+    def test_d16_dual_denied_when_restart(self):
+        """Any process restart must block D16 admission."""
+        self._write_qled(runner_pid=1)  # PID 1 is not this process → RESTARTED
+        t = self._d16_root_task()
+        tasks = {R.D16_DUAL_ID: t}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks, t)
+        self.assertIn("restart", str(cm.exception).lower())
+
+    def test_d16_dual_denied_when_rebind_not_consumed(self):
+        """D16 admission requires the rebind lane to be consumed first."""
+        self._write_qled(dual_rebind_consumed=False)  # rebind not yet consumed
+        t = self._d16_root_task()
+        tasks = {R.D16_DUAL_ID: t}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks, t)
+        self.assertIn("rebind", str(cm.exception).lower())
+
+    def test_d16_dual_denied_when_corrupt_ledger(self):
+        """Corrupt quarantine ledger (DENY state) must block D16 admission."""
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b'{"schema": 1}')  # missing required fields
+        t = self._d16_root_task()
+        tasks = {R.D16_DUAL_ID: t}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks, t)
+        self.assertIn("quarantine", str(cm.exception).lower())
+
+    # ---- code drift check (P0-1) ------------------------------------
+
+    def test_d16_dual_denied_when_on_disk_runner_drifted(self):
+        """If on-disk runner.py hash differs from loaded CODE_SHA, D16 admission must fail."""
+        self._write_live_qled_with_rebind_consumed()
+        t = self._d16_root_task()
+        tasks = {R.D16_DUAL_ID: t}
+        # Patch hashlib.sha256 to return a different digest for on-disk runner
+        import unittest.mock as _mock
+        real_sha256 = __import__("hashlib").sha256
+        call_count = [0]
+        def _fake_sha256(data):
+            call_count[0] += 1
+            if call_count[0] == 1:  # first call is the on-disk read
+                result = _mock.MagicMock()
+                result.hexdigest = lambda: "f" * 64
+                return result
+            return real_sha256(data)
+        with _mock.patch("hashlib.sha256", side_effect=_fake_sha256):
+            with self.assertRaises(R.GateError) as cm:
+                R.verify_d16_dual(self.cfg, tasks, t)
+        self.assertIn("drift", str(cm.exception).lower())
+
+    # ---- duplicate entitlement check --------------------------------
+
+    def test_d16_dual_denied_when_entitlement_already_consumed(self):
+        """A second task recording D16_DUAL_ID must be refused (single-use)."""
+        self._write_live_qled_with_rebind_consumed()
+        t_new = self._d16_root_task()
+        t_existing = self._d16_root_task(status="DONE")
+        # t_new is the candidate, but a different dict with same id already in tasks
+        tasks = {"already": t_existing, R.D16_DUAL_ID: t_new}
+        # Reconfigure so that t_existing appears as a different object with the same id
+        t_existing_copy = dict(t_existing)
+        tasks2 = {"already": t_existing_copy, R.D16_DUAL_ID: t_new}
+        # Inject via a separate key so it's not `t` itself
+        tasks2["dup"] = {**t_existing_copy, "id": R.D16_DUAL_ID}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks2, t_new)
+        self.assertIn("single-use", str(cm.exception).lower())
+
+    # ---- gate_reason quarantine block for S0 product tasks (P0-2) --
+
+    def test_gate_reason_blocks_s0_product_task_when_quarantined(self):
+        """S0 product admission is denied while quarantine is active (any state except NONE)."""
+        self._write_live_qled_with_rebind_consumed()
+        s0_path = R.S0_DOC_PATHS[0]
+        t = {"id": "s0-product-test", "module": R.S0_MODULE, "role": "implement",
+             "plan_phase": R.S0_MARKER, "source": None, "status": "QUEUED",
+             "allowed_paths": [s0_path], "expected_changes": [s0_path],
+             "verify_cmd": []}
+        tasks = {"s0-product-test": t}
+        reason = R.gate_reason(self.cfg, t, tasks)
+        self.assertIsNotNone(reason)
+        self.assertIn("QUARANTINED", reason)
+
+    def test_s0_product_stays_blocked_before_activation_under_published_policy(self):
+        t = {"id": "s0-before-activation", "module": R.S0_MODULE, "role": "implement",
+             "plan_phase": R.S0_MARKER, "status": "QUEUED", "verify_cmd": []}
+        with mock.patch.object(R, "_d16_policy_active", return_value=True):
+            self.assertIn("S0_PRODUCT_QUARANTINED", R.gate_reason(self.cfg, t, {t["id"]: t}))
+
+    def test_deleting_activation_failed_field_cannot_restore_live_quarantine(self):
+        self._write_qled()
+        R.Store(self.cfg.home).event("s0-d16-quarantine-activation-failed",
+                                     code_sha256=R.CODE_SHA)
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_DENY)
+
+    def test_runner_boot_without_token_spends_first_start_and_cannot_rearm(self):
+        runner = R.Runner(self.cfg)
+        state = runner.store.load()
+        state["control"] = "STOP"
+        runner.store.save(state)
+        with (mock.patch.object(R, "_d16_policy_active", return_value=True),
+              mock.patch.object(R, "_trusted_dashboard"),
+              mock.patch.object(runner, "recover"),
+              mock.patch.object(runner, "apply_commands")):
+            self.assertEqual(runner.run(), 0)
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_DENY)
+        self.assertTrue(R._qled_failed_event(self.cfg))
+        R.atomic_write(R._boot_activation_path(self.cfg),
+                       json.dumps({"schema": 1, "code_sha256": R.CODE_SHA,
+                                   "commit": "d" * 40, "consumed": False}).encode())
+        again = R.Runner(self.cfg)
+        with (mock.patch.object(R, "_d16_policy_active", return_value=True),
+              mock.patch.object(R, "_trusted_dashboard"),
+              mock.patch.object(again, "recover"),
+              mock.patch.object(again, "apply_commands")):
+            self.assertEqual(again.run(), 0)
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_DENY)
+
+    def test_dispatch_checks_physical_runner_bytes_not_document_hashes(self):
+        runner_sha = hashlib.sha256(Path(R.__file__).read_bytes()).hexdigest()
+        for doc in R.S0_DOC_PATHS:
+            path = self.repo / doc
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("new S0 rebind evidence\n")
+        self.assertEqual(hashlib.sha256(Path(R.__file__).read_bytes()).hexdigest(), runner_sha)
+        runner = R.Runner(self.cfg)
+        runner.state = runner.store.load()
+        t = {"id": "physical-drift", "role": "implement", "attempts": 0,
+             "status": "QUEUED", "module": "MOD-000"}
+        runner.state["tasks"][t["id"]] = t
+        with (mock.patch.object(runner, "check_baseline", return_value=True),
+              mock.patch.object(runner, "gated", return_value=False),
+              mock.patch.object(R, "_LOADED_CODE_SHA", "0" * 64)):
+            runner.dispatch(t)
+        self.assertEqual(t["blocked_reason"], "RUNNER_CODE_DRIFT")
+        self.assertEqual(t["attempts"], 0)
+        self.assertEqual(hashlib.sha256(Path(R.__file__).read_bytes()).hexdigest(), R._LOADED_CODE_SHA)
+
+    def test_rebind_slot_consumed_before_snapshot_and_never_retried(self):
+        self._write_qled()
+        runner = R.Runner(self.cfg)
+        runner.state = runner.store.load()
+        t = {"id": R.S0_DUAL_REBIND_ID, "role": "implement", "module": R.S0_MODULE,
+             "plan_phase": R.S0_DUAL_REBIND_MARKER, "attempts": 0, "status": "QUEUED"}
+        runner.state["tasks"][t["id"]] = t
+        with (mock.patch.object(runner, "check_baseline", return_value=True),
+              mock.patch.object(runner, "gated", return_value=False),
+              mock.patch.object(R, "_trusted_dashboard"),
+              mock.patch.object(runner, "task_base_state", side_effect=RuntimeError("snapshot interrupted"))):
+            runner.dispatch(t)
+        self.assertTrue(R._load_qled(self.cfg)["dual_rebind_consumed"])
+        self.assertEqual(t["status"], "BLOCKED")
+        t.update(status="RUNNING", attempts=1)
+        runner.requeue_or_fail(t, "transport interruption")
+        self.assertEqual(t["status"], "FAILED")
+
+    def test_d16_correction_and_bound_review_do_not_transport_retry(self):
+        runner = R.Runner(self.cfg)
+        runner.state = runner.store.load()
+        root = self._d16_root_task(status="DONE")
+        correction = {**self._d16_root_task(), "id": "dual-correction",
+                      "remediation_of": root["id"], "remediation_root": root["id"],
+                      "status": "RUNNING", "attempts": 1}
+        review = {"id": "dual-correction-review", "role": "code-review", "status": "RUNNING",
+                  "attempts": 1, "review_of": {"task_id": correction["id"]}}
+        runner.state["tasks"].update({x["id"]: x for x in (root, correction, review)})
+        for t in (correction, review):
+            runner.requeue_or_fail(t, "transport interruption")
+            self.assertEqual(t["status"], "FAILED")
+
+    # ---- d16_dual_lineage coverage in review_gate_reason (P0-1) -----
+
+    def test_review_gate_calls_verify_d16_dual_for_correction(self):
+        """review_gate_reason must route D16 corrections through the D16 dual gate (not the generic path).
+        Without the non-CAP history set_aside in place the gate returns D16_DUAL_INVALID (not None),
+        proving the correction is in the D16 branch rather than falling through to the generic write gate."""
+        correction_id = "mod004-d16-dual-correction-test-1"
+        root_t = self._d16_root_task(status="DONE", attempts=1)
+        correction_t = {
+            "id": correction_id, "module": "MOD-004", "role": "implement",
+            "plan_phase": None, "source": None, "status": "QUEUED",
+            "allowed_paths": [R.D16_ADR_PATH], "expected_changes": [R.D16_ADR_PATH],
+            "verify_cmd": [], "attempts": 0,
+            "remediation_of": R.D16_DUAL_ID, "remediation_root": R.D16_DUAL_ID,
+        }
+        tasks = {R.D16_DUAL_ID: root_t, correction_id: correction_t}
+        # review_gate must be enabled to exercise this path (Base sets it to False for legacy fixtures)
+        self.cfg.review_gate = True
+        try:
+            # No non-CAP history → cap_chain is empty → D16 dual branch fires and returns INVALID, not None
+            reason = R.review_gate_reason(self.cfg, correction_t, tasks)
+            self.assertIsNotNone(reason)
+            # Must be in the D16 dual branch (INVALID or UNVERIFIED), not a generic MOD-004 gate message
+            self.assertTrue(reason.startswith("D16_DUAL_"), f"Expected D16_DUAL_* but got: {reason}")
+        finally:
+            self.cfg.review_gate = False
+
+    def test_dual_correction_uses_recorded_root_shape_not_root_id(self):
+        """A linked correction reaches evidence checks instead of failing the root-only ID check."""
+        root = self._d16_root_task(status="DONE", attempts=1)
+        correction = {**self._d16_root_task(), "id": "mod004-d16-dual-correction-test-1",
+                      "remediation_of": R.D16_DUAL_ID, "remediation_root": R.D16_DUAL_ID}
+        tasks = {R.D16_DUAL_ID: root, correction["id"]: correction}
+        with self.assertRaises(R.GateError) as cm:
+            R.verify_d16_dual(self.cfg, tasks, correction)
+        self.assertIn("correction parent", str(cm.exception).lower())
+
+    # ---- ingest_queue corrupt ledger (P0-2) -------------------------
+
+    def test_ingest_queue_holds_on_corrupt_ledger(self):
+        """Corrupt quarantine ledger must cause ingest_queue to bail without ingesting tasks."""
+        r = self.runner()
+        R.Store(self.cfg.home).save(r.state)
+        # Put a task in the queue
+        q_file = self.cfg.home / "queue" / "task-t99.json"
+        q_file.parent.mkdir(parents=True, exist_ok=True)
+        q_file.write_text(json.dumps({"id": "t99", "module": "MOD-000", "role": "implement",
+                                      "prompt": "x", "allowed_paths": ["out/"],
+                                      "expected_changes": ["out/a.txt"]}))
+        # Write a corrupt ledger
+        R._qled_path(self.cfg).parent.mkdir(parents=True, exist_ok=True)
+        R._qled_path(self.cfg).write_bytes(b'{"schema": 1}')  # missing required fields → DENY
+        r.ingest_queue()
+        # The task must NOT have been ingested (DENY state bails before task loop)
+        self.assertNotIn("t99", r.state.get("tasks", {}))
+
+
+class TestObserveCiForCommit(Base):
+    """Focused tests for _observe_ci_for_commit — provider-authenticated historical-commit CI observation."""
+
+    SHA_A = "a" * 40
+    SHA_B = "b" * 40
+    RUN_ID_A = "12345"
+    RUN_ID_B = "67890"
+
+    def _add_origin(self):
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin",
+                        "https://github.com/owner/repo.git"], check=True)
+
+    def _good_run(self, sha, run_id=None):
+        r = {"name": R.CI_WORKFLOW_NAME, "head_branch": "main", "event": "push",
+             "status": "completed", "conclusion": "success", "head_sha": sha}
+        if run_id is not None:
+            r["id"] = int(run_id)
+        return r
+
+    def _opener(self, runs_by_sha):
+        """Return an opener that dispatches workflow_runs by head_sha in the URL."""
+        class Response:
+            def __init__(self, obj): self.data = json.dumps(obj).encode()
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self, n=-1): return self.data[:n] if n >= 0 else self.data
+
+        def open_url(req, timeout):
+            for sha, runs in runs_by_sha.items():
+                if sha in req.full_url:
+                    return Response({"workflow_runs": runs})
+            return Response({"workflow_runs": []})
+        return open_url
+
+    def test_positive_two_distinct_historical_commits_both_pass(self):
+        """Positive path: two different historical SHAs with successful runs both satisfy the gate."""
+        self._add_origin()
+        opener = self._opener({
+            self.SHA_A: [self._good_run(self.SHA_A, self.RUN_ID_A)],
+            self.SHA_B: [self._good_run(self.SHA_B, self.RUN_ID_B)],
+        })
+        R._observe_ci_for_commit(self.cfg, self.SHA_A, run_id=self.RUN_ID_A, opener=opener)
+        R._observe_ci_for_commit(self.cfg, self.SHA_B, run_id=self.RUN_ID_B, opener=opener)
+
+    def test_positive_without_run_id_accepts_any_matching_run(self):
+        """Without run_id the gate accepts any completed successful run at the exact SHA."""
+        self._add_origin()
+        opener = self._opener({self.SHA_A: [self._good_run(self.SHA_A)]})
+        R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=opener)
+
+    def test_negative_wrong_head_sha_in_api_response_is_rejected(self):
+        """A run whose head_sha differs from the requested commit is rejected even if everything else matches."""
+        self._add_origin()
+        wrong_run = self._good_run(self.SHA_B)  # API returns SHA_B run for a SHA_A query
+        opener = self._opener({self.SHA_A: [wrong_run]})
+        with self.assertRaises(R.GateError) as cm:
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=opener)
+        self.assertIn(self.SHA_A[:12], str(cm.exception))
+
+    def test_negative_pending_run_not_accepted(self):
+        """in_progress (pending) run must be rejected; only completed+success is valid."""
+        self._add_origin()
+        pending = {"name": R.CI_WORKFLOW_NAME, "head_branch": "main", "event": "push",
+                   "status": "in_progress", "conclusion": None, "head_sha": self.SHA_A}
+        opener = self._opener({self.SHA_A: [pending]})
+        with self.assertRaises(R.GateError):
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=opener)
+
+    def test_negative_wrong_run_id_rejected(self):
+        """receipt run_id binding: a run with a different id must be rejected."""
+        self._add_origin()
+        run = self._good_run(self.SHA_A, run_id="99999")
+        opener = self._opener({self.SHA_A: [run]})
+        with self.assertRaises(R.GateError) as cm:
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, run_id="11111", opener=opener)
+        self.assertIn("run_id=11111", str(cm.exception))
+
+    def test_negative_operator_ci_json_alone_is_not_sufficient(self):
+        """An operator-placed ci.json passing for the commit does not bypass the live API requirement."""
+        self._add_origin()
+        ci_entry = {"schema": 1, "source": "gh", "scope": "main-push", "branch": "main",
+                    "head_sha": self.SHA_A, "observed_at": R.now_iso(), "runs_other_head": 0,
+                    "runs": [{"name": R.CI_WORKFLOW_NAME, "status": "completed",
+                               "conclusion": "success", "event": "push",
+                               "head_sha": self.SHA_A, "ref": "main"}]}
+        ci_path = self.cfg.home / "ci.json"
+        ci_path.parent.mkdir(parents=True, exist_ok=True)
+        ci_path.write_bytes(json.dumps(ci_entry).encode())
+        # API returns no runs for the SHA → gate must fail despite ci.json
+        opener = self._opener({})
+        with self.assertRaises(R.GateError):
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=opener)
+
+    def test_negative_api_unavailable_fails_closed(self):
+        """Network failure raises GateError so the gate never proceeds on missing evidence."""
+        self._add_origin()
+        def unavail(req, timeout):
+            raise urllib.error.URLError("simulated network failure")
+        with self.assertRaises(R.GateError):
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=unavail)
+
+    def test_negative_rate_limit_fails_closed(self):
+        """Rate-limit response from GitHub raises GateError."""
+        self._add_origin()
+        def rate_limited(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, None)
+        with self.assertRaises(R.GateError) as cm:
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=rate_limited)
+        self.assertIn("rate-limited", str(cm.exception))
+
+    def test_negative_no_origin_fails_closed(self):
+        """If origin remote is absent the gate fails closed rather than proceeding."""
+        # No _add_origin() call → no origin configured
+        def should_not_reach(req, timeout):  # pragma: no cover
+            raise AssertionError("opener should not be called")
+        with self.assertRaises(R.GateError):
+            R._observe_ci_for_commit(self.cfg, self.SHA_A, opener=should_not_reach)
 
 
 if __name__ == "__main__":

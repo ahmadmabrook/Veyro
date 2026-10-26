@@ -27,7 +27,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
@@ -36,6 +36,10 @@ from pathlib import Path
 SCHEMA = 1
 REPO = Path(__file__).resolve().parents[2]
 CODE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+_LOADED_CODE_SHA = CODE_SHA  # physical bytes at import; independent of receipt-identity fixtures
+_PROCESS_BOOT_NONCE = uuid.uuid4().hex  # fresh per process start; prevents PID reuse from authenticating an old ledger
+DASHBOARD_SHA = "d676aa67183d7d8110467cc9c39136aee7a2a0537d022e12cdf05938fe0d3b8a"
+_TRUSTED_DASHBOARD = None
 
 # Role -> model family. Opus roles may never be silently satisfied by Sonnet
 # (EIP "No-silent-downgrade rule"); unverifiable Opus evidence => BLOCKED.
@@ -851,8 +855,7 @@ def state_fingerprint(cfg, tasks):
     """Meaningful state: task lifecycle (incl. gate reasons) + repo HEAD + every owner-side input the orchestrator
     judges by, committed or not: acceptance receipts, module records, blocker dispositions, module catalog, pin."""
     try:
-        import dashboard
-        dispositions = _digest(Path(dashboard.DISPOSITIONS_PATH))
+        dispositions = _digest(Path(_trusted_dashboard().DISPOSITIONS_PATH))
     except Exception:
         dispositions = "unavailable"
     owner = [_tree_digests(cfg.home / "acceptances", "*.json"), _tree_digests(Path(cfg.repo) / "knowledge/03-Modules", "**/*"),
@@ -1089,6 +1092,31 @@ class GateError(Exception):
     pass
 
 
+def _trusted_dashboard():
+    """Load the sole project-local gate module from pinned source, never from a mutable pyc.
+
+    The module projects active blockers during enqueue and dispatch. Retain the
+    first verified code object and check its source bytes before every use.
+    """
+    global _TRUSTED_DASHBOARD
+    path = Path(__file__).with_name("dashboard.py")
+    try:
+        source = path.read_bytes()
+    except OSError:
+        raise GateError("local dashboard gate module is unreadable")
+    if hashlib.sha256(source).hexdigest() != DASHBOARD_SHA:
+        raise GateError("local dashboard gate module differs from pinned source")
+    if _TRUSTED_DASHBOARD is None:
+        module = ModuleType("dashboard")
+        module.__file__ = str(path)
+        # dashboard imports runner for read-only UI helpers. Reuse the loaded,
+        # integrity-checked runner instead of importing a second on-disk copy.
+        sys.modules.setdefault("runner", sys.modules[__name__])
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        _TRUSTED_DASHBOARD = module
+    return _TRUSTED_DASHBOARD
+
+
 def catalog_dependencies(module):
     try:
         entries = json.loads(CATALOG_PATH.read_text())
@@ -1255,7 +1283,7 @@ def active_module_blockers(cfg, t, tasks):
     blocked = [x for x in tasks.values() if x.get("status") == "BLOCKED" and x.get("module") == t["module"]]
     if not blocked:
         return []
-    import dashboard
+    dashboard = _trusted_dashboard()
     registry = dashboard.load_dispositions(dashboard.DISPOSITIONS_PATH)
     projected = dashboard.task_projection(list(tasks.values()), {}, registry, cfg.repo)
     return sorted(p["id"] for p in projected
@@ -2079,6 +2107,33 @@ def _s0_review(cfg, label, rv, tasks, seen, path, sha, data):
     seen.add(rv["task_id"])
 
 
+def _s0_doc_commit_scope(cfg, commit, expected_paths):
+    """Raise GateError unless the given commit's diff vs its parent changes exactly the files in expected_paths.
+    Verifies the owner-required 'exactly those two paths and nothing else' constraint and that the
+    commit is an ancestor of local HEAD. Non-force push and exact parent are publication-time checks."""
+    if not (isinstance(commit, str) and SHA_RE.fullmatch(commit)):
+        raise GateError(f"S0 doc commit scope: commit value is not a valid full SHA-1")
+    # Verify the commit is an ancestor of HEAD (i.e., on main history)
+    try:
+        anc = git_run(cfg.repo, "merge-base", "--is-ancestor", commit, "HEAD", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"S0 doc commit scope: cannot check ancestry for {commit[:12]}")
+    if anc.returncode != 0:
+        raise GateError(f"S0 doc commit scope: commit {commit[:12]} is not an ancestor of HEAD (not on main history)")
+    try:
+        result = git_run(cfg.repo, "diff-tree", "--no-commit-id", "-r", "--name-only",
+                         "--end-of-options", commit, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"S0 doc commit scope: cannot read diff for {commit[:12]}")
+    if result.returncode != 0:
+        raise GateError(f"S0 doc commit scope: git diff-tree failed for {commit[:12]}")
+    changed = sorted(line for line in result.stdout.decode().splitlines() if line.strip())
+    if changed != sorted(expected_paths):
+        raise GateError(
+            f"S0 doc commit scope: commit {commit[:12]} changes {changed!r}, "
+            f"expected exactly {sorted(expected_paths)!r}")
+
+
 def _s0_ci_label(cfg, commit):
     """'observed' when the runner's own ci.json observed exactly this commit green; 'operator-attested' when it has
     nothing for the commit (older CI is NOT re-verified here). A ci.json for this commit that is not green refuses."""
@@ -2092,6 +2147,69 @@ def _s0_ci_label(cfg, commit):
                and r.get("conclusion") == "success" and r.get("head_sha") == commit for r in obs["runs"]):
         raise GateError(f"observed CI for {commit[:12]} is not a completed successful {CI_WORKFLOW_NAME} push run")
     return "observed"
+
+
+def _observe_ci_for_commit(cfg, commit, run_id=None, opener=urllib.request.urlopen):
+    """Provider-authenticated read-only CI observation for one exact historical commit.
+
+    One GitHub public REST call bounded by CI_BUDGET/CI_CALL_TIMEOUT.  Validates that a completed
+    successful CI_WORKFLOW_NAME push run exists on CI_BRANCH at the exact full SHA.  If run_id
+    (digit string from receipt ci.run_id) is given the matched run must carry that id.  Raises
+    GateError on any failure so callers never silently proceed on missing or forged CI evidence.
+    """
+    if not (isinstance(commit, str) and SHA_RE.fullmatch(commit)):
+        raise GateError(f"CI observation: invalid commit SHA {commit!r}")
+    try:
+        remote = _git(cfg.repo, "remote", "get-url", "origin", timeout=2).stdout.decode().strip()
+    except (subprocess.SubprocessError, OSError):
+        raise GateError(f"CI observation for {commit[:12]}: git remote get-url failed")
+    m = re.search(r"(?:github\.com[:/])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$", remote)
+    if not m:
+        raise GateError(f"CI observation for {commit[:12]}: cannot derive GitHub slug from origin")
+    slug = m.group(1)
+    deadline = time.monotonic() + CI_BUDGET
+    left = min(CI_CALL_TIMEOUT, deadline - time.monotonic())
+    if left <= 0:
+        raise GateError(f"CI observation for {commit[:12]}: timed out before API call")
+    url = (f"https://api.github.com/repos/{slug}/actions/runs"
+           f"?branch={CI_BRANCH}&event=push&head_sha={commit}&per_page=8")
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
+                                               "User-Agent": "Veyro-CI-observer"})
+    try:
+        with opener(req, timeout=left) as response:
+            raw = response.read(CI_MAX_BYTES + 1)
+        if len(raw) > CI_MAX_BYTES:
+            raise GateError(f"CI observation for {commit[:12]}: response too large")
+        data = json.loads(raw)
+    except GateError:
+        raise
+    except urllib.error.HTTPError as e:
+        hdrs = e.headers if e.headers is not None else {}
+        limited = (e.code == 429
+                   or (e.code == 403 and (hdrs.get("X-RateLimit-Remaining") == "0"
+                                          or hdrs.get("Retry-After") is not None)))
+        e.close()
+        raise GateError(f"CI observation for {commit[:12]}: {'rate-limited' if limited else 'API unavailable'}")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise GateError(f"CI observation for {commit[:12]}: API unavailable")
+    except (ValueError, TypeError):
+        raise GateError(f"CI observation for {commit[:12]}: API bad output")
+    if not isinstance(data, dict) or not isinstance(data.get("workflow_runs"), list):
+        raise GateError(f"CI observation for {commit[:12]}: API bad output")
+    good = [x for x in data["workflow_runs"] if isinstance(x, dict)
+            and x.get("name") == CI_WORKFLOW_NAME
+            and x.get("head_branch") == CI_BRANCH
+            and x.get("event") == "push"
+            and x.get("status") == "completed"
+            and x.get("conclusion") == "success"
+            and x.get("head_sha") == commit]
+    if run_id is not None:
+        good = [x for x in good if str(x.get("id") or "") == str(run_id)]
+    if not good:
+        rid_note = f" run_id={run_id}" if run_id is not None else ""
+        raise GateError(
+            f"CI observation for {commit[:12]}: no completed successful {CI_WORKFLOW_NAME} push run"
+            f" on {CI_BRANCH}{rid_note}")
 
 
 def _s0_subject(cfg, name, e, tasks, seen, allowed=None):
@@ -2343,7 +2461,7 @@ def s0_doc_touches(t):
 
 def s0_single_attempt(t):
     return (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
-            or s0_loop_marked(t) or s0_qa_marked(t))
+            or s0_loop_marked(t) or s0_qa_marked(t) or s0_dual_rebind_marked(t))
 
 
 def s0_doc_shape_problem(t):
@@ -2822,7 +2940,8 @@ def _s0_competing_writes(tasks, t):
     return sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t["id"]
                   and x.get("role") in WRITE_ROLES and x.get("status") in ("QUEUED", "RUNNING")
                   and (s0_touches(x) or s0_doc_touches(x) or s0_marked(x) or s0_doc_marked(x) or s0_refresh_marked(x)
-                       or s0_rebind_marked(x) or s0_test_marked(x) or s0_loop_marked(x) or s0_qa_marked(x)))
+                       or s0_rebind_marked(x) or s0_test_marked(x) or s0_loop_marked(x) or s0_qa_marked(x)
+                       or s0_dual_rebind_marked(x)))
 
 
 def s0_rebind_shape_problem(t):
@@ -3937,6 +4056,39 @@ D16_F34_HISTORY = (
     (D16_F34_TIP, D16_F34_START_SHA, "mod004-d16-assurance-architecture-remed3-opus-review-20261025"),
 )
 
+# ------------------------------------------------ S0/D16 quarantine ledger (2026-10-26 controlled-reload sequencing)
+# OWNER-2026-10-26-mod004-d16-admission-s0-quarantined-reload.md: one default-deny quarantined reload,
+# one fixed-ID S0 document rebind lane, one fixed-ID D16 ADR-only admission root (≤2 corrections).
+S0_D16_QLED_NAME = "s0_d16_quarantine.json"
+S0_DUAL_REBIND_MARKER = "MOD004-S0-D16-EVIDENCE-REBIND"
+S0_DUAL_REBIND_ID = "mod004-s0-d16-evidence-rebind-sonnet-20261026"
+S0_DUAL_REBIND_RECEIPT = "MOD-004-S0-D16-REBIND"
+D16_DUAL_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-26-mod004-d16-admission-s0-quarantined-reload.md"
+D16_DUAL_OWNER_SHA = "a36e27640d214a128179e60ffe4c91769864f7736874ba85e66bf9ad02efde48"
+D16_DUAL_OWNER_CI_RUN = 40271026654
+D16_DUAL_OWNER_REVIEW = "owner-decision-prep/20261026-d16-dual-version/quarantine-owner-opus-r2-response.txt"
+D16_DUAL_OWNER_REVIEW_SHA = "c8154039d10746f31b5237e8b8ff41a13a7fda15572f77ed4bf820135076f216"
+D16_DUAL_DESIGN_PATH = "knowledge/00-Decisions/OWNER-2026-10-26-mod004-d16-dual-version-design.md"
+D16_DUAL_DESIGN_SHA = "35c2695657535033334904a69d9438ddd15cffb181c627b0257ecb2bc0042f78"
+D16_DUAL_DESIGN_COMMIT = "4e7074a8f39dfc9f7fcc1e977242e369266fd6de"
+D16_DUAL_DESIGN_CI_RUN = 40241251887
+D16_DUAL_DESIGN_REVIEW = "owner-decision-prep/20261026-d16-dual-version/owner-record-opus-r2-response.txt"
+D16_DUAL_DESIGN_REVIEW_SHA = "b7a922fe5ae38f784ab7fbcf2fa943082c41d60f5b295d619724655f7bce2719"
+D16_DUAL_ID = "mod004-d16-dual-version-sonnet-20261026"
+D16_DUAL_RECEIPT = "MOD-004-D16-DUAL"
+D16_DUAL_MAX_CORRECTIONS = 2
+D16_BOOT_ACTIVATION_NAME = "s0_d16_boot_activation.json"
+# D16_BOOT_COMMIT is the required PARENT of the activation commit (the published owner-record HEAD).
+# It is NOT the activation commit itself; the activation commit is the reviewed runner-code commit whose
+# runner.py blob hash equals CODE_SHA and whose CI was observed green on that exact commit.
+D16_BOOT_COMMIT = "c11d4208f36e00c0f47cf1a7b86164d10a9b625c"
+S0_DUAL_REBIND_SUBJECTS = {
+    "dual_rebind_runner": re.compile(re.escape(S0_RUNNER_FILE)),
+    "dual_rebind_owner": re.compile(re.escape(D16_DUAL_OWNER_PATH)),
+    "s0_cert": re.compile(re.escape(S0_DOC_PATHS[0])),
+    "s0_qa": re.compile(re.escape(S0_DOC_PATHS[1])),
+}
+
 
 def verify_d16_f34_authority(cfg, tasks, t):
     """Fail-closed read-only authorization for exactly one original-root cycle-four F34 correction."""
@@ -4304,6 +4456,575 @@ def s0_qa_review_reason(cfg, t, tasks):
     return None
 
 
+# ------------------------------------------------ quarantine ledger helpers (2026-10-26)
+
+def _qled_path(cfg):
+    return cfg.home / S0_D16_QLED_NAME
+
+
+def _load_qled(cfg):
+    """Load the S0/D16 quarantine ledger. Returns None when the file is absent; raises GateError on corrupt/truncated state."""
+    try:
+        data = _qled_path(cfg).read_bytes()
+    except FileNotFoundError:
+        return None
+    try:
+        d = json.loads(data.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        raise GateError("S0/D16 quarantine ledger is corrupt or not valid JSON")
+    if not (isinstance(d, dict) and d.get("schema") == 1
+            and isinstance(d.get("entered_at"), str) and isinstance(d.get("runner_pid"), int)
+            and isinstance(d.get("runner_boot_nonce"), str) and bool(d.get("runner_boot_nonce"))
+            and isinstance(d.get("code_sha256"), str) and SHA256_RE.fullmatch(d.get("code_sha256") or "")
+            and isinstance(d.get("dual_rebind_consumed"), bool)):
+        raise GateError("S0/D16 quarantine ledger schema is invalid or missing required fields")
+    return d
+
+
+def _write_qled(cfg, d):
+    atomic_write(_qled_path(cfg), json.dumps(d, sort_keys=True).encode())
+
+
+def _qled_runner_is_live(cfg, qled):
+    """True when qled's recorded runner is still the running process.
+    In runner dispatch context (same PID + matching boot nonce) this is immediate. In CLI context,
+    authenticate via state.json: the runner must be alive, have a fresh heartbeat, matching PID and code
+    hash. Fail-closed: any exception or missing state returns False. A ledger with no runner_boot_nonce
+    or a mismatched nonce is rejected in the dispatch path; PID reuse by a new process cannot authenticate
+    an old ledger whose nonce no longer matches."""
+    if qled.get("runner_pid") == os.getpid():
+        # Same-PID dispatch path: nonce must match so PID reuse does not re-authenticate old ledger
+        return qled.get("runner_boot_nonce") == _PROCESS_BOOT_NONCE
+    try:
+        state = json.loads(_read_bounded(cfg.home / "state.json", 64 * 1024 * 1024))
+    except Exception:
+        return False
+    runner = (state or {}).get("runner", {})
+    return (s0_runner_problem(state) is None
+            and runner.get("pid") == qled.get("runner_pid")
+            and isinstance(qled.get("runner_boot_nonce"), str)
+            and runner.get("boot_nonce") == qled.get("runner_boot_nonce"))
+
+
+def _boot_activation_path(cfg):
+    return cfg.home / D16_BOOT_ACTIVATION_NAME
+
+
+# Quarantine state constants used by quarantine_state() and callers.
+_QS_NONE = "NONE"            # no activation token and no ledger: pre-reload, normal operation
+_QS_ENTERED_LIVE = "ENTERED_LIVE"  # ledger present, runner live, code hash matches
+_QS_RESTARTED = "RESTARTED"  # ledger present but recorded runner is no longer live
+_QS_DENY = "DENY"            # corrupt/consumed-token-no-ledger/contradictory state
+
+
+def _qled_entered_event(cfg):
+    """Prior entry evidence; a live ledger also needs the exact PID/boot-nonce event."""
+    return any(e.get("kind") == "s0-d16-quarantine-entered" and e.get("code_sha256") == CODE_SHA
+               for e in _qled_events(cfg))
+
+
+def _qled_events(cfg):
+    try:
+        data = _read_bounded(cfg.home / "events.jsonl", 32 * 1024 * 1024)
+    except Exception:
+        return []
+    out = []
+    for line in data.splitlines():
+        try:
+            event = json.loads(line)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if isinstance(event, dict):
+            out.append(event)
+    return out
+
+
+def _qled_failed_event(cfg):
+    return any(e.get("kind") == "s0-d16-quarantine-activation-failed" and e.get("code_sha256") == CODE_SHA
+               for e in _qled_events(cfg))
+
+
+def _qled_bound_entry(cfg, qled):
+    return any(e.get("kind") == "s0-d16-quarantine-entered"
+               and e.get("code_sha256") == qled.get("code_sha256")
+               and e.get("pid") == qled.get("runner_pid")
+               and e.get("boot_nonce") == qled.get("runner_boot_nonce")
+               for e in _qled_events(cfg))
+
+
+def _prior_start_same_code(cfg):
+    return any(e.get("kind") == "runner-start" and e.get("code_sha256") == CODE_SHA
+               for e in _qled_events(cfg))
+
+
+def _d16_policy_active(cfg):
+    """The published owner-record commit is present; test repos lacking it stay pre-policy."""
+    if (Path(cfg.repo) / D16_DUAL_OWNER_PATH).exists():
+        return True
+    try:
+        return git_run(cfg.repo, "cat-file", "-e", f"{D16_BOOT_COMMIT}^{{commit}}", timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def quarantine_state(cfg):
+    """Authoritative quarantine status. Returns (_QS_*, qled_or_reason).
+    NONE → pre-reload, no quarantine active; ENTERED_LIVE → active, live runner;
+    RESTARTED → active but runner died; DENY → any corrupt/missing/contradictory state.
+
+    Default-deny: any absent, corrupt, truncated, or contradictory token or ledger
+    denies all affected lanes. Deletion of both files after entry is also denied when
+    the quarantine-entered event is present in events.jsonl."""
+    tok_consumed = False
+    tok_exists = False
+    tok_path = _boot_activation_path(cfg)
+    if tok_path.exists():
+        tok_exists = True
+        try:
+            tok = json.loads(tok_path.read_bytes().decode())
+            tok_consumed = bool(isinstance(tok, dict) and tok.get("consumed"))
+        except Exception:
+            return _QS_DENY, "activation token is unreadable or corrupt"
+    try:
+        qled = _load_qled(cfg)
+    except GateError as e:
+        return _QS_DENY, f"quarantine ledger is corrupt: {e}"
+    if _qled_failed_event(cfg):
+        return _QS_DENY, "a prior one-shot quarantine activation failed"
+    if qled is None:
+        if tok_consumed:
+            return _QS_DENY, "activation token was consumed but quarantine ledger is absent (interrupted entry)"
+        if _qled_entered_event(cfg):
+            return _QS_DENY, "quarantine was previously entered (event record exists) but both activation files are absent"
+        return _QS_NONE, None
+    # Ledger is present — the consumed token must also be present; any discrepancy is denied
+    if not tok_exists:
+        return _QS_DENY, "quarantine ledger is present but activation token is absent (token deleted after entry)"
+    if not tok_consumed:
+        return _QS_DENY, "quarantine ledger is present but activation token is not consumed (contradictory state)"
+    if qled.get("activation_failed") is True:
+        return _QS_DENY, "the one-shot quarantine activation failed and cannot be retried"
+    if not _qled_bound_entry(cfg, qled):
+        return _QS_DENY, "quarantine ledger lacks its exact entered event"
+    if qled.get("code_sha256") != CODE_SHA:
+        return _QS_DENY, "quarantine ledger code hash disagrees with the loaded runner"
+    if not _qled_runner_is_live(cfg, qled):
+        return _QS_RESTARTED, qled
+    return _QS_ENTERED_LIVE, qled
+
+
+def _enter_quarantine_from_activation(cfg):
+    """Consume the one-shot boot activation token and write the quarantine ledger.
+    Absent token: no-op (default deny applies at gate checks). Corrupt/invalid: raises GateError.
+    Any second call (consumed==True) raises GateError. Write order: mark consumed first, then write ledger
+    so an interrupted write never leaves an unconsumed token paired with an absent ledger.
+    Authentication: the token's commit must have observed push-event CI, must contain runner.py at CODE_SHA,
+    and must be a direct child of the published owner-record commit (D16_BOOT_COMMIT)."""
+    p = _boot_activation_path(cfg)
+    try:
+        raw = p.read_bytes()
+    except FileNotFoundError:
+        return  # no activation evidence — quarantine not entered; gate checks deny both lanes
+    try:
+        tok = json.loads(raw.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        raise GateError("S0/D16 boot activation token is corrupt or not valid JSON")
+    if not (isinstance(tok, dict) and tok.get("schema") == 1
+            and isinstance(tok.get("code_sha256"), str) and SHA256_RE.fullmatch(tok.get("code_sha256") or "")
+            and isinstance(tok.get("commit"), str) and SHA_RE.fullmatch(tok.get("commit") or "")
+            and isinstance(tok.get("consumed"), bool)):
+        raise GateError("S0/D16 boot activation token schema is invalid or missing required fields")
+    if tok.get("consumed"):
+        raise GateError("S0/D16 boot activation token was already consumed; no second reload is authorized")
+    if tok.get("code_sha256") != CODE_SHA:
+        raise GateError("S0/D16 boot activation token code_sha256 does not match the loaded runner")
+    # A controlled startup spends its token before external observations. A CI outage or
+    # interrupted validation cannot turn a later process start into an unauthorized retry.
+    atomic_write(p, json.dumps({**tok, "consumed": True}, sort_keys=True).encode())
+    # Authenticate via provider-observed CI: live GitHub API call, not operator-attested ci.json
+    _observe_ci_for_commit(cfg, tok["commit"])
+    # Verify runner.py at the activation commit has the exact loaded hash
+    try:
+        blob_result = git_run(cfg.repo, "show", f"{tok['commit']}:tools/mission_runner/runner.py", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError("S0/D16 boot activation: cannot read runner.py at the activation commit")
+    if not (blob_result.returncode == 0 and hashlib.sha256(blob_result.stdout).hexdigest() == CODE_SHA):
+        raise GateError(
+            "S0/D16 boot activation: runner.py at the activation commit does not match the loaded code hash")
+    # Verify the activation commit's direct parent is the authorized owner-record commit
+    try:
+        parent_result = git_run(cfg.repo, "rev-parse", f"{tok['commit']}^", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError("S0/D16 boot activation: cannot determine the activation commit's parent")
+    actual_parent = parent_result.stdout.decode().strip() if parent_result.returncode == 0 else ""
+    if actual_parent != D16_BOOT_COMMIT:
+        raise GateError(
+            f"S0/D16 boot activation: commit parent {actual_parent[:12]!r} is not the authorized "
+            f"owner-record commit {D16_BOOT_COMMIT[:12]}")
+    # A crash before the ledger write leaves the token consumed and no ledger: both lanes stay blocked.
+    _write_qled(cfg, {"schema": 1, "entered_at": now_iso(), "runner_pid": os.getpid(),
+                      "runner_boot_nonce": _PROCESS_BOOT_NONCE,
+                      "code_sha256": CODE_SHA, "dual_rebind_consumed": False})
+
+
+# ------------------------------------------------ S0 dual rebind lane (2026-10-26)
+
+def s0_dual_rebind_marked(t):
+    return t.get("plan_phase") == S0_DUAL_REBIND_MARKER and t.get("id") == S0_DUAL_REBIND_ID
+
+
+def s0_dual_rebind_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the dual rebind lane is a MOD-004 implement task only"
+    if t.get("source") is not None:
+        return "the dual rebind lane is owner-CLI only"
+    if t.get("id") != S0_DUAL_REBIND_ID:
+        return f"id must be {S0_DUAL_REBIND_ID}"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of",
+                                           "review_of", "review_candidate")):
+        return "remediation, retry, accounting-recovery and review fields are rejected"
+    if (sorted(t.get("allowed_paths") or []) != sorted(S0_DOC_PATHS)
+            or sorted(t.get("expected_changes") or []) != sorted(S0_DOC_PATHS)):
+        return "allowed_paths and expected_changes must be exactly the two S0 document files"
+    if t.get("verify_cmd") != []:
+        return "the dual rebind lane runs no verifier"
+    base = t.get("doc_base")
+    if not (isinstance(base, dict) and set(base) == set(S0_DOC_PATHS)
+            and all(isinstance(v, str) and SHA256_RE.fullmatch(v) for v in base.values())):
+        return "doc_base must map each S0 document path to its sha256 hex string"
+    return None
+
+
+def s0_dual_rebind_gate_reason(cfg, t, tasks):
+    """None for a task outside the lane or the one fully authorised evidence-only rebind write; else an explicit reason."""
+    if not s0_dual_rebind_marked(t):
+        return None
+    problem = s0_dual_rebind_shape_problem(t)
+    if problem:
+        return f"S0_DUAL_REBIND_INVALID_TASK {t['id']}: {problem}"
+    # Quarantine state: fail closed on any non-ENTERED_LIVE state
+    qs, qled_or_reason = quarantine_state(cfg)
+    if qs == _QS_NONE:
+        return "S0_DUAL_REBIND_QUARANTINE_NOT_ENTERED: quarantine has not been entered for this reload"
+    if qs == _QS_DENY:
+        return f"S0_DUAL_REBIND_QUARANTINE_UNVERIFIABLE: {qled_or_reason}"
+    if qs == _QS_RESTARTED:
+        return "S0_DUAL_REBIND_QUARANTINE_RESTARTED: the recorded runner is no longer live (any process restart blocks both lanes)"
+    qled = qled_or_reason  # _QS_ENTERED_LIVE
+    if qled.get("dual_rebind_consumed"):
+        return "S0_DUAL_REBIND_CONSUMED: the single evidence-only write attempt was already started or consumed"
+    if t.get("attempts"):
+        return f"S0_DUAL_REBIND_ATTEMPT_USED {t['id']}: the single evidence-only write attempt was already started"
+    others = sorted(x["id"] for x in tasks.values()
+                    if x.get("id") != t.get("id") and s0_dual_rebind_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_DUAL_REBIND_SECOND_WRITE: evidence-only write {others[0]} already exists; the lane is one-shot"
+    busy = _s0_competing_writes(tasks, t)
+    if busy:
+        return f"S0_DUAL_REBIND_CONCURRENT_WRITE: {busy[0]} is a pending write in an S0 chain or touching S0 files"
+    try:
+        _s0_qa_git_clean(cfg, S0_DOC_PATHS, "S0 dual rebind start")
+        for path, sha in t["doc_base"].items():
+            if (_path_hash(Path(cfg.repo) / path) != sha
+                    or _s0_git_blob_sha(cfg, "HEAD", path, "S0 dual rebind start") != sha):
+                return "S0_DUAL_REBIND_STALE_BASE: document bytes or HEAD do not match doc_base"
+    except (GateError, OSError) as e:
+        return f"S0_DUAL_REBIND_STALE_BASE: {e}"
+    return None
+
+
+def s0_dual_rebind_review_reason(cfg, t, tasks):
+    """The one exact-bound owner-CLI Opus review of the sole DONE evidence-only dual rebind write."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and s0_dual_rebind_marked(w)):
+        return None
+    if t.get("source") is not None:
+        return "S0_DUAL_REBIND_REVIEW_UNSUPPORTED: the rebind review is owner-CLI routed only"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_DUAL_REBIND_REVIEW_UNSUPPORTED: the dual rebind write gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement"
+            and w.get("status") == "DONE" and w.get("attempts") == 1
+            and (w.get("evidence") or {}).get("violations") == []):
+        return "S0_DUAL_REBIND_REVIEW_UNSUPPORTED: only a DONE one-attempt MOD-004 dual rebind write can be reviewed here"
+    problem = s0_dual_rebind_shape_problem(w)
+    if problem:
+        return f"S0_DUAL_REBIND_REVIEW_UNSUPPORTED: {problem}"
+    want = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if not (sorted(c["path"] for c in want) == sorted(w["allowed_paths"])
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"])
+                    and c["sha256"] != w["doc_base"][c["path"]] for c in want)
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_DUAL_REBIND_REVIEW_UNSUPPORTED: review must bind the exact changed hashes of every named document"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_DUAL_REBIND_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review the dual rebind write"
+    if not _hashes_current(cfg, (w.get("evidence") or {}).get("changed")):
+        return "S0_DUAL_REBIND_REVIEW_BINDING_STALE: the documents no longer match the write's recorded hashes"
+    return None
+
+
+# ------------------------------------------------ D16 dual-version admission (2026-10-26)
+
+def d16_dual_lineage(tasks, t):
+    """True when t is D16_DUAL_ID or its remediation ancestry traces back to it (depth-bounded, deny on overflow)."""
+    seen, cur = set(), t
+    for _ in range(66):
+        if not isinstance(cur, dict):
+            return False
+        if cur.get("id") == D16_DUAL_ID:
+            return True
+        parent = cur.get("remediation_of")
+        if not parent:
+            return False
+        if parent == D16_DUAL_ID:
+            return True
+        if parent in seen:
+            return True  # malformed ancestry must enter the fail-closed D16 verifier
+        seen.add(parent)
+        cur = tasks.get(parent)
+    return True  # overflow is denied by the D16 verifier, never treated as an unrelated task
+
+
+def d16_single_attempt(tasks, t):
+    """The one-shot rebind/D16 writes and their bound reviews never transport-retry."""
+    if s0_dual_rebind_marked(t) or d16_dual_lineage(tasks, t):
+        return True
+    parent = tasks.get((t.get("review_of") or {}).get("task_id"))
+    return bool(t.get("role") in OPUS_ROLES and isinstance(parent, dict)
+                and (s0_dual_rebind_marked(parent) or d16_dual_lineage(tasks, parent)))
+
+
+def verify_d16_published_owners(cfg, rebind_owner_commit):
+    """Bind both published owner decisions to committed bytes, pinned Opus reviews and provider CI.
+
+    These owner-record reviews predate this runner amendment and were performed
+    outside the runner; their exact response bytes are pinned here. They are not
+    presented as runner-recorded product reviews or as approval of this code.
+    """
+    if rebind_owner_commit != D16_BOOT_COMMIT:
+        raise GateError("D16 dual: rebind owner receipt does not name the published quarantine decision commit")
+    for label, path, sha, commit, run_id, review_path, review_sha in (
+        ("quarantine", D16_DUAL_OWNER_PATH, D16_DUAL_OWNER_SHA, D16_BOOT_COMMIT,
+         D16_DUAL_OWNER_CI_RUN, D16_DUAL_OWNER_REVIEW, D16_DUAL_OWNER_REVIEW_SHA),
+        ("design", D16_DUAL_DESIGN_PATH, D16_DUAL_DESIGN_SHA, D16_DUAL_DESIGN_COMMIT,
+         D16_DUAL_DESIGN_CI_RUN, D16_DUAL_DESIGN_REVIEW, D16_DUAL_DESIGN_REVIEW_SHA),
+    ):
+        if _path_hash(Path(cfg.repo) / path) != sha:
+            raise GateError(f"D16 dual: {label} owner record working bytes differ from the approved subject")
+        shown = git_run(cfg.repo, "show", f"{commit}:{path}", timeout=10)
+        if shown.returncode != 0 or hashlib.sha256(shown.stdout).hexdigest() != sha:
+            raise GateError(f"D16 dual: {label} owner record committed bytes differ from the approved subject")
+        if not _is_ancestor(cfg, commit):
+            raise GateError(f"D16 dual: {label} owner record commit is not an ancestor of HEAD")
+        review = _read_bounded(Path(cfg.home) / review_path, REVIEW_MAX_BYTES)
+        if (hashlib.sha256(review).hexdigest() != review_sha
+                or not review.rstrip().endswith(b"OUTCOME: APPROVED")):
+            raise GateError(f"D16 dual: {label} owner record lacks its pinned independent Opus APPROVED review")
+        _observe_ci_for_commit(cfg, commit, run_id=run_id)
+
+
+def verify_d16_dual(cfg, tasks, t):
+    """Read-only gate for the dual-version D16 admission root and its corrections.
+    Returns frozenset of set-aside historical ids, or raises GateError.
+    Verifies the full S0/D16 predicate at both enqueue and dispatch."""
+    root = t if t.get("id") == D16_DUAL_ID else tasks.get(D16_DUAL_ID)
+    if not isinstance(root, dict) or not d16_dual_lineage(tasks, t):
+        raise GateError("D16 dual: task is not linked to the fixed design root")
+    problem = d16_successor_shape_problem(root, D16_DUAL_ID)
+    if problem:
+        raise GateError(problem)
+    # Single-use root: any recorded task with the fixed id other than t consumed the entitlement
+    if any(isinstance(x, dict) and x.get("id") == D16_DUAL_ID and x is not root for x in tasks.values()):
+        raise GateError("the single-use dual-version entitlement is already consumed")
+    if t is not root:
+        # A correction is never a second root. Every predecessor must be a DONE,
+        # exactly reviewed rejection in this same lineage, with no third cycle.
+        cur, depth, seen = t, 0, set()
+        while cur is not root:
+            depth += 1
+            if depth > D16_DUAL_MAX_CORRECTIONS or cur.get("id") in seen:
+                raise GateError("D16 dual: correction limit or ancestry cycle")
+            seen.add(cur.get("id"))
+            parent = tasks.get(cur.get("remediation_of"))
+            if not (isinstance(parent, dict) and parent.get("module") == "MOD-004"
+                    and parent.get("role") == "implement" and parent.get("status") == "DONE"):
+                raise GateError("D16 dual: correction parent is not a DONE design write")
+            if depth == 1 and not _hashes_current(cfg, (parent.get("evidence") or {}).get("changed")):
+                raise GateError("D16 dual: correction parent no longer matches its rejected ADR bytes")
+            reviews = [rv for rv in review_attempts(tasks, parent["id"])
+                       if rv.get("status") == "BLOCKED"
+                       and rv.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
+                       and (rv.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
+                       and _bound_review_ok(parent, rv)]
+            if not (len(reviews) == 1 and reviews[0]["evidence"]["review_outcome"] == "CHANGES_REQUESTED"):
+                raise GateError("D16 dual: correction parent lacks one exact-bound CHANGES_REQUESTED review")
+            cur = parent
+    # On-disk hash: runner.py identity must not have drifted since load
+    try:
+        disk_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    except OSError:
+        raise GateError("D16 dual: cannot read on-disk runner.py for integrity check")
+    if disk_sha != CODE_SHA:
+        raise GateError(f"D16 dual: on-disk runner.py hash differs from the loaded code hash (drift detected)")
+    # Quarantine predicate: must be actively quarantined with a live runner and consumed rebind
+    qs, qled_or_reason = quarantine_state(cfg)
+    if qs == _QS_NONE:
+        raise GateError("D16 dual: quarantine has not been entered for this reload")
+    if qs == _QS_DENY:
+        raise GateError(f"D16 dual: quarantine state is DENY: {qled_or_reason}")
+    if qs == _QS_RESTARTED:
+        raise GateError("D16 dual: the recorded runner is no longer live (any restart blocks both lanes)")
+    qled = qled_or_reason  # _QS_ENTERED_LIVE
+    if not qled.get("dual_rebind_consumed"):
+        raise GateError("D16 dual: rebind lane not yet consumed; complete rebind before D16 admission")
+    # Full F34-exhausted history: the four prior chains must be intact
+    old_chain = _d16_exhausted_chain(tasks)
+    succ_chain = _d16_exhausted_chain(tasks, D16_SUCCESSOR_ID, D16_SUCC_TERMINAL, D16_SUCC_TERMINAL_REVIEW)
+    # The generic exhausted-chain verifier expects its named tip to be terminal.
+    # F34 is the separately authorized fourth child of that tip, verified below.
+    pre_f34 = {k: v for k, v in tasks.items() if k not in (D16_F34_WRITE, D16_F34_REVIEW)}
+    arch_chain = _d16_exhausted_chain(pre_f34, D16_F34_ROOT, D16_F34_TIP,
+                                      "mod004-d16-assurance-architecture-remed3-opus-review-20261025")
+    # F34 write is DONE; its independent CHANGES_REQUESTED review is durably BLOCKED.
+    f34 = tasks.get(D16_F34_WRITE)
+    if not (isinstance(f34, dict) and f34.get("status") == "DONE"
+            and f34.get("remediation_root") == D16_F34_ROOT and f34.get("remediation_of") == D16_F34_TIP):
+        raise GateError("D16 dual: the F34 final write is not DONE or its ancestry is wrong")
+    f34_review = tasks.get(D16_F34_REVIEW)
+    if not (isinstance(f34_review, dict) and f34_review.get("status") == "BLOCKED"
+            and f34_review.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
+            and (f34_review.get("evidence") or {}).get("review_outcome") == "CHANGES_REQUESTED"
+            and (f34_review.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
+            and _bound_review_ok(f34, f34_review)):
+        raise GateError("D16 dual: the F34 review is not the bound BLOCKED CHANGES_REQUESTED verdict")
+    # Dual rebind write must be DONE, one attempt, no violations, changes exactly the two S0 docs
+    rebind = tasks.get(S0_DUAL_REBIND_ID)
+    if not (isinstance(rebind, dict) and rebind.get("id") == S0_DUAL_REBIND_ID
+            and s0_dual_rebind_marked(rebind) and rebind.get("module") == S0_MODULE
+            and rebind.get("role") == "implement" and rebind.get("status") == "DONE"
+            and rebind.get("attempts") == 1 and (rebind.get("evidence") or {}).get("violations") == []):
+        raise GateError("D16 dual: the dual rebind write is not a DONE one-attempt MOD-004 write with no violations")
+    rebind_changed = _changed_pairs((rebind.get("evidence") or {}).get("changed"))
+    if not (sorted(c["path"] for c in rebind_changed) == sorted(S0_DOC_PATHS)
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) for c in rebind_changed)):
+        raise GateError("D16 dual: the rebind write did not change exactly the two S0 document files with valid hashes")
+    rebind_hashes = {c["path"]: c["sha256"] for c in rebind_changed}
+    # Exactly one DONE APPROVED Opus review bound to the dual rebind write
+    rebind_reviews = [x for x in tasks.values() if isinstance(x, dict) and x.get("role") in OPUS_ROLES
+                      and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                      and _bound_review_ok(rebind, x) and x.get("status") == "DONE"
+                      and not (x.get("evidence") or {}).get("violations")]
+    if len(rebind_reviews) != 1:
+        raise GateError("D16 dual: exactly one DONE APPROVED Opus review bound to the dual rebind write is required")
+    rv = rebind_reviews[0]
+    # Review binding must match the rebind write's evidence hashes
+    review_changed = _changed_pairs((rv.get("review_of") or {}).get("changed"))
+    rebind_changed_sorted = sorted([{"path": c["path"], "sha256": c["sha256"]} for c in rebind_changed],
+                                   key=lambda x: str(x["path"]))
+    if review_changed != rebind_changed_sorted:
+        raise GateError("D16 dual: the Opus review binding does not match the rebind write's S0 doc hashes")
+    # Historical negative S0 product review must not have been relabeled
+    s0_product_approved = [x for x in tasks.values() if isinstance(x, dict) and x.get("role") in OPUS_ROLES
+                           and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+                           and s0_marked(tasks.get((x.get("review_of") or {}).get("task_id")) or {})]
+    if s0_product_approved:
+        raise GateError("D16 dual: an S0 product write review is recorded as APPROVED; historical negatives may not be relabeled")
+    # Rebind authority receipt (MOD-004-S0-D16-REBIND): verifies runner hash, owner record, and S0 doc subjects.
+    # No operator field: evidence derives from runner-recorded tasks and authenticated CI only.
+    r_data = _read_bounded(cfg.home / "acceptances" / f"{S0_DUAL_REBIND_RECEIPT}.json", RECEIPT_MAX_BYTES)
+    r = _s0_json(r_data, "D16 dual rebind receipt")
+    sub = r.get("subjects")
+    if not (isinstance(r, dict) and r.get("schema") == SCHEMA and r.get("module") == "MOD-004"
+            and r.get("kind") == "mod004-s0-d16-rebind-authority"
+            and isinstance(sub, dict) and set(sub) == set(S0_DUAL_REBIND_SUBJECTS)):
+        raise GateError("D16 dual: rebind receipt schema mismatch or wrong subject set")
+    # --- Runner subject: verify by CODE_SHA at activation commit with observed CI (no review required) ---
+    runner_entry = sub.get("dual_rebind_runner") or {}
+    runner_commit = runner_entry.get("commit") or ""
+    if not (isinstance(runner_entry, dict) and runner_entry.get("sha256") == CODE_SHA
+            and isinstance(runner_commit, str) and SHA_RE.fullmatch(runner_commit)):
+        raise GateError("D16 dual: receipt runner entry is malformed or sha256 does not match the loaded code hash")
+    try:
+        blob_result = git_run(cfg.repo, "show", f"{runner_commit}:tools/mission_runner/runner.py", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError("D16 dual: cannot read runner.py at the receipt runner commit")
+    if not (blob_result.returncode == 0 and hashlib.sha256(blob_result.stdout).hexdigest() == CODE_SHA):
+        raise GateError("D16 dual: runner.py at the receipt runner commit does not match the loaded code hash")
+    if not _is_ancestor(cfg, runner_commit):
+        raise GateError(f"D16 dual: receipt runner commit {runner_commit[:12]} is not an ancestor of HEAD")
+    # --- Both owner decisions: exact reviewed and published bytes, with provider-observed CI ---
+    owner_entry = sub.get("dual_rebind_owner") or {}
+    owner_commit = owner_entry.get("commit") or ""
+    if not (isinstance(owner_entry, dict) and owner_entry.get("path") == D16_DUAL_OWNER_PATH
+            and owner_entry.get("sha256") == D16_DUAL_OWNER_SHA
+            and isinstance(owner_commit, str) and SHA_RE.fullmatch(owner_commit)):
+        raise GateError("D16 dual: receipt owner entry is malformed or sha256 does not match the pinned owner record hash")
+    verify_d16_published_owners(cfg, owner_commit)
+    # --- S0 cert and qa subjects: each verified with _s0_subject using separate seen sets ---
+    # Separate sets allow both cert and qa to bind to the same combined Opus review.
+    cert_path, qa_path = S0_DOC_PATHS
+    seen_cert = set()
+    _s0_subject(cfg, "s0_cert", sub["s0_cert"], tasks, seen_cert, S0_DUAL_REBIND_SUBJECTS)
+    seen_qa = set()
+    _s0_subject(cfg, "s0_qa", sub["s0_qa"], tasks, seen_qa, S0_DUAL_REBIND_SUBJECTS)
+    # S0 doc hashes in receipt must match the rebind write's evidence
+    if (sub["s0_cert"].get("sha256") != rebind_hashes.get(cert_path)
+            or sub["s0_qa"].get("sha256") != rebind_hashes.get(qa_path)):
+        raise GateError("D16 dual: receipt S0 doc hashes do not match the rebind write's evidence")
+    # S0 cert and qa must be on the same commit; that commit's diff must change exactly those two doc paths
+    if (sub["s0_cert"].get("commit") != sub["s0_qa"].get("commit")
+            or sub["s0_cert"].get("ci") != sub["s0_qa"].get("ci")):
+        raise GateError("D16 dual: receipt cert and qa subjects do not share one commit and CI run")
+    _s0_doc_commit_scope(cfg, sub["s0_cert"]["commit"], S0_DOC_PATHS)
+    # The supplemental two-document binding cannot replace either established S0 receipt.
+    # Both legacy verifiers recheck every subject against committed bytes and runner-recorded
+    # Opus output; in particular the new runner_gate needs its own recorded security review.
+    verify_s0_authority(cfg, tasks)
+    verify_s0_qa_authority(cfg, tasks)
+    offline = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_RECEIPT}.json", RECEIPT_MAX_BYTES),
+                       "MOD-004-S0 offline receipt")
+    live = _s0_json(_read_bounded(cfg.home / "acceptances" / f"{S0_QA_RECEIPT}.json", RECEIPT_MAX_BYTES),
+                    "MOD-004-S0-QA live receipt")
+    offline_sub = offline["subjects"]
+    live_sub = live["subjects"]
+    runner_subject = offline_sub["runner_gate"]
+    if not (runner_subject == live_sub["runner_gate"]
+            and runner_subject["path"] == S0_RUNNER_FILE
+            and runner_subject["sha256"] == CODE_SHA
+            and runner_subject["commit"] == runner_commit):
+        raise GateError("D16 dual: offline and live S0 receipts do not bind the same reviewed runner commit/hash")
+    _observe_ci_for_commit(cfg, runner_commit, run_id=runner_subject["ci"]["run_id"])
+    if offline_sub["eligibility"] != sub["s0_cert"]:
+        raise GateError("D16 dual: offline S0 certificate subject is not the exact rebind subject")
+    _observe_ci_for_commit(cfg, sub["s0_cert"]["commit"],
+                           run_id=offline_sub["eligibility"]["ci"]["run_id"])
+    # ADR must not be a rejected candidate from any prior chain
+    # The root alone must begin from the published ADR rather than a rejected old candidate.
+    # Only the root begins from the published ADR. An authorized correction
+    # begins from its rejected, review-bound root/correction candidate.
+    if t is root:
+        _d16_adr_problem(cfg, t, old_chain + succ_chain + arch_chain + [f34])
+    all_ids = frozenset(w["id"] for w in old_chain + succ_chain + arch_chain) | {D16_F34_WRITE, D16_F34_REVIEW}
+    return all_ids
+
+
+def d16_dual_gate_reason(cfg, t, tasks):
+    """None for a task outside the dual-version lineage; else the predicate gate result. Checked at enqueue and dispatch."""
+    if not d16_dual_lineage(tasks, t):
+        return None
+    if t.get("id") == D16_DUAL_ID and t.get("role") != "implement":
+        return f"D16_DUAL_INVALID {t['id']}: the fixed dual-version id is reserved for the implement root"
+    # The narrow hold: release only while the full predicate holds, restore on any mismatch
+    try:
+        verify_d16_dual(cfg, tasks, t)
+    except GateError as e:
+        return f"D16_DUAL_PREDICATE_NOT_MET {t['id']}: {e}"
+    except OSError as e:
+        return f"D16_DUAL_PREDICATE_NOT_MET {t['id']}: {type(e).__name__}"
+    return None
+
+
 def review_gate_reason(cfg, t, tasks):
     """Mandatory review between write tasks. Only writes created under this gate (`review_gate` marker) are
     bound by it; earlier history, including MOD-003 S1's existing review and owner record, is left untouched."""
@@ -4313,7 +5034,8 @@ def review_gate_reason(cfg, t, tasks):
         return None
     if s0_marked(t) or s0_test_marked(t) or s0_touches(t):  # only gate_reason's S0 admission may skip this chain
         return f"S0_INVALID_TASK {t['id']}: S0 tasks are admitted only by the S0 gate"
-    if s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_loop_marked(t) or s0_qa_marked(t) or s0_doc_touches(t):
+    if (s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)
+            or s0_dual_rebind_marked(t) or s0_doc_touches(t)):
         return f"S0_DOC_INVALID_TASK {t['id']}: document tasks are admitted only by the S0 document gate"
     module = t["module"]
     cap_chain = ()  # the closed historical CAP chain is set aside only for a verified new non-CAP design task
@@ -4348,12 +5070,23 @@ def review_gate_reason(cfg, t, tasks):
             return f"D16_ARCH_UNVERIFIED {t['id']}: {e}"
         except OSError as e:
             return f"D16_ARCH_UNVERIFIED {t['id']}: {type(e).__name__}"
+    elif d16_dual_lineage(tasks, t):
+        # D16 dual-version admission: sets aside the exhausted F34/arch/succ/old chains; governs root and all corrections
+        if not cap_chain:
+            return f"D16_DUAL_INVALID {t['id']}: the dual-version id is admitted only as a verified MOD-004 non-CAP design task"
+        try:
+            set_aside = verify_d16_dual(cfg, tasks, t)
+        except GateError as e:
+            return f"D16_DUAL_UNVERIFIED {t['id']}: {e}"
+        except OSError as e:
+            return f"D16_DUAL_UNVERIFIED {t['id']}: {type(e).__name__}"
     # the S0, document and refresh chains are separate chains: they never become `last`, so they cannot unblock any other MOD-004 task
     writes = sorted((x for x in tasks.values() if x.get("module") == module and x.get("role") in WRITE_ROLES
                      and x.get("id") not in cap_chain and x.get("id") not in set_aside
                      and x.get("status") == "DONE" and x.get("review_gate") and not s0_marked(x)
                      and not s0_doc_marked(x) and not s0_refresh_marked(x) and not s0_rebind_marked(x)
-                     and not s0_test_marked(x) and not s0_loop_marked(x) and not s0_qa_marked(x)), key=_when)
+                     and not s0_test_marked(x) and not s0_loop_marked(x) and not s0_qa_marked(x)
+                     and not s0_dual_rebind_marked(x)), key=_when)
     product_t = product_loop_eligible(tasks, t) and product_new_policy(tasks, t)
     if product_t:
         decided, lineage = product_lineage_reason(cfg, tasks, t, set_aside)
@@ -4398,8 +5131,9 @@ def review_gate_reason(cfg, t, tasks):
     rounds = 0
     for w in writes:
         rounds = 0 if review_verdict(tasks, w["id"]) == "APPROVED" else rounds + 1
-    if rounds > MAX_REMEDIATIONS:
-        return f"REMEDIATION_LIMIT {module}: {MAX_REMEDIATIONS} remediation rounds already used after CHANGES_REQUESTED"
+    correction_limit = D16_DUAL_MAX_CORRECTIONS if d16_dual_lineage(tasks, t) else MAX_REMEDIATIONS
+    if rounds > correction_limit:
+        return f"REMEDIATION_LIMIT {module}: {correction_limit} remediation rounds already used after CHANGES_REQUESTED"
     if not all(in_scope(p, last.get("allowed_paths") or []) for p in t.get("allowed_paths") or []):
         return f"REMEDIATION_OUT_OF_SCOPE {module}: remediation must stay inside {last['id']}'s allowed paths"
     return None
@@ -4464,22 +5198,40 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
-        if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID, D16_F34_WRITE) and t["role"] != "implement":
+        if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID, D16_F34_WRITE, D16_DUAL_ID) and t["role"] != "implement":
             return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is reserved for the one reviewed implement root"
         if t.get("id") == D16_F34_REVIEW and t["role"] != "code-review":
             return f"D16_F34_REVIEW_INVALID {t['id']}: the fixed final review id is reserved for code-review"
-        if t["role"] in WRITE_ROLES and t.get("verify_cmd") != [] and d16_successor_lineage(tasks, t):
+        if t["role"] in WRITE_ROLES and t.get("verify_cmd") != [] and (d16_successor_lineage(tasks, t) or d16_dual_lineage(tasks, t)):
             return (f"D16_SUCCESSOR_INVALID {t['id']}: verify_cmd must be empty for the ADR-only successor and its corrections "
                     "(the owner-CLI verifier runs unsandboxed after the scope check)")
         if t["role"] == "code-review":
+            parent = tasks.get((t.get("review_of") or {}).get("task_id"))
+            if isinstance(parent, dict) and (s0_dual_rebind_marked(parent) or d16_dual_lineage(tasks, parent)):
+                qs, detail = quarantine_state(cfg)
+                if qs != _QS_ENTERED_LIVE:
+                    return f"S0_D16_REVIEW_QUARANTINED {t['id']}: quarantine state={qs}: {detail}"
             return (d16_f34_review_reason(t, tasks) or s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
-                    or s0_loop_review_reason(cfg, t, tasks) or s0_qa_review_reason(cfg, t, tasks))
+                    or s0_loop_review_reason(cfg, t, tasks) or s0_qa_review_reason(cfg, t, tasks)
+                    or s0_dual_rebind_review_reason(cfg, t, tasks))
         if t["role"] not in GATED_ROLES:
             return None
+        # D16 dual-lineage tasks must satisfy the full D16 predicate at enqueue/dispatch (P0-1)
+        if d16_dual_lineage(tasks, t):
+            dr = d16_dual_gate_reason(cfg, t, tasks)
+            if dr:
+                return dr
+        # S0 product admission is denied while quarantined (P0-2)
+        if s0_marked(t):
+            qs, qled_or_reason = quarantine_state(cfg)
+            if qs in (_QS_ENTERED_LIVE, _QS_RESTARTED, _QS_DENY) or _d16_policy_active(cfg):
+                return (f"S0_PRODUCT_QUARANTINED {t['id']}: S0 product admission is blocked while the runner is in "
+                        f"S0/D16 quarantine (state={qs})")
         reason = (s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks) or s0_refresh_gate_reason(cfg, t, tasks)
                   or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks)
-                  or s0_loop_gate_reason(cfg, t, tasks) or s0_qa_gate_reason(cfg, t, tasks))
+                  or s0_loop_gate_reason(cfg, t, tasks) or s0_qa_gate_reason(cfg, t, tasks)
+                  or s0_dual_rebind_gate_reason(cfg, t, tasks))
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -4492,7 +5244,9 @@ def gate_reason(cfg, t, tasks):
             if active:
                 return f"ACTIVE_BLOCKER {t['module']}: {', '.join(active)}"
         if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-                or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):  # the sole S0 write and the document, refresh, rebind, test and QA evidence chains: separate chains, historical blockers stay untouched
+                or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t) or s0_dual_rebind_marked(t)):
+            # the sole S0 write and the document, refresh, rebind, test, QA and dual-rebind evidence chains:
+            # separate chains, historical blockers stay untouched
             return None
         return review_gate_reason(cfg, t, tasks)
     except GateError as e:
@@ -4527,11 +5281,44 @@ class Runner:
         for s in (signal.SIGTERM, signal.SIGINT):
             signal.signal(s, lambda *_: setattr(self, "sig", True))
         try:
-            self.state["runner"] = {"pid": os.getpid(), "host": socket.gethostname(), "started_at": now_iso(),
+            prior_boot = ((self.state.get("runner") or {}).get("code_sha256") == CODE_SHA
+                          or _prior_start_same_code(self.cfg))
+            self.state["runner"] = {"pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
+                                    "host": socket.gethostname(), "started_at": now_iso(),
                                     "heartbeat_at": now_iso(), "code_sha256": CODE_SHA,
                                     "python": sys.version.split()[0], "executable": sys.executable,
                                     "claude_bin": self.cfg.claude_bin, "repo": str(self.cfg.repo)}
             self.store.event("runner-start", pid=os.getpid(), code_sha256=CODE_SHA)
+            # Enter S0/D16 default-deny quarantine on the one authorized reload.
+            # Requires intact one-shot activation evidence; absent token = no ledger written (default deny).
+            # Fail-closed: a corrupt ledger or corrupt token is never cleared here; gate checks handle per-task.
+            try:
+                qled = _load_qled(self.cfg)
+            except GateError:
+                qled = False  # sentinel: corrupt state, don't overwrite
+            if qled is None:
+                try:
+                    if _d16_policy_active(self.cfg) and (prior_boot or not _boot_activation_path(self.cfg).exists()):
+                        raise GateError("first startup of the amended runner lacked its activation token or this code has already booted")
+                    _enter_quarantine_from_activation(self.cfg)
+                    # Reload qled to determine whether activation succeeded
+                    try:
+                        qled2 = _load_qled(self.cfg)
+                    except GateError:
+                        qled2 = None
+                    if qled2 is not None:
+                        self.store.event("s0-d16-quarantine-entered", pid=os.getpid(),
+                                         boot_nonce=_PROCESS_BOOT_NONCE, code_sha256=CODE_SHA)
+                except GateError as e:
+                    # A malformed or mismatched token also spends this startup. Keep a
+                    # durable deny marker so a later process cannot retry activation.
+                    _write_qled(self.cfg, {"schema": 1, "entered_at": now_iso(),
+                                           "runner_pid": os.getpid(), "runner_boot_nonce": _PROCESS_BOOT_NONCE,
+                                           "code_sha256": CODE_SHA, "dual_rebind_consumed": False,
+                                           "activation_failed": True})
+                    self.store.event("s0-d16-quarantine-activation-failed", reason=str(e),
+                                     pid=os.getpid(), boot_nonce=_PROCESS_BOOT_NONCE, code_sha256=CODE_SHA)
+            _trusted_dashboard()  # pin the local gate module before recovery or dispatch
             self.recover()
             self.apply_commands()
             while not self.sig and self.state["control"] != "STOP":
@@ -4893,9 +5680,11 @@ class Runner:
         if t.get("accounting_recovery_of"):
             raise ValueError("the one accounting recovery requires the owner CLI and its audited prior BLOCKED record")
         if (s0_marked(t) or s0_touches(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_doc_touches(t)
-                or s0_rebind_marked(t) or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):
+                or s0_rebind_marked(t) or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)
+                or s0_dual_rebind_marked(t)):
             raise ValueError("tasks for the MOD004-S0, MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND, "
-                             "MOD004-S0-TEST-REMEDIATION, MOD004-S0-LOOP-REBIND or MOD004-S0-QA-EVIDENCE files require the owner CLI; the planner cannot propose them")
+                             "MOD004-S0-TEST-REMEDIATION, MOD004-S0-LOOP-REBIND, MOD004-S0-QA-EVIDENCE or "
+                             "MOD004-S0-D16-EVIDENCE-REBIND files require the owner CLI; the planner cannot propose them")
         proposal_restrictions(self.cfg, t)
         review_binding(self.cfg, t, self.state["tasks"], require_changed=True)
         if t.get("remediation_of"):
@@ -4998,10 +5787,25 @@ class Runner:
         if h.get("quarantine"):  # a late gateway turn may still be alive: nothing but an owner re-arm reopens ingress
             self.hold_queue(h["quarantine"])
             return
+        # S0/D16 quarantine: default-deny; any corrupt/absent/mismatched state holds the queue
+        qs, qled_or_reason = quarantine_state(self.cfg)
+        if qs == _QS_DENY:
+            self.hold_queue(f"S0_D16_QUARANTINE_DENY: {qled_or_reason}")
+            return
+        if qs == _QS_RESTARTED:
+            self.hold_queue("S0_D16_QUARANTINE_RESTARTED: process restart after quarantined reload blocks all ingress")
+            return
         for f in sorted((self.cfg.home / "queue").glob("*.json")):
             try:
                 t = validate_task(json.loads(f.read_text()), self.cfg)
                 review_binding(self.cfg, t, self.state["tasks"], require_changed=False)
+                parent = self.state["tasks"].get((t.get("review_of") or {}).get("task_id"))
+                if (s0_marked(t) or s0_dual_rebind_marked(t) or d16_dual_lineage(self.state["tasks"], t)
+                        or isinstance(parent, dict) and (s0_dual_rebind_marked(parent)
+                                                         or d16_dual_lineage(self.state["tasks"], parent))):
+                    reason = gate_reason(self.cfg, t, self.state["tasks"])
+                    if reason:
+                        raise GateError(reason)
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
                 self.store.event("task-rejected", file=f.name, reason=str(e))
@@ -5279,6 +6083,40 @@ class Runner:
         try:
             if self.gated(t):  # recheck under the writer lock, immediately before any child can start
                 return
+            # On-disk identity check: halt dispatch on any code drift (runner.py bytes only, no project modules)
+            try:
+                disk_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+            except OSError:
+                disk_sha = None
+            if disk_sha != _LOADED_CODE_SHA:
+                t.update(status="BLOCKED", blocked_reason="RUNNER_CODE_DRIFT", stage=None, updated_at=now_iso(),
+                         last_error=f"on-disk runner.py no longer matches the loaded code (disk: {(disk_sha or 'unreadable')[:16]})")
+                self.store.event("task-blocked", f"{t['id']}:{t['attempts'] + 1}", task_id=t["id"],
+                                 code="RUNNER_CODE_DRIFT")
+                return
+            try:
+                _trusted_dashboard()
+            except GateError as e:
+                t.update(status="BLOCKED", blocked_reason="LOCAL_GATE_CODE_DRIFT", stage=None,
+                         updated_at=now_iso(), last_error=str(e))
+                self.store.event("task-blocked", f"{t['id']}:{t['attempts'] + 1}", task_id=t["id"],
+                                 code="LOCAL_GATE_CODE_DRIFT")
+                return
+            # Consume the dual rebind slot durably before dispatch (partial write never becomes eligible again)
+            if s0_dual_rebind_marked(t):
+                try:
+                    qled = _load_qled(self.cfg)
+                    if not (isinstance(qled, dict) and qled.get("runner_pid") == os.getpid()
+                            and qled.get("runner_boot_nonce") == _PROCESS_BOOT_NONCE
+                            and qled.get("code_sha256") == CODE_SHA and not qled.get("dual_rebind_consumed")):
+                        raise GateError("dual rebind slot invalid or already consumed")
+                    _write_qled(self.cfg, {**qled, "dual_rebind_consumed": True})
+                except GateError as e:
+                    t.update(status="BLOCKED", blocked_reason="S0_DUAL_REBIND_SLOT_CONSUMED", stage=None,
+                             updated_at=now_iso(), last_error=f"consumption of dual rebind slot failed: {e}")
+                    self.store.event("task-blocked", f"{t['id']}:{t['attempts'] + 1}", task_id=t["id"],
+                                     code="S0_DUAL_REBIND_SLOT_CONSUMED")
+                    return
             stale = bound_review_problems(self.cfg, self.state["tasks"], t)
             if stale:  # the bound files moved before the reviewer could see them: no review, no approval credit
                 t.update(status="BLOCKED", blocked_reason="REVIEW_BINDING_STALE", stage=None, updated_at=now_iso(),
@@ -5397,15 +6235,18 @@ class Runner:
     # --- settle: DONE is earned only by external evidence, never by exit code or prose
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
-        if outcome in ("stopped", "signal") and (s0_single_attempt(t) or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
-            # No retry after an interrupted one-shot F34 write or review; partial edits or a review judgement may exist.
+        if outcome in ("stopped", "signal") and (s0_single_attempt(t) or d16_single_attempt(self.state["tasks"], t)
+                                                  or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
+            # No retry after an interrupted one-shot write or review; partial edits or a review judgement may exist.
             code = ("D16_F34_ATTEMPT_INTERRUPTED" if t["id"] in (D16_F34_WRITE, D16_F34_REVIEW) else
+                    "D16_DUAL_ATTEMPT_INTERRUPTED" if d16_single_attempt(self.state["tasks"], t) and not s0_dual_rebind_marked(t) else
                     "S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
                     "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else
                     "S0_REBIND_ATTEMPT_INTERRUPTED" if s0_rebind_marked(t) else
                     "S0_TEST_ATTEMPT_INTERRUPTED" if s0_test_marked(t) else
                     "S0_LOOP_ATTEMPT_INTERRUPTED" if s0_loop_marked(t) else
-                    "S0_QA_ATTEMPT_INTERRUPTED" if s0_qa_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
+                    "S0_QA_ATTEMPT_INTERRUPTED" if s0_qa_marked(t) else
+                    "S0_DUAL_REBIND_ATTEMPT_INTERRUPTED" if s0_dual_rebind_marked(t) else "S0_DOC_ATTEMPT_INTERRUPTED")
             t.update(status="BLOCKED", blocked_reason=code, stage=None,
                      last_error="the only authorized attempt was interrupted; partial edits or a review judgement may exist")
             return self.store.event("task-blocked", op, task_id=t["id"], code=code)
@@ -5775,8 +6616,10 @@ class Runner:
 
     def requeue_or_fail(self, t, reason):
         t["last_error"], t["updated_at"] = reason, now_iso()
-        if t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t) or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW):
-            # The owner's final F34 write and its sole review have no transport retry entitlement.
+        if (t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t)
+                or d16_single_attempt(self.state["tasks"], t)
+                or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
+            # The owner's final F34 write, its sole review, and the dual-version admission have no transport retry entitlement.
             t["status"] = "FAILED"
             self.store.event("task-failed", f"{t['id']}:{t['attempts']}", task_id=t["id"], reason=reason)
         else:
@@ -5856,13 +6699,13 @@ def validate_task(d, cfg):
                                      isinstance(retry_of, str) and ID_RE.match(retry_of)):
         raise ValueError("review_retry_of is only for a bound code-review")
     doc_base = d.get("doc_base")
-    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER, S0_DUAL_REBIND_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and set(doc_base) == set(S0_DOC_PATHS)
                                      and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())
                                      or plan_phase == S0_QA_MARKER and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and S0_QA_PACKET in doc_base and set(doc_base) <= set(S0_DOC_PATHS)
                                      and all(isinstance(v, str) and SHA256_RE.fullmatch(v) for v in doc_base.values())):
-        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND or MOD004-S0-LOOP-REBIND write: {path: sha256 or null} for exactly the two document paths; "
+        raise ValueError("doc_base is only for a MOD004-S0-DOC, MOD004-S0-DOC-REFRESH, MOD004-S0-DOC-REBIND, MOD004-S0-LOOP-REBIND or MOD004-S0-D16-EVIDENCE-REBIND write: {path: sha256} for exactly the two document paths; "
                          "a MOD004-S0-QA-EVIDENCE write pins the packet sha256 (and the certificate's when named)")
     candidate = d.get("review_candidate")
     if candidate is not None and not (retry_of and isinstance(candidate, dict)
@@ -5901,10 +6744,16 @@ def enqueue(cfg, task):
         raise ValueError("an orchestrator handoff request is open: only the runner may enqueue until it settles")
     if handoff.get("quarantine"):
         raise ValueError(f"enqueue refused ({handoff['quarantine']}); run `rearm` once the owner has checked the gateway")
+    # The same authoritative state used by dispatch governs owner-CLI ingress.
+    # A consumed token with a missing ledger is DENY, never pre-activation NONE.
+    qs, qreason = quarantine_state(cfg)
+    if qs in (_QS_DENY, _QS_RESTARTED):
+        raise ValueError(f"enqueue refused: S0/D16 quarantine {qs}: {qreason}")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
     if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
-            or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
+            or s0_test_marked(t) or s0_loop_marked(t) or s0_qa_marked(t)
+            or s0_dual_rebind_marked(t)):  # no S0 task may be queued for a runner that has not loaded this reviewed gate
         problem = s0_runner_problem(state)
         if problem:
             raise ValueError(f"task refused by S0 gate: {problem}")
@@ -6189,7 +7038,7 @@ def main(argv=None):
     if a.cmd == "run":
         return Runner(cfg).run()
     if a.cmd == "dashboard":
-        import dashboard
+        dashboard = _trusted_dashboard()
         return dashboard.serve(cfg, a.port)
     if a.cmd == "enqueue":
         try:
