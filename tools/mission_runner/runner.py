@@ -6235,8 +6235,9 @@ class Runner:
     # --- settle: DONE is earned only by external evidence, never by exit code or prose
     def settle(self, t, op, outcome, p, out, err, before, iso):
         t["updated_at"] = now_iso()
-        if outcome in ("stopped", "signal") and (s0_single_attempt(t) or d16_single_attempt(self.state["tasks"], t)
-                                                  or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
+        if outcome in ("stopped", "signal") and (s0_single_attempt(t)
+                                                  or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)
+                                                  or d16_single_attempt(self.state["tasks"], t)):
             # No retry after an interrupted one-shot write or review; partial edits or a review judgement may exist.
             code = ("D16_F34_ATTEMPT_INTERRUPTED" if t["id"] in (D16_F34_WRITE, D16_F34_REVIEW) else
                     "D16_DUAL_ATTEMPT_INTERRUPTED" if d16_single_attempt(self.state["tasks"], t) and not s0_dual_rebind_marked(t) else
@@ -6617,8 +6618,8 @@ class Runner:
     def requeue_or_fail(self, t, reason):
         t["last_error"], t["updated_at"] = reason, now_iso()
         if (t["attempts"] >= self.cfg.max_attempts or s0_single_attempt(t)
-                or d16_single_attempt(self.state["tasks"], t)
-                or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)):
+                or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)
+                or d16_single_attempt(self.state["tasks"], t)):
             # The owner's final F34 write, its sole review, and the dual-version admission have no transport retry entitlement.
             t["status"] = "FAILED"
             self.store.event("task-failed", f"{t['id']}:{t['attempts']}", task_id=t["id"], reason=reason)
