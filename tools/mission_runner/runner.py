@@ -2149,7 +2149,7 @@ def _s0_ci_label(cfg, commit):
     return "observed"
 
 
-def _observe_ci_for_commit(cfg, commit, run_id=None, opener=urllib.request.urlopen):
+def _observe_ci_for_commit(cfg, commit, run_id=None, opener=None):
     """Provider-authenticated read-only CI observation for one exact historical commit.
 
     One GitHub public REST call bounded by CI_BUDGET/CI_CALL_TIMEOUT.  Validates that a completed
@@ -2159,6 +2159,7 @@ def _observe_ci_for_commit(cfg, commit, run_id=None, opener=urllib.request.urlop
     """
     if not (isinstance(commit, str) and SHA_RE.fullmatch(commit)):
         raise GateError(f"CI observation: invalid commit SHA {commit!r}")
+    opener = opener or urllib.request.urlopen  # resolved at call time, never captured at definition
     try:
         remote = _git(cfg.repo, "remote", "get-url", "origin", timeout=2).stdout.decode().strip()
     except (subprocess.SubprocessError, OSError):
@@ -2210,6 +2211,10 @@ def _observe_ci_for_commit(cfg, commit, run_id=None, opener=urllib.request.urlop
         raise GateError(
             f"CI observation for {commit[:12]}: no completed successful {CI_WORKFLOW_NAME} push run"
             f" on {CI_BRANCH}{rid_note}")
+    run = min(good, key=lambda x: str(x.get("id") or ""))  # deterministic when several green re-runs exist
+    return {"run_id": str(run.get("id") or ""), "workflow": run.get("name"), "event": run.get("event"),
+            "branch": run.get("head_branch"), "head_sha": run.get("head_sha"), "status": run.get("status"),
+            "conclusion": run.get("conclusion")}
 
 
 def _s0_subject(cfg, name, e, tasks, seen, allowed=None):
@@ -2460,7 +2465,7 @@ def s0_doc_touches(t):
 
 
 def s0_single_attempt(t):
-    return (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
+    return (t.get("id") == TRANSFER_REVIEW_ID or s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t) or s0_test_marked(t)
             or s0_loop_marked(t) or s0_qa_marked(t) or s0_dual_rebind_marked(t))
 
 
@@ -2530,7 +2535,8 @@ def s0_doc_gate_reason(cfg, t, tasks):
     """None for a task outside the lane or a fully authorised document write; else an explicit S0_DOC_* reason."""
     if not s0_doc_marked(t):
         if (s0_doc_touches(t) and not s0_refresh_marked(t) and not s0_rebind_marked(t)
-                and not s0_loop_marked(t) and not s0_qa_marked(t)):  # the refresh, rebind, loop rebind and QA evidence lane are admitted only by their own, stricter gates
+                and not s0_loop_marked(t) and not s0_qa_marked(t)
+                and not s0_dual_rebind_marked(t)):  # the refresh, rebind, loop rebind, QA and fixed-ID dual rebind lanes are admitted only by their own, stricter gates
             return f"S0_DOC_UNTAGGED {t['id']}: a write naming or covering the S0 slice documents is not admitted"
         return None
     problem = s0_doc_shape_problem(t)
@@ -4508,6 +4514,11 @@ def _load_qled(cfg):
         data = _qled_path(cfg).read_bytes()
     except FileNotFoundError:
         return None
+    return _parse_qled(data)
+
+
+def _parse_qled(data):
+    """Validate quarantine-ledger bytes; GateError on corrupt or malformed content."""
     try:
         d = json.loads(data.decode())
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
@@ -4614,7 +4625,18 @@ def quarantine_state(cfg):
 
     Default-deny: any absent, corrupt, truncated, or contradictory token or ledger
     denies all affected lanes. Deletion of both files after entry is also denied when
-    the quarantine-entered event is present in events.jsonl."""
+    the quarantine-entered event is present in events.jsonl.
+
+    Under the quarantine-transfer lineage the authoritative transition record decides; the legacy ledger and
+    token are preserved untouched and never consulted again."""
+    try:
+        rec = _load_transition(cfg)
+    except GateError as e:
+        return _QS_DENY, f"transition record is invalid: {e}"
+    if rec is not None:
+        return _transition_quarantine_state(cfg, rec)
+    if _transfer_lineage_active(cfg):
+        return _QS_DENY, "QUARANTINED: the verified transfer has not been consumed"
     tok_consumed = False
     tok_exists = False
     tok_path = _boot_activation_path(cfg)
@@ -4720,6 +4742,1056 @@ def _enter_quarantine_from_activation(cfg):
                       "code_sha256": CODE_SHA, "dual_rebind_consumed": False})
 
 
+# ------------------------------------------------ quarantine-transfer replacement (2026-10-26)
+# OWNER-2026-10-26-quarantine-transfer-replacement.md: QUARANTINED -> VERIFIED_TRANSFER_READY (read-only preflight
+# result, never persisted) -> TRANSFER_CONSUMED -> S0_REBIND -> VERIFIED -> ACTIVE. ONE authoritative atomic, fsynced
+# record at the runner home spends the transfer; events are audit evidence subordinate to it.
+TRANSFER_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-26-quarantine-transfer-replacement.md"
+TRANSFER_OWNER_SHA = "37c1614dbb8b099d5a51bfb0156f01277fae042f96c54db6bb4e4a03cd88c83d"
+TRANSFER_OWNER_COMMIT = "ffbeb38cf09720ccc07fdc61cf213e29f38ae0d5"
+TRANSFER_AMEND_PATH = "knowledge/00-Decisions/OWNER-2026-10-27-quarantine-transfer-review-only-amendment.md"
+TRANSFER_AMEND_SHA = "028bce4b091f169bbb2520d75a4c62590178b91473103e1bf37dc6a62298cdf8"
+TRANSFER_AMEND_COMMIT = "3cf1eac1334dad55b88cd404c0c1f2427d2860df"  # B: effective review-only amendment; sole parent of A
+# OWNER-2026-10-27-quarantine-transfer-authorization-chain.md: B -> A (record-only); the Lifecycle contract record D (record-only,
+# sole parent A) then precedes the successor C (exactly runner.py + test_runner.py, sole parent D): B -> A -> D -> C.
+TRANSFER_AUTH_PATH = "knowledge/00-Decisions/OWNER-2026-10-27-quarantine-transfer-authorization-chain.md"
+TRANSFER_AUTH_SHA = "f0c760c2d408629f54fcb2c935df5f8dcc18ae672ec2617faff1046aa7ab69d7"
+TRANSFER_AUTH_COMMIT = "886c9e85fcc545173fa3a41c2ee16840a2900a94"  # A: the authorization commit; the record-only D is its direct child
+TRANSFER_AUTH_CI_RUN = "40499369211"  # A's provider CI run, pinned; only a post-consumption live observation can confirm it
+TRANSFER_LIFECYCLE_PATH = "knowledge/00-Decisions/OWNER-2026-10-27-quarantine-transfer-lifecycle-contract.md"
+TRANSFER_LIFECYCLE_SHA = "f8e4540c69d0650f8cc17c80054569f3e89333bd114b2c8bc706bc28e900ce3a"
+TRANSFER_LIFECYCLE_COMMIT = "fdf437e93369549d30789895c340aa2e18e8a60e"  # D: the Lifecycle contract record; the successor C is its direct child
+TRANSFER_LIFECYCLE_CI_RUN = "40516265059"  # D's provider CI run, pinned; consistency binding only, confirmed post-consumption
+TRANSFER_OLD_COMMIT = "8e56f2ebcd1ace3f76f4ce2a1554bfa5067278aa"
+TRANSFER_OLD_CODE_SHA = "11de6aecf1db79f45ff8265a990b7f8b0155bce13d10559163e5fbbc37ff0782"
+TRANSFER_TEST_FILE = "tools/mission_runner/tests/test_runner.py"
+TRANSFER_CHECKPOINT = "checkpoints/20261026-quarantine-transfer-replacement"
+TRANSFER_PREWRITE = "authorization-prewrite.json"
+TRANSFER_PREWRITE_SHA = "288cc8b2bb2b11e439ea3310b5e8757b708cc2f9de1b44cdf49d8f27ab43e4ac"  # reviewed pre-write inventory
+TRANSFER_RECORD_NAME = "s0_d16_transition.json"
+TRANSFER_BOOT_NAME = "s0_d16_successor_boot.json"  # the one pre-consumption window: created exclusively by the first successor boot
+TRANSFER_PRELOAD_NAME = "preload-opus-review.json"  # externally verified pre-load Opus evidence (checkpoint dir): bound, never granting
+TRANSFER_REVIEW_ID = "mod004-transfer-successor-review-opus-20261027"
+TRANSFER_KIND = "s0-d16-quarantine-transfer"
+TRANSFER_STAGES = ("TRANSFER_CONSUMED", "S0_REBIND", "VERIFIED", "ACTIVE")
+TRANSFER_READY = "VERIFIED_TRANSFER_READY"  # read-only preflight result; no durable record ever carries it
+TRANSFER_STEP_EVERY = 15.0
+_TR_ORDER = {s: i for i, s in enumerate(TRANSFER_STAGES)}
+_TR_KEYS = {"schema", "kind", "transition_id", "stage", "consumed", "created_at", "pre_image", "old", "new",
+            "first_boot", "attested", "boot_epoch", "restart_used", "ci", "s0_slot", "verified", "checksum"}
+_TR_REVIEW_KEYS = ("task_id", "op", "session_id", "model", "out_sha256", "evidence_sha256", "subject_sha256", "prompt_sha256",
+                   "dispatch_offset", "dispatch_sha256", "route_offset", "route_sha256", "done_offset", "done_sha256",
+                   "recorded_offset", "recorded_sha256", "preload_sha256", "preload_output_sha256")
+_TR_IMMUTABLE = ("schema", "kind", "transition_id", "consumed", "created_at", "pre_image", "old", "new", "first_boot")
+_QS_ACTIVE = "ACTIVE"  # transfer complete and operational; S0 product and the D16 dual-version ID stay denied
+
+
+class TransitionHold(Exception):
+    """A queue file the current transition stage does not admit; it is held aside, never rejected or consumed."""
+
+
+def _transition_path(cfg):
+    return cfg.home / TRANSFER_RECORD_NAME
+
+
+def _canon(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _transition_checksum(rec):
+    return _sha(_canon({k: v for k, v in rec.items() if k != "checksum"}))
+
+
+def _is_hex(v, n):
+    return isinstance(v, str) and re.fullmatch(r"[0-9a-f]{%d}" % n, v) is not None
+
+
+def _is_int(v):
+    return type(v) is int
+
+
+def _tr_dict(v, keys, label):
+    if not (isinstance(v, dict) and set(v) == set(keys)):
+        raise GateError(f"transition record: {label} has the wrong shape")
+    return v
+
+
+_TR_CI_RUN_KEYS = ("run_id", "workflow", "event", "branch", "head_sha", "status", "conclusion")
+
+
+def _transition_ci_runs_validate(runs, c_commit):
+    """The post-consumption provider observations (A, D and C) must be persisted with their full identity and be exactly
+    the completed successful push run of the expected workflow on main at the expected SHA (A and D at their pinned run IDs)."""
+    if not (isinstance(runs, dict) and set(runs) == {"A", "D", "C"}):
+        raise GateError("transition record: the CI observation must bind A, D and C")
+    for name, head in (("A", TRANSFER_AUTH_COMMIT), ("D", TRANSFER_LIFECYCLE_COMMIT), ("C", c_commit)):
+        r = _tr_dict(runs[name], _TR_CI_RUN_KEYS, f"ci run {name}")
+        if not (isinstance(r["run_id"], str) and r["run_id"].isdigit() and r["workflow"] == CI_WORKFLOW_NAME
+                and r["event"] == "push" and r["branch"] == CI_BRANCH and r["head_sha"] == head
+                and r["status"] == "completed" and r["conclusion"] == "success"):
+            raise GateError(f"transition record: the CI run observed for {name} is not a completed successful push run on {CI_BRANCH}")
+    if runs["A"]["run_id"] != TRANSFER_AUTH_CI_RUN:
+        raise GateError("transition record: A's CI run ID is not the pinned run")
+    if runs["D"]["run_id"] != TRANSFER_LIFECYCLE_CI_RUN:
+        raise GateError("transition record: D's CI run ID is not the pinned run")
+
+
+def _transition_validate(rec):
+    """Strict schema and cross-field check; raises GateError so no caller sees an uncaught exception."""
+    if not (isinstance(rec, dict) and set(rec) == _TR_KEYS):
+        raise GateError("transition record: unexpected or missing fields")
+    if not (rec["schema"] == 1 and rec["kind"] == TRANSFER_KIND and _is_hex(rec["transition_id"], 32)
+            and rec["stage"] in _TR_ORDER and rec["consumed"] is True and isinstance(rec["created_at"], str)):
+        raise GateError("transition record: header fields are invalid")
+    pi = _tr_dict(rec["pre_image"], ("dir", "digest", "manifest_sha256"), "pre_image")
+    if not (isinstance(pi["dir"], str) and pi["dir"] and _is_hex(pi["digest"], 64) and _is_hex(pi["manifest_sha256"], 64)):
+        raise GateError("transition record: pre_image is invalid")
+    old = _tr_dict(rec["old"], ("code_sha256", "commit", "pid", "boot_nonce", "entered_offset", "entered_event_sha256"), "old")
+    if not (old["code_sha256"] == TRANSFER_OLD_CODE_SHA and old["commit"] == TRANSFER_OLD_COMMIT and _is_int(old["pid"])
+            and old["pid"] > 0 and isinstance(old["boot_nonce"], str) and old["boot_nonce"]
+            and _is_int(old["entered_offset"]) and old["entered_offset"] >= 0 and _is_hex(old["entered_event_sha256"], 64)):
+        raise GateError("transition record: old binding is invalid")
+    new = _tr_dict(rec["new"], ("code_sha256", "commit", "parent", "test_sha256", "diff_sha256", "review"), "new")
+    if not (_is_hex(new["code_sha256"], 64) and _is_hex(new["commit"], 40) and new["parent"] == TRANSFER_LIFECYCLE_COMMIT
+            and _is_hex(new["test_sha256"], 64) and _is_hex(new["diff_sha256"], 64)):
+        raise GateError("transition record: new binding is invalid")
+    rv = _tr_dict(new["review"], _TR_REVIEW_KEYS, "review")
+    if not (rv["task_id"] == TRANSFER_REVIEW_ID and rv["op"] == f"{TRANSFER_REVIEW_ID}:1"
+            and isinstance(rv["session_id"], str) and rv["session_id"] and isinstance(rv["model"], str) and "opus" in rv["model"].lower()
+            and all(_is_hex(rv[k], 64) for k in _TR_REVIEW_KEYS if k.endswith("_sha256"))
+            and all(_is_int(rv[k]) and rv[k] >= 0 for k in _TR_REVIEW_KEYS if k.endswith("_offset"))):
+        raise GateError("transition record: review evidence chain is invalid")
+    for name in ("first_boot", "attested"):
+        b = _tr_dict(rec[name], ("pid", "boot_nonce", "code_sha256", "at"), name)
+        if not (_is_int(b["pid"]) and b["pid"] > 0 and isinstance(b["boot_nonce"], str) and b["boot_nonce"]
+                and _is_hex(b["code_sha256"], 64) and isinstance(b["at"], str)):
+            raise GateError(f"transition record: {name} evidence is invalid")
+    if not (_is_int(rec["boot_epoch"]) and rec["boot_epoch"] >= 1 and isinstance(rec["restart_used"], bool)
+            and (not rec["restart_used"] or rec["boot_epoch"] >= 2)):
+        raise GateError("transition record: boot epoch accounting is invalid")
+    ci = _tr_dict(rec["ci"], ("observed", "at", "runs"), "ci")
+    slot = _tr_dict(rec["s0_slot"], ("state", "task_id", "at"), "s0_slot")
+    ver = _tr_dict(rec["verified"], ("docs", "receipt_sha256", "commit", "at"), "verified")
+    if not (isinstance(ci["observed"], bool) and (ci["at"] is None or isinstance(ci["at"], str))):
+        raise GateError("transition record: ci observation is invalid")
+    if ci["observed"]:
+        _transition_ci_runs_validate(ci["runs"], rec["new"]["commit"])
+    elif ci["at"] is not None or ci["runs"] is not None:
+        raise GateError("transition record: an unobserved CI carries evidence")
+    if slot["state"] == "UNUSED":
+        if slot["task_id"] is not None or slot["at"] is not None:
+            raise GateError("transition record: an unused S0 slot carries a task")
+    elif not (slot["state"] == "CONSUMED" and slot["task_id"] == S0_DUAL_REBIND_ID and isinstance(slot["at"], str)):
+        raise GateError("transition record: S0 slot state is invalid")
+    rank = _TR_ORDER[rec["stage"]]
+    if rank >= 1 and not ci["observed"]:
+        raise GateError("transition record: S0_REBIND or later requires the post-consumption CI observation")
+    if rank >= 2 and slot["state"] != "CONSUMED":
+        raise GateError("transition record: VERIFIED or later requires the consumed S0 slot")
+    if rank >= 2:
+        if not (isinstance(ver["docs"], dict) and set(ver["docs"]) == set(S0_DOC_PATHS)
+                and all(_is_hex(v, 64) for v in ver["docs"].values()) and _is_hex(ver["receipt_sha256"], 64)
+                and _is_hex(ver["commit"], 40) and isinstance(ver["at"], str)):
+            raise GateError("transition record: VERIFIED evidence is invalid")
+    elif any(v is not None for v in ver.values()):
+        raise GateError("transition record: premature VERIFIED evidence")
+    if rec["checksum"] != _transition_checksum(rec):
+        raise GateError("transition record: checksum mismatch (corrupt or tampered)")
+    return rec
+
+
+def _load_transition(cfg):
+    """None when no record exists; the validated record otherwise. Any problem raises GateError."""
+    path = _transition_path(cfg)
+    if not os.path.lexists(path):
+        return None
+    try:
+        rec = json.loads(_read_bounded(path, 1 << 20).decode())
+    except GateError:
+        raise
+    except Exception:
+        raise GateError("transition record is unreadable or not valid JSON")
+    return _transition_validate(rec)
+
+
+def _atomic_create_exclusive(path, data):
+    """Create `path` atomically and durably, failing if it already exists (a spent transfer is never replaced)."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.new")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.link(tmp, path)
+    except FileExistsError:
+        os.unlink(tmp)
+        raise GateError("a transition record already exists; the transfer is never minted twice")
+    os.unlink(tmp)
+    fsync_dir(path.parent)
+
+
+def _transition_check_monotonic(cur, new):
+    for k in _TR_IMMUTABLE:
+        if cur[k] != new[k]:
+            raise GateError(f"transition record: immutable field {k} may not change")
+    a, b = _TR_ORDER[cur["stage"]], _TR_ORDER[new["stage"]]
+    if not a <= b <= a + 1:
+        raise GateError("transition record: stages only advance one step at a time")
+    if not cur["boot_epoch"] <= new["boot_epoch"] <= cur["boot_epoch"] + 1:
+        raise GateError("transition record: boot epoch may only advance by one")
+    if cur["restart_used"] and not new["restart_used"]:
+        raise GateError("transition record: a spent recovery restart cannot be restored")
+    if cur["ci"]["observed"] and new["ci"] != cur["ci"]:
+        raise GateError("transition record: the CI observation is immutable once recorded")
+    if cur["s0_slot"]["state"] == "CONSUMED" and new["s0_slot"] != cur["s0_slot"]:
+        raise GateError("transition record: a consumed S0 slot cannot be restored")
+    if cur["verified"]["docs"] is not None and new["verified"] != cur["verified"]:
+        raise GateError("transition record: VERIFIED evidence is immutable")
+
+
+def _transition_write(cfg, rec, create=False):
+    """The only writer of the authoritative record: validated, monotonic, atomic and fsynced."""
+    rec = {k: v for k, v in rec.items() if k != "checksum"}
+    rec["checksum"] = _transition_checksum(rec)
+    _transition_validate(rec)
+    data = json.dumps(rec, sort_keys=True, indent=1).encode()
+    if create:
+        _atomic_create_exclusive(_transition_path(cfg), data)
+        return rec
+    cur = _load_transition(cfg)
+    if cur is None:
+        raise GateError("transition record is absent")
+    _transition_check_monotonic(cur, rec)
+    atomic_write(_transition_path(cfg), data)
+    return rec
+
+
+# --- authenticated raw Git reads (no replace refs, no commit-graph, every object re-hashed)
+def _tgit(cfg, *args, timeout=30):
+    try:
+        return git_run(cfg.repo, "--no-replace-objects", "-c", "core.commitGraph=false", *args, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"git {args[0]} is unavailable")
+
+
+_TR_OBJ_MEMO = None  # per-evaluation memo of hash-verified objects (set only inside _tr_memoized; never spans two gate evaluations)
+
+
+def _tr_memoized(fn):
+    """One gate evaluation re-reads the same few raw objects many times; memoize them for that evaluation only."""
+    def wrapper(*a, **k):
+        global _TR_OBJ_MEMO
+        outer = _TR_OBJ_MEMO
+        if outer is None:
+            _TR_OBJ_MEMO = {}
+        try:
+            return fn(*a, **k)
+        finally:
+            if outer is None:
+                _TR_OBJ_MEMO = None
+    wrapper.__name__, wrapper.__doc__ = fn.__name__, fn.__doc__
+    return wrapper
+
+
+def _transfer_raw_object(cfg, oid, kind):
+    if not (isinstance(oid, str) and SHA_RE.fullmatch(oid)):
+        raise GateError(f"invalid {kind} object id")
+    memo = _TR_OBJ_MEMO
+    if memo is not None and (kind, oid) in memo:
+        return memo[(kind, oid)]
+    p = _tgit(cfg, "cat-file", kind, oid)
+    if p.returncode != 0:
+        raise GateError(f"cannot read {kind} {oid[:12]}")
+    if hashlib.sha1(kind.encode() + b" " + str(len(p.stdout)).encode() + b"\0" + p.stdout).hexdigest() != oid:
+        raise GateError(f"{kind} {oid[:12]} failed object integrity")
+    if memo is not None:
+        memo[(kind, oid)] = p.stdout
+    return p.stdout
+
+
+def _transfer_commit(cfg, oid):
+    """(tree id, parents) of an authenticated commit object."""
+    body = _transfer_raw_object(cfg, oid, "commit")
+    parents = _raw_commit_parents(oid, body)
+    first = body.split(b"\n", 1)[0].decode("ascii", "replace")
+    if parents is None or not first.startswith("tree ") or not SHA_RE.fullmatch(first[5:]):
+        raise GateError(f"commit {oid[:12]} has an unsupported shape")
+    return first[5:], parents
+
+
+def _transfer_blob_oid(cfg, tree_oid, path):
+    cur, parts = tree_oid, path.split("/")
+    for i, part in enumerate(parts):
+        body = _transfer_raw_object(cfg, cur, "tree")
+        found, pos = None, 0
+        try:
+            while pos < len(body):
+                sp = body.index(b" ", pos)
+                nul = body.index(b"\0", sp)
+                mode, name, oid = body[pos:sp], body[sp + 1:nul], body[nul + 1:nul + 21].hex()
+                pos = nul + 21
+                if name == part.encode():
+                    found = (mode, oid)
+                    break
+        except ValueError:
+            raise GateError("malformed tree object")
+        if found is None:
+            raise GateError(f"{path} is not in tree {tree_oid[:12]}")
+        if i < len(parts) - 1:
+            if found[0] != b"40000":
+                raise GateError(f"{path}: {part} is not a directory")
+            cur = found[1]
+        elif found[0] not in (b"100644", b"100755"):
+            raise GateError(f"{path} is not a regular file")
+        else:
+            return found[1]
+
+
+def _transfer_blob(cfg, commit_oid, path):
+    tree, _parents = _transfer_commit(cfg, commit_oid)
+    return _transfer_raw_object(cfg, _transfer_blob_oid(cfg, tree, path), "blob")
+
+
+def _transfer_diff(cfg, commit):
+    """THE canonical D-to-C diff bytes (one command for every review, admission, preflight, transition and restart):
+    git --no-replace-objects diff --binary --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ D C -- runner test"""
+    p = _tgit(cfg, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+              TRANSFER_LIFECYCLE_COMMIT, commit, "--", S0_RUNNER_FILE, TRANSFER_TEST_FILE)
+    if p.returncode != 0:
+        raise GateError("cannot compute the successor diff")
+    return p.stdout
+
+
+def _transfer_subject_sha(successor):
+    return _sha(_canon({k: successor[k] for k in ("parent", "commit", "code_sha256", "test_sha256", "diff_sha256")}))
+
+
+# --- old (quarantined) evidence
+def _transfer_prewrite(cfg):
+    p = Path(cfg.home) / TRANSFER_CHECKPOINT / TRANSFER_PREWRITE
+    try:
+        raw = _read_bounded(p, 1 << 20)
+        d = json.loads(raw.decode())
+    except GateError:
+        raise GateError("transfer checkpoint authorization-prewrite.json is missing or not a regular file")
+    except Exception:
+        raise GateError("transfer checkpoint authorization-prewrite.json is malformed")
+    if _sha(raw) != TRANSFER_PREWRITE_SHA:
+        raise GateError("transfer checkpoint authorization-prewrite.json differs from the reviewed pinned inventory")
+    ev = d.get("evidence") if isinstance(d, dict) else None
+    if not (isinstance(ev, dict) and d.get("head") == TRANSFER_OLD_COMMIT and d.get("git_status") == ""
+            and all(isinstance(e, dict) and _is_hex(e.get("sha256"), 64) and _is_int(e.get("size")) for e in ev.values())):
+        raise GateError("transfer checkpoint authorization-prewrite.json contradicts the pinned incident")
+    return ev, _sha(raw)
+
+
+def _prewrite_entry(ev, path):
+    e = ev.get(str(path))
+    if e is None:
+        raise GateError(f"authorization-prewrite.json has no entry for {Path(path).name}")
+    return e
+
+
+def _transfer_read(path, label, limit=64 * 1024 * 1024):
+    try:
+        return _read_bounded(Path(path), limit)
+    except GateError:
+        raise GateError(f"{label} is missing or not a regular file")
+
+
+def _transfer_receipts(cfg):
+    base = Path(cfg.home) / "acceptances"
+    out = {}
+    if base.is_dir():
+        for p in sorted(base.rglob("*")):
+            if p.is_symlink():
+                raise GateError("a receipt path is a symlink")
+            if p.is_file():
+                out[p.relative_to(base).as_posix()] = _sha(p.read_bytes())
+    return out
+
+
+def _transfer_event_lines(evt):
+    """[(offset, line, event)] of a complete events log; GateError on a partial, malformed or non-object line."""
+    chunks, out, offset = evt.split(b"\n"), [], 0
+    if chunks[-1] != b"":
+        raise GateError("events log ends with a partial line")
+    for line in chunks[:-1]:
+        try:
+            e = json.loads(line.decode())
+        except Exception:
+            raise GateError(f"events log has a malformed line at offset {offset}")
+        if not isinstance(e, dict):
+            raise GateError(f"events log has a non-object line at offset {offset}")
+        out.append((offset, line, e))
+        offset += len(line) + 1
+    return out
+
+
+@_tr_memoized
+def _transfer_old_evidence(cfg):
+    """Authenticate the quarantined incident evidence. Pure and read-only; raises GateError on any missing,
+    malformed or contradictory item. The returned digest binds the immutable evidence (state.json drifts with
+    every heartbeat, so its pre-image is preserved and recorded but is not part of the review-bound digest)."""
+    home = Path(cfg.home)
+    ev, prewrite_sha = _transfer_prewrite(cfg)
+    tok_p, led_p, evt_p, st_p = home / D16_BOOT_ACTIVATION_NAME, _qled_path(cfg), home / "events.jsonl", home / "state.json"
+    tok_b = _transfer_read(tok_p, "old consumed boot token")
+    led_b = _transfer_read(led_p, "old quarantine ledger")
+    evt_b = _transfer_read(evt_p, "events log", 32 * 1024 * 1024)
+    st_b = _transfer_read(st_p, "state.json")
+    for label, path, data in (("boot token", tok_p, tok_b), ("quarantine ledger", led_p, led_b)):
+        e = _prewrite_entry(ev, path)
+        if _sha(data) != e["sha256"] or len(data) != e["size"]:
+            raise GateError(f"old {label} differs from authorization-prewrite.json")
+    try:
+        tok = json.loads(tok_b.decode())
+    except Exception:
+        raise GateError("old boot token is not valid JSON")
+    if not (isinstance(tok, dict) and set(tok) == {"code_sha256", "commit", "consumed", "schema"} and tok["schema"] == 1
+            and tok["consumed"] is True and tok["code_sha256"] == TRANSFER_OLD_CODE_SHA and tok["commit"] == TRANSFER_OLD_COMMIT):
+        raise GateError("old boot token is not the pinned consumed token")
+    qled = _parse_qled(led_b)
+    if not (qled["code_sha256"] == TRANSFER_OLD_CODE_SHA and qled["runner_pid"] > 0
+            and not qled.get("activation_failed") and qled["dual_rebind_consumed"] is False):
+        raise GateError("old quarantine ledger is not the pinned entered, unused ledger")
+    pe = _prewrite_entry(ev, evt_p)
+    if len(evt_b) < pe["size"] or _sha(evt_b[:pe["size"]]) != pe["sha256"]:
+        raise GateError("events log does not extend the authorization-prewrite.json prefix")
+    entered, kinds = [], []
+    for offset, line, e in _transfer_event_lines(evt_b):
+        kinds.append(e.get("kind"))
+        if e.get("kind") == "s0-d16-quarantine-entered":
+            entered.append((offset, line, e))
+    if "s0-d16-quarantine-activation-failed" in kinds or any(k in ("quarantine-transfer-stage", "quarantine-transfer-slot-consumed") for k in kinds):  # refusals/denials consume nothing and never block a retry
+        raise GateError("events log records a failed activation or a prior transfer")
+    if len(entered) != 1:
+        raise GateError("events log must hold exactly one old quarantine-entered event")
+    e_off, e_line, e = entered[0]
+    if not (e.get("code_sha256") == TRANSFER_OLD_CODE_SHA and e.get("pid") == qled["runner_pid"]
+            and e.get("boot_nonce") == qled["runner_boot_nonce"] and e_off + len(e_line) + 1 <= pe["size"]):
+        raise GateError("old entered event does not bind the old PID/nonce/code inside the pre-write prefix")
+    runner_old = _transfer_blob(cfg, TRANSFER_OLD_COMMIT, S0_RUNNER_FILE)
+    test_old = _transfer_blob(cfg, TRANSFER_OLD_COMMIT, TRANSFER_TEST_FILE)
+    for label, data, path in (("old runner", runner_old, Path(cfg.repo) / S0_RUNNER_FILE),
+                              ("old test", test_old, Path(cfg.repo) / TRANSFER_TEST_FILE)):
+        if _sha(data) != _prewrite_entry(ev, path)["sha256"]:
+            raise GateError(f"{label} blob at the pinned old commit differs from authorization-prewrite.json")
+    if _sha(runner_old) != TRANSFER_OLD_CODE_SHA:
+        raise GateError("old runner bytes do not match the pinned old code hash")
+    try:
+        state = json.loads(st_b.decode())
+    except Exception:
+        raise GateError("state.json is not valid JSON")
+    tasks = state.get("tasks") if isinstance(state, dict) else None
+    runner = state.get("runner") if isinstance(state, dict) else None
+    # The old PID/nonce/code are authenticated by the hash-pinned ledger and the entered event above, NOT by the mutable
+    # live state: the successor's own heartbeat legitimately replaces state["runner"]. That block may only carry the old
+    # identity or the first successor boot's identity (any other value is a contradiction).
+    boot = _transfer_first_boot(cfg)
+    if not (isinstance(tasks, dict) and isinstance(runner, dict)
+            and ((runner.get("code_sha256") == TRANSFER_OLD_CODE_SHA and runner.get("pid") == qled["runner_pid"]
+                  and runner.get("boot_nonce") == qled["runner_boot_nonce"])
+                 or (boot is not None and runner.get("code_sha256") == CODE_SHA and runner.get("pid") == boot["pid"]
+                     and runner.get("boot_nonce") == boot["boot_nonce"]))):
+        raise GateError("state.json binds neither the old runner PID/nonce/code nor the first successor boot")
+    if len(st_b) < _prewrite_entry(ev, st_p)["size"]:
+        raise GateError("state.json is smaller than the authorization-prewrite.json inventory")
+    # The S0 slot is unused: the fixed task was refused before creation, so prove absence, not existence.
+    if S0_DUAL_REBIND_ID in tasks or any(isinstance(x, dict) and ((x.get("review_of") or {}).get("task_id") == S0_DUAL_REBIND_ID
+                                                                   or x.get("id") == S0_DUAL_REBIND_ID) for x in tasks.values()):
+        raise GateError("the fixed S0 rebind ID already exists in state or has a bound review")
+    for d in ("queue", "commands"):
+        base = home / d
+        if base.is_dir() and any(S0_DUAL_REBIND_ID.encode() in p.read_bytes() for p in base.iterdir() if p.is_file()):
+            raise GateError("the fixed S0 rebind ID is already queued")
+    binding = {"token_sha256": _sha(tok_b), "ledger_sha256": _sha(led_b), "entered_offset": e_off,
+               "entered_event_sha256": _sha(e_line), "events_prefix_size": pe["size"], "events_prefix_sha256": pe["sha256"],
+               "old_runner_sha256": _sha(runner_old), "old_test_sha256": _sha(test_old), "old_commit": TRANSFER_OLD_COMMIT,
+               "old_pid": qled["runner_pid"], "old_nonce": qled["runner_boot_nonce"], "prewrite_sha256": prewrite_sha}
+    return {"binding": binding, "digest": _sha(_canon(binding)), "qled": qled, "state": state, "tasks": tasks,
+            "files": {"boot-token.json": tok_b, "quarantine-ledger.json": led_b, "events.jsonl": evt_b, "state.json": st_b,
+                      "old-runner.py": runner_old, "old-test_runner.py": test_old,
+                      TRANSFER_PREWRITE: _transfer_read(Path(cfg.home) / TRANSFER_CHECKPOINT / TRANSFER_PREWRITE, "prewrite")}}
+
+
+def _transfer_write_pre_image(cfg, tid, old, extra=None):
+    """Out-of-repo byte-for-byte pre-image: built under a temporary name, fsynced, then renamed into place."""
+    root = Path(cfg.home) / TRANSFER_CHECKPOINT
+    final, tmp = root / f"pre-image-{tid}", root / f".pre-image-{tid}.tmp"
+    if final.exists() or tmp.exists():
+        raise GateError("pre-image directory already exists")
+    receipts = _transfer_receipts(cfg)
+    files = {**old["files"], **(extra or {})}
+    for rel in receipts:
+        files["receipts/" + rel] = (Path(cfg.home) / "acceptances" / rel).read_bytes()
+    manifest = {"transition_id": tid, "digest": old["digest"],
+                "files": {n: {"sha256": _sha(b), "size": len(b)} for n, b in sorted(files.items())},
+                "receipts": receipts}
+    tmp.mkdir(mode=0o700)
+    for n, b in files.items():
+        p = tmp / n
+        p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, b)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    mb = json.dumps(manifest, sort_keys=True, indent=1).encode()
+    fd = os.open(tmp / "manifest.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, mb)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    for d in {p.parent for p in tmp.rglob("*") if p.is_file()} | {tmp}:
+        fsync_dir(d)
+    os.rename(tmp, final)
+    fsync_dir(root)
+    return {"dir": str(final.relative_to(Path(cfg.home))), "digest": old["digest"], "manifest_sha256": _sha(mb)}
+
+
+def _transfer_pre_image_problem(cfg, rec, full):
+    """None when the recorded pre-image is intact. The cheap form checks the manifest; `full` re-hashes every file."""
+    pi = rec["pre_image"]
+    d = Path(cfg.home) / pi["dir"]
+    if ".." in Path(pi["dir"]).parts or Path(pi["dir"]).is_absolute() or not d.is_dir() or d.is_symlink():
+        return "pre-image directory is missing"
+    try:
+        mb = _read_bounded(d / "manifest.json", 8 * 1024 * 1024)
+        if _sha(mb) != pi["manifest_sha256"]:
+            return "pre-image manifest differs from the record"
+        m = json.loads(mb.decode())
+        if m.get("digest") != pi["digest"] or m.get("transition_id") != rec["transition_id"]:
+            return "pre-image manifest binds a different transfer"
+        if full:
+            for n, e in m["files"].items():
+                if _sha(_read_bounded(d / n, 64 * 1024 * 1024)) != e["sha256"]:
+                    return f"pre-image file {n} was altered"
+            # The record's own bindings must still hold against the preserved bytes, not only the manifest.
+            evt, off = _read_bounded(d / "events.jsonl", 32 * 1024 * 1024), rec["old"]["entered_offset"]
+            if off >= len(evt) or _sha(evt[off:evt.index(b"\n", off)]) != rec["old"]["entered_event_sha256"]:
+                return "pre-image does not hold the exact entered event at the recorded offset"
+            # the runner-recorded review chain is re-derived from the PRESERVED output, evidence and event log
+            new, rd = rec["new"], d / "review"
+            chain = _transfer_review_chain(evt, _read_bounded(rd / "review.out", 8 * 1024 * 1024),
+                                           _read_bounded(rd / "review.evidence.json", 8 * 1024 * 1024),
+                                           _transfer_subject_sha(new), _transfer_preload_bind(
+                                               _read_bounded(rd / "preload.json", 1 << 20), _read_bounded(rd / "preload.out", 8 * 1024 * 1024), new))
+            if chain != new["review"]:
+                return "pre-image review evidence chain does not match the recorded binding"
+    except Exception as e:
+        return f"pre-image is unreadable: {type(e).__name__}"
+    return None
+
+
+# --- successor binding, review evidence and process checks
+_TR_BOOT_KEYS = {"schema", "kind", "pid", "boot_nonce", "code_sha256", "at"}
+
+
+def _transfer_first_boot(cfg, me=False):
+    """The first-successor-boot marker (the one pre-consumption window), or None. `me` also requires that THIS process
+    created it: a later process under the same code never inherits the window."""
+    try:
+        d = json.loads(_read_bounded(Path(cfg.home) / TRANSFER_BOOT_NAME, 1 << 16).decode())
+    except Exception:
+        return None
+    if not (isinstance(d, dict) and set(d) == _TR_BOOT_KEYS and d["schema"] == 1 and d["kind"] == "s0-d16-successor-first-boot"
+            and _is_int(d["pid"]) and d["pid"] > 0 and isinstance(d["boot_nonce"], str) and d["boot_nonce"]
+            and d["code_sha256"] == CODE_SHA):
+        return None
+    return d if not me or (d["pid"] == os.getpid() and d["boot_nonce"] == _PROCESS_BOOT_NONCE) else None
+
+
+def _transfer_changed(cfg, parent, child):
+    """The COMPLETE, unfiltered changed-path set between two commits (no pathspec can hide an extra file)."""
+    p = _tgit(cfg, "diff-tree", "-r", "-z", "--no-renames", "--name-only", "--no-commit-id", parent, child)
+    if p.returncode != 0:
+        raise GateError("cannot list the changed paths")
+    return sorted(x for x in p.stdout.decode("utf-8", "surrogateescape").split("\0") if x)
+
+
+def _transfer_no_replacements(cfg):
+    """Replace refs, grafts and shallow boundaries could present a different history than the raw objects; refuse them."""
+    refs = _tgit(cfg, "for-each-ref", "--format=%(refname)", "refs/replace")
+    graft = _tgit(cfg, "rev-parse", "--git-path", "info/grafts")
+    shallow = _tgit(cfg, "rev-parse", "--is-shallow-repository")
+    if refs.returncode != 0 or graft.returncode != 0 or shallow.returncode != 0:
+        raise GateError("cannot prove the repository has no replacements, grafts or shallow boundary")
+    gp = Path(graft.stdout.decode().strip())
+    gp = gp if gp.is_absolute() else Path(cfg.repo) / gp
+    if refs.stdout.strip() or os.path.lexists(gp) or shallow.stdout.strip() != b"false":
+        raise GateError("the repository has replace refs, a grafts file or a shallow boundary")
+
+
+@_tr_memoized
+def _transfer_successor(cfg):
+    """Deterministic local binding of the loaded successor C to the authorization chain B -> A -> D -> C (direct, single-parent
+    raw Git objects; the changed-path sets of B->A, A->D and D->C are checked separately and unfiltered). Nothing here
+    consults a provider or an operator-held file."""
+    runner_p, test_p = Path(cfg.repo) / S0_RUNNER_FILE, Path(cfg.repo) / TRANSFER_TEST_FILE
+    runner_b, test_b = _transfer_read(runner_p, "successor runner.py"), _transfer_read(test_p, "successor test_runner.py")
+    if not (_sha(runner_b) == CODE_SHA == _LOADED_CODE_SHA):
+        raise GateError("on-disk runner.py differs from the loaded successor code (stale disk)")
+    _transfer_no_replacements(cfg)
+    st = _tgit(cfg, "--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all")
+    if st.returncode != 0 or st.stdout != b"":
+        raise GateError("the successor working tree is not clean")
+    head = _tgit(cfg, "rev-parse", "--verify", "HEAD")
+    head = head.stdout.decode().strip() if head.returncode == 0 else ""
+    tree, parents = _transfer_commit(cfg, head)
+    if parents != [TRANSFER_LIFECYCLE_COMMIT]:
+        raise GateError("the successor commit C is not a direct, single-parent child of the Lifecycle contract commit D")
+    _tree_d, parents_d = _transfer_commit(cfg, TRANSFER_LIFECYCLE_COMMIT)
+    if parents_d != [TRANSFER_AUTH_COMMIT]:
+        raise GateError("the Lifecycle contract commit D is not a direct, single-parent child of the authorization commit A")
+    if _transfer_changed(cfg, TRANSFER_AUTH_COMMIT, TRANSFER_LIFECYCLE_COMMIT) != [TRANSFER_LIFECYCLE_PATH]:
+        raise GateError("the Lifecycle contract commit D must change exactly its owner record")
+    _tree_a, parents_a = _transfer_commit(cfg, TRANSFER_AUTH_COMMIT)
+    if parents_a != [TRANSFER_AMEND_COMMIT]:
+        raise GateError("the authorization commit A is not a direct, single-parent child of the effective amendment commit B")
+    if _transfer_changed(cfg, TRANSFER_AMEND_COMMIT, TRANSFER_AUTH_COMMIT) != [TRANSFER_AUTH_PATH]:
+        raise GateError("the authorization commit A must change exactly its owner record")
+    auth = _transfer_blob(cfg, TRANSFER_AUTH_COMMIT, TRANSFER_AUTH_PATH)
+    if (_sha(auth) != TRANSFER_AUTH_SHA or _transfer_blob(cfg, TRANSFER_LIFECYCLE_COMMIT, TRANSFER_AUTH_PATH) != auth
+            or _transfer_blob(cfg, head, TRANSFER_AUTH_PATH) != auth):
+        raise GateError("the authorization-chain owner record is not the pinned, unchanged published record")
+    life = _transfer_blob(cfg, TRANSFER_LIFECYCLE_COMMIT, TRANSFER_LIFECYCLE_PATH)
+    if _sha(life) != TRANSFER_LIFECYCLE_SHA or _transfer_blob(cfg, head, TRANSFER_LIFECYCLE_PATH) != life:
+        raise GateError("the Lifecycle contract owner record is not the pinned, unchanged published record")
+    if _sha(_transfer_blob(cfg, head, S0_RUNNER_FILE)) != CODE_SHA:
+        raise GateError("the committed runner.py blob is not the loaded successor code")
+    if _sha(_transfer_blob(cfg, head, TRANSFER_TEST_FILE)) != _sha(test_b):
+        raise GateError("the committed test blob differs from the on-disk test file")
+    # the two earlier owner records: at their own commit, unchanged at B, at A, at D and at C
+    for path, sha, commit in ((TRANSFER_OWNER_PATH, TRANSFER_OWNER_SHA, TRANSFER_OWNER_COMMIT),
+                              (TRANSFER_AMEND_PATH, TRANSFER_AMEND_SHA, TRANSFER_AMEND_COMMIT)):
+        rec = _transfer_blob(cfg, commit, path)
+        if _sha(rec) != sha or any(_transfer_blob(cfg, c, path) != rec for c in (TRANSFER_AMEND_COMMIT, TRANSFER_AUTH_COMMIT, TRANSFER_LIFECYCLE_COMMIT, head)):
+            raise GateError(f"the owner record {Path(path).name} is not the pinned, unchanged published record")
+    if _transfer_changed(cfg, TRANSFER_LIFECYCLE_COMMIT, head) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+        raise GateError("the successor commit must change exactly runner.py and test_runner.py")
+    return {"commit": head, "parent": TRANSFER_LIFECYCLE_COMMIT, "code_sha256": CODE_SHA, "test_sha256": _sha(test_b),
+            "diff_sha256": _sha(_transfer_diff(cfg, head))}
+
+
+def _transfer_preload_bind(raw, output, successor):
+    """The externally verified PRE-LOAD Opus review evidence (checkpoint dir). It must name this exact subject, and its
+    hashes are bound into the transition record, but it is operator-authored text and never grants the transfer."""
+    try:
+        d = json.loads(raw.decode())
+    except Exception:
+        raise GateError("pre-load Opus review evidence is not valid JSON")
+    keys = {"schema", "kind", "commit", "code_sha256", "test_sha256", "diff_sha256", "model", "session_id", "output_file",
+            "output_sha256", "outcome"}
+    if isinstance(d, dict) and "c_ci_run_id" in d:  # optional operator-held run ID of C's CI: a post-consumption pin only
+        if not (isinstance(d["c_ci_run_id"], str) and d["c_ci_run_id"].isdigit()):
+            raise GateError("pre-load Opus review evidence carries a malformed C CI run ID")
+        keys = keys | {"c_ci_run_id"}
+    if not (isinstance(d, dict) and set(d) == keys and d["schema"] == 1 and d["kind"] == "preload-opus-review"
+            and all(d[k] == successor[k] for k in ("commit", "code_sha256", "test_sha256", "diff_sha256"))
+            and isinstance(d["model"], str) and "opus" in d["model"].lower() and isinstance(d["session_id"], str) and d["session_id"]
+            and d["outcome"] == "APPROVED" and d["output_sha256"] == _sha(output)):
+        raise GateError("pre-load Opus review evidence does not bind the exact successor subject and an Opus APPROVED output")
+    return {"preload_sha256": _sha(raw), "preload_output_sha256": _sha(output)}
+
+
+def _transfer_preload(cfg, successor):
+    base = Path(cfg.home) / TRANSFER_CHECKPOINT
+    raw = _transfer_read(base / TRANSFER_PRELOAD_NAME, "pre-load Opus review evidence", 1 << 20)
+    try:
+        name = json.loads(raw.decode())["output_file"]
+    except Exception:
+        raise GateError("pre-load Opus review evidence is not valid JSON")
+    if not (isinstance(name, str) and name == Path(name).name and name not in ("", ".", "..")):
+        raise GateError("pre-load Opus review output_file must be a plain file name")
+    out = _transfer_read(base / name, "pre-load Opus review output", 8 * 1024 * 1024)
+    return _transfer_preload_bind(raw, out, successor), {"preload.json": raw, "preload.out": out}
+
+
+def _transfer_review_chain(evt, out_b, ev_b, subject_sha, preload):
+    """Authenticate the ONE post-load, runner-recorded Opus review from DURABLE artifacts only (the run output, its
+    evidence file and the append-only event log), never from state.json. Returns the chain binding or raises GateError."""
+    op, lines = f"{TRANSFER_REVIEW_ID}:1", _transfer_event_lines(evt)
+    mine = [x for x in lines if x[2].get("task_id") == TRANSFER_REVIEW_ID or x[2].get("op_id") == op]
+    if any(x[2].get("kind") not in ("transfer-review-created", "task-gated", "task-gate-cleared", "dispatch", "route-evidence",
+                                    "task-done", "transfer-review-recorded") for x in mine):
+        raise GateError("the review has a failed, blocked, retried or otherwise ambiguous event")
+
+    def one(kind, pool):
+        m = [x for x in pool if x[2].get("kind") == kind]
+        if len(m) != 1:
+            raise GateError(f"the review chain needs exactly one {kind} event")
+        return m[0]
+    boot, disp, route, done, rec = (one("quarantine-transfer-first-boot", lines), one("dispatch", mine),
+                                    one("route-evidence", mine), one("task-done", mine), one("transfer-review-recorded", mine))
+    if not boot[0] < disp[0] < route[0] < done[0] < rec[0]:
+        raise GateError("the review events are out of order")
+    if any(x[2].get("kind") == "dispatch" and x[0] > boot[0] and x is not disp for x in lines):
+        raise GateError("another task was dispatched after the first successor boot")
+    d, r, e = disp[2], route[2], done[2]
+    if not (d.get("op_id") == op and d.get("role") == "code-review" and d.get("model_alias") == "opus" and d.get("attempt") == 1
+            and d.get("subject_sha256") == subject_sha and _is_hex(d.get("prompt_sha256"), 64)
+            and d.get("pid") == boot[2].get("pid") and d.get("boot_nonce") == boot[2].get("boot_nonce")):
+        raise GateError("the review dispatch event does not bind the first boot, the Opus alias and the exact subject")
+    try:
+        out = json.loads(out_b.decode())
+        evidence = json.loads(ev_b.decode())
+    except Exception:
+        raise GateError("the review run output or evidence is not valid JSON")
+    lastline = [ln.strip() for ln in str(out.get("result", "")).splitlines() if ln.strip()] if isinstance(out, dict) else []
+    verdict = OUTCOME_RE.match(lastline[-1]) if lastline else None
+    judged = judge_route("code-review", out) if isinstance(out, dict) else {}
+    sid = out.get("session_id") if isinstance(out, dict) else None
+    if not (isinstance(out, dict) and out.get("subtype") == "success" and not out.get("is_error") and out.get("permission_denials") == []
+            and isinstance(sid, str) and sid and verdict and verdict.group(1) == "APPROVED"
+            and judged.get("verdict") == "VERIFIED" and judged.get("intended") == "opus" and family_of(judged.get("primary") or "") == "opus"):
+        raise GateError("the review run output is not a successful Opus APPROVED result with a verified route")
+    if not (r.get("op_id") == op and r.get("session_id") == sid and r.get("verdict") == "VERIFIED" and r.get("intended") == "opus"
+            and r.get("primary") == judged["primary"] and r.get("dispatch_op") == op
+            and e.get("op_id") == op and e.get("route") == "VERIFIED" and e.get("changed") == 0):
+        raise GateError("the review route and settlement events do not match the run output and provider session")
+    if not (isinstance(evidence, dict) and evidence.get("op") == op and evidence.get("review_outcome") == "APPROVED"
+            and evidence.get("violations") == [] and evidence.get("changed") == [] and evidence.get("head_moved") is False
+            and evidence.get("route_verdict") == "VERIFIED" and evidence.get("subtype") == "success"):
+        raise GateError("the review evidence file is not a clean, read-only APPROVED settlement")
+    if not (rec[2].get("op_id") == op and rec[2].get("out_sha256") == _sha(out_b) and rec[2].get("evidence_sha256") == _sha(ev_b)):
+        raise GateError("the review output or evidence differs from what the runner recorded at settlement")
+    return {"task_id": TRANSFER_REVIEW_ID, "op": op, "session_id": sid, "model": judged["primary"], "out_sha256": _sha(out_b),
+            "evidence_sha256": _sha(ev_b), "subject_sha256": subject_sha, "prompt_sha256": d["prompt_sha256"],
+            "dispatch_offset": disp[0], "dispatch_sha256": _sha(disp[1]), "route_offset": route[0], "route_sha256": _sha(route[1]),
+            "done_offset": done[0], "done_sha256": _sha(done[1]), "recorded_offset": rec[0], "recorded_sha256": _sha(rec[1]),
+            **preload}
+
+
+def _transfer_review_files(cfg):
+    stem = Path(cfg.home) / "runs" / f"{TRANSFER_REVIEW_ID}-1"
+    return (_transfer_read(Path(f"{stem}.out"), "review run output", 8 * 1024 * 1024),
+            _transfer_read(Path(f"{stem}.evidence.json"), "review evidence", 8 * 1024 * 1024))
+
+
+def _transfer_review_evidence(cfg, old, successor):
+    """Chain the post-load review (artifacts + event log) and bind the pre-load evidence. Returns (binding, files)."""
+    t = old["tasks"].get(TRANSFER_REVIEW_ID)
+    if not (isinstance(t, dict) and t.get("status") == "DONE" and t.get("attempts") == 1):
+        raise GateError("the one runner-recorded successor review is absent, unfinished, retried or not DONE")
+    out_b, ev_b = _transfer_review_files(cfg)
+    preload, pfiles = _transfer_preload(cfg, successor)
+    chain = _transfer_review_chain(old["files"]["events.jsonl"], out_b, ev_b, _transfer_subject_sha(successor), preload)
+    return chain, {"review/review.out": out_b, "review/review.evidence.json": ev_b,
+                   **{"review/" + n: b for n, b in pfiles.items()}}
+
+
+def _transfer_ci_observe(cfg, rec):
+    """The post-consumption LIVE provider observations of A and D (each at its pinned run ID) and C (at the operator-held
+    run ID from the bound pre-load evidence, when supplied). Raises GateError on any outage, mismatch or ambiguity."""
+    c_run = None
+    try:
+        pre = json.loads(_read_bounded(Path(cfg.home) / rec["pre_image"]["dir"] / "review" / "preload.json", 1 << 20).decode())
+        c_run = pre.get("c_ci_run_id") if isinstance(pre, dict) else None
+    except Exception:
+        raise GateError("the preserved pre-load evidence is unreadable for the CI pin")
+    runs = {"A": _observe_ci_for_commit(cfg, TRANSFER_AUTH_COMMIT, run_id=TRANSFER_AUTH_CI_RUN, opener=_ci_opener),
+            "D": _observe_ci_for_commit(cfg, TRANSFER_LIFECYCLE_COMMIT, run_id=TRANSFER_LIFECYCLE_CI_RUN, opener=_ci_opener),
+            "C": _observe_ci_for_commit(cfg, rec["new"]["commit"], run_id=c_run, opener=_ci_opener)}
+    _transition_ci_runs_validate(runs, rec["new"]["commit"])
+    return runs
+
+
+def _runner_pids_from_ps(text, self_pid):
+    """PIDs of runner `run` processes in `ps -axo pid=,command=` output (a false positive only denies)."""
+    out = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or not parts[0].isdigit() or int(parts[0]) == self_pid:
+            continue
+        argv = parts[1:]
+        if any(a.endswith("mission_runner/runner.py") for a in argv) and "run" in argv and "dashboard" not in argv:
+            out.append(int(parts[0]))
+    return out
+
+
+def _other_runner_pids(cfg):
+    try:
+        p = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError("cannot enumerate processes")
+    if p.returncode != 0:
+        raise GateError("cannot enumerate processes")
+    return _runner_pids_from_ps(p.stdout, os.getpid())
+
+
+def transfer_preflight(cfg, rlock_held=False, wlock_held=False):
+    """Deterministic, read-only local preflight. Returns the VERIFIED_TRANSFER_READY result (never persisted, never an
+    authorization) or raises GateError. Provider CI is deliberately NOT consulted here."""
+    if _load_transition(cfg) is not None:
+        raise GateError("a transition record already exists; the transfer cannot be minted again")
+    old = _transfer_old_evidence(cfg)
+    successor = _transfer_successor(cfg)
+    if pid_alive(old["binding"]["old_pid"]):
+        raise GateError("the old runner PID is still alive")
+    if _other_runner_pids(cfg):
+        raise GateError("another runner process exists")
+    if not rlock_held and FileLock.probe(Path(cfg.home) / "locks" / "runner.lock") == "free":
+        raise GateError("the sole runner lock is not held by the successor")
+    if not wlock_held and FileLock.probe(writer_lock_path(cfg.home, cfg.repo)) != "free":
+        raise GateError("the repository writer lock is held")
+    tasks, state = old["tasks"], old["state"]
+    h = state.get("handoff") or {}
+    if h.get("request") or h.get("quarantine"):
+        raise GateError("an orchestrator handoff or gateway turn is open")
+    if any(isinstance(t, dict) and (t.get("status") == "RUNNING" or t.get("child")) for t in tasks.values()):
+        raise GateError("a worker task is running")
+    if any(isinstance(t, dict) and t.get("stage") == "verify_pending" for t in tasks.values()):
+        raise GateError("an inherited verify_pending task exists; a saved verification may not resume under the transfer")
+    chain, files = _transfer_review_evidence(cfg, old, successor)
+    return {"stage": TRANSFER_READY, "old": old, "successor": successor, "review": chain, "review_files": files}
+
+
+# --- stage evaluation shared by the gates
+def _transfer_lineage_active(cfg):
+    """UNCONDITIONAL for any code other than the quarantined old runner: no file under the runner home (record, ledger,
+    token, pre-image, events) can switch the lineage off, so deleting all of them still leaves every lane default-deny."""
+    return CODE_SHA != TRANSFER_OLD_CODE_SHA
+
+
+def _transition_live(cfg, rec):
+    att = rec["attested"]
+    if att["code_sha256"] != CODE_SHA:
+        return False
+    if att["pid"] == os.getpid():
+        return att["boot_nonce"] == _PROCESS_BOOT_NONCE
+    try:
+        state = json.loads(_read_bounded(Path(cfg.home) / "state.json", 64 * 1024 * 1024))
+    except Exception:
+        return False
+    runner = (state or {}).get("runner") or {}
+    return (s0_runner_problem(state) is None and runner.get("pid") == att["pid"]
+            and runner.get("boot_nonce") == att["boot_nonce"])
+
+
+def _transition_replay_problem(cfg, rec):
+    """Audit events are only ever appended AFTER the record reaches a stage, so a record that trails its own audit
+    trail was rolled back or replayed. Fail-closed only: events never grant anything."""
+    rank = _TR_ORDER[rec["stage"]]
+    for e in _qled_events(cfg):
+        if e.get("transition_id") != rec["transition_id"]:
+            continue
+        if e.get("kind") == "quarantine-transfer-stage" and _TR_ORDER.get(e.get("stage"), -1) > rank:
+            return "the transition record is behind its audit trail (rolled back or replayed)"
+        if e.get("kind") == "quarantine-transfer-slot-consumed" and rec["s0_slot"]["state"] != "CONSUMED":
+            return "the S0 slot was consumed per the audit trail but the record restores it (replayed)"
+    return None
+
+
+def _transition_bound_problem(cfg, rec, full=True):
+    """Every admission re-authenticates the preserved bytes and the audit trail; a positive result is never cached."""
+    if rec["new"]["code_sha256"] != CODE_SHA:
+        return "the transition record binds different successor code"
+    bad = _transfer_pre_image_problem(cfg, rec, full)
+    return bad or (_transition_replay_problem(cfg, rec) if full else None)
+
+
+def _transition_mode(cfg):
+    """(NONE|HOLD|LANE|ACTIVE, reason). NONE: no transfer lineage. HOLD: everything but stop/pause is closed.
+    LANE: only the fixed S0 rebind write and its bound review. ACTIVE: ordinary live gates."""
+    if not _transfer_lineage_active(cfg):
+        return "NONE", None  # only the quarantined old runner itself
+    try:
+        rec = _load_transition(cfg)
+    except GateError as e:
+        return "HOLD", str(e)
+    if rec is None:
+        return "HOLD", "QUARANTINED: the verified transfer has not been consumed"
+    bad = _transition_bound_problem(cfg, rec)
+    if bad:
+        return "HOLD", bad
+    if not _transition_live(cfg, rec):
+        return "HOLD", "the attested successor runner is not live (PID/boot nonce)"
+    if rec["stage"] == "S0_REBIND":
+        return "LANE", None
+    if rec["stage"] == "ACTIVE":
+        return "ACTIVE", None
+    return "HOLD", f"transition stage {rec['stage']} does not admit ingress"
+
+
+def _transition_quarantine_state(cfg, rec):
+    bad = _transition_bound_problem(cfg, rec)
+    if bad:
+        return _QS_DENY, bad
+    stage, live = rec["stage"], _transition_live(cfg, rec)
+    if stage == "TRANSFER_CONSUMED":
+        return _QS_DENY, "TRANSFER_CONSUMED: awaiting the provider CI observation; quarantine stays closed"
+    if not live:
+        return _QS_RESTARTED, "the attested successor runner is no longer live"
+    if stage == "S0_REBIND":
+        att = rec["attested"]
+        return _QS_ENTERED_LIVE, {"schema": 1, "entered_at": rec["created_at"], "runner_pid": att["pid"],
+                                  "runner_boot_nonce": att["boot_nonce"], "code_sha256": CODE_SHA,
+                                  "dual_rebind_consumed": rec["s0_slot"]["state"] == "CONSUMED",
+                                  "transition_id": rec["transition_id"]}
+    if stage == "VERIFIED":
+        return _QS_DENY, "VERIFIED: awaiting read-only probes before ACTIVE"
+    return _QS_ACTIVE, rec
+
+
+def _transition_gate_reason(cfg, t, tasks):
+    """None, or why the transfer lineage denies task t. D16 dual-version and S0 product are denied at every stage."""
+    if not _transfer_lineage_active(cfg):
+        return None
+    parent = tasks.get((t.get("review_of") or {}).get("task_id")) if t.get("role") == "code-review" else None
+    if t.get("id") == D16_DUAL_ID or d16_dual_lineage(tasks, t) or (isinstance(parent, dict) and d16_dual_lineage(tasks, parent)):
+        return f"D16_DUAL_DENIED {t.get('id')}: the old D16 dual-version admission does not survive into the transfer lineage"
+    if s0_marked(t):
+        return f"S0_PRODUCT_DENIED {t.get('id')}: ACTIVE is operational only; S0 product admission stays refused"
+    if t.get("id") == TRANSFER_REVIEW_ID:  # the single pre-consumption review-only bridge; admitted by nothing else
+        return _transfer_review_gate(cfg, t, tasks)
+    mode, why = _transition_mode(cfg)
+    if mode == "HOLD":
+        return f"TRANSFER_HOLD {t.get('id')}: {why}"
+    if mode == "LANE" and not (s0_dual_rebind_marked(t) or (isinstance(parent, dict) and s0_dual_rebind_marked(parent))):
+        return f"TRANSFER_HOLD {t.get('id')}: only the fixed S0 rebind lane is admitted before ACTIVE"
+    return None
+
+
+_TRANSFER_REVIEW_PROMPT = (
+    "Independent read-only security review of the quarantine-transfer SUCCESSOR candidate (runner.py and test_runner.py). "
+    "Judge only the runner-bound subject below against the effective owner records (B, A and D). Report CHANGES_REQUESTED for any fail-open "
+    "path in the successor lineage, the single-use transfer, the review-only bridge or the S0/D16 gates, or if the subject "
+    "does not match the bound hashes. You make no file changes and your verdict authorizes nothing else.")
+
+
+def _transfer_review_task(cfg):
+    return validate_task({"id": TRANSFER_REVIEW_ID, "module": S0_MODULE, "role": "code-review", "title": "successor transfer review",
+                          "prompt": _TRANSFER_REVIEW_PROMPT, "allowed_paths": [], "expected_changes": [], "verify_cmd": []}, cfg)
+
+
+def _transfer_review_gate(cfg, t, tasks):
+    """None only for the exact runner-created, never-dispatched review task, in the first successor process, before any
+    transition record exists. Every other task, every later state and every lookalike is held."""
+    def deny(why):
+        return f"TRANSFER_HOLD {t.get('id')}: {why}"
+    if os.path.lexists(_transition_path(cfg)):
+        return deny("a transition record exists: the review-only window is closed")
+    if _transfer_first_boot(cfg, me=True) is None:
+        return deny("not the first successor process: there is no pre-consumption review window or restart")
+    want = _transfer_review_task(cfg)
+    if not (all(t.get(k) == want[k] for k in ("id", "module", "role", "title", "prompt", "allowed_paths", "expected_changes",
+                                               "verify_cmd", "review_of", "plan_phase"))
+            and all(t.get(k) is None for k in ("source", "remediation_of", "review_retry_of", "review_candidate",
+                                                "accounting_recovery_of", "doc_base"))):
+        return deny("not the exact runner-created review task")
+    if t.get("status") != "QUEUED" or t.get("attempts") != 0 or any(
+            e.get("task_id") == TRANSFER_REVIEW_ID and e.get("kind") == "dispatch" for e in _qled_events(cfg)):
+        return deny("the single review attempt is spent")
+    if any(isinstance(x, dict) and x is not t and (x.get("status") == "RUNNING" or x.get("child")) for x in tasks.values()):
+        return deny("another worker is running")
+    _transfer_successor(cfg)  # raises GateError (held as GATE_UNVERIFIABLE) unless the exact successor is clean and committed
+    return None
+
+
+def _transition_audit(store, rec):
+    """Audit events are subordinate: append the stage event iff the authoritative record reached it and it is absent."""
+    try:
+        have = {(e.get("transition_id"), e.get("stage")) for e in _qled_events(SimpleNamespace(home=store.home))
+                if e.get("kind") == "quarantine-transfer-stage"}
+        if (rec["transition_id"], rec["stage"]) not in have:
+            store.event("quarantine-transfer-stage", transition_id=rec["transition_id"], stage=rec["stage"],
+                        boot_epoch=rec["boot_epoch"], pre_image_digest=rec["pre_image"]["digest"])
+    except OSError:
+        pass  # the record, not the log, is authoritative; the next boot reconciles
+
+
+def _ci_opener(*a, **k):
+    return urllib.request.urlopen(*a, **k)
+
+
+# --- verification of the S0 rebind outcome and the read-only probes before ACTIVE
+def _transition_verified(cfg, rec, tasks):
+    """The VERIFIED evidence when the S0 rebind outcome is fully evidenced; otherwise raises GateError (not yet)."""
+    w = tasks.get(S0_DUAL_REBIND_ID)
+    if not (isinstance(w, dict) and s0_dual_rebind_marked(w) and w.get("status") == "DONE" and w.get("attempts") == 1
+            and (w.get("evidence") or {}).get("violations") == [] and s0_dual_rebind_shape_problem(w) is None):
+        raise GateError("the fixed S0 rebind write is not DONE")
+    changed = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if sorted(c["path"] for c in changed) != sorted(S0_DOC_PATHS) or any(c["sha256"] == w["doc_base"][c["path"]] for c in changed):
+        raise GateError("the S0 rebind write did not change exactly the two documents")
+    reviews = [x for x in tasks.values() if isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == w["id"]]
+    if not (len(reviews) == 1 and reviews[0].get("status") == "DONE" and reviews[0].get("source") is None
+            and _bound_review_ok(w, reviews[0]) and review_verdict(tasks, w["id"]) == "APPROVED"
+            and (reviews[0].get("route") or {}).get("intended") == "opus"):
+        raise GateError("the one exact-bound Opus review of the S0 rebind write is not APPROVED")
+    docs = {c["path"]: c["sha256"] for c in changed}
+    try:
+        _s0_qa_git_clean(cfg, S0_DOC_PATHS, "S0 rebind publication")
+        for path, sha in docs.items():
+            if _s0_git_blob_sha(cfg, "HEAD", path, "S0 rebind publication") != sha or _path_hash(Path(cfg.repo) / path) != sha:
+                raise GateError("the reviewed document bytes are not what HEAD publishes")
+        head = _tgit(cfg, "rev-parse", "--verify", "HEAD").stdout.decode().strip()
+        pub = _tgit(cfg, "diff", "--no-renames", "--name-only", rec["new"]["commit"], head)
+        if (pub.returncode != 0 or sorted(pub.stdout.decode().split()) != sorted(S0_DOC_PATHS)
+                or not _is_ancestor(cfg, rec["new"]["commit"])):
+            raise GateError("the publication must change exactly the two S0 documents after the successor commit")
+        _observe_ci_for_commit(cfg, head, opener=_ci_opener)
+    except (GateError, OSError, subprocess.SubprocessError) as e:
+        raise GateError(f"publication/CI is not verified: {str(e)[:120]}")
+    rp = Path(cfg.home) / "acceptances" / f"{S0_DUAL_REBIND_RECEIPT}.json"
+    try:
+        rb = _read_bounded(rp, RECEIPT_MAX_BYTES)
+        r = json.loads(rb.decode())
+    except Exception:
+        raise GateError("the new out-of-repo S0 rebind receipt is missing or unreadable")
+    if not (isinstance(r, dict) and set(r) == {"schema", "kind", "transition_id", "runner_sha256", "documents", "recorded_at"}
+            and r["schema"] == SCHEMA and r["kind"] == "mod004-s0-d16-rebind" and r["transition_id"] == rec["transition_id"]
+            and r["runner_sha256"] == CODE_SHA and r["documents"] == docs and isinstance(r["recorded_at"], str)):
+        raise GateError("the S0 rebind receipt does not bind the successor runner, transition and reviewed documents")
+    # Historical receipts and reviews must be byte-for-byte what the pre-image preserved.
+    try:
+        pre = Path(cfg.home) / rec["pre_image"]["dir"]
+        manifest = json.loads((pre / "manifest.json").read_text())
+        now = _transfer_receipts(cfg)
+        if any(now.get(n) != h for n, h in manifest["receipts"].items()):
+            raise GateError("a historical receipt changed since the pre-image")
+        old_tasks = json.loads((pre / "state.json").read_text())["tasks"]
+        for tid, ot in old_tasks.items():
+            nt = tasks.get(tid)
+            if ot.get("role") == "code-review" and not (isinstance(nt, dict) and all(
+                    nt.get(k) == ot.get(k) for k in ("status", "review_of", "route")) and
+                    (nt.get("evidence") or {}).get("review_outcome") == (ot.get("evidence") or {}).get("review_outcome")):
+                raise GateError("a historical review changed since the pre-image")
+    except GateError:
+        raise
+    except Exception as e:
+        raise GateError(f"historical preservation cannot be proven: {type(e).__name__}")
+    return {"docs": docs, "receipt_sha256": _sha(rb), "commit": head}
+
+
+def _transition_probe_problem(cfg, rec, tasks):
+    """Positive and negative read-only probes before ACTIVE; None when all hold."""
+    full = _transition_bound_problem(cfg, rec, full=True)
+    if full:
+        return full
+    if not _transition_live(cfg, rec):
+        return "positive probe: the attested runner is not live"
+    base = {"module": S0_MODULE, "role": "implement", "status": "QUEUED", "attempts": 0, "allowed_paths": [],
+            "expected_changes": [], "verify_cmd": [], "prompt": "probe", "title": "probe", "source": None}
+    probes = ({**base, "id": D16_DUAL_ID}, {**base, "id": "transfer-probe-s0-product", "plan_phase": S0_MARKER})
+    for p in probes:
+        try:
+            if gate_reason(cfg, p, tasks) is None:
+                return f"negative probe: {p['id']} would be admitted"
+        except Exception:
+            continue  # an unverifiable gate is a refusal
+    return None
+
+
 # ------------------------------------------------ S0 dual rebind lane (2026-10-26)
 
 def s0_dual_rebind_marked(t):
@@ -4763,6 +5835,8 @@ def s0_dual_rebind_gate_reason(cfg, t, tasks):
         return f"S0_DUAL_REBIND_QUARANTINE_UNVERIFIABLE: {qled_or_reason}"
     if qs == _QS_RESTARTED:
         return "S0_DUAL_REBIND_QUARANTINE_RESTARTED: the recorded runner is no longer live (any process restart blocks both lanes)"
+    if qs == _QS_ACTIVE:
+        return "S0_DUAL_REBIND_CLOSED: the transfer is ACTIVE; the fixed S0 rebind lane is spent"
     qled = qled_or_reason  # _QS_ENTERED_LIVE
     if qled.get("dual_rebind_consumed"):
         return "S0_DUAL_REBIND_CONSUMED: the single evidence-only write attempt was already started or consumed"
@@ -5251,6 +6325,11 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
+        transfer = _transition_gate_reason(cfg, t, tasks)  # quarantine-transfer lineage: D16/S0 product denied, stage holds
+        if transfer:
+            return transfer
+        if t.get("id") == TRANSFER_REVIEW_ID and _transfer_lineage_active(cfg):
+            return None  # admitted by _transfer_review_gate above; no legacy lane applies to the review-only bridge
         if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID, D16_F34_WRITE, D16_DUAL_ID) and t["role"] != "implement":
             return f"D16_SUCCESSOR_INVALID {t['id']}: the fixed successor id is reserved for the one reviewed implement root"
         if t.get("id") == D16_F34_REVIEW and t["role"] != "code-review":
@@ -5319,6 +6398,8 @@ class Runner:
         self.ci_seeded = False
         self.ci_popen = subprocess.Popen
         self.hp = None  # in-flight orchestrator CLI handle (durable record lives in state["handoff"])
+        self._tr_last, self._tr_held_cmds = None, set()  # quarantine-transfer step throttle; held-command log-once
+        self._tr_review_last, self._tr_refused = None, None  # pre-consumption review/consume throttle; refusal log-once
 
     # --- lifecycle
     def run(self):
@@ -5334,6 +6415,7 @@ class Runner:
         for s in (signal.SIGTERM, signal.SIGINT):
             signal.signal(s, lambda *_: setattr(self, "sig", True))
         try:
+            transfer = _transfer_lineage_active(self.cfg)  # the transition stage branches before any legacy boot logic
             prior_boot = ((self.state.get("runner") or {}).get("code_sha256") == CODE_SHA
                           or _prior_start_same_code(self.cfg))
             self.state["runner"] = {"pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
@@ -5349,6 +6431,9 @@ class Runner:
                 qled = _load_qled(self.cfg)
             except GateError:
                 qled = False  # sentinel: corrupt state, don't overwrite
+            if transfer:
+                qled = False  # the transition record governs; the legacy ledger and token stay preserved, untouched
+                self._transition_boot()
             if qled is None:
                 try:
                     if _d16_policy_active(self.cfg) and (prior_boot or not _boot_activation_path(self.cfg).exists()):
@@ -5382,6 +6467,215 @@ class Runner:
         finally:
             self.rlock.release()
 
+    # --- quarantine-transfer lifecycle (2026-10-26): the authoritative record is written first, events follow
+    def _tr_event(self, kind, **detail):
+        try:
+            self.store.event(kind, **detail)
+        except OSError:
+            pass  # audit only; the record is authoritative and the next boot reconciles the stage event
+
+    def _transition_boot(self):
+        """Branch on the transition stage BEFORE legacy activation, commands, queue, handoff or worker recovery."""
+        try:
+            rec = _load_transition(self.cfg)
+        except GateError as e:
+            return self._tr_event("quarantine-transfer-denied", reason=str(e)[:300])
+        if rec is None:
+            return self._transfer_first_boot()
+        self._transition_reboot(rec)
+
+    def _transfer_first_boot(self):
+        """Open the ONE pre-consumption window for this process. A later process finds the marker (or its audit event) and
+        has no review window and no restart: pre-consumption recovery is not permitted, and nothing is consumed at boot."""
+        cfg, me = self.cfg, {"schema": 1, "kind": "s0-d16-successor-first-boot", "pid": os.getpid(),
+                             "boot_nonce": _PROCESS_BOOT_NONCE, "code_sha256": CODE_SHA, "at": now_iso()}
+        if _transfer_first_boot(cfg, me=True) is not None:
+            return  # this very process (PID + boot nonce) already holds the window
+        try:
+            if any(e.get("kind") == "quarantine-transfer-first-boot" for e in _qled_events(cfg)):
+                raise GateError("a successor process already used the pre-consumption window")
+            _atomic_create_exclusive(Path(cfg.home) / TRANSFER_BOOT_NAME, json.dumps(me, sort_keys=True).encode())
+        except (GateError, OSError) as e:
+            return self._tr_event("quarantine-transfer-denied", reason=f"no pre-consumption restart: {str(e)[:200]}")
+        self._tr_event("quarantine-transfer-first-boot", pid=me["pid"], boot_nonce=me["boot_nonce"], code_sha256=CODE_SHA)
+
+    def _tr_refuse(self, reason):
+        if reason != self._tr_refused:  # log once per distinct reason; the sole runner never spams the audit log
+            self._tr_refused = reason
+            self._tr_event("quarantine-transfer-refused", reason=reason)
+
+    def transfer_review_step(self):
+        """QUARANTINED, before any record, first successor process only: create the ONE review task once; when it settled
+        DONE, try the (never-retried-by-restart) transfer. Throttled; a refusal consumes nothing."""
+        cfg = self.cfg
+        if not _transfer_lineage_active(cfg) or os.path.lexists(_transition_path(cfg)) or _transfer_first_boot(cfg, me=True) is None:
+            return
+        now = time.monotonic()
+        if self._tr_review_last is not None and now - self._tr_review_last < TRANSFER_STEP_EVERY:
+            return
+        self._tr_review_last = now
+        t = self.state["tasks"].get(TRANSFER_REVIEW_ID)
+        if t is None:
+            if any(e.get("task_id") == TRANSFER_REVIEW_ID for e in _qled_events(cfg)):
+                return  # a review was already created once: never a second
+            if (self.state.get("handoff") or {}).get("request") or any(
+                    isinstance(x, dict) and (x.get("status") == "RUNNING" or x.get("child")) for x in self.state["tasks"].values()):
+                return
+            try:
+                _transfer_successor(cfg)
+                self.state["tasks"][TRANSFER_REVIEW_ID] = _transfer_review_task(cfg)
+            except (GateError, ValueError, OSError) as e:
+                return self._tr_refuse(f"review not created: {str(e)[:200]}")
+            self.store.save(self.state)
+            return self._tr_event("transfer-review-created", task_id=TRANSFER_REVIEW_ID)
+        if t.get("status") == "DONE":
+            return self._transition_consume()
+        if t.get("status") in ("BLOCKED", "FAILED"):
+            self._tr_refuse("the single successor review did not end APPROVED: quarantine stays closed, no retry")
+
+    def _transition_attestation(self):
+        return {"pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE, "code_sha256": CODE_SHA, "at": now_iso()}
+
+    def _transition_consume(self):
+        cfg = self.cfg
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "consume"}):
+            return self._tr_refuse("the repository writer lock is held")
+        created = None
+        try:
+            try:  # local deterministic preflight only; provider CI is observed AFTER consumption
+                ready = transfer_preflight(cfg, rlock_held=True, wlock_held=True)
+            except Exception as e:
+                return self._tr_refuse(f"{type(e).__name__}: {str(e)[:300]}")
+            try:
+                tid = uuid.uuid4().hex
+                pre = _transfer_write_pre_image(cfg, tid, ready["old"], ready["review_files"])
+                old, new, me = ready["old"]["binding"], ready["successor"], self._transition_attestation()
+                created = _transition_write(cfg, {
+                    "schema": 1, "kind": TRANSFER_KIND, "transition_id": tid, "stage": "TRANSFER_CONSUMED",
+                    "consumed": True, "created_at": now_iso(), "pre_image": pre,
+                    "old": {"code_sha256": TRANSFER_OLD_CODE_SHA, "commit": TRANSFER_OLD_COMMIT, "pid": old["old_pid"],
+                            "boot_nonce": old["old_nonce"], "entered_offset": old["entered_offset"],
+                            "entered_event_sha256": old["entered_event_sha256"]},
+                    "new": {"code_sha256": new["code_sha256"], "commit": new["commit"], "parent": new["parent"],
+                            "test_sha256": new["test_sha256"], "diff_sha256": new["diff_sha256"], "review": ready["review"]},
+                    "first_boot": me, "attested": dict(me), "boot_epoch": 1, "restart_used": False,
+                    "ci": {"observed": False, "at": None, "runs": None}, "s0_slot": {"state": "UNUSED", "task_id": None, "at": None},
+                    "verified": {"docs": None, "receipt_sha256": None, "commit": None, "at": None}}, create=True)
+                self.store.save(self.state)  # state save stays under the writer lock
+                _transition_audit(self.store, created)
+            except Exception as e:  # nothing is retried here: a created record is spent, an absent one consumed nothing
+                self._tr_event("quarantine-transfer-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+        if created is not None:
+            self._transition_ci(created)
+
+    def _transition_ci(self, rec):
+        """The post-consumption provider observations of A and D (pinned runs) and C; all are persisted before S0_REBIND."""
+        if rec["stage"] != "TRANSFER_CONSUMED" or rec["ci"]["observed"]:
+            return rec
+        try:
+            runs = _transfer_ci_observe(self.cfg, rec)
+        except Exception as e:  # an outage never mints a new transfer: quarantine simply stays closed
+            self._tr_event("quarantine-transfer-ci-unavailable", transition_id=rec["transition_id"], reason=str(e)[:300])
+            return rec
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "ci"}):
+            self._tr_event("quarantine-transfer-refused", reason="the repository writer lock is held")
+            return rec
+        try:
+            rec = _transition_write(self.cfg, {**rec, "stage": "S0_REBIND", "ci": {"observed": True, "at": now_iso(), "runs": runs}})
+            _transition_audit(self.store, rec)
+        except Exception as e:
+            self._tr_event("quarantine-transfer-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+        return rec
+
+    def _transition_reboot(self, rec):
+        """A later process under an existing record: at most one same-code recovery restart, and only before the S0 slot
+        consumption is persisted. After that (VERIFIED, ACTIVE) every restart is denied; the record is left untouched."""
+        cfg = self.cfg
+        _transition_audit(self.store, rec)
+
+        def deny(why):
+            self._tr_event("quarantine-transfer-denied", transition_id=rec["transition_id"], stage=rec["stage"], reason=why)
+
+        bad = _transition_bound_problem(cfg, rec, full=True)
+        if bad:
+            return deny(bad)
+        if rec["s0_slot"]["state"] == "CONSUMED" or rec["stage"] in ("VERIFIED", "ACTIVE"):
+            return deny("restart after S0 slot consumption is not permitted")
+        if rec["restart_used"]:
+            return deny("the single same-code recovery restart is already spent")
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "reattest"}):
+            return deny("the repository writer lock is held")
+        try:
+            successor = _transfer_successor(cfg)
+            if any(successor[k] != rec["new"][k] for k in ("commit", "parent", "test_sha256", "diff_sha256")) \
+                    or successor["code_sha256"] != rec["new"]["code_sha256"]:
+                return deny("the successor commit/hash binding drifted")
+            h = self.state.get("handoff") or {}
+            if _other_runner_pids(cfg) or h.get("request") or h.get("quarantine") or any(
+                    isinstance(t, dict) and (t.get("status") == "RUNNING" or t.get("child")) for t in self.state["tasks"].values()):
+                return deny("another runner, a worker or an open handoff exists")
+            rec = _transition_write(cfg, {**rec, "attested": self._transition_attestation(),
+                                          "boot_epoch": rec["boot_epoch"] + 1,
+                                          "restart_used": True})
+            self.store.save(self.state)
+            _transition_audit(self.store, rec)
+        except Exception as e:
+            return deny(f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+        self._transition_ci(rec)
+
+    def _transition_consume_slot(self, t):
+        """Persist the S0 slot consumption BEFORE dispatch (the caller holds the writer lock)."""
+        rec = _load_transition(self.cfg)
+        att = rec["attested"] if rec else {}
+        if not (rec and rec["stage"] == "S0_REBIND" and rec["s0_slot"]["state"] == "UNUSED"
+                and att["pid"] == os.getpid() and att["boot_nonce"] == _PROCESS_BOOT_NONCE
+                and _transition_bound_problem(self.cfg, rec, full=True) is None):
+            raise GateError("dual rebind slot invalid or already consumed")
+        _transition_write(self.cfg, {**rec, "s0_slot": {"state": "CONSUMED", "task_id": t["id"], "at": now_iso()}})
+        self._tr_event("quarantine-transfer-slot-consumed", transition_id=rec["transition_id"], task_id=t["id"])
+
+    def transition_step(self):
+        """Advance S0_REBIND -> VERIFIED -> ACTIVE from evidence, never from a command; throttled and lock-gated."""
+        now = time.monotonic()
+        if self._tr_last is not None and now - self._tr_last < TRANSFER_STEP_EVERY:
+            return
+        self._tr_last = now
+        try:
+            rec = _load_transition(self.cfg)
+        except GateError:
+            return
+        att = rec["attested"] if rec else {}
+        if not (rec and rec["stage"] in ("S0_REBIND", "VERIFIED") and att["pid"] == os.getpid()
+                and att["boot_nonce"] == _PROCESS_BOOT_NONCE) or rec["s0_slot"]["state"] != "CONSUMED":
+            return
+        if any(t.get("status") == "RUNNING" for t in self.state["tasks"].values()):
+            return
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "advance"}):
+            return
+        try:
+            if rec["stage"] == "S0_REBIND":
+                try:
+                    ev = _transition_verified(self.cfg, rec, self.state["tasks"])
+                except GateError:
+                    return
+                new = {**rec, "stage": "VERIFIED", "verified": {**ev, "at": now_iso()}}
+            else:
+                problem = _transition_probe_problem(self.cfg, rec, self.state["tasks"])
+                if problem:
+                    return self._tr_event("quarantine-transfer-probe-failed", transition_id=rec["transition_id"], reason=problem[:300])
+                new = {**rec, "stage": "ACTIVE"}
+            _transition_audit(self.store, _transition_write(self.cfg, new))
+        except Exception as e:
+            self._tr_event("quarantine-transfer-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+
     def finish(self):
         reason = "STOP" if self.state["control"] == "STOP" else "signal"
         hp = getattr(self, "hp", None)
@@ -5406,6 +6700,13 @@ class Runner:
                 continue
             reaped = self.reap(t.get("child"))
             op = f"{t['id']}:{t['attempts']}"
+            if s0_dual_rebind_marked(t) or t["id"] == TRANSFER_REVIEW_ID:  # one-shot: never requeued or retried after an interruption
+                self.state["recoveries"] += 1
+                t.update(status="BLOCKED", blocked_reason=("TRANSFER_REVIEW_INTERRUPTED" if t["id"] == TRANSFER_REVIEW_ID
+                                                           else "S0_DUAL_REBIND_INTERRUPTED"), child=None, stage=None,
+                         updated_at=now_iso(), last_error="interrupted by runner crash/restart; the single attempt is spent")
+                self.store.event("recovered-interrupted", op, task_id=t["id"], orphan_reaped=reaped, blocked=True)
+                continue
             self.state["recoveries"] += 1
             t["child"], t["stage"] = None, None
             self.store.event("recovered-interrupted", op, task_id=t["id"], orphan_reaped=reaped)
@@ -5452,6 +6753,8 @@ class Runner:
         self.apply_commands()
         self.check_baseline()
         self.heartbeat()
+        self.transition_step()
+        self.transfer_review_step()
         if self.state["control"] == "RUN" and self.state["health"]["status"] == "OK" and not self.handoff_open() \
                 and not (self.state.get("handoff") or {}).get("quarantine"):
             t = self.next_ready()
@@ -5485,6 +6788,8 @@ class Runner:
             return self.handoff_poll(h)
         if h.get("quarantine"):  # a late gateway turn may be alive: no turn, no ingress, whatever else changes; only `rearm` lifts it
             self.hold_queue(h["quarantine"])
+            return
+        if _transition_mode(self.cfg)[0] in ("HOLD", "LANE"):  # no continuation turn before the transfer is ACTIVE
             return
         st = self.state
         if st["control"] != "RUN":
@@ -5841,6 +7146,10 @@ class Runner:
             self.hold_queue(h["quarantine"])
             return
         # S0/D16 quarantine: default-deny; any corrupt/absent/mismatched state holds the queue
+        mode, why = _transition_mode(self.cfg)
+        if mode == "HOLD":
+            self.hold_queue(f"TRANSFER_HOLD: {why}")
+            return
         qs, qled_or_reason = quarantine_state(self.cfg)
         if qs == _QS_DENY:
             self.hold_queue(f"S0_D16_QUARANTINE_DENY: {qled_or_reason}")
@@ -5853,12 +7162,18 @@ class Runner:
                 t = validate_task(json.loads(f.read_text()), self.cfg)
                 review_binding(self.cfg, t, self.state["tasks"], require_changed=False)
                 parent = self.state["tasks"].get((t.get("review_of") or {}).get("task_id"))
+                if mode == "LANE" and not (s0_dual_rebind_marked(t) or isinstance(parent, dict) and s0_dual_rebind_marked(parent)):
+                    raise TransitionHold()
                 if (s0_marked(t) or s0_dual_rebind_marked(t) or d16_dual_lineage(self.state["tasks"], t)
                         or isinstance(parent, dict) and (s0_dual_rebind_marked(parent)
                                                          or d16_dual_lineage(self.state["tasks"], parent))):
                     reason = gate_reason(self.cfg, t, self.state["tasks"])
                     if reason:
                         raise GateError(reason)
+            except TransitionHold:
+                f.rename(f.with_suffix(".held"))
+                self.store.event("queue-held", file=f.name, reason="TRANSFER_HOLD: only the fixed S0 rebind lane is admitted before ACTIVE")
+                continue
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
                 self.store.event("task-rejected", file=f.name, reason=str(e))
@@ -5871,6 +7186,7 @@ class Runner:
             f.unlink()
 
     def apply_commands(self):
+        held = _transition_mode(self.cfg)[0] in ("HOLD", "LANE")  # before ACTIVE only stop/pause apply
         for f in self.store.pending_commands():
             try:
                 c = json.loads(f.read_text())
@@ -5880,6 +7196,11 @@ class Runner:
             except Exception as e:
                 f.rename(f.with_suffix(".rejected"))
                 self.store.event("command-rejected", file=f.name, reason=str(e))
+                continue
+            if held and c["cmd"] not in ("pause", "stop"):  # stays pending, untouched, until the transfer is ACTIVE
+                if f.name not in self._tr_held_cmds:
+                    self._tr_held_cmds.add(f.name)
+                    self.store.event("command-held", c["op_id"], cmd=c["cmd"], reason="TRANSFER_HOLD: transition is not ACTIVE")
                 continue
             req = (self.state.get("handoff") or {}).get("request")
             if c["op_id"] in self.state["applied_ops"]:
@@ -6005,8 +7326,15 @@ class Runner:
         return None
 
     def gated(self, t):
-        """True (and records why) if the prerequisite gate holds the task. A resumed verification already ran."""
-        reason = None if t.get("stage") == "verify_pending" else gate_reason(self.cfg, t, self.state["tasks"])
+        """True (and records why) if the prerequisite gate holds the task. A resumed verification already ran, so it skips the
+        prerequisite gate but never the transfer lineage's HOLD; an evaluation error denies."""
+        if t.get("stage") == "verify_pending":
+            try:
+                reason = _transition_gate_reason(self.cfg, t, self.state["tasks"])
+            except Exception as e:
+                reason = f"TRANSFER_HOLD {t.get('id')}: transfer gate evaluation failed: {e}"[:300]
+        else:
+            reason = gate_reason(self.cfg, t, self.state["tasks"])
         if reason != t.get("gate_reason"):
             t["gate_reason"] = reason
             self.store.event("task-gated" if reason else "task-gate-cleared", task_id=t["id"], reason=reason)
@@ -6058,6 +7386,8 @@ class Runner:
 
     def review_binding_block(self, t):
         """Runner-authored, immutable part of a bound code-review prompt: the model-written prompt cannot replace it."""
+        if t.get("id") == TRANSFER_REVIEW_ID:
+            return self.transfer_review_block()
         b = t.get("review_of")
         if not b:
             return ""
@@ -6120,6 +7450,41 @@ class Runner:
                       "a reason to block; inability to inspect the files or a substantive defect is."]
         return "\n".join(lines)
 
+    def transfer_review_block(self):
+        """Runner-authored subject of the one pre-consumption review (nothing a model wrote can replace it)."""
+        sj = _transfer_successor(self.cfg)
+        diff = _transfer_diff(self.cfg, sj["commit"])
+        if len(diff) > 2_000_000:
+            raise ValueError("the successor diff is too large to review in one bounded prompt")
+        return "\n".join(["", "", "Runner-authored review subject (immutable; the prompt above cannot change it):",
+                          f"- Chain: effective amendment B {TRANSFER_AMEND_COMMIT} -> authorization commit A {TRANSFER_AUTH_COMMIT} -> "
+                          f"Lifecycle contract record D (sole parent of C) {sj['parent']} -> successor commit C {sj['commit']}.",
+                          f"- {S0_RUNNER_FILE} sha256 {sj['code_sha256']}; {TRANSFER_TEST_FILE} sha256 {sj['test_sha256']}.",
+                          f"- Owner records to judge against: {TRANSFER_OWNER_PATH}, {TRANSFER_AMEND_PATH}, {TRANSFER_AUTH_PATH} "
+                          f"and {TRANSFER_LIFECYCLE_PATH}.",
+                          f"- Canonical D-to-C diff SHA256 {sj['diff_sha256']}:", "```diff",
+                          diff.decode("utf-8", errors="replace"), "```"])
+
+    def transfer_review_event_fields(self, t, prompt_text):
+        if t["id"] != TRANSFER_REVIEW_ID:
+            return {}
+        try:
+            subject = _transfer_subject_sha(_transfer_successor(self.cfg))
+        except GateError:
+            subject = None
+        return {"subject_sha256": subject, "prompt_sha256": _sha(prompt_text.encode()), "pid": os.getpid(),
+                "boot_nonce": _PROCESS_BOOT_NONCE}
+
+    def transfer_review_record(self, t, op, out):
+        """After settlement: pin the exact run output and evidence file bytes the settlement produced (DONE only)."""
+        if t.get("status") != "DONE":
+            return
+        try:
+            self.store.event("transfer-review-recorded", op, task_id=t["id"], out_sha256=_sha(Path(out).read_bytes()),
+                             evidence_sha256=_sha(Path(str(out)[:-4] + ".evidence.json").read_bytes()))
+        except OSError:
+            pass  # without the recorded event the chain cannot verify: quarantine simply stays closed
+
     # --- dispatch
     def dispatch(self, t):
         h = self.state.get("handoff") or {}
@@ -6158,13 +7523,16 @@ class Runner:
             # Consume the dual rebind slot durably before dispatch (partial write never becomes eligible again)
             if s0_dual_rebind_marked(t):
                 try:
-                    qled = _load_qled(self.cfg)
-                    if not (isinstance(qled, dict) and qled.get("runner_pid") == os.getpid()
-                            and qled.get("runner_boot_nonce") == _PROCESS_BOOT_NONCE
-                            and qled.get("code_sha256") == CODE_SHA and not qled.get("dual_rebind_consumed")):
-                        raise GateError("dual rebind slot invalid or already consumed")
-                    _write_qled(self.cfg, {**qled, "dual_rebind_consumed": True})
-                except GateError as e:
+                    if _transfer_lineage_active(self.cfg):  # the authoritative transition record spends the slot
+                        self._transition_consume_slot(t)
+                    else:
+                        qled = _load_qled(self.cfg)
+                        if not (isinstance(qled, dict) and qled.get("runner_pid") == os.getpid()
+                                and qled.get("runner_boot_nonce") == _PROCESS_BOOT_NONCE
+                                and qled.get("code_sha256") == CODE_SHA and not qled.get("dual_rebind_consumed")):
+                            raise GateError("dual rebind slot invalid or already consumed")
+                        _write_qled(self.cfg, {**qled, "dual_rebind_consumed": True})
+                except (GateError, OSError) as e:
                     t.update(status="BLOCKED", blocked_reason="S0_DUAL_REBIND_SLOT_CONSUMED", stage=None,
                              updated_at=now_iso(), last_error=f"consumption of dual rebind slot failed: {e}")
                     self.store.event("task-blocked", f"{t['id']}:{t['attempts'] + 1}", task_id=t["id"],
@@ -6211,7 +7579,8 @@ class Runner:
             t.update(status="RUNNING", stage="child", updated_at=now_iso(), started_at=now_iso(), child=None,
                      blocked_reason=None, finished_at=None)
             self.store.save(self.state)  # RUNNING is durable before the child exists
-            self.store.event("dispatch", op, task_id=t["id"], role=t["role"], model_alias=alias, attempt=t["attempts"])
+            self.store.event("dispatch", op, task_id=t["id"], role=t["role"], model_alias=alias, attempt=t["attempts"],
+                             **self.transfer_review_event_fields(t, prompt_text))
             stem = self.cfg.home / "runs" / op.replace(":", "-")
             out, err, sett = Path(f"{stem}.out"), Path(f"{stem}.err"), Path(f"{stem}.settings.json")
             atomic_write(sett, json.dumps(self.child_settings(t), indent=1).encode())
@@ -6249,6 +7618,8 @@ class Runner:
                 t["verify_checkpoint"] = {"op": op, "out": str(out), "err": str(err), "isolation": iso}
                 self.store.save(self.state)
             self.settle(t, op, outcome, p, out, err, before, iso)
+            if t["id"] == TRANSFER_REVIEW_ID:
+                self.transfer_review_record(t, op, out)
         finally:
             # terminal/settled state is durable BEFORE the writer lock frees, so a concurrent enqueue never reads stale state
             try:
@@ -6292,7 +7663,8 @@ class Runner:
                                                   or t["id"] in (D16_F34_WRITE, D16_F34_REVIEW)
                                                   or d16_single_attempt(self.state["tasks"], t)):
             # No retry after an interrupted one-shot write or review; partial edits or a review judgement may exist.
-            code = ("D16_F34_ATTEMPT_INTERRUPTED" if t["id"] in (D16_F34_WRITE, D16_F34_REVIEW) else
+            code = ("TRANSFER_REVIEW_ATTEMPT_INTERRUPTED" if t["id"] == TRANSFER_REVIEW_ID else
+                    "D16_F34_ATTEMPT_INTERRUPTED" if t["id"] in (D16_F34_WRITE, D16_F34_REVIEW) else
                     "D16_DUAL_ATTEMPT_INTERRUPTED" if d16_single_attempt(self.state["tasks"], t) and not s0_dual_rebind_marked(t) else
                     "S0_ATTEMPT_INTERRUPTED" if s0_marked(t) else
                     "S0_REFRESH_ATTEMPT_INTERRUPTED" if s0_refresh_marked(t) else
@@ -6803,6 +8175,9 @@ def enqueue(cfg, task):
     qs, qreason = quarantine_state(cfg)
     if qs in (_QS_DENY, _QS_RESTARTED):
         raise ValueError(f"enqueue refused: S0/D16 quarantine {qs}: {qreason}")
+    mode, why = _transition_mode(cfg)
+    if mode == "HOLD":
+        raise ValueError(f"enqueue refused: TRANSFER_HOLD: {why}")
     if task["id"] in state["tasks"]:
         raise ValueError(f"task id already exists: {task['id']}")
     if (s0_marked(t) or s0_doc_marked(t) or s0_refresh_marked(t) or s0_rebind_marked(t)
