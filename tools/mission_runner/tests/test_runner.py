@@ -18122,3 +18122,1111 @@ class CandidateChild(TransferBase):
                 self.assertEqual(len(self.pre_images()), 1, label)  # consumed exactly once
                 self.assertEqual(R._transition_mode(self.cfg)[0], "HOLD", label)
                 self.assertIn("TRANSFER_HOLD", self.gate(self.lane_task()), label)  # the fixed lane stays closed too
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# S0 rebind hash recovery overlay (OWNER-2026-10-28-s0-rebind-hash-recovery.md). Isolated temp world only: the ORIGINAL transition
+# (live code L) is created through the real lifecycle, then replacement code N (commit C, child of the owner record E) is "loaded"
+# by patching the module identity constants and __file__; nothing touches live state.
+RECOVERY_FAKE = '''#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+sys.stdin.read()
+steer = json.loads(Path(__file__).with_name("steer.json").read_text())
+for rel, text in (steer.get("write") or {}).items():
+    Path(rel).write_text(text)
+tok = {"inputTokens": 10, "outputTokens": 20, "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0,
+       "webSearchRequests": 0, "costUSD": 0.01, "contextWindow": 200000, "maxOutputTokens": 32000}
+result = "done" if "outcome" not in steer else "reviewed\\nOUTCOME: " + steer["outcome"]
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": result, "session_id": "sess-rec-1",
+                  "permission_denials": [], "modelUsage": {steer["model"]: tok}}))
+'''
+
+
+class RecoveryBase(TransferBase):
+    CERT, QA = R.S0_DOC_PATHS
+    test_fixed_s0_lane_is_admitted_by_the_real_gate_only_with_authentic_dependency_receipts = None  # the original lane fixture is not this world
+    MANIFEST_B = json.dumps({"provisional": True, "gate_eligible": False, "modules": [
+        {"module_id": "MOD-004", "status": "PROVISIONAL", "gate_eligible": False}]}).encode()
+    SCREENS_B = json.dumps({"screens": [{"id": i, "contract": {"route": None, "owning_module": None}}
+                                        for i in (*R.S0_SCREEN_IDS, "ADM-SET-03", "ADM-SET-04")]}).encode()
+    WORKFLOW_B = b'steps:\n  python-version: "3.13"\n'
+    RULE = ".claude/rules/backend/mod004-rls.md"
+    CAPP = "contracts/engineering/mod004-s0-capability.json"
+    HIST_RUNNER = {"path": R.S0_RUNNER_FILE, "sha256": hashlib.sha256(b"runner bytes at declaration time\n").hexdigest()}
+    _ref = staticmethod(lambda rel, b: {"path": rel, "sha256": hashlib.sha256(b).hexdigest()})
+    CAP_B = json.dumps({
+        "schema": 1, "module": "MOD-004", "status": "ACTIVE_FOR_S0_ONLY", "paths": sorted(R.S0_PATHS), "toolchain": "python3.13-stdlib",
+        "third_party_caps": 0, "database_profiles": 0, "console_profiles": 0, "module_row_status": "PROVISIONAL",
+        "forbidden_imports": sorted(R.S0_FORBIDDEN_IMPORTS), "module_manifest": {"path": R.S0_MANIFEST, "sha256": hashlib.sha256(MANIFEST_B).hexdigest()},
+        "rules_skills": [{"path": RULE, "sha256": hashlib.sha256(b"rule\n").hexdigest()}],
+        "authority": {"runner_gate": HIST_RUNNER}}).encode()
+    SUBJECT_FILES = {R.S0_OWNER_RECORD: b"# s0 owner\n", R.S0_ADR: b"# adr\nD12.5 S0 amendment\n", R.S0_EDGE_RECORD: b"# edge\n",
+                     CAPP: CAP_B, R.S0_MANIFEST: MANIFEST_B, R.S0_SCREENS: SCREENS_B, R.S0_WORKFLOW: WORKFLOW_B, RULE: b"rule\n"}
+    SIBLINGS = dict(SUBJECT_FILES)
+
+    def ci_rec(self, sha):
+        return {"run_id": "123", "name": R.CI_WORKFLOW_NAME, "event": "push", "status": "completed", "head_sha": sha, "conclusion": "success"}
+
+    CERT_OVER = {}  # fixed extra/overridden fields of the ORIGINAL certificate (a subclass may make it fail the S0 content checks)
+
+    def cert_bytes(self, packet_sha, runner_sha, note=None, edit=None, indent=1, **over):
+        """A complete, S0_ELIGIBLE certificate (the established content checks run against it). `note` adds the truthful
+        sha256_note; `edit` mutates the parsed dict last (unrelated-field tampering)."""
+        S = self.SUBJECT_FILES
+        receipts = {m: hashlib.sha256((self.home / "acceptances" / f"{m}.json").read_bytes()).hexdigest() for m in ("MOD-001", "MOD-002")}
+        d = {"schema": 1, "module": "MOD-004", "status": "S0_ELIGIBLE", "lifecycle": "EFFECTIVE", "paths": sorted(R.S0_PATHS),
+             "dependency_receipts": receipts, "edge_decision": self._ref(R.S0_EDGE_RECORD, S[R.S0_EDGE_RECORD]),
+             "module_manifest": self._ref(R.S0_MANIFEST, self.MANIFEST_B), "no_ui": True,
+             "runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": runner_sha}, "historical_runner_gate": dict(self.HIST_RUNNER),
+             "screen_registry": self._ref(R.S0_SCREENS, self.SCREENS_B), "screen_identities": list(R.S0_SCREEN_IDS),
+             "toolchain_evidence": {"workflow": self._ref(R.S0_WORKFLOW, self.WORKFLOW_B), "python_version": "3.13",
+                                    "commit": self.old_commit, "ci": self.ci_rec(self.old_commit)},
+             "scenario_qa_packet": {"path": R.S0_DOC_PATHS[1], "sha256": packet_sha},
+             # historical nested observations of the ORIGINAL runner: preserved byte-for-byte by every correction
+             "authority": {"runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": self.live_sha}},
+             "successor_runner_load_observation": {"loaded_runner_sha256": self.live_sha, "state": "one successor PID is live"},
+             "scenario_review_requirement": {"status": "REQUIRED_PENDING", "required_outcome": "APPROVED"},
+             "s0_spec": {"pass_rule": "a row passes only with structural evidence", "rows": 14}, **self.CERT_OVER, **over}
+        if note is not None:
+            d["scenario_qa_packet"]["sha256_note"] = note
+        if edit:
+            edit(d)
+        return (json.dumps(d, sort_keys=True, indent=indent) + "\n").encode()
+
+    IDENT = ("RECOVERY_OWNER_COMMIT", "RECOVERY_OWNER_SHA", "RECOVERY_OWNER_CI_RUN", "RECOVERY_ORIG_COMMIT",
+             "RECOVERY_ORIG_CODE_SHA", "RECOVERY_ORIG_DOCS", "CODE_SHA", "_LOADED_CODE_SHA", "__file__", "_PROCESS_BOOT_NONCE")
+
+    def setUp(self):
+        self.pristine = {n: getattr(R, n) for n in self.IDENT}  # captured before this world patches the module identity
+        super().setUp()
+        sha = lambda b: hashlib.sha256(b).hexdigest()
+        self.sha = sha
+        self.live_sha = R.CODE_SHA  # L: the original successor's code
+        self.boot()  # the ORIGINAL transition (S0_REBIND) through the real lifecycle
+        self.consume_slot()  # the original slot is consumed and bound to the ORIGINAL task id
+        self.qa0 = b"# scenario packet v1\n"
+        self.cert0 = self.cert_bytes("11" * 32, self.live_sha)
+        self.orig_docs = {self.CERT: sha(self.cert0), self.QA: sha(self.qa0)}
+        changed = [{"path": p, "sha256": h} for p, h in self.orig_docs.items()]
+        w = {**self.lane_task(), "status": "DONE", "attempts": 1, "source": None,
+             "evidence": {"changed": changed, "violations": []}, "route": {"verdict": "VERIFIED", "intended": "sonnet"}}
+        self.mutate_state(lambda st: st["tasks"].update({w["id"]: w}))
+        self.orig_record_bytes = self.raw(R.TRANSFER_RECORD_NAME)
+        # E (record-only) and C (exactly runner.py + test_runner.py) as direct children of the original successor
+        self.owner2 = b"# recovery owner record\n"
+        self.e_commit = self.commit_files({R.RECOVERY_OWNER_PATH: self.owner2}, "recovery owner")
+        self.repl_bytes = self.runner_bytes + b"\n# replacement runner\n"
+        self.test2 = b"# replacement test\n"
+        self.c_commit = self.commit_files({self.runner_rel: self.repl_bytes, self.test_rel: self.test2}, "replacement")
+        self.new_sha = sha(self.repl_bytes)
+        (self.repo / self.CERT).write_bytes(self.cert0)  # the two UNPUBLISHED, UNSTAGED pinned dirty documents
+        (self.repo / self.QA).write_bytes(self.qa0)
+        repl = Path(self.tmp.name) / "repl"
+        repl.mkdir()
+        (repl / "runner.py").write_bytes(self.repl_bytes)
+        shutil.copy(Path(R.__file__).with_name("dashboard.py"), repl / "dashboard.py")
+        for name, value in (("RECOVERY_OWNER_COMMIT", self.e_commit), ("RECOVERY_OWNER_SHA", sha(self.owner2)),
+                            ("RECOVERY_OWNER_CI_RUN", str(self.c_run_id)), ("RECOVERY_ORIG_COMMIT", self.succ_commit),
+                            ("RECOVERY_ORIG_CODE_SHA", self.live_sha), ("RECOVERY_ORIG_DOCS", dict(self.orig_docs)),
+                            ("CODE_SHA", self.new_sha), ("_LOADED_CODE_SHA", self.new_sha), ("__file__", str(repl / "runner.py"))):
+            self.enterContext(mock.patch.object(R, name, value))
+        self.ci_ok[self.e_commit] = self.ci_ok[self.c_commit] = True
+        self.write_recovery_preload()
+
+    def write_recovery_preload(self, **over):
+        cp = self.home / R.RECOVERY_CHECKPOINT
+        cp.mkdir(parents=True, exist_ok=True)
+        succ = R._recovery_successor(self.cfg)
+        out = b"recovery runner review\nOUTCOME: APPROVED\n"
+        (cp / "recovery-review.out").write_bytes(out)
+        d = {"schema": 1, "kind": "preload-opus-review", "commit": succ["commit"], "code_sha256": succ["code_sha256"],
+             "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"], "model": "claude-opus-5-5",
+             "session_id": "pre-rec", "output_file": "recovery-review.out", "output_sha256": self.sha(out), "outcome": "APPROVED",
+             "c_ci_run_id": str(self.c_run_id), **over}
+        (cp / R.TRANSFER_PRELOAD_NAME).write_text(json.dumps(d))
+
+    NONCE = "cd" * 16
+
+    def release_cur(self):
+        prev = getattr(self, "cur", None)
+        if prev is not None:
+            prev.rlock.release()
+            prev.wlock.release()
+            self.cur = None
+
+    def rebuild(self):
+        """A pristine world: the one-reload rule means every bind scenario needs its own."""
+        self.release_cur()
+        for n, v in self.pristine.items():  # the discarded world's identity patches end here; the next world re-patches
+            setattr(R, n, v)
+        super().rebuild()
+
+    def bind(self, nonce=None):
+        """The one replacement process: boot branch, then the (throttled) recovery step."""
+        self.release_cur()  # the previous process of this test has ended
+        r = self.cur = self.begin(nonce or self.NONCE)
+        r._transition_boot()
+        r._rc_last = None
+        r.recovery_step()
+        return r
+
+    def step(self, r):
+        r.state = r.store.load()
+        r._rc_last = None
+        r.recovery_step()
+
+    def overlay(self):
+        return R._recovery_load(self.cfg)
+
+    def mode(self):
+        return R._transition_mode(self.cfg)[0]
+
+    def correction_task(self, **over):
+        t = {"id": R.RECOVERY_ID, "module": R.S0_MODULE, "role": "implement", "plan_phase": R.RECOVERY_MARKER, "title": "recovery",
+             "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": [self.CERT], "verify_cmd": [],
+             "doc_base": dict(self.orig_docs), "prompt": "correct the certificate"}
+        return {**t, **over}
+
+    def assert_original_intact(self):
+        self.assertEqual(self.raw(R.TRANSFER_RECORD_NAME), self.orig_record_bytes)
+
+    def final_cert(self, **over):
+        packet = over.pop("packet", self.orig_docs[self.QA])
+        note = over.pop("note", R.recovery_note(packet))
+        return self.cert_bytes(packet, over.pop("runner", self.new_sha), note=note, **over)
+
+    def run_correction(self, r, write=None, model="claude-sonnet-5-5"):
+        """The REAL dispatch/settle path against a fake Sonnet that writes the certificate."""
+        self.bin.write_text(RECOVERY_FAKE)
+        self.bin.with_name("steer.json").write_text(json.dumps(
+            {"model": model, "write": {self.CERT: (write or self.final_cert()).decode()}}))
+        r.state = r.store.load()
+        r.state["control"] = "RUN"
+        r.state["health"] = {"status": "OK"}
+        t = R.validate_task(self.correction_task(), self.cfg)
+        r.state["tasks"][t["id"]] = t
+        r.store.save(r.state)
+        task = r.next_ready()
+        self.assertIsNotNone(task, self.gate(t))
+        r.dispatch(task)
+        return r.state["tasks"][R.RECOVERY_ID]
+
+    def run_review(self, r, outcome="APPROVED", rid="recovery-review"):
+        self.bin.with_name("steer.json").write_text(json.dumps({"model": "claude-opus-5-5", "outcome": outcome}))
+        t = R.validate_task({"id": rid, "module": R.S0_MODULE, "role": "code-review", "title": "review", "prompt": "review both",
+                             "review_of": {"task_id": R.RECOVERY_ID}}, self.cfg)
+        R.review_binding(self.cfg, t, r.state["tasks"], require_changed=False)
+        r.state["tasks"][rid] = t
+        r.store.save(r.state)
+        task = r.next_ready()
+        self.assertIsNotNone(task, self.gate(t))
+        r.dispatch(task)
+        return r.state["tasks"][rid]
+
+    def publish(self, **over):
+        """P: a direct child of C holding both documents."""
+        head = self.commit_files(over.get("files", {}), "publish")
+        self.ci_ok[head] = over.get("ci", True)
+        return head
+
+    def s0_review(self, rel, name, verdict="APPROVED", prompt=None):
+        """A runner-recorded Opus review task of one committed file (state + dispatch output), returning the receipt entry."""
+        sha = self.sha((self.repo / rel).read_bytes())
+        tid, result = f"rev-{name}", f"fine {name}\nOUTCOME: {verdict}"
+        op = f"{tid}:1"
+        out = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": result,
+                          "modelUsage": {"claude-opus-5-5": {"inputTokens": 10, "outputTokens": 20}}}).encode()
+        (self.home / "runs").mkdir(parents=True, exist_ok=True)
+        (self.home / "runs" / f"{tid}-1.out").write_bytes(out)
+        task = {"id": tid, "module": "MOD-004", "role": "architecture", "status": "DONE", "result": result[:500],
+                "prompt": f"Review EXACT file {rel} SHA-256 {sha}\nLast line OUTCOME." if prompt is None else prompt,
+                "route": {"verdict": "VERIFIED", "dispatch_op": op, "intended": "opus"},
+                "evidence": {"op": op, "review_outcome": verdict, "route_verdict": "VERIFIED", "subtype": "success", "violations": []}}
+        self.mutate_state(lambda st: st["tasks"].update({tid: task}))
+        return {"task_id": tid, "output_sha256": self.sha(out)}
+
+    def fresh_s0_subjects(self, head):
+        """The six S0 subjects of the FRESH receipt, each with its own commit, CI record and runner-recorded Opus review."""
+        old = self.old_commit
+        cert_sha = self.sha((self.repo / self.CERT).read_bytes())
+        ent = lambda rel, name: {"path": rel, "sha256": self.sha((self.repo / rel).read_bytes()), "commit": old, "ci": self.ci_rec(old),
+                                 "review": self.s0_review(rel, name)}
+        ov = self.overlay()
+        out = (self.home / "runs" / "recovery-review-1.out").read_bytes()
+        return {"owner": ent(R.S0_OWNER_RECORD, "rec-owner"), "adr": ent(R.S0_ADR, "rec-adr"), "edge": ent(R.S0_EDGE_RECORD, "rec-edge"),
+                "capability": ent(self.CAPP, "rec-cap"),
+                "eligibility": {"path": self.CERT, "sha256": cert_sha, "commit": head, "ci": self.ci_rec(head),
+                                "review": {"task_id": "recovery-review", "output_sha256": self.sha(out)}},
+                "runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": self.new_sha, "commit": self.c_commit, "ci": ov["runner"]["ci"],
+                                "review": {"preload_sha256": ov["runner"]["preload_sha256"],
+                                           "output_sha256": ov["runner"]["preload_output_sha256"]}}}
+
+    def write_receipt(self, head, s0_patch=None, subjects=None, **over):
+        """The NEW recovery receipt plus the SEPARATE fresh six-subject S0 receipt it binds byte-for-byte."""
+        cert_sha = self.sha((self.repo / self.CERT).read_bytes())
+        s0 = {"schema": 1, "module": "MOD-004", "kind": "mod004-s0-authority", "operator": "op", "recorded_at": R.now_iso(),
+              "subjects": subjects or self.fresh_s0_subjects(head)}
+        if s0_patch:
+            s0_patch(s0)
+        s0b = json.dumps(s0, sort_keys=True).encode()
+        (self.home / "acceptances" / f"{R.RECOVERY_S0_RECEIPT}.json").write_bytes(s0b)
+        doc = {"schema": R.SCHEMA, "kind": "mod004-s0-d16-rebind-recovery", "recovery_id": self.overlay()["recovery_id"],
+               "transition_id": self.record()["transition_id"], "runner_sha256": self.new_sha,
+               "documents": {self.CERT: cert_sha, self.QA: self.sha((self.repo / self.QA).read_bytes())}, "commit": head,
+               "s0_receipt": {"name": R.RECOVERY_S0_RECEIPT, "sha256": self.sha(s0b)}, "recorded_at": R.now_iso(), **over}
+        (self.home / "acceptances" / f"{R.RECOVERY_RECEIPT}.json").write_text(json.dumps(doc, sort_keys=True))
+        return doc
+
+    def to_corrected(self, r):
+        """Bound, correction consumed and DONE, one APPROVED review of both documents."""
+        w = self.run_correction(r)
+        self.assertEqual(w["status"], "DONE", w.get("last_error"))
+        rv = self.run_review(r)
+        self.assertEqual(rv["status"], "DONE", rv.get("last_error"))
+        return w, rv
+
+
+class RecoveryOverlayBinding(RecoveryBase):
+    def test_overlay_binds_without_touching_the_original_record(self):
+        r = self.bind()
+        ov = self.overlay()
+        self.assertEqual(ov["stage"], "BOUND")
+        self.assertEqual(ov["correction"], {"state": "UNUSED", "task_id": None, "at": None})
+        self.assert_original_intact()
+        rec = self.record()
+        self.assertEqual((rec["stage"], rec["s0_slot"]["state"], rec["s0_slot"]["task_id"]), ("S0_REBIND", "CONSUMED", R.S0_DUAL_REBIND_ID))
+        self.assertEqual(ov["orig"]["checksum"], rec["checksum"])
+        self.assertEqual(ov["orig"]["file_sha256"], self.sha(self.orig_record_bytes))
+        self.assertEqual((ov["runner"]["commit"], ov["runner"]["parent"], ov["owner"]["commit"]), (self.c_commit, self.e_commit, self.e_commit))
+        self.assertEqual(self.mode(), "RECOVERY")
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE)
+        self.assertIsNone(R._recovery_pre_image_problem(self.cfg, ov, True))
+        pre = self.home / ov["pre_image"]["dir"]
+        self.assertEqual((pre / R.TRANSFER_RECORD_NAME).read_bytes(), self.orig_record_bytes)
+        self.assertEqual((pre / "doc-0").read_bytes(), self.cert0)
+        self.assertEqual((self.repo / self.CERT).read_bytes(), self.cert0)  # documents untouched
+        self.assertEqual((self.repo / self.QA).read_bytes(), self.qa0)
+        r._tr_last = None
+        r.transition_step()  # replacement code never advances the original record
+        self.assert_original_intact()
+
+    def test_exact_correction_is_admitted_and_everything_else_is_held(self):
+        self.bind()
+        self.assertIsNone(self.gate(self.correction_task()))
+        for label, over in (("wrong id", {"id": "mod004-s0-recovery-alias"}), ("no marker", {"plan_phase": None}),
+                            ("extra path", {"allowed_paths": list(R.S0_DOC_PATHS) + ["x.txt"]}),
+                            ("both expected", {"expected_changes": list(R.S0_DOC_PATHS)}),
+                            ("changed base", {"doc_base": {**self.orig_docs, self.QA: "ab" * 32}}),
+                            ("verifier", {"verify_cmd": ["true"]}), ("planner source", {"source": "handoff"}),
+                            ("remediation", {"remediation_of": "x"}), ("wrong module", {"module": "MOD-003"})):
+            with self.subTest(label):
+                got = self.gate(self.correction_task(**over)) or ""
+                self.assertTrue(got.startswith(("S0_RECOVERY_INVALID_TASK", "S0_DOC_UNTAGGED", "TRANSFER_HOLD", "S0_DOC_INVALID_TASK",
+                                                "S0_UNTAGGED", "S0_INVALID_TASK")), f"{label}: {got!r}")
+        self.assertIn("TRANSFER_HOLD", self.gate(self.lane_task()))  # the original ID is never re-admitted
+        self.assertIn("TRANSFER_HOLD", self.gate(self.ordinary_task()))
+        self.assertIn("D16_DUAL_DENIED", self.gate({**self.ordinary_task(), "id": R.D16_DUAL_ID}))
+        self.assertIn("S0_PRODUCT_DENIED", self.gate({**self.ordinary_task(), "id": "p", "plan_phase": R.S0_MARKER}))
+
+    def test_queue_and_enqueue_admit_only_the_correction(self):
+        r = self.bind()
+        r.state = r.store.load()
+        (self.home / "queue" / "a.json").write_text(json.dumps({"id": "queued", "module": "MOD-009", "role": "implement",
+                                                                  "prompt": "p", "allowed_paths": ["x"], "expected_changes": ["x"]}))
+        (self.home / "queue" / "b.json").write_text(json.dumps({k: v for k, v in self.lane_task().items()}))
+        r.ingest_queue()
+        self.assertNotIn("queued", r.state["tasks"])
+        self.assertEqual(r.state["tasks"][R.S0_DUAL_REBIND_ID]["attempts"], 1)  # the DONE original, not a re-ingest
+        self.assertEqual(sorted(p.suffix for p in (self.home / "queue").iterdir()), [".held", ".held"])
+        r.store.save(r.state)
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, {k: v for k, v in self.lane_task().items()})
+        R.enqueue(self.cfg, self.correction_task(created_at=None))
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.correction_task(allowed_paths=list(R.S0_DOC_PATHS) + ["y"]))
+
+    def test_validate_task_accepts_the_marker_doc_base_only_for_the_recovery_shape(self):
+        t = R.validate_task(self.correction_task(), self.cfg)
+        self.assertEqual(t["doc_base"], self.orig_docs)
+        with self.assertRaises(ValueError):
+            R.validate_task({**self.correction_task(), "plan_phase": "OTHER-MARKER"}, self.cfg)
+
+
+class RecoveryPreflightNegatives(RecoveryBase):
+    def assert_unbound(self, label="", nonce=None, intact=True, frag=None):
+        r = self.bind(nonce)
+        if frag:  # refused for the scenario's own reason, not an incidental one
+            seen = self.reasons("quarantine-transfer-refused")
+            self.assertTrue(any(frag in (x or "") for x in seen), (label, frag, seen))
+        self.assertIsNone(self.overlay(), label)
+        self.assertEqual(self.mode(), "HOLD", label)
+        self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()), label)
+        self.assertIn("TRANSFER_HOLD", self.gate(self.ordinary_task()), label)
+        self.assertEqual(R.quarantine_state(self.cfg)[0], R._QS_DENY, label)
+        if intact:
+            self.assert_original_intact()
+        self.assertFalse(list((self.home / R.RECOVERY_CHECKPOINT).glob("pre-image-*")), label)
+        return r
+
+    def test_dirty_tree_exception_is_only_the_two_pinned_unstaged_paths(self):
+        cases = {
+            "extra dirty path": lambda: (self.repo / "src" / "keep.txt").write_text("dirty"),
+            "extra untracked path": lambda: (self.repo / "stray.txt").write_text("x"),
+            "document hash drift": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+            "document staged": lambda: git(self.repo, "add", self.CERT),
+            "one document reverted": lambda: git(self.repo, "checkout", "--", self.QA),
+        }
+        for label, fn in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                fn()
+                self.assert_unbound(label, frag="pinned")
+
+    def test_commit_lineage_and_paths_are_exact(self):
+        # C changes an extra path
+        (self.repo / "extra.txt").write_text("e")
+        git(self.repo, "add", "extra.txt")
+        git(self.repo, "commit", "-q", "--amend", "--no-edit")
+        self.assert_unbound("C adds a path", frag="exactly runner.py")
+        git(self.repo, "reset", "-q", "--hard", self.c_commit)
+
+    def test_head_that_is_not_a_direct_child_of_e_is_refused(self):
+        self.commit_files({"later.txt": b"1"}, "later")
+        self.assert_unbound("HEAD is a grandchild of E", frag="direct, single-parent")
+
+    def test_missing_wrong_or_adverse_runner_review_evidence_is_refused(self):
+        cp = self.home / R.RECOVERY_CHECKPOINT
+        (cp / R.TRANSFER_PRELOAD_NAME).rename(cp / "moved.json")
+        self.assert_unbound("no evidence", frag="review evidence")
+        (cp / "moved.json").rename(cp / R.TRANSFER_PRELOAD_NAME)
+        for label, over in (("wrong diff", {"diff_sha256": "00" * 32}), ("wrong code", {"code_sha256": "11" * 32}),
+                            ("changes requested", {"outcome": "CHANGES_REQUESTED"}), ("no CI pin", {"c_ci_run_id": "x"}),
+                            ("not opus", {"model": "claude-sonnet-5-5"})):
+            with self.subTest(label):
+                self.rebuild()
+                self.write_recovery_preload(**over)
+                self.assert_unbound(label, frag="review evidence")
+
+    def test_wrong_ci_for_e_or_c_and_outages_consume_nothing(self):
+        for label, fn in (("E has no green run", lambda: self.ci_ok.update({self.e_commit: False})),
+                          ("C has no green run", lambda: self.ci_ok.update({self.c_commit: False})),
+                          ("provider outage", lambda: setattr(self, "ci_outage", True)),
+                          ("E run id differs", lambda: self.ci_run_over.update({self.e_commit: {"id": 1}})),
+                          ("E run not push", lambda: self.ci_run_over.update({self.e_commit: {"event": "pull_request"}}))):
+            with self.subTest(label):
+                self.rebuild()
+                self.ci_ok.update({self.e_commit: True, self.c_commit: True})
+                self.ci_outage, self.ci_run_over = False, {}
+                fn()
+                self.assert_unbound(label, frag="CI observation")
+
+    def test_ci_outage_may_be_retried_only_by_the_same_process(self):
+        self.ci_outage = True
+        r = self.bind()
+        self.assertIsNone(self.overlay())
+        self.ci_outage = False
+        self.step(r)  # same process, nothing was consumed
+        self.assertEqual(self.overlay()["stage"], "BOUND")
+
+    def test_unsafe_process_state_refuses_binding(self):
+        busy = {"queued id": lambda st: st["tasks"].update({"q": {**self.ordinary_task_stub("q"), "plan_phase": R.RECOVERY_MARKER}}),
+                "running worker": lambda st: st["tasks"].update({"w": {**self.ordinary_task_stub("w"), "status": "RUNNING"}}),
+                "open handoff": lambda st: st.update(handoff={"request": {"x": 1}, "quarantine": None}),
+                "verify pending": lambda st: st["tasks"].update({"v": {**self.ordinary_task_stub("v"), "stage": "verify_pending"}}),
+                "original not done": lambda st: st["tasks"][R.S0_DUAL_REBIND_ID].update(status="BLOCKED"),
+                "original hashes": lambda st: st["tasks"][R.S0_DUAL_REBIND_ID]["evidence"]["changed"][0].update(sha256="ee" * 32),
+                "original two attempts": lambda st: st["tasks"][R.S0_DUAL_REBIND_ID].update(attempts=2)}
+        for label, mut in busy.items():
+            with self.subTest(label):
+                self.rebuild()
+                self.mutate_state(mut)
+                self.assert_unbound(label)
+        self.rebuild()
+        self.other_pids.append(4242)
+        self.assert_unbound("duplicate runner process")
+        self.other_pids.clear()
+        self.rebuild()
+        other = R.FileLock(R.writer_lock_path(self.home, self.repo))
+        self.assertTrue(other.acquire({"pid": 1}))
+        try:
+            self.assert_unbound("writer lock held")
+        finally:
+            other.release()
+
+    def test_queued_correction_id_or_original_process_cannot_bind(self):
+        (self.home / "queue").mkdir(exist_ok=True)
+        (self.home / "queue" / "x.json").write_text(json.dumps({"id": R.RECOVERY_ID}))
+        self.assert_unbound("recovery id already queued")
+        (self.home / "queue" / "x.json").unlink()
+        self.rebuild()
+        r = self.begin(None)  # the original attested process itself (same pid and nonce) is not a replacement
+        r._transition_boot()
+        r._rc_last = None
+        r.recovery_step()
+        self.assertIsNone(self.overlay())
+
+    def test_original_record_tampering_blocks_binding(self):
+        raw = self.orig_record_bytes
+        (self.home / R.TRANSFER_RECORD_NAME).write_bytes(raw.replace(b'"stage": "S0_REBIND"', b'"stage": "VERIFIED"'))
+        self.assert_unbound("tampered original record", intact=False)
+
+    def test_stale_original_successor_constants_block_binding(self):
+        with mock.patch.object(R, "RECOVERY_ORIG_COMMIT", "9" * 40):
+            self.assert_unbound("original commit pin differs")
+        self.rebuild()
+        with mock.patch.object(R, "RECOVERY_ORIG_CODE_SHA", "9" * 64):
+            self.assert_unbound("original code pin differs")
+
+
+class RecoveryLifecycle(RecoveryBase):
+    def test_full_positive_flow_original_ids_never_reused(self):
+        r = self.bind()
+        before = self.raw(R.TRANSFER_RECORD_NAME)
+        with mock.patch.object(R.Runner, "_transition_consume_slot", side_effect=AssertionError("old slot consumption invoked")):
+            w, rv = self.to_corrected(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+        self.assertEqual(self.overlay()["correction"]["task_id"], R.RECOVERY_ID)
+        self.assertEqual(self.record()["s0_slot"]["task_id"], R.S0_DUAL_REBIND_ID)  # original slot stays bound to the original ID
+        self.assertEqual(self.raw(R.TRANSFER_RECORD_NAME), before)
+        self.assertEqual([c["path"] for c in w["evidence"]["changed"]], [self.CERT])
+        self.assertEqual(sorted(c["path"] for c in rv["review_of"]["changed"]), sorted(R.S0_DOC_PATHS))  # BOTH, packet unchanged
+        self.assertEqual((self.repo / self.QA).read_bytes(), self.qa0)
+        self.assertEqual(self.mode(), "RECOVERY")
+        # nothing advances before publication, CI and the receipt
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+        head = self.publish()
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")  # no receipt yet
+        self.write_receipt(head)
+        hist = {n: (self.home / "acceptances" / n).read_bytes() for n in ("MOD-000.json", "MOD-001.json", "MOD-002.json")}
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "VERIFIED", self.reasons("quarantine-recovery-failed"))
+        for n, b in hist.items():  # historical receipts byte-for-byte; the historical S0 and S0-QA receipts were never created
+            self.assertEqual((self.home / "acceptances" / n).read_bytes(), b)
+        self.assertFalse((self.home / "acceptances" / f"{R.S0_RECEIPT}.json").exists())
+        self.assertFalse((self.home / "acceptances" / f"{R.S0_QA_RECEIPT}.json").exists())
+        self.assertTrue((self.home / "acceptances" / f"{R.RECOVERY_S0_RECEIPT}.json").exists())
+        self.assertEqual(self.mode(), "HOLD")
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "ACTIVE")
+        self.assertEqual(self.mode(), "ACTIVE")
+        ov = self.overlay()
+        self.assertEqual(ov["verified"]["commit"], head)
+        self.assertEqual(ov["verified"]["docs"], {self.CERT: self.sha(self.final_cert()), self.QA: self.orig_docs[self.QA]})
+        self.assert_original_intact()
+        # after ACTIVE the D16 dual-version, S0 product, original fixed ID and the recovery ID all stay denied
+        for t in ({**self.ordinary_task(), "id": R.D16_DUAL_ID}, {**self.ordinary_task(), "id": "p", "plan_phase": R.S0_MARKER},
+                  self.lane_task(), self.correction_task()):
+            with self.subTest(t["id"]):
+                self.assertIsNotNone(self.gate(t))
+
+    def test_stale_packet_hash_or_old_runner_in_certificate_blocks_the_correction(self):
+        for label, cert in (("old packet hash", self.cert_bytes("11" * 32, self.new_sha, note="stale 11")),
+                            ("old runner hash", self.final_cert(runner=self.live_sha)),
+                            ("unchanged certificate", self.cert0)):
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind()
+                w = self.run_correction(r, write=cert)
+                self.assertEqual(w["status"], "BLOCKED", label)
+                self.assertIn(w["blocked_reason"], ("S0_RECOVERY_RESULT_UNSOUND", "EXPECTED_CHANGE_MISSING", "NO_DELIVERABLE_CHANGE"))
+                self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")  # the attempt is spent regardless
+                self.assertIn("S0_RECOVERY_CONSUMED", self.gate(self.correction_task()) or "TRANSFER")
+
+    def test_packet_change_or_out_of_scope_write_blocks_the_correction(self):
+        r = self.bind()
+        self.bin.write_text(RECOVERY_FAKE)
+        self.bin.with_name("steer.json").write_text(json.dumps({"model": "claude-sonnet-5-5", "write": {
+            self.CERT: self.final_cert().decode(), self.QA: "# scenario packet CHANGED\n"}}))
+        r.state = r.store.load()
+        r.state["control"], r.state["health"] = "RUN", {"status": "OK"}
+        t = R.validate_task(self.correction_task(), self.cfg)
+        r.state["tasks"][t["id"]] = t
+        r.store.save(r.state)
+        r.dispatch(r.next_ready())
+        w = r.state["tasks"][R.RECOVERY_ID]
+        self.assertEqual(w["status"], "BLOCKED")
+        self.assertIn("S0_RECOVERY_RESULT_UNSOUND", w["evidence"]["violations"])
+
+    def test_one_attempt_second_correction_alias_and_interrupted_attempt_are_spent(self):
+        r = self.bind()
+        r.state = r.store.load()
+        wl = r.wlock
+        self.assertTrue(wl.acquire({"pid": os.getpid()}))
+        try:
+            r._recovery_consume_correction(R.validate_task(self.correction_task(), self.cfg))
+            with self.assertRaises(R.GateError):
+                r._recovery_consume_correction(R.validate_task(self.correction_task(), self.cfg))
+        finally:
+            wl.release()
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+        self.assertIn("S0_RECOVERY_CONSUMED", self.gate(self.correction_task()))
+        self.assert_original_intact()
+        # a signal during the child spends the attempt: BLOCKED, never requeued
+        t = R.validate_task(self.correction_task(), self.cfg)
+        t.update(status="RUNNING", attempts=1)
+        r.state["tasks"][t["id"]] = t
+        r.settle(t, f"{t['id']}:1", "signal", None, None, None, None, None)
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_RECOVERY_ATTEMPT_INTERRUPTED"))
+        self.assertEqual(self.mode(), "RECOVERY")
+
+    def test_review_is_single_bound_to_both_paths_and_never_shopped(self):
+        r = self.bind()
+        w = self.run_correction(r)
+        self.assertEqual(w["status"], "DONE")
+        tasks = R.Store(self.home).load()["tasks"]
+        good = {"id": "rv", "module": R.S0_MODULE, "role": "code-review", "review_of": {"task_id": R.RECOVERY_ID}}
+        bad_one_path = R.validate_task({**good, "prompt": "p", "review_of": {"task_id": R.RECOVERY_ID, "changed": [
+            {"path": self.CERT, "sha256": self.sha(self.final_cert())}]}}, self.cfg)
+        with self.assertRaises(ValueError):
+            R.review_binding(self.cfg, bad_one_path, tasks, require_changed=False)
+        rv = self.run_review(r, outcome="CHANGES_REQUESTED", rid="rv1")
+        self.assertEqual(rv["status"], "BLOCKED")
+        again = R.validate_task({**good, "id": "rv2", "prompt": "p"}, self.cfg)
+        with self.assertRaises(ValueError):
+            R.review_binding(self.cfg, again, R.Store(self.home).load()["tasks"], require_changed=False)
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")  # an adverse review never verifies
+        self.publish()
+        with self.assertRaises(R.GateError) as cm:
+            R._recovery_verified(self.cfg, self.record(), self.overlay(), R.Store(self.home).load()["tasks"])
+        self.assertIn("review of BOTH final documents is not APPROVED", str(cm.exception))
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+
+    def test_fresh_s0_receipt_is_verified_by_the_established_predicate_not_a_skeleton(self):
+        r = self.bind()
+        self.to_corrected(r)
+        head = self.publish()
+        self.write_receipt(head)
+        tasks = R.Store(self.home).load()["tasks"]
+        calls = []
+        real = R.verify_s0_authority
+        with mock.patch.object(R, "verify_s0_authority", side_effect=lambda *a, **k: (calls.append(k), real(*a, **k))[1]):
+            ev = R._recovery_verified(self.cfg, self.record(), self.overlay(), tasks)
+        self.assertEqual(calls[0]["receipt"], R.RECOVERY_S0_RECEIPT)
+        self.assertEqual(ev["commit"], head)
+        # the default (historical) receipt name still verifies nothing here: no historical S0 receipt was touched
+        with self.assertRaises(R.GateError):
+            R.verify_s0_authority(self.cfg, tasks)
+
+    def verified_ready(self, r):
+        self.to_corrected(r)
+        head = self.publish()
+        self.write_receipt(head)
+        return head
+
+    def test_publication_and_receipt_tamper_matrix_never_verifies(self):
+        def fresh():
+            self.rebuild()
+        cases = {}
+
+        def extra_path(r):
+            head = self.publish(files={"extra.txt": b"x"})
+            self.write_receipt(head)
+        cases["publication adds a path"] = extra_path
+
+        def not_child(r):
+            (self.repo / "mid.txt").write_bytes(b"m")
+            git(self.repo, "add", "mid.txt")  # only the extra file: the dirty documents stay out of the intermediate commit
+            git(self.repo, "commit", "-qm", "mid")
+            self.write_receipt(self.publish())
+        cases["publication is not a direct child of C"] = not_child
+
+        def no_ci(r):
+            self.write_receipt(self.publish(ci=False))
+        cases["no exact-SHA CI"] = no_ci
+
+        def unpublished(r):
+            self.write_receipt("0" * 40)
+        cases["no publication"] = unpublished
+
+        def wrong_runner(r):
+            self.write_receipt(self.publish(), runner_sha256="ab" * 32)
+        cases["receipt names other runner"] = wrong_runner
+
+        def wrong_docs(r):
+            self.write_receipt(self.publish(), documents={self.CERT: "cd" * 32, self.QA: self.orig_docs[self.QA]})
+        cases["receipt names other documents"] = wrong_docs
+
+        def s0case(label, patch, **kw):
+            def run(r):
+                self.write_receipt(self.publish(), s0_patch=patch, **kw)
+            cases[label] = run
+
+        def missing_s0(r):
+            self.write_receipt(self.publish())
+            (self.home / "acceptances" / f"{R.RECOVERY_S0_RECEIPT}.json").unlink()
+        cases["fresh S0 receipt missing"] = missing_s0
+        cases["recovery receipt names other S0 bytes"] = lambda r: self.write_receipt(
+            self.publish(), s0_receipt={"name": R.RECOVERY_S0_RECEIPT, "sha256": "ab" * 32})
+        s0case("fewer than six S0 subjects", lambda s: s["subjects"].pop("edge"))
+        s0case("S0 subject hash not committed", lambda s: s["subjects"]["adr"].update(sha256="ef" * 32))
+        s0case("S0 subject review CHANGES_REQUESTED", lambda s: s["subjects"]["owner"].update(
+            review=self.s0_review(R.S0_OWNER_RECORD, "rec-owner-bad", verdict="CHANGES_REQUESTED")))
+        s0case("S0 subject review names other bytes", lambda s: s["subjects"]["adr"].update(
+            review=self.s0_review(R.S0_ADR, "rec-adr-other", prompt="Review EXACT file x SHA-256 " + "0" * 64)))
+        s0case("one review used for two subjects", lambda s: s["subjects"]["capability"].update(review=s["subjects"]["owner"]["review"]))
+        s0case("S0 subject CI for another commit", lambda s: s["subjects"]["adr"]["ci"].update(head_sha="1" * 40))
+        s0case("eligibility subject not published at P", lambda s: s["subjects"]["eligibility"].update(commit=self.old_commit))
+        s0case("runner_gate subject is the old runner", lambda s: s["subjects"]["runner_gate"].update(sha256=self.live_sha, commit=self.succ_commit))
+        s0case("runner_gate review binding differs", lambda s: s["subjects"]["runner_gate"]["review"].update(preload_sha256="ab" * 32))
+
+        def preload_altered(r):
+            self.write_receipt(self.publish())
+            (self.home / self.overlay()["pre_image"]["dir"] / "review" / "preload.out").write_bytes(b"altered review\nOUTCOME: APPROVED\n")
+        cases["pre-load review evidence altered"] = preload_altered
+
+        def hist_s0(r):
+            self.write_receipt(self.publish())
+            (self.home / "acceptances" / f"{R.S0_RECEIPT}.json").write_text("{}")
+        cases["historical MOD-004-S0 receipt created"] = hist_s0
+
+        def hist_qa(r):
+            self.write_receipt(self.publish())
+            (self.home / "acceptances" / f"{R.S0_QA_RECEIPT}.json").write_text("{}")
+        cases["historical MOD-004-S0-QA receipt created"] = hist_qa
+
+        def historical_receipt(r):
+            head = self.publish()
+            self.write_receipt(head)
+            (self.home / "acceptances" / "MOD-000.json").write_bytes(b'{"historical": "rewritten"}')
+        cases["historical receipt rewritten"] = historical_receipt
+
+        def original_task(r):
+            self.write_receipt(self.publish())
+            self.mutate_state(lambda st: st["tasks"][R.S0_DUAL_REBIND_ID].update(attempts=2))
+        cases["original task changed"] = original_task
+
+        def historical_review(r):
+            self.write_receipt(self.publish())
+            self.mutate_state(lambda st: st["tasks"]["hist-review"].update(status="DONE"))
+        cases["historical review relabelled"] = historical_review
+
+        def packet_edited_after_review(r):
+            self.write_receipt(self.publish())
+            (self.repo / self.QA).write_bytes(self.qa0 + b"late")
+        cases["packet edited after review"] = packet_edited_after_review
+        fresh_s0 = "the fresh S0 receipt does not verify"
+        frags = {"publication adds a path": "direct child of C changing exactly", "publication is not a direct child of C": "direct child of C changing exactly",
+                 "no exact-SHA CI": "publication/CI is not verified", "no publication": "publication/CI is not verified",
+                 "receipt names other runner": "does not bind the replacement runner", "receipt names other documents": "does not bind the replacement runner",
+                 "fresh S0 receipt missing": "fresh six-subject S0 receipt is missing", "recovery receipt names other S0 bytes": "exact fresh S0 receipt bytes",
+                 "fewer than six S0 subjects": fresh_s0 + ": S0 receipt schema mismatch", "S0 subject hash not committed": "reviewed content",
+                 "S0 subject review CHANGES_REQUESTED": "APPROVED review", "S0 subject review names other bytes": "does not name the exact subject",
+                 "one review used for two subjects": "own distinct runner review task id", "S0 subject CI for another commit": "CI evidence is not a successful",
+                 "eligibility subject not published at P": fresh_s0, "runner_gate subject is the old runner": "S0 runner_gate: not the overlay-bound",
+                 "runner_gate review binding differs": "S0 runner_gate: not the overlay-bound", "pre-load review evidence altered": "pre-load Opus review",
+                 "historical MOD-004-S0 receipt created": "historical S0 receipt was created or changed",
+                 "historical MOD-004-S0-QA receipt created": "historical S0 receipt was created or changed",
+                 "historical receipt rewritten": "a historical receipt changed", "original task changed": "original S0 rebind task changed",
+                 "historical review relabelled": "a historical review changed", "packet edited after review": "publication/CI is not verified"}
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                fresh()
+                r = self.bind()
+                self.to_corrected(r)
+                tamper(r)
+                with self.assertRaises(R.GateError) as cm:  # rejected for the tamper's own reason, not an incidental one
+                    R._recovery_verified(self.cfg, self.record(), self.overlay(), R.Store(self.home).load()["tasks"])
+                self.assertIn(frags[label], str(cm.exception), label)
+                self.step(r)
+                self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED", label)
+                # altering the preserved pre-image is itself a fail-closed tamper of the whole lane
+                self.assertEqual(self.mode(), "HOLD" if label == "pre-load review evidence altered" else "RECOVERY", label)
+
+
+class RecoveryFailClosed(RecoveryBase):
+    def test_tampered_overlay_original_or_preimage_denies_all_ingress(self):
+        r = self.bind()
+        ov_path = self.home / R.RECOVERY_RECORD_NAME
+        good = ov_path.read_bytes()
+        pre = self.home / self.overlay()["pre_image"]["dir"]
+
+        def forge(**over):
+            d = json.loads(good)
+            d.update(over)
+            d.pop("checksum")
+            d["checksum"] = R._transition_checksum(d)
+            ov_path.write_text(json.dumps(d))
+        cases = {
+            "garbage overlay": lambda: ov_path.write_text("{nope"),
+            "checksum broken": lambda: ov_path.write_bytes(good.replace(b'"BOUND"', b'"ACTIVE"')),
+            "forged ACTIVE": lambda: forge(stage="ACTIVE"),
+            "forged other checksum": lambda: forge(orig={**json.loads(good)["orig"], "checksum": "aa" * 32}),
+            "forged other transition id": lambda: forge(orig={**json.loads(good)["orig"], "transition_id": "bb" * 16}),
+            "forged other runner": lambda: forge(runner={**json.loads(good)["runner"], "code_sha256": "cc" * 32}),
+            "forged old attestation": lambda: forge(attested={**json.loads(good)["attested"], "boot_nonce": "zz"}),
+            "forged consumed slot": lambda: forge(correction={"state": "CONSUMED", "task_id": "alias", "at": "t"}),
+            "original record edited": lambda: (self.home / R.TRANSFER_RECORD_NAME).write_bytes(self.orig_record_bytes + b" "),
+            "original slot rebound": lambda: (self.home / R.TRANSFER_RECORD_NAME).write_bytes(
+                self.orig_record_bytes.replace(R.S0_DUAL_REBIND_ID.encode(), b"alias-task-id")),
+            "preimage file altered": lambda: (pre / "doc-0").write_bytes(b"altered"),
+            "preimage missing": lambda: shutil.move(str(pre), str(pre) + ".gone"),
+            "overlay deleted": lambda: ov_path.unlink(),
+        }
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                tamper()
+                self.assertEqual(self.mode(), "HOLD", label)
+                self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()), label)
+                self.assertIn("TRANSFER_HOLD", self.gate(self.ordinary_task()), label)
+                self.assertIn(R.quarantine_state(self.cfg)[0], (R._QS_DENY, R._QS_RESTARTED), label)
+                r.state = r.store.load()
+                r.state["tasks"]["ordinary"] = self.ordinary_task_stub()
+                self.assertIsNone(r.next_ready(), label)
+                with self.assertRaises(ValueError):
+                    R.enqueue(self.cfg, {k: v for k, v in self.ordinary_task_stub("enq").items() if k not in ("status", "attempts", "created_at")})
+                ov_path.write_bytes(good)
+                (self.home / R.TRANSFER_RECORD_NAME).write_bytes(self.orig_record_bytes)
+                if not pre.exists():
+                    shutil.move(str(pre) + ".gone", str(pre))
+                (pre / "doc-0").write_bytes(self.cert0)
+                self.assertEqual(self.mode(), "RECOVERY", f"{label}: restoring the exact bytes restores the lane")
+
+    def test_runner_code_or_commit_drift_denies(self):
+        self.bind()
+        with mock.patch.object(R, "_LOADED_CODE_SHA", "1" * 64):
+            self.assertEqual(self.mode(), "HOLD")
+        git(self.repo, "reset", "-q", "--soft", self.e_commit)  # HEAD no longer holds the bound replacement commit
+        git(self.repo, "reset", "-q")
+        self.assertEqual(self.mode(), "HOLD")
+        git(self.repo, "reset", "-q", "--hard", self.c_commit)
+
+    def test_original_runner_code_with_an_overlay_present_is_denied(self):
+        self.bind()
+        with mock.patch.object(R, "CODE_SHA", self.live_sha), mock.patch.object(R, "_LOADED_CODE_SHA", self.live_sha):
+            self.assertIn("recovery record exists", R._transition_bound_problem(self.cfg, self.record(), True))
+
+    def test_one_reload_only_any_later_process_holds_closed(self):
+        r = self.bind()
+        r.rlock.release()
+        for i in range(3):
+            r2 = self.begin("%02x" % (0x30 + i) * 16)
+            r2._transition_boot()
+            r2._rc_last = None
+            r2.recovery_step()
+            r2.state = r2.store.load()
+            r2.state["control"] = "RUN"
+            self.assertEqual(self.overlay()["stage"], "BOUND")
+            self.assertEqual(self.mode(), "HOLD")
+            self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()))
+            self.assertIsNone(r2.next_ready())
+            self.assertTrue(self.reasons("quarantine-recovery-denied"))
+            r2.rlock.release()
+
+    def test_crash_before_overlay_is_a_spent_reload(self):
+        with self.crash("_recovery_write", after=False):
+            with self.assertRaises(self.CrashNow):
+                self.bind()
+        self.assertIsNone(self.overlay())
+        self.assertTrue((self.home / R.RECOVERY_BOOT_NAME).exists())
+        self.assertFalse(list((self.home / "locks").glob("*.tmp")) if (self.home / "locks").exists() else [])
+        r = self.bind("ef" * 16)
+        self.assertIsNone(self.overlay(), "a second process never creates the overlay")
+        self.assertEqual(self.mode(), "HOLD")
+        self.assert_original_intact()
+
+    def test_crash_after_overlay_or_after_consumption_holds_closed(self):
+        r = self.begin(self.NONCE)
+        r._transition_boot()
+        with self.crash("_recovery_write", after=True):
+            with self.assertRaises(self.CrashNow):
+                r._rc_last = None
+                r.recovery_step()
+        r.rlock.release()
+        r.wlock.release()
+        self.assertEqual(self.overlay()["stage"], "BOUND")
+        r2 = self.begin("ab" * 16)  # restart: the attestation no longer matches
+        r2._transition_boot()
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()))
+        r2.rlock.release()
+
+    def test_crash_during_consumption_keeps_the_attempt_spent(self):
+        r = self.bind()
+        r.state = r.store.load()
+        self.assertTrue(r.wlock.acquire({"pid": os.getpid()}))
+        try:
+            with self.crash("_recovery_write", after=True):
+                with self.assertRaises(self.CrashNow):
+                    r._recovery_consume_correction(R.validate_task(self.correction_task(), self.cfg))
+        finally:
+            r.wlock.release()
+        self.assertEqual(self.overlay()["correction"]["state"], "CONSUMED")
+        r.rlock.release()
+        r2 = self.begin("ba" * 16)
+        r2._transition_boot()
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()))
+        r2.rlock.release()
+
+    def test_duplicate_runner_and_competing_writer_cannot_dispatch(self):
+        r = self.bind()
+        dup = R.Runner(self.cfg)
+        self.assertFalse(dup.rlock.acquire({"pid": os.getpid()}), "the sole-runner lock admits one process")
+        other = R.FileLock(R.writer_lock_path(self.home, self.repo))
+        self.assertTrue(other.acquire({"pid": 1}))
+        try:
+            r.state = r.store.load()
+            r.state["control"], r.state["health"] = "RUN", {"status": "OK"}
+            t = R.validate_task(self.correction_task(), self.cfg)
+            r.state["tasks"][t["id"]] = t
+            r.dispatch(t)
+            self.assertEqual(t["status"], "QUEUED")
+            self.assertEqual(self.overlay()["stage"], "BOUND")  # nothing consumed without the writer lock
+        finally:
+            other.release()
+        competing = {**self.ordinary_task_stub("other-s0"), "role": "implement", "allowed_paths": list(R.S0_DOC_PATHS),
+                     "plan_phase": R.S0_QA_MARKER, "status": "QUEUED"}
+        self.assertIn("S0_RECOVERY_CONCURRENT_WRITE", R.recovery_gate_reason(self.cfg, R.validate_task(self.correction_task(), self.cfg),
+                                                                              {"other-s0": competing}))
+
+    def test_unverifiable_authority_admits_nothing(self):
+        self.bind()
+        for label, patch in (("git unavailable", mock.patch.object(R, "_tgit", side_effect=R.GateError("git is unavailable"))),
+                             ("pre-image unreadable", mock.patch.object(R, "_read_bounded", side_effect=R.GateError("unreadable")))):
+            with self.subTest(label), patch:
+                self.assertEqual(self.mode(), "HOLD")
+                self.assertIsNotNone(self.gate(self.correction_task()))
+                self.assertIsNotNone(self.gate(self.lane_task()))
+
+
+class RecoveryCertificateInvariant(RecoveryBase):
+    """The runner itself (not only the document review) rejects any certificate change beyond the packet sha256, its truthful note
+    and runner_gate.sha256; the correction BLOCKS before a review can ever be bound."""
+
+    def blocked(self, cert, label):
+        r = self.bind()
+        w = self.run_correction(r, write=cert)
+        self.assertEqual(w["status"], "BLOCKED", label)
+        self.assertEqual(w["blocked_reason"], "S0_RECOVERY_RESULT_UNSOUND", (label, w.get("last_error")))
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED", label)  # the single attempt is spent
+        rv = R.validate_task({"id": "rv", "module": R.S0_MODULE, "role": "code-review", "prompt": "p",
+                              "review_of": {"task_id": R.RECOVERY_ID}}, self.cfg)
+        with self.assertRaises(ValueError):  # a BLOCKED write can never be reviewed
+            R.review_binding(self.cfg, rv, r.state["tasks"], require_changed=False)
+        self.assertIn("TRANSFER_HOLD" if False else "S0_RECOVERY", self.gate(rv) or "S0_RECOVERY")
+        self.assert_original_intact()
+        return w
+
+    def test_unrelated_top_level_nested_and_historical_fields_are_rejected(self):
+        def top(d): d["scenario_review_requirement"]["status"] = "WAIVED"
+        def nested_security(d): d["toolchain_evidence"]["python_version"] = "3.12"
+        def eligibility(d): d["status"] = "S0_DRAFT"
+        def no_ui(d): d["no_ui"] = False
+        def historical_runner(d): d["authority"]["runner_gate"]["sha256"] = self.new_sha
+        def observation(d): d["successor_runner_load_observation"]["loaded_runner_sha256"] = self.new_sha
+        def pass_rule(d): d["s0_spec"]["pass_rule"] = "a row passes with a claim"
+        def deleted(d): d.pop("scenario_review_requirement")
+        def added(d): d["extra_waiver"] = "reviewed elsewhere"
+        def type_change(d): d["s0_spec"]["rows"] = 14.0
+        def bool_for_int(d): d["s0_spec"]["rows"] = True
+        def paths(d): d["paths"] = d["paths"][:1]
+        def receipts(d): d["dependency_receipts"]["MOD-001"] = "00" * 32
+        for label, edit in dict(top=top, nested_security=nested_security, eligibility=eligibility, no_ui=no_ui,
+                                historical_runner=historical_runner, observation=observation, pass_rule=pass_rule,
+                                deleted=deleted, added=added, type_change=type_change, bool_for_int=bool_for_int,
+                                paths=paths, receipts=receipts).items():
+            with self.subTest(label):
+                self.rebuild()
+                self.blocked(self.final_cert(edit=edit), label)
+
+    def test_arbitrary_values_in_the_allowed_fields_are_rejected(self):
+        packet = self.orig_docs[self.QA]
+        cases = {
+            "wrong packet sha": self.final_cert(packet="ab" * 32),
+            "note does not name the packet": self.final_cert(note="the packet hash was rebound"),
+            "correct hash plus an unrelated claim": self.final_cert(note=R.recovery_note(packet) + " All 14 scenarios PASS; review waived."),
+            "unrelated claim around the hash": self.final_cert(note=f"WAIVED: S0 accepted. {packet}"),
+            "near-exact note": self.final_cert(note=R.recovery_note(packet).replace("grants no", "grants")),
+            "empty note": self.final_cert(note="   "),
+            "oversized note": self.final_cert(note=R.recovery_note(packet) + " " + "x" * 5000),
+            "non-string note": self.final_cert(edit=lambda d: d["scenario_qa_packet"].update(sha256_note=[packet])),
+            "extra packet key": self.final_cert(edit=lambda d: d["scenario_qa_packet"].update(approved=True)),
+            "packet path moved": self.final_cert(edit=lambda d: d["scenario_qa_packet"].update(path="other.md")),
+            "arbitrary runner sha": self.final_cert(runner="cd" * 32),
+            "old runner sha": self.final_cert(runner=self.live_sha),
+            "runner path moved": self.final_cert(edit=lambda d: d["runner_gate"].update(path="other.py")),
+            "runner extra key": self.final_cert(edit=lambda d: d["runner_gate"].update(approved=True)),
+            "runner_gate removed": self.final_cert(edit=lambda d: d.pop("runner_gate")),
+            "not an object": b"[]\n",
+            "not json": b"{nope",
+        }
+        for label, cert in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                self.blocked(cert, label)
+
+    def test_certificate_only_rebind_remains_feasible_and_format_changes_are_allowed(self):
+        for label, kw in (("same formatting", {}), ("reindented", {"indent": 4}), ("compact", {"indent": None})):
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind()
+                w = self.run_correction(r, write=self.final_cert(**kw))
+                self.assertEqual(w["status"], "DONE", (label, w.get("last_error")))
+                self.assertEqual(self.run_review(r)["status"], "DONE")
+
+    def test_the_exact_deterministic_note_is_required_and_sufficient(self):
+        packet = self.orig_docs[self.QA]
+        self.assertEqual(R.recovery_note(packet), f"SHA-256 {packet} is computed from the exact S0 QA evidence-candidate packet bytes; "
+                         "this hash alone grants no S0 product or module acceptance.")
+        self.assertIsNone(R._recovery_cert_problem(self.cert0, self.final_cert(), self.qa0))
+        for bad in (R.recovery_note(packet) + " ", " " + R.recovery_note(packet), R.recovery_note(packet).upper(), "", None):
+            self.assertIsNotNone(R._recovery_cert_problem(self.cert0, self.final_cert(edit=lambda d, b=bad: d["scenario_qa_packet"].update(sha256_note=b)),
+                                                          self.qa0), repr(bad))
+
+    def test_invariant_is_pure_and_derived_from_the_actual_packet_and_loaded_runner(self):
+        base = self.cert0
+        packet = self.qa0
+        good = self.final_cert()
+        self.assertIsNone(R._recovery_cert_problem(base, good, packet))
+        self.assertIn("exact packet sha256", R._recovery_cert_problem(base, good, packet + b"x"))  # a different actual packet
+        with mock.patch.object(R, "CODE_SHA", "ee" * 32):
+            self.assertIn("loaded replacement runner", R._recovery_cert_problem(base, good, packet))
+        self.assertIn("pinned original", R._recovery_cert_problem(self.final_cert(edit=lambda d: d.update(module="MOD-005")), good, packet))
+
+    def test_publication_rechecks_the_published_certificate_against_the_pinned_original(self):
+        r = self.bind()
+        self.to_corrected(r)
+        (self.repo / self.CERT).write_bytes(self.final_cert(edit=lambda d: d.update(no_ui=False)))  # edited AFTER the review, before P
+        head = self.publish()
+        self.write_receipt(head)
+        with self.assertRaises(R.GateError) as cm:
+            R._recovery_verified(self.cfg, self.record(), self.overlay(), R.Store(self.home).load()["tasks"])
+        self.assertTrue(any(f in str(cm.exception) for f in ("beyond the packet", "publication/CI is not verified", "review")), str(cm.exception))
+
+
+class RecoveryBadBaseCertificate(RecoveryBase):
+    CERT_OVER = {"no_ui": False}  # the ORIGINAL certificate itself fails the established S0 content checks
+
+    def test_a_legitimate_minimal_correction_still_fails_the_established_content_checks(self):
+        r = self.bind()
+        self.to_corrected(r)  # the invariant allows the minimal rebind; the established predicate still judges the whole certificate
+        head = self.publish()
+        self.write_receipt(head)
+        with self.assertRaises(R.GateError) as cm:
+            R._recovery_verified(self.cfg, self.record(), self.overlay(), R.Store(self.home).load()["tasks"])
+        self.assertIn("S0 certificate: needs no_ui", str(cm.exception))
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+
+
+class RecoveryOverlayReplay(RecoveryBase):
+    """The overlay trails-its-audit-trail check, analogous to the original record's: a rolled-back overlay with an earlier VALID
+    checksum denies all admission, and the original transition and task stay immutable throughout."""
+
+    def consume(self, r):
+        r.state = r.store.load()
+        self.assertTrue(r.wlock.acquire({"pid": os.getpid()}))
+        try:
+            r._recovery_consume_correction(R.validate_task(self.correction_task(), self.cfg))
+        finally:
+            r.wlock.release()
+
+    def assert_replay_denied(self, label, r=None):
+        ov = R._recovery_load(self.cfg)
+        self.assertIsNotNone(ov, label)
+        self.assertIn("audit trail", R._transition_bound_problem(self.cfg, self.record(), True) or "", label)
+        self.assertEqual(self.mode(), "HOLD", label)
+        self.assertIn("TRANSFER_HOLD", self.gate(self.correction_task()) or "", label)
+        self.assertIn("TRANSFER_HOLD", self.gate(self.ordinary_task()) or "", label)
+        self.assertIn(R.quarantine_state(self.cfg)[0], (R._QS_DENY, R._QS_RESTARTED), label)
+        self.assert_original_intact()
+
+    def test_normal_progression_never_trips_the_replay_check(self):
+        r = self.bind()
+        self.assertIsNone(R._recovery_replay_problem(self.cfg, self.overlay()))
+        self.to_corrected(r)
+        self.assertIsNone(R._recovery_replay_problem(self.cfg, self.overlay()))
+        head = self.publish()
+        self.write_receipt(head)
+        self.step(r)
+        self.assertIsNone(R._recovery_replay_problem(self.cfg, self.overlay()))
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "ACTIVE")
+        self.assertIsNone(R._recovery_replay_problem(self.cfg, self.overlay()))
+
+    def test_rollback_of_bound_after_correction_consumed_denies_all_admission(self):
+        r = self.bind()
+        bound = (self.home / R.RECOVERY_RECORD_NAME).read_bytes()  # a VALID earlier checksum
+        self.assertEqual(self.mode(), "RECOVERY")
+        self.consume(r)
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+        (self.home / R.RECOVERY_RECORD_NAME).write_bytes(bound)
+        self.assertEqual(self.overlay()["correction"]["state"], "UNUSED")  # the slot looks restored, the checksum is valid
+        self.assert_replay_denied("bound restored")
+        # even a queued correction cannot dispatch through the restored UNUSED slot
+        r.state = r.store.load()
+        r.state["control"], r.state["health"] = "RUN", {"status": "OK"}
+        t = R.validate_task(self.correction_task(), self.cfg)
+        r.state["tasks"][t["id"]] = t
+        r.dispatch(t)
+        self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))
+        self.assertEqual(self.overlay()["stage"], "BOUND")  # nothing consumed, nothing dispatched
+        self.assert_replay_denied("after the refused dispatch")
+
+    def test_rollback_after_a_dispatched_correction_with_a_forged_valid_unused_slot(self):
+        r = self.bind()
+        bound = (self.home / R.RECOVERY_RECORD_NAME).read_bytes()
+        w = self.run_correction(r)
+        self.assertEqual(w["status"], "DONE")
+        (self.home / R.RECOVERY_RECORD_NAME).write_bytes(bound)
+        self.assert_replay_denied("rollback after the correction ran")
+        self.step(r)  # no verification and no advance from a replayed record
+        self.assertEqual(self.overlay()["stage"], "BOUND")
+
+    def test_dispatch_event_with_an_unused_slot_is_a_replay_on_its_own(self):
+        r = self.bind()
+        ov = self.overlay()
+        events = [{"kind": "dispatch", "task_id": R.RECOVERY_ID}]
+        with mock.patch.object(R, "_qled_events", return_value=events):
+            self.assertIn("dispatched per the audit trail", R._recovery_replay_problem(self.cfg, ov))
+        with mock.patch.object(R, "_qled_events", return_value=[{"kind": "quarantine-recovery-stage", "recovery_id": ov["recovery_id"],
+                                                                  "stage": "VERIFIED"}]):
+            self.assertIn("behind its audit trail", R._recovery_replay_problem(self.cfg, ov))
+        with mock.patch.object(R, "_qled_events", return_value=[{"kind": "quarantine-recovery-stage", "recovery_id": "other", "stage": "ACTIVE"}]):
+            self.assertIsNone(R._recovery_replay_problem(self.cfg, ov))  # another recovery's trail is not this one's
+
+    def test_crash_and_restart_after_rollback_stay_closed_and_nothing_is_reminted(self):
+        r = self.bind()
+        bound = (self.home / R.RECOVERY_RECORD_NAME).read_bytes()
+        self.consume(r)
+        (self.home / R.RECOVERY_RECORD_NAME).write_bytes(bound)
+        r.rlock.release()
+        self.cur = None
+        for i, nonce in enumerate(("11" * 16, "22" * 16)):  # every later process: the one reload is spent, the replay is detected
+            r2 = self.begin(nonce)
+            r2._transition_boot()
+            r2._rc_last = None
+            r2.recovery_step()
+            self.assertEqual(self.overlay()["stage"], "BOUND", i)
+            self.assert_replay_denied(f"restart {i}")
+            r2.state = r2.store.load()
+            r2.state["control"] = "RUN"
+            self.assertIsNone(r2.next_ready(), i)
+            r2.rlock.release()
+
+    def test_a_deleted_overlay_cannot_be_reminted_even_by_the_same_process(self):
+        r = self.bind()
+        (self.home / R.RECOVERY_RECORD_NAME).unlink()
+        self.assertEqual(self.mode(), "HOLD")
+        self.step(r)  # the same process still holds the window, but a stage event proves the overlay was minted once
+        self.assertIsNone(self.overlay())
+        self.assertTrue(any("never minted twice" in (x or "") for x in self.reasons("quarantine-transfer-refused")))
+        self.assert_original_intact()
+
+    def test_original_transition_and_task_stay_immutable_through_the_whole_lifecycle(self):
+        r = self.bind()
+        before = self.orig_record_bytes
+        orig_task = json.dumps(R.Store(self.home).load()["tasks"][R.S0_DUAL_REBIND_ID], sort_keys=True)
+        self.to_corrected(r)
+        head = self.publish()
+        self.write_receipt(head)
+        self.step(r)
+        self.step(r)
+        self.assertEqual(self.overlay()["stage"], "ACTIVE")
+        self.assertEqual(self.raw(R.TRANSFER_RECORD_NAME), before)
+        self.assertEqual(json.dumps(R.Store(self.home).load()["tasks"][R.S0_DUAL_REBIND_ID], sort_keys=True), orig_task)
