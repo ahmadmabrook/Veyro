@@ -17,26 +17,26 @@
     },
     "runner_gate": {
       "path": "tools/mission_runner/runner.py",
-      "sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904"
+      "sha256": "2e3efbc65894742c4575801a754a1c6d4d7e3bc4c245b5f532213d2383b9ac90"
     },
-    "published_runner_gate_commit": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
+    "published_runner_gate_commit": "26708dab4cf230304067d08a516b4d7a2d9ccb34",
     "runner_gate_ci": {
       "conclusion": "success",
       "event": "push",
-      "head_sha": "a51865bea049a0d67d2408f7fbc2bdbf49aeec68",
+      "head_sha": "26708dab4cf230304067d08a516b4d7a2d9ccb34",
       "name": "Veyro Foundation CI",
-      "run_id": "40121602649",
+      "run_id": "40602260423",
       "status": "completed"
     }
   },
   "runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904"
+    "sha256": "64b130dadb02ef8fe3af4a6ed25a69be7d07b5c2cea309906e7330a5f87fed0e"
   },
   "immediate_prior_runner_gate": {
     "path": "tools/mission_runner/runner.py",
-    "sha256": "41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e",
-    "note": "Historical and NOT currently loaded: former top-level runner SHA-256 41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e is historical. Earlier historical runners were fb4fc3c7f55d5dca3a3f512a7f2058718d55c21416b72bb4845e38550a314d2a, ae2abae32073545d8cb638d860cd24df43004654f76e03427a5c4f1349068deb and 3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad. Reviews of these earlier runners do not grant approval to the current runner code."
+    "sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904",
+    "note": "Historical and NOT currently loaded: former top-level runner SHA-256 7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904 (non-force commit a51865bea049a0d67d2408f7fbc2bdbf49aeec68, exact-SHA CI run 40121602649, security task s0-complete-candidate-opus-security-20261024 APPROVED) is historical and was superseded by the successor runner in the top-level runner_gate. Earlier historical runners were 41c29a8f7e34a4eb21c6caf3eefb0fa738e36e990044643664062d26f9aa7a4e, fb4fc3c7f55d5dca3a3f512a7f2058718d55c21416b72bb4845e38550a314d2a, ae2abae32073545d8cb638d860cd24df43004654f76e03427a5c4f1349068deb and 3fca1fffcda580f6cc7ec6c5bf70eda1f26693bf416c2307105d74425180edad. Reviews of these earlier runners do not grant approval to the current runner code."
   },
   "historical_runner_gate": {
     "path": "tools/mission_runner/runner.py",
@@ -101,8 +101,8 @@
   },
   "scenario_qa_packet": {
     "path": "contracts/engineering/mod004-s0-scenario-qa.md",
-    "sha256": "11e34ab548a627ef7a675c4e5b875411b21f8840f54c4f98affac02572a2620f",
-    "sha256_note": "Operator-computed SHA-256 of the exact 2026-10-25 S0-01..S0-14 QA evidence candidate packet (tests, runner verifier, product Opus review, exact-SHA CI and representative manual spot checks recorded per row). This packet/certificate pair remains a draft until its one exact-bound two-document Opus review, non-force publication and exact-SHA CI; no module Ready, CAP qualification or tenant-isolation certification follows. Earlier immutable certificate prose remains historical."
+    "sha256": "a146c060a175b62d80f6a2f830ca7d8f56a47a11ac7cbb9f9d5d93df3d527c6c",
+    "sha256_note": "SHA-256 a146c060a175b62d80f6a2f830ca7d8f56a47a11ac7cbb9f9d5d93df3d527c6c is computed from the exact S0 QA evidence-candidate packet bytes; this hash alone grants no S0 product or module acceptance."
   },
   "capability_declaration": {
     "path": "contracts/engineering/mod004-s0-capability.json",
@@ -192,6 +192,26 @@
         "outcome": "APPROVED"
       }
     },
+    "successor_runner_gate": {
+      "path": "tools/mission_runner/runner.py",
+      "sha256": "2e3efbc65894742c4575801a754a1c6d4d7e3bc4c245b5f532213d2383b9ac90",
+      "commit": "26708dab4cf230304067d08a516b4d7a2d9ccb34",
+      "ci": {
+        "conclusion": "success",
+        "event": "push",
+        "head_sha": "26708dab4cf230304067d08a516b4d7a2d9ccb34",
+        "name": "Veyro Foundation CI",
+        "run_id": "40602260423",
+        "status": "completed"
+      },
+      "pre_load_review": "independent Opus security review APPROVED",
+      "post_load_review": {
+        "task_id": "mod004-transfer-successor-review-opus-20261027",
+        "route": "runner-recorded Opus",
+        "outcome": "DONE/APPROVED"
+      },
+      "note": "Operational transfer state only (one successor PID live, transition S0_REBIND); not S0, product or module approval. The sibling runner_gate entry below is the historical predecessor publication and is preserved unchanged."
+    },
     "evidence_class": "CI runs and current reviews independently rechecked by operator; runner re-verifies subject commitments and review outputs from its state, and calls older CI operator-attested unless observed in ci.json."
   },
   "edge_publication": {
@@ -213,8 +233,14 @@
     "status_note": "The edge record\u2019s in-file publication-pending wording is stale; its exact bytes were subsequently independently reviewed and published at this commit. Its scope remains dependency edge only."
   },
   "operator_observed_local_python": "Python 3.13.13 at /opt/homebrew/bin/python3.13 on 2026-10-23; this is operator observation, not a reviewer-executed command.",
+  "successor_runner_load_observation": {
+    "loaded_runner_sha256": "2e3efbc65894742c4575801a754a1c6d4d7e3bc4c245b5f532213d2383b9ac90",
+    "state": "one successor PID is live and the transition is currently S0_REBIND",
+    "evidence_class": "Owner-task-supplied operational fact; this drafting agent did not independently inspect the host (PID value, heartbeat, writer lock). This is an operational transfer state, not S0, product or module approval, and not a future guarantee.",
+    "pending": "The new two-document review, publication, exact-SHA CI and any new receipts are PENDING and are not claimed to have passed. Original product review mod004-s0-product-opus-code-review-20261024 remains CHANGES_REQUESTED and no new product write is admitted. D16 BLOCKED and CAP paused history and the MOD-005 lock are unchanged; the D16 dual-version task remains denied."
+  },
   "runner_load_observation": {
-    "observed_at": "2026-10-24 operator observation after exact-SHA CI and one safe reload",
+    "observed_at": "2026-10-24 operator observation after exact-SHA CI and one safe reload (HISTORICAL; superseded by successor_runner_load_observation)",
     "context": "Operator verified after one new authorized reload; this is not claimed to be the only reload historically.",
     "loaded_runner_sha256": "7187044b927d96a9fcf01abe04102e8bdbb939d9a161d1105305d0b14c78e904",
     "sole_loaded_runner": true,
