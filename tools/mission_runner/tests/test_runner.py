@@ -18168,6 +18168,8 @@ class RecoveryBase(TransferBase):
     def ci_rec(self, sha):
         return {"run_id": "123", "name": R.CI_WORKFLOW_NAME, "event": "push", "status": "completed", "head_sha": sha, "conclusion": "success"}
 
+    CERT0_NOTE = None  # the ORIGINAL certificate's packet note (lane 2 corrects an existing note)
+    CERT0_EDIT = None
     CERT_OVER = {}  # fixed extra/overridden fields of the ORIGINAL certificate (a subclass may make it fail the S0 content checks)
 
     def cert_bytes(self, packet_sha, runner_sha, note=None, edit=None, indent=1, **over):
@@ -18206,7 +18208,7 @@ class RecoveryBase(TransferBase):
         self.boot()  # the ORIGINAL transition (S0_REBIND) through the real lifecycle
         self.consume_slot()  # the original slot is consumed and bound to the ORIGINAL task id
         self.qa0 = b"# scenario packet v1\n"
-        self.cert0 = self.cert_bytes("11" * 32, self.live_sha)
+        self.cert0 = self.cert_bytes("11" * 32, self.live_sha, note=self.CERT0_NOTE, edit=self.CERT0_EDIT)
         self.orig_docs = {self.CERT: sha(self.cert0), self.QA: sha(self.qa0)}
         changed = [{"path": p, "sha256": h} for p, h in self.orig_docs.items()]
         w = {**self.lane_task(), "status": "DONE", "attempts": 1, "source": None,
@@ -19230,3 +19232,723 @@ class RecoveryOverlayReplay(RecoveryBase):
         self.assertEqual(self.overlay()["stage"], "ACTIVE")
         self.assertEqual(self.raw(R.TRANSFER_RECORD_NAME), before)
         self.assertEqual(json.dumps(R.Store(self.home).load()["tasks"][R.S0_DUAL_REBIND_ID], sort_keys=True), orig_task)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# S0 deterministic-preflight recovery, lane 2 (OWNER-2026-10-28-s0-deterministic-preflight-recovery.md). Isolated temp world: the
+# ORIGINAL transition and the SPENT lane 1 (overlay CORRECTION_CONSUMED, its task BLOCKED NO_DELIVERABLE_CHANGE) are produced through
+# the real lifecycle; then replacement code N2 (commit C2, child of the lane-2 owner record E2, itself a child of lane 1's runner
+# commit) is "loaded" by patching the module identity constants. Nothing touches live state.
+RECOVERY2_FAKE = RECOVERY_FAKE.replace("sys.stdin.read()\n", 'Path(__file__).with_name("prompt.txt").write_text(sys.stdin.read())\n', 1)
+CERT0_NOTE = ("NOTE: this hash is the pre-rebind base packet hash; the packet was edited in the S0 evidence rebind and its new hash is "
+              "to be computed by the operator/runner (not computed here).")
+
+
+class Recovery2Base(RecoveryBase):
+    NONCE2 = "ef" * 16
+    CERT0_NOTE = CERT0_NOTE
+    C2_EXTRA = {}  # extra files in C2 (a replacement runner commit that changes more than runner.py and test_runner.py)
+    IDENT = RecoveryBase.IDENT + ("RC2_OWNER_COMMIT", "RC2_OWNER_SHA", "RC2_OWNER_CI_RUN", "RC2_PRIOR_COMMIT", "RC2_PRIOR_CODE_SHA")
+
+    def commit_only(self, files, msg):
+        """Commit exactly `files`; the two pinned dirty documents stay unstaged and unpublished."""
+        for rel, data in files.items():
+            p = self.repo / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+        git(self.repo, "add", "--", *files)
+        git(self.repo, "commit", "-qm", msg)
+        return git(self.repo, "rev-parse", "HEAD").stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        r1 = self.bind()  # lane 1: overlay BOUND, then its one correction is spent with NO document change (the real incident)
+        self.bin.write_text(RECOVERY_FAKE)
+        self.bin.with_name("steer.json").write_text(json.dumps({"model": "claude-sonnet-5-5", "write": {}}))
+        r1.state = r1.store.load()
+        r1.state["control"], r1.state["health"] = "RUN", {"status": "OK"}
+        t = R.validate_task(self.correction_task(), self.cfg)
+        r1.state["tasks"][t["id"]] = t
+        r1.store.save(r1.state)
+        r1.dispatch(r1.next_ready())
+        w = r1.state["tasks"][R.RECOVERY_ID]
+        self.assertEqual((w["status"], w["blocked_reason"]), ("BLOCKED", "NO_DELIVERABLE_CHANGE"))
+        self.assertEqual(self.overlay()["stage"], "CORRECTION_CONSUMED")
+        self.release_cur()
+        self.ov1_bytes = (self.home / R.RECOVERY_RECORD_NAME).read_bytes()
+        self.task1 = json.dumps(R.Store(self.home).load()["tasks"][R.RECOVERY_ID], sort_keys=True)
+        sha = self.sha
+        self.owner3 = b"# lane-2 recovery owner record\n"
+        self.e2_commit = self.commit_only({R.RC2_OWNER_PATH: self.owner3}, "lane-2 owner")
+        self.repl2_bytes = self.repl_bytes + b"\n# lane-2 replacement runner\n"
+        self.c2_commit = self.commit_only({self.runner_rel: self.repl2_bytes, self.test_rel: b"# lane-2 replacement test\n",
+                                           **self.C2_EXTRA}, "lane-2 replacement")
+        self.new2_sha = sha(self.repl2_bytes)
+        repl2 = Path(self.tmp.name) / "repl2"
+        repl2.mkdir()
+        (repl2 / "runner.py").write_bytes(self.repl2_bytes)
+        shutil.copy(Path(R.__file__).with_name("dashboard.py"), repl2 / "dashboard.py")
+        for name, value in (("RC2_OWNER_COMMIT", self.e2_commit), ("RC2_OWNER_SHA", sha(self.owner3)),
+                            ("RC2_OWNER_CI_RUN", str(self.c_run_id)), ("RC2_PRIOR_COMMIT", self.c_commit),
+                            ("RC2_PRIOR_CODE_SHA", self.new_sha), ("CODE_SHA", self.new2_sha), ("_LOADED_CODE_SHA", self.new2_sha),
+                            ("__file__", str(repl2 / "runner.py"))):
+            self.enterContext(mock.patch.object(R, name, value))
+        self.ci_ok[self.e2_commit] = self.ci_ok[self.c2_commit] = True
+        self.write_recovery2_preload()
+        self.bin.write_text(RECOVERY2_FAKE)
+
+    def write_recovery2_preload(self):
+        cp = self.home / R.RC2_CHECKPOINT
+        cp.mkdir(parents=True, exist_ok=True)
+        try:
+            succ = R._recovery2_successor(self.cfg)
+        except R.GateError:
+            return  # a deliberately unsound C2 has no reviewable subject; the scenario asserts the refusal
+        out = b"lane-2 runner review\nOUTCOME: APPROVED\n"
+        (cp / "recovery2-review.out").write_bytes(out)
+        (cp / R.TRANSFER_PRELOAD_NAME).write_text(json.dumps({
+            "schema": 1, "kind": "preload-opus-review", "commit": succ["commit"], "code_sha256": succ["code_sha256"],
+            "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"], "model": "claude-opus-5-5", "session_id": "pre-rec2",
+            "output_file": "recovery2-review.out", "output_sha256": self.sha(out), "outcome": "APPROVED", "c_ci_run_id": str(self.c_run_id)}))
+
+    def bind2(self, nonce=None):
+        """The one lane-2 replacement process: boot branch, then the (throttled) recovery step that attests the preflight."""
+        self.release_cur()
+        r = self.cur = self.begin(nonce or self.NONCE2)
+        r._transition_boot()
+        r._rc_last = None
+        r.recovery_step()
+        return r
+
+    def overlay2(self):
+        return R._recovery2_load(self.cfg)
+
+    def n_kind(self, kind):
+        return sum(1 for e in R._qled_events(self.cfg) if e.get("kind") == kind)
+
+    def correction2_task(self, **over):
+        t = {"id": R.RC2_ID, "module": R.S0_MODULE, "role": "implement", "plan_phase": R.RC2_MARKER, "title": "lane 2",
+             "allowed_paths": list(R.S0_DOC_PATHS), "expected_changes": [self.CERT], "verify_cmd": [],
+             "doc_base": dict(self.orig_docs), "prompt": R.RC2_PROMPT}
+        return {**t, **over}
+
+    def good_cert2(self):
+        return R._recovery2_apply(self.cert0, self.overlay2()["preflight"]["edits"])
+
+    def queue2(self, r, **over):
+        r.state = r.store.load()
+        r.state["control"], r.state["health"] = "RUN", {"status": "OK"}
+        t = R.validate_task(self.correction2_task(**over), self.cfg)
+        r.state["tasks"][t["id"]] = t
+        r.store.save(r.state)
+        return t
+
+    def run_correction2(self, r, write=None):
+        self.bin.with_name("steer.json").write_text(json.dumps(
+            {"model": "claude-sonnet-5-5", "write": {self.CERT: (write or self.good_cert2()).decode()}}))
+        self.queue2(r)
+        task = r.next_ready()
+        self.assertIsNotNone(task, self.gate(self.correction2_task()))
+        r.dispatch(task)
+        return r.state["tasks"][R.RC2_ID]
+
+    def spent(self):
+        """True when the lane-2 slot is consumed or a worker ever started (the inverse of 'refused before consumption')."""
+        return (self.overlay2()["correction"]["state"] == "CONSUMED" or self.bin.with_name("prompt.txt").exists()
+                or any(e.get("kind") == "dispatch" and e.get("task_id") == R.RC2_ID for e in R._qled_events(self.cfg)))
+
+    def assert_unused(self, r, label=""):
+        self.assertEqual(self.overlay2()["correction"], {"state": "UNUSED", "task_id": None, "at": None}, label)
+        self.assertEqual(self.overlay2()["stage"], "BOUND", label)
+        self.assertFalse(self.spent(), label)
+        t = R.Store(self.home).load()["tasks"].get(R.RC2_ID)
+        self.assertTrue(t is None or (t["status"] == "QUEUED" and t["attempts"] == 0), label)
+
+    def assert_unbound2(self, label="", frag=None):
+        self.assertIsNone(self.overlay2(), label)
+        if frag:
+            seen = self.reasons("quarantine-transfer-refused")
+            self.assertTrue(any(frag in (x or "") for x in seen), (label, frag, seen))
+        self.assertEqual(self.mode(), "HOLD", label)
+        self.assertIn("TRANSFER_HOLD", self.gate(self.correction2_task()), label)
+        self.assertFalse(list((self.home / R.RC2_CHECKPOINT).glob("pre-image-*")), label)
+        self.assertEqual((self.home / R.RECOVERY_RECORD_NAME).read_bytes(), self.ov1_bytes, label)  # lane 1 stays byte-immutable
+        self.assert_original_intact()
+
+    def assert_history_intact(self):
+        self.assert_original_intact()
+        self.assertEqual((self.home / R.RECOVERY_RECORD_NAME).read_bytes(), self.ov1_bytes)
+        self.assertEqual(json.dumps(R.Store(self.home).load()["tasks"][R.RECOVERY_ID], sort_keys=True), self.task1)
+        self.assertEqual(self.record()["s0_slot"]["task_id"], R.S0_DUAL_REBIND_ID)
+
+    # --- review/receipt helpers re-pointed at lane 2 (same shapes as lane 1, lane-2 names and runner)
+    def run_review2(self, r, outcome="APPROVED", rid="recovery2-review"):
+        self.bin.with_name("steer.json").write_text(json.dumps({"model": "claude-opus-5-5", "outcome": outcome}))
+        t = R.validate_task({"id": rid, "module": R.S0_MODULE, "role": "code-review", "title": "review", "prompt": "review both",
+                             "review_of": {"task_id": R.RC2_ID}}, self.cfg)
+        R.review_binding(self.cfg, t, r.state["tasks"], require_changed=False)
+        r.state["tasks"][rid] = t
+        r.store.save(r.state)
+        task = r.next_ready()
+        self.assertIsNotNone(task, self.gate(t))
+        r.dispatch(task)
+        return r.state["tasks"][rid]
+
+    def fresh_s0_subjects2(self, head):
+        old, ov = self.old_commit, self.overlay2()
+        ent = lambda rel, name: {"path": rel, "sha256": self.sha((self.repo / rel).read_bytes()), "commit": old, "ci": self.ci_rec(old),
+                                 "review": self.s0_review(rel, name)}
+        out = (self.home / "runs" / "recovery2-review-1.out").read_bytes()
+        return {"owner": ent(R.S0_OWNER_RECORD, "rec2-owner"), "adr": ent(R.S0_ADR, "rec2-adr"), "edge": ent(R.S0_EDGE_RECORD, "rec2-edge"),
+                "capability": ent(self.CAPP, "rec2-cap"),
+                "eligibility": {"path": self.CERT, "sha256": self.sha((self.repo / self.CERT).read_bytes()), "commit": head,
+                                "ci": self.ci_rec(head), "review": {"task_id": "recovery2-review", "output_sha256": self.sha(out)}},
+                "runner_gate": {"path": R.S0_RUNNER_FILE, "sha256": self.new2_sha, "commit": self.c2_commit, "ci": ov["runner"]["ci"],
+                                "review": {"preload_sha256": ov["runner"]["preload_sha256"],
+                                           "output_sha256": ov["runner"]["preload_output_sha256"]}}}
+
+    def write_receipt2(self, head, **over):
+        s0 = {"schema": 1, "module": "MOD-004", "kind": "mod004-s0-authority", "operator": "op", "recorded_at": R.now_iso(),
+              "subjects": self.fresh_s0_subjects2(head)}
+        s0b = json.dumps(s0, sort_keys=True).encode()
+        (self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").write_bytes(s0b)
+        doc = {"schema": R.SCHEMA, "kind": "mod004-s0-d16-preflight-recovery", "recovery_id": self.overlay2()["recovery_id"],
+               "transition_id": self.record()["transition_id"], "runner_sha256": self.new2_sha,
+               "documents": {self.CERT: self.sha((self.repo / self.CERT).read_bytes()), self.QA: self.sha((self.repo / self.QA).read_bytes())},
+               "commit": head, "s0_receipt": {"name": R.RC2_S0_RECEIPT, "sha256": self.sha(s0b)}, "recorded_at": R.now_iso(), **over}
+        (self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").write_text(json.dumps(doc, sort_keys=True))
+        return doc
+
+
+class Recovery2Binding(Recovery2Base):
+    def test_overlay2_is_distinct_cross_bound_and_attests_the_deterministic_preflight(self):
+        self.bind2()
+        ov = self.overlay2()
+        self.assertEqual((ov["stage"], ov["correction"]), ("BOUND", {"state": "UNUSED", "task_id": None, "at": None}))
+        self.assertNotEqual((self.home / R.RC2_RECORD_NAME), (self.home / R.RECOVERY_RECORD_NAME))
+        self.assertEqual(ov["prior"], {"recovery_id": self.overlay()["recovery_id"], "file_sha256": self.sha(self.ov1_bytes),
+                                       "checksum": self.overlay()["checksum"], "runner_commit": self.c_commit,
+                                       "runner_code_sha256": self.new_sha, "task_id": R.RECOVERY_ID})
+        self.assertEqual((ov["runner"]["commit"], ov["runner"]["parent"], ov["owner"]["commit"]), (self.c2_commit, self.e2_commit, self.e2_commit))
+        self.assertEqual(ov["orig"]["file_sha256"], self.sha(self.orig_record_bytes))
+        pf = ov["preflight"]
+        self.assertEqual((pf["packet_sha256"], pf["cert_sha256"]), (self.orig_docs[self.QA], self.orig_docs[self.CERT]))
+        self.assertEqual(pf["packet_sha256"], self.sha(self.qa0))  # computed by the runner from the actual packet bytes
+        self.assertEqual(len(pf["edits"]), 3)
+        self.assertEqual(self.mode(), "RECOVERY")
+        self.assertIsNone(R._transition_bound_problem(self.cfg, self.record(), full=True))
+        self.assert_history_intact()
+        self.assertEqual((self.repo / self.CERT).read_bytes(), self.cert0)  # documents untouched, still unpublished
+        self.assertEqual((self.repo / self.QA).read_bytes(), self.qa0)
+        self.assertEqual(R._recovery_tree_problem(self.cfg, R.RECOVERY_ORIG_DOCS), None)
+        # the exact edits are the three allowed values, each anchor unique, and they simulate to a sound certificate
+        text = self.cert0.decode()
+        for e in pf["edits"]:
+            self.assertEqual(text.count(e["old_string"]), 1)
+            text = text.replace(e["old_string"], e["new_string"], 1)
+        self.assertEqual(text.encode(), self.good_cert2())
+        self.assertIsNone(R._recovery_cert_problem(self.cert0, self.good_cert2(), self.qa0))
+        d = json.loads(text)
+        self.assertEqual((d["scenario_qa_packet"]["sha256"], d["runner_gate"]["sha256"]), (self.sha(self.qa0), self.new2_sha))
+        self.assertEqual(d["authority"]["runner_gate"]["sha256"], self.live_sha)  # nested historical observations untouched
+        self.assertEqual(pf["tools"], "Read,Grep,Glob,Edit,Write")
+        self.assertEqual(pf["block_sha256"], self.sha(R._recovery2_block(pf).encode()))
+
+    def test_only_the_exact_lane2_task_is_admitted_and_everything_else_is_held(self):
+        self.bind2()
+        self.assertIsNone(self.gate(self.correction2_task()))
+        for label, over in (("wrong id", {"id": "mod004-s0-lane2-alias"}), ("no marker", {"plan_phase": None}),
+                            ("extra path", {"allowed_paths": list(R.S0_DOC_PATHS) + ["x.txt"]}),
+                            ("both expected", {"expected_changes": list(R.S0_DOC_PATHS)}),
+                            ("changed base", {"doc_base": {**self.orig_docs, self.QA: "ab" * 32}}),
+                            ("verifier", {"verify_cmd": ["true"]}), ("planner source", {"source": "handoff"}),
+                            ("remediation", {"remediation_of": "x"}), ("wrong module", {"module": "MOD-003"}),
+                            ("free-form prompt", {"prompt": R.RC2_PROMPT + " Also change the packet."})):
+            with self.subTest(label):
+                got = self.gate(self.correction2_task(**over)) or ""
+                self.assertTrue(got.startswith(("S0_RECOVERY2_INVALID_TASK", "S0_DOC_UNTAGGED", "TRANSFER_HOLD", "S0_DOC_INVALID_TASK",
+                                                "S0_UNTAGGED", "S0_INVALID_TASK")), f"{label}: {got!r}")
+        # lane 1's correction, the original fixed ID, D16, S0 product, CAP-like and MOD-005 work all stay denied
+        for label, t in (("lane-1 correction", self.correction_task()), ("original rebind", self.lane_task()),
+                         ("ordinary", self.ordinary_task()), ("MOD-005", {**self.ordinary_task(), "module": "MOD-005"}),
+                         ("CAP", {**self.ordinary_task(), "id": "cap", "module": "MOD-004", "plan_phase": "MOD004-CAP"})):
+            with self.subTest(label):
+                self.assertIsNotNone(self.gate(t), label)
+        self.assertIn("D16_DUAL_DENIED", self.gate({**self.ordinary_task(), "id": R.D16_DUAL_ID}))
+        self.assertIn("S0_PRODUCT_DENIED", self.gate({**self.ordinary_task(), "id": "p", "plan_phase": R.S0_MARKER}))
+        r = self.cur
+        r.state = r.store.load()
+        (self.home / "queue" / "a.json").write_text(json.dumps(self.correction_task()))
+        r.ingest_queue()
+        self.assertEqual(r.state["tasks"][R.RECOVERY_ID]["attempts"], 1)  # lane 1's task is not re-ingested or re-armed
+        with self.assertRaises(ValueError):
+            R.enqueue(self.cfg, self.correction2_task(prompt="anything else"))
+        R.enqueue(self.cfg, self.correction2_task(created_at=None))
+
+    def test_second_process_or_second_overlay_is_denied(self):
+        self.bind2()
+        before = (self.home / R.RC2_RECORD_NAME).read_bytes()
+        self.bind2(nonce="01" * 16)
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), before)
+        self.assertTrue(any("lane-2 recovery record exists" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual(self.mode(), "HOLD")  # the new process is not the attested one
+        self.assertIsNotNone(self.gate(self.correction2_task()))
+        self.assertEqual(self.n_kind("quarantine-recovery2-first-boot"), 1)
+
+    def test_second_window_without_overlay_is_denied(self):
+        self.bind2(nonce="02" * 16)
+        (self.home / R.RC2_RECORD_NAME).unlink()  # a process that lost the record still cannot reopen the window
+        self.bind2(nonce="03" * 16)
+        self.assertIsNone(self.overlay2())
+        self.assertTrue(any("no second reload" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual(self.n_kind("quarantine-recovery2-first-boot"), 1)
+
+    def test_lane1_task_or_original_task_not_in_the_recorded_state_refuses_creation(self):
+        cases = {"lane-1 task DONE": lambda st: st["tasks"][R.RECOVERY_ID].update(status="DONE"),
+                 "other block reason": lambda st: st["tasks"][R.RECOVERY_ID].update(blocked_reason="S0_RECOVERY_RESULT_UNSOUND"),
+                 "lane-1 changed docs": lambda st: st["tasks"][R.RECOVERY_ID]["evidence"].update(changed=[{"path": self.CERT, "sha256": "ab" * 32}]),
+                 "lane-1 two attempts": lambda st: st["tasks"][R.RECOVERY_ID].update(attempts=2),
+                 "lane-1 task missing": lambda st: st["tasks"].pop(R.RECOVERY_ID),
+                 "original task changed": lambda st: st["tasks"][R.S0_DUAL_REBIND_ID].update(attempts=2),
+                 "lane-2 task pre-exists": lambda st: st["tasks"].update({R.RC2_ID: {**self.ordinary_task_stub("x"), "id": R.RC2_ID}}),
+                 "lane-2 ID queued": lambda st: (self.home / "queue" / "q.json").write_text(json.dumps({"id": R.RC2_ID}))}
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                self.mutate_state(mutate)
+                self.bind2()
+                self.assert_unbound2(label)
+
+    def test_unsound_owner_runner_or_lineage_refuses_creation(self):
+        cases = {"owner sha": ("RC2_OWNER_SHA", "9" * 64), "E is not lane 1's child": ("RC2_PRIOR_COMMIT", None),
+                 "prior code": ("RC2_PRIOR_CODE_SHA", "8" * 64), "prior commit": ("RC2_PRIOR_COMMIT", "7" * 40)}
+        for label, (name, value) in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                with mock.patch.object(R, name, value if value is not None else self.succ_commit):
+                    self.bind2()
+                    self.assert_unbound2(label)
+        self.rebuild()
+        (self.home / R.RC2_CHECKPOINT / R.TRANSFER_PRELOAD_NAME).unlink()  # no Opus pre-load review evidence for C2
+        self.bind2()
+        self.assert_unbound2("no pre-load review")
+        self.rebuild()
+        self.ci_ok[self.c2_commit] = False  # no exact-SHA CI for C2
+        self.bind2()
+        self.assert_unbound2("C2 without CI")
+
+    def test_dirty_tree_beyond_the_pinned_documents_refuses_creation(self):
+        for label, tamper in {"extra untracked": lambda: (self.repo / "stray.txt").write_text("x"),
+                              "document staged": lambda: git(self.repo, "add", "--", self.QA),
+                              "packet drift": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+                              "certificate drift": lambda: (self.repo / self.CERT).write_bytes(self.cert0 + b" ")}.items():
+            with self.subTest(label):
+                self.rebuild()
+                tamper()
+                self.bind2()
+                self.assert_unbound2(label)
+
+
+class Recovery2AnchorFailures(Recovery2Base):
+    CERT0_EDIT = staticmethod(lambda d: d.update(dup={"sha256": "11" * 32}))  # the packet hash anchor occurs twice
+
+    def test_non_unique_certificate_anchor_refuses_creation_and_consumes_nothing(self):
+        self.bind2()
+        self.assert_unbound2("duplicate anchor")
+        self.assertTrue(any("anchor" in (x or "") for x in self.reasons("quarantine-transfer-refused")))
+
+
+class Recovery2MissingNote(Recovery2Base):
+    CERT0_NOTE = None  # a certificate without the note key has no exact sha256_note edit
+
+    def test_certificate_without_the_expected_fields_refuses_creation(self):
+        self.bind2()
+        self.assert_unbound2("no note")
+
+
+class Recovery2ExtraPathRunner(Recovery2Base):
+    C2_EXTRA = {"extra.txt": b"more than runner.py and test_runner.py\n"}
+
+    def test_runner_commit_changing_other_paths_refuses_creation(self):
+        self.bind2()
+        self.assert_unbound2("C2 changes an extra path")
+
+
+class Recovery2Preflight(Recovery2Base):
+    def test_drift_before_consumption_leaves_the_slot_unused_and_starts_no_worker(self):
+        def staged(): git(self.repo, "add", "--", self.QA)
+
+        def widen_settings():
+            real = R.child_settings_for
+            return mock.patch.object(R, "child_settings_for", side_effect=lambda t: (lambda s: (s["permissions"]["allow"].append("Bash"), s)[1])(real(t)))
+
+        def tools_changed():
+            real = R.child_argv
+            return mock.patch.object(R, "child_argv", side_effect=lambda *a: (lambda c, t: (c, t + ",WebFetch"))(*real(*a)))
+
+        def no_write():
+            real = R.child_settings_for
+            return mock.patch.object(R, "child_settings_for", side_effect=lambda t: (lambda s: (s["permissions"]["allow"].remove(f"Write({self.CERT})"), s)[1])(real(t)))
+        plain = {"packet drifted": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+                 "certificate drifted": lambda: (self.repo / self.CERT).write_bytes(self.cert0 + b" "),
+                 "document staged": staged, "stray untracked file": lambda: (self.repo / "stray.txt").write_text("x"),
+                 "executable missing": lambda: self.bin.unlink(), "executable not runnable": lambda: self.bin.chmod(0o644),
+                 "a worker is running": lambda: self.mutate_state(lambda st: st["tasks"].update({"w": {**self.ordinary_task_stub("w"), "status": "RUNNING"}})),
+                 "another runner exists": lambda: self.other_pids.append(4242)}
+        for label, tamper in plain.items():
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind2()
+                self.queue2(r)
+                tamper()
+                reason = self.gate(self.correction2_task())
+                self.assertTrue((reason or "").startswith("S0_RECOVERY2_PREFLIGHT_FAILED"), f"{label}: {reason!r}")
+                r.state = r.store.load()
+                self.assertIsNone(r.next_ready(), label)
+                self.assert_unused(r, label)
+        for label, mk in (("settings widened to Bash", widen_settings), ("tool list changed", tools_changed), ("Write removed", no_write),
+                          ("sandbox applicability flipped", lambda: mock.patch.object(R, "sandbox_active", return_value=not R.sandbox_active(self.cfg)))):
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind2()
+                self.queue2(r)
+                with mk():
+                    reason = self.gate(self.correction2_task())
+                    self.assertTrue((reason or "").startswith("S0_RECOVERY2_PREFLIGHT_FAILED"), f"{label}: {reason!r}")
+                    r.state = r.store.load()
+                    self.assertIsNone(r.next_ready(), label)
+                self.assert_unused(r, label)
+
+    def test_recheck_immediately_before_consumption_catches_drift_after_the_gate(self):
+        r = self.bind2()
+        task = r.state["tasks"].get(R.RC2_ID) or self.queue2(r)
+        task = r.next_ready()
+        self.assertIsNotNone(task)
+        real_gated = R.Runner.gated
+        calls = []
+
+        def gate_passes_then_drift(self_, t):
+            calls.append(1)
+            (self.repo / self.QA).write_bytes(self.qa0 + b"x")  # the packet changes AFTER the gate evaluated, before consumption
+            return False
+        with mock.patch.object(R.Runner, "gated", gate_passes_then_drift):
+            r.dispatch(task)
+        self.assertEqual(calls, [1])
+        t = r.state["tasks"][R.RC2_ID]
+        self.assertEqual((t["status"], t["attempts"]), ("QUEUED", 0))
+        self.assertTrue(t["gate_reason"].startswith("S0_RECOVERY2_PREFLIGHT_FAILED"))
+        self.assert_unused(r)
+        self.assertEqual(self.n_kind("quarantine-recovery2-stage"), 1)  # BOUND only
+
+    def test_consumption_rechecks_under_the_writer_lock_and_is_single_use(self):
+        r = self.bind2()
+        r.state = r.store.load()
+        t = R.validate_task(self.correction2_task(), self.cfg)
+        self.assertTrue(r.wlock.acquire({"pid": os.getpid()}))
+        try:
+            (self.repo / self.QA).write_bytes(self.qa0 + b"y")
+            with self.assertRaises(R.Recovery2NotReady):
+                r._recovery2_consume_correction(t)
+            self.assert_unused(r)
+            (self.repo / self.QA).write_bytes(self.qa0)
+            r._recovery2_consume_correction(t)
+            with self.assertRaises(R.GateError):
+                r._recovery2_consume_correction(t)
+        finally:
+            r.wlock.release()
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+        self.assertIn("S0_RECOVERY2_CONSUMED", self.gate(self.correction2_task()))
+        self.assert_history_intact()
+
+
+class Recovery2Lifecycle(Recovery2Base):
+    def test_full_positive_flow_prompt_carries_the_verified_hash_and_exact_edits(self):
+        r = self.bind2()
+        before = self.raw(R.TRANSFER_RECORD_NAME)
+        with mock.patch.object(R.Runner, "_transition_consume_slot", side_effect=AssertionError("old slot consumption invoked")), \
+                mock.patch.object(R.Runner, "_recovery_consume_correction", side_effect=AssertionError("lane-1 slot consumption invoked")):
+            w = self.run_correction2(r)
+        self.assertEqual(w["status"], "DONE", w.get("last_error"))
+        self.assertEqual([c["path"] for c in w["evidence"]["changed"]], [self.CERT])
+        ov = self.overlay2()
+        self.assertEqual((ov["stage"], ov["correction"]["task_id"]), ("CORRECTION_CONSUMED", R.RC2_ID))
+        prompt = self.bin.with_name("prompt.txt").read_text()
+        self.assertIn(R.RC2_PROMPT, prompt)
+        self.assertIn(R._recovery2_block(ov["preflight"]), prompt)
+        self.assertIn(self.sha(self.qa0), prompt)  # the runner-computed packet hash
+        for e in ov["preflight"]["edits"]:
+            self.assertIn(json.dumps(e["old_string"]), prompt)
+            self.assertIn(json.dumps(e["new_string"]), prompt)
+        self.assertIn(self.new2_sha, prompt)
+        self.assertEqual(self.raw(R.TRANSFER_RECORD_NAME), before)
+        self.assert_history_intact()
+        rv = self.run_review2(r)
+        self.assertEqual(rv["status"], "DONE", rv.get("last_error"))
+        self.assertEqual(sorted(c["path"] for c in rv["review_of"]["changed"]), sorted(R.S0_DOC_PATHS))  # BOTH documents
+        self.assertEqual((self.repo / self.QA).read_bytes(), self.qa0)
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")  # nothing advances before publication, CI and receipts
+        head = self.publish()
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")  # no receipts yet
+        self.write_receipt2(head)
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "VERIFIED", self.reasons("quarantine-recovery-failed"))
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertFalse((self.home / "acceptances" / f"{R.RECOVERY_S0_RECEIPT}.json").exists())  # lane-1 receipts were never created
+        self.assertFalse((self.home / "acceptances" / f"{R.S0_RECEIPT}.json").exists())
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "ACTIVE", self.reasons("quarantine-recovery-probe-failed"))
+        self.assertEqual(self.mode(), "ACTIVE")
+        self.assertEqual(self.overlay2()["verified"]["docs"], {self.CERT: self.sha(self.good_cert2()), self.QA: self.orig_docs[self.QA]})
+        self.assert_history_intact()
+        for t in ({**self.ordinary_task(), "id": R.D16_DUAL_ID}, {**self.ordinary_task(), "id": "p", "plan_phase": R.S0_MARKER},
+                  self.lane_task(), self.correction_task(), self.correction2_task()):
+            with self.subTest(t["id"]):
+                self.assertIsNotNone(self.gate(t))  # every lane ID stays denied after ACTIVE
+
+    def test_publication_receipt_and_review_gates_hold_the_lane_before_active(self):
+        for label in ("no CI", "extra path", "no receipt", "wrong runner in receipt", "review CHANGES_REQUESTED"):
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind2()
+                w = self.run_correction2(r)
+                self.assertEqual(w["status"], "DONE", label)
+                rv = self.run_review2(r, outcome="CHANGES_REQUESTED" if label.startswith("review") else "APPROVED")
+                head = self.publish(files={"extra.txt": b"x"} if label == "extra path" else {}, ci=label != "no CI")
+                if label != "no receipt":
+                    self.write_receipt2(head, **({"runner_sha256": "ab" * 32} if label.startswith("wrong runner") else {}))
+                self.step(r)
+                self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED", label)
+                self.assertEqual(self.mode(), "RECOVERY", label)
+
+    def test_result_check_spends_the_attempt_when_the_writer_deviates_from_the_three_edits(self):
+        cases = {"unchanged": lambda good: self.cert0,
+                 "old packet hash": lambda good: self.cert0.replace(b'"sha256": "' + b"11" * 32, b'"sha256": "' + b"22" * 32),
+                 "old runner hash": lambda good: good.replace(self.new2_sha.encode(), self.live_sha.encode()),
+                 "extra value changed": lambda good: good.replace(b'"no_ui": true', b'"no_ui": false'),
+                 "wrong note": lambda good: good.replace(R.recovery_note(self.sha(self.qa0)).encode(), b"SHA-256 granted. S0 PASS.")}
+        for label, make in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind2()
+                cert = make(self.good_cert2())
+                self.assertNotEqual(cert, self.good_cert2() if label != "unchanged" else None, label)
+                w = self.run_correction2(r, write=cert)
+                self.assertEqual(w["status"], "BLOCKED", label)
+                self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED", label)  # the attempt is spent regardless
+                self.assertIn("S0_RECOVERY2_CONSUMED", self.gate(self.correction2_task()) or "TRANSFER")
+                self.assert_history_intact()
+
+    def test_packet_change_by_the_writer_is_unsound(self):
+        r = self.bind2()
+        self.bin.with_name("steer.json").write_text(json.dumps({"model": "claude-sonnet-5-5", "write": {
+            self.CERT: self.good_cert2().decode(), self.QA: "# scenario packet CHANGED\n"}}))
+        self.queue2(r)
+        r.dispatch(r.next_ready())
+        w = r.state["tasks"][R.RC2_ID]
+        self.assertEqual(w["status"], "BLOCKED")
+        self.assertIn("S0_RECOVERY_RESULT_UNSOUND", w["evidence"]["violations"])
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+
+    def test_post_consumption_failures_leave_the_slot_spent_with_no_replay(self):
+        def spawn_fails():  # only the worker spawn fails; the runner's own git/ps subprocesses are untouched
+            real = subprocess.Popen
+
+            def popen(cmd, *a, **k):
+                if str(self.bin) in map(str, cmd):
+                    raise OSError("exec failed")
+                return real(cmd, *a, **k)
+            return mock.patch.object(R.subprocess, "Popen", side_effect=popen)
+
+        def unattested_prefix():  # consumption passed; the command about to start is not the attested one
+            return mock.patch.object(R.Runner, "sandbox_prefix", lambda s, op: (
+                ([], {"sandbox": "none"}) if R.sandbox_active(s.cfg) else (["sandbox-exec", "-f", "/x"], {"sandbox": "sandbox-exec"})))
+
+        def prompt_block_missing():
+            return mock.patch.object(R, "_recovery2_block_checked", side_effect=R.GateError("block differs"))
+        for label, mk in (("spawn fails", spawn_fails), ("command not the attested one", unattested_prefix),
+                          ("prompt block unavailable", prompt_block_missing)):
+            with self.subTest(label):
+                self.rebuild()
+                r = self.bind2()
+                self.queue2(r)
+                task = r.next_ready()
+                with mk():
+                    r.dispatch(task)
+                t = r.state["tasks"][R.RC2_ID]
+                self.assertIn(t["status"], ("FAILED", "BLOCKED"), label)
+                self.assertEqual(self.overlay2()["correction"]["state"], "CONSUMED", label)
+                self.assertFalse(self.bin.with_name("prompt.txt").exists(), label)  # the worker never started
+                self.assertIn("S0_RECOVERY2_CONSUMED", self.gate(self.correction2_task()) or "TRANSFER", label)
+                r.state = r.store.load()
+                self.assertIsNone(r.next_ready(), label)  # never replayed or retried
+                self.assertEqual(self.mode(), "RECOVERY", label)
+                self.assert_history_intact()
+
+    def test_consumption_write_failure_blocks_without_starting_a_worker(self):
+        r = self.bind2()
+        self.queue2(r)
+        task = r.next_ready()
+        with mock.patch.object(R, "_recovery2_write", side_effect=OSError("disk")):
+            r.dispatch(task)
+        t = r.state["tasks"][R.RC2_ID]
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_RECOVERY_SLOT_CONSUMED"))
+        self.assertFalse(self.bin.with_name("prompt.txt").exists())
+        r.state = r.store.load()
+        self.assertIsNone(r.next_ready())
+
+    def test_interrupted_attempt_is_blocked_by_recovery_and_never_requeued(self):
+        r = self.bind2()
+        self.queue2(r)
+        wl = r.wlock
+        self.assertTrue(wl.acquire({"pid": os.getpid()}))
+        try:
+            r._recovery2_consume_correction(r.state["tasks"][R.RC2_ID])
+        finally:
+            wl.release()
+        t = r.state["tasks"][R.RC2_ID]
+        t.update(status="RUNNING", attempts=1, child=None)
+        r.store.save(r.state)
+        r.recover()
+        t = r.state["tasks"][R.RC2_ID]
+        self.assertEqual((t["status"], t["blocked_reason"]), ("BLOCKED", "S0_RECOVERY_INTERRUPTED"))
+        r.state = r.store.load()
+        self.assertIsNone(r.next_ready())
+        self.assertEqual(self.overlay2()["correction"]["state"], "CONSUMED")
+        # a signal during the child spends the attempt too
+        t2 = R.validate_task(self.correction2_task(), self.cfg)
+        t2.update(status="RUNNING", attempts=1)
+        r.settle(t2, f"{t2['id']}:1", "signal", None, None, None, None, None)
+        self.assertEqual((t2["status"], t2["blocked_reason"]), ("BLOCKED", "S0_RECOVERY_ATTEMPT_INTERRUPTED"))
+
+    def test_rolled_back_overlay_or_replayed_dispatch_holds_closed(self):
+        r = self.bind2()
+        bound = (self.home / R.RC2_RECORD_NAME).read_bytes()  # a VALID earlier checksum
+        self.run_correction2(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+        (self.home / R.RC2_RECORD_NAME).write_bytes(bound)  # restore the unused slot
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertIn("rolled back or replayed", R._recovery2_bound_problem(self.cfg, self.record(), self.overlay2()))
+        self.assertIsNotNone(self.gate(self.correction2_task()))
+        self.assertIsNotNone(self.gate(self.ordinary_task()))
+
+    def test_rollback_from_verified_or_active_is_detected_by_the_lane2_stage_events(self):
+        r = self.bind2()
+        raw = lambda: (self.home / R.RC2_RECORD_NAME).read_bytes()
+        self.run_correction2(r)
+        consumed = raw()
+        self.run_review2(r)
+        head = self.publish()
+        self.write_receipt2(head)
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "VERIFIED", self.reasons("quarantine-recovery-failed"))
+        verified = raw()
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "ACTIVE", self.reasons("quarantine-recovery-probe-failed"))
+        self.assertEqual(self.n_kind("quarantine-recovery2-stage"), 4)  # BOUND, CORRECTION_CONSUMED, VERIFIED, ACTIVE
+        for label, old in (("ACTIVE -> VERIFIED", verified), ("ACTIVE -> CORRECTION_CONSUMED", consumed)):
+            with self.subTest(label):
+                active = raw()
+                (self.home / R.RC2_RECORD_NAME).write_bytes(old)
+                self.assertIn("rolled back or replayed", R._recovery2_replay_problem(self.cfg, self.overlay2()))
+                (self.home / R.RC2_RECORD_NAME).write_bytes(active)
+        (self.home / R.RC2_RECORD_NAME).write_bytes(consumed)  # VERIFIED -> CORRECTION_CONSUMED is the same rollback
+        self.assertIn("rolled back or replayed", R._recovery2_replay_problem(self.cfg, self.overlay2()))
+
+    def test_reversed_or_duplicate_allowed_paths_leave_the_slot_unused_before_consumption(self):
+        r = self.bind2()
+        rev = list(reversed(R.S0_DOC_PATHS))
+        dup = [R.S0_DOC_PATHS[0], R.S0_DOC_PATHS[0]]
+        for label, paths in (("reversed", rev), ("duplicate", dup), ("duplicate extra", list(R.S0_DOC_PATHS) + [R.S0_DOC_PATHS[0]])):
+            with self.subTest(label):
+                self.assertTrue((self.gate(self.correction2_task(allowed_paths=paths)) or "").startswith("S0_RECOVERY2_INVALID_TASK"), label)
+                # the consumption recheck binds the REAL task's plan too, even if a bad task slipped past the gate
+                r.state = r.store.load()
+                self.assertTrue(r.wlock.acquire({"pid": os.getpid()}))
+                try:
+                    with self.assertRaises(R.Recovery2NotReady):
+                        r._recovery2_consume_correction({**self.correction2_task(), "allowed_paths": paths})
+                finally:
+                    r.wlock.release()
+                self.assert_unused(r, label)
+
+    def test_generated_settings_file_is_read_back_and_a_mismatch_fails_closed(self):
+        r = self.bind2()
+        self.queue2(r)
+        task = r.next_ready()
+        real = R.atomic_write
+
+        def tampered(path, data, *a, **k):
+            if str(path).endswith(".settings.json"):
+                doc = json.loads(data)
+                doc["permissions"]["allow"].append("Bash")
+                data = json.dumps(doc).encode()
+            return real(path, data, *a, **k)
+        with mock.patch.object(R, "atomic_write", side_effect=tampered):
+            r.dispatch(task)
+        t = r.state["tasks"][R.RC2_ID]
+        self.assertIn("S0_RECOVERY2_DISPATCH_UNATTESTED", t.get("last_error") or t.get("blocked_reason") or "")
+        self.assertFalse(self.bin.with_name("prompt.txt").exists())  # the worker never started
+        self.assertEqual(self.overlay2()["correction"]["state"], "CONSUMED")
+
+
+class Recovery2FailClosed(Recovery2Base):
+    def test_tampered_lane1_lane2_original_or_preimage_denies_all_ingress(self):
+        r = self.bind2()
+        ov_path = self.home / R.RC2_RECORD_NAME
+        good = ov_path.read_bytes()
+        pre = self.home / self.overlay2()["pre_image"]["dir"]
+        l1 = self.home / R.RECOVERY_RECORD_NAME
+
+        def forge(path, raw, **over):
+            d = json.loads(raw)
+            d.update(over)
+            d.pop("checksum")
+            d["checksum"] = R._transition_checksum(d)
+            path.write_text(json.dumps(d))
+        cases = {
+            "garbage overlay": lambda: ov_path.write_text("{nope"),
+            "forged ACTIVE": lambda: forge(ov_path, good, stage="ACTIVE"),
+            "forged consumed slot": lambda: forge(ov_path, good, correction={"state": "CONSUMED", "task_id": "alias", "at": "t"}),
+            "forged other runner": lambda: forge(ov_path, good, runner={**json.loads(good)["runner"], "code_sha256": "cc" * 32}),
+            "forged preflight edits": lambda: forge(ov_path, good, preflight={**json.loads(good)["preflight"], "edits_sha256": "dd" * 32}),
+            "forged prior": lambda: forge(ov_path, good, prior={**json.loads(good)["prior"], "file_sha256": "ee" * 32}),
+            "lane-1 overlay rewritten (valid checksum)": lambda: forge(l1, self.ov1_bytes, created_at="2020-01-01T00:00:00+00:00"),
+            "lane-1 overlay deleted": lambda: l1.unlink(),
+            "original record edited": lambda: (self.home / R.TRANSFER_RECORD_NAME).write_bytes(self.orig_record_bytes + b" "),
+            "preimage file altered": lambda: (pre / "doc-0").write_bytes(b"altered"),
+            "lane-1 copy in preimage altered": lambda: (pre / "recovery1.json").write_bytes(b"altered"),
+            "preimage missing": lambda: shutil.move(str(pre), str(pre) + ".gone"),
+            "overlay 2 deleted": lambda: ov_path.unlink(),
+        }
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                ov_path.write_bytes(good)
+                l1.write_bytes(self.ov1_bytes)
+                (self.home / R.TRANSFER_RECORD_NAME).write_bytes(self.orig_record_bytes)
+                if not pre.exists() and Path(str(pre) + ".gone").exists():
+                    shutil.move(str(pre) + ".gone", str(pre))
+                (pre / "doc-0").write_bytes(self.cert0)
+                tamper()
+                self.assertEqual(self.mode(), "HOLD", label)
+                self.assertIsNotNone(self.gate(self.correction2_task()), label)
+                self.assertIsNotNone(self.gate(self.ordinary_task()), label)
+                self.assertNotEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE, label)
+
+    def test_task_state_tampering_after_creation_refuses_the_gate(self):
+        r = self.bind2()
+        self.queue2(r)
+        for label, mutate in {"lane-1 task re-armed": lambda st: st["tasks"][R.RECOVERY_ID].update(status="QUEUED", attempts=0),
+                              "original task changed": lambda st: st["tasks"][R.S0_DUAL_REBIND_ID].update(attempts=2),
+                              "second lane-2 write": lambda st: st["tasks"].update({"alias": {
+                                  **self.ordinary_task_stub("alias"), "plan_phase": R.RC2_MARKER, "role": "implement"}})}.items():
+            with self.subTest(label):
+                st = R.Store(self.home).load()
+                saved = json.dumps(st["tasks"])
+                mutate(st)
+                reason = R.gate_reason(self.cfg, R.validate_task(self.correction2_task(), self.cfg), st["tasks"])
+                self.assertIsNotNone(reason, label)
+                self.assertFalse(reason.startswith("S0_RECOVERY2_PREFLIGHT"), (label, reason))
+                self.assertFalse(self.spent(), label)
+                del saved

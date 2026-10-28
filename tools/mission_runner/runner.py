@@ -5606,9 +5606,12 @@ def _transition_bound_problem(cfg, rec, full=True):
     """Every admission re-authenticates the preserved bytes and the audit trail; a positive result is never cached."""
     if rec["new"]["code_sha256"] != CODE_SHA:
         try:
-            ov = _recovery_load(cfg)
+            ov2 = _recovery2_load(cfg)
+            ov = None if ov2 is not None else _recovery_load(cfg)
         except GateError as e:
             return f"the recovery record is invalid: {e}"
+        if ov2 is not None:
+            return _recovery2_bound_problem(cfg, rec, ov2, full)
         if ov is None:
             return "the transition record binds different successor code"
         return _recovery_bound_problem(cfg, rec, ov, full)
@@ -5850,8 +5853,40 @@ _RC_KEYS = {"schema", "kind", "recovery_id", "stage", "created_at", "orig", "own
 _RC_IMMUTABLE = ("schema", "kind", "recovery_id", "created_at", "orig", "owner", "pre_image", "runner", "attested")
 
 
-def _recovery_marked(t):
+# --- second, distinct S0 recovery lane (2026-10-28, OWNER-2026-10-28-s0-deterministic-preflight-recovery.md). Lane 1 above is spent
+# (CORRECTION_CONSUMED, its task BLOCKED NO_DELIVERABLE_CHANGE) and stays byte-immutable; lane 2 has its own overlay, ID, boot window,
+# receipts and slot, cross-bound to lane 1 and to the original transition, and its slot is consumed only after the sole runner has
+# attested and re-verified (under the writer lock) a deterministic preflight.
+RC2_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-28-s0-deterministic-preflight-recovery.md"
+RC2_OWNER_SHA = "bd20bde4eb78023532e5ab59c0b3a5b8803bac181df6f8dfa9c737d9fd1b980d"
+RC2_OWNER_COMMIT = "617b80ee80c3df2f96657d281cfb5f835a160917"  # E: record-only, raw single-parent child of the lane-1 runner commit
+RC2_OWNER_CI_RUN = "40646407026"
+RC2_PRIOR_COMMIT = "defb9fd2a13e63a16bf086371d575daeb4325235"  # lane 1's replacement runner commit (E's parent)
+RC2_PRIOR_CODE_SHA = "7c3aec7d69907f3839a731329c43277fb503928bc153e67043986aaec92be6f8"
+RC2_ID = "mod004-s0-d16-preflight-recovery-sonnet-20261028"
+RC2_MARKER = "MOD004-S0-D16-PREFLIGHT-RECOVERY"
+RC2_RECEIPT = "MOD-004-S0-D16-PREFLIGHT-RECOVERY"
+RC2_S0_RECEIPT = "MOD-004-S0-D16-PREFLIGHT-RECOVERY-S0"  # the fresh six-subject S0 receipt
+RC2_RECORD_NAME = "s0_d16_preflight_recovery.json"
+RC2_BOOT_NAME = "s0_d16_preflight_recovery_boot.json"  # the one reload window of lane 2
+RC2_CHECKPOINT = "checkpoints/20261028-s0-deterministic-preflight-recovery"
+RC2_KIND = "s0-d16-preflight-recovery"
+RC2_PROMPT = ("Apply the three runner-supplied certificate edits exactly as written in the runner-authored recovery contract below, "
+              "and change nothing else.")
+_RC2_KEYS = _RC_KEYS | {"prior", "preflight"}
+_RC2_IMMUTABLE = ("schema", "kind", "recovery_id", "created_at", "orig", "prior", "owner", "pre_image", "runner", "preflight", "attested")
+
+
+def _rc1_marked(t):
     return t.get("plan_phase") == RECOVERY_MARKER or t.get("id") == RECOVERY_ID
+
+
+def _rc2_marked(t):
+    return t.get("plan_phase") == RC2_MARKER or t.get("id") == RC2_ID
+
+
+def _recovery_marked(t):
+    return _rc1_marked(t) or _rc2_marked(t)
 
 
 def _recovery_path(cfg):
@@ -6017,8 +6052,8 @@ def _recovery_successor(cfg):
             "diff_sha256": _sha(_recovery_diff(cfg, head))}
 
 
-def _recovery_preload(cfg, successor):
-    base = Path(cfg.home) / RECOVERY_CHECKPOINT
+def _recovery_preload(cfg, successor, checkpoint=None):
+    base = Path(cfg.home) / (checkpoint or RECOVERY_CHECKPOINT)
     raw = _transfer_read(base / TRANSFER_PRELOAD_NAME, "recovery Opus review evidence", 1 << 20)
     try:
         d = json.loads(raw.decode())
@@ -6134,12 +6169,14 @@ def _recovery_bound_problem(cfg, rec, ov, full=True):
 
 def _transition_overlay(cfg, rec):
     """The recovery overlay governing record `rec` (replacement code loaded), else None. Raises GateError if it is invalid."""
-    return _recovery_load(cfg) if rec["new"]["code_sha256"] != CODE_SHA else None
+    if rec["new"]["code_sha256"] == CODE_SHA:
+        return None
+    return _recovery2_load(cfg) or _recovery_load(cfg)  # lane 2 governs once it exists; lane 1 is history for different code
 
 
-def _recovery_write_pre_image(cfg, rid, rec, docs, files):
+def _recovery_write_pre_image(cfg, rid, rec, docs, files, checkpoint=None):
     """Out-of-repo byte-for-byte pre-image of state, events, receipts, the original record and the two pinned documents."""
-    root = Path(cfg.home) / RECOVERY_CHECKPOINT
+    root = Path(cfg.home) / (checkpoint or RECOVERY_CHECKPOINT)
     final, tmp = root / f"pre-image-{rid}", root / f".pre-image-{rid}.tmp"
     if final.exists() or tmp.exists():
         raise GateError("recovery pre-image directory already exists")
@@ -6256,7 +6293,7 @@ def _recovery_shape_problem(t):
 
 def recovery_gate_reason(cfg, t, tasks):
     """None outside the lane or for the one fully authorised correction; else an explicit S0_RECOVERY_* reason."""
-    if not _recovery_marked(t):
+    if not _rc1_marked(t):
         return None
     problem = _recovery_shape_problem(t)
     if problem:
@@ -6297,7 +6334,7 @@ def recovery_gate_reason(cfg, t, tasks):
 def recovery_review_reason(cfg, t, tasks):
     """The one exact-bound owner-CLI Opus review of the DONE correction; it must cover BOTH final document paths and hashes."""
     w = tasks.get((t.get("review_of") or {}).get("task_id"))
-    if not (w and _recovery_marked(w)):
+    if not (w and _rc1_marked(w)):
         return None
     if t.get("source") is not None:
         return "S0_RECOVERY_REVIEW_UNSUPPORTED: the recovery review is owner-CLI routed only"
@@ -6521,7 +6558,8 @@ def _recovery_probe_problem(cfg, rec, ov, tasks):
     base = {"module": S0_MODULE, "role": "implement", "status": "QUEUED", "attempts": 0, "allowed_paths": [],
             "expected_changes": [], "verify_cmd": [], "prompt": "probe", "title": "probe", "source": None}
     probes = ({**base, "id": D16_DUAL_ID}, {**base, "id": "transfer-probe-s0-product", "plan_phase": S0_MARKER},
-              {**base, "id": S0_DUAL_REBIND_ID, "plan_phase": S0_DUAL_REBIND_MARKER})
+              {**base, "id": S0_DUAL_REBIND_ID, "plan_phase": S0_DUAL_REBIND_MARKER},
+              {**base, "id": RECOVERY_ID, "plan_phase": RECOVERY_MARKER}, {**base, "id": RC2_ID, "plan_phase": RC2_MARKER})
     for p in probes:
         try:
             if gate_reason(cfg, p, tasks) is None:
@@ -6529,6 +6567,757 @@ def _recovery_probe_problem(cfg, rec, ov, tasks):
         except Exception:
             continue  # an unverifiable gate is a refusal
     return None
+
+
+# ------------------------------------------------ S0 deterministic-preflight recovery, lane 2 (2026-10-28)
+# One distinct, single-use overlay cross-bound to the immutable original transition, the spent lane-1 overlay and its BLOCKED task, and
+# the exact owner record. The slot is consumed only after the sole runner attested, and then re-derived under the writer lock, a
+# deterministic preflight: the current QA packet hash, the pinned document bytes, exact certificate edit anchors with an in-memory
+# simulated result, and the effective child permissions, command, tools and executable. Nothing here rewrites lane 1 or the original.
+class Recovery2NotReady(GateError):
+    """The attested preflight no longer holds. Raised BEFORE consumption: nothing was spent and no worker may start."""
+
+
+_RC2_PF_KEYS = {"packet_sha256", "cert_sha256", "edits", "edits_sha256", "settings_sha256", "argv_sha256", "tools", "block_sha256", "at"}
+_RC2_TOOLS = "Read,Grep,Glob,Edit,Write"
+
+
+def _recovery2_path(cfg):
+    return cfg.home / RC2_RECORD_NAME
+
+
+def _recovery2_first_boot(cfg, me=False):
+    """Lane 2's first-replacement-boot marker (its one reload window), or None. `me` also requires that THIS process created it."""
+    try:
+        d = json.loads(_read_bounded(Path(cfg.home) / RC2_BOOT_NAME, 1 << 16).decode())
+    except Exception:
+        return None
+    if not (isinstance(d, dict) and set(d) == _TR_BOOT_KEYS and d["schema"] == 1 and d["kind"] == "s0-d16-preflight-recovery-first-boot"
+            and _is_int(d["pid"]) and d["pid"] > 0 and isinstance(d["boot_nonce"], str) and d["boot_nonce"]
+            and d["code_sha256"] == CODE_SHA):
+        return None
+    return d if not me or (d["pid"] == os.getpid() and d["boot_nonce"] == _PROCESS_BOOT_NONCE) else None
+
+
+# --- the deterministic preflight: pure functions of bytes, configuration and the shared child definitions
+def _recovery2_edits(cert, packet):
+    """The three exact Edit pairs that turn the pinned certificate bytes into the corrected one, with anchors that occur exactly
+    once. Raises GateError otherwise; the caller still proves the result by simulation."""
+    packet_sha = _sha(packet)
+    try:
+        text = cert.decode("utf-8")
+        d = json.loads(text)
+    except (UnicodeDecodeError, ValueError):
+        raise GateError("the certificate is not UTF-8 JSON")
+    bp, rg = d.get("scenario_qa_packet") if isinstance(d, dict) else None, d.get("runner_gate") if isinstance(d, dict) else None
+    if not (isinstance(bp, dict) and bp.get("path") == S0_DOC_PATHS[1] and isinstance(bp.get("sha256"), str)
+            and SHA256_RE.fullmatch(bp["sha256"]) and isinstance(bp.get("sha256_note"), str)
+            and isinstance(rg, dict) and set(rg) == {"path", "sha256"} and rg["path"] == S0_RUNNER_FILE
+            and isinstance(rg["sha256"], str) and SHA256_RE.fullmatch(rg["sha256"])):
+        raise GateError("the certificate lacks the expected scenario_qa_packet and runner_gate fields")
+    note = recovery_note(packet_sha)
+    if bp["sha256"] == packet_sha or bp["sha256_note"] == note or rg["sha256"] == CODE_SHA:
+        raise GateError("a certificate value already equals its corrected value; no exact edit exists")
+    o1 = f'"sha256": "{bp["sha256"]}"'
+    notes = list(re.finditer(r'"sha256_note": ("(?:[^"\\]|\\.)*")', text))
+    tops = sorted(re.finditer(r'\n( *)"runner_gate": \{\n\1( +)"path": "' + re.escape(S0_RUNNER_FILE) + r'",\n\1\2"sha256": "'
+                              + re.escape(rg["sha256"]) + '"', text), key=lambda m: len(m.group(1)))
+    if len(notes) != 1 or json.loads(notes[0].group(1)) != bp["sha256_note"]:
+        raise GateError("the packet sha256_note anchor is not unique")
+    if not tops or (len(tops) > 1 and len(tops[0].group(1)) == len(tops[1].group(1))):
+        raise GateError("the top-level runner_gate anchor is not unique")
+    o3 = tops[0].group(0)
+    edits = [{"old_string": o1, "new_string": f'"sha256": "{packet_sha}"'},
+             {"old_string": notes[0].group(0), "new_string": '"sha256_note": ' + json.dumps(note)},
+             {"old_string": o3, "new_string": o3.replace(rg["sha256"], CODE_SHA)}]
+    cur = text
+    for e in edits:  # each old_string must be unique in the file as it stands at that Edit call
+        if cur.count(e["old_string"]) != 1 or e["old_string"] == e["new_string"]:
+            raise GateError("a certificate edit anchor does not occur exactly once")
+        cur = cur.replace(e["old_string"], e["new_string"], 1)
+    return edits
+
+
+def _recovery2_apply(cert, edits):
+    text = cert.decode("utf-8")
+    for e in edits:
+        text = text.replace(e["old_string"], e["new_string"], 1)
+    return text.encode("utf-8")
+
+
+def _recovery2_plan(cfg, t):
+    """The effective child configuration for write task `t` (role, allowed_paths) from the SAME definitions dispatch uses, checked
+    against an independently written expectation: path-scoped allow/deny lists, permission mode, tool list and command line."""
+    settings, role = child_settings_for(t), t["role"]
+    allow = ["Read", "Grep", "Glob"] + [f"{tool}({p})" for p in S0_DOC_PATHS for tool in ("Edit", "Write")]
+    deny = ["Bash", "WebFetch", "WebSearch", "Agent", "Edit(.git/**)", "Write(.git/**)"]
+    if not (role == "implement" and t["allowed_paths"] == list(S0_DOC_PATHS) and settings == {
+            "permissions": {"defaultMode": "dontAsk", "allow": allow, "deny": deny}, "hooks": {}}):
+        raise GateError("the effective child permissions do not grant exactly Read plus Edit/Write on the two S0 documents")
+    alias = required_family(role)
+    sandbox = sandbox_active(cfg)
+    argv, tools = child_argv(["sandbox-exec", "-f", "<PROFILE>"] if sandbox else [], "<CLAUDE_BIN>", "<SETTINGS>", alias, role)
+    if tools != _RC2_TOOLS or "--permission-mode=dontAsk" not in argv or f"--tools={tools}" not in argv or "--setting-sources=" not in argv:
+        raise GateError("the child command line does not carry the attested tools and permission mode")
+    return {"settings_sha256": _sha(_canon(settings)), "argv_sha256": _sha(_canon({"sandbox": sandbox, "argv": argv})), "tools": tools}
+
+
+def _recovery2_bin_problem(cfg):
+    b = cfg.claude_bin
+    p = b if os.sep in b else shutil.which(b)
+    if not (p and os.path.isfile(p) and os.access(p, os.X_OK)):
+        return "the child executable is not an available regular executable file"
+    return None
+
+
+def _recovery2_stub_task():
+    return {"id": RC2_ID, "role": "implement", "allowed_paths": list(S0_DOC_PATHS)}
+
+
+def recovery2_preflight(cfg, cert_base, qa_base):
+    """Deterministic, read-only. The attestation (without its timestamp) for the live documents, or GateError. `cert_base` and
+    `qa_base` are the preserved original bytes; the live files must equal them and their pinned hashes."""
+    cert_p, qa_p = S0_DOC_PATHS
+    bad = _recovery_tree_problem(cfg, RECOVERY_ORIG_DOCS)
+    if bad:
+        raise GateError(bad)
+    cert, qa = _read_bounded(Path(cfg.repo) / cert_p, REVIEW_MAX_BYTES), _read_bounded(Path(cfg.repo) / qa_p, REVIEW_MAX_BYTES)
+    if not (cert == cert_base and qa == qa_base and _sha(cert) == RECOVERY_ORIG_DOCS[cert_p] and _sha(qa) == RECOVERY_ORIG_DOCS[qa_p]):
+        raise GateError("a document differs from its pinned original bytes")
+    edits = _recovery2_edits(cert, qa)
+    problem = _recovery_cert_problem(cert, _recovery2_apply(cert, edits), qa)  # the simulated result must satisfy the result predicate
+    if problem:
+        raise GateError(f"the simulated corrected certificate is unsound: {problem}")
+    bad = _recovery2_bin_problem(cfg)
+    if bad:
+        raise GateError(bad)
+    pf = {"packet_sha256": _sha(qa), "cert_sha256": _sha(cert), "edits": edits, "edits_sha256": _sha(_canon(edits)),
+          **_recovery2_plan(cfg, _recovery2_stub_task())}
+    pf["block_sha256"] = _sha(_recovery2_block(pf).encode())
+    return pf
+
+
+def _recovery2_block(pf):
+    """The runner-authored part of the Sonnet task: a pure function of the attested preflight (never of the model or the prompt)."""
+    cert_p, qa_p = S0_DOC_PATHS
+    lines = ["", "", "Runner-authored S0 recovery contract (immutable; the runner computed and verified it before this attempt was spent):",
+             f"- The QA packet {qa_p} is byte-identical to SHA-256 {pf['packet_sha256']}; the certificate {cert_p} currently has SHA-256 "
+             f"{pf['cert_sha256']}. Do NOT compute or verify any hash and do not look for a shell: the runner already did.",
+             f"- Change ONLY {cert_p}, and never touch {qa_p}. Make exactly these {len(pf['edits'])} Edit calls on {cert_p}, in this order. "
+             "Each old_string occurs exactly once in the file at that step and must match byte for byte; the strings below are "
+             "JSON-encoded, so decode the escapes (\\n, \\\") to the literal characters:"]
+    for i, e in enumerate(pf["edits"], 1):
+        lines += [f"  {i}. old_string = {json.dumps(e['old_string'])}", f"     new_string = {json.dumps(e['new_string'])}"]
+    lines.append("- Make no other change of any kind (no reformatting, no other value). The runner verifies the result against these edits; "
+                 "statements in your reply are not evidence.")
+    return "\n".join(lines)
+
+
+def _recovery2_block_checked(cfg):
+    ov = _recovery2_load(cfg)
+    if ov is None:
+        raise GateError("no lane-2 recovery record")
+    block = _recovery2_block(ov["preflight"])
+    if _sha(block.encode()) != ov["preflight"]["block_sha256"]:
+        raise GateError("the recovery contract block differs from the attested one")
+    return block
+
+
+def _recovery2_preflight_problem(cfg, ov, tasks):
+    """Recompute the whole preflight from the preserved originals and the live environment; any difference from the attested one,
+    any live worker, process or handoff is a refusal. Used by the gate and again immediately before consumption."""
+    try:
+        pre = Path(cfg.home) / ov["pre_image"]["dir"]
+        now = recovery2_preflight(cfg, _read_bounded(pre / "doc-0", REVIEW_MAX_BYTES), _read_bounded(pre / "doc-1", REVIEW_MAX_BYTES))
+        if now != {k: v for k, v in ov["preflight"].items() if k != "at"}:
+            return "the live inputs or the effective child configuration differ from the attested preflight"
+        if any(isinstance(x, dict) and (x.get("status") == "RUNNING" or x.get("child") or x.get("stage") == "verify_pending")
+               for x in tasks.values()):
+            return "a worker task is running or a verification is pending"
+        h = (_read_state_handoff(cfg))
+        if h.get("request") or h.get("quarantine"):
+            return "an orchestrator handoff or gateway turn is open"
+        if _other_runner_pids(cfg):
+            return "another runner process exists"
+    except (GateError, OSError, KeyError, TypeError) as e:
+        return str(e)[:200]
+    return None
+
+
+def _recovery2_task_plan_problem(cfg, ov, t):
+    """The REAL queued task's effective settings/argv/tools (not a stub) must equal the attested ones; checked before consumption."""
+    try:
+        plan, pf = _recovery2_plan(cfg, t), ov["preflight"]
+    except (GateError, KeyError, TypeError) as e:
+        return str(e)[:200]
+    if not (plan["settings_sha256"] == pf["settings_sha256"] and plan["argv_sha256"] == pf["argv_sha256"] and plan["tools"] == pf["tools"]):
+        return "the task's effective child configuration differs from the attested preflight"
+    return None
+
+
+def _read_state_handoff(cfg):
+    try:
+        return (json.loads(_read_bounded(Path(cfg.home) / "state.json", 64 * 1024 * 1024)) or {}).get("handoff") or {}
+    except Exception:
+        raise GateError("cannot read the runner state")
+
+
+def _recovery2_dispatch_problem(cfg, t, cmd, tools, prefix, sett):
+    """Immediately before Popen: the actual command, tools, settings and prompt block are exactly the attested ones."""
+    ov = _recovery2_load(cfg)
+    if ov is None:
+        raise GateError("no lane-2 recovery record")
+    pf = ov["preflight"]
+    plan = _recovery2_plan(cfg, t)
+    if not (plan["settings_sha256"] == pf["settings_sha256"] and plan["argv_sha256"] == pf["argv_sha256"] and tools == plan["tools"] == pf["tools"]
+            and cmd == child_argv(prefix, cfg.claude_bin, sett, required_family(t["role"]), t["role"])[0]
+            and bool(prefix) == sandbox_active(cfg)):
+        raise GateError("the child command or settings differ from the attested preflight")
+    try:
+        on_disk = json.loads(_read_bounded(sett, REVIEW_MAX_BYTES))
+    except (OSError, ValueError, GateError):
+        raise GateError("the generated child settings file cannot be read back")
+    if _sha(_canon(on_disk)) != pf["settings_sha256"]:
+        raise GateError("the generated child settings file differs from the attested settings")
+    _recovery2_block_checked(cfg)
+
+
+# --- overlay 2: strict schema, loader and the only writer
+def _recovery2_pf_validate(pf):
+    pf = _tr_dict(pf, _RC2_PF_KEYS, "preflight")
+    cert_p, qa_p = S0_DOC_PATHS
+    e = pf["edits"]
+    if not (pf["packet_sha256"] == RECOVERY_ORIG_DOCS[qa_p] and pf["cert_sha256"] == RECOVERY_ORIG_DOCS[cert_p]
+            and isinstance(e, list) and len(e) == 3 and all(isinstance(x, dict) and set(x) == {"old_string", "new_string"}
+                                                            and all(isinstance(v, str) and v for v in x.values()) for x in e)
+            and all(_is_hex(pf[k], 64) for k in ("edits_sha256", "settings_sha256", "argv_sha256", "block_sha256"))
+            and pf["edits_sha256"] == _sha(_canon(e)) and pf["tools"] == _RC2_TOOLS and isinstance(pf["at"], str)
+            and pf["block_sha256"] == _sha(_recovery2_block(pf).encode())):
+        raise GateError("recovery2 record: the preflight attestation is invalid")
+
+
+def _recovery2_validate(rec):
+    """Strict schema and cross-field check; raises GateError so no caller sees an uncaught exception."""
+    if not (isinstance(rec, dict) and set(rec) == _RC2_KEYS):
+        raise GateError("recovery2 record: unexpected or missing fields")
+    if not (rec["schema"] == 1 and rec["kind"] == RC2_KIND and _is_hex(rec["recovery_id"], 32)
+            and rec["stage"] in _RC_ORDER and isinstance(rec["created_at"], str)):
+        raise GateError("recovery2 record: header fields are invalid")
+    o = _tr_dict(rec["orig"], ("transition_id", "checksum", "file_sha256", "task_id", "docs"), "orig")
+    if not (_is_hex(o["transition_id"], 32) and _is_hex(o["checksum"], 64) and _is_hex(o["file_sha256"], 64)
+            and o["task_id"] == S0_DUAL_REBIND_ID and o["docs"] == RECOVERY_ORIG_DOCS):
+        raise GateError("recovery2 record: the original transition binding is invalid")
+    pr = _tr_dict(rec["prior"], ("recovery_id", "file_sha256", "checksum", "runner_commit", "runner_code_sha256", "task_id"), "prior")
+    if not (_is_hex(pr["recovery_id"], 32) and _is_hex(pr["file_sha256"], 64) and _is_hex(pr["checksum"], 64)
+            and pr["runner_commit"] == RC2_PRIOR_COMMIT and pr["runner_code_sha256"] == RC2_PRIOR_CODE_SHA and pr["task_id"] == RECOVERY_ID):
+        raise GateError("recovery2 record: the lane-1 binding is invalid")
+    ow = _tr_dict(rec["owner"], ("path", "sha256", "commit", "ci"), "owner")
+    if not (ow["path"] == RC2_OWNER_PATH and ow["sha256"] == RC2_OWNER_SHA and ow["commit"] == RC2_OWNER_COMMIT):
+        raise GateError("recovery2 record: the owner record binding is invalid")
+    _recovery_ci_validate(ow["ci"], RC2_OWNER_COMMIT, RC2_OWNER_CI_RUN)
+    pi = _tr_dict(rec["pre_image"], ("dir", "digest", "manifest_sha256"), "pre_image")
+    if not (isinstance(pi["dir"], str) and pi["dir"] and _is_hex(pi["digest"], 64) and _is_hex(pi["manifest_sha256"], 64)):
+        raise GateError("recovery2 record: pre_image is invalid")
+    rn = _tr_dict(rec["runner"], ("code_sha256", "commit", "parent", "test_sha256", "diff_sha256", "preload_sha256",
+                                  "preload_output_sha256", "ci"), "runner")
+    if not (_is_hex(rn["code_sha256"], 64) and rn["code_sha256"] not in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA)
+            and _is_hex(rn["commit"], 40) and rn["parent"] == RC2_OWNER_COMMIT
+            and all(_is_hex(rn[k], 64) for k in ("test_sha256", "diff_sha256", "preload_sha256", "preload_output_sha256"))):
+        raise GateError("recovery2 record: the replacement runner binding is invalid")
+    _recovery_ci_validate(rn["ci"], rn["commit"])
+    _recovery2_pf_validate(rec["preflight"])
+    at = _tr_dict(rec["attested"], ("pid", "boot_nonce", "code_sha256", "at"), "attested")
+    if not (_is_int(at["pid"]) and at["pid"] > 0 and isinstance(at["boot_nonce"], str) and at["boot_nonce"]
+            and at["code_sha256"] == rn["code_sha256"] and isinstance(at["at"], str)):
+        raise GateError("recovery2 record: the attestation is invalid")
+    cor = _tr_dict(rec["correction"], ("state", "task_id", "at"), "correction")
+    ver = _tr_dict(rec["verified"], ("docs", "receipt_sha256", "commit", "at"), "verified")
+    if cor["state"] == "UNUSED":
+        if cor["task_id"] is not None or cor["at"] is not None:
+            raise GateError("recovery2 record: an unused correction slot carries a task")
+    elif not (cor["state"] == "CONSUMED" and cor["task_id"] == RC2_ID and isinstance(cor["at"], str)):
+        raise GateError("recovery2 record: the correction slot state is invalid")
+    rank = _RC_ORDER[rec["stage"]]
+    if (rank >= 1) != (cor["state"] == "CONSUMED"):
+        raise GateError("recovery2 record: the stage and the correction slot disagree")
+    if rank >= 2:
+        if not (isinstance(ver["docs"], dict) and set(ver["docs"]) == set(S0_DOC_PATHS) and all(_is_hex(v, 64) for v in ver["docs"].values())
+                and _is_hex(ver["receipt_sha256"], 64) and _is_hex(ver["commit"], 40) and isinstance(ver["at"], str)):
+            raise GateError("recovery2 record: VERIFIED evidence is invalid")
+    elif any(v is not None for v in ver.values()):
+        raise GateError("recovery2 record: premature VERIFIED evidence")
+    if rec["checksum"] != _transition_checksum(rec):
+        raise GateError("recovery2 record: checksum mismatch (corrupt or tampered)")
+    return rec
+
+
+def _recovery2_load(cfg):
+    """None when no lane-2 overlay exists; the validated overlay otherwise. Any problem raises GateError."""
+    path = _recovery2_path(cfg)
+    if not os.path.lexists(path):
+        return None
+    try:
+        rec = json.loads(_read_bounded(path, 1 << 20).decode())
+    except GateError:
+        raise
+    except Exception:
+        raise GateError("recovery2 record is unreadable or not valid JSON")
+    return _recovery2_validate(rec)
+
+
+def _recovery2_write(cfg, rec, create=False):
+    """The only writer of overlay 2: validated, monotonic, atomic and fsynced. It never touches lane 1 or the original record."""
+    rec = {k: v for k, v in rec.items() if k != "checksum"}
+    rec["checksum"] = _transition_checksum(rec)
+    _recovery2_validate(rec)
+    data = json.dumps(rec, sort_keys=True, indent=1).encode()
+    if create:
+        _atomic_create_exclusive(_recovery2_path(cfg), data)
+        return rec
+    cur = _recovery2_load(cfg)
+    if cur is None:
+        raise GateError("recovery2 record is absent")
+    for k in _RC2_IMMUTABLE:
+        if cur[k] != rec[k]:
+            raise GateError(f"recovery2 record: immutable field {k} may not change")
+    a, b = _RC_ORDER[cur["stage"]], _RC_ORDER[rec["stage"]]
+    if not a <= b <= a + 1:
+        raise GateError("recovery2 record: stages only advance one step at a time")
+    if cur["correction"]["state"] == "CONSUMED" and rec["correction"] != cur["correction"]:
+        raise GateError("recovery2 record: a consumed correction slot cannot be restored")
+    if cur["verified"]["docs"] is not None and rec["verified"] != cur["verified"]:
+        raise GateError("recovery2 record: VERIFIED evidence is immutable")
+    atomic_write(_recovery2_path(cfg), data)
+    return rec
+
+
+# --- binding of the overlay to lane 1, the replacement runner (E2 -> C2) and the preserved bytes
+def _recovery2_prior_task_problem(tasks):
+    """Lane 1's one task is untouched: BLOCKED NO_DELIVERABLE_CHANGE after its single attempt, with no document change."""
+    w = tasks.get(RECOVERY_ID)
+    ev = (w or {}).get("evidence") or {}
+    if not (isinstance(w, dict) and _rc1_marked(w) and w.get("status") == "BLOCKED" and w.get("blocked_reason") == "NO_DELIVERABLE_CHANGE"
+            and w.get("attempts") == 1 and ev.get("changed") == [] and "NO_DELIVERABLE_CHANGE" in (ev.get("violations") or [])
+            and _recovery_shape_problem(w) is None):
+        return "the lane-1 recovery task is not the BLOCKED NO_DELIVERABLE_CHANGE one-attempt task"
+    return None
+
+
+def _recovery2_prior_problem(cfg, ov):
+    """Lane 1's overlay is byte-for-byte what overlay 2 bound: the same file, spent at CORRECTION_CONSUMED, on the prior runner."""
+    pr = ov["prior"]
+    try:
+        raw = _read_bounded(_recovery_path(cfg), 1 << 20)
+        ov1 = _recovery_validate(json.loads(raw.decode()))
+    except (GateError, ValueError, UnicodeDecodeError):
+        return "the lane-1 recovery record is unreadable or invalid"
+    if not (_sha(raw) == pr["file_sha256"] and ov1["checksum"] == pr["checksum"] and ov1["recovery_id"] == pr["recovery_id"]
+            and ov1["stage"] == "CORRECTION_CONSUMED" and ov1["correction"]["state"] == "CONSUMED" and ov1["correction"]["task_id"] == RECOVERY_ID
+            and ov1["runner"]["commit"] == pr["runner_commit"] == RC2_PRIOR_COMMIT
+            and ov1["runner"]["code_sha256"] == pr["runner_code_sha256"] == RC2_PRIOR_CODE_SHA and ov1["orig"] == ov["orig"]):
+        return "the lane-1 recovery record differs from what the lane-2 record binds"
+    return None
+
+
+def _recovery2_diff(cfg, commit):
+    p = _tgit(cfg, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+              RC2_OWNER_COMMIT, commit, "--", S0_RUNNER_FILE, TRANSFER_TEST_FILE)
+    if p.returncode != 0:
+        raise GateError("cannot compute the lane-2 runner diff")
+    return p.stdout
+
+
+@_tr_memoized
+def _recovery2_successor(cfg):
+    """Deterministic local binding of the loaded runner C2 to E2 -> C2 (direct, single-parent raw Git objects; E2's parent is lane 1's
+    runner commit). The two documents may be dirty; nothing else may be."""
+    runner_b = _transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "lane-2 runner.py")
+    test_b = _transfer_read(Path(cfg.repo) / TRANSFER_TEST_FILE, "lane-2 test_runner.py")
+    if not (_sha(runner_b) == CODE_SHA == _LOADED_CODE_SHA):
+        raise GateError("on-disk runner.py differs from the loaded lane-2 code (stale disk)")
+    _transfer_no_replacements(cfg)
+    head = _tgit(cfg, "rev-parse", "--verify", "HEAD")
+    head = head.stdout.decode().strip() if head.returncode == 0 else ""
+    if _transfer_commit(cfg, head)[1] != [RC2_OWNER_COMMIT]:
+        raise GateError("the lane-2 runner commit C is not a direct, single-parent child of the owner-record commit E")
+    if _transfer_commit(cfg, RC2_OWNER_COMMIT)[1] != [RC2_PRIOR_COMMIT]:
+        raise GateError("the owner-record commit E is not a direct, single-parent child of the lane-1 runner commit")
+    if _transfer_changed(cfg, RC2_PRIOR_COMMIT, RC2_OWNER_COMMIT) != [RC2_OWNER_PATH]:
+        raise GateError("the owner-record commit E must change exactly its owner record")
+    owner = _transfer_blob(cfg, RC2_OWNER_COMMIT, RC2_OWNER_PATH)
+    if _sha(owner) != RC2_OWNER_SHA or _transfer_blob(cfg, head, RC2_OWNER_PATH) != owner:
+        raise GateError("the lane-2 owner record is not the pinned, unchanged published record")
+    if _sha(_transfer_blob(cfg, head, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, head, TRANSFER_TEST_FILE)) != _sha(test_b):
+        raise GateError("the committed runner or test blob differs from the on-disk file")
+    if _transfer_changed(cfg, RC2_OWNER_COMMIT, head) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+        raise GateError("the lane-2 runner commit must change exactly runner.py and test_runner.py")
+    return {"commit": head, "parent": RC2_OWNER_COMMIT, "code_sha256": CODE_SHA, "test_sha256": _sha(test_b),
+            "diff_sha256": _sha(_recovery2_diff(cfg, head))}
+
+
+@_tr_memoized
+def _recovery2_runner_problem(cfg, ov, full):
+    rn = ov["runner"]
+    try:
+        if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA):
+            return "the lane-2 record binds different replacement runner code"
+        if _sha(_transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "runner.py")) != CODE_SHA:
+            return "on-disk runner.py differs from the loaded lane-2 code"
+        if not full:
+            return None
+        c = rn["commit"]
+        if _transfer_commit(cfg, c)[1] != [RC2_OWNER_COMMIT]:
+            return "the lane-2 runner commit is not a direct child of the owner-record commit"
+        if _transfer_changed(cfg, RC2_OWNER_COMMIT, c) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+            return "the lane-2 runner commit changes more than runner.py and test_runner.py"
+        if _sha(_transfer_blob(cfg, c, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, c, TRANSFER_TEST_FILE)) != rn["test_sha256"]:
+            return "the committed lane-2 blobs differ from the recorded hashes"
+        if _sha(_recovery2_diff(cfg, c)) != rn["diff_sha256"]:
+            return "the lane-2 runner diff differs from the reviewed subject"
+        owner = _transfer_blob(cfg, RC2_OWNER_COMMIT, RC2_OWNER_PATH)
+        if _sha(owner) != RC2_OWNER_SHA or _transfer_blob(cfg, c, RC2_OWNER_PATH) != owner:
+            return "the lane-2 owner record changed"
+        if not _is_ancestor(cfg, c):
+            return "the lane-2 runner commit is not an ancestor of HEAD"
+    except GateError as e:
+        return str(e)
+    return None
+
+
+def _recovery2_replay_problem(cfg, ov):
+    """Overlay-2 audit events are only appended AFTER a stage is reached: an overlay trailing its trail was rolled back or replayed."""
+    rank = _RC_ORDER[ov["stage"]]
+    for e in _qled_events(cfg):
+        if e.get("kind") == "quarantine-recovery2-stage" and e.get("recovery_id") == ov["recovery_id"] and _RC_ORDER.get(e.get("stage"), -1) > rank:
+            return "the lane-2 record is behind its audit trail (rolled back or replayed)"
+        if e.get("kind") == "dispatch" and e.get("task_id") == RC2_ID and ov["correction"]["state"] != "CONSUMED":
+            return "the lane-2 correction was dispatched per the audit trail but the record restores its slot (replayed)"
+    return None
+
+
+def _recovery2_bound_problem(cfg, rec, ov, full=True):
+    """Every admission re-authenticates the original record, lane 1, the replacement runner and the preserved bytes; never cached."""
+    try:
+        return (_recovery_orig_problem(cfg, rec, ov) or _recovery2_prior_problem(cfg, ov) or _recovery2_runner_problem(cfg, ov, full)
+                or _transfer_pre_image_problem(cfg, rec, full) or _recovery_pre_image_problem(cfg, ov, full)
+                or (_transition_replay_problem(cfg, rec) or _recovery2_replay_problem(cfg, ov) if full else None))
+    except (GateError, OSError) as e:
+        return f"recovery2 binding cannot be verified: {str(e)[:200]}"
+
+
+def recovery2_create_preflight(cfg, state, rlock_held=False, wlock_held=False):
+    """Deterministic local preflight for creating overlay 2. Raises GateError on anything but the exact pinned incident. Provider CI
+    is observed by the caller; this never consults the network and writes nothing."""
+    rec = _load_transition(cfg)
+    if rec is None or rec["new"]["code_sha256"] == CODE_SHA or CODE_SHA in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA):
+        raise GateError("the original transition does not bind older runner code than this distinct lane-2 runner")
+    if _recovery2_load(cfg) is not None or any(e.get("kind") == "quarantine-recovery2-stage" for e in _qled_events(cfg)):
+        raise GateError("a lane-2 record already exists or was minted; it is never minted twice")
+    raw = _read_bounded(_recovery_path(cfg), 1 << 20)
+    ov1 = _recovery_validate(json.loads(raw.decode()))
+    stub = {"orig": ov1["orig"], "prior": {"recovery_id": ov1["recovery_id"], "file_sha256": _sha(raw), "checksum": ov1["checksum"],
+                                           "runner_commit": ov1["runner"]["commit"], "runner_code_sha256": ov1["runner"]["code_sha256"],
+                                           "task_id": RECOVERY_ID}}
+    o = stub["orig"]
+    if not (o["transition_id"] == rec["transition_id"] and o["checksum"] == rec["checksum"]
+            and o["file_sha256"] == _sha(_read_bounded(_transition_path(cfg), 1 << 20))):
+        raise GateError("lane 1 binds a different original transition record")
+    bad = (_recovery_orig_problem(cfg, rec, stub) or _recovery2_prior_problem(cfg, stub)
+           or _transfer_pre_image_problem(cfg, rec, True) or _transition_replay_problem(cfg, rec))
+    if bad:
+        raise GateError(bad)
+    me = (os.getpid(), _PROCESS_BOOT_NONCE)
+    for att in (rec["attested"], ov1["attested"]):
+        if (att["pid"], att["boot_nonce"]) == me or (att["pid"] != os.getpid() and pid_alive(att["pid"])):
+            raise GateError("a prior attested runner is still alive or is this process")
+    tasks = (state or {}).get("tasks")
+    if not isinstance(tasks, dict):
+        raise GateError("no task state")
+    bad = _recovery_orig_task_problem(tasks) or _recovery2_prior_task_problem(tasks)
+    if bad:
+        raise GateError(bad)
+    if any(isinstance(x, dict) and (_rc2_marked(x) or (x.get("review_of") or {}).get("task_id") == RC2_ID) for x in tasks.values()):
+        raise GateError("a lane-2 task or review already exists")
+    for d in ("queue", "commands"):
+        base = Path(cfg.home) / d
+        if base.is_dir() and any(RC2_ID.encode() in p.read_bytes() for p in base.iterdir() if p.is_file()):
+            raise GateError("the lane-2 correction ID is already queued")
+    h = (state or {}).get("handoff") or {}
+    if h.get("request") or h.get("quarantine"):
+        raise GateError("an orchestrator handoff or gateway turn is open")
+    if any(isinstance(t, dict) and (t.get("status") == "RUNNING" or t.get("child") or t.get("stage") == "verify_pending")
+           for t in tasks.values()):
+        raise GateError("a worker task is running or a verification is pending")
+    if _other_runner_pids(cfg):
+        raise GateError("another runner process exists")
+    if not rlock_held and FileLock.probe(Path(cfg.home) / "locks" / "runner.lock") == "free":
+        raise GateError("the sole runner lock is not held by the replacement")
+    if not wlock_held and FileLock.probe(writer_lock_path(cfg.home, cfg.repo)) != "free":
+        raise GateError("the repository writer lock is held")
+    successor = _recovery2_successor(cfg)
+    bad = _recovery_tree_problem(cfg, RECOVERY_ORIG_DOCS)
+    if bad:
+        raise GateError(bad)
+    preload, c_run, pfiles = _recovery_preload(cfg, successor, RC2_CHECKPOINT)
+    pf = recovery2_preflight(cfg, *(_read_bounded(Path(cfg.repo) / p, REVIEW_MAX_BYTES) for p in S0_DOC_PATHS))
+    return {"rec": rec, "successor": successor, "preload": preload, "c_run": c_run, "preload_files": pfiles, "stub": stub,
+            "prior": stub["prior"], "prior_bytes": raw, "preflight": {**pf, "at": now_iso()}}
+
+
+# --- gate: the one separately identified lane-2 correction and its single bound review
+def _recovery2_shape_problem(t):
+    if t.get("module") != S0_MODULE or t.get("role") != "implement":
+        return "the lane-2 correction is a MOD-004 implement task only"
+    if t.get("source") is not None:
+        return "the lane-2 correction is owner-CLI only"
+    if t.get("id") != RC2_ID or t.get("plan_phase") != RC2_MARKER:
+        return f"id must be {RC2_ID} with plan_phase {RC2_MARKER}"
+    if any(t.get(k) is not None for k in ("remediation_of", "review_retry_of", "accounting_recovery_of", "review_of", "review_candidate")):
+        return "remediation, retry, accounting-recovery and review fields are rejected"
+    if t.get("allowed_paths") != list(S0_DOC_PATHS) or t.get("expected_changes") != [S0_DOC_PATHS[0]]:
+        return "allowed_paths must be exactly the two S0 documents in order and expected_changes exactly the certificate"
+    if t.get("verify_cmd") != []:
+        return "the lane-2 correction runs no verifier"
+    if t.get("doc_base") != RECOVERY_ORIG_DOCS:
+        return "doc_base must be exactly the original task's two recorded document hashes"
+    if t.get("prompt") != RC2_PROMPT:
+        return "the prompt must be exactly the fixed lane-2 instruction (the runner appends the verified edits)"
+    return None
+
+
+def recovery2_gate_reason(cfg, t, tasks):
+    """None outside lane 2 or for the one fully authorised correction; else an explicit S0_RECOVERY2_* reason. The attested preflight
+    is recomputed here (and again before consumption), so a drifted input leaves the slot UNUSED and starts no worker."""
+    if not _rc2_marked(t):
+        return None
+    problem = _recovery2_shape_problem(t)
+    if problem:
+        return f"S0_RECOVERY2_INVALID_TASK {t['id']}: {problem}"
+    mode, why = _transition_mode(cfg)
+    if mode == "ACTIVE":
+        return "S0_RECOVERY2_CLOSED: the recovery is ACTIVE; the correction lane is spent"
+    if mode != "RECOVERY":
+        return f"S0_RECOVERY2_NOT_ADMITTED: {why or mode}"
+    try:
+        ov = _recovery2_load(cfg)
+    except GateError as e:
+        return f"S0_RECOVERY2_UNVERIFIABLE: {e}"
+    if ov is None or ov["stage"] != "BOUND" or ov["correction"]["state"] != "UNUSED":
+        return "S0_RECOVERY2_CONSUMED: the single correction attempt was already started or consumed"
+    if t.get("attempts") or t.get("status", "QUEUED") != "QUEUED":
+        return f"S0_RECOVERY2_ATTEMPT_USED {t['id']}: the single correction attempt was already started"
+    others = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                    and _rc2_marked(x) and x.get("role") in WRITE_ROLES)
+    if others:
+        return f"S0_RECOVERY2_SECOND_WRITE: correction {others[0]} already exists; the lane is one-shot"
+    busy = _s0_competing_writes(tasks, t)
+    if busy:
+        return f"S0_RECOVERY2_CONCURRENT_WRITE: {busy[0]} is a pending write in an S0 chain or touching S0 files"
+    problem = _recovery_orig_task_problem(tasks) or _recovery2_prior_task_problem(tasks)
+    if problem:
+        return f"S0_RECOVERY2_PRIOR_CHANGED: {problem}"
+    try:
+        head = _tgit(cfg, "rev-parse", "--verify", "HEAD").stdout.decode().strip()
+    except GateError as e:
+        return f"S0_RECOVERY2_STALE_BASE: {e}"
+    if head != ov["runner"]["commit"]:
+        return "S0_RECOVERY2_STALE_BASE: HEAD is not the bound lane-2 runner commit"
+    problem = _recovery2_preflight_problem(cfg, ov, tasks) or _recovery2_task_plan_problem(cfg, ov, t)
+    if problem:
+        return f"S0_RECOVERY2_PREFLIGHT_FAILED: {problem}"
+    return None
+
+
+def recovery2_review_reason(cfg, t, tasks):
+    """The one exact-bound owner-CLI Opus review of the DONE lane-2 correction; it must cover BOTH final document paths and hashes."""
+    w = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (w and _rc2_marked(w)):
+        return None
+    if t.get("source") is not None:
+        return "S0_RECOVERY2_REVIEW_UNSUPPORTED: the lane-2 review is owner-CLI routed only"
+    if t.get("review_retry_of") or t.get("review_candidate"):
+        return "S0_RECOVERY2_REVIEW_UNSUPPORTED: the correction gets one bound review and no retry"
+    if not (t.get("module") == w.get("module") == S0_MODULE and w.get("role") == "implement" and w.get("status") == "DONE"
+            and w.get("attempts") == 1 and (w.get("evidence") or {}).get("violations") == []):
+        return "S0_RECOVERY2_REVIEW_UNSUPPORTED: only the DONE one-attempt lane-2 correction can be reviewed here"
+    problem = _recovery2_shape_problem(w)
+    if problem:
+        return f"S0_RECOVERY2_REVIEW_UNSUPPORTED: {problem}"
+    want = _changed_pairs(_review_want(w))
+    ch = {c["path"]: c["sha256"] for c in _changed_pairs((w.get("evidence") or {}).get("changed"))}
+    if not (sorted(c["path"] for c in want) == sorted(S0_DOC_PATHS) and list(ch) == [S0_DOC_PATHS[0]]
+            and all(isinstance(c["sha256"], str) and SHA256_RE.fullmatch(c["sha256"]) for c in want)
+            and ch[S0_DOC_PATHS[0]] != RECOVERY_ORIG_DOCS[S0_DOC_PATHS[0]]
+            and _changed_pairs((t.get("review_of") or {}).get("changed")) == want):
+        return "S0_RECOVERY2_REVIEW_UNSUPPORTED: review must bind the exact final hashes of BOTH documents"
+    used = sorted(x["id"] for x in tasks.values() if isinstance(x, dict) and x.get("id") != t.get("id")
+                  and (x.get("review_of") or {}).get("task_id") == w["id"])
+    if used:
+        return f"S0_RECOVERY2_REVIEW_SLOT_USED: {used[0]} already reviewed or tried to review the correction"
+    if not _hashes_current(cfg, want):
+        return "S0_RECOVERY2_REVIEW_BINDING_STALE: the documents no longer match the correction's recorded hashes"
+    try:
+        ov = _recovery2_load(cfg)
+    except GateError as e:
+        return f"S0_RECOVERY2_REVIEW_UNVERIFIABLE: {e}"
+    if _transition_mode(cfg)[0] != "RECOVERY" or ov is None or ov["stage"] != "CORRECTION_CONSUMED" or ov["correction"]["task_id"] != w["id"]:
+        return "S0_RECOVERY2_REVIEW_UNSUPPORTED: the lane-2 record does not hold the consumed correction"
+    return None
+
+
+def _recovery2_result_problem(cfg, tasks, changed):
+    """Post-run check: ONLY the certificate changed, the packet is byte-identical, and the certificate differs from the preserved
+    original in exactly the three attested values (and equals the attested simulation canonically)."""
+    cert_p, qa_p = S0_DOC_PATHS
+    if changed != [cert_p]:
+        return "the correction must change exactly the certificate"
+    if _path_hash(Path(cfg.repo) / qa_p) != RECOVERY_ORIG_DOCS[qa_p]:
+        return "the scenario/QA packet is not byte-identical to the original task's recorded bytes"
+    problem = _s0_rebind_packet_problem(cfg)
+    if problem:
+        return problem
+    rec, ov = _load_transition(cfg), _recovery2_load(cfg)
+    if ov is None:
+        return "the lane-2 record is absent"
+    base = _read_bounded(Path(cfg.home) / ov["pre_image"]["dir"] / "doc-0", REVIEW_MAX_BYTES)
+    if _sha(base) != RECOVERY_ORIG_DOCS[cert_p]:
+        return "the preserved original certificate is not the pinned bytes"
+    cur = _read_bounded(Path(cfg.repo) / cert_p, REVIEW_MAX_BYTES)
+    problem = _recovery_cert_problem(base, cur, _read_bounded(Path(cfg.repo) / qa_p, REVIEW_MAX_BYTES))
+    if problem:
+        return problem
+    if _canon(_s0_json(cur, "corrected certificate")) != _canon(_s0_json(_recovery2_apply(base, ov["preflight"]["edits"]), "attested simulation")):
+        return "the corrected certificate is not the attested simulated result"
+    if rec is None or _recovery2_bound_problem(cfg, rec, ov, full=True) or _recovery_orig_task_problem(tasks) or _recovery2_prior_task_problem(tasks):
+        return "the original transition, lane 1 or the lane-2 binding changed"
+    if ov["stage"] != "CORRECTION_CONSUMED":
+        return "the correction slot is not the consumed one"
+    return None
+
+
+# --- verification of the lane-2 outcome and the read-only probes before ACTIVE
+def _recovery2_verified(cfg, rec, ov, tasks):
+    """The VERIFIED evidence when the corrected pair is fully reviewed, published (P), CI-green and receipted; else GateError."""
+    w = tasks.get(RC2_ID)
+    if not (isinstance(w, dict) and _rc2_marked(w) and w.get("status") == "DONE" and w.get("attempts") == 1
+            and (w.get("evidence") or {}).get("violations") == [] and _recovery2_shape_problem(w) is None
+            and ov["correction"]["task_id"] == w["id"]):
+        raise GateError("the lane-2 correction is not DONE")
+    cert_p, qa_p = S0_DOC_PATHS
+    changed = _changed_pairs((w.get("evidence") or {}).get("changed"))
+    if [c["path"] for c in changed] != [cert_p] or changed[0]["sha256"] == RECOVERY_ORIG_DOCS[cert_p]:
+        raise GateError("the lane-2 correction did not change exactly the certificate")
+    docs = {cert_p: changed[0]["sha256"], qa_p: RECOVERY_ORIG_DOCS[qa_p]}
+    reviews = [x for x in tasks.values() if isinstance(x, dict) and (x.get("review_of") or {}).get("task_id") == w["id"]]
+    if not (len(reviews) == 1 and reviews[0].get("status") == "DONE" and reviews[0].get("source") is None
+            and _bound_review_ok(w, reviews[0]) and review_verdict(tasks, w["id"]) == "APPROVED"
+            and (reviews[0].get("route") or {}).get("intended") == "opus"
+            and _changed_pairs((reviews[0].get("review_of") or {}).get("changed")) == _changed_pairs(
+                [{"path": p, "sha256": h} for p, h in docs.items()])):
+        raise GateError("the one exact-bound Opus review of BOTH final documents is not APPROVED")
+    try:
+        bad = _recovery_tree_problem(cfg, {})
+        if bad:
+            raise GateError(bad)
+        for path, sha in docs.items():
+            if _s0_git_blob_sha(cfg, "HEAD", path, "lane-2 publication") != sha or _path_hash(Path(cfg.repo) / path) != sha:
+                raise GateError("the reviewed document bytes are not what HEAD publishes")
+        head = _tgit(cfg, "rev-parse", "--verify", "HEAD").stdout.decode().strip()
+        if (_transfer_commit(cfg, head)[1] != [ov["runner"]["commit"]]
+                or _transfer_changed(cfg, ov["runner"]["commit"], head) != sorted(S0_DOC_PATHS)):
+            raise GateError("the publication P must be a direct child of C changing exactly both S0 documents")
+        problem = _s0_rebind_packet_problem(cfg, docs)
+        if problem:
+            raise GateError(problem)
+        base = _read_bounded(Path(cfg.home) / ov["pre_image"]["dir"] / "doc-0", REVIEW_MAX_BYTES)
+        if _sha(base) != RECOVERY_ORIG_DOCS[cert_p]:
+            raise GateError("the preserved original certificate is not the pinned bytes")
+        problem = _recovery_cert_problem(base, _s0_git_blob(cfg, head, cert_p, "lane-2 publication"),
+                                         _s0_git_blob(cfg, head, qa_p, "lane-2 publication"))
+        if problem:
+            raise GateError(problem)
+        _observe_ci_for_commit(cfg, head, opener=_ci_opener)
+    except (GateError, OSError, subprocess.SubprocessError) as e:
+        raise GateError(f"publication/CI is not verified: {str(e)[:120]}")
+    pre = Path(cfg.home) / ov["pre_image"]["dir"]
+    try:
+        rb = _read_bounded(Path(cfg.home) / "acceptances" / f"{RC2_RECEIPT}.json", RECEIPT_MAX_BYTES)
+        r = json.loads(rb.decode())
+        manifest = json.loads((pre / "manifest.json").read_text())
+    except Exception:
+        raise GateError("the lane-2 receipt or the lane-2 pre-image is missing or unreadable")
+    if f"{RC2_RECEIPT}.json" in manifest["receipts"]:
+        raise GateError("the lane-2 receipt is not new")
+    if not (isinstance(r, dict) and set(r) == {"schema", "kind", "recovery_id", "transition_id", "runner_sha256", "documents",
+                                                 "commit", "s0_receipt", "recorded_at"}
+            and r["schema"] == SCHEMA and r["kind"] == "mod004-s0-d16-preflight-recovery" and r["recovery_id"] == ov["recovery_id"]
+            and r["transition_id"] == rec["transition_id"] and r["runner_sha256"] == CODE_SHA and r["documents"] == docs
+            and r["commit"] == head and isinstance(r["recorded_at"], str)):
+        raise GateError("the lane-2 receipt does not bind the replacement runner, transition and reviewed documents")
+    s0name = f"{RC2_S0_RECEIPT}.json"
+    if s0name in manifest["receipts"]:
+        raise GateError("the fresh S0 receipt is not new")
+    try:
+        s0b = _read_bounded(Path(cfg.home) / "acceptances" / s0name, RECEIPT_MAX_BYTES)
+    except GateError:
+        raise GateError("the fresh six-subject S0 receipt is missing")
+    if r["s0_receipt"] != {"name": RC2_S0_RECEIPT, "sha256": _sha(s0b)}:
+        raise GateError("the lane-2 receipt does not bind the exact fresh S0 receipt bytes")
+    try:  # the established S0 predicate: per-subject CI, ancestry, committed bytes, runner-recorded Opus review and content checks
+        verify_s0_authority(cfg, tasks, receipt=RC2_S0_RECEIPT, runner_check=lambda e: _recovery2_runner_subject(cfg, ov, e))
+        sub = _s0_json(s0b, "fresh S0 receipt")["subjects"]
+        if not (sub["eligibility"]["path"] == cert_p and sub["eligibility"]["sha256"] == docs[cert_p] and sub["eligibility"]["commit"] == head):
+            raise GateError("the fresh S0 eligibility subject is not the final certificate published at P")
+    except (GateError, OSError, subprocess.SubprocessError) as e:
+        raise GateError(f"the fresh S0 receipt does not verify: {str(e)[:160]}")
+    try:  # historical receipts, reviews, the original task and lane 1's task must be what the lane-2 pre-image preserved
+        now = _transfer_receipts(cfg)
+        if any(now.get(n) != h for n, h in manifest["receipts"].items()):
+            raise GateError("a historical receipt changed since the lane-2 pre-image")
+        if any(now.get(f"{n}.json") != manifest["receipts"].get(f"{n}.json") for n in (S0_RECEIPT, S0_QA_RECEIPT, RECOVERY_RECEIPT, RECOVERY_S0_RECEIPT)):
+            raise GateError("a historical S0 or lane-1 receipt was created or changed")
+        old_tasks = json.loads((pre / "state.json").read_text())["tasks"]
+        for tid, ot in old_tasks.items():
+            nt = tasks.get(tid)
+            if ot.get("role") == "code-review" and not (isinstance(nt, dict) and all(
+                    nt.get(k) == ot.get(k) for k in ("status", "review_of", "route")) and
+                    (nt.get("evidence") or {}).get("review_outcome") == (ot.get("evidence") or {}).get("review_outcome")):
+                raise GateError("a historical review changed since the lane-2 pre-image")
+        if any(tasks.get(k) != old_tasks.get(k) for k in (S0_DUAL_REBIND_ID, RECOVERY_ID)):
+            raise GateError("the original S0 rebind task or the lane-1 task changed since the lane-2 pre-image")
+    except GateError:
+        raise
+    except Exception as e:
+        raise GateError(f"historical preservation cannot be proven: {type(e).__name__}")
+    return {"docs": docs, "receipt_sha256": _sha(rb), "commit": head}
+
+
+def _recovery2_runner_subject(cfg, ov, e):
+    """The fresh S0 receipt's runner_gate subject: C2 is authenticated by the overlay's pre-load Opus review (re-derived from the
+    preserved evidence) and its exact-SHA CI, observed again now. Returns the committed runner bytes."""
+    rn = ov["runner"]
+    if not (isinstance(e, dict) and set(e) == {"path", "sha256", "commit", "ci", "review"} and e["path"] == S0_RUNNER_FILE
+            and e["sha256"] == CODE_SHA and e["commit"] == rn["commit"] and e["ci"] == rn["ci"]
+            and e["review"] == {"preload_sha256": rn["preload_sha256"], "output_sha256": rn["preload_output_sha256"]}):
+        raise GateError("S0 runner_gate: not the lane-2 overlay-bound replacement runner, CI and pre-load review")
+    pre = Path(cfg.home) / ov["pre_image"]["dir"] / "review"
+    bind = _transfer_preload_bind(_read_bounded(pre / "preload.json", 1 << 20), _read_bounded(pre / "preload.out", 8 * 1024 * 1024),
+                                  {"commit": rn["commit"], "code_sha256": rn["code_sha256"], "test_sha256": rn["test_sha256"],
+                                   "diff_sha256": rn["diff_sha256"]})
+    if bind != {"preload_sha256": rn["preload_sha256"], "preload_output_sha256": rn["preload_output_sha256"]}:
+        raise GateError("S0 runner_gate: the preserved pre-load review differs from the lane-2 overlay binding")
+    if not _is_ancestor(cfg, rn["commit"]):
+        raise GateError("S0 runner_gate: the lane-2 runner commit is not an ancestor of HEAD")
+    _observe_ci_for_commit(cfg, rn["commit"], run_id=rn["ci"]["run_id"], opener=_ci_opener)
+    blob = _transfer_blob(cfg, rn["commit"], S0_RUNNER_FILE)
+    if _sha(blob) != CODE_SHA:
+        raise GateError("S0 runner_gate: the committed runner is not the loaded lane-2 replacement")
+    return blob
+
+
+def _recovery2_probe_problem(cfg, rec, ov, tasks):
+    """Positive and negative read-only probes before ACTIVE (the same set as lane 1, which already covers both lane IDs)."""
+    return _recovery_probe_problem(cfg, rec, ov, tasks)
 
 
 # ------------------------------------------------ S0 dual rebind lane (2026-10-26)
@@ -7085,7 +7874,8 @@ def gate_reason(cfg, t, tasks):
             return (d16_f34_review_reason(t, tasks) or s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
                     or s0_loop_review_reason(cfg, t, tasks) or s0_qa_review_reason(cfg, t, tasks)
-                    or s0_dual_rebind_review_reason(cfg, t, tasks) or recovery_review_reason(cfg, t, tasks))
+                    or s0_dual_rebind_review_reason(cfg, t, tasks) or recovery_review_reason(cfg, t, tasks)
+                    or recovery2_review_reason(cfg, t, tasks))
         if t["role"] not in GATED_ROLES:
             return None
         # D16 dual-lineage tasks must satisfy the full D16 predicate at enqueue/dispatch (P0-1)
@@ -7102,7 +7892,8 @@ def gate_reason(cfg, t, tasks):
         reason = (s0_gate_reason(cfg, t, tasks) or s0_doc_gate_reason(cfg, t, tasks) or s0_refresh_gate_reason(cfg, t, tasks)
                   or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks)
                   or s0_loop_gate_reason(cfg, t, tasks) or s0_qa_gate_reason(cfg, t, tasks)
-                  or s0_dual_rebind_gate_reason(cfg, t, tasks) or recovery_gate_reason(cfg, t, tasks))
+                  or s0_dual_rebind_gate_reason(cfg, t, tasks) or recovery_gate_reason(cfg, t, tasks)
+                  or recovery2_gate_reason(cfg, t, tasks))
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -7127,6 +7918,27 @@ def gate_reason(cfg, t, tasks):
 
 
 # ---------------------------------------------------------------------- runner
+
+def child_settings_for(t):
+    """Explicit minimal permissions for the child. dontAsk = anything not allowed here is denied."""
+    pats = [a + "**" if a.endswith("/") else a for a in t["allowed_paths"]]
+    write = t["role"] in WRITE_ROLES
+    allow = ["Read", "Grep", "Glob"] + ([f"{tool}({p})" for p in pats for tool in ("Edit", "Write")] if write else [])
+    deny = ["Bash", "WebFetch", "WebSearch", "Agent", "Edit(.git/**)", "Write(.git/**)"]
+    return {"permissions": {"defaultMode": "dontAsk", "allow": allow, "deny": deny}, "hooks": {}}
+
+
+def sandbox_active(cfg):
+    return not (cfg.sandbox == "off" or sys.platform != "darwin" or not shutil.which("sandbox-exec"))
+
+
+def child_argv(prefix, claude_bin, sett, alias, role):
+    """The child command line and its tool list: the single definition used by dispatch and by the S0 recovery preflight."""
+    tools = "Read,Grep,Glob,Edit,Write" if role in WRITE_ROLES else "Read,Grep,Glob"
+    return [*prefix, claude_bin, "-p", "--safe-mode", "--setting-sources=", f"--settings={sett}",
+            "--permission-mode=dontAsk", "--permission-prompts=none", "--strict-mcp-config",
+            "--disable-slash-commands", f"--tools={tools}", "--model", alias, "--output-format=json"], tools
+
 class Runner:
     def __init__(self, cfg):
         self.cfg, self.store = cfg, Store(cfg.home)
@@ -7394,6 +8206,8 @@ class Runner:
         me = {"schema": 1, "kind": "s0-d16-rebind-recovery-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
               "code_sha256": CODE_SHA, "at": now_iso()}
         if ov is not None:
+            if ov["runner"]["code_sha256"] != CODE_SHA:  # different code than lane 1 bound: lane 2's own, single reload window
+                return self._recovery2_boot(rec, ov)
             return self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"],
                                   reason="restart after the recovery record exists is not permitted")
         if _recovery_first_boot(cfg, me=True) is not None:
@@ -7456,6 +8270,89 @@ class Runner:
                                    "correction": {"state": "CONSUMED", "task_id": t["id"], "at": now_iso()}})
         self._tr_event("quarantine-recovery-stage", recovery_id=ov["recovery_id"], stage="CORRECTION_CONSUMED")
 
+    # --- lane 2 (2026-10-28): its own overlay, boot window and single-use slot, gated by the attested deterministic preflight
+    def _recovery2_boot(self, rec, ov1):
+        """Opens lane 2's ONE reload window for this process only. Denied once overlay 2 or the window exists (no second reload)."""
+        cfg = self.cfg
+        try:
+            ov2 = _recovery2_load(cfg)
+        except GateError as e:
+            return self._tr_event("quarantine-recovery-denied", reason=str(e)[:300])
+        if ov2 is not None:
+            return self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"],
+                                  reason="restart after the lane-2 recovery record exists is not permitted")
+        me = {"schema": 1, "kind": "s0-d16-preflight-recovery-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
+              "code_sha256": CODE_SHA, "at": now_iso()}
+        if _recovery2_first_boot(cfg, me=True) is not None:
+            return  # this very process (PID + boot nonce) already holds the window
+        try:
+            if ov1["stage"] != "CORRECTION_CONSUMED":
+                raise GateError("lane 1 is not the spent CORRECTION_CONSUMED recovery")
+            if os.path.lexists(Path(cfg.home) / RC2_BOOT_NAME) or any(
+                    e.get("kind") == "quarantine-recovery2-first-boot" for e in _qled_events(cfg)):
+                raise GateError("a replacement process already used the one lane-2 reload window")
+            _atomic_create_exclusive(Path(cfg.home) / RC2_BOOT_NAME, json.dumps(me, sort_keys=True).encode())
+        except (GateError, OSError) as e:
+            return self._tr_event("quarantine-recovery-denied", reason=f"no second reload: {str(e)[:200]}")
+        self._tr_event("quarantine-recovery2-first-boot", pid=me["pid"], boot_nonce=me["boot_nonce"], code_sha256=CODE_SHA)
+
+    def _recovery2_create(self, rec, ov1):
+        """Create overlay 2 once: local preflight (incl. the document/tool preflight), provider CI for E and C, then the exclusive
+        atomic create that ATTESTS the preflight. A refusal consumes nothing; the slot is created UNUSED."""
+        cfg = self.cfg
+        if _recovery2_first_boot(cfg, me=True) is None:
+            return
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "recovery2"}):
+            return self._tr_refuse("the repository writer lock is held")
+        try:
+            try:
+                ready = recovery2_create_preflight(cfg, self.state, rlock_held=True, wlock_held=True)
+                succ = ready["successor"]
+                owner_ci = _observe_ci_for_commit(cfg, RC2_OWNER_COMMIT, run_id=RC2_OWNER_CI_RUN, opener=_ci_opener)
+                runner_ci = _observe_ci_for_commit(cfg, succ["commit"], run_id=ready["c_run"], opener=_ci_opener)
+            except Exception as e:  # nothing is consumed: this process may retry; no other process can
+                return self._tr_refuse(f"recovery2 not bound: {type(e).__name__}: {str(e)[:300]}")
+            try:
+                rid, me = uuid.uuid4().hex, self._transition_attestation()
+                docs = tuple((Path(cfg.repo) / p).read_bytes() for p in S0_DOC_PATHS)
+                files = {"review/" + n: b for n, b in ready["preload_files"].items()}
+                files["recovery1.json"] = ready["prior_bytes"]
+                pre = _recovery_write_pre_image(cfg, rid, ready["rec"], docs, files, checkpoint=RC2_CHECKPOINT)
+                created = _recovery2_write(cfg, {
+                    "schema": 1, "kind": RC2_KIND, "recovery_id": rid, "stage": "BOUND", "created_at": now_iso(),
+                    "orig": ready["stub"]["orig"], "prior": ready["prior"],
+                    "owner": {"path": RC2_OWNER_PATH, "sha256": RC2_OWNER_SHA, "commit": RC2_OWNER_COMMIT, "ci": owner_ci},
+                    "pre_image": pre,
+                    "runner": {"code_sha256": succ["code_sha256"], "commit": succ["commit"], "parent": succ["parent"],
+                               "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"],
+                               "preload_sha256": ready["preload"]["preload_sha256"],
+                               "preload_output_sha256": ready["preload"]["preload_output_sha256"], "ci": runner_ci},
+                    "preflight": ready["preflight"], "attested": me,
+                    "correction": {"state": "UNUSED", "task_id": None, "at": None},
+                    "verified": {"docs": None, "receipt_sha256": None, "commit": None, "at": None}}, create=True)
+                self.store.save(self.state)
+                self._tr_event("quarantine-recovery2-stage", recovery_id=created["recovery_id"], stage=created["stage"])
+            except Exception as e:  # a created overlay is spent; an absent one consumed nothing
+                self._tr_event("quarantine-recovery-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+
+    def _recovery2_consume_correction(self, t):
+        """Persist the lane-2 attempt BEFORE dispatch (caller holds the writer lock). The preflight is recomputed immediately
+        before the atomic write: a drifted input raises Recovery2NotReady with NOTHING consumed."""
+        rec, ov = _load_transition(self.cfg), _recovery2_load(self.cfg)
+        att = ov["attested"] if ov else {}
+        if not (rec and ov and ov["stage"] == "BOUND" and ov["correction"]["state"] == "UNUSED" and t.get("id") == RC2_ID
+                and att["pid"] == os.getpid() and att["boot_nonce"] == _PROCESS_BOOT_NONCE
+                and _transition_bound_problem(self.cfg, rec, full=True) is None):
+            raise GateError("recovery2 correction slot invalid or already consumed")
+        problem = _recovery2_preflight_problem(self.cfg, ov, self.state["tasks"]) or _recovery2_task_plan_problem(self.cfg, ov, t)
+        if problem:
+            raise Recovery2NotReady(problem)
+        _recovery2_write(self.cfg, {**ov, "stage": "CORRECTION_CONSUMED",
+                                    "correction": {"state": "CONSUMED", "task_id": t["id"], "at": now_iso()}})
+        self._tr_event("quarantine-recovery2-stage", recovery_id=ov["recovery_id"], stage="CORRECTION_CONSUMED")
+
     def recovery_step(self):
         """Create the overlay (first replacement process only), then advance CORRECTION_CONSUMED -> VERIFIED -> ACTIVE from
         evidence, never from a command; throttled and lock-gated."""
@@ -7471,10 +8368,18 @@ class Runner:
             if rec is None or rec["new"]["code_sha256"] == CODE_SHA:
                 return
             ov = _recovery_load(cfg)
+            ov1 = ov
+            if ov is not None and ov["runner"]["code_sha256"] != CODE_SHA:  # lane 1 is history; lane 2 governs
+                ov = _recovery2_load(cfg)
+                if ov is None:
+                    return self._recovery2_create(rec, ov1)
         except GateError:
             return
         if ov is None:
             return self._recovery_create(rec)
+        lane2 = ov is not ov1
+        verify, probe, write = ((_recovery2_verified, _recovery2_probe_problem, _recovery2_write) if lane2
+                                else (_recovery_verified, _recovery_probe_problem, _recovery_write))
         att = ov["attested"]
         if not (ov["stage"] in ("CORRECTION_CONSUMED", "VERIFIED") and att["pid"] == os.getpid()
                 and att["boot_nonce"] == _PROCESS_BOOT_NONCE):
@@ -7486,17 +8391,17 @@ class Runner:
         try:
             if ov["stage"] == "CORRECTION_CONSUMED":
                 try:
-                    ev = _recovery_verified(cfg, rec, ov, self.state["tasks"])
+                    ev = verify(cfg, rec, ov, self.state["tasks"])
                 except GateError:
                     return
                 new = {**ov, "stage": "VERIFIED", "verified": {**ev, "at": now_iso()}}
             else:
-                problem = _recovery_probe_problem(cfg, rec, ov, self.state["tasks"])
+                problem = probe(cfg, rec, ov, self.state["tasks"])
                 if problem:
                     return self._tr_event("quarantine-recovery-probe-failed", recovery_id=ov["recovery_id"], reason=problem[:300])
                 new = {**ov, "stage": "ACTIVE"}
-            done = _recovery_write(cfg, new)
-            self._tr_event("quarantine-recovery-stage", recovery_id=done["recovery_id"], stage=done["stage"])
+            done = write(cfg, new)
+            self._tr_event("quarantine-recovery2-stage" if lane2 else "quarantine-recovery-stage", recovery_id=done["recovery_id"], stage=done["stage"])
         except Exception as e:
             self._tr_event("quarantine-recovery-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
         finally:
@@ -8215,19 +9120,14 @@ class Runner:
         return env
 
     def child_settings(self, t):
-        """Explicit minimal permissions for the child. dontAsk = anything not allowed here is denied."""
-        pats = [a + "**" if a.endswith("/") else a for a in t["allowed_paths"]]
-        write = t["role"] in WRITE_ROLES
-        allow = ["Read", "Grep", "Glob"] + ([f"{tool}({p})" for p in pats for tool in ("Edit", "Write")] if write else [])
-        deny = ["Bash", "WebFetch", "WebSearch", "Agent", "Edit(.git/**)", "Write(.git/**)"]
-        return {"permissions": {"defaultMode": "dontAsk", "allow": allow, "deny": deny}, "hooks": {}}
+        return child_settings_for(t)
 
     def sandbox_prefix(self, op):
         """macOS Seatbelt: the child may not write the runner's state dir (queue, commands, pin, state) or .git.
 
         Not a full jail: reads, network and every other path stay open, and it is untested against the live CLI.
         """
-        if self.cfg.sandbox == "off" or sys.platform != "darwin" or not shutil.which("sandbox-exec"):
+        if not sandbox_active(self.cfg):
             return [], {"sandbox": "none"}
         deny = [str(Path(self.cfg.home).resolve()), str((Path(self.cfg.repo) / ".git").resolve())]
         q = lambda p: '"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -8247,6 +9147,8 @@ class Runner:
             c = ("Runner contract: you are read-only; make no file changes. End your final message with exactly one "
                  "line: OUTCOME: APPROVED, or OUTCOME: CHANGES_REQUESTED, or OUTCOME: BLOCKED.")
         c += self.review_binding_block(t)
+        if _rc2_marked(t):
+            c += _recovery2_block_checked(self.cfg)
         reviewed = self.state["tasks"].get((t.get("review_of") or {}).get("task_id")) or {}
         if accounting_recovery_chain(self.state["tasks"], t if t["role"] in WRITE_ROLES else reviewed):
             c += accounting_evidence_block(self.cfg, self.state["tasks"])
@@ -8408,7 +9310,10 @@ class Runner:
                     return
             if _recovery_marked(t):  # the recovery attempt is spent durably BEFORE dispatch; an interruption never re-arms it
                 try:
-                    self._recovery_consume_correction(t)
+                    (self._recovery2_consume_correction if _rc2_marked(t) else self._recovery_consume_correction)(t)
+                except Recovery2NotReady as e:  # the preflight failed: nothing consumed, no worker, the task stays queued and gated
+                    t["gate_reason"] = f"S0_RECOVERY2_PREFLIGHT_FAILED: {e}"[:300]
+                    return self.store.event("task-gated", task_id=t["id"], reason=t["gate_reason"])
                 except (GateError, OSError) as e:
                     t.update(status="BLOCKED", blocked_reason="S0_RECOVERY_SLOT_CONSUMED", stage=None,
                              updated_at=now_iso(), last_error=f"consumption of the recovery correction slot failed: {e}")
@@ -8462,11 +9367,13 @@ class Runner:
             out, err, sett = Path(f"{stem}.out"), Path(f"{stem}.err"), Path(f"{stem}.settings.json")
             atomic_write(sett, json.dumps(self.child_settings(t), indent=1).encode())
             prefix, iso = self.sandbox_prefix(op)
-            tools = "Read,Grep,Glob,Edit,Write" if t["role"] in WRITE_ROLES else "Read,Grep,Glob"
-            cmd = [*prefix, self.cfg.claude_bin, "-p", "--safe-mode", "--setting-sources=", f"--settings={sett}",
-                   "--permission-mode=dontAsk", "--permission-prompts=none", "--strict-mcp-config",
-                   "--disable-slash-commands", f"--tools={tools}", "--model", alias, "--output-format=json"]
+            cmd, tools = child_argv(prefix, self.cfg.claude_bin, sett, alias, t["role"])
             iso.update(settings=str(sett), permission_mode="dontAsk", tools=tools)
+            if _rc2_marked(t):  # the child may only start with exactly the settings, flags and tools the preflight attested
+                try:
+                    _recovery2_dispatch_problem(self.cfg, t, cmd, tools, prefix, sett)
+                except GateError as e:
+                    return self.failure(t, f"S0_RECOVERY2_DISPATCH_UNATTESTED: {e}", op)
             with open(out, "wb") as fo, open(err, "wb") as fe:
                 try:
                     # the writer-lock fd is inherited: if this runner dies the orphan still holds the lock
@@ -8714,7 +9621,7 @@ class Runner:
                 bad.append(("S0_QA_RESULT_UNSOUND", type(e).__name__))
         if write and _recovery_marked(t):  # only the certificate changed; it names the exact packet hash and the loaded runner
             try:
-                problem = _recovery_result_problem(self.cfg, self.state["tasks"], changed)
+                problem = (_recovery2_result_problem if _rc2_marked(t) else _recovery_result_problem)(self.cfg, self.state["tasks"], changed)
                 if problem:
                     bad.append(("S0_RECOVERY_RESULT_UNSOUND", problem[:200]))
             except Exception as e:
@@ -9010,7 +9917,7 @@ def validate_task(d, cfg):
                                      isinstance(retry_of, str) and ID_RE.match(retry_of)):
         raise ValueError("review_retry_of is only for a bound code-review")
     doc_base = d.get("doc_base")
-    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER, S0_DUAL_REBIND_MARKER, RECOVERY_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
+    if doc_base is not None and not (plan_phase in (S0_DOC_MARKER, S0_REFRESH_MARKER, S0_REBIND_MARKER, S0_LOOP_MARKER, S0_DUAL_REBIND_MARKER, RECOVERY_MARKER, RC2_MARKER) and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
                                      and set(doc_base) == set(S0_DOC_PATHS)
                                      and all(v is None or (isinstance(v, str) and SHA256_RE.fullmatch(v)) for v in doc_base.values())
                                      or plan_phase == S0_QA_MARKER and d["role"] in WRITE_ROLES and isinstance(doc_base, dict)
