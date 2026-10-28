@@ -20,6 +20,7 @@ import re
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -5512,6 +5513,10 @@ def _transfer_ci_observe(cfg, rec):
     return runs
 
 
+def _is_runner_argv(argv):
+    return any(a.endswith("mission_runner/runner.py") for a in argv) and "run" in argv and "dashboard" not in argv
+
+
 def _runner_pids_from_ps(text, self_pid):
     """PIDs of runner `run` processes in `ps -axo pid=,command=` output (a false positive only denies)."""
     out = []
@@ -5519,8 +5524,7 @@ def _runner_pids_from_ps(text, self_pid):
         parts = line.split()
         if len(parts) < 3 or not parts[0].isdigit() or int(parts[0]) == self_pid:
             continue
-        argv = parts[1:]
-        if any(a.endswith("mission_runner/runner.py") for a in argv) and "run" in argv and "dashboard" not in argv:
+        if _is_runner_argv(parts[1:]):
             out.append(int(parts[0]))
     return out
 
@@ -5533,6 +5537,102 @@ def _other_runner_pids(cfg):
     if p.returncode != 0:
         raise GateError("cannot enumerate processes")
     return _runner_pids_from_ps(p.stdout, os.getpid())
+
+
+# --- owner-CLI process identity (OWNER-2026-10-28-s0-cli-admission-recovery.md). `_other_runner_pids` above stays strict and is what the
+# runner itself uses. Only the owner-CLI admission path may exempt ONE process, and only when kernel/OS facts (not state.json) show that
+# it owns the runner lock; every doubt denies.
+_LSOF_CANDIDATES = ("/usr/sbin/lsof", "/usr/bin/lsof")
+_PS_CANDIDATES = ("/bin/ps", "/usr/bin/ps")
+_OS_FACT_ENV = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "LANG": "C"}
+
+
+def _trusted_exe(candidates):
+    """First candidate that is a root-owned regular executable nobody else can write; None otherwise (unsupported host)."""
+    for c in candidates:
+        try:
+            st = os.stat(c)
+        except OSError:
+            continue
+        if stat.S_ISREG(st.st_mode) and st.st_uid == 0 and not st.st_mode & 0o022 and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def _os_fact(candidates, args, what):
+    exe = _trusted_exe(candidates)
+    if exe is None:
+        raise GateError(f"{what}: no trusted system tool on this host")
+    try:
+        p = subprocess.run([exe, *args], capture_output=True, text=True, timeout=10, env=_OS_FACT_ENV)
+    except (OSError, subprocess.SubprocessError):
+        raise GateError(f"{what}: the system tool failed")
+    return p
+
+
+def _lock_openers_from_lsof(text):
+    """Sorted PIDs with an open numeric descriptor, from `lsof -F` output. The only accepted records are one `p<pid>` per process
+    (a repeated PID is ambiguous and denies) each followed by `f<descriptor>` records (`f3`, `fcwd`, `ftxt`, ...); only a numeric
+    descriptor is an open file, never cwd/txt/mem. Anything else raises GateError."""
+    out, seen, cur = set(), set(), None
+    for line in text.splitlines():
+        if line.startswith("p") and line[1:].isdigit() and int(line[1:]) not in seen:
+            cur = int(line[1:])
+            seen.add(cur)
+        elif line.startswith("f") and cur is not None and line[1:].isalnum() and line[1:].isascii():
+            if line[1:].isdigit():
+                out.add(cur)
+        else:
+            raise GateError("runner lock owner: unparseable lsof output")
+    return sorted(out)
+
+
+def _lock_openers(path):
+    """Sorted PIDs of every process that has `path` open, from the kernel file table (lsof). The runner never passes its runner-lock
+    fd to a child, so while the lock is held the one opener is its holder. Unparseable or failed output raises GateError."""
+    p = _os_fact(_LSOF_CANDIDATES, ["-nP", "-F", "pf", str(Path(path).resolve())], "runner lock owner")
+    if p.returncode not in (0, 1):
+        raise GateError("runner lock owner: lsof failed")
+    return _lock_openers_from_lsof(p.stdout)
+
+
+def _proc_facts(pid):
+    """(actual start time, full command line) of `pid` from the OS; GateError if the process is gone or the facts are unavailable."""
+    start = _os_fact(_PS_CANDIDATES, ["-o", "lstart=", "-p", str(pid)], "process start time")
+    cmd = _os_fact(_PS_CANDIDATES, ["-ww", "-o", "command=", "-p", str(pid)], "process command")
+    if start.returncode != 0 or cmd.returncode != 0 or not start.stdout.strip() or not cmd.stdout.strip():
+        raise GateError("the process facts are unavailable (the process does not exist)")
+    return start.stdout.strip(), cmd.stdout.strip()
+
+
+def _cli_sole_runner_problem(cfg, ov, others):
+    """None only when `others` (the runner-looking PIDs `ps` showed the owner CLI) is exactly the ONE process that the kernel shows
+    owning the held runner lock AND whose real start time and command equal the runner-written attestation of the effective overlay
+    ov, AND state.json and the lock file agree. state.json and the lock file are claims; the OS facts decide. Any doubt is a reason."""
+    try:
+        att, lock = ov["attested"], Path(cfg.home) / "locks" / "runner.lock"
+        if FileLock.probe(lock) != "held":
+            return "the sole runner lock is not held"
+        openers = _lock_openers(lock)
+        if len(openers) != 1:
+            return "the runner lock is not open in exactly one process"
+        pid = openers[0]
+        if pid == os.getpid() or others != [pid]:
+            return "a runner-looking process other than the runner lock owner exists"
+        meta = FileLock(lock).owner() or {}
+        state = json.loads(_read_bounded(Path(cfg.home) / "state.json", 64 * 1024 * 1024)) or {}
+        r = state.get("runner") or {}
+        if not (meta.get("pid") == pid and r.get("pid") == pid == att["pid"] and r.get("boot_nonce") == att["boot_nonce"]
+                and r.get("code_sha256") == att["code_sha256"] == CODE_SHA):
+            return "the runner lock, state and attestation do not name the same live runner identity"
+        start, cmd = _proc_facts(pid)
+        if not (start == att["lstart"] and cmd == att["command"] and _is_runner_argv(cmd.split())):
+            return "the lock owner's actual start time or command differs from the attested runner (stale or reused PID)"
+        if FileLock.probe(lock) != "held" or _lock_openers(lock) != [pid]:
+            return "the runner lock owner changed during the check"
+    except (GateError, OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+        return f"the sole runner identity cannot be proven: {str(e)[:160]}"
+    return None
 
 
 def transfer_preflight(cfg, rlock_held=False, wlock_held=False):
@@ -5606,7 +5706,7 @@ def _transition_bound_problem(cfg, rec, full=True):
     """Every admission re-authenticates the preserved bytes and the audit trail; a positive result is never cached."""
     if rec["new"]["code_sha256"] != CODE_SHA:
         try:
-            ov2 = _recovery2_load(cfg)
+            ov2 = _recovery2_effective(cfg)
             ov = None if ov2 is not None else _recovery_load(cfg)
         except GateError as e:
             return f"the recovery record is invalid: {e}"
@@ -5875,6 +5975,22 @@ RC2_PROMPT = ("Apply the three runner-supplied certificate edits exactly as writ
               "and change nothing else.")
 _RC2_KEYS = _RC_KEYS | {"prior", "preflight"}
 _RC2_IMMUTABLE = ("schema", "kind", "recovery_id", "created_at", "orig", "prior", "owner", "pre_image", "runner", "preflight", "attested")
+
+# --- one authenticated reattestation of lane 2 after the ONE conditional reload (OWNER-2026-10-28-s0-cli-admission-recovery.md). The lane-2
+# overlay above stays byte-immutable (stage BOUND, correction UNUSED); a separate, exclusively created, single-use record binds it to the
+# new runner C (E3 -> C3, E3's parent being lane 2's runner commit), its process, a re-derived preflight and the review/CI evidence.
+RC3_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-28-s0-cli-admission-recovery.md"
+RC3_OWNER_SHA = "25faa95db80f085e0237f5a394b44f7e3edbd17112f18d33c61992c6f3735992"
+RC3_OWNER_COMMIT = "7ef06550070dbdde36af5af72a7dc78eae0c5399"  # E3: record-only, raw single-parent child of lane 2's runner commit
+RC3_OWNER_CI_RUN = "40683625000"
+RC3_PRIOR_COMMIT = "74f32431fc44d4170d3a34aa3fc035a04a45eedd"  # lane 2's runner commit (E3's parent)
+RC3_PRIOR_CODE_SHA = "064f8c72157895f1f45c138e3b1cce16861678c5109853291c10b09b4e0fba4e"
+RC3_REATTEST_NAME = "s0_d16_preflight_recovery_reattest.json"
+RC3_BOOT_NAME = "s0_d16_cli_admission_boot.json"  # the one reload window of the reattestation
+RC3_CHECKPOINT = "checkpoints/20261028-s0-cli-admission-recovery"
+RC3_KIND = "s0-d16-cli-admission-reattest"
+_RC3_KEYS = {"schema", "kind", "reattest_id", "created_at", "recovery2", "owner", "prior", "runner", "review", "preflight", "delta",
+             "attested", "checksum"}
 
 
 def _rc1_marked(t):
@@ -6171,7 +6287,7 @@ def _transition_overlay(cfg, rec):
     """The recovery overlay governing record `rec` (replacement code loaded), else None. Raises GateError if it is invalid."""
     if rec["new"]["code_sha256"] == CODE_SHA:
         return None
-    return _recovery2_load(cfg) or _recovery_load(cfg)  # lane 2 governs once it exists; lane 1 is history for different code
+    return _recovery2_effective(cfg) or _recovery_load(cfg)  # lane 2 governs once it exists; lane 1 is history for different code
 
 
 def _recovery_write_pre_image(cfg, rid, rec, docs, files, checkpoint=None):
@@ -6714,7 +6830,7 @@ def _recovery2_block(pf):
 
 
 def _recovery2_block_checked(cfg):
-    ov = _recovery2_load(cfg)
+    ov = _recovery2_effective(cfg)
     if ov is None:
         raise GateError("no lane-2 recovery record")
     block = _recovery2_block(ov["preflight"])
@@ -6723,9 +6839,11 @@ def _recovery2_block_checked(cfg):
     return block
 
 
-def _recovery2_preflight_problem(cfg, ov, tasks):
+def _recovery2_preflight_problem(cfg, ov, tasks, cli=False):
     """Recompute the whole preflight from the preserved originals and the live environment; any difference from the attested one,
-    any live worker, process or handoff is a refusal. Used by the gate and again immediately before consumption."""
+    any live worker, process or handoff is a refusal. Used by the gate and again immediately before consumption. `cli` is True only
+    on the owner-CLI enqueue path: there the kernel-proven sole runner (and nothing else, never an empty process list) is accepted
+    and a held repository-writer lock denies; the runner's own strict duplicate detection (`if others: deny`) never takes that branch."""
     try:
         pre = Path(cfg.home) / ov["pre_image"]["dir"]
         now = recovery2_preflight(cfg, _read_bounded(pre / "doc-0", REVIEW_MAX_BYTES), _read_bounded(pre / "doc-1", REVIEW_MAX_BYTES))
@@ -6737,8 +6855,15 @@ def _recovery2_preflight_problem(cfg, ov, tasks):
         h = (_read_state_handoff(cfg))
         if h.get("request") or h.get("quarantine"):
             return "an orchestrator handoff or gateway turn is open"
-        if _other_runner_pids(cfg):
+        others = _other_runner_pids(cfg)
+        if cli:  # owner CLI: the sole runner must ALWAYS be proven by OS facts; no visible runner is not "no other runner"
+            why = _cli_sole_runner_problem(cfg, ov, others)
+            if why:
+                return f"the owner CLI cannot authenticate the sole runner: {why}"
+        elif others:
             return "another runner process exists"
+        if cli and FileLock.probe(writer_lock_path(cfg.home, cfg.repo)) != "free":
+            return "the repository writer lock is held"
     except (GateError, OSError, KeyError, TypeError) as e:
         return str(e)[:200]
     return None
@@ -6764,7 +6889,7 @@ def _read_state_handoff(cfg):
 
 def _recovery2_dispatch_problem(cfg, t, cmd, tools, prefix, sett):
     """Immediately before Popen: the actual command, tools, settings and prompt block are exactly the attested ones."""
-    ov = _recovery2_load(cfg)
+    ov = _recovery2_effective(cfg)
     if ov is None:
         raise GateError("no lane-2 recovery record")
     pf = ov["preflight"]
@@ -6851,18 +6976,21 @@ def _recovery2_validate(rec):
     return rec
 
 
-def _recovery2_load(cfg):
-    """None when no lane-2 overlay exists; the validated overlay otherwise. Any problem raises GateError."""
+def _recovery2_load(cfg, with_bytes=False):
+    """None when no lane-2 overlay exists; the validated overlay otherwise. Any problem raises GateError. `with_bytes` returns
+    (overlay, the exact bytes it was parsed from) so a caller binds one single bounded read, never a second one."""
     path = _recovery2_path(cfg)
     if not os.path.lexists(path):
-        return None
+        return (None, None) if with_bytes else None
     try:
-        rec = json.loads(_read_bounded(path, 1 << 20).decode())
+        data = _read_bounded(path, 1 << 20)
+        rec = json.loads(data.decode())
     except GateError:
         raise
     except Exception:
         raise GateError("recovery2 record is unreadable or not valid JSON")
-    return _recovery2_validate(rec)
+    rec = _recovery2_validate(rec)
+    return (rec, data) if with_bytes else rec
 
 
 def _recovery2_write(cfg, rec, create=False):
@@ -6998,7 +7126,8 @@ def _recovery2_replay_problem(cfg, ov):
 def _recovery2_bound_problem(cfg, rec, ov, full=True):
     """Every admission re-authenticates the original record, lane 1, the replacement runner and the preserved bytes; never cached."""
     try:
-        return (_recovery_orig_problem(cfg, rec, ov) or _recovery2_prior_problem(cfg, ov) or _recovery2_runner_problem(cfg, ov, full)
+        return (_recovery_orig_problem(cfg, rec, ov) or _recovery2_prior_problem(cfg, ov)
+                or (_recovery3_runner_problem if ov.get("reattest") else _recovery2_runner_problem)(cfg, ov, full)
                 or _transfer_pre_image_problem(cfg, rec, full) or _recovery_pre_image_problem(cfg, ov, full)
                 or (_transition_replay_problem(cfg, rec) or _recovery2_replay_problem(cfg, ov) if full else None))
     except (GateError, OSError) as e:
@@ -7085,7 +7214,7 @@ def _recovery2_shape_problem(t):
     return None
 
 
-def recovery2_gate_reason(cfg, t, tasks):
+def recovery2_gate_reason(cfg, t, tasks, cli=False):
     """None outside lane 2 or for the one fully authorised correction; else an explicit S0_RECOVERY2_* reason. The attested preflight
     is recomputed here (and again before consumption), so a drifted input leaves the slot UNUSED and starts no worker."""
     if not _rc2_marked(t):
@@ -7099,7 +7228,7 @@ def recovery2_gate_reason(cfg, t, tasks):
     if mode != "RECOVERY":
         return f"S0_RECOVERY2_NOT_ADMITTED: {why or mode}"
     try:
-        ov = _recovery2_load(cfg)
+        ov = _recovery2_effective(cfg)
     except GateError as e:
         return f"S0_RECOVERY2_UNVERIFIABLE: {e}"
     if ov is None or ov["stage"] != "BOUND" or ov["correction"]["state"] != "UNUSED":
@@ -7122,7 +7251,7 @@ def recovery2_gate_reason(cfg, t, tasks):
         return f"S0_RECOVERY2_STALE_BASE: {e}"
     if head != ov["runner"]["commit"]:
         return "S0_RECOVERY2_STALE_BASE: HEAD is not the bound lane-2 runner commit"
-    problem = _recovery2_preflight_problem(cfg, ov, tasks) or _recovery2_task_plan_problem(cfg, ov, t)
+    problem = _recovery2_preflight_problem(cfg, ov, tasks, cli=cli) or _recovery2_task_plan_problem(cfg, ov, t)
     if problem:
         return f"S0_RECOVERY2_PREFLIGHT_FAILED: {problem}"
     return None
@@ -7157,7 +7286,7 @@ def recovery2_review_reason(cfg, t, tasks):
     if not _hashes_current(cfg, want):
         return "S0_RECOVERY2_REVIEW_BINDING_STALE: the documents no longer match the correction's recorded hashes"
     try:
-        ov = _recovery2_load(cfg)
+        ov = _recovery2_effective(cfg)
     except GateError as e:
         return f"S0_RECOVERY2_REVIEW_UNVERIFIABLE: {e}"
     if _transition_mode(cfg)[0] != "RECOVERY" or ov is None or ov["stage"] != "CORRECTION_CONSUMED" or ov["correction"]["task_id"] != w["id"]:
@@ -7176,7 +7305,7 @@ def _recovery2_result_problem(cfg, tasks, changed):
     problem = _s0_rebind_packet_problem(cfg)
     if problem:
         return problem
-    rec, ov = _load_transition(cfg), _recovery2_load(cfg)
+    rec, ov = _load_transition(cfg), _recovery2_effective(cfg)
     if ov is None:
         return "the lane-2 record is absent"
     base = _read_bounded(Path(cfg.home) / ov["pre_image"]["dir"] / "doc-0", REVIEW_MAX_BYTES)
@@ -7300,7 +7429,7 @@ def _recovery2_runner_subject(cfg, ov, e):
             and e["sha256"] == CODE_SHA and e["commit"] == rn["commit"] and e["ci"] == rn["ci"]
             and e["review"] == {"preload_sha256": rn["preload_sha256"], "output_sha256": rn["preload_output_sha256"]}):
         raise GateError("S0 runner_gate: not the lane-2 overlay-bound replacement runner, CI and pre-load review")
-    pre = Path(cfg.home) / ov["pre_image"]["dir"] / "review"
+    pre = Path(cfg.home) / (ov.get("review_dir") or f'{ov["pre_image"]["dir"]}/review')  # the reattested runner keeps its own evidence dir
     bind = _transfer_preload_bind(_read_bounded(pre / "preload.json", 1 << 20), _read_bounded(pre / "preload.out", 8 * 1024 * 1024),
                                   {"commit": rn["commit"], "code_sha256": rn["code_sha256"], "test_sha256": rn["test_sha256"],
                                    "diff_sha256": rn["diff_sha256"]})
@@ -7318,6 +7447,326 @@ def _recovery2_runner_subject(cfg, ov, e):
 def _recovery2_probe_problem(cfg, rec, ov, tasks):
     """Positive and negative read-only probes before ACTIVE (the same set as lane 1, which already covers both lane IDs)."""
     return _recovery_probe_problem(cfg, rec, ov, tasks)
+
+
+# ------------------------------------------------ lane-2 reattestation after the one conditional reload (2026-10-28)
+# The lane-2 overlay is never rewritten. After the reload to C3 a separate single-use record binds that exact overlay to the new runner
+# process and code and carries the preflight RE-DERIVED under C3. `_recovery2_effective` is the ONE view every reader uses; it overlays
+# runner/preflight/attested/review evidence from the authenticated reattestation, and the preserved preflight never reaches a reader.
+def _recovery3_path(cfg):
+    return Path(cfg.home) / RC3_REATTEST_NAME
+
+
+def _recovery3_first_boot(cfg, me=False):
+    """The reattestation's one reload window marker, or None. `me` also requires that THIS process created it."""
+    try:
+        d = json.loads(_read_bounded(Path(cfg.home) / RC3_BOOT_NAME, 1 << 16).decode())
+    except Exception:
+        return None
+    if not (isinstance(d, dict) and set(d) == _TR_BOOT_KEYS and d["schema"] == 1 and d["kind"] == "s0-d16-cli-admission-first-boot"
+            and _is_int(d["pid"]) and d["pid"] > 0 and isinstance(d["boot_nonce"], str) and d["boot_nonce"]
+            and d["code_sha256"] == CODE_SHA):
+        return None
+    return d if not me or (d["pid"] == os.getpid() and d["boot_nonce"] == _PROCESS_BOOT_NONCE) else None
+
+
+def _recovery3_immutable_sha(raw):
+    return _sha(_canon({k: raw[k] for k in _RC2_IMMUTABLE}))
+
+
+def _recovery3_delta_problem(old, new, old_code, new_code):
+    """The re-derived preflight may differ from the preserved one ONLY in edit 3's new loaded-runner-code value and the digests
+    derived from it (edits_sha256, block_sha256) and the timestamp; every other byte, setting, argv, tool and hash must match."""
+    try:
+        if not (_is_hex(old_code, 64) and _is_hex(new_code, 64) and old_code != new_code):
+            return "the old and new runner code hashes are invalid"
+        if any(old[k] != new[k] for k in _RC2_PF_KEYS - {"at", "edits", "edits_sha256", "block_sha256"}):
+            return "the re-derived preflight differs from the preserved one beyond the loaded-runner-code edit"
+        oe, ne = old["edits"], new["edits"]
+        if not (len(oe) == len(ne) == 3 and oe[0] == ne[0] and oe[1] == ne[1] and set(oe[2]) == set(ne[2]) == {"old_string", "new_string"}
+                and oe[2]["old_string"] == ne[2]["old_string"] and oe[2]["new_string"].count(old_code) == 1
+                and oe[2]["new_string"].replace(old_code, new_code) == ne[2]["new_string"] and ne[2]["new_string"].count(new_code) == 1
+                and old_code not in ne[2]["new_string"]):
+            return "the re-derived edits differ from the preserved ones beyond the loaded-runner-code value of edit 3"
+        if new["edits_sha256"] != _sha(_canon(ne)) or new["block_sha256"] != _sha(_recovery2_block(new).encode()):
+            return "the re-derived preflight digests are not derived from its own edits"
+    except (KeyError, TypeError, AttributeError):
+        return "the preflight shape is invalid"
+    return None
+
+
+def _recovery3_validate(rec):
+    """Strict schema and cross-field check of the reattestation; raises GateError."""
+    if not (isinstance(rec, dict) and set(rec) == _RC3_KEYS):
+        raise GateError("recovery reattestation: unexpected or missing fields")
+    if not (rec["schema"] == 1 and rec["kind"] == RC3_KIND and _is_hex(rec["reattest_id"], 32) and isinstance(rec["created_at"], str)):
+        raise GateError("recovery reattestation: header fields are invalid")
+    r2 = _tr_dict(rec["recovery2"], ("recovery_id", "immutable_sha256", "bound_file_sha256", "bound_checksum"), "recovery2")
+    if not (_is_hex(r2["recovery_id"], 32) and all(_is_hex(r2[k], 64) for k in ("immutable_sha256", "bound_file_sha256", "bound_checksum"))):
+        raise GateError("recovery reattestation: the lane-2 binding is invalid")
+    ow = _tr_dict(rec["owner"], ("path", "sha256", "commit", "ci"), "owner")
+    if not (ow["path"] == RC3_OWNER_PATH and ow["sha256"] == RC3_OWNER_SHA and ow["commit"] == RC3_OWNER_COMMIT):
+        raise GateError("recovery reattestation: the owner record binding is invalid")
+    _recovery_ci_validate(ow["ci"], RC3_OWNER_COMMIT, RC3_OWNER_CI_RUN)
+    pr = _tr_dict(rec["prior"], ("commit", "code_sha256"), "prior")
+    if not (pr["commit"] == RC3_PRIOR_COMMIT and pr["code_sha256"] == RC3_PRIOR_CODE_SHA):
+        raise GateError("recovery reattestation: the lane-2 runner binding is invalid")
+    rn = _tr_dict(rec["runner"], ("code_sha256", "commit", "parent", "test_sha256", "diff_sha256", "preload_sha256",
+                                  "preload_output_sha256", "ci"), "runner")
+    if not (_is_hex(rn["code_sha256"], 64) and rn["code_sha256"] not in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA, RC3_PRIOR_CODE_SHA)
+            and _is_hex(rn["commit"], 40) and rn["parent"] == RC3_OWNER_COMMIT
+            and all(_is_hex(rn[k], 64) for k in ("test_sha256", "diff_sha256", "preload_sha256", "preload_output_sha256"))):
+        raise GateError("recovery reattestation: the replacement runner binding is invalid")
+    _recovery_ci_validate(rn["ci"], rn["commit"])
+    rv = _tr_dict(rec["review"], ("dir", "preload_sha256", "preload_output_sha256"), "review")
+    if not (isinstance(rv["dir"], str) and rv["dir"].startswith(RC3_CHECKPOINT + "/") and not Path(rv["dir"]).is_absolute()
+            and ".." not in Path(rv["dir"]).parts and rv["preload_sha256"] == rn["preload_sha256"]
+            and rv["preload_output_sha256"] == rn["preload_output_sha256"]):
+        raise GateError("recovery reattestation: the review evidence binding is invalid")
+    _recovery2_pf_validate(rec["preflight"])
+    d = _tr_dict(rec["delta"], ("old_preflight_sha256", "old_code_sha256", "new_code_sha256"), "delta")
+    if not (_is_hex(d["old_preflight_sha256"], 64) and d["old_code_sha256"] == RC3_PRIOR_CODE_SHA and d["new_code_sha256"] == rn["code_sha256"]):
+        raise GateError("recovery reattestation: the preflight delta binding is invalid")
+    at = _tr_dict(rec["attested"], ("pid", "boot_nonce", "code_sha256", "at", "lstart", "command"), "attested")
+    if not (_is_int(at["pid"]) and at["pid"] > 0 and isinstance(at["boot_nonce"], str) and at["boot_nonce"]
+            and at["code_sha256"] == rn["code_sha256"] and all(isinstance(at[k], str) and at[k] for k in ("at", "lstart", "command"))):
+        raise GateError("recovery reattestation: the process attestation is invalid")
+    if rec["checksum"] != _transition_checksum(rec):
+        raise GateError("recovery reattestation: checksum mismatch (corrupt or tampered)")
+    return rec
+
+
+def _recovery3_load(cfg):
+    """None when no reattestation exists; the validated record otherwise. Any problem raises GateError."""
+    path = _recovery3_path(cfg)
+    if not os.path.lexists(path):
+        return None
+    try:
+        rec = json.loads(_read_bounded(path, 1 << 20).decode())
+    except GateError:
+        raise
+    except Exception:
+        raise GateError("recovery reattestation is unreadable or not valid JSON")
+    return _recovery3_validate(rec)
+
+
+def _recovery3_write(cfg, rec):
+    """The only writer of the reattestation: validated, checksummed, exclusively created (single use) and fsynced."""
+    rec = {k: v for k, v in rec.items() if k != "checksum"}
+    rec["checksum"] = _transition_checksum(rec)
+    _recovery3_validate(rec)
+    _atomic_create_exclusive(_recovery3_path(cfg), json.dumps(rec, sort_keys=True, indent=1).encode())
+    return rec
+
+
+def _recovery3_original_problem(raw, raw_bytes, bound_sha, bound_checksum):
+    """The original lane-2 bytes, reconstructed. Later legal updates change only stage/correction/verified; undoing exactly those
+    must reproduce the original BOUND/UNUSED record: its checksum and its exact serialized bytes. While the overlay IS still
+    BOUND/UNUSED the bytes actually on disk must equal them too. Pure: never rewrites anything."""
+    orig = {**raw, "stage": "BOUND", "correction": {"state": "UNUSED", "task_id": None, "at": None},
+            "verified": {"docs": None, "receipt_sha256": None, "commit": None, "at": None}}
+    orig.pop("checksum")
+    if _transition_checksum(orig) != bound_checksum:
+        return "the lane-2 overlay does not reconstruct the original BOUND/UNUSED checksum the reattestation bound"
+    orig["checksum"] = bound_checksum
+    if _sha(json.dumps(orig, sort_keys=True, indent=1).encode()) != bound_sha:
+        return "the lane-2 overlay does not reconstruct the original bytes the reattestation bound"
+    if raw["stage"] == "BOUND" and raw["correction"]["state"] == "UNUSED" and _sha(raw_bytes) != bound_sha:
+        return "the lane-2 overlay bytes on disk differ from the original bytes the reattestation bound"
+    return None
+
+
+def _recovery3_binding_problem(raw, rt, raw_bytes):
+    """The reattestation binds THIS immutable lane-2 overlay and its original bytes, nothing else; cheap and pure (re-run by every
+    reader)."""
+    pr, rn = raw["runner"], rt["runner"]
+    bad = _recovery3_original_problem(raw, raw_bytes, rt["recovery2"]["bound_file_sha256"], rt["recovery2"]["bound_checksum"])
+    if bad:
+        return bad
+    if not (rt["recovery2"]["recovery_id"] == raw["recovery_id"] and rt["recovery2"]["immutable_sha256"] == _recovery3_immutable_sha(raw)
+            and pr["commit"] == rt["prior"]["commit"] == RC3_PRIOR_COMMIT and pr["code_sha256"] == rt["prior"]["code_sha256"] == RC3_PRIOR_CODE_SHA):
+        return "the reattestation does not bind this lane-2 overlay and its runner"
+    if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA and rn["code_sha256"] != pr["code_sha256"]):
+        return "the reattestation binds different loaded runner code"
+    if rt["delta"]["old_preflight_sha256"] != _sha(_canon({k: v for k, v in raw["preflight"].items() if k != "at"})):
+        return "the reattestation binds a different preserved preflight"
+    return _recovery3_delta_problem(raw["preflight"], rt["preflight"], pr["code_sha256"], rn["code_sha256"])
+
+
+def _recovery2_effective(cfg):
+    """None without a lane-2 overlay. With the original lane-2 runner code loaded: the overlay itself (no reattestation may exist).
+    With other code loaded: the overlay with runner/preflight/attested/review evidence taken from the authenticated reattestation,
+    carrying it as "reattest". GateError (ingress closed) if that reattestation is absent or unsound. Readers only; the raw overlay
+    (never this view) is what `_recovery2_write` persists."""
+    raw, raw_bytes = _recovery2_load(cfg, with_bytes=True)
+    exists = os.path.lexists(_recovery3_path(cfg))
+    if raw is None:
+        if exists:
+            raise GateError("a reattestation exists without its lane-2 record")
+        return None
+    if raw["runner"]["code_sha256"] == CODE_SHA:
+        if exists:
+            raise GateError("a reattestation exists although the original lane-2 runner code is loaded")
+        return raw
+    rt = _recovery3_load(cfg)
+    if rt is None:
+        raise GateError("S0_RECOVERY2_REATTEST_REQUIRED: the loaded runner has no authenticated lane-2 reattestation")
+    bad = _recovery3_binding_problem(raw, rt, raw_bytes)
+    if bad:
+        raise GateError(bad)
+    return {**raw, "runner": rt["runner"], "preflight": rt["preflight"], "attested": rt["attested"], "review_dir": rt["review"]["dir"],
+            "reattest": rt}
+
+
+def _recovery3_diff(cfg, commit):
+    p = _tgit(cfg, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+              RC3_OWNER_COMMIT, commit, "--", S0_RUNNER_FILE, TRANSFER_TEST_FILE)
+    if p.returncode != 0:
+        raise GateError("cannot compute the reattested runner diff")
+    return p.stdout
+
+
+def _recovery3_lineage_problem(cfg):
+    """Authenticated chain 617b80e -> C2 -> E3 (raw single-parent objects): E3 changes exactly its owner record, unchanged since."""
+    if _transfer_commit(cfg, RC3_PRIOR_COMMIT)[1] != [RC2_OWNER_COMMIT]:
+        return "lane 2's runner commit is not a direct child of the lane-2 owner-record commit"
+    if _sha(_transfer_blob(cfg, RC3_PRIOR_COMMIT, S0_RUNNER_FILE)) != RC3_PRIOR_CODE_SHA:
+        return "lane 2's committed runner differs from its recorded hash"
+    if _transfer_commit(cfg, RC3_OWNER_COMMIT)[1] != [RC3_PRIOR_COMMIT]:
+        return "the owner-record commit E is not a direct, single-parent child of lane 2's runner commit"
+    if _transfer_changed(cfg, RC3_PRIOR_COMMIT, RC3_OWNER_COMMIT) != [RC3_OWNER_PATH]:
+        return "the owner-record commit E must change exactly its owner record"
+    if _sha(_transfer_blob(cfg, RC3_OWNER_COMMIT, RC3_OWNER_PATH)) != RC3_OWNER_SHA:
+        return "the owner record is not the pinned published record"
+    return None
+
+
+@_tr_memoized
+def _recovery3_successor(cfg):
+    """Deterministic local binding of the loaded runner C to E -> C (direct, single-parent raw Git objects). The two documents may be
+    dirty; nothing else may be. The commit is derived from HEAD (it cannot be a constant inside itself)."""
+    runner_b = _transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "reattested runner.py")
+    test_b = _transfer_read(Path(cfg.repo) / TRANSFER_TEST_FILE, "reattested test_runner.py")
+    if not (_sha(runner_b) == CODE_SHA == _LOADED_CODE_SHA):
+        raise GateError("on-disk runner.py differs from the loaded code (stale disk)")
+    _transfer_no_replacements(cfg)
+    head = _tgit(cfg, "rev-parse", "--verify", "HEAD")
+    head = head.stdout.decode().strip() if head.returncode == 0 else ""
+    if _transfer_commit(cfg, head)[1] != [RC3_OWNER_COMMIT]:
+        raise GateError("the runner commit C is not a direct, single-parent child of the owner-record commit E")
+    bad = _recovery3_lineage_problem(cfg)
+    if bad:
+        raise GateError(bad)
+    if _transfer_blob(cfg, head, RC3_OWNER_PATH) != _transfer_blob(cfg, RC3_OWNER_COMMIT, RC3_OWNER_PATH):
+        raise GateError("the owner record changed in C")
+    if _sha(_transfer_blob(cfg, head, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, head, TRANSFER_TEST_FILE)) != _sha(test_b):
+        raise GateError("the committed runner or test blob differs from the on-disk file")
+    if _transfer_changed(cfg, RC3_OWNER_COMMIT, head) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+        raise GateError("the runner commit must change exactly runner.py and test_runner.py")
+    return {"commit": head, "parent": RC3_OWNER_COMMIT, "code_sha256": CODE_SHA, "test_sha256": _sha(test_b),
+            "diff_sha256": _sha(_recovery3_diff(cfg, head))}
+
+
+@_tr_memoized
+def _recovery3_runner_problem(cfg, ov, full):
+    """Effective-view counterpart of `_recovery2_runner_problem`: the loaded runner is C, bound to E -> C and its review evidence."""
+    rn, rt = ov["runner"], ov["reattest"]
+    try:
+        if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA):
+            return "the reattestation binds different replacement runner code"
+        if _sha(_transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "runner.py")) != CODE_SHA:
+            return "on-disk runner.py differs from the loaded reattested code"
+        if not full:
+            return None
+        c = rn["commit"]
+        if _transfer_commit(cfg, c)[1] != [RC3_OWNER_COMMIT]:
+            return "the reattested runner commit is not a direct child of the owner-record commit"
+        bad = _recovery3_lineage_problem(cfg)
+        if bad:
+            return bad
+        if _transfer_changed(cfg, RC3_OWNER_COMMIT, c) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+            return "the reattested runner commit changes more than runner.py and test_runner.py"
+        if _sha(_transfer_blob(cfg, c, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, c, TRANSFER_TEST_FILE)) != rn["test_sha256"]:
+            return "the committed reattested blobs differ from the recorded hashes"
+        if _sha(_recovery3_diff(cfg, c)) != rn["diff_sha256"]:
+            return "the reattested runner diff differs from the reviewed subject"
+        if _transfer_blob(cfg, c, RC3_OWNER_PATH) != _transfer_blob(cfg, RC3_OWNER_COMMIT, RC3_OWNER_PATH):
+            return "the owner record changed"
+        if not _is_ancestor(cfg, c):
+            return "the reattested runner commit is not an ancestor of HEAD"
+        rd = Path(cfg.home) / rt["review"]["dir"]
+        if rd.is_symlink() or not rd.is_dir():
+            return "the reattested review evidence directory is missing"
+        bind = _transfer_preload_bind(_read_bounded(rd / "preload.json", 1 << 20), _read_bounded(rd / "preload.out", 8 * 1024 * 1024),
+                                      {k: rn[k] for k in ("commit", "code_sha256", "test_sha256", "diff_sha256")})
+        if bind != {"preload_sha256": rn["preload_sha256"], "preload_output_sha256": rn["preload_output_sha256"]}:
+            return "the preserved pre-load review differs from the reattestation binding"
+    except GateError as e:
+        return str(e)
+    return None
+
+
+def recovery3_reattest_preflight(cfg, state, rlock_held=False, wlock_held=False):
+    """Deterministic local preflight for the reattestation. Raises GateError on anything but the exact pinned situation: lane 2 BOUND
+    and UNUSED on its own runner, nothing consumed or queued, no other runner, no worker, no handoff, no held writer lock, documents at
+    their pinned bytes, and a preflight re-derived under THIS code that differs from the preserved one only in edit 3's code value.
+    Provider CI is observed by the caller; this never consults the network and writes nothing."""
+    rec = _load_transition(cfg)
+    raw, raw_bytes = _recovery2_load(cfg, with_bytes=True)  # ONE bounded read: the parsed overlay and the bytes bound below are the same
+    if rec is None or raw is None or CODE_SHA in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA, RC3_PRIOR_CODE_SHA) \
+            or raw["runner"]["code_sha256"] == CODE_SHA or rec["new"]["code_sha256"] == CODE_SHA:
+        raise GateError("the lane-2 overlay does not bind older runner code than this reattested runner")
+    if os.path.lexists(_recovery3_path(cfg)) or any(str(e.get("kind", "")).startswith("quarantine-recovery3-reattested") for e in _qled_events(cfg)):
+        raise GateError("a reattestation already exists or was minted; it is never minted twice")
+    if not (raw["stage"] == "BOUND" and raw["correction"] == {"state": "UNUSED", "task_id": None, "at": None}):
+        raise GateError("the lane-2 overlay is not the BOUND/UNUSED record")
+    bad = _recovery3_original_problem(raw, raw_bytes, _sha(raw_bytes), raw["checksum"])  # BOUND/UNUSED bytes are the writer's exact bytes
+    if bad:
+        raise GateError(bad)
+    if not (raw["runner"]["commit"] == RC3_PRIOR_COMMIT and raw["runner"]["code_sha256"] == RC3_PRIOR_CODE_SHA):
+        raise GateError("the lane-2 overlay binds a different runner than the pinned lane-2 runner")
+    bad = (_recovery_orig_problem(cfg, rec, raw) or _recovery2_prior_problem(cfg, raw) or _transfer_pre_image_problem(cfg, rec, True)
+           or _recovery_pre_image_problem(cfg, raw, True) or _transition_replay_problem(cfg, rec) or _recovery2_replay_problem(cfg, raw))
+    if bad:
+        raise GateError(bad)
+    att = raw["attested"]
+    if (att["pid"], att["boot_nonce"]) == (os.getpid(), _PROCESS_BOOT_NONCE) or (att["pid"] != os.getpid() and pid_alive(att["pid"])):
+        raise GateError("the lane-2 attested runner is still alive or is this process")
+    tasks = (state or {}).get("tasks")
+    if not isinstance(tasks, dict):
+        raise GateError("no task state")
+    bad = _recovery_orig_task_problem(tasks) or _recovery2_prior_task_problem(tasks)
+    if bad:
+        raise GateError(bad)
+    if any(isinstance(x, dict) and (_rc2_marked(x) or (x.get("review_of") or {}).get("task_id") == RC2_ID) for x in tasks.values()):
+        raise GateError("a lane-2 task or review already exists")
+    for d in ("queue", "commands"):
+        base = Path(cfg.home) / d
+        if base.is_dir() and any(RC2_ID.encode() in p.read_bytes() for p in base.iterdir() if p.is_file()):
+            raise GateError("the lane-2 correction ID is already queued")
+    h = (state or {}).get("handoff") or {}
+    if h.get("request") or h.get("quarantine"):
+        raise GateError("an orchestrator handoff or gateway turn is open")
+    if any(isinstance(t, dict) and (t.get("status") == "RUNNING" or t.get("child") or t.get("stage") == "verify_pending") for t in tasks.values()):
+        raise GateError("a worker task is running or a verification is pending")
+    if _other_runner_pids(cfg):
+        raise GateError("another runner process exists")
+    if not rlock_held and FileLock.probe(Path(cfg.home) / "locks" / "runner.lock") == "free":
+        raise GateError("the sole runner lock is not held by the reattested runner")
+    if not wlock_held and FileLock.probe(writer_lock_path(cfg.home, cfg.repo)) != "free":
+        raise GateError("the repository writer lock is held")
+    successor = _recovery3_successor(cfg)
+    bad = _recovery_tree_problem(cfg, RECOVERY_ORIG_DOCS)
+    if bad:
+        raise GateError(bad)
+    preload, c_run, pfiles = _recovery_preload(cfg, successor, RC3_CHECKPOINT)
+    pre = Path(cfg.home) / raw["pre_image"]["dir"]
+    pf = recovery2_preflight(cfg, _read_bounded(pre / "doc-0", REVIEW_MAX_BYTES), _read_bounded(pre / "doc-1", REVIEW_MAX_BYTES))
+    bad = _recovery3_delta_problem(raw["preflight"], pf, raw["runner"]["code_sha256"], CODE_SHA)
+    if bad:
+        raise GateError(bad)
+    return {"raw": raw, "raw_bytes": raw_bytes, "successor": successor, "preload": preload, "c_run": c_run, "preload_files": pfiles,
+            "preflight": {**pf, "at": now_iso()}}
 
 
 # ------------------------------------------------ S0 dual rebind lane (2026-10-26)
@@ -7850,7 +8299,7 @@ def bound_review_problems(cfg, tasks, t):
         return [f"cannot hash bound files: {str(e)[:80]}"]
 
 
-def gate_reason(cfg, t, tasks):
+def gate_reason(cfg, t, tasks, cli=False):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
         transfer = _transition_gate_reason(cfg, t, tasks)  # quarantine-transfer lineage: D16/S0 product denied, stage holds
@@ -7893,7 +8342,7 @@ def gate_reason(cfg, t, tasks):
                   or s0_rebind_gate_reason(cfg, t, tasks) or s0_test_gate_reason(cfg, t, tasks)
                   or s0_loop_gate_reason(cfg, t, tasks) or s0_qa_gate_reason(cfg, t, tasks)
                   or s0_dual_rebind_gate_reason(cfg, t, tasks) or recovery_gate_reason(cfg, t, tasks)
-                  or recovery2_gate_reason(cfg, t, tasks))
+                  or recovery2_gate_reason(cfg, t, tasks, cli=cli))
         if reason:
             return reason
         for dep in catalog_dependencies(t["module"]):
@@ -8279,8 +8728,7 @@ class Runner:
         except GateError as e:
             return self._tr_event("quarantine-recovery-denied", reason=str(e)[:300])
         if ov2 is not None:
-            return self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"],
-                                  reason="restart after the lane-2 recovery record exists is not permitted")
+            return self._recovery3_boot(rec, ov2)
         me = {"schema": 1, "kind": "s0-d16-preflight-recovery-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
               "code_sha256": CODE_SHA, "at": now_iso()}
         if _recovery2_first_boot(cfg, me=True) is not None:
@@ -8295,6 +8743,80 @@ class Runner:
         except (GateError, OSError) as e:
             return self._tr_event("quarantine-recovery-denied", reason=f"no second reload: {str(e)[:200]}")
         self._tr_event("quarantine-recovery2-first-boot", pid=me["pid"], boot_nonce=me["boot_nonce"], code_sha256=CODE_SHA)
+
+    def _recovery3_boot(self, rec, ov2):
+        """Overlay 2 already exists. The ONE reload of OWNER-2026-10-28-s0-cli-admission-recovery.md: a process running DIFFERENT code
+        than lane 2 bound may open the single reattestation window, only while lane 2 is BOUND/UNUSED and no reattestation or window
+        exists. Anything else (same code, consumed slot, a second process) is the old denial: no restart."""
+        cfg = self.cfg
+
+        def deny(why):
+            self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"], reason=why)
+
+        if ov2["stage"] != "BOUND" or ov2["correction"]["state"] != "UNUSED" or ov2["runner"]["code_sha256"] == CODE_SHA:
+            return deny("restart after the lane-2 recovery record exists is not permitted")
+        me = {"schema": 1, "kind": "s0-d16-cli-admission-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
+              "code_sha256": CODE_SHA, "at": now_iso()}
+        if _recovery3_first_boot(cfg, me=True) is not None:
+            return  # this very process (PID + boot nonce) already holds the window
+        try:
+            if os.path.lexists(_recovery3_path(cfg)) or os.path.lexists(Path(cfg.home) / RC3_BOOT_NAME) or any(
+                    str(e.get("kind", "")).startswith("quarantine-recovery3-") for e in _qled_events(cfg)):
+                raise GateError("the lane-2 reattestation or its one reload window was already used")
+            _atomic_create_exclusive(Path(cfg.home) / RC3_BOOT_NAME, json.dumps(me, sort_keys=True).encode())
+        except (GateError, OSError) as e:
+            return deny(f"no second reload: {str(e)[:200]}")
+        self._tr_event("quarantine-recovery3-first-boot", pid=me["pid"], boot_nonce=me["boot_nonce"], code_sha256=CODE_SHA)
+
+    def _recovery2_reattest(self, rec, raw):
+        """Create the reattestation once (first reattested-code process only, under the writer lock): local preflight with the
+        re-derived preflight, provider CI for E and C, the preserved pre-load Opus evidence, then the exclusive atomic create that
+        binds the unchanged lane-2 overlay to THIS process. A refusal consumes nothing; lane 2 is never rewritten."""
+        cfg = self.cfg
+        if _recovery3_first_boot(cfg, me=True) is None:
+            return
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "recovery2-reattest"}):
+            return self._tr_refuse("the repository writer lock is held")
+        try:
+            try:
+                ready = recovery3_reattest_preflight(cfg, self.state, rlock_held=True, wlock_held=True)
+                raw = ready["raw"]  # the one overlay read the preflight validated; nothing below re-reads it
+                succ = ready["successor"]
+                owner_ci = _observe_ci_for_commit(cfg, RC3_OWNER_COMMIT, run_id=RC3_OWNER_CI_RUN, opener=_ci_opener)
+                runner_ci = _observe_ci_for_commit(cfg, succ["commit"], run_id=ready["c_run"], opener=_ci_opener)
+                start, cmd = _proc_facts(os.getpid())
+                if not _is_runner_argv(cmd.split()):
+                    raise GateError("this process is not a runner `run` command")
+            except Exception as e:  # nothing is created: this process may retry; no other process can
+                return self._tr_refuse(f"recovery reattestation not bound: {type(e).__name__}: {str(e)[:300]}")
+            try:
+                rid, pf = uuid.uuid4().hex, ready["preflight"]
+                rdir = f"{RC3_CHECKPOINT}/reattest-{rid}/review"
+                (Path(cfg.home) / rdir).mkdir(parents=True)
+                for n, b in ready["preload_files"].items():
+                    atomic_write(Path(cfg.home) / rdir / n, b)
+                created = _recovery3_write(cfg, {
+                    "schema": 1, "kind": RC3_KIND, "reattest_id": rid, "created_at": now_iso(),
+                    "recovery2": {"recovery_id": raw["recovery_id"], "immutable_sha256": _recovery3_immutable_sha(raw),
+                                  "bound_file_sha256": _sha(ready["raw_bytes"]), "bound_checksum": raw["checksum"]},
+                    "owner": {"path": RC3_OWNER_PATH, "sha256": RC3_OWNER_SHA, "commit": RC3_OWNER_COMMIT, "ci": owner_ci},
+                    "prior": {"commit": raw["runner"]["commit"], "code_sha256": raw["runner"]["code_sha256"]},
+                    "runner": {"code_sha256": succ["code_sha256"], "commit": succ["commit"], "parent": succ["parent"],
+                               "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"],
+                               "preload_sha256": ready["preload"]["preload_sha256"],
+                               "preload_output_sha256": ready["preload"]["preload_output_sha256"], "ci": runner_ci},
+                    "review": {"dir": rdir, "preload_sha256": ready["preload"]["preload_sha256"],
+                               "preload_output_sha256": ready["preload"]["preload_output_sha256"]},
+                    "preflight": pf,
+                    "delta": {"old_preflight_sha256": _sha(_canon({k: v for k, v in raw["preflight"].items() if k != "at"})),
+                              "old_code_sha256": raw["runner"]["code_sha256"], "new_code_sha256": CODE_SHA},
+                    "attested": {**self._transition_attestation(), "lstart": start, "command": cmd}})
+                self.store.save(self.state)
+                self._tr_event("quarantine-recovery3-reattested", recovery_id=raw["recovery_id"], reattest_id=created["reattest_id"])
+            except Exception as e:  # a created record is spent; an absent one consumed nothing
+                self._tr_event("quarantine-recovery-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
 
     def _recovery2_create(self, rec, ov1):
         """Create overlay 2 once: local preflight (incl. the document/tool preflight), provider CI for E and C, then the exclusive
@@ -8340,7 +8862,8 @@ class Runner:
     def _recovery2_consume_correction(self, t):
         """Persist the lane-2 attempt BEFORE dispatch (caller holds the writer lock). The preflight is recomputed immediately
         before the atomic write: a drifted input raises Recovery2NotReady with NOTHING consumed."""
-        rec, ov = _load_transition(self.cfg), _recovery2_load(self.cfg)
+        rec, raw = _load_transition(self.cfg), _recovery2_load(self.cfg)
+        ov = _recovery2_effective(self.cfg)  # the effective (reattested) binding governs; only the RAW overlay is ever written
         att = ov["attested"] if ov else {}
         if not (rec and ov and ov["stage"] == "BOUND" and ov["correction"]["state"] == "UNUSED" and t.get("id") == RC2_ID
                 and att["pid"] == os.getpid() and att["boot_nonce"] == _PROCESS_BOOT_NONCE
@@ -8349,7 +8872,7 @@ class Runner:
         problem = _recovery2_preflight_problem(self.cfg, ov, self.state["tasks"]) or _recovery2_task_plan_problem(self.cfg, ov, t)
         if problem:
             raise Recovery2NotReady(problem)
-        _recovery2_write(self.cfg, {**ov, "stage": "CORRECTION_CONSUMED",
+        _recovery2_write(self.cfg, {**raw, "stage": "CORRECTION_CONSUMED",
                                     "correction": {"state": "CONSUMED", "task_id": t["id"], "at": now_iso()}})
         self._tr_event("quarantine-recovery2-stage", recovery_id=ov["recovery_id"], stage="CORRECTION_CONSUMED")
 
@@ -8369,10 +8892,14 @@ class Runner:
                 return
             ov = _recovery_load(cfg)
             ov1 = ov
+            raw = ov
             if ov is not None and ov["runner"]["code_sha256"] != CODE_SHA:  # lane 1 is history; lane 2 governs
-                ov = _recovery2_load(cfg)
-                if ov is None:
+                raw = _recovery2_load(cfg)
+                if raw is None:
                     return self._recovery2_create(rec, ov1)
+                if raw["runner"]["code_sha256"] != CODE_SHA and not os.path.lexists(_recovery3_path(cfg)):
+                    return self._recovery2_reattest(rec, raw)  # the one reload: reattest, never rewrite lane 2
+                ov = _recovery2_effective(cfg)
         except GateError:
             return
         if ov is None:
@@ -8394,12 +8921,12 @@ class Runner:
                     ev = verify(cfg, rec, ov, self.state["tasks"])
                 except GateError:
                     return
-                new = {**ov, "stage": "VERIFIED", "verified": {**ev, "at": now_iso()}}
+                new = {**raw, "stage": "VERIFIED", "verified": {**ev, "at": now_iso()}}
             else:
                 problem = probe(cfg, rec, ov, self.state["tasks"])
                 if problem:
                     return self._tr_event("quarantine-recovery-probe-failed", recovery_id=ov["recovery_id"], reason=problem[:300])
-                new = {**ov, "stage": "ACTIVE"}
+                new = {**raw, "stage": "ACTIVE"}
             done = write(cfg, new)
             self._tr_event("quarantine-recovery2-stage" if lane2 else "quarantine-recovery-stage", recovery_id=done["recovery_id"], stage=done["stage"])
         except Exception as e:
@@ -9952,6 +10479,8 @@ def parse_doc_base(pairs):
 
 def enqueue(cfg, task):
     task = {**task, "created_at": now_iso()}
+    if _rc2_marked(task) and task.get("source") is not None:  # validate_task drops `source`, so the RAW task must be checked: owner-CLI only
+        raise ValueError("task refused by prerequisite gate: S0_RECOVERY2_INVALID_TASK: the lane-2 correction is owner-CLI only (no source)")
     if task.get("review_retry_of"):
         task["review_candidate"] = review_candidate(cfg.repo)
     t = validate_task(task, cfg)
@@ -9980,7 +10509,7 @@ def enqueue(cfg, task):
             raise ValueError(f"task refused by S0 gate: {problem}")
     review_binding(cfg, t, state["tasks"], require_changed=False)  # fills the exact changed-file hashes from runner evidence
     task = {**task, "review_of": t["review_of"]}
-    reason = gate_reason(cfg, t, state["tasks"])
+    reason = gate_reason(cfg, t, state["tasks"], cli=True)  # the owner-CLI admission path (see _cli_sole_runner_problem)
     if reason:
         raise ValueError(f"task refused by prerequisite gate: {reason}")
     path = cfg.home / "queue" / f"{time.time_ns():020d}-{task['id']}.json"

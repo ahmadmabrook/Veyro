@@ -1,4 +1,5 @@
 """Focused control-plane safety tests. Run: python3 -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner"""
+import ast
 import contextlib
 import datetime
 import errno
@@ -18,6 +19,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
@@ -19483,7 +19485,12 @@ class Recovery2Binding(Recovery2Base):
         self.assertEqual(r.state["tasks"][R.RECOVERY_ID]["attempts"], 1)  # lane 1's task is not re-ingested or re-armed
         with self.assertRaises(ValueError):
             R.enqueue(self.cfg, self.correction2_task(prompt="anything else"))
-        R.enqueue(self.cfg, self.correction2_task(created_at=None))
+        with self.assertRaises(ValueError) as cm:  # no visible runner and no OS-proven identity: refused, never "no other runner"
+            R.enqueue(self.cfg, self.correction2_task(created_at=None))
+        self.assertIn("cannot authenticate the sole runner", str(cm.exception))
+        self.other_pids.append(4242)  # one attested runner-looking PID, vouched for by the (separately real-process-tested) helper
+        with mock.patch.object(R, "_cli_sole_runner_problem", return_value=None):
+            R.enqueue(self.cfg, self.correction2_task(created_at=None))
 
     def test_second_process_or_second_overlay_is_denied(self):
         self.bind2()
@@ -19952,3 +19959,753 @@ class Recovery2FailClosed(Recovery2Base):
                 self.assertFalse(reason.startswith("S0_RECOVERY2_PREFLIGHT"), (label, reason))
                 self.assertFalse(self.spent(), label)
                 del saved
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# OWNER-2026-10-28-s0-cli-admission-recovery.md: (1) the owner CLI may treat ONE process as the sole runner, but only on kernel/OS facts;
+# (2) after the one conditional reload to replacement code C3 (E3 -> C3, E3's parent being lane 2's runner commit) a separate single-use
+# reattestation binds the UNCHANGED lane-2 overlay to the new process and re-derives the preflight; every reader uses that effective view.
+FACT_START, FACT_CMD = "Tue Oct 28 10:00:00 2026", "/usr/bin/python3 /x/tools/mission_runner/runner.py run"
+RUNNER_STUB = """
+import fcntl, json, os, sys, time
+fd = os.open(sys.argv[3], os.O_RDWR | os.O_CREAT, 0o600) if sys.argv[2] in ("hold", "open") else None
+if sys.argv[2] == "hold":
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    os.ftruncate(fd, 0)
+    os.pwrite(fd, json.dumps({"pid": os.getpid()}).encode(), 0)
+print("ready", flush=True)
+time.sleep(120)
+"""
+
+
+class Recovery3Base(Recovery2Base):
+    NONCE3 = "ab" * 16
+    C3_EXTRA = {}  # extra files in C3 (a replacement runner commit that changes more than runner.py and test_runner.py)
+    IDENT = Recovery2Base.IDENT + ("RC3_OWNER_COMMIT", "RC3_OWNER_SHA", "RC3_OWNER_CI_RUN", "RC3_PRIOR_COMMIT", "RC3_PRIOR_CODE_SHA")
+
+    def setUp(self):
+        super().setUp()
+        self.bind2()  # lane 2: overlay BOUND/UNUSED on the lane-2 runner (the sole runner that is later reloaded)
+        self.ov2_bytes = (self.home / R.RC2_RECORD_NAME).read_bytes()
+        self.release_cur()  # the lane-2 runner process ends; the one conditional reload follows
+        sha = self.sha
+        self.owner4 = b"# cli-admission owner record\n"
+        self.e3_commit = self.commit_only({R.RC3_OWNER_PATH: self.owner4}, "cli-admission owner")
+        self.repl3_bytes = self.repl2_bytes + b"\n# cli-admission replacement runner\n"
+        self.c3_commit = self.commit_only({self.runner_rel: self.repl3_bytes, self.test_rel: b"# cli-admission test\n", **self.C3_EXTRA},
+                                          "cli-admission replacement")
+        self.new3_sha = sha(self.repl3_bytes)
+        repl3 = Path(self.tmp.name) / "repl3"
+        repl3.mkdir()
+        (repl3 / "runner.py").write_bytes(self.repl3_bytes)
+        shutil.copy(Path(R.__file__).with_name("dashboard.py"), repl3 / "dashboard.py")
+        for name, value in (("RC3_OWNER_COMMIT", self.e3_commit), ("RC3_OWNER_SHA", sha(self.owner4)),
+                            ("RC3_OWNER_CI_RUN", str(self.c_run_id)), ("RC3_PRIOR_COMMIT", self.c2_commit),
+                            ("RC3_PRIOR_CODE_SHA", self.new2_sha), ("CODE_SHA", self.new3_sha), ("_LOADED_CODE_SHA", self.new3_sha),
+                            ("__file__", str(repl3 / "runner.py"))):
+            self.enterContext(mock.patch.object(R, name, value))
+        self.ci_ok[self.e3_commit] = self.ci_ok[self.c3_commit] = True
+        self.write_recovery3_preload()
+
+    def write_recovery3_preload(self):
+        cp = self.home / R.RC3_CHECKPOINT
+        cp.mkdir(parents=True, exist_ok=True)
+        try:
+            succ = R._recovery3_successor(self.cfg)
+        except R.GateError:
+            return  # a deliberately unsound C3 has no reviewable subject; the scenario asserts the refusal
+        out = b"cli-admission runner review\nOUTCOME: APPROVED\n"
+        (cp / "recovery3-review.out").write_bytes(out)
+        (cp / R.TRANSFER_PRELOAD_NAME).write_text(json.dumps({
+            "schema": 1, "kind": "preload-opus-review", "commit": succ["commit"], "code_sha256": succ["code_sha256"],
+            "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"], "model": "claude-opus-5-5", "session_id": "pre-rec3",
+            "output_file": "recovery3-review.out", "output_sha256": self.sha(out), "outcome": "APPROVED", "c_ci_run_id": str(self.c_run_id)}))
+
+    def os_facts(self):
+        """The runner-side OS start/command facts of THIS test process; the real ps/lsof paths have their own real-process tests."""
+        return mock.patch.object(R, "_proc_facts", return_value=(FACT_START, FACT_CMD))
+
+    def reload3(self, nonce=None):
+        """The reloaded process: boot branch (opens the one reattestation window), then the throttled recovery step."""
+        self.release_cur()
+        r = self.cur = self.begin(nonce or self.NONCE3)
+        r._transition_boot()
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()
+        return r
+
+    def eff(self):
+        return R._recovery2_effective(self.cfg)
+
+    def reattest_bytes(self):
+        return (self.home / R.RC3_REATTEST_NAME).read_bytes()
+
+    def good_cert2(self):  # the corrected certificate is a function of the EFFECTIVE (re-derived) edits, never the preserved ones
+        return R._recovery2_apply(self.cert0, self.eff()["preflight"]["edits"])
+
+    def fresh_s0_subjects2(self, head):
+        subj = super().fresh_s0_subjects2(head)
+        rn = self.eff()["runner"]
+        subj["runner_gate"] = {"path": R.S0_RUNNER_FILE, "sha256": self.new3_sha, "commit": self.c3_commit, "ci": rn["ci"],
+                               "review": {"preload_sha256": rn["preload_sha256"], "output_sha256": rn["preload_output_sha256"]}}
+        return subj
+
+    def write_receipt2(self, head, **over):
+        return super().write_receipt2(head, **{"runner_sha256": self.new3_sha, **over})
+
+    def gate_cli(self, t):
+        return R.gate_reason(self.cfg, t, R.Store(self.home).load()["tasks"], cli=True)
+
+    def sole_runner_proof(self):
+        """One attested runner-looking PID visible to the CLI, vouched for by the OS-fact helper (which has real-process tests)."""
+        self.other_pids[:] = [4242]
+        return mock.patch.object(R, "_cli_sole_runner_problem", return_value=None)
+
+    def assert_closed_unreattested(self, label=""):
+        self.assertFalse((self.home / R.RC3_REATTEST_NAME).exists(), label)
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), self.ov2_bytes, label)
+        self.assert_unused(self.cur, label)
+        self.assertEqual(self.mode(), "HOLD", label)
+        self.assertIsNotNone(self.gate(self.correction2_task()), label)
+        self.assertIsNotNone(self.gate_cli(self.correction2_task()), label)
+        self.assertEqual(self.n_kind("quarantine-recovery3-reattested"), 0, label)
+        self.assert_history_intact()
+
+
+class Recovery3Reattest(Recovery3Base):
+    def test_reload_reattests_once_and_binds_the_byte_identical_lane2_overlay(self):
+        r = self.reload3()
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), self.ov2_bytes)  # old overlay: byte-immutable through reattestation
+        raw, rt, eff = self.overlay2(), R._recovery3_load(self.cfg), self.eff()
+        self.assertEqual((raw["stage"], raw["correction"]), ("BOUND", {"state": "UNUSED", "task_id": None, "at": None}))
+        self.assertEqual(rt["recovery2"], {"recovery_id": raw["recovery_id"], "immutable_sha256": R._recovery3_immutable_sha(raw),
+                                           "bound_file_sha256": self.sha(self.ov2_bytes), "bound_checksum": raw["checksum"]})
+        self.assertEqual(rt["prior"], {"commit": self.c2_commit, "code_sha256": self.new2_sha})
+        self.assertEqual((rt["owner"]["commit"], rt["owner"]["sha256"]), (self.e3_commit, self.sha(self.owner4)))
+        self.assertEqual((eff["runner"]["commit"], eff["runner"]["parent"], eff["runner"]["code_sha256"]),
+                         (self.c3_commit, self.e3_commit, self.new3_sha))
+        self.assertEqual(eff["attested"], {**rt["attested"], "pid": os.getpid(), "boot_nonce": self.NONCE3, "code_sha256": self.new3_sha,
+                                           "lstart": FACT_START, "command": FACT_CMD})
+        old, new = raw["preflight"], eff["preflight"]
+        self.assertEqual({k for k in set(old) | set(new) if old.get(k) != new.get(k)} - {"at"}, {"block_sha256", "edits", "edits_sha256"})
+        self.assertEqual((old["edits"][0], old["edits"][1]), (new["edits"][0], new["edits"][1]))
+        self.assertEqual(old["edits"][2]["old_string"], new["edits"][2]["old_string"])
+        self.assertEqual(new["edits"][2]["new_string"], old["edits"][2]["new_string"].replace(self.new2_sha, self.new3_sha))
+        self.assertNotEqual(old["edits"][2]["new_string"], new["edits"][2]["new_string"])
+        for k in ("packet_sha256", "cert_sha256", "settings_sha256", "argv_sha256", "tools"):
+            self.assertEqual(old[k], new[k], k)
+        d = json.loads(R._recovery2_apply(self.cert0, new["edits"]))
+        self.assertEqual((d["runner_gate"]["sha256"], d["scenario_qa_packet"]["sha256"]), (self.new3_sha, self.sha(self.qa0)))
+        self.assertEqual(d["authority"]["runner_gate"]["sha256"], self.live_sha)  # nested historical observations stay untouched
+        self.assertEqual(self.mode(), "RECOVERY")
+        self.assertIsNone(R._transition_bound_problem(self.cfg, self.record(), full=True))
+        self.assertIsNone(self.gate(self.correction2_task()))
+        self.assert_history_intact()
+        self.assertEqual((self.n_kind("quarantine-recovery3-first-boot"), self.n_kind("quarantine-recovery3-reattested")), (1, 1))
+        self.assertEqual(self.n_kind("quarantine-recovery2-stage"), 1)  # lane 2 gained no stage: BOUND only
+        rd = self.home / rt["review"]["dir"]
+        self.assertEqual((self.sha((rd / "preload.json").read_bytes()), self.sha((rd / "preload.out").read_bytes())),
+                         (rt["runner"]["preload_sha256"], rt["runner"]["preload_output_sha256"]))
+        # one use: neither a second record nor a second attempt changes anything
+        before = self.reattest_bytes()
+        with self.assertRaises(R.GateError):
+            R._recovery3_write(self.cfg, {k: v for k, v in rt.items() if k != "checksum"})
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()
+            r._recovery2_reattest(self.record(), raw)
+        self.assertEqual(self.reattest_bytes(), before)
+        self.assertEqual(self.n_kind("quarantine-recovery3-reattested"), 1)
+
+    def test_new_code_without_a_reattestation_is_closed_everywhere(self):
+        self.release_cur()
+        self.cur = self.begin(self.NONCE3)  # the new code is loaded but never reattested
+        with self.assertRaises(R.GateError) as cm:
+            self.eff()
+        self.assertIn("REATTEST_REQUIRED", str(cm.exception))
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertIn("REATTEST_REQUIRED", R._transition_mode(self.cfg)[1])
+        for t in (self.correction2_task(), self.ordinary_task()):
+            self.assertIsNotNone(self.gate(t))
+            self.assertIsNotNone(self.gate_cli(t))
+        self.assertNotEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE)
+
+    def test_refusals_create_nothing_and_leave_lane2_unused_and_unchanged(self):
+        def patch(name, value):
+            return lambda: mock.patch.object(R, name, value)
+
+        def hold_writer():
+            lk = R.FileLock(R.writer_lock_path(self.home, self.repo))
+            self.assertTrue(lk.acquire({"pid": 1}))
+            self.addCleanup(lk.release)
+
+        def widen():
+            real = R.child_settings_for
+            return mock.patch.object(R, "child_settings_for", side_effect=lambda t: (lambda s: (s["permissions"]["allow"].append("Bash"), s)[1])(real(t)))
+
+        def tools():
+            real = R.child_argv
+            return mock.patch.object(R, "child_argv", side_effect=lambda *a: (lambda c, t: (c, t + ",WebFetch"))(*real(*a)))
+        cases = {
+            "E3 is not lane 2's child": patch("RC3_PRIOR_COMMIT", self.succ_commit),
+            "wrong owner record hash": patch("RC3_OWNER_SHA", "9" * 64),
+            "wrong lane-2 code pin": patch("RC3_PRIOR_CODE_SHA", "8" * 64),
+            "no Opus pre-load evidence": lambda: (self.home / R.RC3_CHECKPOINT / R.TRANSFER_PRELOAD_NAME).unlink(),
+            "C3 without exact-SHA CI": lambda: self.ci_ok.__setitem__(self.c3_commit, False),
+            "E3 without exact-SHA CI": lambda: self.ci_ok.__setitem__(self.e3_commit, False),
+            "actual second runner process": lambda: self.other_pids.append(4242),
+            "worker running": lambda: self.mutate_state(lambda st: st["tasks"].update({"w": {**self.ordinary_task_stub("w"), "status": "RUNNING"}})),
+            "open handoff": lambda: self.mutate_state(lambda st: st.update(handoff={"request": {"id": "h"}})),
+            "held repository-writer lock": hold_writer,
+            "certificate drift": lambda: (self.repo / self.CERT).write_bytes(self.cert0 + b" "),
+            "packet drift": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+            "document staged": lambda: git(self.repo, "add", "--", self.QA),
+            "stray untracked file": lambda: (self.repo / "stray.txt").write_text("x"),
+            "child settings widened": widen,
+            "child tool list changed": tools,
+            "lane-2 correction already queued": lambda: (self.home / "queue" / "q.json").write_text(json.dumps({"id": R.RC2_ID})),
+        }
+        for label, action in cases.items():
+            with self.subTest(label):
+                self.rebuild()
+                cm = action()
+                with (cm if hasattr(cm, "__enter__") else contextlib.nullcontext()):
+                    self.reload3()
+                    self.assert_closed_unreattested(label)
+        with self.subTest("same process identity as the old runner"):
+            self.rebuild()
+            self.reload3(nonce=self.NONCE2)
+            self.assert_closed_unreattested("same identity")
+
+    def test_ci_or_lock_outage_may_retry_in_the_same_process_only(self):
+        self.other_pids.append(4242)
+        r = self.reload3()
+        self.assertFalse((self.home / R.RC3_REATTEST_NAME).exists())
+        self.other_pids.clear()
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()  # the one window holder retries after the transient cause is gone
+        self.assertTrue((self.home / R.RC3_REATTEST_NAME).exists())
+        self.assertEqual(self.mode(), "RECOVERY")
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), self.ov2_bytes)
+
+    def test_reattestation_reads_the_overlay_once_and_binds_its_exact_bytes(self):
+        self.other_pids.append(4242)  # the reload's own attempt is refused, so nothing exists yet
+        r = self.reload3()
+        self.assertFalse((self.home / R.RC3_REATTEST_NAME).exists())
+        self.other_pids.clear()
+        reads, real = [], R._read_bounded
+        r.state = r.store.load()
+        with mock.patch.object(R, "_read_bounded", side_effect=lambda path, limit: (reads.append(Path(path)), real(path, limit))[1]):
+            ready = R.recovery3_reattest_preflight(self.cfg, r.state, rlock_held=True, wlock_held=True)
+        self.assertEqual(reads.count(self.home / R.RC2_RECORD_NAME), 1)  # ONE bounded read of the lane-2 overlay
+        self.assertEqual(ready["raw_bytes"], self.ov2_bytes)
+        self.assertEqual(ready["raw"], json.loads(self.ov2_bytes))  # the parsed overlay IS those bytes
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()
+        bound = json.loads(self.reattest_bytes())["recovery2"]
+        self.assertEqual((bound["bound_file_sha256"], bound["bound_checksum"]), (self.sha(self.ov2_bytes), json.loads(self.ov2_bytes)["checksum"]))
+
+    def test_non_canonical_lane2_overlay_bytes_refuse_reattestation(self):
+        (self.home / R.RC2_RECORD_NAME).write_text(json.dumps(json.loads(self.ov2_bytes)))  # same content and checksum, other serialization
+        self.assertEqual(self.overlay2(), json.loads(self.ov2_bytes))
+        self.reload3()
+        self.assertFalse((self.home / R.RC3_REATTEST_NAME).exists())
+        self.assertTrue(any("original bytes" in (x or "") for x in self.reasons("quarantine-transfer-refused")),
+                        self.reasons("quarantine-transfer-refused"))
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertIsNotNone(self.gate(self.correction2_task()))
+        self.assertEqual(self.overlay2()["stage"], "BOUND")
+        self.assertFalse(self.spent())
+
+    def test_crash_before_the_record_spends_the_window_and_a_restart_never_reopens_it(self):
+        with mock.patch.object(R, "_recovery3_write", side_effect=OSError("disk")):
+            self.reload3()
+        self.assertEqual(self.n_kind("quarantine-recovery3-first-boot"), 1)
+        self.assertTrue(self.reasons("quarantine-recovery-failed"))
+        self.assert_closed_unreattested("after crash")
+        self.reload3(nonce="01" * 16)  # the restart
+        self.assertTrue(any("no second reload" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual(self.n_kind("quarantine-recovery3-first-boot"), 1)
+        self.assert_closed_unreattested("after restart")
+
+    def test_restart_after_reattestation_is_closed_cannot_consume_and_changes_nothing(self):
+        self.reload3()
+        before = self.reattest_bytes()
+        r2 = self.reload3(nonce="02" * 16)
+        self.assertTrue(any("no second reload" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual(self.reattest_bytes(), before)
+        self.assertEqual(self.mode(), "HOLD")  # the attested PID/nonce is no longer this process
+        self.assertIsNotNone(self.gate(self.correction2_task()))
+        r2.state = r2.store.load()
+        t = R.validate_task(self.correction2_task(), self.cfg)
+        self.assertTrue(r2.wlock.acquire({"pid": os.getpid()}))
+        try:
+            with self.assertRaises(R.GateError):
+                r2._recovery2_consume_correction(t)
+        finally:
+            r2.wlock.release()
+        self.assert_unused(r2)
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), self.ov2_bytes)
+
+    def test_consumed_lane2_never_opens_a_reattestation_window(self):
+        raw = self.overlay2()  # lane 2's slot was consumed on the lane-2 runner before any reload (written by lane 2's own validated writer)
+        R._recovery2_write(self.cfg, {**raw, "stage": "CORRECTION_CONSUMED",
+                                      "correction": {"state": "CONSUMED", "task_id": R.RC2_ID, "at": R.now_iso()}})
+        consumed = (self.home / R.RC2_RECORD_NAME).read_bytes()
+        self.assertNotEqual(consumed, self.ov2_bytes)
+        self.reload3()
+        self.assertFalse((self.home / R.RC3_REATTEST_NAME).exists())
+        self.assertEqual(self.n_kind("quarantine-recovery3-first-boot"), 0)
+        self.assertTrue(any("restart after the lane-2 recovery record exists" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), consumed)
+        self.assertEqual(self.mode(), "HOLD")
+
+
+class Recovery3Tamper(Recovery3Base):
+    def test_tampered_or_forged_reattestation_or_overlay_denies_all_ingress(self):
+        self.reload3()
+        path, ov_path = self.home / R.RC3_REATTEST_NAME, self.home / R.RC2_RECORD_NAME
+        good, rt = path.read_bytes(), json.loads(path.read_bytes())
+        rd = self.home / rt["review"]["dir"]
+        review_out = (rd / "preload.out").read_bytes()
+        self.assertEqual(self.mode(), "RECOVERY")
+
+        def forge(**over):  # valid checksum, forged content
+            d = {**rt, **over}
+            d.pop("checksum")
+            d["checksum"] = R._transition_checksum(d)
+            path.write_text(json.dumps(d))
+
+        def forge_ov2(**over):
+            d = {**json.loads(self.ov2_bytes), **over}
+            d.pop("checksum")
+            d["checksum"] = R._transition_checksum(d)
+            ov_path.write_text(json.dumps(d))
+        pf, at = rt["preflight"], rt["attested"]
+        e0 = [{**pf["edits"][0], "new_string": pf["edits"][0]["new_string"] + " "}, *pf["edits"][1:]]
+        pf_e0 = {**pf, "edits": e0, "edits_sha256": self.sha(R._canon(e0))}
+        pf_e0["block_sha256"] = self.sha(R._recovery2_block(pf_e0).encode())
+        old_edits = json.loads(self.ov2_bytes)["preflight"]["edits"]  # the PRESERVED preflight's edit 3 carries the OLD code hash
+        pf_old = {**pf, "edits": old_edits, "edits_sha256": self.sha(R._canon(old_edits))}
+        pf_old["block_sha256"] = self.sha(R._recovery2_block(pf_old).encode())
+        cases = {
+            "garbage": lambda: path.write_text("{nope"),
+            "deleted": path.unlink,
+            "content changed under the old checksum": lambda: path.write_text(json.dumps({**rt, "created_at": "x"})),
+            "other PID (valid checksum)": lambda: forge(attested={**at, "pid": at["pid"] + 1}),
+            "other boot nonce (valid checksum)": lambda: forge(attested={**at, "boot_nonce": "ff" * 16}),
+            "other runner code": lambda: forge(runner={**rt["runner"], "code_sha256": "cc" * 32}, attested={**at, "code_sha256": "cc" * 32}),
+            "settings changed": lambda: forge(preflight={**pf, "settings_sha256": "dd" * 32}),
+            "edit 1 changed": lambda: forge(preflight=pf_e0),
+            "old-code-hash edit 3 (the preserved preflight)": lambda: forge(preflight=pf_old),
+            "other lane-2 record": lambda: forge(recovery2={**rt["recovery2"], "recovery_id": "ab" * 16}),
+            "other immutable hash": lambda: forge(recovery2={**rt["recovery2"], "immutable_sha256": "ab" * 32}),
+            "bound original file hash forged (valid checksum)": lambda: forge(recovery2={**rt["recovery2"], "bound_file_sha256": "ab" * 32}),
+            "bound original checksum forged (valid checksum)": lambda: forge(recovery2={**rt["recovery2"], "bound_checksum": "ab" * 32}),
+            "lane-2 overlay re-serialized (same content and checksum)": lambda: ov_path.write_text(json.dumps(json.loads(self.ov2_bytes))),
+            "owner record changed": lambda: forge(owner={**rt["owner"], "sha256": "ab" * 32}),
+            "runner commit swapped": lambda: forge(runner={**rt["runner"], "commit": self.succ_commit}),
+            "review evidence altered": lambda: (rd / "preload.out").write_bytes(b"altered"),
+            "lane-2 overlay immutable field rewritten": lambda: forge_ov2(created_at="2020-01-01T00:00:00+00:00"),
+            "lane-2 overlay deleted": ov_path.unlink,
+        }
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                path.write_bytes(good)
+                ov_path.write_bytes(self.ov2_bytes)
+                (rd / "preload.out").write_bytes(review_out)
+                tamper()
+                self.assertEqual(self.mode(), "HOLD", label)
+                for t in (self.correction2_task(), self.ordinary_task()):
+                    self.assertIsNotNone(self.gate(t), label)
+                    self.assertIsNotNone(self.gate_cli(t), label)
+                self.assertNotEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE, label)
+                self.assertFalse(self.bin.with_name("prompt.txt").exists(), label)  # no worker ever started
+
+
+class Recovery3CliAdmission(Recovery3Base):
+    def test_cli_requires_the_authenticated_sole_runner_always_and_the_runner_path_stays_strict(self):
+        self.reload3()
+        t = self.correction2_task()
+        calls = []
+
+        def helper(result):
+            def f(cfg, ov, others):
+                calls.append((ov["attested"]["pid"], list(others), ov["runner"]["code_sha256"]))
+                return result
+            return f
+        # NO runner-looking process visible (a crashed runner whose PID was reused, or ps blindness) with fresh state: the helper is
+        # still asked, and it refuses; only a helper that proves the sole lock owner admits
+        self.other_pids.clear()
+        with mock.patch.object(R, "_cli_sole_runner_problem", side_effect=helper("no process owns the runner lock")):
+            reason = self.gate_cli(t)
+        self.assertEqual(calls, [(os.getpid(), [], self.new3_sha)])  # the EFFECTIVE (reattested) identity, empty process list
+        self.assertTrue(reason.startswith("S0_RECOVERY2_PREFLIGHT_FAILED"), reason)
+        self.assertIn("cannot authenticate the sole runner", reason)
+        self.assertIsNotNone(self.gate_cli(t))  # unmocked real helper: the in-process world has no OS-proven separate runner
+        calls.clear()
+        self.other_pids.append(4242)  # the legitimate runner as the CLI process sees it
+        with mock.patch.object(R, "_cli_sole_runner_problem", side_effect=helper(None)):
+            self.assertIsNone(self.gate_cli(t))
+            self.assertEqual(calls, [(os.getpid(), [4242], self.new3_sha)])
+            self.assertIn("another runner process exists", self.gate(t) or "")  # in-runner detection: strict, never consults the helper
+            self.assertEqual(len(calls), 1)
+        with mock.patch.object(R, "_cli_sole_runner_problem", return_value="not the runner lock owner"):
+            reason = self.gate_cli(t)
+        self.assertTrue(reason.startswith("S0_RECOVERY2_PREFLIGHT_FAILED"), reason)
+        self.assertIn("not the runner lock owner", reason)
+        self.other_pids.clear()
+        with mock.patch.object(R, "_cli_sole_runner_problem", side_effect=AssertionError("runner path consulted the CLI helper")):
+            self.assertIsNone(self.gate(t))  # runner path with NO other runner: strict check passes without any CLI proof
+        self.assertFalse(self.spent())
+
+    def test_cli_refuses_when_no_runner_is_visible_even_with_fresh_state(self):
+        self.reload3()
+        self.assertIsNone(R.s0_runner_problem(R.Store(self.home).load()))  # state heartbeat is fresh and the recorded PID is alive
+        self.other_pids.clear()
+        t = self.correction2_task()
+        reason = self.gate_cli(t)
+        self.assertTrue(reason.startswith("S0_RECOVERY2_PREFLIGHT_FAILED"), reason)
+        self.assertIn("cannot authenticate the sole runner", reason)
+        with self.assertRaises(ValueError) as cm:
+            R.enqueue(self.cfg, self.correction2_task(created_at=None))
+        self.assertIn("cannot authenticate the sole runner", str(cm.exception))
+        self.assertEqual(list((self.home / "queue").glob("*")), [])
+        self.assertFalse(self.spent())
+        self.assert_history_intact()
+
+    def test_cli_denies_a_held_writer_lock_and_ordinary_work(self):
+        self.reload3()
+        t = self.correction2_task()
+        lk = R.FileLock(R.writer_lock_path(self.home, self.repo))
+        self.assertTrue(lk.acquire({"pid": 1}))
+        self.addCleanup(lk.release)
+        with self.sole_runner_proof():  # even a proven sole runner does not override a held repository-writer lock
+            self.assertIn("writer lock is held", self.gate_cli(t) or "")
+            lk.release()
+            self.assertIsNone(self.gate_cli(t))
+            self.assertIsNotNone(self.gate_cli(self.ordinary_task()))
+            self.assertIsNotNone(self.gate_cli({**self.ordinary_task(), "module": "MOD-005"}))
+
+    def test_real_enqueue_refuses_unauthorized_tasks_and_wrong_child_settings_and_spends_nothing(self):
+        self.reload3()
+        real = R.child_settings_for
+        widened = lambda t: (lambda s: (s["permissions"]["allow"].append("Bash"), s)[1])(real(t))
+        self.other_pids.append(4242)
+        with mock.patch.object(R, "_cli_sole_runner_problem", return_value=None):  # even under the exemption every other gate holds
+            for label, over in (("wrong id", {"id": "mod004-s0-lane3-alias"}), ("no marker", {"plan_phase": None}),
+                                ("extra path", {"allowed_paths": list(R.S0_DOC_PATHS) + ["x.txt"]}),
+                                ("changed base", {"doc_base": {**self.orig_docs, self.QA: "ab" * 32}}),
+                                ("verifier", {"verify_cmd": ["true"]}), ("planner source", {"source": "handoff"}),
+                                ("free-form prompt", {"prompt": R.RC2_PROMPT + " Also change the packet."})):
+                with self.subTest(label), self.assertRaises(ValueError):
+                    R.enqueue(self.cfg, self.correction2_task(**over))
+            with self.subTest("wrong child settings"), mock.patch.object(R, "child_settings_for", side_effect=widened):
+                with self.assertRaises(ValueError) as cm:
+                    R.enqueue(self.cfg, self.correction2_task())
+                self.assertIn("S0_RECOVERY2_PREFLIGHT_FAILED", str(cm.exception))
+            self.assertEqual(list((self.home / "queue").glob("*")), [])
+        with self.assertRaises(ValueError):  # without the proof the sole runner is "another runner" and is refused
+            R.enqueue(self.cfg, self.correction2_task())
+        self.other_pids.clear()
+        with self.assertRaises(ValueError):  # no runner visible: still refused
+            R.enqueue(self.cfg, self.correction2_task(created_at=None))
+        self.assertEqual(list((self.home / "queue").glob("*")), [])
+        with self.sole_runner_proof():
+            path = R.enqueue(self.cfg, self.correction2_task(created_at=None))
+        self.assertEqual(json.loads(path.read_text())["id"], R.RC2_ID)
+        self.assertFalse(self.spent())  # enqueue consumes nothing; the runner's under-lock recheck does that
+        self.assert_history_intact()
+
+    def test_runner_consumption_stays_strict_then_consumes_once_and_a_restart_is_not_a_replay(self):
+        r = self.reload3()
+        r.state = r.store.load()
+        t = R.validate_task(self.correction2_task(), self.cfg)
+        self.other_pids.append(4242)
+        self.assertTrue(r.wlock.acquire({"pid": os.getpid()}))
+        try:
+            with mock.patch.object(R, "_cli_sole_runner_problem", return_value=None):  # a proof never exempts the runner's own check
+                with self.assertRaises(R.Recovery2NotReady) as cm:
+                    r._recovery2_consume_correction(t)
+            self.assertIn("another runner process exists", str(cm.exception))
+            self.assert_unused(r)
+            self.other_pids.clear()
+            r._recovery2_consume_correction(t)
+            with self.assertRaises(R.GateError):
+                r._recovery2_consume_correction(t)
+        finally:
+            r.wlock.release()
+        raw = self.overlay2()
+        self.assertEqual((raw["stage"], raw["correction"]["task_id"]), ("CORRECTION_CONSUMED", R.RC2_ID))
+        self.assertEqual((raw["runner"], raw["preflight"], raw["attested"]),
+                         tuple(json.loads(self.ov2_bytes)[k] for k in ("runner", "preflight", "attested")))  # lane-2 bindings untouched
+        self.assertIn("S0_RECOVERY2_CONSUMED", self.gate(self.correction2_task()))
+        consumed, before = (self.home / R.RC2_RECORD_NAME).read_bytes(), self.reattest_bytes()
+        self.reload3(nonce="03" * 16)  # restart after consumption: no window, no replay, no re-arm
+        self.assertEqual((self.home / R.RC2_RECORD_NAME).read_bytes(), consumed)
+        self.assertEqual(self.reattest_bytes(), before)
+        self.assertEqual(self.n_kind("quarantine-recovery3-first-boot"), 1)
+        self.assertEqual(self.mode(), "HOLD")
+        self.assertEqual(self.overlay2()["correction"]["state"], "CONSUMED")
+
+
+class Recovery3Lifecycle(Recovery3Base):
+    def test_every_reader_uses_the_reattested_preflight_through_active(self):
+        r = self.reload3()
+        eff, old, reattested = self.eff(), json.loads(self.ov2_bytes), self.reattest_bytes()
+        with self.sole_runner_proof():
+            self.assertIsNone(self.gate_cli(self.correction2_task()))  # CLI admission + task plan + preflight under the effective view
+        self.other_pids.clear()
+        w = self.run_correction2(r)  # under-lock recheck, dispatch settings/command/prompt block, result check
+        self.assertEqual(w["status"], "DONE", w.get("last_error"))
+        raw = self.overlay2()
+        self.assertEqual((raw["stage"], raw["correction"]["task_id"]), ("CORRECTION_CONSUMED", R.RC2_ID))
+        bound = json.loads(reattested)["recovery2"]  # a LEGAL later stage still reconstructs the original BOUND/UNUSED bytes and checksum
+        raw_now, raw_bytes = R._recovery2_load(self.cfg, with_bytes=True)
+        self.assertNotEqual(self.sha(raw_bytes), bound["bound_file_sha256"])
+        self.assertIsNone(R._recovery3_original_problem(raw_now, raw_bytes, bound["bound_file_sha256"], bound["bound_checksum"]))
+        self.assertIsNotNone(R._recovery3_original_problem(raw_now, raw_bytes, "ab" * 32, bound["bound_checksum"]))
+        self.assertIsNotNone(R._recovery3_original_problem(raw_now, raw_bytes, bound["bound_file_sha256"], "ab" * 32))
+        self.assertEqual(self.eff()["stage"], "CORRECTION_CONSUMED")
+        prompt = self.bin.with_name("prompt.txt").read_text()
+        self.assertIn(R._recovery2_block(eff["preflight"]), prompt)
+        self.assertNotIn(R._recovery2_block(old["preflight"]), prompt)
+        self.assertNotIn(json.dumps(old["preflight"]["edits"][2]["new_string"]), prompt)  # the old-code-hash edit never reaches the writer
+        self.assertIn(json.dumps(eff["preflight"]["edits"][2]["new_string"]), prompt)
+        self.assertIn(self.new3_sha, prompt)
+        rv = self.run_review2(r)
+        self.assertEqual(rv["status"], "DONE", rv.get("last_error"))
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+        head = self.publish()
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")  # no receipt yet
+        self.write_receipt2(head)
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "VERIFIED", self.reasons("quarantine-recovery-failed"))
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "ACTIVE", self.reasons("quarantine-recovery-probe-failed"))
+        self.assertEqual(self.mode(), "ACTIVE")
+        raw = self.overlay2()  # the stage writes advanced ONLY stage/correction/verified; every lane-2 binding is the original bytes
+        for k in ("runner", "preflight", "attested", "recovery_id", "prior", "owner", "pre_image"):
+            self.assertEqual(raw[k], old[k], k)
+        self.assertEqual(raw["verified"]["docs"], {self.CERT: self.sha(self.good_cert2()), self.QA: self.orig_docs[self.QA]})
+        self.assertEqual(self.reattest_bytes(), reattested)  # the reattestation is never rewritten by any stage
+        self.assert_history_intact()
+        for t in (self.correction2_task(), self.lane_task(), self.correction_task(), {**self.ordinary_task(), "id": R.D16_DUAL_ID}):
+            self.assertIsNotNone(self.gate(t))
+
+    def test_the_preserved_old_code_hash_certificate_is_a_spent_failed_attempt(self):
+        r = self.reload3()
+        stale = R._recovery2_apply(self.cert0, json.loads(self.ov2_bytes)["preflight"]["edits"])  # edit 3 still names the old runner code
+        self.assertNotEqual(stale, self.good_cert2())
+        w = self.run_correction2(r, write=stale)
+        self.assertEqual(w["status"], "BLOCKED")
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+        self.assertIn("S0_RECOVERY2_CONSUMED", self.gate(self.correction2_task()))
+        self.assert_history_intact()
+
+    def test_reattested_receipt_must_name_the_new_runner(self):
+        r = self.reload3()
+        self.assertEqual(self.run_correction2(r)["status"], "DONE")
+        self.assertEqual(self.run_review2(r)["status"], "DONE")
+        head = self.publish()
+        self.write_receipt2(head, runner_sha256=self.new2_sha)  # the lane-2 runner hash is not the loaded reattested runner
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "CORRECTION_CONSUMED")
+
+
+class Recovery3ReaderCoverage(unittest.TestCase):
+    def test_only_the_accessor_writers_and_boot_paths_read_the_raw_lane2_overlay(self):
+        tree = ast.parse((Path(__file__).resolve().parents[1] / "runner.py").read_text())
+
+        def callers(name):
+            return sorted(f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)
+                          and any(isinstance(c, ast.Call) and getattr(c.func, "id", None) == name for c in ast.walk(f)))
+        self.assertEqual(callers("_recovery2_load"), sorted([
+            "_recovery2_effective", "_recovery2_write", "recovery2_create_preflight", "recovery3_reattest_preflight", "_recovery2_boot",
+            "_recovery2_consume_correction", "recovery_step"]))
+        for reader in ("_transition_bound_problem", "_transition_overlay", "_recovery2_block_checked", "_recovery2_dispatch_problem",
+                       "recovery2_gate_reason", "recovery2_review_reason", "_recovery2_result_problem", "_recovery2_consume_correction",
+                       "recovery_step"):
+            self.assertIn(reader, callers("_recovery2_effective"), reader)
+
+
+class CliSoleRunnerFailClosed(unittest.TestCase):
+    """No real lsof/ps needed: the host-support and output-parsing failures all deny."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name).resolve() / "home"
+        (self.home / "locks").mkdir(parents=True)
+        self.cfg = SimpleNamespace(home=self.home)
+        self.lock = R.FileLock(self.home / "locks" / "runner.lock")
+        self.assertTrue(self.lock.acquire({"pid": os.getpid() + 1}))
+        self.addCleanup(self.lock.release)
+        self.ov = {"attested": {"pid": os.getpid() + 1, "boot_nonce": "n", "code_sha256": R.CODE_SHA, "at": "t",
+                                "lstart": FACT_START, "command": FACT_CMD}}
+
+    def tool(self, rc, out):
+        return mock.patch.object(R, "_os_fact", return_value=SimpleNamespace(returncode=rc, stdout=out, stderr=""))
+
+    def test_unsupported_host_missing_tools_and_bad_output_deny(self):
+        with mock.patch.object(R, "_trusted_exe", return_value=None):
+            self.assertIn("no trusted system tool", R._cli_sole_runner_problem(self.cfg, self.ov, [os.getpid() + 1]))
+        for label, rc, out, frag in (("lsof failed", 2, "p123\nf3\n", "failed"), ("garbage output", 0, "garbage\n", "unparseable"),
+                                     ("fd line before any pid", 0, "f3\np123\n", "unparseable"),
+                                     ("nobody has it open", 1, "", "exactly one process"),
+                                     ("only a cwd/txt/mem mapping", 0, "p123\nfcwd\np456\nftxt\n", "exactly one process"),
+                                     ("two openers", 0, "p123\nf3\np456\nf4\n", "exactly one process")):
+            with self.subTest(label), self.tool(rc, out):
+                self.assertIn(frag, R._cli_sole_runner_problem(self.cfg, self.ov, [123]) or "", label)
+
+    def test_lsof_field_records_are_parsed_strictly(self):
+        self.assertEqual(R._lock_openers_from_lsof("p84288\nf3\n"), [84288])  # the exact shape lsof -nP -F p prints on the live Mac
+        self.assertEqual(R._lock_openers_from_lsof("p10\nf3\np2\nf4\n"), [2, 10])
+        self.assertEqual(R._lock_openers_from_lsof("p10\nfcwd\nftxt\n"), [])  # not open descriptors
+        self.assertEqual(R._lock_openers_from_lsof(""), [])
+        for bad in ("p84288\np84288\nf3\n", "p84288\nf3\np84288\nf3\n", "f3\n", "p\nf3\n", "p1x\nf3\n", "p1\nf\n", "p1\nn/x\n",
+                    "p1\nf3 \n", "p1\n\n", "garbage\n", "p1\nf\u0663\n"):
+            with self.subTest(bad), self.assertRaises(R.GateError):
+                R._lock_openers_from_lsof(bad)
+        with self.tool(0, "p84288\nf3\n"), mock.patch.object(R.FileLock, "probe", return_value="held"):
+            self.assertEqual(R._lock_openers(self.lock.path), [84288])
+
+    def test_not_held_or_missing_inputs_deny(self):
+        self.lock.release()
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, self.ov, [123]))
+        self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, {"attested": {}}, [123]))
+        self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, {}, [123]))
+
+    def test_trusted_exe_rejects_writable_missing_and_non_root_tools(self):
+        exe = Path(self.tmp.name) / "tool"
+        exe.write_text("#!/bin/sh\n")
+        for mode in (0o777, 0o775, 0o757):
+            exe.chmod(mode)
+            self.assertIsNone(R._trusted_exe((str(exe),)), oct(mode))  # group- or world-writable
+        exe.chmod(0o755)
+        if os.getuid() != 0:
+            self.assertIsNone(R._trusted_exe((str(exe),)))  # not root-owned
+        self.assertIsNone(R._trusted_exe((str(Path(self.tmp.name) / "absent"),)))
+
+    def test_process_facts_for_a_missing_process_raise(self):
+        if R._trusted_exe(R._PS_CANDIDATES) is None:
+            self.skipTest("no trusted ps on this host")
+        with self.assertRaises(R.GateError):
+            R._proc_facts(2 ** 22 + 12345)
+        self.assertTrue(all(R._proc_facts(os.getpid())))
+
+
+@unittest.skipUnless(R._trusted_exe(R._LSOF_CANDIDATES) and R._trusted_exe(R._PS_CANDIDATES), "needs the trusted system lsof and ps")
+class CliSoleRunnerOsFacts(unittest.TestCase):
+    """Real OS facts: a real child process really holds the real flock; the kernel (lsof) and ps decide, not state.json."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name).resolve()
+        self.home = root / "home"
+        (self.home / "locks").mkdir(parents=True)
+        self.lock = self.home / "locks" / "runner.lock"
+        (root / "mission_runner").mkdir()
+        self.stub, self.other = root / "mission_runner" / "runner.py", root / "other.py"
+        self.stub.write_text(RUNNER_STUB)
+        self.other.write_text(RUNNER_STUB)
+        self.cfg = SimpleNamespace(home=self.home)
+
+    def spawn(self, mode="hold", script=None):
+        p = subprocess.Popen([sys.executable, str(script or self.stub), "run", mode, str(self.lock)], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (p.kill(), p.wait(), p.stdout.close()))
+        self.assertEqual(p.stdout.readline().strip(), "ready")
+        return p
+
+    def identity(self, p, state=None, **over):
+        start, cmd = R._proc_facts(p.pid)
+        (self.home / "state.json").write_text(json.dumps({"runner": {"pid": p.pid, "boot_nonce": "nonce", "code_sha256": R.CODE_SHA, **(state or {})}}))
+        return {"attested": {"pid": p.pid, "boot_nonce": "nonce", "code_sha256": R.CODE_SHA, "at": "t", "lstart": start, "command": cmd, **over}}
+
+    def test_the_one_real_lock_owner_is_authenticated(self):
+        p = self.spawn()
+        ov = self.identity(p)
+        self.assertEqual(R.FileLock.probe(self.lock), "held")
+        self.assertEqual(R._lock_openers(self.lock), [p.pid])
+        self.assertIn("mission_runner/runner.py", ov["attested"]["command"])
+        self.assertTrue(R._is_runner_argv(ov["attested"]["command"].split()))
+        self.assertIsNone(R._cli_sole_runner_problem(self.cfg, ov, [p.pid]))
+
+    def test_gone_or_unheld_runner_denies(self):
+        p = self.spawn()
+        ov = self.identity(p)
+        p.kill()
+        p.wait()
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, ov, [p.pid]) or "")
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, ov, []) or "")
+
+    def test_no_visible_runner_denies_for_a_crashed_runner_and_for_a_non_runner_lock_holder(self):
+        p = self.spawn()
+        ov = self.identity(p)  # state.json is fresh and names the runner
+        p.kill()
+        p.wait()
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, ov, []) or "")  # crashed runner, nothing visible
+        q = self.spawn(mode="none", script=self.other)  # a non-runner process (e.g. one that reused the PID space) holds nothing
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, ov, []) or "")
+        self.assertIn("not held", R._cli_sole_runner_problem(self.cfg, self.identity(q), []) or "")
+        h = self.spawn(script=self.other)  # a live lock holder whose command is not a runner, and no runner visible
+        self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, self.identity(h), []))
+
+    def test_actual_second_runner_process_denies(self):
+        p = self.spawn()
+        q = self.spawn(mode="none")  # runner-looking, does not own the lock
+        ov = self.identity(p)
+        for others in ([p.pid, q.pid], [q.pid], []):
+            self.assertIn("other than the runner lock owner", R._cli_sole_runner_problem(self.cfg, ov, others) or "", others)
+        self.assertIsNone(R._cli_sole_runner_problem(self.cfg, ov, [p.pid]))  # a non-lock runner-looking process is only denied via `others`
+
+    def test_a_second_process_with_the_lock_file_open_makes_ownership_ambiguous(self):
+        p = self.spawn()
+        q = self.spawn(mode="open")
+        ov = self.identity(p)
+        self.assertEqual(R._lock_openers(self.lock), sorted([p.pid, q.pid]))
+        self.assertIn("exactly one process", R._cli_sole_runner_problem(self.cfg, ov, [p.pid]) or "")
+
+    def test_stale_reused_or_mismatched_identity_denies(self):
+        p = self.spawn()
+        good = self.identity(p)
+        att = good["attested"]
+        cases = {
+            "other start time (reused PID)": ({"attested": {**att, "lstart": "Mon Jan  1 00:00:00 2001"}}, None),
+            "other command": ({"attested": {**att, "command": att["command"] + " --other"}}, None),
+            "other attested PID": ({"attested": {**att, "pid": p.pid + 1}}, None),
+            "other attested boot nonce": ({"attested": {**att, "boot_nonce": "other"}}, None),
+            "other attested code": ({"attested": {**att, "code_sha256": "cc" * 32}}, None),
+            "state names another PID": (good, {"pid": p.pid + 1}),
+            "state names another nonce": (good, {"boot_nonce": "other"}),
+            "state names other code": (good, {"code_sha256": "cc" * 32}),
+        }
+        for label, (ov, state) in cases.items():
+            with self.subTest(label):
+                self.identity(p, state=state)
+                self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, ov, [p.pid]), label)
+        self.identity(p)
+        meta = self.lock.read_text()
+        self.lock.write_text(json.dumps({"pid": p.pid + 1}))  # the lock file's own (claimed) owner differs from the kernel's
+        self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, good, [p.pid]), "lock meta mismatch")
+        self.lock.write_text(meta)
+        self.assertIsNone(R._cli_sole_runner_problem(self.cfg, good, [p.pid]))
+
+    def test_a_lock_owner_that_is_not_a_runner_command_denies(self):
+        p = self.spawn(script=self.other)
+        self.assertIsNotNone(R._cli_sole_runner_problem(self.cfg, self.identity(p), [p.pid]))
+
+    def test_the_cli_process_itself_is_never_the_exempted_runner(self):
+        mine = R.FileLock(self.lock)
+        self.assertTrue(mine.acquire({"pid": os.getpid()}))
+        self.addCleanup(mine.release)
+        start, cmd = R._proc_facts(os.getpid())
+        (self.home / "state.json").write_text(json.dumps({"runner": {"pid": os.getpid(), "boot_nonce": "n", "code_sha256": R.CODE_SHA}}))
+        ov = {"attested": {"pid": os.getpid(), "boot_nonce": "n", "code_sha256": R.CODE_SHA, "at": "t", "lstart": start, "command": cmd}}
+        self.assertIn("other than the runner lock owner", R._cli_sole_runner_problem(self.cfg, ov, [os.getpid()]) or "")
