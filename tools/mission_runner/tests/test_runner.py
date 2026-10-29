@@ -5378,7 +5378,8 @@ class WorkflowShape(unittest.TestCase):
         self.assertTrue(self.mutated("      - name: Compile / syntax check\n",
                                      "      - name: x\n        run: echo ${{ secrets.TOKEN }}\n"
                                      "      - name: Compile / syntax check\n"))
-        self.assertTrue(self.mutated("    timeout-minutes: 15\n", "    timeout-minutes: 15\n    environment: production\n"))
+        timeout_line = next(line for line in self.text.splitlines(keepends=True) if line.startswith("    timeout-minutes: "))
+        self.assertTrue(self.mutated(timeout_line, timeout_line + "    environment: production\n"))
 
     def test_renamed_job_is_rejected_and_comments_cannot_hide_or_trigger_findings(self):
         self.assertTrue(self.mutated("name: foundation (MOD-000 focused checks)", "name: foundation"))

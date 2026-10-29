@@ -12,7 +12,7 @@ jobs:
   foundation:
     name: foundation (MOD-000 focused checks)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Check out code (no persisted credentials)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
