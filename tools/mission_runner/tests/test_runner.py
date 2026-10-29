@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 import signal
 import stat
 import subprocess
@@ -129,6 +130,7 @@ class Env(unittest.TestCase):
     its own real-function tests in BoundaryTests / CutoverTests / EscapedProcessTests. The legacy pin and CLI pin are REAL."""
 
     def setUp(self):
+        self.addCleanup(os.umask, os.umask(0o022))  # the cutover proof must not be group/other-writable whatever the caller's umask
         self.tmp = tempfile.TemporaryDirectory(dir=TMP_ROOT)  # never under ~/.openclaw etc.
         base = Path(self.tmp.name).resolve()
         self.repo, self.home, self.bin = base / "repo", base / "home", base / "bin"
@@ -173,7 +175,9 @@ class Env(unittest.TestCase):
 
     def config(self, **kw):
         args = {"home": self.home, "repo": self.repo, "claude_bin": str(self.claude), "legacy_state": str(self.legacy_path),
-                "legacy_sha256": self.legacy_pin, "legacy_evidence": str(self.evidence), "tick": 0.05, "backoff_base": 0, "module_order": False, "sandbox": "off"}
+                "legacy_sha256": self.legacy_pin, "legacy_evidence": str(self.evidence),
+                "cutover_proof": str(self.legacy_path.parent / "cutover.json"),  # explicit, outside the runner home (production: root-owned)
+                "tick": 0.05, "backoff_base": 0, "module_order": False, "sandbox": "off"}
         args.update(self.pins(kw.get("claude_bin") or self.claude))
         args.update(kw)
         return R.Config(**args)
@@ -544,7 +548,7 @@ class RetryAndRecoveryTests(Env):
                 "R.worker_boundary_problem = R.runner_install_problem = R.cutover_problem = lambda *a: None\n"
                 "R.TRUSTED_UIDS = (0, os.geteuid()); R.process_table = lambda: [R.Proc(1, 0, 0, 'x', 'launchd')]\n"
                 f"cfg = R.Config(home={str(self.home)!r}, repo={str(self.repo)!r}, claude_bin={str(self.claude)!r}, tick=0.05, "
-                f"sandbox='off', legacy_state={str(self.legacy_path)!r}, legacy_sha256={self.legacy_pin!r}, legacy_evidence={str(self.evidence)!r}, "
+                f"sandbox='off', cutover_proof={str(self.cfg.cutover_proof)!r}, legacy_state={str(self.legacy_path)!r}, legacy_sha256={self.legacy_pin!r}, legacy_evidence={str(self.evidence)!r}, "
                 f"claude_sha256={self.pins()['claude_sha256']!r}, claude_version='9.9.9')\n"
                 "sys.exit(R.Runner(cfg).run())\n")
         proc = subprocess.Popen([sys.executable, "-c", boot])
@@ -2251,12 +2255,13 @@ class CutoverProofTests(Env):
 
     def setUp(self):
         super().setUp()
-        self.proof = self.home / "cutover.json"
+        self.proof = self.cfg.cutover_proof
 
     def write_proof(self, **over):
         doc = {"schema": 1, "legacy_sha256": self.legacy_pin, "operator": "owner", "stopped_at": "2026-10-29T08:00:00+00:00",
                "v1_runner": {"pid": 72455, "lstart": self.V1_LSTART}, **over}
         self.proof.write_text(json.dumps(doc))
+        self.proof.chmod(0o644)
 
     def problem(self, table):
         with mock.patch.object(R, "process_table", lambda: table):
@@ -2291,6 +2296,204 @@ class CutoverProofTests(Env):
     def test_an_unreadable_process_table_means_not_proven(self):
         self.write_proof()
         self.assertIn("cannot be read", self.problem(None))
+
+    def test_family_is_ancestors_plus_own_descendants_never_siblings(self):
+        me = os.getpid()
+        runner_cmd = "python3 /opt/veyro/mission_runner/runner.py run"
+        table = FAKE_TABLE + [
+            R.Proc(300, 1, 503, ESC_LSTART, "sshd: owner"), R.Proc(310, 300, 503, ESC_LSTART, "-zsh"),
+            R.Proc(320, 310, 503, ESC_LSTART, "sudo veyro-ctl"), R.Proc(me, 320, 503, ESC_LSTART, runner_cmd),
+            R.Proc(me + 100000, me, 503, ESC_LSTART, "git status"), R.Proc(me + 100001, me + 100000, 503, ESC_LSTART, "git-helper"),
+            R.Proc(330, 310, 503, ESC_LSTART, "sh -c sibling"), R.Proc(331, 330, 503, ESC_LSTART, runner_cmd),  # sibling tab's runner
+            R.Proc(340, 300, 503, ESC_LSTART, "-zsh")]
+        self.assertEqual(R._relatives(table, me), {me, 320, 310, 300, me + 100000, me + 100001})
+        self.write_proof()
+        self.assertIn("another runner process is alive (pid [331])", self.problem(table))
+        self.assertIsNone(self.problem([p for p in table if p.pid != 331]))  # own descendants and ancestors are accepted
+
+    # --- the live v2 runner that holds runner.lock is the one tolerated non-family runner
+    V2_PID, V2_LSTART = 4242, "Thu Oct 29 07:30:00 2026"
+    V2_CMD = "python3 /Library/Application Support/Veyro/release-v2-ctl1/runner/runner.py --home /h run --cutover-proof /p"
+
+    def hold_lock(self, **meta):
+        lock = R.FileLock(R.runner_lock_path(self.home))
+        self.assertTrue(lock.acquire({"pid": self.V2_PID, "lstart": self.V2_LSTART, **meta}))
+        self.addCleanup(lock.release)
+        return lock
+
+    def wrapper_table(self, *extra):
+        """What the owner wrapper sees: Terminal -> zsh -> sudo -> this process, plus launchd-parented processes."""
+        me = os.getpid()
+        return FAKE_TABLE + [R.Proc(300, 1, 501, ESC_LSTART, "Terminal"), R.Proc(310, 300, 501, ESC_LSTART, "-zsh"),
+                             R.Proc(320, 310, 501, ESC_LSTART, "sudo veyro-ctl enqueue"),
+                             R.Proc(me, 320, os.geteuid(), ESC_LSTART, "python3 -I control.py enqueue"), *extra]
+
+    def v2(self, **over):
+        row = dict(pid=self.V2_PID, ppid=1, uid=os.geteuid(), lstart=self.V2_LSTART, command=self.V2_CMD)
+        return R.Proc(**{**row, **over})
+
+    def test_wrapper_side_table_accepts_the_correctly_locked_v2_runner(self):
+        self.write_proof()
+        self.hold_lock()
+        self.assertIsNone(self.problem(self.wrapper_table(self.v2())))
+
+    def test_the_exemption_needs_a_held_lock_with_matching_pid_lstart_uid_and_command(self):
+        self.write_proof()
+        refused = "another runner process is alive"
+        # free lock (runner exited / never started): metadata may linger in the file but nothing holds it
+        lock = self.hold_lock()
+        lock.release()
+        self.assertIn(refused, self.problem(self.wrapper_table(self.v2())))
+        self.hold_lock()
+        refused_rows = (("wrong start time", self.v2(lstart="Thu Oct 29 07:31:00 2026")),
+                        ("wrong uid", self.v2(uid=os.geteuid() + 1)),
+                        ("holder pid not in the table", self.v2(pid=self.V2_PID + 1)))
+        for name, row in refused_rows:
+            with self.subTest(name):
+                self.assertIn(refused, self.problem(self.wrapper_table(row)))
+        # the locked pid is a dashboard, not a runner: nothing to exempt, and it is not a runner either, so nothing is refused
+        self.assertIsNone(self.problem(self.wrapper_table(self.v2(command="python3 runner.py dashboard"))))
+        # ...but an unrelated runner beside a non-matching holder stays refused
+        self.assertIn("pid [900]", self.problem(self.wrapper_table(self.v2(command="python3 runner.py dashboard"),
+                                                                  self.v2(pid=900, lstart=ESC_LSTART))))
+
+    def test_v1_and_a_second_worker_runner_are_never_exempt_even_beside_the_locked_one(self):
+        self.write_proof()
+        self.hold_lock()
+        v1 = R.Proc(72455, 1, os.geteuid() + 1, "Fri Oct 23 09:15:02 2026", "/usr/bin/python3 /Users/o/Veyro/tools/mission_runner/runner.py run")
+        self.assertIn("another runner process is alive (pid [72455])", self.problem(self.wrapper_table(self.v2(), v1)))
+        second = self.v2(pid=777, ppid=1, lstart="Thu Oct 29 07:45:00 2026")
+        self.assertIn("another runner process is alive (pid [777])", self.problem(self.wrapper_table(self.v2(), second)))
+
+    def test_runner_never_exempts_a_stray_named_by_tampered_lock_metadata(self):
+        self.write_proof()
+        stray = self.v2(pid=777, lstart="Thu Oct 29 07:45:00 2026")
+        self.hold_lock(pid=stray.pid, lstart=stray.lstart)
+        own = self.v2(pid=os.getpid(), lstart=ESC_LSTART)
+        self.assertIn("another runner process is alive (pid [777])", self.problem(FAKE_TABLE + [own, stray]))
+
+    def test_start_time_probe_uses_the_process_table_locale(self):
+        with mock.patch.object(R.subprocess, "run", return_value=mock.Mock(stdout=" Thu Oct 29 07:45:00 2026\n")) as run:
+            self.assertEqual(R._lstart(777), "Thu Oct 29 07:45:00 2026")
+        self.assertEqual(run.call_args.kwargs["env"], {"PATH": "/bin:/usr/bin", "LC_ALL": "C"})
+
+    def test_the_lock_metadata_pointing_at_v1_exempts_nothing(self):
+        self.write_proof()
+        v1 = R.Proc(72455, 1, os.geteuid() + 1, "Fri Oct 23 09:15:02 2026", "/usr/bin/python3 runner.py run")
+        self.hold_lock(pid=72455, lstart="Fri Oct 23 09:15:02 2026")
+        self.assertIn("pid [72455]", self.problem(self.wrapper_table(v1)))
+
+    def test_malformed_or_missing_lock_metadata_exempts_nothing(self):
+        self.write_proof()
+        path = R.runner_lock_path(self.home)
+        for name, meta in (("no lstart", {"pid": self.V2_PID}), ("blank lstart", {"pid": self.V2_PID, "lstart": " "}),
+                           ("bool pid", {"pid": True, "lstart": self.V2_LSTART}), ("str pid", {"pid": "4242", "lstart": self.V2_LSTART}),
+                           ("pid 1", {"pid": 1, "lstart": self.V2_LSTART}), ("list", [1, 2]), ("null", None)):
+            with self.subTest(name):
+                lock = R.FileLock(path)
+                self.assertTrue(lock.acquire({"pid": self.V2_PID, "lstart": self.V2_LSTART}))
+                lock.meta = meta
+                os.ftruncate(lock.fd, 0)
+                os.pwrite(lock.fd, json.dumps(meta).encode(), 0)
+                try:
+                    self.assertIn("another runner process is alive", self.problem(self.wrapper_table(self.v2())))
+                finally:
+                    lock.release()
+        lock = R.FileLock(path)
+        self.assertTrue(lock.acquire({"pid": self.V2_PID, "lstart": self.V2_LSTART}))
+        os.ftruncate(lock.fd, 0)
+        os.pwrite(lock.fd, b"{garbage", 0)
+        self.addCleanup(lock.release)
+        self.assertIn("another runner process is alive", self.problem(self.wrapper_table(self.v2())))
+
+    def test_runner_publishes_its_own_start_time_in_the_lock_and_fails_closed_without_it(self):
+        with mock.patch.object(R, "_lstart", lambda pid: ""), mock.patch.object(R, "host_problem", lambda cfg: None):
+            self.assertEqual(R.Runner(self.cfg).run(), R.EXIT_BOUNDARY)
+        self.assertEqual(R.FileLock.probe(R.runner_lock_path(self.home)), "free")
+        r = R.Runner(self.cfg)
+        with mock.patch.object(R, "host_problem", lambda cfg: None), mock.patch.object(R.Runner, "tick", lambda self: False):
+            self.assertEqual(r.run(), 0)
+        meta = R.FileLock(R.runner_lock_path(self.home)).owner()
+        self.assertEqual(meta["pid"], os.getpid())
+        self.assertEqual(" ".join(meta["lstart"].split()), " ".join(R._lstart(os.getpid()).split()))
+        self.assertTrue(meta["lstart"].strip())
+
+    # --- the proof itself must be root-owned, outside worker trees, and read without following symlinks
+    def test_the_proof_must_be_root_owned_regular_unwritable_and_not_a_symlink(self):
+        self.write_proof()
+        self.assertIsNone(self.problem(FAKE_TABLE))
+        for mode in (0o664, 0o646, 0o666):
+            self.proof.chmod(mode)
+            self.assertIn("not a root-owned regular file", self.problem(FAKE_TABLE), oct(mode))
+            with self.assertRaises(ValueError):
+                R.receipt_pins(self.cfg)
+        self.proof.chmod(0o644)
+        with mock.patch.object(R, "TRUSTED_UIDS", (0,)):  # production ownership: a worker-owned proof (and parents) is forgeable
+            self.assertIn("not owned by root", self.problem(FAKE_TABLE))
+            with mock.patch.object(R, "chain_problem", lambda real: None):  # chain aside, the file itself is still refused
+                self.assertIn("not a root-owned regular file", self.problem(FAKE_TABLE))
+        real = self.proof.with_name("real.json")
+        self.proof.rename(real)
+        self.proof.symlink_to(real)
+        self.assertIn("missing or unreadable", self.problem(FAKE_TABLE))
+        self.proof.unlink()
+        self.proof.mkdir()
+        self.assertIn("CUTOVER_PROOF", self.problem(FAKE_TABLE))
+
+    def test_the_proof_parent_chain_and_location_are_checked(self):
+        self.write_proof()
+        parent = self.proof.parent
+        parent.chmod(0o775)
+        try:
+            self.assertIn("unsafe parent chain", self.problem(FAKE_TABLE))
+        finally:
+            parent.chmod(0o755)
+        self.assertIsNone(self.problem(FAKE_TABLE))
+        for where, path in (("worker home", self.home / "cutover.json"), ("checkout", self.repo / "cutover.json"),
+                            ("relative", Path("cutover.json")), ("dotdot", self.proof.parent / ".." / "legacy" / "cutover.json")):
+            with self.subTest(where):
+                self.cfg.cutover_proof = path
+                self.assertIn("CUTOVER_PROOF", self.problem(FAKE_TABLE))
+        self.cfg.cutover_proof = self.proof
+
+    def test_receipt_pins_trust_only_the_same_secure_proof(self):
+        pin = "a" * 64
+        self.proof.write_text(json.dumps({"acceptance_receipts": {"MOD-001": pin}}))
+        self.proof.chmod(0o644)
+        self.assertEqual(R.receipt_pins(self.cfg), {"MOD-001": pin})
+        self.cfg.cutover_proof = self.home / "cutover.json"  # a different, worker-writable proof is never read
+        (self.home / "cutover.json").write_text(json.dumps({"acceptance_receipts": {"MOD-001": "b" * 64}}))
+        (self.home / "cutover.json").chmod(0o644)
+        with self.assertRaises(ValueError):
+            R.receipt_pins(self.cfg)
+        self.cfg.cutover_proof = self.proof
+        self.proof.chmod(0o666)
+        with self.assertRaises(ValueError):
+            R.receipt_pins(self.cfg)
+        self.assertIsNotNone(R.receipt_problem(self.cfg, "MOD-001"))
+
+    def test_run_requires_an_explicit_cutover_proof(self):
+        implicit = self.config(cutover_proof=None)  # no flag: the home default is only a placeholder
+        self.assertEqual(implicit.cutover_proof, self.home / "cutover.json")
+        self.assertFalse(implicit.cutover_proof_explicit)
+        self.assertTrue(self.cfg.cutover_proof_explicit)
+        err = __import__("io").StringIO()
+        with mock.patch.object(sys, "stderr", err), mock.patch.object(R, "host_problem", lambda cfg: None):
+            self.assertEqual(R.Runner(implicit).run(), R.EXIT_BOUNDARY)  # even if every other predicate passed
+        self.assertIn("--cutover-proof is mandatory", err.getvalue())
+        self.assertFalse(R.runner_lock_path(self.home).exists(), "a refused start must not touch the lock or the state")
+        # and the implicit worker-home location is refused by the proof reader itself, planted or not
+        self.write_proof()
+        shutil.copy(self.proof, implicit.cutover_proof)
+        implicit.cutover_proof.chmod(0o644)
+        self.assertIn("inside an agent-writable tree", REAL["cutover_problem"](implicit))
+        with self.assertRaises(ValueError):
+            R.receipt_pins(implicit)
+
+    def test_a_proof_without_a_configured_legacy_pin_is_not_bound(self):
+        self.write_proof(legacy_sha256=None)
+        self.cfg.legacy_sha256 = None
+        self.assertIn("malformed", self.problem(FAKE_TABLE))
 
 
 class CliPinTests(Env):
@@ -2881,7 +3084,8 @@ class HandoffDisabledTests(Env):
         err = __import__("io").StringIO()
         with mock.patch.dict(os.environ, env), mock.patch.object(R, "Runner") as runner, mock.patch.object(sys, "stderr", err):
             runner.return_value.run.return_value = 0
-            self.assertEqual(R.main(["--home", str(self.home), "--repo", str(self.repo), "--openclaw-bin", "/bin/echo", "run"]), 0)
+            self.assertEqual(R.main(["--home", str(self.home), "--repo", str(self.repo), "--openclaw-bin", "/bin/echo",
+                                 "--cutover-proof", str(self.cfg.cutover_proof), "run"]), 0)
         cfg = runner.call_args[0][0]
         self.assertIsNone(cfg.orchestrator_bin)
         self.assertEqual(cfg.sandbox, "auto")

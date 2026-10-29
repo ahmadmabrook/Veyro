@@ -181,7 +181,10 @@ class Config:
         ls = legacy_state or os.environ.get("VEYRO_LEGACY_STATE")
         self.legacy_state = Path(ls) if ls else None
         self.legacy_sha256 = (legacy_sha256 or os.environ.get("VEYRO_LEGACY_SHA256") or "").lower() or None
+        # The home default exists only so a config object is always complete: it is worker-writable, so read_cutover_proof refuses
+        # it and Runner.run refuses to start without an explicit proof (cutover_proof_explicit).
         self.cutover_proof = Path(cutover_proof) if cutover_proof else Path(self.home) / "cutover.json"
+        self.cutover_proof_explicit = bool(cutover_proof)
         le = legacy_evidence or os.environ.get("VEYRO_LEGACY_EVIDENCE")  # exact copy of v1 acceptances/ + runs/ (read-only)
         self.legacy_evidence = Path(le) if le else None
         self.max_turns, self._cli_seen = max_turns, None
@@ -380,7 +383,7 @@ def child_alive(child):
 def _lstart(pid):
     try:
         return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
-                              timeout=2).stdout.strip()
+                              timeout=2, env={"PATH": "/bin:/usr/bin", "LC_ALL": "C"}).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -616,11 +619,10 @@ def receipt_pins(cfg):
     """{module: sha256} of the receipts the operator pinned in the cutover proof, or ValueError. A missing, unreadable or
     malformed proof is 'no pins', never 'unpinned is fine'."""
     try:
-        with open(cfg.cutover_proof, "rb") as f:
-            proof = json.loads(f.read(CUTOVER_MAX + 1)[:CUTOVER_MAX])
+        proof = json.loads(read_cutover_proof(cfg))
         pins = proof["acceptance_receipts"]
-    except (OSError, ValueError, KeyError, TypeError):
-        raise ValueError("the cutover proof is missing/unreadable or has no acceptance_receipts object")
+    except (ValueError, KeyError, TypeError):
+        raise ValueError("the cutover proof is missing/unreadable/untrusted or has no acceptance_receipts object")
     if not (isinstance(pins, dict) and all(isinstance(k, str) and MOD_RE.match(k) and isinstance(v, str)
                                            and re.fullmatch(r"[0-9a-f]{64}", v) for k, v in pins.items())):
         raise ValueError("acceptance_receipts must map MOD-NNN to a sha256")
@@ -812,7 +814,7 @@ def validate_task(spec, existing, legacy_ids=frozenset(), repo=None):
     if not isinstance(spec, dict):
         raise ValueError("task must be an object")
     tid, module, role = spec.get("id"), spec.get("module"), spec.get("role")
-    if not isinstance(tid, str) or not ID_RE.match(tid):
+    if not isinstance(tid, str) or not ID_RE.fullmatch(tid):
         raise ValueError("id must match [A-Za-z0-9._-]{1,64}")
     if tid in existing:
         raise ValueError(f"task {tid} already exists")
@@ -1095,20 +1097,22 @@ def process_table():
 
 
 def _relatives(table, me):
-    """pids of `me`, its ancestors and its descendants: the runner's own family, never a stray."""
+    """pids of `me`, its ancestors and its own descendants: the runner's own family, never a stray. Siblings and other
+    descendants of an ancestor (another tab under the same shell, another sudo under sshd) are NOT family."""
     parent = {p.pid: p.ppid for p in table}
     fam, pid = {me}, me
     while parent.get(pid, 0) > 1 and parent[pid] not in fam:
         pid = parent[pid]
         fam.add(pid)
+    mine = {me}
     grew = True
     while grew:
         grew = False
         for p in table:
-            if p.ppid in fam and p.pid not in fam:
-                fam.add(p.pid)
+            if p.ppid in mine and p.pid not in mine:
+                mine.add(p.pid)
                 grew = True
-    return fam
+    return fam | mine
 
 
 def worker_procs(table, uid=None):
@@ -1312,18 +1316,75 @@ def runner_install_problem(cfg, install=None):
     return None
 
 
+def read_cutover_proof(cfg):
+    """Raw bytes of the cutover proof, or ValueError. The proof is a single-writer claim, so it is trusted only when the worker
+    cannot have forged it: an absolute path outside the runner home and the checkout, every parent root-owned and not
+    group/other-writable (chain_problem), opened O_NOFOLLOW, and the opened file itself a root-owned regular file that group and
+    other cannot write. There is no default location the worker could write; `run` requires --cutover-proof."""
+    path = Path(cfg.cutover_proof)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("is not an absolute path")
+    real = Path(os.path.realpath(path.parent)) / path.name
+    if any(_inside(real, root.resolve()) for root in (Path(cfg.repo), Path(cfg.home))):
+        raise ValueError("is inside an agent-writable tree")
+    try:
+        why = chain_problem(path.parent)
+        if why:
+            raise ValueError(f"has an unsafe parent chain ({why})")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise ValueError("is missing or unreadable")
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid not in TRUSTED_UIDS or st.st_mode & 0o022:
+            raise ValueError("is not a root-owned regular file unwritable by group/other")
+        raw = os.read(fd, CUTOVER_MAX + 1)
+    except OSError:
+        raise ValueError("is missing or unreadable")
+    finally:
+        os.close(fd)
+    if len(raw) > CUTOVER_MAX:
+        raise ValueError("is too large")
+    return raw
+
+
+def _locked_runner_pid(cfg, table):
+    """The pid of the ONE process that provably holds runner.lock in cfg.home, else None: the lock must be held right now, and
+    its metadata pid + lstart must match a process_table row owned by this uid whose command is `runner.py ... run`. A free or
+    stale lock, another uid (v1), a wrong start time or malformed metadata exempt nothing."""
+    path = runner_lock_path(cfg.home)
+    if FileLock.probe(path) != "held":
+        return None
+    meta = FileLock(path).owner()
+    if not isinstance(meta, dict):
+        return None
+    pid, lstart = meta.get("pid"), meta.get("lstart")
+    if not (isinstance(pid, int) and not isinstance(pid, bool) and pid > 1 and isinstance(lstart, str) and lstart.strip()):
+        return None
+    want, uid = " ".join(lstart.split()), os.geteuid()
+    for p in table:
+        if p.pid == pid and p.lstart == want and p.uid == uid and RUNNER_RUN_RE.search(p.command):
+            return pid
+    return None
+
+
 def cutover_problem(cfg):
     """v1 and v2 hold unrelated locks in different homes, so exclusion needs an explicit proof: the operator-written
     `cutover.json` binds the pinned legacy copy to the v1 runner (pid + start time) it was copied from. Fails closed unless
-    that exact process is gone AND no other `runner.py run` process exists on the host. The v1 repo-writer lock lives in the
-    owner's home and cannot be probed from here; this proof is what stands in for it."""
+    the proof is trustworthy (read_cutover_proof), that exact process is gone AND no other `runner.py run` process exists on
+    the host. The only runner other than our own family that is tolerated is the single live v2 runner holding runner.lock
+    in this home (_locked_runner_pid), so the owner wrapper can enqueue while it runs; v1 and any second runner stay refused.
+    The v1 repo-writer lock lives in the owner's home and cannot be probed from here; this proof is what stands in for it."""
     try:
-        with open(cfg.cutover_proof, "rb") as f:
-            proof = json.loads(f.read(CUTOVER_MAX + 1)[:CUTOVER_MAX])
-    except (OSError, ValueError):
+        raw = read_cutover_proof(cfg)
+    except ValueError as e:
+        return f"CUTOVER_PROOF: {cfg.cutover_proof} {e}; no cutover proof, no dispatch"
+    try:
+        proof = json.loads(raw)
+    except ValueError:
         return f"CUTOVER_PROOF: {cfg.cutover_proof} is missing or unreadable; no cutover proof, no dispatch"
     v1 = proof.get("v1_runner") if isinstance(proof, dict) else None
-    if not (isinstance(proof, dict) and proof.get("schema") == 1 and proof.get("legacy_sha256") == cfg.legacy_sha256
+    if not (isinstance(proof, dict) and proof.get("schema") == 1 and cfg.legacy_sha256 and proof.get("legacy_sha256") == cfg.legacy_sha256
             and isinstance(proof.get("operator"), str) and proof["operator"].strip() and isinstance(proof.get("stopped_at"), str)
             and isinstance(v1, dict) and isinstance(v1.get("pid"), int) and not isinstance(v1["pid"], bool) and v1["pid"] > 1
             and isinstance(v1.get("lstart"), str) and v1["lstart"].strip()):
@@ -1335,7 +1396,10 @@ def cutover_problem(cfg):
     if any(p.pid == v1["pid"] and p.lstart == want for p in table):
         return f"CUTOVER_PROOF: the v1 runner (pid {v1['pid']}) is still running"
     family = _relatives(table, os.getpid())  # this runner, its launcher wrapper and its children are not 'another runner'
-    others = [p.pid for p in table if p.pid not in family and RUNNER_RUN_RE.search(p.command)]
+    # The runner is already in its own family; only an external control process needs the lock-holder exemption.
+    # Never let writable lock metadata name a stray runner and hide it from the real runner's own dispatch check.
+    live = None if any(p.pid in family and RUNNER_RUN_RE.search(p.command) for p in table) else _locked_runner_pid(cfg, table)
+    others = [p.pid for p in table if p.pid not in family and p.pid != live and RUNNER_RUN_RE.search(p.command)]
     if others:
         return f"CUTOVER_PROOF: another runner process is alive (pid {others[:3]}); v1/v2 exclusion cannot be proven"
     return None
@@ -1929,11 +1993,18 @@ class Runner:
         return self.gate_val or None
 
     def run(self):
+        if not self.cfg.cutover_proof_explicit:
+            print("refusing to start: --cutover-proof is mandatory (a root-owned file outside the worker-writable trees)", file=sys.stderr)
+            return EXIT_BOUNDARY
         problem = host_problem(self.cfg)  # before the lock, the state and the heartbeat: nothing is touched on a bad host
         if problem:
             print(f"refusing to start: {problem}", file=sys.stderr)
             return EXIT_BOUNDARY
-        if not self.rlock.acquire({"pid": os.getpid(), "host": socket.gethostname()}):
+        lstart = _lstart(os.getpid())  # published in the lock so the owner wrapper can tell this live runner from a stray
+        if not lstart:
+            print("refusing to start: cannot read this process's start time", file=sys.stderr)
+            return EXIT_BOUNDARY
+        if not self.rlock.acquire({"pid": os.getpid(), "lstart": lstart, "host": socket.gethostname()}):
             print(f"another runner holds the lock: {self.rlock.owner()}", file=sys.stderr)
             return EXIT_LOCKED
         try:
@@ -2792,7 +2863,7 @@ def main(argv=None):
     ap.add_argument("--legacy-sha256", help="pinned sha256 of that copy (default: $VEYRO_LEGACY_SHA256; mandatory)")
     ap.add_argument("--legacy-evidence", help="absolute path of the exact read-only copy of the v1 acceptances/ tree and the review outputs it names "
                                               "(default: $VEYRO_LEGACY_EVIDENCE; mandatory)")
-    ap.add_argument("--cutover-proof", help="operator-written cutover proof (default: <home>/cutover.json)")
+    ap.add_argument("--cutover-proof", help="root-owned cutover proof outside the runner home and checkout (mandatory for run)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("run", help="run the queue (foreground)")
     d = sub.add_parser("dashboard", help="serve the read-only dashboard on 127.0.0.1")

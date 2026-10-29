@@ -470,7 +470,8 @@ class LegacyEvidenceTreeTests(TR.Env):
     def test_the_command_line_names_the_tree(self):
         with mock.patch.object(R, "Runner") as runner:
             runner.return_value.run.return_value = 0
-            R.main(["--home", str(self.home), "--repo", str(self.repo), "--legacy-evidence", str(self.evidence), "run"])
+            R.main(["--home", str(self.home), "--repo", str(self.repo), "--legacy-evidence", str(self.evidence),
+                    "--cutover-proof", str(self.cfg.cutover_proof), "run"])
         self.assertEqual(runner.call_args[0][0].legacy_evidence, self.evidence)
 
 
