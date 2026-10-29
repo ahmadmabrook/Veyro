@@ -2013,7 +2013,7 @@ class WorkerBoundaryTests(Env):
 
     def test_a_traversable_missing_or_unconfigured_owner_home_is_refused(self):
         open_home = Path(self.tmp.name) / "openhome"
-        open_home.mkdir()
+        open_home.mkdir(mode=0o700)
         self.assertIn("traversable", self.problem(owner_home=str(open_home)))  # e.g. the ACL entry was lost
         self.assertIn("not configured", self.problem(owner_home=None))
         self.assertIn("does not exist", self.problem(owner_home=str(Path(self.tmp.name) / "nope")))
