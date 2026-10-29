@@ -2221,8 +2221,9 @@ def _observe_ci_for_commit(cfg, commit, run_id=None, opener=None):
             "conclusion": run.get("conclusion")}
 
 
-def _s0_subject(cfg, name, e, tasks, seen, allowed=None):
-    """One committed, CI-green, independently Opus-APPROVED subject whose current bytes are what was reviewed."""
+def _s0_subject(cfg, name, e, tasks, seen, allowed=None, committed_only=False):
+    """One committed, CI-green, independently Opus-APPROVED subject whose current bytes are what was reviewed. `committed_only`
+    (the D16 succession predicate, for the one file the D16 design task itself rewrites) judges the reviewed commit's bytes."""
     label = f"S0 {name}"
     if not (isinstance(e, dict) and set(e) == {"path", "sha256", "commit", "ci", "review"}):
         raise GateError(f"{label}: malformed entry")
@@ -2242,6 +2243,8 @@ def _s0_subject(cfg, name, e, tasks, seen, allowed=None):
         committed = git_run(cfg.repo, "show", f"{commit}:{path}", timeout=10)
     except (OSError, subprocess.SubprocessError):
         raise GateError(f"{label}: cannot read the committed bytes")
+    if committed_only and committed.returncode == 0:
+        data = committed.stdout
     if not (committed.returncode == 0 and hashlib.sha256(data).hexdigest() == sha
             and hashlib.sha256(committed.stdout).hexdigest() == sha):
         raise GateError(f"{label}: current file is not the committed, reviewed content (stale)")
@@ -2270,7 +2273,7 @@ def _s0_ref(cfg, ref, prefixes, label):
     return data
 
 
-def _s0_content_problem(cfg, cert, cap, edge):
+def _s0_content_problem(cfg, cert, cap, edge, runner_sha=None):
     """Reviewed-document content that must match the current repo: the PROVISIONAL module-wide manifest (parsed,
     not just named), the four identity-only screens, the Python 3.13 CI evidence, rules/skills and no-UI scope."""
     manifest_ref = {"path": S0_MANIFEST, "sha256": None}
@@ -2317,13 +2320,13 @@ def _s0_content_problem(cfg, cert, cap, edge):
     if not (isinstance(hist, dict) and set(hist) == {"path", "sha256"} and hist["path"] == S0_RUNNER_FILE
             and isinstance(hist["sha256"], str) and SHA256_RE.fullmatch(hist["sha256"])):
         raise GateError("S0 declaration: no well-formed historical runner_gate record")
-    if cert.get("runner_gate") != {"path": S0_RUNNER_FILE, "sha256": CODE_SHA}:
+    if cert.get("runner_gate") != {"path": S0_RUNNER_FILE, "sha256": runner_sha or CODE_SHA}:  # runner_sha: the D16 succession predicate only
         raise GateError("S0 certificate: runner_gate must name the current reviewed runner hash, not a historical one")
     if cert.get("historical_runner_gate") != hist:
         raise GateError("S0 certificate: historical_runner_gate must restate the declaration's runner_gate exactly")
 
 
-def verify_s0_authority(cfg, tasks, receipt=S0_RECEIPT, runner_check=None):
+def verify_s0_authority(cfg, tasks, receipt=S0_RECEIPT, runner_check=None, runner_sha=None, committed_only=()):
     """Read-only, offline re-verification of everything the S0 write needs; never trusts task prose or flags.
     Owner record, ADR, runner file, certificate, declaration and the published dependency-edge record must be
     committed, CI-green on that exact commit, current, and each bound to an existing DONE, verified-Opus, APPROVED
@@ -2341,9 +2344,9 @@ def verify_s0_authority(cfg, tasks, receipt=S0_RECEIPT, runner_check=None):
         if name == "runner_gate" and runner_check is not None:  # the 2026-10-28 recovery's replacement runner: pre-load review bound in the overlay
             data[name] = runner_check(r["subjects"][name])
         else:
-            data[name] = _s0_subject(cfg, name, r["subjects"][name], tasks, seen)
+            data[name] = _s0_subject(cfg, name, r["subjects"][name], tasks, seen, committed_only=name in committed_only)
     subj = r["subjects"]
-    if hashlib.sha256(data["runner_gate"]).hexdigest() != CODE_SHA:
+    if hashlib.sha256(data["runner_gate"]).hexdigest() != (runner_sha or CODE_SHA):
         raise GateError("S0 runner_gate: the loaded runner is not the reviewed, CI-green runner file")
     if b"D12.5" not in data["adr"]:
         raise GateError("S0 adr: no D12.5 S0 amendment")
@@ -2367,7 +2370,7 @@ def verify_s0_authority(cfg, tasks, receipt=S0_RECEIPT, runner_check=None):
             and all(type(cap.get(k)) is int and cap[k] == 0 for k in zero)
             and isinstance(cap.get("forbidden_imports"), list) and S0_FORBIDDEN_IMPORTS <= set(cap["forbidden_imports"])):
         raise GateError("S0 capability declaration is not ACTIVE_FOR_S0_ONLY for the exact paths with a zero-CAP stdlib closure")
-    _s0_content_problem(cfg, cert, cap, subj["edge"])
+    _s0_content_problem(cfg, cert, cap, subj["edge"], runner_sha)
     # only the runner gate is cross-checked against observed ci.json; every other CI record is the operator's attestation
     return {"ci": {n: _s0_ci_label(cfg, subj[n]["commit"]) if n == "runner_gate" and runner_check is None else "operator-attested"
                    for n in S0_SUBJECTS}}
@@ -5773,13 +5776,14 @@ def _transition_quarantine_state(cfg, rec):
     return _QS_ACTIVE, rec
 
 
-def _transition_gate_reason(cfg, t, tasks):
-    """None, or why the transfer lineage denies task t. D16 dual-version and S0 product are denied at every stage."""
+def _transition_gate_reason(cfg, t, tasks, cli=False):
+    """None, or why the transfer lineage denies task t. S0 product is denied at every stage; the D16 dual-version lineage is denied
+    unless the authenticated D16 succession admits that exact task (`d16_succession_gate_reason`)."""
     if not _transfer_lineage_active(cfg):
         return None
     parent = tasks.get((t.get("review_of") or {}).get("task_id")) if t.get("role") == "code-review" else None
     if t.get("id") == D16_DUAL_ID or d16_dual_lineage(tasks, t) or (isinstance(parent, dict) and d16_dual_lineage(tasks, parent)):
-        return f"D16_DUAL_DENIED {t.get('id')}: the old D16 dual-version admission does not survive into the transfer lineage"
+        return d16_succession_gate_reason(cfg, t, tasks, cli)
     if s0_marked(t):
         return f"S0_PRODUCT_DENIED {t.get('id')}: ACTIVE is operational only; S0 product admission stays refused"
     if t.get("id") == TRANSFER_REVIEW_ID:  # the single pre-consumption review-only bridge; admitted by nothing else
@@ -7127,7 +7131,8 @@ def _recovery2_bound_problem(cfg, rec, ov, full=True):
     """Every admission re-authenticates the original record, lane 1, the replacement runner and the preserved bytes; never cached."""
     try:
         return (_recovery_orig_problem(cfg, rec, ov) or _recovery2_prior_problem(cfg, ov)
-                or (_recovery3_runner_problem if ov.get("reattest") else _recovery2_runner_problem)(cfg, ov, full)
+                or (_d16s_runner_problem if ov.get("succession") else _recovery3_runner_problem if ov.get("reattest")
+                    else _recovery2_runner_problem)(cfg, ov, full)
                 or _transfer_pre_image_problem(cfg, rec, full) or _recovery_pre_image_problem(cfg, ov, full)
                 or (_transition_replay_problem(cfg, rec) or _recovery2_replay_problem(cfg, ov) if full else None))
     except (GateError, OSError) as e:
@@ -7421,12 +7426,12 @@ def _recovery2_verified(cfg, rec, ov, tasks):
     return {"docs": docs, "receipt_sha256": _sha(rb), "commit": head}
 
 
-def _recovery2_runner_subject(cfg, ov, e):
+def _recovery2_runner_subject(cfg, ov, e, code_sha=None):
     """The fresh S0 receipt's runner_gate subject: C2 is authenticated by the overlay's pre-load Opus review (re-derived from the
     preserved evidence) and its exact-SHA CI, observed again now. Returns the committed runner bytes."""
     rn = ov["runner"]
     if not (isinstance(e, dict) and set(e) == {"path", "sha256", "commit", "ci", "review"} and e["path"] == S0_RUNNER_FILE
-            and e["sha256"] == CODE_SHA and e["commit"] == rn["commit"] and e["ci"] == rn["ci"]
+            and e["sha256"] == (code_sha or CODE_SHA) and e["commit"] == rn["commit"] and e["ci"] == rn["ci"]
             and e["review"] == {"preload_sha256": rn["preload_sha256"], "output_sha256": rn["preload_output_sha256"]}):
         raise GateError("S0 runner_gate: not the lane-2 overlay-bound replacement runner, CI and pre-load review")
     pre = Path(cfg.home) / (ov.get("review_dir") or f'{ov["pre_image"]["dir"]}/review')  # the reattested runner keeps its own evidence dir
@@ -7439,7 +7444,7 @@ def _recovery2_runner_subject(cfg, ov, e):
         raise GateError("S0 runner_gate: the lane-2 runner commit is not an ancestor of HEAD")
     _observe_ci_for_commit(cfg, rn["commit"], run_id=rn["ci"]["run_id"], opener=_ci_opener)
     blob = _transfer_blob(cfg, rn["commit"], S0_RUNNER_FILE)
-    if _sha(blob) != CODE_SHA:
+    if _sha(blob) != (code_sha or CODE_SHA):
         raise GateError("S0 runner_gate: the committed runner is not the loaded lane-2 replacement")
     return blob
 
@@ -7576,7 +7581,7 @@ def _recovery3_original_problem(raw, raw_bytes, bound_sha, bound_checksum):
     return None
 
 
-def _recovery3_binding_problem(raw, rt, raw_bytes):
+def _recovery3_binding_problem(raw, rt, raw_bytes, loaded=True):
     """The reattestation binds THIS immutable lane-2 overlay and its original bytes, nothing else; cheap and pure (re-run by every
     reader)."""
     pr, rn = raw["runner"], rt["runner"]
@@ -7586,7 +7591,7 @@ def _recovery3_binding_problem(raw, rt, raw_bytes):
     if not (rt["recovery2"]["recovery_id"] == raw["recovery_id"] and rt["recovery2"]["immutable_sha256"] == _recovery3_immutable_sha(raw)
             and pr["commit"] == rt["prior"]["commit"] == RC3_PRIOR_COMMIT and pr["code_sha256"] == rt["prior"]["code_sha256"] == RC3_PRIOR_CODE_SHA):
         return "the reattestation does not bind this lane-2 overlay and its runner"
-    if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA and rn["code_sha256"] != pr["code_sha256"]):
+    if not (rn["code_sha256"] != pr["code_sha256"] and (not loaded or rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA)):
         return "the reattestation binds different loaded runner code"
     if rt["delta"]["old_preflight_sha256"] != _sha(_canon({k: v for k, v in raw["preflight"].items() if k != "at"})):
         return "the reattestation binds a different preserved preflight"
@@ -7611,6 +7616,8 @@ def _recovery2_effective(cfg):
     rt = _recovery3_load(cfg)
     if rt is None:
         raise GateError("S0_RECOVERY2_REATTEST_REQUIRED: the loaded runner has no authenticated lane-2 reattestation")
+    if rt["runner"]["code_sha256"] != CODE_SHA:  # code loaded AFTER the reattested runner: only the D16 succession can carry it
+        return _d16s_effective(cfg, raw, raw_bytes)
     bad = _recovery3_binding_problem(raw, rt, raw_bytes)
     if bad:
         raise GateError(bad)
@@ -7668,13 +7675,14 @@ def _recovery3_successor(cfg):
 
 
 @_tr_memoized
-def _recovery3_runner_problem(cfg, ov, full):
-    """Effective-view counterpart of `_recovery2_runner_problem`: the loaded runner is C, bound to E -> C and its review evidence."""
+def _recovery3_runner_problem(cfg, ov, full, loaded=True):
+    """Effective-view counterpart of `_recovery2_runner_problem`: the loaded runner is C, bound to E -> C and its review evidence.
+    `loaded=False` re-authenticates the reattested runner as the PREVIOUS reviewed code (the D16 succession's `prior`)."""
     rn, rt = ov["runner"], ov["reattest"]
     try:
-        if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA):
+        if loaded and not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA):
             return "the reattestation binds different replacement runner code"
-        if _sha(_transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "runner.py")) != CODE_SHA:
+        if loaded and _sha(_transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "runner.py")) != CODE_SHA:
             return "on-disk runner.py differs from the loaded reattested code"
         if not full:
             return None
@@ -7686,7 +7694,7 @@ def _recovery3_runner_problem(cfg, ov, full):
             return bad
         if _transfer_changed(cfg, RC3_OWNER_COMMIT, c) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
             return "the reattested runner commit changes more than runner.py and test_runner.py"
-        if _sha(_transfer_blob(cfg, c, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, c, TRANSFER_TEST_FILE)) != rn["test_sha256"]:
+        if _sha(_transfer_blob(cfg, c, S0_RUNNER_FILE)) != rn["code_sha256"] or _sha(_transfer_blob(cfg, c, TRANSFER_TEST_FILE)) != rn["test_sha256"]:
             return "the committed reattested blobs differ from the recorded hashes"
         if _sha(_recovery3_diff(cfg, c)) != rn["diff_sha256"]:
             return "the reattested runner diff differs from the reviewed subject"
@@ -7767,6 +7775,433 @@ def recovery3_reattest_preflight(cfg, state, rlock_held=False, wlock_held=False)
         raise GateError(bad)
     return {"raw": raw, "raw_bytes": raw_bytes, "successor": successor, "preload": preload, "c_run": c_run, "preload_files": pfiles,
             "preflight": {**pf, "at": now_iso()}}
+
+
+# ------------------------------------------------ D16 fixed-task succession (OWNER-2026-10-28-mod004-d16-design-admission.md)
+# ONE additive, D16-only, single-use record outside acceptances/. After the one controlled reload from the reviewed C3 runner to the
+# final candidate C (E -> C, E = the published admission record), it binds the byte-preserved old transition / lane-2 / reattestation
+# files, the previous and the new reviewed runner/test blobs and canonical E-to-C diff, the exact-candidate Opus security evidence, the
+# provider-observed exact-SHA CI and the sole new process. It is NOT an S0 authority receipt: no S0 verifier reads it, and it is never
+# stored under acceptances/. `_recovery2_effective` is the single view every reader uses; with this code loaded and no valid record the
+# view raises and EVERY ingress is closed. Only `d16_succession_gate_reason` turns the record into D16 admission, and only for the
+# fixed design root, its <=2 exactly-bound corrections and their bound reviews.
+D16S_OWNER_PATH = "knowledge/00-Decisions/OWNER-2026-10-28-mod004-d16-design-admission.md"
+D16S_OWNER_SHA = "8b1e14d1e11cc5204e90501686eab8f66498b4844aac4d5eb61cd349db6aec0c"
+D16S_OWNER_COMMIT = "a59ba491e6a529ccd13c4aa8fbc6c6d4e8acbbe9"  # E: record-only, raw single-parent child of the pinned head
+D16S_OWNER_PARENT = "4a6cebceac2ac919b3b3168471a79662f1c92801"  # the authorized pre-change head
+D16S_OWNER_CI_RUN = None  # the record pins no run id: E's exact-SHA push CI is observed live and its run is recorded
+D16S_PRIOR_COMMIT = "bb64d708985ea216060c674c25bbceaf409603d8"  # the reattested (previous reviewed) runner commit
+D16S_PRIOR_CODE_SHA = "64b130dadb02ef8fe3af4a6ed25a69be7d07b5c2cea309906e7330a5f87fed0e"
+D16S_PRIOR_TEST_SHA = "a5e19517e8bb3c254feba8e22b98f415e524f1880ec750a12915e630a88c6028"
+D16S_OLD = {  # the immutable old chain this record may bind, byte for byte
+    "transition": {"transition_id": "5b89cb6ed650427f9ef1dd000f129604",
+                   "file_sha256": "4250d9a8d486bbbfe0124890f11a621503c90b9e772b2325922c1d90d7b42722",
+                   "checksum": "cd5a3d880511fcd6f9086ddc2612acff74707fed4e9451665029050f5f5b0dc1"},
+    "recovery2": {"recovery_id": "51fc0c9ed5ca40518b6f21cd76a4d40c",
+                  "file_sha256": "2be4a8a360fe162457cc66da7a7f58ef889b2d767277fe36552fcd371aba4d19",
+                  "checksum": "72e3bf99496c9b4527dc2739357bcc7fffacdd77d12393a6afc1e42d32c38c79",
+                  "immutable_sha256": "8c03183c569df38f4f21948b90b573b18f8cdc3d9949de45413c1f1baeb20ef9"},
+    "reattest": {"reattest_id": "a261964021374bda852a3877fff445db",
+                 "file_sha256": "370b7b12525f8bc652fc650c7dcd69461149747b5817473ba18858a78dcd49e4",
+                 "checksum": "3346bfc0c3684d88fe70e43a3fed1568bda965b05cd7daa9250fa3d42cc912ee"}}
+D16S_RECORD_NAME = "d16_fixed_task_succession.json"  # the runner home itself, never acceptances/
+D16S_BOOT_NAME = "d16_fixed_task_succession_boot.json"  # the one reload window: created exclusively by the first reloaded process
+D16S_CHECKPOINT = "checkpoints/20261029-d16-fixed-task-runner-admission"
+D16S_KIND = "d16-fixed-task-succession"
+_D16S_KEYS = {"schema", "kind", "succession_id", "created_at", "old", "owner", "prior", "runner", "review", "s0", "attested", "checksum"}
+_D16S_S0_KEYS = ("cert_sha256", "qa_sha256", "s0_receipt_sha256", "recovery_receipt_sha256", "runner_gate_sha256")
+
+
+def _d16s_path(cfg):
+    return Path(cfg.home) / D16S_RECORD_NAME
+
+
+def _d16s_first_boot(cfg, me=False):
+    """The succession's one reload window marker, or None. `me` also requires that THIS process created it."""
+    try:
+        d = json.loads(_read_bounded(Path(cfg.home) / D16S_BOOT_NAME, 1 << 16).decode())
+    except Exception:
+        return None
+    if not (isinstance(d, dict) and set(d) == _TR_BOOT_KEYS and d["schema"] == 1 and d["kind"] == "d16-fixed-task-succession-first-boot"
+            and _is_int(d["pid"]) and d["pid"] > 0 and isinstance(d["boot_nonce"], str) and d["boot_nonce"]
+            and d["code_sha256"] == CODE_SHA):
+        return None
+    return d if not me or (d["pid"] == os.getpid() and d["boot_nonce"] == _PROCESS_BOOT_NONCE) else None
+
+
+def _d16s_validate(rec):
+    """Strict schema and cross-field check of the succession record; raises GateError."""
+    if not (isinstance(rec, dict) and set(rec) == _D16S_KEYS):
+        raise GateError("D16 succession: unexpected or missing fields")
+    if not (rec["schema"] == 1 and rec["kind"] == D16S_KIND and _is_hex(rec["succession_id"], 32) and isinstance(rec["created_at"], str)):
+        raise GateError("D16 succession: header fields are invalid")
+    if rec["old"] != D16S_OLD:
+        raise GateError("D16 succession: the old transition/lane-2/reattestation binding is not the pinned chain")
+    ow = _tr_dict(rec["owner"], ("path", "sha256", "commit", "ci"), "owner")
+    if not (ow["path"] == D16S_OWNER_PATH and ow["sha256"] == D16S_OWNER_SHA and ow["commit"] == D16S_OWNER_COMMIT):
+        raise GateError("D16 succession: the admission record binding is invalid")
+    _recovery_ci_validate(ow["ci"], D16S_OWNER_COMMIT, D16S_OWNER_CI_RUN)
+    pr = _tr_dict(rec["prior"], ("commit", "code_sha256", "test_sha256"), "prior")
+    if not (pr == {"commit": D16S_PRIOR_COMMIT, "code_sha256": D16S_PRIOR_CODE_SHA, "test_sha256": D16S_PRIOR_TEST_SHA}):
+        raise GateError("D16 succession: the previous reviewed runner binding is invalid")
+    rn = _tr_dict(rec["runner"], ("code_sha256", "commit", "parent", "test_sha256", "diff_sha256", "preload_sha256",
+                                  "preload_output_sha256", "ci"), "runner")
+    if not (_is_hex(rn["code_sha256"], 64)
+            and rn["code_sha256"] not in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA, RC3_PRIOR_CODE_SHA, D16S_PRIOR_CODE_SHA)
+            and _is_hex(rn["commit"], 40) and rn["parent"] == D16S_OWNER_COMMIT
+            and all(_is_hex(rn[k], 64) for k in ("test_sha256", "diff_sha256", "preload_sha256", "preload_output_sha256"))):
+        raise GateError("D16 succession: the new runner binding is invalid")
+    _recovery_ci_validate(rn["ci"], rn["commit"])
+    rv = _tr_dict(rec["review"], ("dir", "preload_sha256", "preload_output_sha256"), "review")
+    if not (isinstance(rv["dir"], str) and rv["dir"].startswith(D16S_CHECKPOINT + "/") and not Path(rv["dir"]).is_absolute()
+            and ".." not in Path(rv["dir"]).parts and rv["preload_sha256"] == rn["preload_sha256"]
+            and rv["preload_output_sha256"] == rn["preload_output_sha256"]):
+        raise GateError("D16 succession: the security review evidence binding is invalid")
+    s0 = _tr_dict(rec["s0"], _D16S_S0_KEYS, "s0")
+    if not (all(_is_hex(s0[k], 64) for k in _D16S_S0_KEYS) and s0["runner_gate_sha256"] == D16S_PRIOR_CODE_SHA):
+        raise GateError("D16 succession: the S0 compatibility binding is invalid")
+    at = _tr_dict(rec["attested"], ("pid", "boot_nonce", "code_sha256", "at", "lstart", "command"), "attested")
+    if not (_is_int(at["pid"]) and at["pid"] > 0 and isinstance(at["boot_nonce"], str) and at["boot_nonce"]
+            and at["code_sha256"] == rn["code_sha256"] and all(isinstance(at[k], str) and at[k] for k in ("at", "lstart", "command"))):
+        raise GateError("D16 succession: the process attestation is invalid")
+    if rec["checksum"] != _transition_checksum(rec):
+        raise GateError("D16 succession: checksum mismatch (corrupt or tampered)")
+    return rec
+
+
+def _d16s_read(path, validate, label):
+    """(validated record, the exact bytes it was parsed from); GateError when missing, unreadable or invalid."""
+    if not os.path.lexists(path):
+        raise GateError(f"{label} is missing")
+    try:
+        data = _read_bounded(path, 1 << 20)
+        rec = json.loads(data.decode())
+    except GateError:
+        raise
+    except Exception:
+        raise GateError(f"{label} is unreadable or not valid JSON")
+    return validate(rec), data
+
+
+def _d16s_load(cfg):
+    """None when no succession record exists; the validated record otherwise. Any problem raises GateError."""
+    if not os.path.lexists(_d16s_path(cfg)):
+        return None
+    return _d16s_read(_d16s_path(cfg), _d16s_validate, "D16 succession record")[0]
+
+
+def _d16s_write(cfg, rec):
+    """The only writer of the succession: validated, checksummed, exclusively created (single use) and fsynced."""
+    rec = {k: v for k, v in rec.items() if k != "checksum"}
+    rec["checksum"] = _transition_checksum(rec)
+    _d16s_validate(rec)
+    _atomic_create_exclusive(_d16s_path(cfg), json.dumps(rec, sort_keys=True, indent=1).encode())
+    return rec
+
+
+def _d16s_old_live(rec, rec_b, raw, raw_b, rt, rt_b):
+    return {"transition": {"transition_id": rec["transition_id"], "file_sha256": _sha(rec_b), "checksum": rec["checksum"]},
+            "recovery2": {"recovery_id": raw["recovery_id"], "file_sha256": _sha(raw_b), "checksum": raw["checksum"],
+                          "immutable_sha256": _recovery3_immutable_sha(raw)},
+            "reattest": {"reattest_id": rt["reattest_id"], "file_sha256": _sha(rt_b), "checksum": rt["checksum"]}}
+
+
+def _d16s_diff(cfg, commit):
+    """THE canonical E-to-C diff bytes (the one command every review, preflight, admission and restart uses)."""
+    p = _tgit(cfg, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+              D16S_OWNER_COMMIT, commit, "--", S0_RUNNER_FILE, TRANSFER_TEST_FILE)
+    if p.returncode != 0:
+        raise GateError("cannot compute the D16 succession runner diff")
+    return p.stdout
+
+
+def _d16s_lineage_problem(cfg):
+    """Authenticated chain pinned head -> E (raw single-parent objects): E changes exactly its admission record, which is the pinned
+    published record, and carries exactly the previous reviewed runner and test blobs."""
+    if _transfer_commit(cfg, D16S_OWNER_COMMIT)[1] != [D16S_OWNER_PARENT]:
+        return "the admission-record commit E is not a direct, single-parent child of the pinned head"
+    if _transfer_changed(cfg, D16S_OWNER_PARENT, D16S_OWNER_COMMIT) != [D16S_OWNER_PATH]:
+        return "the admission-record commit E must change exactly its owner record"
+    if _sha(_transfer_blob(cfg, D16S_OWNER_COMMIT, D16S_OWNER_PATH)) != D16S_OWNER_SHA:
+        return "the admission record is not the pinned published record"
+    if (_sha(_transfer_blob(cfg, D16S_OWNER_COMMIT, S0_RUNNER_FILE)) != D16S_PRIOR_CODE_SHA
+            or _sha(_transfer_blob(cfg, D16S_OWNER_COMMIT, TRANSFER_TEST_FILE)) != D16S_PRIOR_TEST_SHA):
+        return "E does not carry the previous reviewed runner and test blobs"
+    return None
+
+
+@_tr_memoized
+def _d16s_successor(cfg):
+    """Deterministic local binding of the loaded runner C to E -> C (direct, single-parent raw Git objects). The commit is derived
+    from HEAD (it cannot be a constant inside itself). The two S0 documents may be dirty; nothing else may be."""
+    runner_b = _transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "D16 succession runner.py")
+    test_b = _transfer_read(Path(cfg.repo) / TRANSFER_TEST_FILE, "D16 succession test_runner.py")
+    if not (_sha(runner_b) == CODE_SHA == _LOADED_CODE_SHA):
+        raise GateError("on-disk runner.py differs from the loaded code (stale disk)")
+    _transfer_no_replacements(cfg)
+    head = _tgit(cfg, "rev-parse", "--verify", "HEAD")
+    head = head.stdout.decode().strip() if head.returncode == 0 else ""
+    if _transfer_commit(cfg, head)[1] != [D16S_OWNER_COMMIT]:
+        raise GateError("the runner commit C is not a direct, single-parent child of the admission-record commit E")
+    bad = _d16s_lineage_problem(cfg)
+    if bad:
+        raise GateError(bad)
+    if _transfer_blob(cfg, head, D16S_OWNER_PATH) != _transfer_blob(cfg, D16S_OWNER_COMMIT, D16S_OWNER_PATH):
+        raise GateError("the admission record changed in C")
+    if _sha(_transfer_blob(cfg, head, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, head, TRANSFER_TEST_FILE)) != _sha(test_b):
+        raise GateError("the committed runner or test blob differs from the on-disk file")
+    if _transfer_changed(cfg, D16S_OWNER_COMMIT, head) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+        raise GateError("the runner commit must change exactly runner.py and test_runner.py")
+    return {"commit": head, "parent": D16S_OWNER_COMMIT, "code_sha256": CODE_SHA, "test_sha256": _sha(test_b),
+            "diff_sha256": _sha(_d16s_diff(cfg, head))}
+
+
+@_tr_memoized
+def _d16s_runner_problem(cfg, ov, full):
+    """Effective-view counterpart of `_recovery3_runner_problem`: the loaded runner is C, bound to E -> C and its security review,
+    and the previous reviewed runner is still authentically what the reattestation bound."""
+    rn, rt, succ = ov["runner"], ov["reattest"], ov["succession"]
+    try:
+        if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA):
+            return "the D16 succession binds different loaded runner code"
+        if _sha(_transfer_read(Path(cfg.repo) / S0_RUNNER_FILE, "runner.py")) != CODE_SHA:
+            return "on-disk runner.py differs from the loaded succession code"
+        if not full:
+            return None
+        bad = _recovery3_runner_problem(cfg, {"runner": rt["runner"], "reattest": rt}, True, loaded=False) or _d16s_lineage_problem(cfg)
+        if bad:
+            return f"the previous reviewed runner chain is not authenticated: {bad}"
+        c = rn["commit"]
+        if _transfer_commit(cfg, c)[1] != [D16S_OWNER_COMMIT]:
+            return "the succession runner commit is not a direct child of the admission-record commit"
+        if _transfer_changed(cfg, D16S_OWNER_COMMIT, c) != sorted([S0_RUNNER_FILE, TRANSFER_TEST_FILE]):
+            return "the succession runner commit changes more than runner.py and test_runner.py"
+        if _sha(_transfer_blob(cfg, c, S0_RUNNER_FILE)) != CODE_SHA or _sha(_transfer_blob(cfg, c, TRANSFER_TEST_FILE)) != rn["test_sha256"]:
+            return "the committed succession blobs differ from the recorded hashes"
+        if _sha(_d16s_diff(cfg, c)) != rn["diff_sha256"]:
+            return "the succession runner diff differs from the reviewed subject"
+        if _transfer_blob(cfg, c, D16S_OWNER_PATH) != _transfer_blob(cfg, D16S_OWNER_COMMIT, D16S_OWNER_PATH):
+            return "the admission record changed"
+        if not _is_ancestor(cfg, c):
+            return "the succession runner commit is not an ancestor of HEAD"
+        rd = Path(cfg.home) / succ["review"]["dir"]
+        if rd.is_symlink() or not rd.is_dir():
+            return "the succession security-review evidence directory is missing"
+        bind = _transfer_preload_bind(_read_bounded(rd / "preload.json", 1 << 20), _read_bounded(rd / "preload.out", 8 * 1024 * 1024),
+                                      {k: rn[k] for k in ("commit", "code_sha256", "test_sha256", "diff_sha256")})
+        if bind != {"preload_sha256": rn["preload_sha256"], "preload_output_sha256": rn["preload_output_sha256"]}:
+            return "the preserved security review differs from the succession binding"
+    except GateError as e:
+        return str(e)
+    return None
+
+
+def _d16s_binding_problem(cfg, rec, rec_b, raw, raw_b, rt, rt_b, succ):
+    """The succession binds THESE old bytes (the pinned chain, unchanged since), the previous reviewed runner and THIS loaded process
+    code, nothing else; cheap and pure (re-run by every reader)."""
+    if _d16s_old_live(rec, rec_b, raw, raw_b, rt, rt_b) != D16S_OLD or succ["old"] != D16S_OLD:
+        return "the old transition, lane-2 or reattestation bytes or checksums differ from the pinned and attested ones"
+    if raw["stage"] != "ACTIVE":
+        return "the lane-2 recovery is not ACTIVE"
+    bad = _recovery3_binding_problem(raw, rt, raw_b, loaded=False)
+    if bad:
+        return bad
+    prior, rn = rt["runner"], succ["runner"]
+    if not (prior["commit"] == succ["prior"]["commit"] == D16S_PRIOR_COMMIT and prior["code_sha256"] == succ["prior"]["code_sha256"] == D16S_PRIOR_CODE_SHA
+            and prior["test_sha256"] == succ["prior"]["test_sha256"] == D16S_PRIOR_TEST_SHA):
+        return "the succession does not bind the previous reviewed runner the reattestation bound"
+    if not (rn["code_sha256"] == CODE_SHA == _LOADED_CODE_SHA and CODE_SHA != D16S_PRIOR_CODE_SHA and succ["attested"]["code_sha256"] == CODE_SHA):
+        return "the succession binds different loaded runner code"
+    for e in _qled_events(cfg):
+        if e.get("kind") == "d16-succession-created" and e.get("succession_id") != succ["succession_id"]:
+            return "the succession record differs from the one the audit trail created (replaced or replayed)"
+    return None
+
+
+def _d16s_effective(cfg, raw, raw_bytes):
+    """The effective lane-2 view for code loaded after the reattested runner: the authenticated succession's runner and process, over
+    the byte-preserved old chain. Anything missing, unsound, stale or replayed raises (ingress closed)."""
+    if raw["stage"] != "ACTIVE":
+        raise GateError("D16_SUCCESSION_CLOSED: the lane-2 recovery is not ACTIVE")
+    rec, rec_b = _d16s_read(_transition_path(cfg), _transition_validate, "transition record")
+    rt, rt_b = _d16s_read(_recovery3_path(cfg), _recovery3_validate, "lane-2 reattestation")
+    succ = _d16s_load(cfg)
+    if succ is None:
+        raise GateError("S0_D16_SUCCESSION_REQUIRED: the loaded runner has no authenticated D16 succession record")
+    bad = _d16s_binding_problem(cfg, rec, rec_b, raw, raw_bytes, rt, rt_b, succ)
+    if bad:
+        raise GateError(bad)
+    return {**raw, "runner": succ["runner"], "preflight": rt["preflight"], "attested": succ["attested"],
+            "review_dir": succ["review"]["dir"], "reattest": rt, "succession": succ}
+
+
+def _d16s_s0_compat(cfg, tasks, ov, rt):
+    """The D16 COMPATIBILITY precondition (never S0 product acceptance): the unchanged certificate and QA document bytes and the
+    current fresh S0 receipt bytes are what lane 2 verified, and the established S0 predicate still holds with the old certificate-to-
+    runner-hash equality replaced by the previous reviewed runner (the ONLY place that equality is replaced). Returns the digest the
+    succession attests."""
+    cert_p, qa_p = S0_DOC_PATHS
+    v = ov["verified"]
+    docs = {p: _path_hash(Path(cfg.repo) / p) for p in S0_DOC_PATHS}
+    if not (isinstance(v, dict) and v.get("docs") == docs and all(
+            _s0_git_blob_sha(cfg, "HEAD", p, "D16 succession") == docs[p] for p in S0_DOC_PATHS)):
+        raise GateError("the S0 certificate or QA document differs from the bytes lane 2 verified and HEAD publishes")
+    rb = _read_bounded(Path(cfg.home) / "acceptances" / f"{RC2_RECEIPT}.json", RECEIPT_MAX_BYTES)
+    s0b = _read_bounded(Path(cfg.home) / "acceptances" / f"{RC2_S0_RECEIPT}.json", RECEIPT_MAX_BYTES)
+    r = _s0_json(rb, "lane-2 receipt")
+    if not (_sha(rb) == v["receipt_sha256"] and r.get("s0_receipt") == {"name": RC2_S0_RECEIPT, "sha256": _sha(s0b)}
+            and r.get("runner_sha256") == D16S_PRIOR_CODE_SHA and r.get("documents") == docs and r.get("commit") == v["commit"]):
+        raise GateError("the lane-2 receipt or the fresh S0 receipt bytes differ from what lane 2 verified")
+    manifest = json.loads((Path(cfg.home) / ov["pre_image"]["dir"] / "manifest.json").read_text())
+    now = _transfer_receipts(cfg)
+    if any(now.get(n) != h for n, h in manifest["receipts"].items()) or any(
+            now.get(f"{n}.json") != manifest["receipts"].get(f"{n}.json") for n in (S0_RECEIPT, S0_QA_RECEIPT, RECOVERY_RECEIPT, RECOVERY_S0_RECEIPT)):
+        raise GateError("a historical S0 or lane receipt changed since the lane-2 pre-image")
+    prior_view = {**ov, "runner": rt["runner"], "review_dir": rt["review"]["dir"]}
+    verify_s0_authority(cfg, tasks, receipt=RC2_S0_RECEIPT, runner_sha=D16S_PRIOR_CODE_SHA, committed_only=("adr",),  # D16 rewrites the ADR itself
+                        runner_check=lambda e: _recovery2_runner_subject(cfg, prior_view, e, D16S_PRIOR_CODE_SHA))
+    return {"cert_sha256": docs[cert_p], "qa_sha256": docs[qa_p], "s0_receipt_sha256": _sha(s0b), "recovery_receipt_sha256": _sha(rb),
+            "runner_gate_sha256": D16S_PRIOR_CODE_SHA}
+
+
+def _d16s_ci_check(cfg, succ=None):
+    """Provider-observed exact-SHA CI of E and C, observed again now on the very runs the succession recorded."""
+    succ = succ or (_recovery2_effective(cfg) or {}).get("succession")
+    if not succ:
+        raise GateError("D16 dual: the loaded runner has no authenticated D16 succession")
+    _observe_ci_for_commit(cfg, D16S_OWNER_COMMIT, run_id=succ["owner"]["ci"]["run_id"], opener=_ci_opener)
+    _observe_ci_for_commit(cfg, succ["runner"]["commit"], run_id=succ["runner"]["ci"]["run_id"], opener=_ci_opener)
+
+
+def d16_succession_preflight(cfg, state, rlock_held=False, wlock_held=False):
+    """Deterministic local preflight for minting the succession. Raises GateError on anything but the exact pinned situation: the pinned
+    old chain unchanged with lane 2 ACTIVE, the previous runner gone, nothing queued/running, no other runner, no handoff, no held
+    writer lock, S0 compatibility holding, and a committed E -> C with the externally verified exact-candidate Opus security review.
+    Provider CI is observed by the caller; this never consults the network and writes nothing."""
+    rec, rec_b = _d16s_read(_transition_path(cfg), _transition_validate, "transition record")
+    raw, raw_b = _recovery2_load(cfg, with_bytes=True)
+    rt, rt_b = _d16s_read(_recovery3_path(cfg), _recovery3_validate, "lane-2 reattestation")
+    if raw is None:
+        raise GateError("the lane-2 recovery record is missing")
+    if CODE_SHA != _LOADED_CODE_SHA or CODE_SHA in (RECOVERY_ORIG_CODE_SHA, RC2_PRIOR_CODE_SHA, RC3_PRIOR_CODE_SHA, D16S_PRIOR_CODE_SHA) \
+            or rt["runner"]["code_sha256"] == CODE_SHA:
+        raise GateError("this runner is not newer reviewed code than the reattested one")
+    if os.path.lexists(_d16s_path(cfg)) or any(e.get("kind") == "d16-succession-created" for e in _qled_events(cfg)):
+        raise GateError("a D16 succession already exists or was minted; it is never minted twice")
+    if _d16s_old_live(rec, rec_b, raw, raw_b, rt, rt_b) != D16S_OLD:
+        raise GateError("the old transition, lane-2 or reattestation bytes or checksums differ from the pinned chain")
+    if raw["stage"] != "ACTIVE":
+        raise GateError("the lane-2 recovery is not ACTIVE")
+    bad = (_recovery3_binding_problem(raw, rt, raw_b, loaded=False) or _recovery_orig_problem(cfg, rec, raw)
+           or _recovery2_prior_problem(cfg, raw)
+           or _recovery3_runner_problem(cfg, {"runner": rt["runner"], "reattest": rt}, True, loaded=False)
+           or _transfer_pre_image_problem(cfg, rec, True) or _recovery_pre_image_problem(cfg, raw, True)
+           or _transition_replay_problem(cfg, rec) or _recovery2_replay_problem(cfg, raw))
+    if bad:
+        raise GateError(bad)
+    att = rt["attested"]
+    if (att["pid"], att["boot_nonce"]) == (os.getpid(), _PROCESS_BOOT_NONCE) or (att["pid"] != os.getpid() and pid_alive(att["pid"])):
+        raise GateError("the previous reviewed runner is still alive or is this process")
+    tasks = (state or {}).get("tasks")
+    if not isinstance(tasks, dict):
+        raise GateError("no task state")
+    h = (state or {}).get("handoff") or {}
+    if h.get("request") or h.get("quarantine"):
+        raise GateError("an orchestrator handoff or gateway turn is open")
+    if any(isinstance(x, dict) and (x.get("status") == "RUNNING" or x.get("child") or x.get("stage") == "verify_pending") for x in tasks.values()):
+        raise GateError("a worker task is running or a verification is pending")
+    if _other_runner_pids(cfg):
+        raise GateError("another runner process exists")
+    if not rlock_held and FileLock.probe(Path(cfg.home) / "locks" / "runner.lock") == "free":
+        raise GateError("the sole runner lock is not held by the reloaded runner")
+    if not wlock_held and FileLock.probe(writer_lock_path(cfg.home, cfg.repo)) != "free":
+        raise GateError("the repository writer lock is held")
+    successor = _d16s_successor(cfg)
+    bad = _recovery_tree_problem(cfg, {})  # the published pair and the candidate are committed: nothing may be dirty, staged or untracked
+    if bad:
+        raise GateError(bad)
+    s0 = _d16s_s0_compat(cfg, tasks, raw, rt)
+    preload, c_run, pfiles = _recovery_preload(cfg, successor, D16S_CHECKPOINT)
+    return {"raw": raw, "rt": rt, "successor": successor, "preload": preload, "c_run": c_run, "preload_files": pfiles, "s0": s0}
+
+
+def _d16s_sole_runner_problem(cfg, ov, cli):
+    """The runner's own path is strict (any other runner-looking process denies); only the owner CLI may exempt the ONE process the
+    kernel shows owning the runner lock with the attested identity, and no visible runner is never "no other runner"."""
+    others = _other_runner_pids(cfg)
+    if cli:
+        why = _cli_sole_runner_problem(cfg, ov, others)
+        return f"the owner CLI cannot authenticate the sole runner: {why}" if why else None
+    return "another runner process exists" if others else None
+
+
+def _d16s_write_problem(tasks, t):
+    """None only for the fixed ADR-only owner-CLI root, or an ADR-only owner-CLI correction linked to it; never an alias."""
+    if t.get("id") == D16_DUAL_ID:
+        return d16_successor_shape_problem(t, D16_DUAL_ID)
+    if not t.get("remediation_of"):
+        return "only the fixed design root or a correction linked to it"
+    return d16_successor_shape_problem({**t, "remediation_of": None}, t.get("id"))
+
+
+def _d16s_task_problem(cfg, t, tasks):
+    """None only for the fixed D16 design root, its corrections and their bound code-reviews; the reasons are fail-closed."""
+    if t.get("id") in (D16_SUCCESSOR_ID, D16_ARCH_ID, D16_F34_WRITE, D16_F34_REVIEW, S0_DUAL_REBIND_ID, RECOVERY_ID, RC2_ID, TRANSFER_REVIEW_ID):
+        return "a reserved historical task id is not the fixed D16 design root"
+    if t.get("role") == "implement":
+        return _d16s_write_problem(tasks, t)
+    if t.get("role") != "code-review":
+        return "only the implement design write and its code-review are admitted"
+    parent = tasks.get((t.get("review_of") or {}).get("task_id"))
+    if not (t.get("module") == "MOD-004" and t.get("source") is None and isinstance(parent, dict) and parent.get("status") == "DONE"
+            and parent.get("role") == "implement" and d16_dual_lineage(tasks, parent) and not any(
+                t.get(k) for k in ("remediation_of", "review_retry_of", "accounting_recovery_of", "expected_changes", "plan_phase", "doc_base"))):
+        return "a review must be an owner-CLI code-review bound to a DONE D16 design write"
+    problem = _d16s_task_problem(cfg, parent, tasks) if parent.get("role") == "implement" else "the reviewed task is not a design write"
+    if problem:
+        return f"the reviewed write is not admissible: {problem}"
+    bound = bound_review_problems(cfg, tasks, t)
+    return f"the review binding is not current: {bound[0]}" if bound else None
+
+
+def d16_succession_gate_reason(cfg, t, tasks, cli=False):
+    """None only when the authenticated D16 succession admits THIS D16 task at this moment; else a D16_DUAL_DENIED reason. ACTIVE alone is
+    never admission. Evaluated at enqueue, at dispatch and for every bound review (local authentication; provider CI is re-observed by
+    the verifier and the review gate)."""
+    def deny(why):
+        return f"D16_DUAL_DENIED {t.get('id')}: {why}"
+    try:
+        problem = _d16s_task_problem(cfg, t, tasks)
+        if problem:
+            return deny(problem)
+        mode, why = _transition_mode(cfg)
+        if mode != "ACTIVE":
+            return deny(f"the lane-2 recovery is not ACTIVE under the loaded runner ({why or mode})")
+        ov = _recovery2_effective(cfg)
+        if not (ov and ov.get("succession") and ov["stage"] == "ACTIVE"):
+            return deny("ACTIVE alone is not D16 admission: the loaded runner has no authenticated D16 succession")
+        problem = _d16s_sole_runner_problem(cfg, ov, cli)
+        if problem:
+            return deny(problem)
+    except (GateError, OSError) as e:
+        return deny(f"the D16 succession cannot be verified: {str(e)[:200]}")
+    return None
+
+
+def _d16s_admission(cfg, tasks):
+    """verify_d16_dual's succession predicate (replaces the dead quarantine/rebind prerequisites): the authenticated succession, live
+    exact-SHA CI, the historical D16 owner decisions, the D16-only S0 compatibility and the untouched negative S0 product history."""
+    ov = _recovery2_effective(cfg)
+    succ = (ov or {}).get("succession")
+    if not succ:
+        raise GateError("D16 dual: ACTIVE alone is not admission; the loaded runner has no authenticated D16 succession")
+    _d16s_ci_check(cfg, succ)
+    verify_d16_published_owners(cfg, D16_BOOT_COMMIT)
+    if _d16s_s0_compat(cfg, tasks, ov, ov["reattest"]) != succ["s0"]:
+        raise GateError("D16 dual: the current S0 document or receipt bytes differ from the attested compatibility")
+    if any(isinstance(x, dict) and x.get("role") in OPUS_ROLES and (x.get("evidence") or {}).get("review_outcome") == "APPROVED"
+           and s0_marked(tasks.get((x.get("review_of") or {}).get("task_id")) or {}) for x in tasks.values()):
+        raise GateError("D16 dual: an S0 product write review is recorded as APPROVED; historical negatives may not be relabeled")
 
 
 # ------------------------------------------------ S0 dual rebind lane (2026-10-26)
@@ -7928,51 +8363,8 @@ def verify_d16_published_owners(cfg, rebind_owner_commit):
         _observe_ci_for_commit(cfg, commit, run_id=run_id)
 
 
-def verify_d16_dual(cfg, tasks, t):
-    """Read-only gate for the dual-version D16 admission root and its corrections.
-    Returns frozenset of set-aside historical ids, or raises GateError.
-    Verifies the full S0/D16 predicate at both enqueue and dispatch."""
-    root = t if t.get("id") == D16_DUAL_ID else tasks.get(D16_DUAL_ID)
-    if not isinstance(root, dict) or not d16_dual_lineage(tasks, t):
-        raise GateError("D16 dual: task is not linked to the fixed design root")
-    problem = d16_successor_shape_problem(root, D16_DUAL_ID)
-    if problem:
-        raise GateError(problem)
-    # Single-use root: any recorded task with the fixed id other than t consumed the entitlement
-    if any(isinstance(x, dict) and x.get("id") == D16_DUAL_ID and x is not root for x in tasks.values()):
-        raise GateError("the single-use dual-version entitlement is already consumed")
-    if t is not root:
-        # A correction is never a second root. Every predecessor must be a DONE,
-        # exactly reviewed rejection in this same lineage, with no third cycle.
-        cur, depth, seen = t, 0, set()
-        while cur is not root:
-            depth += 1
-            if depth > D16_DUAL_MAX_CORRECTIONS or cur.get("id") in seen:
-                raise GateError("D16 dual: correction limit or ancestry cycle")
-            seen.add(cur.get("id"))
-            parent = tasks.get(cur.get("remediation_of"))
-            if not (isinstance(parent, dict) and parent.get("module") == "MOD-004"
-                    and parent.get("role") == "implement" and parent.get("status") == "DONE"):
-                raise GateError("D16 dual: correction parent is not a DONE design write")
-            if depth == 1 and not _hashes_current(cfg, (parent.get("evidence") or {}).get("changed")):
-                raise GateError("D16 dual: correction parent no longer matches its rejected ADR bytes")
-            reviews = [rv for rv in review_attempts(tasks, parent["id"])
-                       if rv.get("status") == "BLOCKED"
-                       and rv.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
-                       and (rv.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
-                       and _bound_review_ok(parent, rv)]
-            if not (len(reviews) == 1 and reviews[0]["evidence"]["review_outcome"] == "CHANGES_REQUESTED"):
-                raise GateError("D16 dual: correction parent lacks one exact-bound CHANGES_REQUESTED review")
-            cur = parent
-    # On-disk hash: runner.py identity must not have drifted since load
-    try:
-        disk_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    except OSError:
-        raise GateError("D16 dual: cannot read on-disk runner.py for integrity check")
-    if disk_sha != CODE_SHA:
-        raise GateError(f"D16 dual: on-disk runner.py hash differs from the loaded code hash (drift detected)")
-    # Quarantine predicate: must be actively quarantined with a live runner and consumed rebind
-    qs, qled_or_reason = quarantine_state(cfg)
+def _d16_legacy_quarantine_problem(qs, qled_or_reason):
+    """The pre-recovery predicate (verbatim): quarantined with a live runner and a consumed rebind lane, else GateError."""
     if qs == _QS_NONE:
         raise GateError("D16 dual: quarantine has not been entered for this reload")
     if qs == _QS_DENY:
@@ -7982,26 +8374,10 @@ def verify_d16_dual(cfg, tasks, t):
     qled = qled_or_reason  # _QS_ENTERED_LIVE
     if not qled.get("dual_rebind_consumed"):
         raise GateError("D16 dual: rebind lane not yet consumed; complete rebind before D16 admission")
-    # Full F34-exhausted history: the four prior chains must be intact
-    old_chain = _d16_exhausted_chain(tasks)
-    succ_chain = _d16_exhausted_chain(tasks, D16_SUCCESSOR_ID, D16_SUCC_TERMINAL, D16_SUCC_TERMINAL_REVIEW)
-    # The generic exhausted-chain verifier expects its named tip to be terminal.
-    # F34 is the separately authorized fourth child of that tip, verified below.
-    pre_f34 = {k: v for k, v in tasks.items() if k not in (D16_F34_WRITE, D16_F34_REVIEW)}
-    arch_chain = _d16_exhausted_chain(pre_f34, D16_F34_ROOT, D16_F34_TIP,
-                                      "mod004-d16-assurance-architecture-remed3-opus-review-20261025")
-    # F34 write is DONE; its independent CHANGES_REQUESTED review is durably BLOCKED.
-    f34 = tasks.get(D16_F34_WRITE)
-    if not (isinstance(f34, dict) and f34.get("status") == "DONE"
-            and f34.get("remediation_root") == D16_F34_ROOT and f34.get("remediation_of") == D16_F34_TIP):
-        raise GateError("D16 dual: the F34 final write is not DONE or its ancestry is wrong")
-    f34_review = tasks.get(D16_F34_REVIEW)
-    if not (isinstance(f34_review, dict) and f34_review.get("status") == "BLOCKED"
-            and f34_review.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
-            and (f34_review.get("evidence") or {}).get("review_outcome") == "CHANGES_REQUESTED"
-            and (f34_review.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
-            and _bound_review_ok(f34, f34_review)):
-        raise GateError("D16 dual: the F34 review is not the bound BLOCKED CHANGES_REQUESTED verdict")
+
+
+def _d16_legacy_rebind_problem(cfg, tasks):
+    """The pre-recovery rebind evidence predicate (verbatim, moved): the consumed S0 rebind write, its review and the rebind receipts."""
     # Dual rebind write must be DONE, one attempt, no violations, changes exactly the two S0 docs
     rebind = tasks.get(S0_DUAL_REBIND_ID)
     if not (isinstance(rebind, dict) and rebind.get("id") == S0_DUAL_REBIND_ID
@@ -8103,6 +8479,80 @@ def verify_d16_dual(cfg, tasks, t):
         raise GateError("D16 dual: offline S0 certificate subject is not the exact rebind subject")
     _observe_ci_for_commit(cfg, sub["s0_cert"]["commit"],
                            run_id=offline_sub["eligibility"]["ci"]["run_id"])
+
+
+def verify_d16_dual(cfg, tasks, t):
+    """Read-only gate for the dual-version D16 admission root and its corrections.
+    Returns frozenset of set-aside historical ids, or raises GateError.
+    Verifies the full S0/D16 predicate at both enqueue and dispatch."""
+    root = t if t.get("id") == D16_DUAL_ID else tasks.get(D16_DUAL_ID)
+    if not isinstance(root, dict) or not d16_dual_lineage(tasks, t):
+        raise GateError("D16 dual: task is not linked to the fixed design root")
+    problem = d16_successor_shape_problem(root, D16_DUAL_ID)
+    if problem:
+        raise GateError(problem)
+    # Single-use root: any recorded task with the fixed id other than t consumed the entitlement
+    if any(isinstance(x, dict) and x.get("id") == D16_DUAL_ID and x is not root for x in tasks.values()):
+        raise GateError("the single-use dual-version entitlement is already consumed")
+    if t is not root:
+        # A correction is never a second root. Every predecessor must be a DONE,
+        # exactly reviewed rejection in this same lineage, with no third cycle.
+        cur, depth, seen = t, 0, set()
+        while cur is not root:
+            depth += 1
+            if depth > D16_DUAL_MAX_CORRECTIONS or cur.get("id") in seen:
+                raise GateError("D16 dual: correction limit or ancestry cycle")
+            seen.add(cur.get("id"))
+            parent = tasks.get(cur.get("remediation_of"))
+            if not (isinstance(parent, dict) and parent.get("module") == "MOD-004"
+                    and parent.get("role") == "implement" and parent.get("status") == "DONE"):
+                raise GateError("D16 dual: correction parent is not a DONE design write")
+            if depth == 1 and not _hashes_current(cfg, (parent.get("evidence") or {}).get("changed")):
+                raise GateError("D16 dual: correction parent no longer matches its rejected ADR bytes")
+            reviews = [rv for rv in review_attempts(tasks, parent["id"])
+                       if rv.get("status") == "BLOCKED"
+                       and rv.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
+                       and (rv.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
+                       and _bound_review_ok(parent, rv)]
+            if not (len(reviews) == 1 and reviews[0]["evidence"]["review_outcome"] == "CHANGES_REQUESTED"):
+                raise GateError("D16 dual: correction parent lacks one exact-bound CHANGES_REQUESTED review")
+            cur = parent
+    # On-disk hash: runner.py identity must not have drifted since load
+    try:
+        disk_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    except OSError:
+        raise GateError("D16 dual: cannot read on-disk runner.py for integrity check")
+    if disk_sha != CODE_SHA:
+        raise GateError(f"D16 dual: on-disk runner.py hash differs from the loaded code hash (drift detected)")
+    # Quarantine predicate. Under authenticated recovery2 ACTIVE only the D16 succession admits (the old quarantine and rebind-slot
+    # prerequisites cannot be true there); any other state keeps the legacy predicate.
+    qs, qled_or_reason = quarantine_state(cfg)
+    if qs == _QS_ACTIVE:
+        _d16s_admission(cfg, tasks)
+    else:
+        _d16_legacy_quarantine_problem(qs, qled_or_reason)
+    # Full F34-exhausted history: the four prior chains must be intact
+    old_chain = _d16_exhausted_chain(tasks)
+    succ_chain = _d16_exhausted_chain(tasks, D16_SUCCESSOR_ID, D16_SUCC_TERMINAL, D16_SUCC_TERMINAL_REVIEW)
+    # The generic exhausted-chain verifier expects its named tip to be terminal.
+    # F34 is the separately authorized fourth child of that tip, verified below.
+    pre_f34 = {k: v for k, v in tasks.items() if k not in (D16_F34_WRITE, D16_F34_REVIEW)}
+    arch_chain = _d16_exhausted_chain(pre_f34, D16_F34_ROOT, D16_F34_TIP,
+                                      "mod004-d16-assurance-architecture-remed3-opus-review-20261025")
+    # F34 write is DONE; its independent CHANGES_REQUESTED review is durably BLOCKED.
+    f34 = tasks.get(D16_F34_WRITE)
+    if not (isinstance(f34, dict) and f34.get("status") == "DONE"
+            and f34.get("remediation_root") == D16_F34_ROOT and f34.get("remediation_of") == D16_F34_TIP):
+        raise GateError("D16 dual: the F34 final write is not DONE or its ancestry is wrong")
+    f34_review = tasks.get(D16_F34_REVIEW)
+    if not (isinstance(f34_review, dict) and f34_review.get("status") == "BLOCKED"
+            and f34_review.get("blocked_reason") == "REVIEW_CHANGES_REQUESTED"
+            and (f34_review.get("evidence") or {}).get("review_outcome") == "CHANGES_REQUESTED"
+            and (f34_review.get("evidence") or {}).get("violations") == ["REVIEW_CHANGES_REQUESTED"]
+            and _bound_review_ok(f34, f34_review)):
+        raise GateError("D16 dual: the F34 review is not the bound BLOCKED CHANGES_REQUESTED verdict")
+    if qs != _QS_ACTIVE:
+        _d16_legacy_rebind_problem(cfg, tasks)
     # ADR must not be a rejected candidate from any prior chain
     # The root alone must begin from the published ADR rather than a rejected old candidate.
     # Only the root begins from the published ADR. An authorized correction
@@ -8302,7 +8752,7 @@ def bound_review_problems(cfg, tasks, t):
 def gate_reason(cfg, t, tasks, cli=False):
     """None when the task may run, else an explicit reason. Fails closed on any error."""
     try:
-        transfer = _transition_gate_reason(cfg, t, tasks)  # quarantine-transfer lineage: D16/S0 product denied, stage holds
+        transfer = _transition_gate_reason(cfg, t, tasks, cli)  # quarantine-transfer lineage: S0 product denied, D16 only by succession
         if transfer:
             return transfer
         if t.get("id") == TRANSFER_REVIEW_ID and _transfer_lineage_active(cfg):
@@ -8318,7 +8768,9 @@ def gate_reason(cfg, t, tasks, cli=False):
             parent = tasks.get((t.get("review_of") or {}).get("task_id"))
             if isinstance(parent, dict) and (s0_dual_rebind_marked(parent) or d16_dual_lineage(tasks, parent)):
                 qs, detail = quarantine_state(cfg)
-                if qs != _QS_ENTERED_LIVE:
+                if qs == _QS_ACTIVE and d16_dual_lineage(tasks, parent) and not s0_dual_rebind_marked(parent):
+                    _d16s_ci_check(cfg)  # the succession admitted this review above; its exact-SHA CI is re-observed here
+                elif qs != _QS_ENTERED_LIVE:
                     return f"S0_D16_REVIEW_QUARANTINED {t['id']}: quarantine state={qs}: {detail}"
             return (d16_f34_review_reason(t, tasks) or s0_review_reason(t, tasks) or s0_doc_review_reason(cfg, t, tasks) or s0_refresh_review_reason(cfg, t, tasks)
                     or s0_rebind_review_reason(cfg, t, tasks) or s0_test_review_reason(cfg, t, tasks)
@@ -8753,6 +9205,8 @@ class Runner:
         def deny(why):
             self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"], reason=why)
 
+        if ov2["stage"] == "ACTIVE":
+            return self._d16_succession_boot(rec)  # the one reload of the D16 fixed-task admission; denies unless it is exactly that
         if ov2["stage"] != "BOUND" or ov2["correction"]["state"] != "UNUSED" or ov2["runner"]["code_sha256"] == CODE_SHA:
             return deny("restart after the lane-2 recovery record exists is not permitted")
         me = {"schema": 1, "kind": "s0-d16-cli-admission-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
@@ -8813,6 +9267,79 @@ class Runner:
                     "attested": {**self._transition_attestation(), "lstart": start, "command": cmd}})
                 self.store.save(self.state)
                 self._tr_event("quarantine-recovery3-reattested", recovery_id=raw["recovery_id"], reattest_id=created["reattest_id"])
+            except Exception as e:  # a created record is spent; an absent one consumed nothing
+                self._tr_event("quarantine-recovery-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
+        finally:
+            self.wlock.release()
+
+    def _d16_succession_boot(self, rec):
+        """Lane 2 is ACTIVE. The ONE reload of OWNER-2026-10-28-mod004-d16-design-admission.md: a process running code newer than the
+        reattested runner may open the single succession window, only while no succession or window exists. Anything else (the
+        reattested code again, a second process after the window or the record) is the old denial: no restart."""
+        cfg = self.cfg
+
+        def deny(why):
+            self._tr_event("quarantine-recovery-denied", transition_id=rec["transition_id"], reason=why)
+
+        try:
+            rt = _recovery3_load(cfg)
+        except GateError as e:
+            return deny(str(e)[:300])
+        if rt is None or rt["runner"]["code_sha256"] == CODE_SHA or CODE_SHA != _LOADED_CODE_SHA:
+            return deny("restart after the lane-2 recovery record exists is not permitted")
+        me = {"schema": 1, "kind": "d16-fixed-task-succession-first-boot", "pid": os.getpid(), "boot_nonce": _PROCESS_BOOT_NONCE,
+              "code_sha256": CODE_SHA, "at": now_iso()}
+        if _d16s_first_boot(cfg, me=True) is not None:
+            return  # this very process (PID + boot nonce) already holds the window
+        try:
+            if os.path.lexists(_d16s_path(cfg)) or os.path.lexists(Path(cfg.home) / D16S_BOOT_NAME) or any(
+                    str(e.get("kind", "")).startswith("d16-succession-") for e in _qled_events(cfg)):
+                raise GateError("the D16 succession or its one reload window was already used")
+            _atomic_create_exclusive(Path(cfg.home) / D16S_BOOT_NAME, json.dumps(me, sort_keys=True).encode())
+        except (GateError, OSError) as e:
+            return deny(f"no second reload: {str(e)[:200]}")
+        self._tr_event("d16-succession-first-boot", pid=me["pid"], boot_nonce=me["boot_nonce"], code_sha256=CODE_SHA)
+
+    def _d16_succession_create(self, rec, raw):
+        """Create the succession once (first reloaded process only, under the writer lock): local preflight, provider CI for E and C, the
+        preserved exact-candidate Opus security evidence, then the exclusive fsynced atomic create that binds the byte-preserved old chain
+        to THIS process. A refusal consumes nothing; the old records are never rewritten. A crash after the window leaves it closed."""
+        cfg = self.cfg
+        if _d16s_first_boot(cfg, me=True) is None:
+            return
+        if not self.wlock.acquire({"pid": os.getpid(), "transition": "d16-succession"}):
+            return self._tr_refuse("the repository writer lock is held")
+        try:
+            try:
+                ready = d16_succession_preflight(cfg, self.state, rlock_held=True, wlock_held=True)
+                succ = ready["successor"]
+                owner_ci = _observe_ci_for_commit(cfg, D16S_OWNER_COMMIT, run_id=D16S_OWNER_CI_RUN, opener=_ci_opener)
+                runner_ci = _observe_ci_for_commit(cfg, succ["commit"], run_id=ready["c_run"], opener=_ci_opener)
+                start, cmd = _proc_facts(os.getpid())
+                if not _is_runner_argv(cmd.split()):
+                    raise GateError("this process is not a runner `run` command")
+            except Exception as e:  # nothing is created: this process may retry; no other process can
+                return self._tr_refuse(f"D16 succession not bound: {type(e).__name__}: {str(e)[:300]}")
+            try:
+                rid, rt = uuid.uuid4().hex, ready["rt"]
+                rdir = f"{D16S_CHECKPOINT}/succession-{rid}/review"
+                (Path(cfg.home) / rdir).mkdir(parents=True)
+                for n, b in ready["preload_files"].items():
+                    atomic_write(Path(cfg.home) / rdir / n, b)
+                created = _d16s_write(cfg, {
+                    "schema": 1, "kind": D16S_KIND, "succession_id": rid, "created_at": now_iso(), "old": D16S_OLD,
+                    "owner": {"path": D16S_OWNER_PATH, "sha256": D16S_OWNER_SHA, "commit": D16S_OWNER_COMMIT, "ci": owner_ci},
+                    "prior": {"commit": rt["runner"]["commit"], "code_sha256": rt["runner"]["code_sha256"],
+                              "test_sha256": rt["runner"]["test_sha256"]},
+                    "runner": {"code_sha256": succ["code_sha256"], "commit": succ["commit"], "parent": succ["parent"],
+                               "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"],
+                               "preload_sha256": ready["preload"]["preload_sha256"],
+                               "preload_output_sha256": ready["preload"]["preload_output_sha256"], "ci": runner_ci},
+                    "review": {"dir": rdir, "preload_sha256": ready["preload"]["preload_sha256"],
+                               "preload_output_sha256": ready["preload"]["preload_output_sha256"]},
+                    "s0": ready["s0"], "attested": {**self._transition_attestation(), "lstart": start, "command": cmd}})
+                self.store.save(self.state)
+                self._tr_event("d16-succession-created", recovery_id=raw["recovery_id"], succession_id=created["succession_id"])
             except Exception as e:  # a created record is spent; an absent one consumed nothing
                 self._tr_event("quarantine-recovery-failed", reason=f"{type(e).__name__}: {str(e)[:300]}")
         finally:
@@ -8899,6 +9426,8 @@ class Runner:
                     return self._recovery2_create(rec, ov1)
                 if raw["runner"]["code_sha256"] != CODE_SHA and not os.path.lexists(_recovery3_path(cfg)):
                     return self._recovery2_reattest(rec, raw)  # the one reload: reattest, never rewrite lane 2
+                if raw["stage"] == "ACTIVE" and not os.path.lexists(_d16s_path(cfg)) and _d16s_first_boot(cfg, me=True) is not None:
+                    return self._d16_succession_create(rec, raw)  # the one D16 reload: succeed the reattested runner, never rewrite lane 2
                 ov = _recovery2_effective(cfg)
         except GateError:
             return

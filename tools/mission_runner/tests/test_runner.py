@@ -20526,12 +20526,660 @@ class Recovery3ReaderCoverage(unittest.TestCase):
             return sorted(f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)
                           and any(isinstance(c, ast.Call) and getattr(c.func, "id", None) == name for c in ast.walk(f)))
         self.assertEqual(callers("_recovery2_load"), sorted([
-            "_recovery2_effective", "_recovery2_write", "recovery2_create_preflight", "recovery3_reattest_preflight", "_recovery2_boot",
+            "_recovery2_effective", "_recovery2_write", "recovery2_create_preflight", "recovery3_reattest_preflight", "d16_succession_preflight",
+            "_recovery2_boot",
             "_recovery2_consume_correction", "recovery_step"]))
         for reader in ("_transition_bound_problem", "_transition_overlay", "_recovery2_block_checked", "_recovery2_dispatch_problem",
                        "recovery2_gate_reason", "recovery2_review_reason", "_recovery2_result_problem", "_recovery2_consume_correction",
                        "recovery_step"):
             self.assertIn(reader, callers("_recovery2_effective"), reader)
+
+
+class Recovery4Base(Recovery3Base):
+    """The D16 fixed-task succession world, built on the REAL earlier worlds: lane 2 is driven through the real lifecycle to ACTIVE
+    under the reattested runner C3; then the final candidate C4 (E4 -> C4, real temporary Git commits) is loaded as the one controlled
+    reload. The provider boundary is the same single mocked urllib response; the only stub is `hist_ok` (the unchanged historical D16
+    chain / owner-decision verifiers that have their own suites), and only inside the verifier tests that need it."""
+    NONCE4 = "9a" * 16
+    C4_EXTRA = {}  # extra files in C4 (a final candidate that changes more than runner.py and test_runner.py)
+    TO_ACTIVE = True
+    IDENT = Recovery3Base.IDENT + ("D16S_OWNER_SHA", "D16S_OWNER_COMMIT", "D16S_OWNER_PARENT", "D16S_PRIOR_COMMIT",
+                                   "D16S_PRIOR_CODE_SHA", "D16S_PRIOR_TEST_SHA", "D16S_OLD")
+
+    def setUp(self):
+        super().setUp()
+        r = self.reload3()
+        if self.TO_ACTIVE:
+            self.drive_active3(r)
+        self.release_cur()  # the reattested C3 runner process ends; the one D16 reload follows
+        sha = self.sha
+        self.p_commit = git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        self.test3 = b"# cli-admission test\n"
+        self.owner5 = b"# d16 fixed-task admission owner record\n"
+        self.e4_commit = self.commit_only({R.D16S_OWNER_PATH: self.owner5}, "d16 admission owner")
+        self.repl4_bytes = self.repl3_bytes + b"\n# d16 succession runner\n"
+        self.c4_commit = self.commit_only({self.runner_rel: self.repl4_bytes, self.test_rel: b"# d16 succession test\n", **self.C4_EXTRA},
+                                          "d16 succession runner")
+        self.new4_sha = sha(self.repl4_bytes)
+        repl4 = Path(self.tmp.name) / "repl4"
+        repl4.mkdir()
+        (repl4 / "runner.py").write_bytes(self.repl4_bytes)
+        shutil.copy(Path(R.__file__).with_name("dashboard.py"), repl4 / "dashboard.py")
+        self.old_pins = self.live_old_pins()
+        for name, value in (("D16S_OWNER_SHA", sha(self.owner5)), ("D16S_OWNER_COMMIT", self.e4_commit), ("D16S_OWNER_PARENT", self.p_commit),
+                            ("D16S_PRIOR_COMMIT", self.c3_commit), ("D16S_PRIOR_CODE_SHA", self.new3_sha),
+                            ("D16S_PRIOR_TEST_SHA", sha(self.test3)), ("D16S_OLD", self.old_pins),
+                            ("CODE_SHA", self.new4_sha), ("_LOADED_CODE_SHA", self.new4_sha), ("__file__", str(repl4 / "runner.py"))):
+            self.enterContext(mock.patch.object(R, name, value))
+        self.ci_ok[self.e4_commit] = self.ci_ok[self.c4_commit] = True
+        self.write_succession_preload()
+
+    def drive_active3(self, r):
+        """Lane 2 through the real correction, review, publication, receipts and probes to ACTIVE under C3."""
+        self.assertEqual(self.run_correction2(r)["status"], "DONE")
+        self.assertEqual(self.run_review2(r)["status"], "DONE")
+        head = self.publish()
+        self.write_receipt2(head)
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "VERIFIED", self.reasons("quarantine-recovery-failed"))
+        self.step(r)
+        self.assertEqual(self.overlay2()["stage"], "ACTIVE", self.reasons("quarantine-recovery-probe-failed"))
+        self.assertEqual(self.mode(), "ACTIVE")
+
+    def live_old_pins(self):
+        t, o, a = (json.loads(self.raw(n)) for n in (R.TRANSFER_RECORD_NAME, R.RC2_RECORD_NAME, R.RC3_REATTEST_NAME))
+        return {"transition": {"transition_id": t["transition_id"], "file_sha256": self.sha(self.raw(R.TRANSFER_RECORD_NAME)), "checksum": t["checksum"]},
+                "recovery2": {"recovery_id": o["recovery_id"], "file_sha256": self.sha(self.raw(R.RC2_RECORD_NAME)), "checksum": o["checksum"],
+                              "immutable_sha256": R._recovery3_immutable_sha(o)},
+                "reattest": {"reattest_id": a["reattest_id"], "file_sha256": self.sha(self.raw(R.RC3_REATTEST_NAME)), "checksum": a["checksum"]}}
+
+    def write_succession_preload(self, **over):
+        cp = self.home / R.D16S_CHECKPOINT
+        cp.mkdir(parents=True, exist_ok=True)
+        try:
+            succ = R._d16s_successor(self.cfg)
+        except R.GateError:
+            return  # a deliberately unsound C4 has no reviewable subject; the scenario asserts the refusal
+        out = b"d16 fixed-task succession security review\nOUTCOME: APPROVED\n"
+        (cp / "d16-succession-review.out").write_bytes(out)
+        (cp / R.TRANSFER_PRELOAD_NAME).write_text(json.dumps({
+            "schema": 1, "kind": "preload-opus-review", "commit": succ["commit"], "code_sha256": succ["code_sha256"],
+            "test_sha256": succ["test_sha256"], "diff_sha256": succ["diff_sha256"], "model": "claude-opus-5-5", "session_id": "pre-d16s",
+            "output_file": "d16-succession-review.out", "output_sha256": self.sha(out), "outcome": "APPROVED",
+            "c_ci_run_id": str(self.c_run_id), **over}))
+
+    def reload4(self, nonce=None):
+        """The reloaded process: boot branch (opens the one succession window), then the throttled recovery step."""
+        self.release_cur()
+        r = self.cur = self.begin(nonce or self.NONCE4)
+        r._transition_boot()
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()
+        return r
+
+    def succ_path(self):
+        return self.home / R.D16S_RECORD_NAME
+
+    def succ_bytes(self):
+        return self.succ_path().read_bytes()
+
+    def succ(self):
+        return R._d16s_load(self.cfg)
+
+    def forge(self, *edits):
+        """Rewrite the succession with a VALID checksum (the strongest tamper): only semantic bindings can catch it."""
+        rec = json.loads(self.succ_bytes())
+        for path, value in edits:
+            d = rec
+            for k in path[:-1]:
+                d = d[k]
+            d[path[-1]] = value
+        rec.pop("checksum")
+        rec["checksum"] = R._transition_checksum(rec)
+        self.succ_path().write_text(json.dumps(rec, sort_keys=True, indent=1))
+
+    def state_tasks(self):
+        return R.Store(self.home).load()["tasks"]
+
+    def d16_root(self, **over):
+        return {"id": R.D16_DUAL_ID, "module": "MOD-004", "role": "implement", "title": "d16 design", "prompt": "design the ADR",
+                "allowed_paths": [R.D16_ADR_PATH], "expected_changes": [R.D16_ADR_PATH], "verify_cmd": [], "source": None,
+                "status": "QUEUED", "attempts": 0, **over}
+
+    def gate_d16(self, t, tasks=None, cli=False):
+        return R._transition_gate_reason(self.cfg, t, tasks if tasks is not None else self.state_tasks(), cli)
+
+    def assert_d16_closed(self, label=""):
+        self.assertEqual(self.mode(), "HOLD", label)
+        for t in (self.d16_root(), self.ordinary_task(), self.correction2_task()):
+            self.assertIsNotNone(self.gate(t), label)
+        self.assertIsNotNone(self.gate_d16(self.d16_root()), label)
+
+    def assert_d16_open(self, label=""):
+        self.assertEqual(self.mode(), "ACTIVE", label)
+        self.assertIsNone(self.gate_d16(self.d16_root()), label)
+
+    # --- recorded design history (the runner's own task records) for corrections and bound reviews
+    def adr(self, text):
+        p = self.repo / R.D16_ADR_PATH
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+        return [{"path": R.D16_ADR_PATH, "sha256": self.sha(p.read_bytes())}]
+
+    def done_write(self, tid, parent=None, text="draft\n"):
+        t = self.d16_root(id=tid, status="DONE", attempts=1, evidence={"changed": self.adr(text), "violations": []},
+                          route={"verdict": "VERIFIED", "intended": "sonnet"})
+        if parent:
+            t.update(remediation_of=parent, remediation_root=R.D16_DUAL_ID)
+        return t
+
+    def review_of(self, rid, write, outcome="CHANGES_REQUESTED", **over):
+        ev = write["evidence"]["changed"]
+        base = {"id": rid, "module": "MOD-004", "role": "code-review", "status": "BLOCKED" if outcome == "CHANGES_REQUESTED" else "DONE",
+                "source": None, "route": {"verdict": "VERIFIED", "intended": "opus"}, "review_of": {"task_id": write["id"], "changed": ev},
+                "evidence": {"review_outcome": outcome, "review_bound_verified": True,
+                             "violations": ["REVIEW_CHANGES_REQUESTED"] if outcome == "CHANGES_REQUESTED" else []}}
+        if outcome == "CHANGES_REQUESTED":
+            base["blocked_reason"] = "REVIEW_CHANGES_REQUESTED"
+        return {**base, **over}
+
+    def f34_history(self):
+        changed = [{"path": R.D16_ADR_PATH, "sha256": "1" * 64}]
+        f34 = {"id": R.D16_F34_WRITE, "status": "DONE", "role": "implement", "remediation_root": R.D16_F34_ROOT,
+               "remediation_of": R.D16_F34_TIP, "evidence": {"changed": changed}}
+        rv = {"id": R.D16_F34_REVIEW, "status": "BLOCKED", "role": "code-review", "blocked_reason": "REVIEW_CHANGES_REQUESTED",
+              "route": {"verdict": "VERIFIED"}, "review_of": {"task_id": f34["id"], "changed": changed},
+              "evidence": {"review_outcome": "CHANGES_REQUESTED", "review_bound_verified": True, "violations": ["REVIEW_CHANGES_REQUESTED"]}}
+        return {f34["id"]: f34, rv["id"]: rv}
+
+    def hist_ok(self):
+        """Stub ONLY the unchanged historical D16 chain / owner-decision verifiers (own suites); every succession check stays real."""
+        stack = contextlib.ExitStack()
+        for name, kw in (("_d16_exhausted_chain", {"return_value": []}), ("verify_d16_published_owners", {}), ("_d16_adr_problem", {})):
+            stack.enter_context(mock.patch.object(R, name, **kw))
+        return stack
+
+    def verify(self, tasks, t):
+        with self.hist_ok():
+            return R.verify_d16_dual(self.cfg, {**self.state_tasks(), **self.f34_history(), **tasks}, t)
+
+    def files_snapshot(self):
+        paths = [self.succ_path(), *(self.home / n for n in (R.TRANSFER_RECORD_NAME, R.RC2_RECORD_NAME, R.RC3_REATTEST_NAME))]
+        paths += list((self.home / "acceptances").glob("*.json")) + [self.repo / p for p in (*R.S0_DOC_PATHS, R.S0_OWNER_RECORD)]
+        paths += list((self.home / R.D16S_CHECKPOINT).rglob("*"))
+        return {p: p.read_bytes() for p in paths if p.is_file()}
+
+    def restore(self, snap):
+        for p in [q for q in (self.home / R.D16S_CHECKPOINT).rglob("*") if q.is_file() and q not in snap]:
+            p.unlink()
+        for p, data in snap.items():
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+
+
+class Recovery4Succession(Recovery4Base):
+    def test_before_the_succession_the_loaded_code_is_closed_and_the_window_is_one_use(self):
+        self.release_cur()
+        self.cur = self.begin(self.NONCE4)  # C4 loaded, never succeeded
+        with self.assertRaises(R.GateError) as cm:
+            self.eff()
+        self.assertIn("SUCCESSION_REQUIRED", str(cm.exception))
+        self.assert_d16_closed("no succession")
+        self.assertFalse(self.succ_path().exists())
+        self.assertNotEqual(R.quarantine_state(self.cfg)[0], R._QS_ENTERED_LIVE)
+
+    def test_reload_mints_one_succession_binding_the_old_chain_and_the_exact_candidate(self):
+        before = {n: self.raw(n) for n in (R.TRANSFER_RECORD_NAME, R.RC2_RECORD_NAME, R.RC3_REATTEST_NAME)}
+        receipts = {p.name: p.read_bytes() for p in (self.home / "acceptances").glob("*.json")}
+        r = self.reload4()
+        s = self.succ()
+        self.assertEqual({n: self.raw(n) for n in before}, before)  # the old transition, lane 2 and the reattestation are byte-immutable
+        self.assertEqual({p.name: p.read_bytes() for p in (self.home / "acceptances").glob("*.json")}, receipts)  # no receipt added or edited
+        self.assertEqual(s["old"], self.old_pins)
+        self.assertEqual((s["owner"]["commit"], s["owner"]["sha256"]), (self.e4_commit, self.sha(self.owner5)))
+        self.assertEqual(s["prior"], {"commit": self.c3_commit, "code_sha256": self.new3_sha, "test_sha256": self.sha(self.test3)})
+        self.assertEqual((s["runner"]["commit"], s["runner"]["parent"], s["runner"]["code_sha256"]), (self.c4_commit, self.e4_commit, self.new4_sha))
+        canon = git(self.repo, "--no-replace-objects", "diff", "--binary", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
+                    self.e4_commit, self.c4_commit, "--", self.runner_rel, self.test_rel).stdout
+        self.assertEqual(s["runner"]["diff_sha256"], self.sha(canon.encode()))  # the reviewed diff IS the committed canonical E-to-C diff
+        self.assertEqual(s["runner"]["ci"]["head_sha"], self.c4_commit)
+        self.assertEqual(s["attested"], {**s["attested"], "pid": os.getpid(), "boot_nonce": self.NONCE4, "code_sha256": self.new4_sha,
+                                         "lstart": FACT_START, "command": FACT_CMD})
+        docs = {p: self.sha((self.repo / p).read_bytes()) for p in R.S0_DOC_PATHS}
+        self.assertEqual(s["s0"], {"cert_sha256": docs[self.CERT], "qa_sha256": docs[self.QA], "runner_gate_sha256": self.new3_sha,
+                                   "s0_receipt_sha256": self.sha((self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").read_bytes()),
+                                   "recovery_receipt_sha256": self.sha((self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").read_bytes())})
+        self.assertEqual((self.n_kind("d16-succession-first-boot"), self.n_kind("d16-succession-created")), (1, 1))
+        self.assertEqual(self.succ_path().parent, self.home)  # outside acceptances/
+        self.assertFalse(list((self.home / "acceptances").glob("*succession*")))
+        self.assert_d16_open()
+        eff = self.eff()
+        self.assertEqual((eff["stage"], eff["runner"]["code_sha256"], eff["attested"]["pid"]), ("ACTIVE", self.new4_sha, os.getpid()))
+        self.assertIsNone(R._transition_bound_problem(self.cfg, self.record(), full=True))
+        # one use: neither a second record nor a second attempt changes anything
+        kept = self.succ_bytes()
+        with self.assertRaises(R.GateError):
+            R._d16s_write(self.cfg, {k: v for k, v in s.items() if k != "checksum"})
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()
+            r._d16_succession_create(self.record(), self.overlay2())
+        self.assertEqual(self.succ_bytes(), kept)
+        self.assertEqual(self.n_kind("d16-succession-created"), 1)
+
+    def test_succession_grants_only_the_fixed_task_never_s0_product_cap_mod005_or_consumed_lanes(self):
+        self.reload4()
+        tasks = self.state_tasks()
+        self.assertIsNone(self.gate_d16(self.d16_root(), tasks))
+        s0_product = {**self.ordinary_task(), "id": "s0-product", "module": R.S0_MODULE, "plan_phase": R.S0_MARKER}
+        cap = self.d16_root(allowed_paths=list(R.ACCOUNTING_RECOVERY_PATHS), expected_changes=list(R.ACCOUNTING_RECOVERY_PATHS))
+        mod005 = {**self.ordinary_task(), "id": "m5", "module": "MOD-005"}
+        for label, t, frag in (("S0 product", s0_product, "S0_PRODUCT_DENIED"), ("CAP paths under the fixed id", cap, "D16_DUAL_DENIED"),
+                               ("lane-2 correction", self.correction2_task(), "S0_RECOVERY2_CLOSED"), ("MOD-005", mod005, None),
+                               ("original S0 rebind lane", self.lane_task(), None), ("lane-1 correction", self.correction_task(), None)):
+            with self.subTest(label):
+                reason = self.gate(t)
+                self.assertIsNotNone(reason, label)
+                if frag:
+                    self.assertIn(frag, reason)
+        text = (self.repo / self.runner_rel).read_text()
+        tree = ast.parse(text)
+        for fn in ("verify_s0_authority", "verify_s0_qa_authority", "_s0_subject"):
+            node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == fn)
+            self.assertNotIn("D16S", ast.get_source_segment(text, node), fn)
+
+    def test_the_old_certificate_runner_hash_is_not_s0_authority_under_the_loaded_runner(self):
+        self.reload4()
+        tasks = self.state_tasks()
+        eff = self.eff()
+        prior_view = {**eff, "runner": eff["reattest"]["runner"], "review_dir": eff["reattest"]["review"]["dir"]}
+        with self.assertRaises(R.GateError):  # the established S0 predicate still equates certificate and loaded runner hash
+            R.verify_s0_authority(self.cfg, tasks, receipt=R.RC2_S0_RECEIPT, runner_check=lambda e: R._recovery2_runner_subject(self.cfg, eff, e))
+        with self.assertRaises(R.GateError):
+            R.verify_s0_authority(self.cfg, tasks)
+        with self.assertRaises(R.GateError):
+            R.verify_s0_authority(self.cfg, tasks, receipt=R.RC2_S0_RECEIPT,
+                                  runner_check=lambda e: R._recovery2_runner_subject(self.cfg, prior_view, e, self.new3_sha))
+        # only the D16 predicate, with the old hash replaced by the previous reviewed runner, accepts it
+        R.verify_s0_authority(self.cfg, tasks, receipt=R.RC2_S0_RECEIPT, runner_sha=self.new3_sha,
+                              runner_check=lambda e: R._recovery2_runner_subject(self.cfg, prior_view, e, self.new3_sha))
+        self.assertEqual(R._d16s_s0_compat(self.cfg, tasks, eff, eff["reattest"]), self.succ()["s0"])
+        self.assertNotIn(self.new4_sha, (self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").read_text())
+
+    def test_tampered_missing_forged_or_replayed_succession_or_old_chain_denies_everything(self):
+        self.reload4()
+        self.assert_d16_open()
+        good = self.succ_bytes()
+        old = json.loads(good)
+
+        def put_old(name, fn):
+            p = self.home / name
+            d = json.loads(p.read_text())
+            fn(d)
+            p.write_text(json.dumps(d, sort_keys=True, indent=1))
+        append = lambda name: (lambda: (self.home / name).write_bytes((self.home / name).read_bytes() + b" "))
+        cases = {
+            "succession missing": lambda: self.succ_path().unlink(),
+            "succession not JSON": lambda: self.succ_path().write_text("{nope"),
+            "succession truncated": lambda: self.succ_path().write_bytes(good[: len(good) // 2]),
+            "checksum tamper": lambda: self.succ_path().write_text(json.dumps({**old, "created_at": "2001-01-01T00:00:00+00:00"})),
+            "extra field": lambda: self.forge((("extra",), 1)),
+            "forged old transition pin": lambda: self.forge((("old", "transition", "file_sha256"), "0" * 64)),
+            "forged old lane-2 checksum": lambda: self.forge((("old", "recovery2", "checksum"), "0" * 64)),
+            "forged old reattestation id": lambda: self.forge((("old", "reattest", "reattest_id"), "0" * 32)),
+            "forged previous runner": lambda: self.forge((("prior", "code_sha256"), "0" * 64)),
+            "forged previous commit": lambda: self.forge((("prior", "commit"), "0" * 40)),
+            "forged new runner code": lambda: self.forge((("runner", "code_sha256"), "0" * 64), (("attested", "code_sha256"), "0" * 64)),
+            "stale diff": lambda: self.forge((("runner", "diff_sha256"), "0" * 64)),
+            "stale test blob": lambda: self.forge((("runner", "test_sha256"), "0" * 64)),
+            "wrong runner commit": lambda: self.forge((("runner", "commit"), self.p_commit), (("runner", "ci", "head_sha"), self.p_commit)),
+            "wrong owner commit": lambda: self.forge((("owner", "commit"), self.p_commit)),
+            "stale boot nonce": lambda: self.forge((("attested", "boot_nonce"), "00" * 16)),
+            "stale pid": lambda: self.forge((("attested", "pid"), 1)),
+            "forged review pin": lambda: self.forge((("runner", "preload_sha256"), "0" * 64), (("review", "preload_sha256"), "0" * 64)),
+            "replayed record of another id": lambda: self.forge((("succession_id",), "0" * 32)),
+            "security review evidence deleted": lambda: next((self.home / old["review"]["dir"]).glob("preload.json")).unlink(),
+            "security review output altered": lambda: (self.home / old["review"]["dir"] / "preload.out").write_bytes(b"x\nOUTCOME: APPROVED\n"),
+            "old transition altered": append(R.TRANSFER_RECORD_NAME),
+            "old lane-2 record altered": append(R.RC2_RECORD_NAME),
+            "old reattestation altered": append(R.RC3_REATTEST_NAME),
+            "old reattestation forged to the new code": lambda: put_old(R.RC3_REATTEST_NAME, lambda d: d["runner"].update(code_sha256=self.new4_sha)),
+            "old transition missing": lambda: (self.home / R.TRANSFER_RECORD_NAME).unlink(),
+        }
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                snap = self.files_snapshot()
+                tamper()
+                self.assert_d16_closed(label)
+                self.restore(snap)
+                self.assert_d16_open(f"{label}: restoring the exact bytes re-admits")
+        with self.subTest("audit trail names another succession"):
+            R.Store(self.home).event("d16-succession-created", succession_id="f" * 32)
+            self.assert_d16_closed("replay")
+
+    def test_sole_runner_is_required_for_every_d16_ingress_and_the_cli_needs_os_proof(self):
+        self.reload4()
+        t = self.d16_root()
+        self.assertIsNone(self.gate_d16(t))
+        self.other_pids.append(4242)  # a duplicate runner as the runner itself sees it: strict
+        self.assertIn("another runner process exists", self.gate_d16(t))
+        with mock.patch.object(R, "_cli_sole_runner_problem", return_value=None):  # a proof exempts only the owner-CLI path
+            self.assertIsNone(self.gate_d16(t, cli=True))
+            self.assertIn("another runner process exists", self.gate_d16(t))
+        with mock.patch.object(R, "_cli_sole_runner_problem", return_value="not the runner lock owner"):
+            self.assertIn("cannot authenticate the sole runner", self.gate_d16(t, cli=True))
+        self.other_pids.clear()
+        self.assertIn("cannot authenticate the sole runner", self.gate_d16(t, cli=True))  # no visible runner is not proof
+        self.assertIsNone(self.gate_d16(t))
+
+    def test_only_the_fixed_root_its_corrections_and_bound_reviews_pass_the_transition_gate(self):
+        self.reload4()
+        cr1 = self.done_write("d16-correction-1", R.D16_DUAL_ID, "first\n")
+        root = self.done_write(R.D16_DUAL_ID)  # written last: the rejected root is the ADR on disk
+        rv_root = self.review_of("d16-root-review", root)
+        tasks = {**self.state_tasks(), root["id"]: root, rv_root["id"]: rv_root}
+        queued_root = self.d16_root()
+        corr = self.d16_root(id="d16-correction-1", remediation_of=R.D16_DUAL_ID, remediation_root=R.D16_DUAL_ID)
+        good_review = {"id": "d16-root-review-2", "module": "MOD-004", "role": "code-review", "title": "r", "prompt": "review",
+                       "allowed_paths": [], "expected_changes": [], "verify_cmd": [], "source": None, "status": "QUEUED",
+                       "review_of": {"task_id": root["id"], "changed": root["evidence"]["changed"]}}
+        self.assertIsNone(self.gate_d16(queued_root, {}))
+        self.assertIsNone(self.gate_d16(corr, tasks))
+        self.assertIsNone(self.gate_d16(good_review, tasks))
+        shape_cases = {
+            "wrong role": self.d16_root(role="gatekeeper"),
+            "wrong module": self.d16_root(module="MOD-005"),
+            "extra path": self.d16_root(allowed_paths=[R.D16_ADR_PATH, "x.txt"]),
+            "S0 document path": self.d16_root(allowed_paths=list(R.S0_DOC_PATHS), expected_changes=list(R.S0_DOC_PATHS)),
+            "planner source": self.d16_root(source="handoff"),
+            "plan phase": self.d16_root(plan_phase=R.S0_MARKER),
+            "S0 doc base": self.d16_root(doc_base={p: None for p in R.S0_DOC_PATHS}),
+            "accounting recovery": self.d16_root(accounting_recovery_of="x"),
+            "root with a parent": self.d16_root(remediation_of="x"),
+            "reserved F34 id as a correction": {**corr, "id": R.D16_F34_WRITE},
+            "reserved successor id as a correction": {**corr, "id": R.D16_SUCCESSOR_ID},
+            "reserved S0 rebind id as a correction": {**corr, "id": R.S0_DUAL_REBIND_ID},
+            "planner-generated correction": {**corr, "source": "handoff"},
+            "correction with a plan phase": {**corr, "plan_phase": R.RC2_MARKER},
+            "correction with extra path": {**corr, "expected_changes": [R.D16_ADR_PATH, "y.txt"]},
+            "review by a planner": {**good_review, "source": "handoff"},
+            "review that is a retry": {**good_review, "review_retry_of": "x"},
+            "review that writes": {**good_review, "expected_changes": [R.D16_ADR_PATH]},
+            "review of the wrong hash": {**good_review, "review_of": {"task_id": root["id"], "changed": [{"path": R.D16_ADR_PATH, "sha256": "2" * 64}]}},
+            "review of an unfinished write": {**good_review, "review_of": {"task_id": "d16-correction-1", "changed": cr1["evidence"]["changed"]}},
+            "code-review under a write role id": {**good_review, "id": R.D16_F34_REVIEW},
+        }
+        tasks2 = {**tasks, "d16-correction-1": {**cr1, "status": "QUEUED"}}
+        for label, t in shape_cases.items():
+            with self.subTest(label):
+                reason = self.gate_d16(t, tasks2)
+                self.assertTrue(reason and reason.startswith("D16_DUAL_DENIED"), (label, reason))
+                self.assertIsNotNone(R.gate_reason(self.cfg, t, tasks2), label)
+        with self.subTest("a task that traces to no D16 root is not this gate's"):
+            self.assertIsNone(self.gate_d16({**self.ordinary_task(), "id": "not-d16"}, tasks))
+
+    def test_verifier_admits_root_and_two_exactly_bound_corrections_only(self):
+        self.reload4()
+        root = self.done_write(R.D16_DUAL_ID, text="root rejected\n")
+        rv0 = self.review_of("rv0", root)
+        c1 = self.d16_root(id="c1", remediation_of=R.D16_DUAL_ID, remediation_root=R.D16_DUAL_ID)
+        queued = self.d16_root()
+        self.assertIn(R.D16_F34_WRITE, self.verify({queued["id"]: queued}, queued))
+        self.assertIn(R.D16_F34_WRITE, self.verify({root["id"]: root, rv0["id"]: rv0, "c1": c1}, c1))
+        c1d = self.done_write("c1", R.D16_DUAL_ID, "first correction\n")
+        rv1 = self.review_of("rv1", c1d)
+        c2 = self.d16_root(id="c2", remediation_of="c1", remediation_root=R.D16_DUAL_ID)
+        base = {root["id"]: root, rv0["id"]: rv0, "c1": c1d, rv1["id"]: rv1, "c2": c2}
+        self.assertIn(R.D16_F34_WRITE, self.verify(base, c2))
+        c2d = self.done_write("c2", "c1", "second correction\n")
+        rv2 = self.review_of("rv2", c2d)
+        c3 = self.d16_root(id="c3", remediation_of="c2", remediation_root=R.D16_DUAL_ID)
+        with self.assertRaisesRegex(R.GateError, "correction limit"):
+            self.verify({**base, "c2": c2d, rv2["id"]: rv2, "c3": c3}, c3)
+        self.adr("root rejected\n")  # the root is the rejected candidate on disk again
+        for label, tasks, t, frag in (
+                ("parent has no review", {root["id"]: root, "c1": c1}, c1, "CHANGES_REQUESTED review"),
+                ("parent review is APPROVED", {root["id"]: root, "rv0": self.review_of("rv0", root, "APPROVED"), "c1": c1}, c1, "CHANGES_REQUESTED review"),
+                ("parent review bound to other bytes", {root["id"]: root, "rv0": self.review_of("rv0", root, review_of={"task_id": root["id"], "changed": [{"path": R.D16_ADR_PATH, "sha256": "3" * 64}]}), "c1": c1}, c1, "CHANGES_REQUESTED review"),
+                ("parent not DONE", {root["id"]: {**root, "status": "QUEUED"}, "rv0": rv0, "c1": c1}, c1, "DONE design write"),
+                ("parent bytes changed on disk", {root["id"]: {**root, "evidence": {"changed": [{"path": R.D16_ADR_PATH, "sha256": "4" * 64}], "violations": []}}, "rv0": rv0, "c1": c1}, c1, "no longer matches"),
+                ("second record with the root id", {root["id"]: root, "dup": self.d16_root(status="DONE")}, root, "single-use"),
+                ("alias root", {"alias": self.d16_root(id="alias")}, self.d16_root(id="alias"), "not linked"),
+        ):
+            with self.subTest(label), self.assertRaisesRegex(R.GateError, frag):
+                self.verify(tasks, t)
+
+    def test_verifier_needs_live_exact_sha_ci_and_unchanged_s0_compatibility(self):
+        self.reload4()
+        root = self.d16_root()
+        self.assertIn(R.D16_F34_WRITE, self.verify({}, root))
+        snap = self.files_snapshot()
+        cases = {
+            "C has no exact-SHA CI": lambda: self.ci_ok.__setitem__(self.c4_commit, False),
+            "E has no exact-SHA CI": lambda: self.ci_ok.__setitem__(self.e4_commit, False),
+            "CI outage": lambda: setattr(self, "ci_outage", True),
+            "previous runner CI gone": lambda: self.ci_ok.__setitem__(self.c3_commit, False),
+            "forged S0 compatibility digest": lambda: self.forge((("s0", "cert_sha256"), "0" * 64)),
+            "forged S0 receipt digest": lambda: self.forge((("s0", "s0_receipt_sha256"), "0" * 64)),
+            "certificate changed": lambda: (self.repo / self.CERT).write_bytes(self.cert0),
+            "another S0 subject changed (only the ADR the design rewrites is judged at its reviewed commit)": lambda: (
+                self.repo / R.S0_OWNER_RECORD).write_bytes(b"# s0 owner, edited\n"),
+            "QA packet changed": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+            "fresh S0 receipt replaced by another receipt": lambda: (self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").write_bytes(
+                (self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").read_bytes()),
+            "fresh S0 receipt edited": lambda: (self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").write_bytes(
+                (self.home / "acceptances" / f"{R.RC2_S0_RECEIPT}.json").read_bytes() + b" "),
+            "lane-2 receipt edited": lambda: (self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").write_bytes(
+                (self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").read_bytes() + b" "),
+            "lane-2 receipt names the new runner": lambda: (self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").write_text(json.dumps(
+                {**json.loads((self.home / "acceptances" / f"{R.RC2_RECEIPT}.json").read_text()), "runner_sha256": self.new4_sha})),
+            "historical S0 receipt edited": lambda: (self.home / "acceptances" / "MOD-001.json").write_bytes(
+                (self.home / "acceptances" / "MOD-001.json").read_bytes() + b" "),
+            "S0 product review relabeled APPROVED": lambda: self.mutate_state(lambda st: st["tasks"].update({
+                "s0p": {"id": "s0p", "module": R.S0_MODULE, "role": "implement", "plan_phase": R.S0_MARKER, "status": "DONE"},
+                "s0p-review": {"id": "s0p-review", "role": "code-review", "status": "DONE", "review_of": {"task_id": "s0p"},
+                               "evidence": {"review_outcome": "APPROVED"}}})),
+        }
+        for label, tamper in cases.items():
+            with self.subTest(label):
+                tamper()
+                with self.assertRaises(R.GateError):
+                    self.verify({}, root)
+                self.ci_ok.update({self.c4_commit: True, self.e4_commit: True, self.c3_commit: True})
+                self.ci_outage = False
+                self.restore(snap)
+                self.mutate_state(lambda st: [st["tasks"].pop(k, None) for k in ("s0p", "s0p-review")])
+                self.assertIn(R.D16_F34_WRITE, self.verify({}, root), f"{label}: restoring re-admits")
+
+    def test_review_of_the_design_write_is_authenticated_by_the_succession_and_live_ci(self):
+        self.reload4()
+        root = self.done_write(R.D16_DUAL_ID, text="candidate\n")
+        review = {"id": "d16-review-1", "module": "MOD-004", "role": "code-review", "title": "r", "prompt": "review",
+                  "allowed_paths": [], "expected_changes": [], "verify_cmd": [], "source": None, "status": "QUEUED",
+                  "review_of": {"task_id": root["id"], "changed": root["evidence"]["changed"]}}
+        tasks = {**self.state_tasks(), root["id"]: root}
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))
+        self.ci_ok[self.c4_commit] = False
+        self.assertIn("GATE_UNVERIFIABLE", R.gate_reason(self.cfg, review, tasks) or "")
+        self.ci_ok[self.c4_commit] = True
+        snap = self.files_snapshot()
+        self.succ_path().write_text("{broken")
+        self.assertIsNotNone(R.gate_reason(self.cfg, review, tasks))
+        self.restore(snap)
+        self.assertIsNone(R.gate_reason(self.cfg, review, tasks))
+        self.assertIn("D16_DUAL_DENIED", R.gate_reason(self.cfg, {**review, "source": "handoff"}, tasks) or "")
+        # a review of a historical or S0 write still sees the old quarantine denial, never the succession
+        rv = {"id": "rv-s0w", "module": R.S0_MODULE, "role": "code-review", "review_of": {"task_id": R.S0_DUAL_REBIND_ID}, "status": "QUEUED"}
+        self.assertIn("S0_D16_REVIEW_QUARANTINED", R.gate_reason(self.cfg, rv, tasks) or "")
+
+    def test_full_gate_admits_the_fixed_root_only_through_the_succession_at_enqueue_and_dispatch(self):
+        r = self.reload4()
+        root = self.d16_root()
+        self.mutate_state(lambda st: st["tasks"].update(self.f34_history()))
+        with self.hist_ok():
+            self.assertIsNone(self.gate(root), self.gate(root))  # the REAL gate: transition gate, then the verifier's succession predicate
+            with mock.patch.object(R, "_cli_sole_runner_problem", return_value=None):
+                self.other_pids.append(4242)
+                self.assertIsNone(R.gate_reason(self.cfg, root, self.state_tasks(), cli=True))  # the owner-CLI enqueue path
+                self.other_pids.clear()
+            r.state = r.store.load()
+            r.state["tasks"][root["id"]] = {**root, "created_at": R.now_iso()}
+            self.assertFalse(r.gated(r.state["tasks"][root["id"]]))  # the dispatch-time recheck
+            snap = self.files_snapshot()
+            self.succ_path().write_text("{corrupt")
+            self.assertTrue(r.gated(r.state["tasks"][root["id"]]))  # a corrupted record closes the very next dispatch evaluation
+            self.restore(snap)
+            self.ci_ok[self.c4_commit] = False
+            self.assertTrue(r.gated(r.state["tasks"][root["id"]]))  # stale provider CI closes it too
+            self.ci_ok[self.c4_commit] = True
+            self.assertFalse(r.gated(r.state["tasks"][root["id"]]))
+
+    def test_a_second_reload_restart_or_other_process_can_never_use_or_replace_the_succession(self):
+        self.reload4()
+        kept = self.succ_bytes()
+        self.assert_d16_open()
+        r2 = self.reload4(nonce="03" * 16)  # the restart of the same code
+        self.assertTrue(any("no second reload" in (x or "") for x in self.reasons("quarantine-recovery-denied")))
+        self.assertEqual(self.succ_bytes(), kept)
+        self.assertEqual((self.n_kind("d16-succession-first-boot"), self.n_kind("d16-succession-created")), (1, 1))
+        self.assertEqual(self.mode(), "HOLD")  # the attested PID/nonce is no longer this process
+        self.assertIsNotNone(self.gate_d16(self.d16_root()))
+        r2.state = r2.store.load()
+        with self.os_facts():
+            r2._rc_last = None
+            r2.recovery_step()
+            r2._d16_succession_create(self.record(), self.overlay2())  # not the window holder
+        self.assertEqual(self.succ_bytes(), kept)
+        # the previous reattested code coming back can neither succeed nor reattest again
+        with mock.patch.object(R, "CODE_SHA", self.new3_sha), mock.patch.object(R, "_LOADED_CODE_SHA", self.new3_sha):
+            self.release_cur()
+            r3 = self.cur = self.begin("04" * 16)
+            window = (self.home / R.D16S_BOOT_NAME).read_bytes()
+            r3._transition_boot()
+            self.assertEqual(self.succ_bytes(), kept)
+            self.assertEqual((self.home / R.D16S_BOOT_NAME).read_bytes(), window)
+        self.assertEqual(self.n_kind("d16-succession-first-boot"), 1)
+
+    def test_crash_at_every_durable_write_boundary_leaves_admission_closed_and_never_reopens_the_window(self):
+        for i, (label, nth, after) in enumerate((("after the window, before the record", 1, True), ("before the record is visible", 2, False),
+                                                 ("after the record, before state/event", 2, True))):
+            with self.subTest(label):
+                if i:
+                    self.rebuild()
+                with self.crash("_atomic_create_exclusive", nth, after):
+                    self.release_cur()
+                    r = self.cur = self.begin(self.NONCE4)
+                    with self.assertRaises(self.CrashNow):
+                        r._transition_boot()
+                        r._rc_last = None
+                        with self.os_facts():
+                            r.recovery_step()
+                self.assertTrue((self.home / R.D16S_BOOT_NAME).exists())
+                spent = self.succ_path().exists()
+                self.assertEqual(spent, (nth, after) == (2, True))
+                self.reload4(nonce="05" * 16)  # the restart
+                self.assertTrue(any("no second reload" in (x or "") for x in self.reasons("quarantine-recovery-denied")), label)
+                self.assertEqual(self.succ_path().exists(), spent, label)
+                self.assertLessEqual(self.n_kind("d16-succession-first-boot"), 1, label)  # the file, not the audit event, is the authority
+                self.assert_d16_closed(label)
+                self.assertEqual(self.overlay2()["stage"], "ACTIVE")
+                self.assertEqual(self.live_old_pins(), self.old_pins, label)  # the old chain is byte-immutable through every crash
+
+    def test_failures_inside_the_creation_leave_nothing_and_the_old_chain_untouched(self):
+        kept = {n: self.raw(n) for n in (R.TRANSFER_RECORD_NAME, R.RC2_RECORD_NAME, R.RC3_REATTEST_NAME)}
+        with mock.patch.object(R, "_d16s_write", side_effect=OSError("disk")):
+            self.reload4()
+        self.assertFalse(self.succ_path().exists())
+        self.assertTrue(self.reasons("quarantine-recovery-failed"))
+        self.assertEqual({n: self.raw(n) for n in kept}, kept)
+        self.reload4(nonce="06" * 16)
+        self.assertFalse(self.succ_path().exists())
+        self.assert_d16_closed()
+
+
+class Recovery4Refusals(Recovery4Base):
+    def test_refusals_create_nothing_and_leave_every_ingress_closed(self):
+        def patch(name, value):
+            return lambda: mock.patch.object(R, name, value)
+
+        def hold_writer():
+            lk = R.FileLock(R.writer_lock_path(self.home, self.repo))
+            self.assertTrue(lk.acquire({"pid": 1}))
+            self.addCleanup(lk.release)
+        acc = lambda n: self.home / "acceptances" / f"{n}.json"
+        cases = {
+            "E is not the child of the pinned head": patch("D16S_OWNER_PARENT", self.c3_commit),
+            "wrong admission record hash": patch("D16S_OWNER_SHA", "9" * 64),
+            "wrong previous runner pin": patch("D16S_PRIOR_CODE_SHA", "8" * 64),
+            "wrong old chain pin": patch("D16S_OLD", {**self.old_pins, "transition": {**self.old_pins["transition"], "checksum": "7" * 64}}),
+            "no Opus security evidence": lambda: (self.home / R.D16S_CHECKPOINT / R.TRANSFER_PRELOAD_NAME).unlink(),
+            "security evidence names another diff": lambda: self.write_succession_preload(diff_sha256="6" * 64),
+            "security evidence is not APPROVED": lambda: self.write_succession_preload(outcome="CHANGES_REQUESTED"),
+            "C without exact-SHA CI": lambda: self.ci_ok.__setitem__(self.c4_commit, False),
+            "E without exact-SHA CI": lambda: self.ci_ok.__setitem__(self.e4_commit, False),
+            "actual second runner process": lambda: self.other_pids.append(4242),
+            "worker running": lambda: self.mutate_state(lambda st: st["tasks"].update({"w": {**self.ordinary_task_stub("w"), "status": "RUNNING"}})),
+            "open handoff": lambda: self.mutate_state(lambda st: st.update(handoff={"request": {"id": "h"}})),
+            "held repository-writer lock": hold_writer,
+            "certificate drift": lambda: (self.repo / self.CERT).write_bytes(self.cert0 + b" "),
+            "packet drift": lambda: (self.repo / self.QA).write_bytes(self.qa0 + b"x"),
+            "fresh S0 receipt replaced": lambda: acc(R.RC2_S0_RECEIPT).write_bytes(acc(R.RC2_S0_RECEIPT).read_bytes() + b" "),
+            "lane-2 receipt replaced": lambda: acc(R.RC2_RECEIPT).write_bytes(acc(R.RC2_RECEIPT).read_bytes() + b" "),
+            "stray untracked file": lambda: (self.repo / "stray.txt").write_text("x"),
+            "old reattestation altered": lambda: (self.home / R.RC3_REATTEST_NAME).write_bytes(self.reattest_bytes() + b" "),
+            "same process identity as the reattested runner": None,
+        }
+        for i, (label, action) in enumerate(cases.items()):
+            with self.subTest(label):
+                if i:
+                    self.rebuild()
+                if action is None:
+                    self.reload4(nonce=self.NONCE3)
+                else:
+                    cm = action()
+                    with (cm if hasattr(cm, "__enter__") else contextlib.nullcontext()):
+                        self.reload4()
+                self.assertFalse(self.succ_path().exists(), label)
+                self.assert_d16_closed(label)
+                self.assertEqual(self.overlay2()["stage"], "ACTIVE", label)
+                self.assertEqual(self.n_kind("d16-succession-created"), 0, label)
+
+    def test_a_commit_that_changes_more_than_the_two_files_is_refused(self):
+        self.C4_EXTRA = {"extra.txt": b"x\n"}  # the rebuilt world's C4 also adds a file
+        self.rebuild()
+        self.reload4()
+        self.assertFalse(self.succ_path().exists())
+        self.assert_d16_closed()
+
+    def test_ci_or_lock_outage_may_retry_in_the_same_process_only(self):
+        self.ci_outage = True
+        r = self.reload4()
+        self.assertFalse(self.succ_path().exists())
+        self.ci_outage = False
+        r._rc_last = None
+        with self.os_facts():
+            r.recovery_step()  # the one window holder retries after the transient cause is gone
+        self.assertTrue(self.succ_path().exists())
+        self.assert_d16_open()
+        r2 = self.reload4(nonce="07" * 16)
+        self.assertEqual(self.n_kind("d16-succession-created"), 1)
+
+
+class Recovery4PreActive(Recovery4Base):
+    TO_ACTIVE = False
+
+    def test_before_lane_two_is_active_the_reload_opens_no_window_and_d16_stays_denied(self):
+        self.assertEqual(self.overlay2()["stage"], "BOUND")
+        self.reload4()
+        self.assertFalse((self.home / R.D16S_BOOT_NAME).exists())
+        self.assertFalse(self.succ_path().exists())
+        self.assertEqual(self.n_kind("d16-succession-first-boot"), 0)
+        self.assert_d16_closed()
+        with self.assertRaises(R.GateError):
+            R.d16_succession_preflight(self.cfg, self.cur.state, rlock_held=True, wlock_held=True)
+        with self.assertRaises(R.GateError):
+            self.eff()
 
 
 class CliSoleRunnerFailClosed(unittest.TestCase):
