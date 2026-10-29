@@ -366,6 +366,16 @@ class ChangeControl(Base):
         self.fx.adr("ADR-0001-change-control", Covers="tools/mission_runner/workflow_check.py")
         self.assertEqual(self.change("ADR-0001", "tools/mission_runner/workflow_check.py")[0], 0)
 
+    def test_cross_user_control_files_require_their_accepted_adr(self):
+        paths = ("tools/mission_runner/control.py", "tools/mission_runner/veyro-ctl")
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertBlocked("CONTROLLED_CHANGE_UNREFERENCED", self.change("ADR-0099", path))
+                self.assertBlocked("CHANGE_ADR_NOT_COVERING", self.change("ADR-0001", path))
+        self.fx.adr("ADR-0004-control-surface", ID="ADR-0004", **{
+            "Decision-Key": "minimal-runner-cross-user-control-surface", "Covers": ", ".join(paths)})
+        self.assertEqual(self.change("ADR-0004", *paths)[0], 0)
+
     def test_unreferenced_controlled_change(self):
         for d in ("ADR-0099", "OWNER-2026-10-16-baseline", "whatever"):
             with self.subTest(decision=d):
