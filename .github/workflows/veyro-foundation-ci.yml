@@ -33,11 +33,80 @@ jobs:
       - name: MOD-000 focused unittest suite
         run: python -m unittest discover -s tools/mission_runner/tests -t tools/mission_runner -v
 
+      - name: Runner v2 fail-closed safety checks (worker boundary, mandatory pinned v1 copy, v1 id replay, corrupt state)
+        run: |
+          set -u
+          fail() { echo "::error::$1"; exit 1; }
+          runner() { python tools/mission_runner/runner.py --repo "$PWD" "$@"; }
+          printf 'prompt\n' > "$RUNNER_TEMP/prompt.txt"
+          v1='{"schema":1,"tasks":{"v1-task":{"id":"v1-task","module":"MOD-000","role":"implement","status":"RUNNING"}}}'
+          legacy() { # args: dir ; writes the v1 copy and prints the pinned options
+            printf '%s' "$v1" > "$1/legacy-state.json"
+            echo "--legacy-state $1/legacy-state.json --legacy-sha256 $(sha256sum "$1/legacy-state.json" | cut -d' ' -f1)"
+          }
+
+          # 1. Outside the dedicated non-admin worker account the runner refuses to start (exit 5) and touches nothing.
+          #    (Sole-runner lock and corrupt-state exits are exercised by the unittest suite above with the host boundary patched.)
+          home="$(mktemp -d)"; opts="$(legacy "$home")"
+          rc=0; runner --home "$home" $opts run || rc=$?
+          [ "$rc" -eq 5 ] || fail "run outside the worker account exited $rc; expected 5"
+          [ ! -e "$home/locks" ] && [ ! -e "$home/v2/state.json" ] || fail "a refused runner touched its state"
+
+          # 2. The legacy v1 copy is mandatory and byte-pinned: unpinned, missing or altered copies refuse enqueue and change nothing.
+          home="$(mktemp -d)"; opts="$(legacy "$home")"
+          rc=0; runner --home "$home" enqueue --id fresh-0 --module MOD-000 --role implement --allow src/ \
+            --prompt-file "$RUNNER_TEMP/prompt.txt" || rc=$?
+          [ "$rc" -eq 2 ] || fail "enqueue without a legacy copy exited $rc; expected refusal (2)"
+          rc=0; runner --home "$home" --legacy-state "$home/legacy-state.json" --legacy-sha256 "$(printf 0%.0s $(seq 64))" \
+            enqueue --id fresh-0 --module MOD-000 --role implement --allow src/ --prompt-file "$RUNNER_TEMP/prompt.txt" || rc=$?
+          [ "$rc" -eq 2 ] || fail "enqueue with a wrong pin exited $rc; expected refusal (2)"
+
+          # 3. v1 ids can never be replayed (even RUNNING ones); a fresh id is accepted; an altered copy fails closed again.
+          cp "$home/legacy-state.json" "$home/state.before"
+          rc=0; runner --home "$home" $opts enqueue --id v1-task --module MOD-000 --role implement --allow src/ \
+            --prompt-file "$RUNNER_TEMP/prompt.txt" || rc=$?
+          [ "$rc" -eq 2 ] || fail "enqueue of a v1 task id exited $rc; expected refusal (2)"
+          cmp -s "$home/legacy-state.json" "$home/state.before" || fail "v1 history was modified"
+          if grep -qs 'v1-task' "$home/v2/state.json"; then fail "a v1 id reached the v2 queue"; fi
+          runner --home "$home" $opts enqueue --id fresh-1 --module MOD-000 --role implement --allow src/ \
+            --prompt-file "$RUNNER_TEMP/prompt.txt" || fail "a fresh id must still be accepted"
+          printf '{broken' > "$home/legacy-state.json"
+          rc=0; runner --home "$home" $opts enqueue --id fresh-2 --module MOD-000 --role implement --allow src/ \
+            --prompt-file "$RUNNER_TEMP/prompt.txt" || rc=$?
+          [ "$rc" -eq 2 ] || fail "enqueue with an altered v1 copy exited $rc; expected refusal (2)"
+
+          # 4. Corrupt v2 state is never overwritten: enqueue is refused and the bytes stay.
+          home="$(mktemp -d)"; opts="$(legacy "$home")"; mkdir -p "$home/v2"; printf '{broken' > "$home/v2/state.json"
+          rc=0; runner --home "$home" $opts enqueue --id x1 --module MOD-000 --role implement --allow src/ \
+            --prompt-file "$RUNNER_TEMP/prompt.txt" || rc=$?
+          [ "$rc" -eq 2 ] || fail "enqueue on corrupt v2 state exited $rc; expected refusal (2)"
+          [ "$(cat "$home/v2/state.json")" = '{broken' ] || fail "corrupt v2 state was overwritten"
+          echo "runner v2 fail-closed checks passed"
+
       - name: Governance validator unittest suite
         run: python -m unittest discover -s tools/governance/tests -t tools/governance -v
 
       - name: Governance static structural check (not a change-control gate)
         run: python tools/governance/governance_check.py check --root .
+
+      - name: MOD-001 product source-binding negative check
+        run: |
+          set -eu
+          pin="$RUNNER_TEMP/unpinned-source-baseline.json"
+          test ! -e "$pin"
+          rc=0
+          python tools/governance/source_baseline.py verify --repo "$PWD" --pin "$pin" > "$RUNNER_TEMP/source-negative.json" || rc=$?
+          test "$rc" -eq 1
+          python -c 'import json,sys; assert json.load(open(sys.argv[1]))["code"] == "NOT_PINNED"' "$RUNNER_TEMP/source-negative.json"
+          rc=0
+          python tools/governance/source_baseline.py pin --repo "$PWD" --pin "$pin" || rc=$?
+          test "$rc" -eq 2
+          test ! -e "$pin"
+          rc=0
+          python tools/governance/source_baseline.py pin --repo "$PWD" --pin "$pin" \
+            --confirm-index-sha256 0000000000000000000000000000000000000000000000000000000000000000 || rc=$?
+          test "$rc" -eq 2
+          test ! -e "$pin"
 
       - name: Trusted-gate evaluator/publisher unittest suite (no key or App secret)
         run: python -m unittest discover -s tools/trusted_gate/tests -t tools/trusted_gate -v
@@ -72,43 +141,3 @@ jobs:
 
       - name: Code rollback rehearsal (two distinct local images)
         run: VEYRO_PORT=18080 bash infra/scripts/rollback-rehearsal.sh staging
-
-      - name: Negative check - runner fails closed without a source-binding pin
-        run: |
-          set -u
-          home="$(mktemp -d)"
-
-          # No baseline pin exists: verify-baseline MUST exit non-zero (1) and report NOT_PINNED.
-          rc=0
-          out="$(python tools/mission_runner/runner.py --home "$home" --repo "$PWD" verify-baseline)" || rc=$?
-          echo "$out"
-          if [ "$rc" -ne 1 ]; then
-            echo "::error::verify-baseline exited $rc without a pin; expected fail-closed exit 1"
-            exit 1
-          fi
-          echo "$out" | grep -q '"code": "NOT_PINNED"' || {
-            echo "::error::verify-baseline did not report NOT_PINNED"
-            exit 1
-          }
-
-          # Pinning without an owner-confirmed index hash MUST be refused (exit 2) and write no pin.
-          rc=0
-          python tools/mission_runner/runner.py --home "$home" --repo "$PWD" pin-baseline || rc=$?
-          if [ "$rc" -ne 2 ]; then
-            echo "::error::pin-baseline without --confirm-index-sha256 exited $rc; expected refusal (2)"
-            exit 1
-          fi
-          if find "$home" -name 'baseline-pin.json' | grep -q .; then
-            echo "::error::a baseline pin was written without owner confirmation"
-            exit 1
-          fi
-
-          # A wrong confirmation hash MUST also be refused (exit 2).
-          rc=0
-          python tools/mission_runner/runner.py --home "$home" --repo "$PWD" pin-baseline \
-            --confirm-index-sha256 0000000000000000000000000000000000000000000000000000000000000000 || rc=$?
-          if [ "$rc" -ne 2 ]; then
-            echo "::error::pin-baseline with a wrong hash exited $rc; expected refusal (2)"
-            exit 1
-          fi
-          echo "negative checks passed: runner fails closed without a valid pin"

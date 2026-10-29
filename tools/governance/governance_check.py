@@ -48,6 +48,7 @@ INDEX_PATH = "PROJECT_INDEX.md"
 ADR_DIR = "knowledge/00-Decisions"
 CONTROLLED = (".github/workflows/", "governance/", "knowledge/00-Decisions/", "tools/governance/",
               "tools/mission_runner/workflow_check.py", "tools/mission_runner/runner.py",
+              "tools/mission_runner/acceptance_receipt.py",
               "tools/mission_runner/module_catalog.json")
 REQ_IDS = tuple(f"GOV-02-R0{i}" for i in range(1, 9))
 REQ_STATUSES = ("FOUNDATION", "DEFERRED")
