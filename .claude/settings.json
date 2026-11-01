@@ -1,0 +1,54 @@
+{
+  "$comment": [
+    "Veyro project settings — deny rules only, native Claude Code permissions.",
+    "Two jobs: keep preserved historical evidence and the frozen baseline from being modified,",
+    "and keep git history from being rewritten. This grants nothing and adds no approval",
+    "workflow; the rules in CLAUDE.md still apply if this file is removed.",
+    "Reads stay open except for credentials, so preserved evidence can be consulted but not",
+    "changed. Each protected path denies BOTH Edit and Write: Edit alone would still allow Write",
+    "to replace the whole file.",
+    "Not enforced here, deliberately: plain `git commit` and `git push` stay available because the",
+    "documented workflow needs them. Review-before-push is therefore procedural. See CLAUDE.md."
+  ],
+  "permissions": {
+    "deny": [
+      "Read(~/.openclaw/credentials/**)",
+      "Read(~/.openclaw/service-env/**)",
+      "Read(~/.openclaw/veyro-worker-initial-password)",
+      "Read(~/.openclaw/state/**)",
+
+      "Edit(/Library/Application Support/Veyro/**)",
+      "Write(/Library/Application Support/Veyro/**)",
+      "Edit(~/Library/Application Support/Veyro/**)",
+      "Write(~/Library/Application Support/Veyro/**)",
+      "Edit(/Users/Shared/veyroworker/**)",
+      "Write(/Users/Shared/veyroworker/**)",
+      "Edit(~/Veyro-Migration-Archive-*/**)",
+      "Write(~/Veyro-Migration-Archive-*/**)",
+
+      "Edit(PROJECT_INDEX.md)",
+      "Write(PROJECT_INDEX.md)",
+      "Edit(Gym_OS_Master_Product_Blueprint_v1_English.docx)",
+      "Write(Gym_OS_Master_Product_Blueprint_v1_English.docx)",
+      "Edit(Veyro_Technical_System_Design_v1.4.2_Foundation_Clarification.docx)",
+      "Write(Veyro_Technical_System_Design_v1.4.2_Foundation_Clarification.docx)",
+      "Edit(Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx)",
+      "Write(Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx)",
+      "Edit(veyro-product-experience-design/**)",
+      "Write(veyro-product-experience-design/**)",
+
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git filter-branch*)",
+      "Bash(git rebase*)",
+      "Bash(launchctl*)",
+      "Bash(sudo*)",
+      "Bash(pip install*)",
+      "Bash(python -m pip install*)",
+      "Bash(python3 -m pip install*)",
+      "Bash(brew install*)",
+      "Bash(npm install*)"
+    ]
+  }
+}
