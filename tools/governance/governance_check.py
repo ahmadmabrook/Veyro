@@ -493,6 +493,8 @@ def attestation_owner_ok(st):
     root-owned file is rewritable by any admin-group member without authenticating."""
     if st.st_uid != 0 or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise OSError(ATTEST_OWNER_DETAIL)
+
+
 ATTEST_MAX_BYTES = 65536
 RECORD_MAX_BYTES = 1048576
 

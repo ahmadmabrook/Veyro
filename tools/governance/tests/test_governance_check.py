@@ -608,9 +608,10 @@ class MalformedInput(Base):
 _REAL_FSTAT = os.fstat
 
 
-def fstat_as_root(ext_dir, extra_mode=0):
-    """Report every regular file directly under `ext_dir` as owned by uid 0 and, unless `extra_mode` forces
-    bits back on, writable by neither group nor others, leaving every other descriptor untouched. Writing a
+def fstat_as_root(ext_dir, extra_mode=0, uid=0):
+    """Report every regular file directly under `ext_dir` as owned by `uid` (0 unless overridden) and, unless
+    `extra_mode` forces bits back on, writable by neither group nor others, leaving every other descriptor
+    untouched. Forcing the owner lets a test exercise the uid half of the check whatever uid the suite runs as. Writing a
     genuinely root-owned attestation needs admin authentication, which a test must never need. The inode set
     is recomputed per call, so an attestation written later in a test is covered too."""
     def inodes():
@@ -630,7 +631,7 @@ def fstat_as_root(ext_dir, extra_mode=0):
             return st
         fields = list(tuple(st)[:10])
         fields[0] = (st.st_mode & ~(stat.S_IWGRP | stat.S_IWOTH)) | extra_mode
-        fields[4] = 0
+        fields[4] = uid
         return os.stat_result(fields)
     return wrapper
 
@@ -657,12 +658,16 @@ class FirstPublication(Base):
         self.git("add", "--", NEW)
 
     @contextlib.contextmanager
-    def attestation_as_written(self, extra_mode=None):
+    def attestation_as_written(self, extra_mode=None, force_uid=None):
         """Run the lane against the attestation's real ownership, or with `extra_mode` forced on over uid 0,
-        so the owner requirement itself can be exercised rather than assumed away."""
+        or with `force_uid` reporting a non-root owner, so the owner requirement itself can be exercised
+        rather than assumed away or left to depend on the uid the suite happens to run as."""
         self.fstat_patch.stop()
-        patch = None if extra_mode is None else mock.patch(
-            "governance_check.os.fstat", fstat_as_root(self.ext, extra_mode))
+        patch = None
+        if force_uid is not None:
+            patch = mock.patch("governance_check.os.fstat", fstat_as_root(self.ext, 0, force_uid))
+        elif extra_mode is not None:
+            patch = mock.patch("governance_check.os.fstat", fstat_as_root(self.ext, extra_mode))
         if patch:
             patch.start()
         try:
@@ -723,7 +728,7 @@ class FirstPublication(Base):
         self.git("add", NEW)
         (self.fx.root / NEW).unlink()
         (self.fx.root / NEW).symlink_to(self.fx.root / OWNER)
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), ": symlink")
         # MM: record committed at HEAD, staged edit, further working edit
         self.git("rm", "-f", "-q", "--cached", "--", NEW)
         (self.fx.root / NEW).unlink()
@@ -734,23 +739,24 @@ class FirstPublication(Base):
         self.git("add", NEW)
         self.fx.write(NEW, OWNER_TEXT + "two\n")
         self.attest()
-        self.assertPublishBlocked(self.publish())
+        # Blocks on the record already existing at HEAD, before the MM state is reached.
+        self.assertPublishBlockedBy(self.publish(), "already exists at HEAD")
 
     def test_untracked_record_blocks(self):
         self.git("rm", "-q", "--cached", "--", NEW)
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "index must add exactly")
 
     def test_extra_staged_tracked_edit_blocks(self):
         reg = self.fx.root / "governance/registry.json"
         reg.write_text(reg.read_text() + "\n")
         self.git("add", "governance/registry.json")
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "staged changes to existing tracked paths")
 
     def test_unrelated_modified_with_assume_unchanged_blocks(self):
         reg = self.fx.root / "governance/registry.json"
         reg.write_text(reg.read_text() + "\n")
         self.git("update-index", "--assume-unchanged", "governance/registry.json")
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "working file differs from the index")
         # independent of the ls-files tag check: the raw-bytes comparison alone detects it
         self.assertIn("differs from the index", G.tree_state_problem(self.fx.root, NEW, (self.fx.root / NEW).read_bytes()))
 
@@ -789,16 +795,30 @@ class FirstPublication(Base):
         reg.write_bytes(saved)
         self.assertEqual(self.publish()[0], 0)
 
+    def test_index_tag_without_content_change_blocks(self):
+        """The tag check runs after the content comparison, so it is reachable only when the tagged file has
+        no edit for that comparison to catch first. No other test reaches it."""
+        for flag in ("--skip-worktree", "--assume-unchanged"):
+            with self.subTest(flag=flag):
+                self.git("update-index", flag, "governance/registry.json")
+                try:
+                    self.assertPublishBlockedBy(self.publish(), "git index entry has a non-default tag")
+                finally:
+                    self.git("update-index", flag.replace("--", "--no-", 1), "governance/registry.json")
+
     def test_assume_unchanged_hides_nothing(self):
         reg = self.fx.root / "governance/registry.json"
         reg.write_text(reg.read_text() + "\n")
         self.git("update-index", "--assume-unchanged", "governance/registry.json")
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "working file differs from the index")
         self.git("update-index", "--no-assume-unchanged", "--skip-worktree", "governance/registry.json")
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "working file differs from the index")
+        self.git("update-index", "--no-skip-worktree", "governance/registry.json")
 
     def test_attestation_owned_by_invoking_user_blocks(self):
-        with self.attestation_as_written():
+        # The owner is forced rather than inherited: run as root the file would report uid 0, the check
+        # would not fire, and this test would fail for a reason that is not the one it is named for.
+        with self.attestation_as_written(force_uid=501):
             self.assertPublishBlockedBy(self.publish(), ATTEST_OWNER_DETAIL)
 
     def test_root_owned_but_group_or_other_writable_blocks(self):
@@ -895,12 +915,13 @@ class FirstPublication(Base):
         self.assertPublishBlockedBy(self.publish(att=self.ext), "must be a regular non-symlink file")
 
     def test_existing_head_record_blocks(self):
-        self.assertPublishBlocked(self.publish(OWNER2_STEM, OWNER2, att=self._att_for(OWNER2)))
+        self.assertPublishBlockedBy(self.publish(OWNER2_STEM, OWNER2, att=self._att_for(OWNER2)),
+                                    "already exists at HEAD")
         self.git("add", NEW)
         self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "n")
         self.fx.write(NEW, OWNER_TEXT + "edit\n")
         self.attest()
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "already exists at HEAD")
 
     def _att_for(self, rel):
         p = self.ext / "other.json"
@@ -934,7 +955,7 @@ class FirstPublication(Base):
     def test_symlink_record_blocks(self):
         (self.fx.root / NEW).unlink()
         (self.fx.root / NEW).symlink_to(self.fx.root / OWNER)
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), ": symlink")
 
     def test_oversized_receipt_blocks(self):
         self.att.write_text(" " * (G.ATTEST_MAX_BYTES + 1))
