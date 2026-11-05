@@ -478,11 +478,21 @@ def index_names(root):
 
 # ------------------------------------------------------------------ first publication of one OWNER record
 ATTEST_OWNER_ID = "gateway-owner"
-ATTEST_SOURCE = "openclaw:webchat:direct"
+ATTEST_SOURCE = "owner:direct:admin-attested"
 ATTEST_SCHEMA = "veyro.owner-attestation/1"
 ATTEST_KEYS = {"schema", "owner_id", "source", "owner_choice_quote", "source_prompt_message_id", "record_path", "record_sha256",
                "expected_head"}
 HEAD_OID_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+ATTEST_OWNER_DETAIL = ("the attestation must be written under admin authentication and left unwritable by "
+                       "the invoking user's group and by others")
+
+
+def attestation_owner_ok(st):
+    """Refuse an attestation the invoking user could rewrite in place: it must be owned by uid 0 and be
+    writable by neither its group nor others. Root ownership alone is not enough, because a group-writable
+    root-owned file is rewritable by any admin-group member without authenticating."""
+    if st.st_uid != 0 or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise OSError(ATTEST_OWNER_DETAIL)
 ATTEST_MAX_BYTES = 65536
 RECORD_MAX_BYTES = 1048576
 
@@ -537,16 +547,20 @@ def porcelain_paths(raw):
     return [p for _, p in porcelain_entries(raw)]
 
 
-def read_regular_capped(path, cap):
+def read_regular_capped(path, cap, require=None):
     """Open `path` without following a final symlink, require a regular file, read at most `cap` bytes and
     return exactly the bytes read. Raises OSError on open errors, non-regular files, oversize content or a
-    file identity/size change observed while reading. It does not defend against in-place content rewrites."""
+    file identity/size change observed while reading. It does not defend against in-place content rewrites.
+    `require`, when given, is called with the `os.fstat` of the opened descriptor and raises OSError to
+    refuse the file; it sees the descriptor actually read, so a swapped path cannot evade it."""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
     fd = os.open(path, flags)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
             raise OSError(f"{path}: not a regular file")
+        if require is not None:
+            require(st)
         if st.st_size > cap:
             raise OSError(f"{path}: larger than {cap} bytes")
         # where O_NOFOLLOW is unavailable, a path that is a symlink (or was swapped) has a different identity
@@ -737,7 +751,7 @@ def check_first_publication(root, decision, paths, attestation_file):
     if st.st_size > ATTEST_MAX_BYTES:
         return block("attestation too large")
     try:
-        att_bytes = read_regular_capped(att, ATTEST_MAX_BYTES)
+        att_bytes = read_regular_capped(att, ATTEST_MAX_BYTES, require=attestation_owner_ok)
         data = json.loads(att_bytes.decode("utf-8"), object_pairs_hook=_no_dup_pairs)
     except (OSError, ValueError, UnicodeDecodeError) as e:
         return block(f"attestation malformed: {e}")

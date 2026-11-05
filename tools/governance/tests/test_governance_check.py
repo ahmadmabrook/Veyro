@@ -6,12 +6,15 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
@@ -25,6 +28,7 @@ OWNER_TEXT = ("# owner change approval\n\n- Covers: PROJECT_INDEX.md, A.docx, B.
               "knowledge/00-Decisions/OWNER-2026-10-18-next.md, knowledge/00-Decisions/ADR-0002-deploy.md\n"
               "- Actions: production-deploy, defer-GOV-02-R06\n\n## Decision\nfixture\n")
 REQS = G.REQ_IDS
+ATTEST_OWNER_DETAIL = G.ATTEST_OWNER_DETAIL
 
 
 def adr_text(**h):
@@ -601,6 +605,36 @@ class MalformedInput(Base):
                 self.assertEqual(cm.exception.code, 2)
 
 
+_REAL_FSTAT = os.fstat
+
+
+def fstat_as_root(ext_dir, extra_mode=0):
+    """Report every regular file directly under `ext_dir` as owned by uid 0 and, unless `extra_mode` forces
+    bits back on, writable by neither group nor others, leaving every other descriptor untouched. Writing a
+    genuinely root-owned attestation needs admin authentication, which a test must never need. The inode set
+    is recomputed per call, so an attestation written later in a test is covered too."""
+    def inodes():
+        found = set()
+        for child in Path(ext_dir).iterdir():
+            try:
+                st = child.lstat()
+            except OSError:
+                continue
+            if stat.S_ISREG(st.st_mode):
+                found.add((st.st_dev, st.st_ino))
+        return found
+
+    def wrapper(fd):
+        st = _REAL_FSTAT(fd)
+        if (st.st_dev, st.st_ino) not in inodes():
+            return st
+        fields = list(tuple(st)[:10])
+        fields[0] = (st.st_mode & ~(stat.S_IWGRP | stat.S_IWOTH)) | extra_mode
+        fields[4] = 0
+        return os.stat_result(fields)
+    return wrapper
+
+
 NEW = "knowledge/00-Decisions/OWNER-2026-10-18-next.md"
 NEW_STEM = "OWNER-2026-10-18-next"
 EVID = "knowledge/03-Modules/MOD-002/evidence.md"
@@ -617,7 +651,26 @@ class FirstPublication(Base):
         self.addCleanup(shutil.rmtree, self.ext, True)
         self.att = self.ext / "att.json"
         self.attest()
+        self.fstat_patch = mock.patch("governance_check.os.fstat", fstat_as_root(self.ext))
+        self.fstat_patch.start()
+        self.addCleanup(self.fstat_patch.stop)
         self.git("add", "--", NEW)
+
+    @contextlib.contextmanager
+    def attestation_as_written(self, extra_mode=None):
+        """Run the lane against the attestation's real ownership, or with `extra_mode` forced on over uid 0,
+        so the owner requirement itself can be exercised rather than assumed away."""
+        self.fstat_patch.stop()
+        patch = None if extra_mode is None else mock.patch(
+            "governance_check.os.fstat", fstat_as_root(self.ext, extra_mode))
+        if patch:
+            patch.start()
+        try:
+            yield
+        finally:
+            if patch:
+                patch.stop()
+            self.fstat_patch.start()
 
     def git(self, *a):
         subprocess.run(["git", "-C", str(self.fx.root), *a], check=True, capture_output=True)
@@ -628,7 +681,8 @@ class FirstPublication(Base):
 
     def attest(self, **over):
         d = {"schema": "veyro.owner-attestation/1", "owner_id": "gateway-owner",
-             "source": "openclaw:webchat:direct", "owner_choice_quote": "I choose option B", "source_prompt_message_id": "msg-123",
+             "source": "owner:direct:admin-attested", "owner_choice_quote": "I choose option B",
+             "source_prompt_message_id": "msg-123",
              "record_path": NEW, "record_sha256": hashlib.sha256((self.fx.root / NEW).read_bytes()).hexdigest(),
              "expected_head": self.head()}
         d.update(over)
@@ -743,6 +797,24 @@ class FirstPublication(Base):
         self.git("update-index", "--no-assume-unchanged", "--skip-worktree", "governance/registry.json")
         self.assertPublishBlocked(self.publish())
 
+    def test_attestation_owned_by_invoking_user_blocks(self):
+        with self.attestation_as_written():
+            self.assertPublishBlockedBy(self.publish(), ATTEST_OWNER_DETAIL)
+
+    def test_root_owned_but_group_or_other_writable_blocks(self):
+        for extra in (stat.S_IWGRP, stat.S_IWOTH, stat.S_IWGRP | stat.S_IWOTH):
+            with self.subTest(extra=oct(extra)), self.attestation_as_written(extra_mode=extra):
+                self.assertPublishBlockedBy(self.publish(), ATTEST_OWNER_DETAIL)
+
+    def test_root_owned_strict_mode_attestation_passes(self):
+        """Positive control: the three refusals above are the owner check firing, not the lane failing."""
+        self.assertEqual(self.publish()[0], 0)
+
+    def test_record_read_is_not_subject_to_the_owner_check(self):
+        """The record is a working-tree file owned by the invoking user; only the attestation is restricted."""
+        self.assertEqual((self.fx.root / NEW).stat().st_uid, os.getuid())
+        self.assertEqual(self.publish()[0], 0)
+
     def test_porcelain_entries_keep_codes(self):
         self.assertEqual(G.porcelain_entries(b"?? a\0R  new\0old\0AM x\0"),
                          [("??", "a"), ("R ", "new"), ("R ", "old"), ("AM", "x")])
@@ -751,13 +823,22 @@ class FirstPublication(Base):
         self.assertBlocked("CHANGE_SELF_AUTHORIZING", self.change(NEW_STEM, NEW))
 
     def test_receipt_mismatches_block(self):
-        for over in ({"record_sha256": "0" * 64}, {"owner_id": "someone"}, {"source": "other"},
-                     {"record_path": OWNER2}, {"owner_choice_quote": " "}, {"source_prompt_message_id": ""},
-                     {"owner_choice_quote": 5}, {"extra": "x"}, {"schema": "veyro.owner-attestation/2"},
-                     {"schema": "veyro.owner-attestation/1 "}, {"schema": ""}, {"schema": 1}):
+        for over, detail in (({"record_sha256": "0" * 64}, "record_sha256 does not match the record"),
+                             ({"owner_id": "someone"}, "owner_id mismatch"),
+                             ({"source": "other"}, "source mismatch"),
+                             ({"source": "openclaw:webchat:direct"}, "source mismatch"),
+                             ({"record_path": OWNER2}, "record_path mismatch"),
+                             ({"owner_choice_quote": " "}, "must be non-empty"),
+                             ({"source_prompt_message_id": ""}, "must be non-empty"),
+                             ({"owner_choice_quote": 5}, "values must be strings"),
+                             ({"extra": "x"}, "exactly the keys"),
+                             ({"schema": "veyro.owner-attestation/2"}, "schema mismatch"),
+                             ({"schema": "veyro.owner-attestation/1 "}, "schema mismatch"),
+                             ({"schema": ""}, "schema mismatch"),
+                             ({"schema": 1}, "values must be strings")):
             with self.subTest(over=over):
                 self.attest(**over)
-                self.assertPublishBlocked(self.publish())
+                self.assertPublishBlockedBy(self.publish(), detail)
 
     def test_wrong_head_blocks(self):
         other = "0" * len(self.head())
@@ -774,38 +855,44 @@ class FirstPublication(Base):
 
     def test_malformed_head_blocks(self):
         good = self.head()
-        for bad in (good.upper(), good[:-1], good[:7], good + "0", " " + good, good + "\n", "", "HEAD", "g" * len(good), 5, None):
+        hexish = "expected_head must be a full lowercase hex"
+        for bad, detail in ((good.upper(), hexish), (good[:-1], hexish), (good[:7], hexish),
+                            (good + "0", hexish), (" " + good, hexish), (good + "\n", hexish),
+                            ("", hexish), ("HEAD", hexish), ("g" * len(good), hexish),
+                            (5, "values must be strings"), (None, "values must be strings")):
             with self.subTest(bad=bad):
                 self.attest(expected_head=bad)
-                self.assertPublishBlocked(self.publish())
+                self.assertPublishBlockedBy(self.publish(), detail)
 
     def test_missing_head_key_blocks(self):
         d = json.loads(self.att.read_text())
         del d["expected_head"]
         self.att.write_text(json.dumps(d))
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "exactly the keys")
 
     def test_missing_schema_blocks(self):
         d = json.loads(self.att.read_text())
         del d["schema"]
         self.att.write_text(json.dumps(d))
-        self.assertPublishBlocked(self.publish())
+        self.assertPublishBlockedBy(self.publish(), "exactly the keys")
 
     def test_malformed_receipt_blocks(self):
-        for text in ("not json", "[]", '{"owner_id": "a", "owner_id": "b"}', ""):
+        for text in ("not json", '{"owner_id": "a", "owner_id": "b"}', ""):
             with self.subTest(text=text):
                 self.att.write_text(text)
-                self.assertPublishBlocked(self.publish())
-        self.assertPublishBlocked(self.publish(att=self.ext / "missing.json"))
+                self.assertPublishBlockedBy(self.publish(), "attestation malformed")
+        self.att.write_text("[]")
+        self.assertPublishBlockedBy(self.publish(), "exactly the keys")
+        self.assertPublishBlockedBy(self.publish(att=self.ext / "missing.json"), "attestation unreadable")
 
     def test_receipt_must_be_regular_file_outside_repo(self):
         inside = self.fx.root / "att.json"
         inside.write_text(self.att.read_text())
-        self.assertPublishBlocked(self.publish(att=inside))
+        self.assertPublishBlockedBy(self.publish(att=inside), "must be outside the repository")
         link = self.ext / "link.json"
         link.symlink_to(self.att)
-        self.assertPublishBlocked(self.publish(att=link))
-        self.assertPublishBlocked(self.publish(att=self.ext))
+        self.assertPublishBlockedBy(self.publish(att=link), "must be a regular non-symlink file")
+        self.assertPublishBlockedBy(self.publish(att=self.ext), "must be a regular non-symlink file")
 
     def test_existing_head_record_blocks(self):
         self.assertPublishBlocked(self.publish(OWNER2_STEM, OWNER2, att=self._att_for(OWNER2)))
@@ -818,7 +905,7 @@ class FirstPublication(Base):
     def _att_for(self, rel):
         p = self.ext / "other.json"
         p.write_text(json.dumps({"schema": "veyro.owner-attestation/1", "owner_id": "gateway-owner",
-                                 "source": "openclaw:webchat:direct",
+                                 "source": "owner:direct:admin-attested",
                                  "owner_choice_quote": "q", "source_prompt_message_id": "m", "record_path": rel,
                                  "record_sha256": hashlib.sha256((self.fx.root / rel).read_bytes()).hexdigest(),
                                  "expected_head": self.head()}))
