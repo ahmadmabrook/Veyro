@@ -76,8 +76,61 @@ and no second candidate set is authorized.
 
 | 2 | B5 independent fetch verification (delegated); correcting the B6 contradiction it found and folding in its three understatements | 25 | 138,208 | subagent reported **118,208 tokens exactly**, counted as reported; plus 20,000 estimated and rounded up for this session's orchestration of the dispatch and the corrections |
 
-Running total: **65 of 180 minutes, 218,208 of 400,000 tokens.** Remaining: **115 minutes,
-181,792 tokens.**
+| 3 | ADR-0006 drafted to close B7 (D4.3 selection); its independent review | 35 | 209,413 | subagent reported **179,413 tokens exactly**, counted as reported; plus 30,000 estimated and rounded up for drafting and orchestration |
+
+Running total: **100 of 180 minutes, 427,621 of 400,000 tokens.**
+
+## STOPPED — token limit exhausted
+
+**Gap state: `BLOCKED: CAPABILITY_GAP`.** Escalated to the owner at `2026-11-06T07:44:16Z`.
+
+§1.4 of the authorizing record: "The first newly exhausted limit immediately stops qualification
+work, returns the gap to `BLOCKED: CAPABILITY_GAP` and escalates to the Opus lead. No renewal,
+rollover, silent reset or second candidate set is authorized." The token limit is exceeded by
+**27,621**. Qualification work stopped on that line. No counter is reset and no budget is carried
+forward.
+
+**What the count rests on, stated so the owner can judge it rather than take it.** Of the 427,621
+charged, **297,621 is exactly measured**: the two delegated reviews reported 118,208 and 179,413
+tokens themselves. The remaining **130,000 is this session's own orchestration, which has no
+per-task counter** and was estimated and rounded up under the method recorded above. Counting only
+the measured figures and charging orchestration at zero would give 297,621, inside the limit.
+
+That reading is not taken, for the reason §1.3 and §1.5 give: "Unknown new usage is **not** treated
+as zero", and "stop rather than presume remaining budget". Charging orchestration at zero would be
+presuming remaining budget from an absence of telemetry, which is the one thing those clauses
+forbid. The conservative count governs and the gap is BLOCKED.
+
+**Work in flight when the limit hit, left exactly as it stands.** `ADR-0006` is drafted and staged
+but **unpublished**: its independent review returned **CHANGES_REQUESTED** with three blocking
+findings, none of which is remediated. They are recorded here so nothing is lost and nothing reads
+as closed:
+
+1. The ADR's Context states CAP-EVIDENCE records B2, B3, B4 and B6 "closed", which is stronger than
+   that record says. B3 is "VERIFIED in part, CVE applicability OPEN" and B6 is "VERIFIED, with the
+   licence question still open". This re-folded the exact misleading summary the B5 reviewer had
+   already made this session correct once. §2 condition 1 turns on that position.
+2. **An architecture mismatch that would have run an unassessed image.** D1 pins the **linux/arm64**
+   manifest and a **macOS arm64** `psycopg-binary` wheel, while D4.2 grants the CI workflow path and
+   CI runs on `ubuntu-24.04` (x86_64). Pinning the index digest on an amd64 runner resolves to the
+   **amd64** member, which was never verified and carries none of the attestation or SBOM behind the
+   139-CVE bookworm position; and the pinned macOS wheel cannot install on that runner at all. So
+   literal compliance with D2 in CI would reproduce, across architecture, precisely the hazard D2
+   exists to prevent across tags.
+3. `Covers: contracts/engineering/` is wider than its stated purpose and is **not** in the
+   validator's `CONTROLLED` tuple, so a `check-change` PASS on such a path judges nothing — which the
+   ADR does not disclose, though both precedent ADRs disclose the same thing. The prefix also reaches
+   `mod004-s0-capability.json`, the S0 forbidden-import closure.
+
+**Therefore B7 is NOT closed.** The selection is drafted, reviewed adversarially, found defective and
+not published. `contracts/engineering/module-capabilities.yaml` stays PROVISIONAL with
+`gate_eligible: false`; no manifest activation, no Ready-for-S1 judgment and no S1 code follows.
+
+**What a new envelope would buy, if the owner grants one.** Remediating the three findings and one
+re-review, then the manifest activation and the Ready-for-S1 judgment with their own review. On
+observed costs that is roughly 150,000-250,000 tokens, most of it review. A new envelope is the
+owner's own act under the authorizing record's Reserved list; this file grants, resets and
+recommends no figure on its own authority.
 
 The B5 charge came in well under the ~200,000 feared above, at 118,208, because the brief was
 written as eleven specific claims to verify rather than an open re-derivation. That is the pattern
