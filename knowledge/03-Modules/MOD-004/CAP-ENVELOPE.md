@@ -77,6 +77,11 @@ and no second candidate set is authorized.
 Running total: **40 of 180 minutes, 80,000 of 400,000 tokens.** Remaining: 140 minutes, 320,000
 tokens.
 
+Entry 1 includes a recorded sequencing deviation: the image pull and the wheel fetch preceded
+conditions 2 (B5) and 4 (B7/D4.3), contrary to §2's "Nothing is pulled until conditions 1-6 …
+hold". See the deviation section of [CAP-EVIDENCE.md](CAP-EVIDENCE.md). The work is charged
+normally; a breach is not made cheaper by being disclosed.
+
 The token figure is an estimate under the stated method, not a telemetry reading, and is rounded
 up. It is not offered as an exact count. The largest single remaining charge is expected to be the
 B5 independent fetch review, since observed independent reviews in this project have cost on the

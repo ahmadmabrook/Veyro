@@ -13,6 +13,52 @@ this file is not that reviewer. Nothing here is a safety pass, a security certif
 qualification. No blocker is closed by assertion; each closure below states what it closes and
 what it leaves open.
 
+## Sequencing deviation — recorded, not excused
+
+**What §2 requires.** "Nothing is pulled until conditions 1-6 and the remaining CAP-001 §6
+execution controls hold."
+
+**What happened.** The pinned image was pulled, and the `psycopg-binary` wheel was fetched into
+memory, **before conditions 2 and 4 held**:
+
+- **Condition 2 (B5)** — the independent reviewer's own fetch verification — had not been performed.
+  It was dispatched only after the pull and the wheel fetch.
+- **Condition 4 (B7 / D4.3)** — the ADR recording the driver and database selection — does not exist
+  yet.
+
+Both were unmet at the moment of the fetch. This is a process breach by the orchestrating session,
+recorded here because the alternative is a record that reads compliant when it was not. It is not
+excused by anything below.
+
+**What did hold.** Condition 5: Colima was running on Virtualization.Framework and the active
+docker context was `colima`, not `desktop-linux`. Condition 6: the interpreter was
+`/opt/homebrew/bin/python3.13` (3.13.13) in an isolated virtual environment outside the repository.
+The artifacts fetched were the assessed ones and nothing else: the image by CAP-001's pinned index
+digest, confirmed on arrival as `arm64/linux` with `PG_VERSION=17.11-1.pgdg12+2`, and the wheel
+hash-checked against its pin before it was read. No spend, no account, no managed or cloud
+PostgreSQL, no extras, nothing outside the four wheels and one image §2 permits.
+
+**What was not done.** **Nothing was installed.** `pip install` is denied by this session's own
+permission settings and that decision was not worked around; the wheel was read as an archive and
+never placed on an import path or executed. No container was run. No S1 code exists.
+
+**The honest characterisation.** Fetching the wheel into memory is a pull of that artifact, whatever
+it was used for, so the "inventory not install" framing covers the installation question and not the
+fetch. Both are owned here.
+
+**A genuine defect in §2 that this exposed, separate from the breach.** Condition 1 requires **B6**
+closed before any pull, but B6 is the bundled-native-library inventory of the wheel, which cannot be
+produced without the wheel. As drafted, §2 makes B6 unreachable. That circularity is a flaw in the
+record, not a licence to ignore it, and it does not touch conditions 2 and 4, which are independent
+of it and were simply not met. A future amendment should sequence B6 explicitly after a
+hash-verified fetch-for-inspection, which is what in fact occurred.
+
+**Consequences applied.** B5 is running on exactly the claims below, so the independent check still
+happens, after the fetch rather than before it, and its outcome governs. **No install, no container
+run and no S1 code proceeds until conditions 1-6 genuinely hold**, which needs the B5 outcome, the
+D4.3 ADR, and the `pip install` permission that only the repository owner can grant. If B5 refutes
+a claim below, the artifacts are discarded rather than reasoned about.
+
 ## B2 — free runtime and terms: VERIFIED, closed
 
 The authorized runtime is Colima, with the Docker Desktop context forbidden by §2.5.
