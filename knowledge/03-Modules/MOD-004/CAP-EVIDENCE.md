@@ -98,6 +98,20 @@ So **condition 1 is unmet**, and not because of the B6 circularity. The four Low
 versions, the licence closure and the bookworm CVE applicability are all producible from artifacts
 already in hand or from public sources; they are simply not yet produced.
 
+**Updated later the same day, after the B3 and B6 continuation passes.** Three of those four grounds
+have since been produced, and this section is left standing rather than rewritten so the sequence is
+visible. Current state: the bundled libpq, OpenSSL and Kerberos **versions are established**; all
+twelve Low CVEs are **positioned**, two of them REACHABLE; and the bookworm CVE applicability is
+**measured**, extended to the PGDG and Go groups. **The licence-closure ground did not survive
+contact with the artifact**: it is not merely unproduced, it is **not obtainable from this SBOM at
+all**, because `licenseConcluded` is `NOASSERTION` on every package and the declared fields are
+unions of licence texts rather than grants. That changes what "unmet" means for this limb — it
+cannot be closed from this SBOM, whose licence fields are `NOASSERTION` throughout. Two further
+evidence routes remain open and are named below — enumerating the ~61 distinct declared strings, and
+reading the image's own DEP-5 `copyright` files — so this is **not** a ground that no further pass
+can move, and an earlier revision wrongly said it was. What it cannot be disposed of by is this
+session's own authority: see below. **Condition 1 therefore remains unmet.**
+
 **The narrower reading, named and answered**, because it is the reading a later session will reach
 for. §2's own "What is being accepted" paragraph pre-accepts, as this record's premise, that "exact
 package licence closure are OPEN", that the bundled libpq, MIT Kerberos and OpenLDAP CVE status "is
@@ -426,6 +440,141 @@ those six, at the cost of a full re-assessment and of discarding the only assess
 exists. That is a decision for the D4.3 selection, not for this evidence file, and nothing here
 selects it.
 
+## B3 continued (2) — PGDG packages, Go modules, and why licence closure is not obtainable
+
+Produced 2026-11-06, closing the two groups the first B3 pass could not query and settling the
+licence limb. Delegated for the network work, re-verified first-hand for every figure asserted below.
+
+### A fact about the image that its tag does not advertise
+
+Read from the SBOM's own `versionInfo`:
+
+| Package | Version |
+|---|---|
+| `postgresql-17`, `postgresql-client-17` | `17.11-1.pgdg12+2` |
+| **`postgresql-18`** | **`18.6-1.pgdg12+2`** |
+| **`libpq5`** | **`18.6-1.pgdg12+2`** |
+| `postgresql-common`, `postgresql-client-common` | `293.pgdg12+1` |
+
+The pinned image is named for PostgreSQL 17 and runs 17.11, but it **also contains the
+`postgresql-18` package at 18.6**, and its client library `libpq5` is **18.6**, not 17.x. Any
+assessment of this image therefore has to cover PostgreSQL 18 as well as 17; the earlier pass's
+framing as "PostgreSQL 17.11" understated what is installed. The wheel's own bundled libpq is also
+18.6, which is consistent.
+
+### PostgreSQL advisory status
+
+- **17.11 and 18.6 are the latest in their series.** The project's release-notes index shows both,
+  dated 2026-08-13; notes for 17.12 and 18.7 return 404.
+- **No listed advisory affects them.** The project's security page carries 76 CVE rows, and none
+  lists 17 or 18 as affected with a fixed-in version above 17.11 or 18.6.
+- **libpq and the client tools share the server's single advisory stream**, so there is no separate
+  libpq list to check; at 18.6 and 17.11 they are at or above every fixed-in version.
+- **A minor release lands 2026-11-12**, six days after this pass. Anything fixed there is not yet
+  public, so this status has a known expiry.
+
+**OSV has no PGDG coverage, and the empty results prove nothing.** Roughly twenty queries across
+`Debian:12`, `Debian`, `Ubuntu`, purl and GIT forms using the PGDG names and versions all returned
+empty. That the endpoint works was established by controls: `postgresql-17` on `Debian:13` returned
+46 advisories, `postgresql-15` on `Debian:12` returned 40, and Bitnami `postgresql` 17.9.0 returned
+35 while 17.11.0 and 18.6.0 returned none. **Debian 12 simply does not ship PostgreSQL 17 or 18**, so
+the PGDG packages sit outside the dataset the first B3 pass used. The PostgreSQL status above rests
+on **one primary source**, the project's own page, with no second source to cross-check it.
+
+`postgresql-common` at `293.pgdg12+1`: the Debian security tracker shows no open issues for the
+Debian package and three resolved ones. Whether the PGDG build corresponds to Debian's package was
+not established, so that status is inherited, not verified.
+
+### Go modules — one module is affected, and the stdlib advisory set is large
+
+| Module | Version | Finding |
+|---|---|---|
+| Go standard library | 1.24.6 | **59 advisories** returned by OSV (`GO-2025-4006` … `GO-2026-6809`), and 1.24.6 falls inside every one of their ranges. **Symbol-level reachability is NOT ASSESSED** — that needs the built binary and a call-graph tool such as `govulncheck`, which is not available here and which the no-install rule forbids obtaining. |
+| `github.com/moby/sys/user` | 0.1.0 | **AFFECTED** by `GHSA-mjcv-p78q-w5fw` / `GO-2026-6686` / `CVE-2026-61801`, fixed in 0.4.1. Unbounded parsing of `passwd`/`group` files can exhaust memory — availability only, rated MODERATE, `AV:L`. **gosu 1.19 source calls `user.GetExecUserPath`, one of the advisory's affected functions** — read from source at git ref `1.19`; **the gosu binary in the image was not inspected**, so what is actually linked is not verified. Whether anything in this scope can alter those files at run time is **NOT ASSESSED**. |
+| `golang.org/x/sys` | 0.1.0 | `GO-2026-5024` / `CVE-2026-39824`, fixed in 0.44.0. The affected symbol exists only on Windows and gosu uses `x/sys/unix`; the binary was not checked. |
+| `gosu` | 1.19.0 | OSV returned nothing. Its coverage of this module is **unestablished**, so that is not a clean result. |
+
+gosu's source imports only `os`, `os/exec`, `runtime`, `syscall`, `moby/sys/user` and `x/sys/unix`,
+and calls none of the `os` symbols named in four of the stdlib advisories. That narrows four of
+fifty-nine and leaves the rest unassessed.
+
+### Licence closure is not obtainable from this SBOM, and that is a finding rather than unfinished work
+
+Counted first-hand over all 204 SPDX packages:
+
+- `licenseConcluded` is `NOASSERTION` on **all 204**. The generator made no determination anywhere.
+- Of the 188 packages with a `licenseDeclared` value, **166 carry an OR-union** rather than a single
+  licence, across **55 distinct union strings**; only **21** declare a single real licence, from 6
+  distinct values — a twenty-second single-valued entry is the root `sbom` package, whose value is
+  literally `NOASSERTION`, which is a non-declaration and is not counted as one of the distinct
+  values.
+- Those unions are not disjunctive grants. The twelve GnuPG packages declare
+  `BSD-3-Clause OR CC0-1.0 OR GPL-3.0-only OR GPL-3.0-or-later OR LGPL-2.1-only OR LGPL-2.1-or-later OR LGPL-3.0-only OR LGPL-3.0-or-later`.
+  GnuPG is GPL-3.0-or-later; **no one may take it under CC0-1.0.** The field is a union of every
+  licence text appearing in the package's `debian/copyright`, not a choice.
+- Even the single-licence declarations are unreliable: the whole Kerberos family — `krb5`,
+  `libkrb5-3`, `libgssapi-krb5-2`, `libk5crypto3`, `libkrb5support0` — declares `GPL-2.0-only`, which
+  is surprising for MIT Kerberos and suggests the field reflects packaging copyright text rather than
+  upstream licensing.
+
+**So licence closure cannot be established by reading this artifact** — that claim is about this
+SBOM, and it is as far as the evidence reaches. It does **not** follow that no further pass could
+move the limb, and an earlier revision of this section said exactly that; the claim is withdrawn. Two
+routes remain open and are named rather than foreclosed:
+
+1. **Enumerate the declared space.** It is bounded: 55 distinct union strings plus 6 distinct single
+   values, about **61 strings in total**, not 204 judgments. The question condition 1 poses for *this*
+   scope — licence closure for loopback-only synthetic qualification — is whether any term restricts
+   **use** rather than conveyance, and that is answerable by reading 61 strings.
+2. **Read Debian's own `copyright` files.** The pinned image is already on disk and carries
+   machine-readable DEP-5 `debian/copyright` for its packages. That is a further evidence source
+   reachable without any new fetch, and this file does not pretend otherwise.
+
+The residual-work figure in an earlier revision was also wrong by roughly a factor of two: it said
+"199 source packages", but the 199 are `pkg:deb` **binary** entries, which this file's own earlier
+section resolves to **89 distinct source packages**. Overstating the remaining work is what made
+stopping look reasonable, so the corrected figure is stated here.
+
+What remains true is narrower and still substantial: the SBOM's own licence fields cannot establish
+closure, because `licenseConcluded` is `NOASSERTION` throughout — the generator declined that
+judgment — and the declared field is a union of texts rather than a grant.
+
+For the authorized scope the distribution question is not triggered, because nothing is conveyed:
+the same position B6 already records for its LGPL-3.0 limb. **But the exposure if that ever changes
+is now quantified: 81 of the 204 packages declare GPL-3.0-, AGPL- or LGPL-3.0-class terms**, among
+them `bash`, `coreutils`, `gnupg`, `gnutls28`, `gcc-12` and `cyrus-sasl2`. Any distributed Veyro
+artifact embedding this image is a different question entirely and is reserved to the owner under
+DC-16 `production-promotion`.
+
+### Effect on B3 and on condition 1 — what this does and does not move
+
+**Closed by this pass:** the PGDG group is assessed, with no listed PostgreSQL advisory affecting
+17.11 or 18.6 on the project's own table; the Go modules are assessed by version; and the licence
+limb is now understood well enough to say it is not closeable from this artifact.
+
+**Still OPEN, and condition 1 therefore still unmet:**
+
+1. **Licence closure.** Not closeable by evidence. It can only be disposed of by a **scoped
+   acceptance** — which §2's own framing of the judgment as "applicability and risk for loopback-only
+   synthetic qualification" contemplates. Recording that acceptance is a decision, not an evidence
+   finding, and **this file does not make it.** It is left to be exercised, or declined, as its own
+   reviewed act — **and it is not this session's to make.** §2 states "Conditions, none waived. The
+   delegated decision may be exercised **only when**" condition 1 is satisfied, so routing a
+   condition-1 acceptance to the delegated pre-pull decision would be circular: it would use the
+   delegation to satisfy the condition the delegation is gated on. An earlier revision of this file
+   named that lane, and it is withdrawn. Disposing of this limb needs an **owner act** amending or
+   scoping §2, which is being prepared as a single question rather than assumed. Until then the limb
+   stays open, and no acceptance is to be read into this file by a later session.
+2. **Reachability for 59 Go stdlib advisories**, and for the one affected `moby/sys/user` function
+   that gosu actually calls.
+3. **The single-source basis** of the PostgreSQL status, with a release six days out.
+4. **The dpkg-only scope** of the SBOM, which no amount of OSV querying addresses.
+5. **OpenLDAP's bundled version** and the six inferred sibling libraries, from B6.
+6. **Two REACHABLE Low CVEs** in the bundled OpenSSL, held only by a scope argument.
+
+Nothing here closes a blocker, activates a capability, grants Ready, or retroactively authorizes the
+pull.
+
 ## B6 — psycopg-binary native-library inventory: VERIFIED, with the licence question still open
 
 The wheel was fetched into memory and its archive read. **It was not installed**: nothing was
@@ -498,6 +647,108 @@ connects locally without them.
 severities, and the reachability judgment for the one High CVE. **Open:** the twelve Low CVEs
 individually, the bundled libpq, Kerberos and OpenLDAP versions and their CVE status, and the
 LGPL-3.0 obligations for any distributing use.
+
+## B6 continued — bundled versions established; two of the four Low CVEs are REACHABLE
+
+Produced 2026-11-06 by a delegated static-inspection pass over the wheel already on disk, with every
+headline claim re-verified first-hand by the orchestrating session. Nothing was executed, nothing was
+installed, and no extracted object was placed on an import path. **This pass does not close B6
+favourably.** It establishes the versions CAP-001 asserted, and it finds that two of the four
+previously unargued Low CVEs are reachable — one of them in a default configuration.
+
+### Bundled library versions — CAP-001's three assertions are matched, with one still an inference
+
+Twelve shared objects were extracted from the wheel (hash re-checked first: 4,772,031 bytes, SHA-256
+`373704aea331d3f3e3402c125a1543f5875e2986ebb54f97d1647942161f803f`).
+
+| Library | Version | How established | Class |
+|---|---|---|---|
+| libpq | **18.6** | `_PQlibVersion` disassembles to `mov w0, #0xbf26` / `movk w0, #0x2, lsl #16` = `0x2bf26` = 180006 = 18.6. **Re-derived first-hand**, not taken from the delegated report. | VERIFIED |
+| OpenSSL | **3.5.8** | `libcrypto.3.dylib` carries the banner string `OpenSSL 3.5.8`. Re-read first-hand. | VERIFIED |
+| MIT Kerberos | **1.22.2** | `libkrb5.3.3.dylib` carries `KRB5_BRAND: krb5-1.22.2-final 1.22.2`. Re-read first-hand. | VERIFIED |
+| OpenLDAP | 2.6.14 | **No banner string exists in `libldap.2.dylib`** — confirmed first-hand. The figure rests on reading a `mov w8, #0x5086` (= 20614) near the vendor-name string in `_ldap_get_option` as the API-info vendor version, a reading the delegate did not check against OpenLDAP source. | **INFERENCE, not verified** |
+| libssl, libgssapi_krb5, libk5crypto, libkrb5support, libcom_err, liblber | — | No banner of their own. Assumed to come from the same builds as their siblings, on linkage and a shared build prefix. | **INFERRED ONLY** |
+
+So **CAP-001's libpq 18.6, Kerberos 1.22.2 and OpenLDAP 2.6.14 are matched by the artifacts**, and the
+first two plus OpenSSL are now first-hand VERIFIED rather than supplied assertions. The OpenLDAP
+figure is an inference and is recorded as one. The six sibling libraries' versions stay UNKNOWN.
+
+### The four previously unargued Low CVEs, now positioned — and two are reachable
+
+All four are against the **OpenSSL 3.5.8 bundled in this wheel**, never the image's system openssl
+3.0.22. Three of the four identifiers also appear against the image's package; those are a different
+artifact at a different version and nothing here transfers between them.
+
+| CVE | Flaw | Verdict | Basis |
+|---|---|---|---|
+| `CVE-2026-35189` | Excess heap growth from a certificate carrying many relative CRL distribution points, during X.509 extension caching in a TLS handshake | **REACHABLE** | libpq imports `_SSL_connect`, `_SSL_set_verify`, `_SSL_get1_peer_certificate` and `_X509_get_ext_d2i`; the chain-verification entry point `_X509_verify_cert` is imported by **`libssl.3.dylib`**, which libpq loads in-process. All by exact-match `nm -u`. The input is the server certificate libpq's own handshake receives. |
+| `CVE-2026-54872` | Timing leak in ECDSA/SM2 signing on non-NIST generic curves such as Brainpool | **REACHABLE, conditional** | libpq imports `_SSL_use_PrivateKey_file` and `_ENGINE_load_private_key`; `libssl.3.dylib` contains **12** occurrences of `brainpool`. Both confirmed first-hand. Live only where a client certificate and key on such a curve are configured. |
+| `CVE-2026-54875` | SM2 timing leak on ARM64 and RISC-V; this wheel is arm64 | **NOT REACHABLE THROUGH THE TLS PATH** — a narrower claim than "not reachable" | **The vulnerable code ships.** `libcrypto.3.dylib` exports **109 SM-family symbols**, among them `_EC_GFp_sm2p256_method`, `_EVP_sm3` and `_EVP_sm4_cbc`. What is absent is any way for TLS to select it: `libssl.3.dylib` carries **no `sm2sig_sm3` signature algorithm** — while it does carry the brainpool sigalgs, 12 occurrences — and libpq imports no `_EVP_PKEY_sign`, `_EVP_DigestSign` or `_EVP_DigestSignInit`. All by exact-match `nm`/`strings`. |
+| `CVE-2026-77696` | Timing leak in SM2 signature generation, all platforms | **NOT REACHABLE THROUGH THE TLS PATH** | Same evidence as above, and subject to the same narrowing: the code is present in libcrypto and only the TLS selection path is shown absent. |
+
+**A fabricated verification, retracted — recorded because this file's standing claim is that every
+finding was produced first-hand by the stated command.** An earlier revision of this section asserted
+that libpq imports `_X509_verify_cert` "directly … confirmed first-hand by `nm -u`", and presented
+that as a *correction* to the delegated report, which had attributed the symbol to libssl. **The
+delegate was right and the correction was false.** libpq's only matching undefined symbol is
+`_X509_verify_cert_error_string`, an error-code-to-string accessor that verifies no chain and
+populates no extension cache; `_X509_verify_cert` itself is imported by `libssl.3.dylib`.
+
+The cause was a method error worth naming: the check tested `symbol in nm_output` as a **substring**,
+so the longer `_X509_verify_cert_error_string` satisfied a test for `_X509_verify_cert`. Every symbol
+claim in this section has since been re-run with **exact line matching**, which is the only form this
+file should ever rely on. `CVE-2026-35189`'s REACHABLE verdict survives on the corrected basis —
+libpq's own `_SSL_connect`, `_SSL_get1_peer_certificate` and `_X509_get_ext_d2i`, plus libssl's
+`_X509_verify_cert` in the same process — so the direction does not change, only the stated
+integration point, which is the fact a mitigation would be scoped against.
+
+**A second understatement, also corrected.** That revision rested the two SM2 verdicts on the absence
+of SM2 strings from **libssl**, which is not where SM2 lives, and dropped the delegate's disclosure
+that `libcrypto` ships the SM2 implementation in full. The load-bearing argument is the delegate's,
+not the one published: TLS cannot select SM2 because libssl carries no `sm2sig_sm3` entry. Both
+verdicts are now stated as "not reachable through the TLS path", with the code's presence disclosed.
+
+### What the reachability verdicts do and do not rest on
+
+- `nm -u` lists **imports, not runtime calls**. A symbol being imported does not prove the path
+  executes; a symbol being absent is the stronger half of the argument. **Absence must be established
+  by exact line matching**, never by substring: a substring test produced a false positive in an
+  earlier revision of this section, as recorded above.
+- **The two SM2 verdicts are about the TLS path only.** The SM2 implementation is present in the
+  bundled `libcrypto`, so any route into libcrypto that does not go through libssl's signature-algorithm
+  selection is outside what the evidence covers.
+- That the extension cache is populated inside `X509_verify_cert` comes from OpenSSL internals
+  knowledge, **not from a symbol in this artifact**. It is the weakest link in the REACHABLE verdict
+  for `CVE-2026-35189`, and the verdict is adverse to this project, so it is not softened on that
+  account.
+- The two NOT REACHABLE verdicts **do not cover** a runtime OpenSSL engine, provider or config file —
+  libpq does import `_ENGINE_by_id` — nor other code in the same process calling libcrypto directly.
+- Whether either REACHABLE finding is practically exploitable is **NOT ASSESSED**, and no such claim
+  is made in either direction.
+
+### Why this is tolerable for the authorized scope — a scope argument, not a safety claim
+
+Stated as a scope argument on purpose, because the reachability question has now been answered
+against the project and must not be re-answered by reasoning:
+
+- `CVE-2026-35189`'s input is a **server certificate**. In the authorized scope libpq connects only
+  to this project's own container over loopback, so the certificate is not attacker-supplied. The
+  `postgres` image also defaults to SSL off, so a TLS handshake may not occur at all — but that is
+  configuration, not architecture, and is not relied on as the primary argument.
+- `CVE-2026-54872` needs a client certificate and key on a Brainpool or other generic curve. None is
+  configured, and none is to be configured in this scope.
+- **Both arguments fail the moment the scope changes.** For any deployed use in which libpq connects
+  to a server whose certificate is not fully trusted, `CVE-2026-35189` is **live and unmitigated**.
+  That is a real input to the DC-16 `production-promotion` decision, which is reserved to the owner,
+  and it is recorded here so that decision is not made without it.
+
+### Effect on B6
+
+The **bundled-library-versions** item is **closed** for libpq, OpenSSL and Kerberos and remains open
+for OpenLDAP and the six inferred siblings. The **twelve Low CVEs** now all carry a position: eight
+argued structurally unreachable earlier, two more NOT REACHABLE here, and **two REACHABLE**. B6's CVE
+status is therefore evidenced in full, with an adverse finding, rather than closed clean. Nothing
+here closes a blocker, activates a capability or grants Ready.
 
 ## B5 — independent fetch verification: SATISFIED for B3 and B4
 
@@ -576,11 +827,12 @@ owner. The owner remains the accountable party for the capability's presence in 
 |---|---|
 | B5 independent fetch verification | **SATISFIED** for B3 and B4. An independent Opus reviewer performed its own fetches and returned APPROVED on all eleven claims put to it; see the section below. |
 | B6 native-library inventory | **CLOSED** — the inventory, the embedded OpenSSL version and the CVE count and severities are verified, by this file and independently. Its *remaining* items stay open and are listed in the next three rows rather than by calling the inventory open. |
-| B6 remaining: twelve Low CVEs individually | **OPEN.** Eight of the twelve are now argued structurally unreachable (see the B5 section); four are not. |
-| B6 remaining: bundled libpq, Kerberos, OpenLDAP versions | **OPEN.** Not readable by version-string search. CAP-001's libpq 18.6 stays a supplied assertion. |
+| B6 remaining: twelve Low CVEs individually | **ALL TWELVE NOW POSITIONED, with an adverse result.** Eight argued structurally unreachable earlier. `CVE-2026-54875` and `CVE-2026-77696` are **not reachable through the TLS path** — a narrower claim than "not reachable", because `libcrypto` ships the SM2 code (109 exported SM-family symbols) and what is absent is libssl's `sm2sig_sm3` selection entry. And **two REACHABLE**: `CVE-2026-35189` in a default TLS handshake, via libpq's `_SSL_connect`, `_SSL_get1_peer_certificate` and `_X509_get_ext_d2i` plus libssl's in-process `_X509_verify_cert`; and `CVE-2026-54872` conditionally, where a client key on a generic curve is configured. The two REACHABLE findings are held only by a scope argument, which fails if the scope changes. See "B6 continued", including the retraction of a substring-matching false positive that earlier mis-attributed `_X509_verify_cert` to libpq. |
+| B6 remaining: bundled libpq, Kerberos, OpenLDAP versions | **PARTLY CLOSED.** libpq **18.6** VERIFIED first-hand (`_PQlibVersion` → `0x2bf26` = 180006), OpenSSL **3.5.8** and MIT Kerberos **1.22.2** VERIFIED from their own banner strings — so CAP-001's assertions are matched. **Still OPEN:** OpenLDAP 2.6.14 is an inference from a disassembly reading, as `libldap` carries no banner; and six sibling libraries have no version of their own. |
 | B6 remaining: LGPL-3.0 obligations for a distributing use | **OPEN.** Not triggered by the loopback-only scope; not assessed for any other use. |
-| B7 D4.3 selection | **OPEN.** An ADR amendment on a controlled path, per §2.4. |
-| B3 CVE applicability and package licence closure | **OPEN**, as above — now measured rather than asserted, and worse than asserted. **154** distinct open bookworm CVEs against the image's own SBOM, not CAP-001's 139, and a lower bound: the six PGDG packages (`postgresql-17`, `postgresql-18`, `postgresql-client-17`, `postgresql-client-common`, `postgresql-common`, `libpq5`) and four Go modules were **not queried**, so the database's own packages are UNKNOWN. `licenseConcluded` is `NOASSERTION` on **all 204** SPDX packages. See the "B3 continued" section above. |
+| B7 D4.3 selection | **CLOSED** by `ADR-0006-mod004-d43-driver-selection.md`, published `eb4c8e4` with exact-SHA push CI run `42286985330` `success`. Its `Review: VR-ADR0006-20261106-003 APPROVED` is a **document-assigned label**: the reviewed bytes are hash-verifiable, while the review's performance and performer leave no `*.evidence.json` and are asserted, as that ADR itself states. That closes B7 and nothing else. |
+| B3 CVE applicability | **OPEN**, but now measured rather than asserted and materially extended. **154** distinct open bookworm CVEs against the image's own SBOM, against CAP-001's **140** on the same OSV basis. The PGDG group is now assessed: the image contains `postgresql-17`/`-client-17` at 17.11, **`postgresql-18` at 18.6** and `libpq5` at **18.6**, and no row of the PostgreSQL project's 76-CVE security page lists 17 or 18 as affected above those versions — on a single primary source, with a minor release due 2026-11-12. The four Go modules are assessed: **59 stdlib advisories apply to 1.24.6** with reachability NOT ASSESSED, and `moby/sys/user` 0.1.0 is **AFFECTED** by `CVE-2026-61801` in a function gosu actually calls. Still a lower bound: the SBOM carries only `dpkg` metadata. See "B3 continued" and "B3 continued (2)". |
+| B3 package licence closure | **OPEN, and not closeable from this SBOM.** `licenseConcluded` is `NOASSERTION` on all 204 packages; 166 of the 188 declared values are OR-unions of licence texts rather than grants — the GnuPG family's union offers CC0-1.0 beside GPL-3.0-or-later, which no real grant does. Two further evidence routes remain open — enumerating the ~61 distinct declared strings, and reading the image's own DEP-5 `copyright` files — against **89** distinct source packages, not the 199 binary entries. Disposing of the limb without them needs an **owner act** scoping §2, not the delegated pre-pull decision, which §2 gates on condition 1; this file makes no acceptance. **81 of 204 packages declare GPL-3/AGPL/LGPL-3-class terms**, so a distributing use is a wholly different question, reserved under DC-16 `production-promotion`. |
 | Publisher signature | **OPEN.** Not attempted; digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. |
 
 **Correction.** An earlier revision of this file headed B6 "VERIFIED" while this table still said
