@@ -34,7 +34,10 @@
   "module_row_status": "PROVISIONAL",
   "module_manifest": {
     "path": "contracts/engineering/module-capabilities.yaml",
-    "sha256": "2958958c1212deafbb9bc3e34673bb4ee145913f655671ae709d4a552dde526a"
+    "sha256": "925c983d993b4c3939d8527f503ea445f0c411e6c27a3cf7690c94946a6c8feb",
+    "sha256_superseded": "2958958c1212deafbb9bc3e34673bb4ee145913f655671ae709d4a552dde526a",
+    "sha256_update_reason": "The manifest was annotated under OWNER-2026-11-06-internal-cap-unmetered.md §6 item 5 to mark its two budget fields historical as ceilings. Annotation only: the row stays PROVISIONAL with gate_eligible false and the same four OPEN blockers, and no counter is reset. The superseded hash is recorded rather than discarded so that the re-point is not silent. tools/mission_runner/blocker_dispositions.json deliberately still names the superseded hash, because it records which bytes a reviewer actually reviewed.",
+    "reconciliation_ledger": "knowledge/03-Modules/MOD-004/CAP-RECONCILIATION.md"
   },
   "toolchain": "python3.13-stdlib",
   "third_party_caps": 0,
@@ -90,5 +93,6 @@
     "BLK-CON04-PRIVILEGED-CONSOLE-REVIEW",
     "BLK-RULE-QUALIFICATION"
   ],
-  "cap_budget": "No reset: historical CAP qualification remains PAUSED/BLOCKED and exhausted."
+  "cap_budget": "No reset: historical CAP qualification remains PAUSED/BLOCKED and exhausted.",
+  "cap_budget_reconciliation": "The sentence above is left verbatim and stays true as history: no counter is reset, the prior 45/50,000 envelope stays recorded exhausted, and the 427,621-of-400,000 overrun stays recorded in knowledge/03-Modules/MOD-004/CAP-ENVELOPE.md. It is superseded prospectively by OWNER-2026-11-06-internal-cap-unmetered.md (INTERNAL_CAP_MODE = UNMETERED; published e41a695, exact-SHA push CI run 42272690841 success) in one respect only: CAP exhaustion no longer pauses or stops work. MOD-004 is still blocked, on its four OPEN manifest blockers rather than on budget. This field activates no capability, grants no Ready status and closes no blocker. Authority basis, stated rather than implied: §6 of that record does not name this file. It names five documents, two of which are in this directory: contracts/engineering/module-capabilities.yaml (item 5) and contracts/engineering/mod004-s0-scenario-qa.md (item 4). This file is neither. The sibling named by item 4 carries the same CAP-exhaustion sentence class and is deliberately NOT reconciled by edit, because no authority exists for a manual edit to it today; that reason is recorded in the ledger named below. Annotating this file is the orchestrating session's engineering judgment that the same superseded sentence should not be left reading as live in a sibling artifact; it is taken under §6's purpose, not under an instruction naming this path, and it supersedes nothing on its own authority. See knowledge/03-Modules/MOD-004/CAP-RECONCILIATION.md for that basis and for the ADR-0002 controlled-path reading it rests on."
 }

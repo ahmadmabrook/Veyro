@@ -128,6 +128,7 @@
         "max_custom_creation_attempts_per_gap": 1,
         "default_orchestration_budget_minutes": 45,
         "token_budget_when_observable": 50000,
+        "budget_fields_status": "HISTORICAL AS CEILINGS. OWNER-2026-11-06-internal-cap-unmetered.md (published e41a695, exact-SHA push CI run 42272690841 success) sets INTERNAL_CAP_MODE = UNMETERED and its §2.6 supersedes default_orchestration_budget_minutes and token_budget_when_observable as ceilings, prospectively only: neither figure stops work. Both values are retained, not deleted, because they cite the frozen EIP paragraphs in policy_source and because they record what governed the exhausted envelope. No counter is reset and no budget is invented: the prior 45/50,000 envelope stays recorded exhausted and the 427,621-of-400,000 overrun stays recorded in knowledge/03-Modules/MOD-004/CAP-ENVELOPE.md. max_external_candidate_evaluations_per_gap and max_custom_creation_attempts_per_gap are NOT superseded and still bind. This annotation activates nothing: the row stays PROVISIONAL with gate_eligible false and four OPEN blockers.",
         "gaps": [
           {"gap_id": "BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME", "external_attempts_used": null, "custom_attempts_used": null, "budget_evidence": null},
           {"gap_id": "BLK-SKL-MIGRATION-LINT", "external_attempts_used": null, "custom_attempts_used": null, "budget_evidence": null},
