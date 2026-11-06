@@ -110,11 +110,14 @@ cannot be closed from the SBOM's own licence fields, which are `NOASSERTION` thr
 revision escalated that to "no further evidence pass can move it", which was wrong and is withdrawn:
 two routes remained, and **the first was then executed**. Enumerating the declared space gives 46
 distinct SPDX identifiers, all free-software or free-documentation licences that condition
-distribution rather than execution. That produced a sound finding on the **use** question, and
+distribution rather than execution. That produced a sound finding on the **use** question and
 verified notice retention in the image, but it is **not** what condition 1 names: §2's own gloss is
-"exact package licence closure", a per-package determination this pass does not make. **The limb
-therefore stays OPEN**, and whether condition 1's wording can be scoped to the use determination is
-an owner question. See "Route 1 executed" below.
+"exact package licence closure", a per-package determination. A per-package pass over the image's
+own 141 `copyright` files was then performed as well, giving 126 CLOSED, 3 NOT CLOSED and 12
+NEEDS-READING, with 57 SBOM names undetermined. **The limb therefore stays OPEN**, bounded to
+nameable packages. An earlier revision called the scoping of condition 1 an owner question at this
+point; it was not reached, because the work was done instead. See "Route 1 executed" and "The
+per-package pass" below.
 
 **Whether condition 1 as a whole is now met is a separate judgment, and this file does not make it.**
 That assessment has to run limb by limb across B2, B3, B4 and B6 and carry its own review, because it
@@ -664,14 +667,71 @@ substituting a weaker test — that the colon-list states what the closing evide
 clause is headed "Conditions, none waived". Having rejected that move once, this file does not get to
 make it here.
 
-**So the licence limb remains OPEN for condition 1.** What exists is a sound, reviewed finding on the
-*use* question plus verified notice retention — valuable, and short of what the condition names.
-Closing it as written would require per-package determination across the **89** distinct source
-packages the earlier pass resolved. Whether that is proportionate for a loopback-only synthetic
-qualification, or whether condition 1's "exact package licence closure" can be scoped to the use
-determination recorded here, is **an owner question**: it would amend or scope a published owner
-condition, which no delegated decision can do, since §2 gates that delegation on condition 1 itself.
-It is being put to the owner as a single decision and is not assumed here either way.
+**So the licence limb remained OPEN for condition 1 at that point**, and the next step was taken
+rather than escalated — see below. An earlier revision of this paragraph said the remaining work
+would be disproportionate and that scoping condition 1 was therefore an owner question. That was
+premature: the work turned out to be bounded and was done.
+
+### The per-package pass — 126 of 141 closed formally, 15 not, and 57 entries undetermined
+
+The image's own `copyright` files, extracted above, were then parsed per package. Of the 141:
+
+| Outcome | Count | Meaning |
+|---|---|---|
+| **CLOSED** | **126** | 118 DEP-5 files where every `Files:` stanza carries a `License:` and every short-name is defined in the file or is a `common-licenses` name, plus 8 free-form files read in full. |
+| **NOT CLOSED** | **3** | `base-passwd` and `libldap-2.5-0` reference a bare `public-domain` label that is never defined and is not a `common-licenses` name. `libllvm19` references `BSD-3-Clause` and `BSD-3-clause` without defining either — and `BSD-3-clause` does **not** resolve to `common-licenses/BSD`, which is a different text — with a `Files:` stanza reported to carry no `License:` at all. |
+| **NEEDS-READING** | **12** | The primary licence is identified in each, but component notices were not verified line by line, or some files are stated to carry no licence. Named: `gcc-12-base` (covers the whole gcc tree and never states what governs the files this package installs); `libc6`, `libc-bin`, `libc-l10n` and `locales` (one byte-identical file whose header says glibc 2.23 while the SBOM says 2.36, so the header is **stale**); `libcrypt1` (testsuite files stated to have no licence, asserted not installed, unverified); `libgcrypt20` and `libgnutls30`; and `libgssapi-krb5-2`, `libk5crypto3`, `libkrb5-3`, `libkrb5support0` (one identical 1374-line aggregate of component notices, not read in full). |
+
+**A refinement from re-checking the three NOT CLOSED cases first-hand.** Most of `libldap-2.5-0`'s
+apparently-undefined names are DEP-5 **conjunctions** — `OpenLDAP-2.8 and BSD-3-clause`,
+`OpenLDAP-2.8 and UMich and F5` and so on — whose components are each defined in the file, so they
+resolve by decomposition. Its real gap is the same single one as `base-passwd`'s: the bare
+`public-domain` label, which is a Debian convention asserting that no copyright is claimed rather
+than a missing licence text. `libllvm19`'s case-variant gap is the substantive one of the three.
+
+**What "CLOSED" means here, stated because it is weaker than it sounds.** It is a **formal
+self-consistency** test: the copyright file internally resolves. It is **not** a determination that
+the stated licences are correct, complete, or correctly matched to the shipped files. Of the 126,
+twenty-five carry hedged local labels such as `probably-PD`, `none`, `permissive`, `FreeSoftware` or
+`MIT-like` — each defined in its own file, but each a packager's characterisation — and five pass
+only on a case-insensitive match, among them `postgresql-17`, `postgresql-client-17` and `libpq5`.
+
+**Coverage, and what is simply not determined.** The SBOM has 199 `pkg:deb` entries but **198
+distinct names** — `e2fsprogs` appears twice. All 141 files matched a purl. **57 names have no
+copyright file and are not determined by this pass**: `libgcc-s1`, `libncursesw6` and `libstdc++6`,
+whose doc directories are symlinks (resolved earlier in this file), plus about 54 source-package
+names. Only copyright **declarations** were read; no installed file contents were examined.
+
+**The use question, now much better evidenced — and who did what.** The lexical scan across all 141
+files plus the texts of about 35 locally-defined licences was performed by the delegated pass, not by
+the orchestrating session, and found **no term restricting use or execution**. The orchestrating
+session independently reproduced the licence-value counts, the three NOT CLOSED cases and the
+conjunction refinement, but **did not re-run the full scan**; that attribution is stated because an
+earlier section of this file records a claim of first-hand verification that the stated command
+disproved. The nearest items the scan did surface are recorded rather than omitted, because they are
+the ones a reader would want to check:
+
+- **RSA MD4/MD5 grants** (`libsasl2-2`, `libsasl2-modules-db`, the krb5 family) condition the grant
+  of copying and use on identification — an attribution condition, satisfied by the retained
+  notices, not an execution restriction.
+- **Acceptance-by-use wording** in `Ms-PL` (`libdb5.3`) and the Unicode data-files notice (the perl
+  packages).
+- **Export-control notices** in the krb5 family, the e2fsprogs family and `libsasl2`. These are not
+  licence conditions on use; they are statutory notices about export, and they are recorded here
+  because they are a constraint class the licence analysis would otherwise hide. They bear on
+  distribution and transfer, not on running the image locally.
+- **Trademark-use terms** in the krb5 family only.
+- **`Sleepycat`** (`libdb5.3`, read in full): a source-availability condition on redistribution.
+- **Not read:** `libidn2-0` points at an external Unicode "Terms of Use" URL that is not contained in
+  the file.
+
+**Effect on the limb: still OPEN, but now precisely bounded rather than open-ended.** What blocks it
+is nameable: 3 packages formally unresolved, 12 whose aggregate notices were not read line by line,
+57 SBOM entries undetermined, and a notion of "closed" that is self-consistency rather than
+correctness. That is a materially better position than the earlier "not obtainable" and the later
+"closed for the authorized scope", both of which were wrong in opposite directions. **Whether this
+suffices for condition 1's "exact package licence closure" is the judgment the separate condition-1
+assessment has to make, on this evidence, and it is not made here.**
 
 **What this does NOT establish, and the limits are the point.**
 
@@ -717,10 +777,13 @@ that is withdrawn too. The accurate position is the next item.
    `common-licenses` texts, three symlinks resolving to present files. Running the image breaches no
    term in the set. **That is not condition 1's "exact package licence closure"**, which is
    per-package and which this pass does not perform; `licenseConcluded` stays `NOASSERTION` on all
-   204. So the limb **remains OPEN**, and whether the condition can be scoped to the use
-   determination is an **owner question** — not one any delegated decision can answer, since §2
-   gates that delegation on condition 1 itself. A distributing use is a separate matter entirely,
-   reserved under DC-16 `production-promotion`.
+   204. A **per-package pass** over the image's own 141 `copyright` files was then performed rather
+   than escalated, giving **126 CLOSED, 3 NOT CLOSED, 12 NEEDS-READING**, with **57** SBOM names
+   undetermined for want of a copyright file, and no use or execution restriction found anywhere in
+   the 141 files or the ~35 local licence texts. So the limb **remains OPEN** — but bounded to
+   nameable packages rather than open-ended. Whether that satisfies condition 1 is for the separate
+   condition-1 assessment. A distributing use is a different matter entirely, reserved under DC-16
+   `production-promotion`.
 
 **Still OPEN:**
 
@@ -991,7 +1054,7 @@ owner. The owner remains the accountable party for the capability's presence in 
 | B6 remaining: LGPL-3.0 obligations for a distributing use | **OPEN.** Not triggered by the loopback-only scope; not assessed for any other use. |
 | B7 D4.3 selection | **CLOSED** by `ADR-0006-mod004-d43-driver-selection.md`, published `eb4c8e4` with exact-SHA push CI run `42286985330` `success`. Its `Review: VR-ADR0006-20261106-003 APPROVED` is a **document-assigned label**: the reviewed bytes are hash-verifiable, while the review's performance and performer leave no `*.evidence.json` and are asserted, as that ADR itself states. That closes B7 and nothing else. |
 | B3 CVE applicability | **OPEN**, but now measured rather than asserted and materially extended. **154** distinct open bookworm CVEs against the image's own SBOM, against CAP-001's **140** on the same OSV basis. The PGDG group is now assessed: the image contains `postgresql-17`/`-client-17` at 17.11, **`postgresql-18` at 18.6** and `libpq5` at **18.6**, and no row of the PostgreSQL project's 76-CVE security page lists 17 or 18 as affected above those versions — on a single primary source, with a minor release due 2026-11-12. The four Go modules are assessed: **59 stdlib advisories apply to 1.24.6** with reachability NOT ASSESSED, and `moby/sys/user` 0.1.0 is **AFFECTED** by `CVE-2026-61801` in a function gosu actually calls. Still a lower bound: the SBOM carries only `dpkg` metadata. See "B3 continued" and "B3 continued (2)". |
-| B3 package licence closure | **OPEN — advanced, not closed.** The 188 declared values split into 46 identifiers, **45** of them real licences (the 46th is `NOASSERTION`); none is proprietary, non-commercial or field-of-use restricted, and **none conditions execution as such**. About fourteen do condition a *held copy* on notice retention or non-misrepresentation — `RSA-MD`, `Beerware`, `Spencer-86`, `MIT`, `ISC`, `X11`, `MIT-CMU`, `PostgreSQL`, `TCL`, `BSL-1.0`, `Zlib`, `Kazlib`, `libutil-David-Nugent`, the SSLeay half of `OpenSSL` — and `BSD-4-Clause`/`OpenSSL` add advertising clauses. Those duties are **verified satisfied** by the pinned image (141 `copyright` files, 0 whiteouts, 17 `common-licenses` texts, 3 symlinks resolving). **But condition 1 names "exact package licence closure", per-package, which this pass does not perform**; `licenseConcluded` stays `NOASSERTION` on all 204, and the SBOM carries `dpkg` metadata only, so the declared fields are at best a superset. Whether the condition can be scoped to the use determination is an **owner question**, not a delegated one. A distributing use is separate and reserved under DC-16 `production-promotion`; 81 packages carry GPL-3/LGPL-3-class terms and `Sleepycat` adds source availability. A licence-terms reading by this session, not legal advice. See "Route 1 executed". |
+| B3 package licence closure | **OPEN — advanced substantially, precisely bounded, not closed.** The 188 declared SBOM values split into 46 identifiers, **45** real licences (the 46th is `NOASSERTION`); none is proprietary, non-commercial or field-of-use restricted, and **none conditions execution as such**. About fourteen condition a *held copy* on notice retention or non-misrepresentation; those duties are **verified satisfied** by the pinned image — 141 `copyright` files, 0 whiteouts under `usr/share/doc`, 17 `common-licenses` texts, 3 doc-dir symlinks resolving to present files. A **per-package pass** over those 141 files then found **126 CLOSED, 3 NOT CLOSED** (`base-passwd`, `libldap-2.5-0` on a bare undefined `public-domain` label; `libllvm19` on undefined `BSD-3-Clause`/`BSD-3-clause`, which do not resolve to `common-licenses/BSD`) **and 12 NEEDS-READING**, all named in "The per-package pass". A lexical scan of all 141 files plus ~35 local licence texts found **no use or execution restriction**; export-control notices (krb5, e2fsprogs, `libsasl2`), trademark terms (krb5) and `Sleepycat`'s redistribution condition are recorded as the nearest items. **Still not closed**, because "CLOSED" there is formal self-consistency rather than correctness, 15 of 141 are unresolved, and **57 of the 198 distinct SBOM names have no copyright file and are undetermined**. Whether this satisfies condition 1's "exact package licence closure" is for the separate condition-1 assessment, on this evidence. A distributing use is a different question, reserved under DC-16 `production-promotion`. A licence-terms reading by this session, not legal advice. |
 | Publisher signature | **OPEN.** Not attempted; digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. |
 
 **Correction.** An earlier revision of this file headed B6 "VERIFIED" while this table still said
