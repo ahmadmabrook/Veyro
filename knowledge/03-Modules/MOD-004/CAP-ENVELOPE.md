@@ -72,5 +72,13 @@ and no second candidate set is authorized.
 | Entry | Activity | Minutes (rounded up) | Tokens | Basis |
 |---|---|---|---|---|
 | 0 | Envelope start; no qualification action yet | 0 | 0 | this record |
+| 1 | B2 free-runtime terms; B4 wheel and transitive hashes against PyPI; B3 image digest and attestation binding by rehash; Colima start and context move; pull of the pinned image by digest; B6 wheel inventory, embedded OpenSSL version, OpenSSL advisory enumeration and the one-High reachability judgment; writing [CAP-EVIDENCE.md](CAP-EVIDENCE.md) | 40 | 80,000 | wall clock from the effective start to `2026-11-06T07:20:56Z`, rounded up; tokens estimated from this session's per-turn budget deltas across the turns doing this work, rounded up to the nearest 10,000 as the method above requires |
 
-Running total: **0 of 180 minutes, 0 of 400,000 tokens.**
+Running total: **40 of 180 minutes, 80,000 of 400,000 tokens.** Remaining: 140 minutes, 320,000
+tokens.
+
+The token figure is an estimate under the stated method, not a telemetry reading, and is rounded
+up. It is not offered as an exact count. The largest single remaining charge is expected to be the
+B5 independent fetch review, since observed independent reviews in this project have cost on the
+order of 200,000 tokens each; that is the reason the B5 brief is written narrowly rather than as a
+full re-derivation.
