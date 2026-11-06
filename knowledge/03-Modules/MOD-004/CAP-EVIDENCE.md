@@ -252,6 +252,180 @@ exact package licence closure including its 17 `NOASSERTION` fields. §2's accep
 loopback-only synthetic local qualification, and the applicability judgment for that scope is
 recorded separately once the image is in hand, with B6.
 
+## B3 continued — bookworm CVE applicability and licence closure: EVIDENCED, still OPEN
+
+Produced 2026-11-06 by a delegated evidence pass over the pinned image's own SPDX SBOM plus OSV,
+then re-checked first-hand by the orchestrating session on the raw artifacts. It **closes neither
+part of B3**, and §2 condition 1 stays unmet. What it does is replace two CAP-001 assertions with
+measurements, and both measurements are worse than the assertions.
+
+### What was fetched, and that it is the right bytes
+
+The attestation manifest `sha256:865d14b614365066d4523d6f144602ef0ac2e6c3d3b6d1c382e2cceb60d2e56c`
+carries the SPDX SBOM as layer 0, digest
+`sha256:1166fb99b1c4ecbe844f5597939f1d0d74a3332fe804938e23b9bae220ba7cea`, size 5,933,891. The bytes
+received are 5,933,891 and their recomputed SHA-256 equals that digest. Verified twice, independently.
+
+The document is an in-toto envelope whose `predicate` is the SPDX document. It holds **204 SPDX
+packages**: one root entry named `sbom`, **199 `pkg:deb`** entries and **4 `pkg:golang`** entries.
+All 199 Debian entries carry a name and a version; none is unresolvable.
+
+### CVE applicability: 154 open entries, against CAP-001's 140 on the same OSV basis
+
+The SBOM carries no source-package field and OSV's Debian data is keyed by source package, so the
+binary-to-source mapping was done against current Debian bookworm, updates and security indexes.
+**That mapping is this pass's own method, not SBOM data**, and it is where the pass is weakest:
+
+| Mapping outcome | Count |
+|---|---|
+| Exact version found in an index | 149 |
+| Not in any index; queried by its own binary name as a fallback | 39 |
+| Name found, version differs | 5 |
+| PGDG packages, not Debian, **not queried** | 6 |
+
+89 distinct source/version pairs were queried. The result is **154 distinct OSV Debian entries, each
+mapping to one distinct upstream CVE**. Recounted first-hand from the raw OSV data: 154.
+
+**The comparison with CAP-001 needs its bases stated, or it misleads.** CAP-001 §4 records two
+different numbers: its OSV querybatch gave **140 unique source/CVE pairs**, and only *after*
+adjudication against the Debian Security Tracker current feed did that become "**139 OPEN, 1
+UNDETERMINED** for bookworm", with 85 unassigned urgency, 53 unimportant, 1 low.
+
+This pass finds **154**, raw and unadjudicated, under its own definition of open (OSV lists no
+bookworm fix at or below the installed version). So:
+
+- Against CAP-001's **directly comparable** OSV figure of 140, this pass exceeds it by **14**.
+- Against its tracker-adjudicated 139 the gap is 15, but that comparison mixes bases and should not
+  be the headline. The 1 UNDETERMINED entry is not identified here either.
+- The `unimportant` count (53) and the `low` count (1) match CAP-001 exactly; the entire excess sits
+  in "not yet assigned" (100 against 85).
+
+No method was adjusted to close the gap. CAP-001 records 105 binary-to-source mappings and that 42
+of its package pages lacked a source link, against 193 non-PGDG rows resolved to 89 distinct pairs
+here, so its mapping was probably less complete. **The higher number is the one to plan against**,
+and which specific entries CAP-001 missed is not established, because the Debian Security Tracker
+was not queried in this pass.
+
+Two counting details, stated so the arithmetic is reproducible. Counting one urgency per entry gives
+53 + 100 + 1 = 154. Counting distinct urgency values per entry gives 156, because **two entries carry
+two different urgency values across their affected ranges**. Neither count is wrong; they answer
+different questions.
+
+### Severity, and what OSV does not supply
+
+Four of the 154 entries carry **no `severity` field at all** and are recorded as NO_SEVERITY_GIVEN;
+none is inferred. The other 150 carry only a CVSS vector string — 122 v3, 28 v4 — and **no numeric
+score**, so no score is derived. "Not yet assigned" is Debian stating that no urgency has been
+decided; it is not a severity rating and is not treated as one.
+
+**Fix status: 146 with no bookworm fix listed, 8 with one — independently reproduced.** The first
+cross-check attempted by the orchestrating session produced a different shape (81/73) and **that
+cross-check was wrong, not the pass**: a single OSV Debian record lists many source packages across
+Debian:12, :13 and :14 — `DEBIAN-CVE-2011-3389` names nine packages including `asterisk` on
+Debian:14 — so a naive "does any affected range carry a fixed event" test counts fixes for packages
+that are not in this image at all. Rerun scoped to Debian:12 *and* to the source package actually
+matched for each queried pair, the split reproduces exactly at **146 / 8**. All eight, named because
+they are the only entries in the set with a fix available:
+
+| Entry | Source package | Fixed in |
+|---|---|---|
+| `DEBIAN-CVE-2026-84782` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-35189` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-54872` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-75805` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-75806` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-77696` | `openssl` | `3.0.22-1~deb12u2` |
+| `DEBIAN-CVE-2026-109518` | `apt` | `2.6.2` |
+| `DEBIAN-CVE-2026-107161` | `cyrus-sasl2` | `2.1.28+dfsg-10+deb12u1` |
+
+**Two things about that table must not be blurred.** First, these are the **image's own Debian
+packages** — its system `openssl` at `3.0.22-1~deb12u1` — and **not** the OpenSSL 3.5.8 bundled
+inside the `psycopg-binary` wheel, which is B6's subject. The CVE identifiers overlap because the
+same upstream flaws affect both, but they are different artifacts at different versions, and a fix
+being available for one says nothing about the other.
+
+Second, `CVE-2026-84782` is the **High** severity entry, and a bookworm fix for it exists in
+`3.0.22-1~deb12u2`, which the pinned digest predates. That is the concrete cost of the position D2
+records — the pinned digest is an older bookworm build and carries no package update published
+since the pin. It is recorded here so the trade-off is visible rather than implied.
+
+### Licence closure: not closed, and CAP-001's figure is inaccurate as written
+
+Counted first-hand over all 204 SPDX packages:
+
+- `licenseConcluded` is `NOASSERTION` on **all 204**. Not one package has a concluded licence.
+- `licenseDeclared` is literally `NOASSERTION` on **exactly 1** package — the root `sbom` entry.
+- `licenseDeclared` is **absent entirely** on **16** others: `base-files`,
+  `debian-archive-keyring`, `libcrypt1`, `libnss-wrapper`, `libsemanage-common`, `libsemanage2`,
+  `libsemanage`, `libxcrypt`, `libxslt1.1`, `libxslt`, `nss-wrapper`, `tzdata`, and the 4 Go modules.
+
+So 17 packages have no declared licence, but only by unioning the one literal `NOASSERTION` with the
+sixteen absent fields. **CAP-001's wording, that "17 `licenseDeclared` fields are NOASSERTION", is not
+accurate as written.** The remaining **187** packages carry a named declared licence
+(187 + 16 absent + 1 literal = 204); whether those strings are correct or acceptable was not
+assessed.
+Licence closure is therefore **still OPEN**: a package set in which nothing has a concluded licence is
+not a closed licence set.
+
+### What this pass does not establish
+
+- **The PostgreSQL packages themselves are unassessed.** The six PGDG entries — `libpq5`,
+  `postgresql-17`, `postgresql-18`, `postgresql-client-17`, `postgresql-client-common`,
+  `postgresql-common` — are not Debian packages and were not queried. Their CVE status is **UNKNOWN**.
+  This is the most consequential gap in the pass: it covers the base OS and not the database.
+- The 4 Go modules (Go stdlib 1.24.6, `gosu`, `moby/sys/user`, `golang.org/x/sys`) were not assessed.
+  **UNKNOWN.**
+- **154 is a lower bound, not a total**, for three reasons, strongest first. (a) The SBOM carries
+  package data **only from Debian `dpkg` metadata**, so anything in the image not installed through
+  `dpkg` does not appear in it at all and was never queried. In a PostgreSQL image that is the
+  largest single reason the figure is a floor. (b) The version queried is the SBOM's version, which
+  is **not necessarily the source-package version** for binNMU or epoch cases — a caveat that
+  attaches to all 199 rows, including the 149 the table calls exact, not only to the two noted
+  below. (c) Any of the 39 fallback-mapped names that is not a real source name returns zero results
+  silently; this is the weakest of the three, since 28 of the 39 returned zero and most are genuine
+  Debian source names that did resolve (`glibc` returned 24, `gnutls28` 7, `openldap` 6, `krb5` 6,
+  `zlib` 4).
+- **Absence of an entry is not evidence that a CVE does not apply.** OSV's Debian:12 completeness for
+  this package set is UNKNOWN, and nothing here licenses reading a missing id as a clean result.
+- `openssl` and `libssl3` fell into "name found, version differs", so their results may not
+  correspond to the versions actually installed in the image. That bears directly on the OpenSSL
+  question and is not glossed.
+- "Open" here means OSV lists no bookworm fix at or below the installed version. It says nothing
+  about reachability or exploitability in this image.
+- Mapping used **today's** Debian indexes, not the image's build-time ones. **The OSV feed is moving
+  under this pass, not settled.** Recomputed first-hand: the latest `modified` timestamp in the set
+  is `2026-11-06T16:00:08Z`, **84 of the 154 entries** were modified after 2026-10-23, and **25 were
+  modified on 2026-11-06 — the day of this pass**. An earlier revision of this section said "some
+  entries were modified as recently as 2026-10-23", which was wrong by two weeks and understated the
+  volatility in the direction that flatters the result; it was copied from the delegated report
+  without being re-checked, in a section that claims a first-hand re-check. A re-run on another day
+  should be expected to give a different count.
+- Not checked at all: the linux/amd64 member, the SLSA provenance blob, publisher signatures, and the
+  Debian Security Tracker cross-check.
+
+### Effect on B3 and on condition 1
+
+**B3's CVE applicability is evidenced and not closed.** B3's package licence closure is **not closed**.
+Both remain as the "Still open" table records them, and §2 condition 1 — which names "licence closure
+and CVE applicability" by name — stays **unmet**. Nothing here closes a blocker, activates a
+capability, grants Ready, or retroactively authorizes the pull.
+
+What would close it: the six PGDG packages and the four Go modules assessed on their own terms; the
+dpkg-only scope of the SBOM addressed, since anything outside `dpkg` was never queried; the 39
+fallback mappings resolved to real source names; the SBOM-version-versus-source-version question
+settled for all 199 rows rather than the two noted above; and either a declared-licence enumeration
+the project is willing to call closed for a non-distributing loopback-only use, or an explicit
+scoped acceptance recorded as such. Under `INTERNAL_CAP_MODE = UNMETERED` none of that has a budget
+ceiling.
+
+**One engineering option this pass makes visible, recorded not taken.** Six of the eight fixable
+entries are the image's system `openssl`, and they include the single High. D2 of the drafted
+ADR-0006 already provides the route — move to a newer digest only under a change to that ADR
+carrying a fresh CVE assessment of that digest — so selecting a newer bookworm build would retire
+those six, at the cost of a full re-assessment and of discarding the only assessment that currently
+exists. That is a decision for the D4.3 selection, not for this evidence file, and nothing here
+selects it.
+
 ## B6 — psycopg-binary native-library inventory: VERIFIED, with the licence question still open
 
 The wheel was fetched into memory and its archive read. **It was not installed**: nothing was
@@ -406,7 +580,7 @@ owner. The owner remains the accountable party for the capability's presence in 
 | B6 remaining: bundled libpq, Kerberos, OpenLDAP versions | **OPEN.** Not readable by version-string search. CAP-001's libpq 18.6 stays a supplied assertion. |
 | B6 remaining: LGPL-3.0 obligations for a distributing use | **OPEN.** Not triggered by the loopback-only scope; not assessed for any other use. |
 | B7 D4.3 selection | **OPEN.** An ADR amendment on a controlled path, per §2.4. |
-| B3 CVE applicability and package licence closure | **OPEN**, as above (139 bookworm CVEs, 17 `NOASSERTION` fields). |
+| B3 CVE applicability and package licence closure | **OPEN**, as above — now measured rather than asserted, and worse than asserted. **154** distinct open bookworm CVEs against the image's own SBOM, not CAP-001's 139, and a lower bound: the six PGDG packages (`postgresql-17`, `postgresql-18`, `postgresql-client-17`, `postgresql-client-common`, `postgresql-common`, `libpq5`) and four Go modules were **not queried**, so the database's own packages are UNKNOWN. `licenseConcluded` is `NOASSERTION` on **all 204** SPDX packages. See the "B3 continued" section above. |
 | Publisher signature | **OPEN.** Not attempted; digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. |
 
 **Correction.** An earlier revision of this file headed B6 "VERIFIED" while this table still said
