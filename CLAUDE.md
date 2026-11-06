@@ -165,15 +165,62 @@ trust boundaries and fail closed. Negative tests must actually fail closed, not 
 MOD-004 code beyond the published S0 slice needs the module Ready and the EIP ¶754 capability
 manifest ACTIVE. Neither is true: `contracts/engineering/module-capabilities.yaml` is PROVISIONAL
 with `gate_eligible: false`, and its CAP, migration-lint, Rule and privileged-console blockers are
-OPEN. Documentation and design are legal now (ADR-0002 D12); product code is not. Per
-`OWNER-2026-10-29-minimal-local-runner-architecture.md`, **no CAP task is eligible without a new
-owner envelope** and the outstanding pre-pull and security decisions — no CAP budget was reset.
+OPEN. Documentation and design are legal now (ADR-0002 D12); product code is not.
+
+Internal CAP execution is **unmetered**. `OWNER-2026-11-06-internal-cap-unmetered.md`
+(`INTERNAL_CAP_MODE = UNMETERED`; published `e41a695`, exact-SHA push CI run `42272690841`
+`success`) makes orchestration minutes, model tokens, qualification attempts and routine
+engineering review consumption **not a stop condition**, and no further CAP envelope approval is
+ever required. It supersedes **prospectively only**, and its §2 lists its supersessions
+exhaustively — six of them: the 45/50,000 and the 180/400,000 ceilings with their
+stop-on-exhaustion rules; `OWNER-2026-10-19-mod004-s0-only.md`'s PAUSED-and-BLOCKED work stoppage
+and its "no additional budget" bar; `OWNER-2026-11-05-delegation-activation-and-exception-closure.md`'s
+reservation of a new CAP envelope to the owner, in full; the capability manifest's
+`default_orchestration_budget_minutes` and `token_budget_when_observable` as ceilings; and — the
+envelope half only —
+`OWNER-2026-10-29-minimal-local-runner-architecture.md`'s eligibility clause. Its §3 lists what it
+deliberately does **not** supersede. Four things follow:
+
+- The **pre-pull and security decisions still gate CAP work** — that half of the clause stands. For
+  the one CAP-001 candidate set the pre-pull security decision is delegated to this session by
+  `OWNER-2026-11-06-mod004-cap-and-implementation-authorization.md` §2, exercisable only under its
+  six conditions and only for a local loopback-only container holding synthetic fixtures. The pull
+  gate is wider than those six: §2's own predicate is "conditions 1-6 **and** the remaining CAP-001
+  §6 execution controls". Production or deployed use of that image or those wheels stays DC-16
+  `production-promotion`, reserved to the owner.
+- **No historical counter is reset.** The exhausted 45/50,000 envelope, the recorded
+  **427,621-of-400,000** overrun and the UNKNOWN earlier usage stand as history in
+  `knowledge/03-Modules/MOD-004/CAP-ENVELOPE.md`.
+- **Unmetered is not unblocked.** The gap stays `BLOCKED: CAPABILITY_GAP`, because that is also the
+  manifest's result for four OPEN blockers, none of which that record closes. What was lifted is
+  the exhaustion-driven work stoppage, not the gap's state.
+- **Unmetered is internal only, and the other limits survive.** No purchase of API credits,
+  subscriptions, cloud resources, managed databases, paid tiers or any other paid service without
+  separate explicit owner authorization, and the four DC-16 actions stay reserved. A provider, plan,
+  rate, context or session limit that stops work is reported as exactly that — never as a project
+  budget, and never as something this policy can waive. Also unchanged: the custom-rule-creation cap
+  of one per gap, **recorded as reached for `BLK-RULE-QUALIFICATION`**, so no new custom Rule
+  creation is authorized there; two external
+  candidate evaluations per gap; the no-second-candidate-set bar; the open question of whether the
+  two D16 correction cycles survive the 2026-10-30 failure; and the consumed S0 one-write and
+  one-review limits. §2.1 also keeps the authorizing record's metering controls 1-3 alive **as
+  measurement obligations with no gate attached**: separate metering, honest recording, and unknown
+  usage never treated as zero.
 
 Add no third-party dependency. `tools/`, `backend/app/l10n/` and the S0 slice are stdlib-only and
 must stay that way; `backend/app/main.py` already uses FastAPI, declared in
 `backend/requirements.txt` and pinned in `backend/requirements.lock` — existing approved scope,
 not a violation to "fix".
-Do not pull or install PostgreSQL, `psycopg` or `psycopg_pool`. The S0 paths enforce the forbidden-import
+Do not pull or install PostgreSQL, `psycopg` or `psycopg_pool` beyond what
+`OWNER-2026-11-06-mod004-cap-and-implementation-authorization.md` §2 authorizes — the four pinned
+requirements at their pinned hashes plus the pinned `postgres:17` image, into an isolated local
+qualification environment, and nothing else. State of fact, recorded because this bar used to read
+as absolute: the pinned image **is** present in the local Colima image store and one wheel
+(`psycopg_binary-3.3.6-cp313-cp313-macosx_11_0_arm64.whl`) **is** on disk outside the repository;
+the other three pinned distributions were never downloaded; nothing is installed, the qualification
+virtual environment holding only `pip`; and no third-party dependency is added to `backend/`. That
+fetch ran ahead of conditions §2 required — see the deviation sections of
+`knowledge/03-Modules/MOD-004/CAP-EVIDENCE.md`. The S0 paths enforce the forbidden-import
 closure in `contracts/engineering/mod004-s0-capability.json`.
 
 ## GitHub CI/CD
