@@ -46,6 +46,14 @@ never placed on an import path or executed. No container was run. No S1 code exi
 it was used for, so the "inventory not install" framing covers the installation question and not the
 fetch. Both are owned here.
 
+**Correction, 2026-11-06 — "into memory" understated it.** The wheel **is on disk** outside the
+repository, 4,772,031 bytes, SHA-256 `373704aea331d3f3e3402c125a1543f5875e2986ebb54f97d1647942161f803f`
+matching its pin, and its bundled `libpq.5.dylib` (371,120 bytes) was **extracted to disk** beside
+it. The pinned image is likewise on disk in the Colima store, held untagged and pulled by digest.
+Nothing is on any import path and nothing was installed, so every "not installed" statement in this
+file stands exactly as written; what was inaccurate was the implication that nothing persisted. This
+correction bounds the sentence above and the same framing in the B6 section; neither is edited.
+
 **A genuine defect in §2 that this exposed, separate from the breach.** Condition 1 requires **B6**
 closed before any pull, but B6 is the bundled-native-library inventory of the wheel, which cannot be
 produced without the wheel. As drafted, §2 makes B6 unreachable. That circularity is a flaw in the
@@ -58,6 +66,84 @@ happens, after the fetch rather than before it, and its outcome governs. **No in
 run and no S1 code proceeds until conditions 1-6 genuinely hold**, which needs the B5 outcome, the
 D4.3 ADR, and the `pip install` permission that only the repository owner can grant. If B5 refutes
 a claim below, the artifacts are discarded rather than reasoned about.
+
+## Condition 1 is unmet on grounds that are not circular — recorded 2026-11-06
+
+The deviation above records conditions 2 and 4 as unmet at the pull, and treats condition 1 as
+flawed by the B6 circularity. That account is incomplete, and the missing part is not a defect in
+the record but ordinary unfinished work.
+
+**What condition 1 requires**, in its own words: that B2, B3, B4 and B6 be "closed by evidence
+actually produced and recorded: free-runtime terms; image provenance, licence closure and CVE
+applicability; wheel and transitive hashes re-checked against PyPI; and the `psycopg-binary`
+bundled-library inventory with its CVE status and LGPL-3.0 obligations."
+
+**What the Still-open table below actually records**, as of this entry:
+
+- **B3** — CVE applicability for the 139 open Debian bookworm CVEs: **OPEN**. Package licence
+  closure, the 17 `NOASSERTION` fields: **OPEN**. Condition 1 names both by name.
+- **B6** — the inventory itself is closed, but its CVE status is not: four of the twelve Low CVEs
+  are unargued and the bundled libpq, Kerberos and OpenLDAP versions are unestablished. Condition 1
+  names CVE status by name.
+- **The LGPL-3.0 limb is NOT claimed as a ground here**, and saying otherwise would contradict this
+  file. The "Still open" table records it as OPEN **for a distributing use**, and records a position
+  for this one: not triggered by the loopback-only scope, because nothing is conveyed. So the part
+  that is open lies outside this qualification, and §2 puts a distributing or deployed use outside
+  it too, reserving deployed use to the owner under DC-16 `production-promotion`. An earlier
+  revision of this section stated the obligations flatly "unassessed" and then listed the
+  *loopback-only* assessment as outstanding work — inverting the record, and reintroducing exactly
+  the contradiction class the B5 reviewer caught on this blocker once already.
+
+So **condition 1 is unmet**, and not because of the B6 circularity. The four Low CVEs, the bundled
+versions, the licence closure and the bookworm CVE applicability are all producible from artifacts
+already in hand or from public sources; they are simply not yet produced.
+
+**The narrower reading, named and answered**, because it is the reading a later session will reach
+for. §2's own "What is being accepted" paragraph pre-accepts, as this record's premise, that "exact
+package licence closure are OPEN", that the bundled libpq, MIT Kerberos and OpenLDAP CVE status "is
+UNKNOWN", that "LGPL-3.0 obligations are unassessed", and that there are "139 OPEN Debian bookworm
+CVEs" with incomplete mapping. So, the argument runs, condition 1 cannot require those same items
+closed; it must require only that evidence be *produced and recorded* in those areas, replacing
+CAP-001's supplied-assertion class, with residuals disclosed — which is what this file did.
+
+It loses, on four grounds. The grammatical subject of condition 1 is the blockers and its verb is
+"are closed"; the colon-list states what the closing evidence must cover, it does not substitute a
+weaker test. The acceptance paragraph's own subject is "CAP-001 §4 records, **as supplied and
+reviewer-unverified assertions**, that …" — it discloses a bad starting state so the owner's
+attestation is informed, and condition 1 then requires that state be remedied; the two are
+sequential, not contradictory. The clause is headed "**Conditions, none waived**". And decisively,
+"CVE applicability" and "licence closure" are *judgments*, producible without fixing a single CVE,
+so the wider reading is achievable rather than absurd — whereas under the narrower reading B3 would
+have to be called closed, which this file's own B3 heading, "VERIFIED in part, CVE applicability
+OPEN", denies.
+
+**Consequences, stated rather than left to inference.**
+
+1. The pull was unauthorized on this ground as well as on conditions 2 and 4. §2 permits a pull only
+   once "conditions 1-6 and the remaining CAP-001 §6 execution controls hold", and conditions 1, 2
+   and 4 were all unmet at the time. This is a broader characterisation of the same breach, not a
+   new event, and it is recorded here rather than left for someone else to find.
+2. `BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME` **is not closed**. §3.1 is a precondition of
+   *activation* rather than a closure rule: it requires that blocker to be "closed by the §2
+   evidence", and with condition 1 unmet the §2 evidence does not close it. §3's "on all of the
+   following and not before" is therefore unsatisfied, and the capability manifest stays PROVISIONAL
+   with `gate_eligible: false`.
+3. **No install, no container run, no manifest activation, no Ready-for-S1 judgment and no S1
+   product code follow**, under the deviation section above and §3, §4 and §5. The install and
+   container-run bars are listed first deliberately: they are the nearer temptation, and the
+   deviation section above already holds them closed "until conditions 1-6 genuinely hold".
+   ADR-0002 D12 stands unrelaxed.
+4. None of this is a budget problem. Under `INTERNAL_CAP_MODE = UNMETERED`
+   (`OWNER-2026-11-06-internal-cap-unmetered.md`) the remaining evidence work has no ceiling; what
+   it has is a standard of proof. The work is: bookworm CVE applicability against the pinned digest;
+   package licence closure, including the fields CAP-001 records as `NOASSERTION`; the bundled
+   libpq, Kerberos and OpenLDAP versions; and a reachability position on the four remaining Low
+   CVEs, or an explicit scoped acceptance of them. The LGPL-3.0 obligations are deliberately **not** on this list: the loopback-only position
+   is already recorded, and the distributing-use question that stays open is outside this
+   qualification.
+
+This entry closes nothing and produces no evidence. It corrects the record's account of why the work
+is not finished.
 
 ## B2 — free runtime and terms: VERIFIED, closed
 
