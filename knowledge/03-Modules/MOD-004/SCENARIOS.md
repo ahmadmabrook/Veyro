@@ -22,7 +22,10 @@ assigns to Claude; the independent deepening and Scenario Review are separate la
 here. ADR-0002 D12(1) records that stdlib-only documentation and design are legal now. Task selection and
 reconciliation of requirement documents against the four pinned baselines are delegated confirmations under
 `knowledge/00-Decisions/OWNER-2026-11-05-delegation-activation-and-exception-closure.md` "What is delegated"
-items (1) and (2). `knowledge/03-Modules/` is not an ADR-0001-controlled path.
+items (1) and (2) — **a record that carries its own effectiveness conditions in its Status line and is operationally
+effective only once all of them are met**, which this document does not adjudicate. Nothing here rests on that
+delegation: ADR-0002 D12(1) makes stdlib-only documentation and design legal now, and EIP ¶777 assigns the catalog
+itself to Claude. `knowledge/03-Modules/` is not an ADR-0001-controlled path.
 
 Nothing in that delegation reaches an owner-reserved value. Where a scenario needs one — a hierarchy depth or
 cardinality limit, a retention duration, a region, a KMS key, a plan tier, a deletion approver or quorum — the row
@@ -60,11 +63,13 @@ so carry an explicit `EIP` prefix wherever cited. §9 continues to ¶879 and §9
 overlap. `MOD-004.md` states its unprefixed ranges as a closed whitelist that does not include them, so citing
 ¶857 and ¶879-883 unprefixed as EIP is **this document's own declared extension**, not that convention.
 
-A **second declared extension** is needed, and is named here rather than left implicit: five Source cells continue a
-prefix given earlier in the same cell instead of repeating it — `¶1190` (SCN-017), `¶10558` (SCN-080), `¶450`
+A **second declared extension** is needed, and is named here rather than left implicit: four Source cells carry five
+citations that continue a prefix given earlier in the same cell instead of repeating it — `¶1190` (SCN-017), `¶10558` (SCN-080), `¶450`
 (SCN-105), `¶4762-4763` and `¶4969` (SCN-107). All five are TSD, and in SCN-105 the nearest explicit prefix is two
 citations back rather than immediately adjacent. These five are **not** safe because the numbers are unambiguous:
-both baselines carry substantive text at every one of them, and two are plausibly confusable — EIP ¶1190 is a
+both baselines carry non-empty text at every one of them — though three of the EIP paragraphs are themselves table
+markings, which the tool's own `LABEL_CELLS` advisory flags: EIP ¶10558 is the single character `R`, EIP ¶450 reads
+`DC-02` and EIP ¶4762 reads `Tier 2` — and two are plausibly confusable: EIP ¶1190 is a
 review-status line and EIP ¶4762 reads "Tier 2". They are safe because the continuation is explicit inside the cell
 and each was resolved against the pinned TSD and matches the cell citing it. Prefix continuation is declared
 separately because `MOD-004.md`'s whitelist is closed and because the resolver below deliberately refuses to perform
@@ -77,15 +82,244 @@ TSD ¶756 is cache key prefixing — so a bare number there would silently re-po
 row inserted above it. This is mechanically checked rather than asserted, by
 `tools/module_docs/cite_check.py` in this repository: it requires both baseline hashes and fails closed on a
 mismatch, resolves every explicitly prefixed citation to its paragraph text, and hard-fails any bare citation whose
-cited **span** touches 741-783. It deliberately does **not** guess which baseline a bare citation outside that range
+cited **span** touches 741-783. Five further classes are hard failures, and they divide in two. **Two could hide
+such a citation and exist for that reason**: a character inside a citation that makes the parser read something other
+than what is written, and a separator the parser did not read as part of a span — a dash it declined, or whitespace
+splitting the digits. **Three could not.** A citation outside the source's paragraph count and a cited blank
+paragraph are reachable only through an explicitly prefixed citation, which the overlap rule never examines. The
+malformed-span guard looks as though it belongs with the first two and does not: the checker reports it and moves on
+*before* the bare-citation branch, and the overlap test uses the span's minimum and maximum, so dropping the guard
+turns a reversed bare span into a bare-in-overlap failure rather than into silence — never into a lost report,
+though most such spans do fall from a hard failure to an advisory. What it protects is a *prefixed* reversed span,
+which would otherwise resolve to an empty paragraph set. It deliberately does **not** guess which baseline a bare citation outside that range
 means — inheriting the nearest preceding prefix leaks across list items, headings and table rows, and a confident
-wrong resolution is worse than an honest unresolved one — so it reports those (71 of the 258 citations here) and the
-declared ranges above settle them. Topic match is not machine-checkable; `--table` prints the citation-to-source
-listing a reviewer judges it from, and `--self-check` runs ten assertions over the cases this guard exists for: a
-span entering the overlap from below, one leaving it, a bare reversed span, a **prefixed** reversed span, an en-dash
-span, an out-of-range paragraph, and a refusal to inherit a preceding prefix. A span whose end precedes its start is
-reported as malformed rather than resolved, and each assertion fails if its own fix is reverted. At
-these bytes it reports **0 hard failures**.
+wrong resolution is worse than an honest unresolved one — so it reports every bare citation in this file, and the
+declared ranges above settle each of them. The run prints the counts; none is repeated here. Topic match is not
+machine-checkable; `--table` prints the citation-to-source listing a reviewer judges it from.
+
+**Which file is authoritative for what, because the two have contradicted each other repeatedly.**
+`tools/module_docs/measure.py` is the only authority for every measured figure: it derives each one, prints it, and
+states what each measurement covers and what it does not. **No figure it produces is quoted anywhere in this
+document** — a mechanical rule, so it can be checked rather than trusted. `cite_check.py` is the only authority for
+what the tool does: its code is the behaviour and its comments explain it. What follows here is a reader's summary
+of that behaviour, kept to the rules and the known holes. It can lag the code, nothing enforces that it does not,
+and where the two disagree **the code is right and this is wrong** — which is the arrangement rather than an
+apology for it, since every attempt to keep the two in step by careful wording has failed.
+
+```bash
+python3 -I tools/module_docs/measure.py
+```
+
+That split is deliberate and was arrived at the hard way. Every figure about this tool that was written into prose
+went stale — once because the scan behind it had quietly excluded `*.py`, twice because a test fixture added to the
+tool changed the corpus the figure counted, and each correction was itself typed and so could go stale in turn. The
+one figure that never went wrong is the assertion total, because the tool counts its own `assert` statements with
+`ast` and prints it instead of being described. So the measurements now work that way, and this document does not
+restate them.
+
+**Nothing runs any of this automatically.** CI compiles `tools/mission_runner` and `tools/governance` only; no suite
+imports either file. Both are a reviewer's aid, not a gate.
+
+
+A span whose end precedes its start is reported malformed rather than resolved. On a character that does not belong
+inside a citation the tool **declines to infer what was meant**, because inferring either way breaks the other case:
+a soft hyphen *substituted* for the dash wants to be read as a dash, while one *inserted* inside a number wants to
+be removed — a soft hyphen between the digits of 756 otherwise makes a bare in-overlap citation parse as the span
+7-56 and downgrades a hard failure to an advisory. So the test is neither. Both the token boundary and the separator
+region are taken from the parser's own grammar and are unbounded in length, because every hand-written bound tried
+here disagreed with the parser and the disagreement was where the downgrade lived: a terminator set ended the token
+at the first space while the parser read past it, and a six-character cap let seven characters of padding hide a
+soft hyphen completely.
+
+**The scope, stated exactly.** **Two** regions are examined, both starting at the end of a citation's digit run and
+differing in what ends them: one runs to the next ASCII digit, the other to the next reference marker and is tried
+only when no ASCII digit bounds the text. Both are admitted on the same **two** grounds, and on no others.
+**Pure**: every character is whitespace, suspect **or a dash**. The dash belongs to the rule rather than to the
+reporting loop, because a region of dashes and spaces (`P700- -800`) is admitted by nothing else. In a **spaced**
+region one ordinary printable character means the following number is a separate thing and the region is dropped
+unexamined, which is what keeps prose out. An earlier version of this rule stopped only at an ASCII letter, so it
+ran straight through Arabic text, which contains none, and hard-failed the prose between the two numbers — the exact content
+`SCN-MOD-004-091` exists for.
+
+**Unspaced**: the region holds **no whitespace at all**, which makes it the separator position. This ground **does
+not ask whether the characters are ordinary**, so a comma, a colon, a per-cent sign, a letter in any script, or a run
+such as `..`, `...`, `~~` or `->` jammed between two digit runs is reported: `P1200,300`, `P1200:300`, `P800x900`
+and `P735..745` are all hard failures. Whitespace is the discriminator because a prose separator between two numbers
+carries a space — `P500, 600`, `P500 (600)`, `P735 to 745` — while a run jammed between the digits does not.
+
+**This ground tested length until review found what that missed.** It admitted one character only, which caught
+`P735~745` and missed `P735..745` — and `..` is this project's own range notation, as `ADR-0001..0005`,
+`PLT-01-R01..R07` and `MOD-000..003` all are. The defect the tool exists for, written in the house idiom, drew no
+report, and the length test had no more principled basis than the ASCII-letter asymmetry above.
+Two further justifications given for the length rule were also false and are withdrawn: that an all-dash region is
+the only way the unused-separator report can fire (`P700- -800` is neither all-dash nor spaced-out prose, and fires),
+and that across both module documents the only character ever occupying the separator position is the ASCII hyphen.
+That second one was false in both directions. A legal dash is consumed by the parser's own span pattern, so no region
+exists where a hyphen sits; and **no character occupies that position anywhere in either document**, which
+`measure.py census` shows by counting the separator regions the code produces in each and reporting how many are
+unspaced.
+
+**Two markers end a region rather than separating one**: the pilcrow and the **section sign**, because each starts a
+different reference, so the number after it belongs to that reference. `ADR-0002` writes `EIP §8 P749-755/§21.5`,
+whose `/§` carries no whitespace and was reported as a collapsed span until the section sign became a terminator.
+That line does still contain a real bare-in-overlap citation, because the parser requires the prefix immediately
+before the pilcrow and `§8 ` stands between them — but `ADR-0002` is not a file this tool is run against.
+
+**The pilcrow terminator is load-bearing; the section sign's is weaker.** Removing the pilcrow turns `P750/P773`
+and `P1237/P1206` — live notation in `MOD-004.md` — into false positives there, and the suite catches it. Removing
+the section sign changes nothing on either document the tool is run against: its only live instance is in
+`ADR-0002`, which it is not run against, so it is kept on that one file's evidence and on the principle, not on a
+measurement of the scanned documents. `P1211-1212, P1244` does **not** discriminate either terminator, and the
+reason is worth stating, because it is not the obvious one: a region *is* built there — the marker-bounded one —
+and the admission rule is consulted on it and rejects it on the comma. The non-pin is marked as one in the suite.
+
+**A dash stranded before a marker is reported, which closes what was the second disclosed hole.** `P700-P800` reads
+to a human as a span straddling the window and parsed as the bare citation 700, with both endpoints outside it and
+nothing reported — the one defect this tool exists for, reachable by writing a range as `P746-P773` rather than
+`P746-773`, which is ordinary editing and not adversarial input. **Only a dash counts there**: a marker means the
+next number belongs to a different reference, so an ordinary separator before one is a list, which is why
+`P750/P773` stays silent.
+
+**The restriction is established on the real corpus, not argued from `/`.** `measure.py census` enumerates every
+marker-bounded region the code produces across every tracked file and prints each admissible one with its file,
+line and content. The shape of that output is what matters here: the admissible ones are the `/` citations plus the
+tool's own fixtures, and every other dash-bearing region is spaced prose — a hyphen inside a hyphenated word far
+more often than a dash between two numbers — which the admission rule drops. **No count is quoted here**, because
+three were quoted in earlier drafts of this paragraph and all three went stale, twice because a fixture added to
+this tool changed the corpus it was counting. Dropping the admission rule on this branch reports the prose cases in
+both scanned documents, and nothing in the suite noticed until a case was added for it.
+
+**The cost of "only a dash", stated rather than implied.** Every other character in that position is silent, so
+`P700~P800` draws nothing while `P700~800` is a hard failure. The asymmetry is a context distinction and not a
+character one — a marker introduces the next number as its own reference, so there is no span to collapse — but it is
+wider than the `/` evidence alone would carry. One further shape is reported that the false-positive class below does
+not name: `|P700-|P800|`, a valid unspaced table row, draws `UNUSED_DASH`. No live instance exists.
+
+**One false-positive class.** `P1200,300` and its kind: a separator jammed between the digits that a human would
+read as prose. Neither document contains an instance, and a repository-wide scan of every tracked text file reports
+none outside this tool's own fixtures and comments. `measure.py pairs` runs every two-character visible-ASCII
+separator — all of them unspaced, since visible ASCII holds no space — and prints what the scan reports and what it
+misses, split by cause. Two kinds of miss are expected and benign: a digit-digit pair changes the paragraph number
+rather than separating two of them, and a dash-plus-digit pair is a span the parser legitimately reads. Note that it
+reports the **scan's** verdict; counting whole-checker hard failures instead credits cases the overlap and
+malformed-span rules carry, and that count shifts with the paragraph numbers in the template where the scan's does
+not.
+
+**Three false-negative classes, with no claim that these are all of them.** Each is a reference that reads to a
+human as a span entering 741-783 and draws no report. The hedge is not modesty: this list has been wrong about its
+own size repeatedly, in both directions, so treat it as the classes found rather than the classes there are.
+
+1. **A spaced region holding one ordinary character.** The minimum is **one** ordinary character and **one** space,
+   so `P735 ~ 745`, `P735 to 745`, `P735 ~745`, `P735~ 745`, `P735 .745` and `P735 /745` are all silent.
+2. **A line break between the digit runs.** The scan runs per line, so `P735-` at the end of a line and `745` at the
+   start of the next draws nothing, while the same text on one line is a hard failure. Markdown renders a single
+   newline inside a paragraph as a space, so the reader sees the span either way and the verdict depends on where
+   the hard wrap falls. Both documents are hard-wrapped prose; no instance is live — a scan for a line ending in a
+   citation followed by a line starting with a digit finds none in any `.md` in the repository — but one re-wrap
+   would create one. `split("\n")` honours **U+000A and nothing else**; the `str.splitlines()` discussion below
+   concerns the other nine characters that function consumes, and a carriage return dropped mid-number is reported
+   rather than swallowed.
+3. **A paragraph reference written without a pilcrow.** The parser finds citations by the pilcrow, so `Ready
+   746-773` draws nothing at all. This document writes in-window numbers without a pilcrow throughout — naming
+   the window itself, quoting ranges, illustrating the rules under the `P` convention, and quoting `MOD-004.md`'s
+   own unprefixed citations — and each is prose about the window rather than a citation into it, so no live defect
+   exists. An unprefixed citation would be cheaper to reach than either class above, and the tool cannot see it at
+   all.
+
+And a residue that is **not** a span, recorded because it is easy to mistake for one: an invisible character before
+a reference marker. `P7<SOFT HYPHEN><SECTION SIGN>56` and `P7<SOFT HYPHEN><PILCROW>56` draw no report, because the
+marker ends the region before the soft hyphen is examined, and only a dash is reported there. Nothing is misread —
+the parser reads 7 and so does a reader — so an invisible character simply goes unmentioned.
+
+**None of the three is closed, and that is a judgement.** Closing (1) would mean reporting `P500, 600` and the tool
+would stop being usable on prose. Closing (2) means scanning across line boundaries, and (3) means finding citations
+without the token that identifies them. Two other holes **were** closed rather than disclosed, on two different
+grounds, which is worth separating because stating one test and applying two is exactly the tidiness this document
+should not buy. `..` was closed because it is live notation here, as `ADR-0001..0005` and `MOD-000..003` are.
+`P746-P773` has **no** live instance — the census shows that — and was closed because it is one keystroke from live
+in a corpus where repeated-pilcrow citations are everywhere, and because the fix was one branch that the census
+shows adds no false positive. The three open classes are each more than one branch. Nothing runs this checker automatically, so
+it is a reviewer's aid rather than a gate, and a named hole in an aid is worth more than an unnamed one in a gate.
+
+So a directional mark, a joiner or a no-break space in prose is legal **where ordinary punctuation or a word
+separates it from the numbers**; standing alone between two numbers it is reported. Both halves of that are asserted
+as a pair, for each of the three characters, because asserting only the first half is how the overstatement survived
+before.
+
+**Suspect** means invisible, or a digit that is not an ASCII digit — a superscript, a circled or Roman numeral, an
+Arabic-Indic or fullwidth digit — which reads to a human as part of the figure while the parser stops at it or
+absorbs it. Every report from this scan is now hard. An earlier version had an advisory arm for a "visible,
+non-deceptive separator"; in that version only the whole-region rule admitted a region, so any such character made
+the region impure and no code point could reach the arm at all. The dash-position rule does reach
+that position, so the arm would now be live — and a visible non-dash wedged between two digit runs is a silent span
+collapse, which is a hard failure, not an advisory. The arm was removed rather than revived. A section sign is the
+exception, and not for that reason: it is a region terminator, so it is never reported anywhere.
+**All three** digit runs are `[0-9]` rather than `\d` — `CITE`'s leading run, its `SPAN` end and `CITE_TAIL`'s —
+because `\d` matches any `Nd`, so a fullwidth digit would be absorbed and change the paragraph *value* with nothing
+reported, which is worse than truncation because the reader sees a plausible figure. Two of those three were widened
+and survived the suite until the assertions stopped reading the return code — which is 1 either way, since the
+separator report fires regardless — and started reading the resolved value out of `--table`. A pilcrow whose number
+is written in digits the parser cannot read, or pushed out of reach behind spaces, is reported too — otherwise the
+citation vanishes from the count entirely.
+
+**A dash the parser did not use is reported as well, and the sweep below could not have found that.** A region
+exists at all only because `SPAN` failed between two digit runs, so a dash inside one is a dash the parser declined:
+`P700--800` reads to a human as a span straddling the window and parses as the bare citation 700, which is outside
+it — a hard failure downgraded to an advisory, the one thing this tool exists to catch. The dash is held rather than
+reported, so where an intruder displaced it (`P735-­745`) that character is the report and the dash is not blamed
+twice. **Whitespace is held the same way and for the same reason**: the span pattern consumes `\s*DASH\s*`, so a
+region of nothing but spaces also means no span was read — `P7 56` reads as 756, parses as 7, and prints paragraph 7
+as the reviewer's evidence row with nothing reported at all. Neither defect was found by measurement: a dash and a
+space are each visible and non-numeric, so neither is in either sweep population, and the character sweep passes
+over both.
+
+Lines are split on `\n` alone and never by `str.splitlines()`, which consumes U+000B, U+000C, U+000D,
+U+001C-001E, U+0085, U+2028 and U+2029 as line boundaries; a vertical tab dropped mid-number, which is what a manual line break becomes in
+common exporters, would otherwise vanish before any scan could see it.
+
+**What the character sweep does not cover, which is the part no figure can tell you.** Its populations are the
+characters the tool's own `invisible` predicate claims and the non-ASCII numerals — so **every visible, non-numeric
+character is outside both**, which is exactly where the unused-separator collapse above lived. It was found by
+reading the code, and no number of cases would have found it. `measure.py chars` states its populations, separates
+the cases where the inserted character alone decides the verdict from those the parse would fail anyway, and bounds
+its own in-process predicate against `check()`; read it there. **The sweep measures the predicates it was built
+from, and cannot find a defect in what counts as suspect in the first place.**
+
+Nothing runs this checker automatically: CI compiles `tools/mission_runner` and `tools/governance` only, and no
+suite imports it, so these figures are a manual measurement at these bytes and can go stale silently.
+
+At these bytes the tool reports **0 hard failures on this file**, and the reason is a convention, stated here so it
+is not mistaken for the text being correct: **every illustrative citation that is malformed, or that illustrates a
+separator, is written with `P` in place of the pilcrow** — `P735~745`, `P700--800`, `P735..745`, `P1200,300` and the
+rest. Well-formed illustrative citations keep their pilcrow, because they resolve and report nothing: `EIP ¶756` and
+`TSD ¶756` above are written with real pilcrows on purpose, to show the overlap they exist to demonstrate. A document that explains a
+malformed-citation checker has to quote malformed citations, and quoting them with a real pilcrow made this file
+report three hard failures of its own. A draft of this file disclosed those three by line number instead, and that
+was worse twice over: the line numbers were **wrong** within the same editing pass, since later edits moved them,
+and a genuine fourth failure would have been indistinguishable from the three deliberate ones. That particular draft
+was never committed.
+
+**On the history these three files recount, since they recount a good deal of it.** There is one published
+predecessor, at `afedaac`: `cite_check.py` as a 197-line tool with a ten-assertion suite, and this document at 484
+lines. Some of the "earlier version" statements here and in the tool's comments refer to that commit and **can be
+checked against it** — `touches_overlap`'s docstring there asserts the reversed-span test as a live protection, and
+its suite comment says the function "rejects on its own", both of which the malformed-span guard had already made
+untrue, and this document's predecessor types a prose figure for the suite's size. Others refer to drafts that were
+staged and revised before any commit; those are not in the repository and are the author's account. **No claim is
+made about which statement falls on which side beyond the ones just named** — an earlier version of this very
+paragraph asserted that none of them was checkable, which was false, and the counterexample was inside the same
+change. Under the convention the
+checker's verdict on this file is informative again — any hard failure here is a defect, not an illustration. It reports **eleven on `MOD-004.md`**, which this document
+cites for the prefix convention. One, at `MOD-004.md:176`, is a genuine bare citation inside the overlap with no
+prefix anywhere in its sentence. Eight of the other ten are prose naming the ranges themselves or continuing a
+prefix within the same sentence. The remaining two, both at `MOD-004.md:25`, are weaker than that. The bullet's single
+`EIP` token sits in the same sentence as both citations, but it is a **parenthetical naming the source document's
+SHA-256**, not a citation prefix, so nothing in that sentence prefixes its citations of 749-750 and 754. By this
+document's own taxonomy they would fall among the eight; they are closer to the genuine one. **Those counts and
+line numbers are about a file this change does not touch, and nothing derives them**: `MOD-004.md` can be edited
+without this paragraph noticing, and its line numbers will move when it is. Re-run the checker on it rather than
+trusting them. The authority document does not satisfy its own stated rule. That is recorded here rather than fixed,
+because `MOD-004.md` is outside this change.
 
 ## Required rule, derived not chosen (EIP ¶1948 module card, then EIP ¶881)
 
@@ -445,7 +679,7 @@ OPEN.
 | PLT-01-R06 ¶5138 | Allow multi-brand ownership with separate branding, catalogs, pricing, domains, applications and policies | 007 |
 | PLT-01-R07 ¶5146 | Maintain tenant lifecycle history and prevent hard deletion before legal, billing and retention gates pass | 004, 005, 041, 081, 082, 088 |
 
-R04 and R06 each trace to a single scenario. That is the honest state, not an omission to be padded: R04's template, clone and configuration content is A2, A3 and A10 (all ESCALATE), and R06's multi-brand catalog, pricing, domain and policy separation depends on A5 (PROPOSE) and on the ADM-SET-06 V2 boundary, which is owner-reserved. The LOC and A11Y rows for the owned screens were previously credited to R06 and are not: they test localization and accessibility, not multi-brand ownership. No scenario is invented to thicken either row.
+R04 and R06 each trace to a single scenario. That is the honest state, not an omission to be padded: R04's template, clone and configuration content is A2, A3 and A10 (all ESCALATE), and R06's multi-brand catalog, pricing, domain and policy separation depends on A5 (PROPOSE) and on the ADM-SET-06 V2 boundary, which is owner-reserved. An earlier version of this table credited the LOC and A11Y rows for the owned screens to R06; they are not credited to it, because they test localization and accessibility, not multi-brand ownership. No scenario is invented to thicken either row.
 
 | Proposed slice | Scenarios |
 |---|---|
