@@ -1,0 +1,106 @@
+# MOD-004 — PLT-01-R01..R07 requirement boundaries and canonical owned Screen IDs
+
+**Status: NOT READY. NOT ACCEPTED. NO PASS.** `product_pass` is false for every requirement row below, and no row records a PLT-01 registry value. This file is a module requirements document at the documents/ADR gate. It declares nothing Ready, activates no capability, starts no implementation, passes no lint and makes no owner decision. Nothing here is a waiver.
+
+**No special waiver.** EIP §21.5 (¶1953-1954): "No special waiver. All Development Constitution gates apply." Appendix B (¶5093-5148) assigns the complete Critical requirements PLT-01-R01..R07 to MOD-004, each "Full requirement implemented and completed in the listed module." Only a future `OWNER-*` record could change that; none exists.
+
+## Purpose and exact standing under Appendix F ¶8741
+
+EIP Appendix F ¶8741, quoted in full: "UI-bearing module: exact canonical IDs must be present in screen-contracts.yaml + module REQUIREMENTS.md before Scenario Review; count/route/contract lint must PASS. Missing IDs block Scenario Review, not the module's ability to become Ready and produce its own qualification artifacts."
+
+That paragraph states two conditions. This file addresses the first one only, and only in part:
+
+- **Presence in `REQUIREMENTS.md`: closed by this file** for the four owned IDs named below, taken verbatim from the canonical registry. The owned *set* those IDs form is itself not covered by any APPROVED full-mapping review — see "Mapping review standing, stated plainly" below. Presence is a document condition; it is not agreement that the set is right.
+- **Presence in `contracts/ui/screen-contracts.yaml`: already satisfied as identity.** All four IDs are rows in that generated file.
+- **count/route/contract lint: NOT PASSED, and not reachable from this file.** `node tools/screen_contracts/screen_contracts.mjs check-complete` exits 1: "FAIL: full-contract gate: 1530 unresolved fields across 170 screens (route=170 owning_module=170 read_model=170 commands=170 permissions=170 realtime=170 masking=170 offline=170 error_contract=170); the source registry does not supply them". `check-identity`, which CI runs, exits 0 with "PASS (identity only) … This is NOT a full-contract PASS".
+
+**Scenario Review therefore stays BLOCKED.** Publishing this file closes one of ¶8741's conditions and leaves the lint condition unmet. The lint is not reachable by editing `contracts/ui/screen-contracts.yaml`: that file is deterministically generated from `veyro-product-experience-design/project/veyro-registry-data.js`, which is inside the frozen baseline pinned in `PROJECT_INDEX.md`; the generator always emits `route`, `owning_module` and the other contract fields as null, and `check-identity` fails if the file differs from a regeneration, so a hand-filled field breaks that gate and a regeneration reverts it. Reaching the lint needs contract data from a source that does not yet exist. Consistent with the owner's 2026-10-15 timing decision, which is recorded in `knowledge/03-Modules/MOD-001/MOD-001.md` (lines 36 and 105: "Defer those 1530 unavailable per-screen fields to the first product module that owns each screen") and nowhere in `MOD-003.md`, `check-complete` is the known, deliberately visible failing gate for that deferral. **OWNER-Q2** (`MOD-004.md`, Unresolved owner-reserved choices) — whether that timing decision also defers the ¶8741 route/contract lint from Scenario Review to UI acceptance — is **PENDING**, and the stricter reading applies until the owner answers. This file does not answer it and assumes no answer.
+
+**Two tracked documents still say this file is missing, and are deliberately not corrected here.** `.claude/rules/admin/mod004-privileged-console.md` and `contracts/engineering/staging/mod004-privileged-console.md` both read "blocked by Appendix F ¶8741 and missing `REQUIREMENTS.md` unless OWNER-Q2 is answered Yes". ADR-0002 calls `contracts/engineering/**` a controlled contracts change and ADR-0001 does not cover it, so correcting them is a separate change under its own authority. Their staleness errs on the restrictive side and widens no permission. `OWNER-2026-10-17-mod004-brandappearance-design.md` also says "the missing `REQUIREMENTS.md`"; that record is frozen, is correctly untouched, and was true on its date.
+
+Per ¶8741's own last sentence, the lint gap blocks Scenario Review and does **not** block MOD-004 from becoming Ready or from producing its own qualification artifacts. Ready remains unjudged for the separate reasons in `MOD-004.md` "Ready and code timing": EIP ¶749-750 environment/tool access is unavailable and the EIP ¶754 capability manifest is PROVISIONAL with `gate_eligible: false`.
+
+## Sources and verification
+
+Verified before this file was written, with `tools/governance/source_baseline.py verify` against the operator-held external pin: result `{"ok": true}`. All four `PROJECT_INDEX.md` baseline rows match the files on disk.
+
+| Source | SHA-256 |
+|---|---|
+| `Gym_OS_Master_Product_Blueprint_v1_English.docx` | `80f4b381df26919b358b3e64e209c67beba2ba9224c0f4df3951d3b179d426ef` |
+| `Veyro_Technical_System_Design_v1.4.2_Foundation_Clarification.docx` | `e0bef7cf2c42885fa35825343ff9b18bbf8fe4996ea72ac38a594752a8c69d33` |
+| `Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx` | `b82e56f88a3b5cc5ba486fe8d10b2d04e8153ce227729e9ba6a92debe15d894f` |
+| `veyro-product-experience-design/` | `193c2924be4e42d52888b2c50a4609c4514216cfb9648b3f4cb2578112987ffb` |
+
+Screen IDs, names and surfaces below are read from `contracts/ui/screen-contracts.yaml`, whose declared source is `veyro-product-experience-design/project/veyro-registry-data.js` at SHA-256 `0736902dfb285cb57e2f370c0918df0b8f2aeeefbd24b3e5198fa03ed185b8f5`, selection "resolve() rows with isV1 true and surface other than \"Backend / no UI\"", `v1_ui_screens: 170`. Appendix F ¶8704 supplies that V1 count and the mismatch-is-blocking rule, and states that the approved V1 design registry "is the only authority for exact Screen IDs" and that "screenshots, remembered names, inferred routes or newly invented identifiers are not acceptable substitutes". No identifier, name, surface or route here is remembered, inferred or invented.
+
+**Paragraph numbering base (read this before checking a citation).** Appendix F citations in this file (¶8701-8705, ¶8740, ¶8741) are **zero-based**, the convention `MOD-004.md` declares for the screen-ownership supplement, and they index the pinned EIP body directly: `tools/module_docs/cite_check.py` `paragraphs()` on the pinned EIP returns the quoted ¶8740 and ¶8741 text at exactly those list indices, and the ¶8704 propositions at index 8704. **`cite_check.py` does not check them.** Its `CITE` pattern takes the resolving branch only where `EIP` or `TSD` sits immediately before the ¶ (`\b(EIP|TSD)\s+¶`), and every Appendix F citation here is written "Appendix F ¶NNNN", so the tool reports each one `BARE_UNRESOLVED` and resolves none of them — it does not report them one paragraph low, it does not report them at all. Check the zero-based base directly with `paragraphs()`, as above; a reviewer who relies on the tool for these four gets no coverage of them. All other EIP and TSD citations here (EIP ¶749-750, EIP ¶754, EIP ¶1946, EIP ¶1953-1954, EIP ¶5093-5148; TSD ¶749-772, TSD ¶776-782, TSD ¶1206, TSD ¶1222-1228, TSD ¶1237) use the base the resolver reads and resolve to the quoted propositions under it.
+
+EIP/TSD paragraph citations in this file are reproduced from the pinned extracts cited in `MOD-004.md` "Sources". The extracts themselves are not present in the repository working tree; preserved copies exist outside it, and making them reachable to a reviewer is an owner action (`MOD-004.md` item 6, finding F3). No paragraph number is cited here that `MOD-004.md` or `ADR-0002` does not already cite for the same proposition.
+
+## Canonical owned Screen IDs (exact; four)
+
+Governing import rule, EIP Appendix F ¶8740, quoted in full: "Import exact canonical Screen IDs whose source owner_domain is in this module TSD scope and whose surface is one of: Internal SaaS Console, Admin Web. Resolve any multi-domain screen to the module owning its primary mutation/route contract; secondary domains remain traceability links."
+
+All contract fields stay null for all four rows. This file sets none, and `owning_module` in `contracts/ui/screen-contracts.yaml` stays null and untouched.
+
+| Screen ID | Registry name | Registry surface | Ownership basis | Review standing of that basis |
+|---|---|---|---|---|
+| `CON-04` | Tenant provisioning | Internal Console | Registry note "New tenant, plan, region, initial admin"; `ProvisionTenant` in TSD ¶1237; Internal SaaS Console surface | The only one of the seven mapped rows whose ¶8740 determination the 2026-11-02 justification review found sound, subject to its finding F1, which bears on all rows. That is not an approval of the mapping. |
+| `ADM-SET-01` | Organization settings | Veyro Admin | Admin Web surface; organization/legal-entity/tax-number scope within PLT-01. **[INFERENCE]** — so labelled by the F2/F4 remediation | No APPROVED full-mapping justification review covers the current text. |
+| `ADM-SET-02` | Location settings | Veyro Admin | Admin Web surface; location scope within PLT-01. **[INFERENCE]** — so labelled by the F2/F4 remediation | No APPROVED full-mapping justification review covers the current text. |
+| `ADM-SET-06` | White-label branding | Veyro Admin | Owner authority only: OWNER-Q3 answered option A, scoped to the ADR-0002 D15 core, by `OWNER-2026-10-17-mod004-brandappearance-design.md` (commit `a9ad5f3e194b1b1f3309edcfb08ee2e69f77b96f`, CI run `39026652808` success, operator-observed) | Not a mapping review. On the pinned text the ¶8740 primary mutation is `CreateBrandTheme` on `BrandTheme`, authoritative in TSD WHT-01 = MOD-066 (wave V2), so the ¶8740 reasoning points away from MOD-004, against Appendix B PLT-01-R06 and the screen's V1 registry presence. That domain-authority conflict (ADR-0002 D15.10 Q1 V2 part and Q2) is **owner-reserved and OPEN**. |
+
+`CON-01`, `CON-02` and `CON-03` are mapped elsewhere under ADR-0002 D14 and are **not** owned by MOD-004; they appear here only as that negative statement. Finding F3 records that no pinned TSD command inventory exists for MOD-029's PLT-04 or MOD-031's LIF-01, so their primary mutations cannot be grounded in any command inventory; producing or exposing those extracts is an owner action.
+
+**Mapping review standing, stated plainly.** The independent Opus ¶8740 justification review performed on 2026-11-02 returned OUTCOME **CHANGES_REQUESTED** with findings F1-F8. As `MOD-004.md` and `ADR-0002` both disclose, that review has no `*.evidence.json` artifact and no run identifier, carries no `review_bound_verified` field, and its performance, its performer and the reviewer's lack of write tools are asserted in those records and are not independently verifiable; the adverse outcome is what stands. Seven findings (F1, F2, F4, F5, F6, F7, F8) were answered by a bounded remediation that is not a re-review and approves nothing. F3 and the `ADM-SET-06` domain-authority conflict stay with the owner. Two earlier screen-ownership reviews, `mod004-screen-ownership-opus-review-20261017` and `mod004-screen-ownership-remediation-opus-review-20261017`, are OUTCOME **CHANGES_REQUESTED** and stand. A new independent bound Opus review of all seven rows' ¶8740 justifications, on the bytes then current, plus exact-SHA push CI, remains required. Nothing in this file supersedes, softens or reinterprets any of those outcomes.
+
+## PLT-01-R01..R07 requirement boundaries
+
+Appendix B ¶5093-5148 assigns all seven to MOD-004 in full. The table states the per-requirement IN/OUT boundary as the implementer's proposal, in the pattern Appendix B requires of an earlier slice; it is not an owner-approved baseline and the EIP is not edited. **Every row is OPEN. No row is IN for any delivered slice**, because no MOD-004 slice beyond S0 exists. S0 is a pre-Ready input-shape slice, not part of any requirement's IN set: per `OWNER-2026-10-19-mod004-s0-only.md` decision 1 it "does not authenticate, authorize, choose a tenant, set trusted tenant context, perform I/O, SQL, database or network work, mutate state, expose an API, implement a lifecycle transition or prove tenant isolation."
+
+| Req | Source | Obligation | Proposed slice | IN (delivered) | Proposed IN (slice, not started) | OUT of MOD-004 | Status |
+|---|---|---|---|---|---|---|---|
+| PLT-01-R01 | ¶5093-5100; TSD ¶1222 | Provision, activate, suspend, archive and delete tenants through a controlled lifecycle | S2 | None | Lifecycle state machine, history, deletion guard | Approvals and immutable audit (MOD-008); retention and billing gate criteria (owner-reserved; MOD-015) | **OPEN.** Delete command and archived/deleted events absent from TSD ¶1237/¶1206 |
+| PLT-01-R02 | ¶5101-5108; TSD ¶1223 | Model organization, legal entity, brand, region, location, department and cost-center hierarchies | S1 (tables, partial), S3 | None | Two proposed tenant tables in S1 (names and columns decided by ADR review); hierarchy and multi-brand in S3 | Cardinalities where the Blueprint is silent (owner-reserved) | **OPEN.** No maintenance command for LegalEntity, Department, CostCenter or TenantConfiguration in TSD ¶1237 |
+| PLT-01-R03 | ¶5109-5116; TSD ¶1224 | Enforce tenant-aware identifiers, storage paths, search indexes, events, caches, logs and background jobs | S1 (PostgreSQL), S6 (others) | None | PostgreSQL RLS, transaction-local context, function-only `platform_scope` (TSD §7.3) | Search, object storage, telemetry and AI platforms, which do not exist; events and jobs sequenced behind MOD-010 | **mapped (PostgreSQL only); OPEN** for events/jobs, search, object storage, telemetry and AI |
+| PLT-01-R04 | ¶5117-5124; TSD ¶1225 | Tenant templates, cloning, defaults, regional settings and configuration inheritance | S4 | None | Templates and inheritance | Template and default contents (owner-reserved); overlap with MOD-005 configuration | **OPEN.** No template or clone command in TSD ¶1237 |
+| PLT-01-R05 | ¶5125-5132; TSD ¶1226 | Data residency, deployment-region and encryption-key assignment policies | S5 | None | Placement, region, key assignment, relocation epoch (TSD ¶776-782) | Regions, KMS and any cloud spend (DC-16, owner-reserved); key management in MOD-009 | **OPEN.** No encryption-key assignment command exists |
+| PLT-01-R06 | ¶5133-5140; TSD ¶1227 | Multi-brand ownership with separate branding, catalogs, pricing, domains, applications and policies | S3 | None | Brand hierarchy in S3; the `ADM-SET-06` V1 core is the owner-approved ADR-0002 D15 scope (V1-only PLT-01 `BrandAppearance` with `accent_color` and `logo_asset_ref`, the `SetBrandAppearance` command and the read-only `plt01.brand_appearance.v1` contract) | Catalogs and pricing (other modules); custom domains (spend, DC-16); brand separation extent (owner-reserved) | **OPEN beyond the approved core.** The `brand.appearance_changed` event, the V2 handoff and ADR-0002 D15.10 Q1-Q8 stay OPEN. The approved core is a design approval, not an implementation authorization |
+| PLT-01-R07 | ¶5141-5148; TSD ¶1228 | Tenant lifecycle history; no hard deletion before legal, billing and retention gates pass | S2 | None | Lifecycle history and the deletion guard | Gate criteria and durations (owner-reserved); billing gate depends on MOD-015 | **OPEN** |
+
+## Release-gate isolation layers
+
+The seven release-gate isolation layers (EIP ¶1946; TSD ¶749-772) are **unevidenced**. No layer has execution evidence, because no S1 code, migration, database or runtime exists. This file produces none and claims none.
+
+## Code and capability timing (restated, not changed)
+
+- Documentation and design are legal now (ADR-0002 D12(1)). This file is that.
+- Product code beyond the published S0 slice is **not** authorized. ADR-0002 D12 requires module Ready **and** the EIP ¶754 capability manifest ACTIVE for S1 code or SQL. `contracts/engineering/module-capabilities.yaml` is `provisional: true`, `gate_eligible: false`, row `status: PROVISIONAL`, with `BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME`, `BLK-SKL-MIGRATION-LINT`, `BLK-CON04-PRIVILEGED-CONSOLE-REVIEW` and `BLK-RULE-QUALIFICATION` all OPEN.
+- The S0 lane is **spent**: `OWNER-2026-10-19-mod004-s0-only.md` decision 4 permits "at most one bounded S0 product write touching exactly those two files", and that write is published (`backend/app/tenancy_s0.py`, `backend/tests/test_tenancy_s0.py`). `OWNER-2026-11-05-delegation-activation-and-exception-closure.md` preserves "all consumed one-write and one-review limits". No second S0 write is authorized here or anywhere.
+- PostgreSQL, `psycopg` and `psycopg_pool` are neither pulled nor installed, and no third-party dependency is added.
+- `OWNER-2026-10-29-minimal-local-runner-architecture.md`: "no CAP task is eligible without a new owner envelope and the outstanding pre-pull/security decisions". No CAP budget is reset, granted or invented by this file.
+
+## Owner-reserved items this file does not resolve
+
+Named so that no reader mistakes their absence for closure. Each needs the owner's own act; silence is not approval.
+
+1. A new CAP envelope in metered active orchestration minutes and model tokens. The one prior envelope is recorded exhausted.
+2. Pre-pull security approval for PostgreSQL 17, `psycopg` and `psycopg_pool`. The Opus review of the pre-pull dossier approved document accuracy only.
+3. **OWNER-Q1** (PENDING): the S1 interim platform access log. Recorded default stands — no interim log in S1 (ADR-0002 D6.4). Omitting it is not an S1 blocker.
+4. **OWNER-Q2** (PENDING): the ¶8741 lint timing question above.
+5. **ADR-0002 D15.10 Q1 (V2 single-writer handoff) and Q2**: `ADM-SET-06` domain authority.
+6. Finding **F3** and making the pinned extracts reachable to a reviewer.
+7. Regions, data-residency policy, KMS and encryption keys; retention durations, deletion approvers and quorum; hierarchy cardinalities, brand separation extent, template and default contents where the Blueprint is silent.
+8. The four DC-16 reserved actions: `spend-paid-activation`, `production-promotion`, `material-product-business-change`, `real-member-data`.
+9. Module acceptance and the MOD-005 unlock. An agent never decides module acceptance.
+10. Whether the two D16 correction cycles survive the 2026-10-30 infrastructure failure.
+
+## Not claimed
+
+- Not module Ready, not module acceptance, not a product PASS, not a Scenario Review PASS, not a Gatekeeper verdict, not a security PASS, not manual-QA or TestSprite evidence.
+- Not an Appendix F ¶8741 lint PASS, and not an answer to OWNER-Q1 or OWNER-Q2.
+- Not a capability activation, CAP envelope, budget, reset or qualification, and not supply-chain or pre-pull security evidence.
+- Not code authorization, and not authorization for any product code beyond the published S0 slice.
+- Not an Appendix B materialization: the EIP is frozen and is not edited. The IN/OUT boundary above is a proposal.
+- Not an edit to any pinned baseline, any `OWNER-*` record, or any field of `contracts/ui/screen-contracts.yaml`.
+- Supersedes no review outcome. The recorded `CHANGES_REQUESTED` outcomes stand.
