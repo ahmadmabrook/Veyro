@@ -144,6 +144,18 @@ pull-scope token and rehashing the returned bytes. **No layer or image was pulle
 Every size matches CAP-001's recorded value. This upgrades CAP-001's supplied assertion about both
 digests and about the attestation subject binding to VERIFIED.
 
+**Two corrections from the independent B5 verification, both making this section stronger than
+first written.** First, the arm64 manifest `a85953d6…b3670d` was claimed above only as a *member* of
+the index; its own bytes also **rehash to the pin** (3,643 bytes), which the reviewer checked and
+this author had not. Second, and more consequential: **the narrower tag `17.11-bookworm` has also
+moved off the pinned digest.** It now resolves to index
+`sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994` with arm64 member
+`sha256:9da3effe923ca751b92343f54bb9a90674895c52975e0bd10efd568d6be49b21`, so the bookworm line has
+been rebuilt since the pin. The pinned digest remains retrievable, so pinning works — but **no tag,
+not merely `:17`, resolves to the assessed artifact**, and CAP-001's 139-CVE bookworm scan is bound
+to that one older build and is not necessarily the current bookworm build either. Execution must
+pin the digest; a tag must never be used.
+
 **What this is not.** CAP-001's own caution holds and is restated: this is **digest integrity and
 subject binding, not a verified cryptographic signature**. No signature was checked, no trust root
 was established, and an anonymous registry token authenticates nothing about the publisher.
@@ -227,6 +239,71 @@ severities, and the reachability judgment for the one High CVE. **Open:** the tw
 individually, the bundled libpq, Kerberos and OpenLDAP versions and their CVE status, and the
 LGPL-3.0 obligations for any distributing use.
 
+## B5 — independent fetch verification: SATISFIED for B3 and B4
+
+§2.2 requires "an independent Opus reviewer performs its own fetch verification of B3 and B4 rather
+than reading the Capability Manager's summary", and that a reviewer unable to fetch says so and
+approves nothing. An independent Opus session, not the author of this file, performed it and
+reported outbound network access working, so that branch did not apply. **OUTCOME: APPROVED**, on
+eleven claims put to it.
+
+It bound the pins to the repository rather than to its task prompt: the four wheel hashes against
+`mod004-d123a-wheel-lock.txt` byte-for-byte, and the five image digests and both attestation blob
+sizes against `CAP-001-mod004-d123a-prepull.md`. So it verified the artifacts this repository pins,
+not figures handed to it.
+
+**Confirmed independently:** all four PyPI hashes, filenames, yank status and `requires_python`; the
+three licence expressions plus PSF-2.0; the transitive closure including the marker reasoning
+(it checked that PEP 508 defines `python_version` as the first two components, so `"3.13" < "3.13"`
+is false under both string and version comparison, and that `psycopg-pool` is the only unconditional
+path to typing-extensions); the OCI index, arm64 manifest and attestation manifest fetched by digest
+and rehashed; the attestation's declared layers, sizes and in-toto predicate types; the
+`postgres:17` divergence; the wheel's hash checked **before** inspection and the
+`OpenSSL 3.5.8 25 Aug 2026` string; and the 13 CVEs split one High and twelve Low, with a negative
+cross-check confirming the count is not an artifact of its selector. Every entry of this file's
+native-library table reproduced exactly on its own copy.
+
+**Scope it was careful to state, and which is repeated here rather than quietly dropped.** It did
+not pull the two attestation blobs, so their declared digests, sizes and predicates were verified
+inside bytes that rehash to the pinned manifest, but the blob bytes themselves were not rehashed.
+It verified no publisher signature and no trust root; it confirms an anonymous registry token
+authenticates nothing about the publisher, so that stays OPEN. It states its verdict is not a safety
+pass, not a security certification, not closure of any blocker, not the §2 pre-pull decision, and
+authorizes no pull, install, activation or code. Per CLAUDE.md's disclosure rule its review leaves
+no artifact: that it was performed, by whom, and that it held no write tool are asserted, not
+provable by hash.
+
+**It found a defect in this file and three places it understated.** The defect — a contradiction
+about B6's state between its section heading and the summary table — is corrected above, with the
+correction labelled rather than silently applied. Two understatements are folded into B3 above. The
+third is below.
+
+**The reachability argument, on firmer ground than this file had it.** This file argued from
+protocol design: libpq speaks the PostgreSQL protocol over TCP or Unix sockets with TLS and neither
+implements nor negotiates DTLS. The reviewer checked the binary instead. On the bundled
+`psycopg_binary/.dylibs/libpq.5.dylib`, `nm -u` returns **no DTLS symbol and no QUIC symbol at
+all**; the TLS entry points it imports are `_TLS_method`, `_SSL_CTX_new` and `_SSL_connect`.
+OpenSSL's DTLS retransmission path is reachable only through a DTLS method object, which libpq never
+constructs. CVE-2026-84782 is therefore unreachable through this wheel by symbol surface, not only
+by protocol reasoning. It also confirmed from the advisory text that this file's paraphrase
+overstates nothing.
+
+**The twelve Low CVEs, now partly analysed — and the disclosure stays.** The reviewer agreed that no
+individual analysis had been done and that this file disclosed it plainly rather than hiding it, and
+said it would not soften that framing. By the same symbol-surface argument it found **eight of the
+twelve structurally outside libpq's reach**: five QUIC issues (CVE-2026-35191, 42772, 54873, 75804,
+84784), one DTLS 1.2 record issue (75806), one CMP client issue (75805), and CVE-2026-72897, which
+turns on `SSL_set_SSL_CTX()`, a symbol libpq does not import.
+
+**The remaining four are not dismissed, and this is the part that matters.** CVE-2026-35189
+(relative-CRLDP memory allocation), CVE-2026-54872 (non-NIST EC timing), CVE-2026-54875 and
+CVE-2026-77696 (SM2) sit in general X.509 and crypto territory that libpq's TLS path could in
+principle touch. **No reachability claim is made for those four.** The basis for proceeding on them
+remains what §2 fixes and nothing more: Low severity, a loopback-only local container, synthetic
+fixtures, no listener reachable off the host, no real member data and no deployed use. The reviewer's
+own words on this: the disclosure "is doing real work and should stay as written rather than be
+reinterpreted as a clean bill." It stays as written.
+
 ## B1 — CAP owner: recorded
 
 Per §2.3 the CAP owner is the orchestrating Claude Code session, in the limited sense that section
@@ -237,8 +314,17 @@ owner. The owner remains the accountable party for the capability's presence in 
 
 | Blocker | State |
 |---|---|
-| B5 independent fetch verification | **OPEN.** Requires an independent Opus reviewer to repeat B3 and B4 itself. Not satisfiable by this file or its author. |
-| B6 psycopg-binary native-library inventory | **OPEN.** Needs the wheel in hand; sequenced after the pull. |
+| B5 independent fetch verification | **SATISFIED** for B3 and B4. An independent Opus reviewer performed its own fetches and returned APPROVED on all eleven claims put to it; see the section below. |
+| B6 native-library inventory | **CLOSED** — the inventory, the embedded OpenSSL version and the CVE count and severities are verified, by this file and independently. Its *remaining* items stay open and are listed in the next three rows rather than by calling the inventory open. |
+| B6 remaining: twelve Low CVEs individually | **OPEN.** Eight of the twelve are now argued structurally unreachable (see the B5 section); four are not. |
+| B6 remaining: bundled libpq, Kerberos, OpenLDAP versions | **OPEN.** Not readable by version-string search. CAP-001's libpq 18.6 stays a supplied assertion. |
+| B6 remaining: LGPL-3.0 obligations for a distributing use | **OPEN.** Not triggered by the loopback-only scope; not assessed for any other use. |
 | B7 D4.3 selection | **OPEN.** An ADR amendment on a controlled path, per §2.4. |
-| B3 CVE applicability and licence closure | **OPEN**, as above. |
-| Publisher signature | **OPEN.** Not attempted; digests are not signatures. |
+| B3 CVE applicability and package licence closure | **OPEN**, as above (139 bookworm CVEs, 17 `NOASSERTION` fields). |
+| Publisher signature | **OPEN.** Not attempted; digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. |
+
+**Correction.** An earlier revision of this file headed B6 "VERIFIED" while this table still said
+"OPEN. Needs the wheel in hand; sequenced after the pull." Both could not be true, and the
+contradiction mattered because §2 condition 1 turns on whether B6 is closed. The independent B5
+reviewer found it. The inventory is closed; the named remaining items are not, and they are now
+listed as themselves instead of being folded into a single misleading row.

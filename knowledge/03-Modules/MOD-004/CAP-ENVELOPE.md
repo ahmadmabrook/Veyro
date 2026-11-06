@@ -74,8 +74,15 @@ and no second candidate set is authorized.
 | 0 | Envelope start; no qualification action yet | 0 | 0 | this record |
 | 1 | B2 free-runtime terms; B4 wheel and transitive hashes against PyPI; B3 image digest and attestation binding by rehash; Colima start and context move; pull of the pinned image by digest; B6 wheel inventory, embedded OpenSSL version, OpenSSL advisory enumeration and the one-High reachability judgment; writing [CAP-EVIDENCE.md](CAP-EVIDENCE.md) | 40 | 80,000 | wall clock from the effective start to `2026-11-06T07:20:56Z`, rounded up; tokens estimated from this session's per-turn budget deltas across the turns doing this work, rounded up to the nearest 10,000 as the method above requires |
 
-Running total: **40 of 180 minutes, 80,000 of 400,000 tokens.** Remaining: 140 minutes, 320,000
-tokens.
+| 2 | B5 independent fetch verification (delegated); correcting the B6 contradiction it found and folding in its three understatements | 25 | 138,208 | subagent reported **118,208 tokens exactly**, counted as reported; plus 20,000 estimated and rounded up for this session's orchestration of the dispatch and the corrections |
+
+Running total: **65 of 180 minutes, 218,208 of 400,000 tokens.** Remaining: **115 minutes,
+181,792 tokens.**
+
+The B5 charge came in well under the ~200,000 feared above, at 118,208, because the brief was
+written as eleven specific claims to verify rather than an open re-derivation. That is the pattern
+to keep for the remaining reviews: the manifest activation and the Ready-for-S1 judgment each need
+one, and together they must fit inside what is left.
 
 Entry 1 includes a recorded sequencing deviation: the image pull and the wheel fetch preceded
 conditions 2 (B5) and 4 (B7/D4.3), contrary to §2's "Nothing is pulled until conditions 1-6 …
