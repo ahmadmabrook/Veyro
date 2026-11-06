@@ -6,11 +6,42 @@ SHA and CI evidence, the start time, and zero new-envelope use, separately from 
 historical counters. This file is that record. It is not evidence for any CAP blocker, closes
 nothing, and claims no qualification.
 
+## Status — the ceiling and the stoppage are superseded; every figure below is history
+
+`OWNER-2026-11-06-internal-cap-unmetered.md` is effective: independent Opus review APPROVED on
+SHA-256 `56966906282b8028e1a37986535e34550735cbb2afa4e9cccfe4778497be3cab` (asserted, on the same
+terms this file applies to every post-runner review — the bytes are hash-verifiable, while the
+review's performance and performer leave no `*.evidence.json` and are not independently
+verifiable), owner attestation (recorded by `first_publish_audit` on the basis "operator
+attestation, not cryptographic proof", so the gate's PASS records that statement and nothing
+stronger), published `e41a695`, exact-SHA push CI run `42272690841` conclusion `success`. It sets
+`INTERNAL_CAP_MODE = UNMETERED` and supersedes, **prospectively only**:
+
+- the 180-minute / 400,000-token ceiling under "Envelope" below, as a ceiling;
+- the "Stop rule" below, as to its limits, and the stoppage recorded under "STOPPED";
+- the premise of "What a new envelope would buy, if the owner grants one" below: no new envelope is
+  needed, and none will be asked for.
+
+**No figure, ledger entry or recorded outcome below is removed, altered or recalculated, and no
+original sentence is deleted.** The only changes below this line are annotations added in place,
+which mark superseded text as superseded and leave it standing. The ledger, the running total of
+**100 of 180 minutes and 427,621 of 400,000 tokens**, the 27,621 overrun, the exhausted prior
+45/50,000 envelope, the UNKNOWN earlier usage, the metering-limits disclosure and the recorded
+sequencing deviation all stand as the record of what was spent and what happened. What is
+superseded is the ceiling's future force, never this history.
+
+**The gap is still `BLOCKED: CAPABILITY_GAP`,** and this file still closes nothing. That state is
+also the capability manifest's result for four OPEN blockers, and the three `CHANGES_REQUESTED`
+findings on the unpublished `ADR-0006` recorded below are unremediated. Qualification resumes
+because it became affordable, not because it became done.
+
 ## Envelope
 
 Granted by §1 of that record: **at most 180 active orchestration minutes and 400,000 model
 tokens**, for this one gap and the one fixed candidate set in
-`contracts/engineering/capability-records/CAP-001-mod004-d123a-prepull.md`.
+`contracts/engineering/capability-records/CAP-001-mod004-d123a-prepull.md`. Superseded as a
+ceiling — see Status above. The figures stay recorded, because the ledger below is metered against
+them and would be unreadable without them.
 
 ## Effective start
 
@@ -67,6 +98,11 @@ recorded as unknown and charged at the conservative upper bound, never at zero.
 returns the gap to `BLOCKED: CAPABILITY_GAP` and escalates. No renewal, rollover or reset follows,
 and no second candidate set is authorized.
 
+**Superseded prospectively as to its limits only.** Under `INTERNAL_CAP_MODE = UNMETERED` no minute
+or token count stops work. The rest of the clause is **not** superseded: the no-second-candidate-set
+bar still binds, and the gap still returns to `BLOCKED: CAPABILITY_GAP` whenever its blockers are
+OPEN, which is a question about evidence and has never been a question about budget.
+
 ## Ledger
 
 | Entry | Activity | Minutes (rounded up) | Tokens | Basis |
@@ -81,6 +117,12 @@ and no second candidate set is authorized.
 Running total: **100 of 180 minutes, 427,621 of 400,000 tokens.**
 
 ## STOPPED — token limit exhausted
+
+**Historical. This stoppage no longer applies**, as of the Status section above. Its original text
+is preserved in place as the record of why qualification stopped at 427,621 tokens: no original
+sentence in this section was deleted, and the only changes are annotations marking superseded
+sentences as superseded. The supersession lifted the stoppage; it changed no figure in this section
+and closed no blocker.
 
 **Gap state: `BLOCKED: CAPABILITY_GAP`.** Escalated to the owner at `2026-11-06T07:44:16Z`.
 
@@ -132,10 +174,22 @@ observed costs that is roughly 150,000-250,000 tokens, most of it review. A new 
 owner's own act under the authorizing record's Reserved list; this file grants, resets and
 recommends no figure on its own authority.
 
+**Superseded prospectively; the paragraph above is restored and left standing.** No new envelope is
+needed and none will be asked for: §2.4 of the unmetered record supersedes that reservation in full,
+and §4 records that no published record reserves a CAP envelope to the owner. The 150,000-250,000
+figure stays as the record of what was foreseen at the stop, not as a live estimate. An earlier
+revision of this reconciliation **deleted** the reservation sentence instead of annotating it, which
+was this file's only departure from its own method; the sentence is restored here and bounded
+instead.
+
 The B5 charge came in well under the ~200,000 feared above, at 118,208, because the brief was
 written as eleven specific claims to verify rather than an open re-derivation. That is the pattern
 to keep for the remaining reviews: the manifest activation and the Ready-for-S1 judgment each need
 one, and together they must fit inside what is left.
+
+**Superseded as to the balance only; the sentence above is restored and left standing.** There is no
+remaining balance to fit inside under `INTERNAL_CAP_MODE = UNMETERED`. The narrow-brief pattern is
+kept on its merits — it produces a sharper review — and no longer because a budget requires it.
 
 Entry 1 includes a recorded sequencing deviation: the image pull and the wheel fetch preceded
 conditions 2 (B5) and 4 (B7/D4.3), contrary to §2's "Nothing is pulled until conditions 1-6 …
@@ -147,3 +201,17 @@ up. It is not offered as an exact count. The largest single remaining charge is 
 B5 independent fetch review, since observed independent reviews in this project have cost on the
 order of 200,000 tokens each; that is the reason the B5 brief is written narrowly rather than as a
 full re-derivation.
+
+**Prospective annotation; no figure above is edited and no sentence above is deleted.** Two
+statements earlier in this section are stale, and both are left exactly as written as the record of
+what was expected at the time:
+
+1. "The largest single remaining charge is expected to be the B5 independent fetch review", in the
+   paragraph immediately above. B5 is since complete at **118,208** tokens (ledger entry 2), so it is
+   neither remaining nor the largest — ADR-0006's review, at **179,413**, was larger.
+2. "the ~200,000 feared above", further up this section. The `200,000` that phrase points at is in
+   the paragraph immediately above this annotation, which comes **after** that phrase rather than
+   before it, so its "above" misdirects.
+
+Nothing in either is a live estimate, and under `INTERNAL_CAP_MODE = UNMETERED` no estimate in this
+file gates any work.
