@@ -171,6 +171,106 @@ OPEN", denies.
 This entry closes nothing and produces no evidence. It corrects the record's account of why the work
 is not finished.
 
+## Condition 1 assessed limb by limb — NOT MET
+
+Recorded 2026-11-07. This is the consolidated assessment the earlier sections deferred. It decides
+nothing else: it makes no scoped acceptance, exercises no delegated decision, closes no blocker
+beyond those already closed, and authorizes nothing.
+
+**What condition 1 requires**, verbatim from
+`OWNER-2026-11-06-mod004-cap-and-implementation-authorization.md` §2: that "CAP-001 blockers **B2,
+B3, B4 and B6** are closed by evidence actually produced and recorded: free-runtime terms; image
+provenance, licence closure and CVE applicability; wheel and transitive hashes re-checked against
+PyPI; and the `psycopg-binary` bundled-library inventory with its CVE status and LGPL-3.0
+obligations." The clause is headed "**Conditions, none waived**."
+
+| Limb | State | Basis |
+|---|---|---|
+| **B2** free-runtime terms | **CLOSED, with one residual** | colima 0.10.3 MIT, lima 2.2.0 Apache-2.0, docker CLI 29.6.0 Apache-2.0, all verified first-hand. **Not claimed:** that the VM images Colima fetches at runtime carry the same terms as Colima itself, as the B2 section records. |
+| **B4** wheel and transitive hashes against PyPI | **CLOSED** | All four pinned hashes match PyPI, re-fetched and confirmed independently under B5. This limb is only the hash recheck. |
+| **B3** — image provenance | **NOT CLOSED** | Byte identity is established: index digest, arm64 platform manifest and attestation subject binding all confirmed by rehash. **Publisher signature not found across four mechanisms** — see below. Whether one could ever be obtained for this digest is **not established**. |
+| **B3** — licence closure | **NOT CLOSED, bounded** | 126 of 141 packages closed on formal self-consistency; 3 NOT CLOSED, 12 NEEDS-READING, 57 SBOM names undetermined. "Closed" there is self-consistency, not correctness. |
+| **B3** — CVE applicability | **NOT CLOSED** — measured, not closed | 154 open bookworm CVEs measured against the image's own SBOM, PGDG and Go groups assessed. A lower bound: `dpkg`-only SBOM scope, and 59 Go stdlib advisories whose reachability is NOT ASSESSED. This file and published ADR-0006 both record it OPEN, and this row says the same. |
+| **B6** — inventory | **CLOSED** | Twelve bundled objects enumerated with sizes, extracted from a wheel whose SHA-256 was verified against its pin. Per-object hashes are recorded in the delegated report, not in this file. |
+| **B6** — CVE status | **NOT CLOSED** — evidenced in full with an adverse finding | All thirteen bundled-OpenSSL CVEs positioned; two of the four previously unargued Lows are **REACHABLE**. Bundled libpq 18.6, OpenSSL 3.5.8 and Kerberos 1.22.2 VERIFIED; **OpenLDAP remains an inference and six sibling libraries have no version of their own**, so their CVE status stays OPEN. |
+| **B6** — LGPL-3.0 obligations | **CLOSED for this scope** | Nothing is conveyed, so no obligation is triggered — there is nothing to close rather than a lowered bar. Open for a distributing use, which is outside this scope and reserved. |
+
+**Verdict: condition 1 is NOT MET.** **Four** limbs carry open residuals — image provenance, licence
+closure, B3 CVE applicability and B6 CVE status. The narrow reading that would treat "produced and
+recorded with residuals disclosed" as sufficient is the one this file rejects on four grounds, under
+a clause headed "Conditions, none waived"; published ADR-0006 D5 records the same verdict. An
+earlier revision of this table labelled the two CVE limbs "PRODUCED AND RECORDED" and "ESTABLISHED",
+which borrowed the rejected reading's own vocabulary for two limbs while rejecting it for the rest,
+and counted two open limbs instead of four. Both are corrected: the table must not read rosier than
+this file's own Still-open table or than a published ADR.
+
+### The publisher-signature limb — four mechanisms checked, none yielding a publisher signature
+
+An earlier revision of this section claimed the signature was "verified absent", that "no work can
+close it", and that "the artifact does not exist to fetch". **All three are withdrawn as
+overstatements**, and the last is simply false. What was actually checked, and what each returned:
+
+1. **Cosign / sigstore tag conventions — absent.** `sha256-3645570c….sig`,
+   `sha256-a85953d6….sig` and `sha256-3645570c….att` all return **HTTP 404** under
+   `library/postgres`. An independent reviewer additionally 404'd five further conventions.
+2. **OCI referrers API — present but empty.** `/v2/library/postgres/referrers/<digest>` returns
+   **HTTP 200** with an empty `manifests` list for both the pinned index and the pinned arm64
+   manifest. Verified first-hand.
+3. **Docker Content Trust / Notary v1 — live, and it does sign this repository.** An anonymous
+   Notary token retrieves `root.json` (HTTP 200, a complete TUF root, threshold 1 per role) and
+   `targets.json` (HTTP 200, 113,177 bytes, **version 29042**, **1,158 signed targets**, one `ecdsa`
+   signature by key `5e964d8ae43677af`, expiring 2028-07-21). So a publisher-signed artifact for
+   `library/postgres` exists and is anonymously fetchable — which is precisely why the earlier
+   "artifact does not exist" claim was wrong. **But none of it covers the pinned digests:** of the
+   1,158 targets, **zero** match either pinned digest, and the `17` and `17-bookworm` targets both
+   resolve to `4d89c904835259bc58876520e56267ca07a4ebd6a027f7814bbbf91b50d685be` at 10,264 bytes — a
+   different object from the pinned 6,496-byte index. There is no `17.11-bookworm` target at all.
+   All verified first-hand.
+4. **Rekor transparency log — entries exist, none from the publisher.** An independent reviewer
+   reports nine `dsse` entries indexed against the pinned index digest, all resolving to a single
+   third-party identity (a GitHub Actions workflow under `monumental-archive`), issued by
+   `sigstore.dev`. **Recorded as that reviewer's finding and not reproduced here.** Third-party
+   attestations are not publisher signatures and do not close this limb.
+
+**What is and is not established.** Established: no publisher signature covering either pinned digest
+was found across those four mechanisms, and the current DCT collection demonstrably does not cover
+them. **Not established:** that none could ever be obtained. The DCT collection has tens of
+thousands of versions and only the current one was checked here; an independent reviewer sampled
+sixteen historical versions, found none covering the pinned digests, and inferred from config
+`created` dates that the signed bookworm line stopped around 2025-06-06 — roughly sixteen months
+before the pinned artifact was built on 2026-10-06. **That inference is recorded as theirs, from a
+sample, and is not reproduced here.** It is the most likely explanation and it is not proof.
+
+**Why the distinction matters enough to correct.** An established impossibility would be the
+strongest available argument for reading condition 1 narrowly — a condition that cannot be satisfied
+should yield to a reading that can. Asserting impossibility on three 404s would therefore have put
+weight on exactly the reading this file rejects, in the one place that gates manifest activation, the
+Ready-for-S1 judgment and all S1 product code. A correct conclusion reached by luck is not evidence.
+
+### Disposition
+
+The verdict stands on its own: **condition 1 is NOT MET**, on four limbs, three of which are
+reachable by ordinary work — the 3 unresolved licence declarations, the 12 aggregate notice files,
+the 57 undetermined SBOM names, the Go stdlib reachability, the OpenLDAP version and the six
+inferred siblings.
+
+The publisher-signature limb is different in kind: it has **no found route to closure**, and whether
+a route exists is unresolved. That is a question for the owner when it is reached, not a forced
+choice now, and this file does not frame it as one. An earlier revision presented three ranked-as-
+neutral options including abandoning the candidate set; that framing rested on the withdrawn
+impossibility claim and is withdrawn with it. For the record, if the question is reached, the
+candidate dispositions are: scope the provenance limb to digest-and-attestation binding; search the
+DCT version history exhaustively rather than by sample; or select a different image — which under
+ADR-0006 D2 requires a change to that ADR carrying a fresh CVE assessment, discards the only CVE
+assessment this project has, and **reopens B3 for the new image artifact only**. It does not reopen
+B4 or B6, both of which are wheel-side and independent of image choice; an earlier revision said it
+reopened all three, which mispriced that option roughly threefold inside a set it called neutral.
+
+Until a disposition is taken the operational state is unchanged and fully recorded: the fetch was
+unauthorized, `BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME` is not closed, the manifest stays PROVISIONAL
+with `gate_eligible: false`, and **no install, no container run, no manifest activation, no
+Ready-for-S1 judgment and no S1 product code** follows. ADR-0002 D12 stands unrelaxed.
+
 ## B2 — free runtime and terms: VERIFIED, closed
 
 The authorized runtime is Colima, with the Docker Desktop context forbidden by §2.5.
@@ -1055,7 +1155,7 @@ owner. The owner remains the accountable party for the capability's presence in 
 | B7 D4.3 selection | **CLOSED** by `ADR-0006-mod004-d43-driver-selection.md`, published `eb4c8e4` with exact-SHA push CI run `42286985330` `success`. Its `Review: VR-ADR0006-20261106-003 APPROVED` is a **document-assigned label**: the reviewed bytes are hash-verifiable, while the review's performance and performer leave no `*.evidence.json` and are asserted, as that ADR itself states. That closes B7 and nothing else. |
 | B3 CVE applicability | **OPEN**, but now measured rather than asserted and materially extended. **154** distinct open bookworm CVEs against the image's own SBOM, against CAP-001's **140** on the same OSV basis. The PGDG group is now assessed: the image contains `postgresql-17`/`-client-17` at 17.11, **`postgresql-18` at 18.6** and `libpq5` at **18.6**, and no row of the PostgreSQL project's 76-CVE security page lists 17 or 18 as affected above those versions — on a single primary source, with a minor release due 2026-11-12. The four Go modules are assessed: **59 stdlib advisories apply to 1.24.6** with reachability NOT ASSESSED, and `moby/sys/user` 0.1.0 is **AFFECTED** by `CVE-2026-61801` in a function gosu actually calls. Still a lower bound: the SBOM carries only `dpkg` metadata. See "B3 continued" and "B3 continued (2)". |
 | B3 package licence closure | **OPEN — advanced substantially, precisely bounded, not closed.** The 188 declared SBOM values split into 46 identifiers, **45** real licences (the 46th is `NOASSERTION`); none is proprietary, non-commercial or field-of-use restricted, and **none conditions execution as such**. About fourteen condition a *held copy* on notice retention or non-misrepresentation; those duties are **verified satisfied** by the pinned image — 141 `copyright` files, 0 whiteouts under `usr/share/doc`, 17 `common-licenses` texts, 3 doc-dir symlinks resolving to present files. A **per-package pass** over those 141 files then found **126 CLOSED, 3 NOT CLOSED** (`base-passwd`, `libldap-2.5-0` on a bare undefined `public-domain` label; `libllvm19` on undefined `BSD-3-Clause`/`BSD-3-clause`, which do not resolve to `common-licenses/BSD`) **and 12 NEEDS-READING**, all named in "The per-package pass". A lexical scan of all 141 files plus ~35 local licence texts found **no use or execution restriction**; export-control notices (krb5, e2fsprogs, `libsasl2`), trademark terms (krb5) and `Sleepycat`'s redistribution condition are recorded as the nearest items. **Still not closed**, because "CLOSED" there is formal self-consistency rather than correctness, 15 of 141 are unresolved, and **57 of the 198 distinct SBOM names have no copyright file and are undetermined**. Whether this satisfies condition 1's "exact package licence closure" is for the separate condition-1 assessment, on this evidence. A distributing use is a different question, reserved under DC-16 `production-promotion`. A licence-terms reading by this session, not legal advice. |
-| Publisher signature | **OPEN.** Not attempted; digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. |
+| Publisher signature | **OPEN — searched across four mechanisms, none yielding a publisher signature for the pinned digests.** Verified first-hand: cosign/sigstore tag conventions return **HTTP 404**; the OCI referrers API returns **HTTP 200 with an empty list** for both pinned digests; Docker Content Trust is **live and does sign this repository** — an anonymous Notary fetch returns `root.json` and a `targets.json` at version 29042, 113,177 bytes, with **1,158 signed targets** under one `ecdsa` signature — but **zero of those 1,158 match either pinned digest**, and its `17` and `17-bookworm` targets both resolve to a different 10,264-byte object, with no `17.11-bookworm` target at all. A reviewer additionally reports nine Rekor `dsse` entries indexed against the pinned index, all from a third-party GitHub identity rather than the publisher; recorded as their finding, not reproduced here. The attestation manifest's layers are `application/vnd.in-toto+json`, i.e. **unsigned** statements rather than DSSE envelopes. Digests are not signatures, and an anonymous registry token authenticates nothing about the publisher. **Not established: that no signature could ever be obtained.** An earlier revision of this row said the artifact "does not exist to fetch" and that the limb "cannot be closed by any amount of further work" — both withdrawn, since DCT material for this repository demonstrably exists. See "Condition 1 assessed limb by limb". |
 
 **Correction.** An earlier revision of this file headed B6 "VERIFIED" while this table still said
 "OPEN. Needs the wheel in hand; sequenced after the pull." Both could not be true, and the
