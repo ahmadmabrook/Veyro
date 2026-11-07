@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "note": "ADR-0002 D5 SECURITY DEFINER allowlist. Every entry must name the function, its owner role, its pinned search_path, its EXECUTE grantees and a review ID. The lint format-checks those five fields and matches on the schema-qualified function name; it does NOT verify that the named review exists, the same limit governance_check.py records for ADR Review headers. Empty because no D6.3 function is reviewed or written: BLK-CAP-POSTGRES17-PSYCOPG-POOL-RUNTIME is OPEN and no migration exists.",
+  "functions": [],
+  "views": []
+}

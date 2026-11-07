@@ -1,0 +1,1 @@
+GRANT SELECT ON plt01.brand_appearance TO PUBLIC WITH GRANT OPTION;

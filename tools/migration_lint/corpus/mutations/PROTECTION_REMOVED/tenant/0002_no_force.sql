@@ -1,0 +1,1 @@
+ALTER TABLE plt01.brand_appearance NO FORCE ROW LEVEL SECURITY;
