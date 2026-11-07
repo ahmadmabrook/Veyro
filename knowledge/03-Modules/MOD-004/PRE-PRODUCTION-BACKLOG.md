@@ -77,6 +77,60 @@ Item 7's third category. None of these blocks anything today.
 | D6.2 privilege matrix beyond the named privileges | OPEN. The lint refuses TRUNCATE and REFERENCES to either runtime role and DELETE and TRIGGER to `veyro_cp_app`; the rest of the matrix is not implemented | Disclosed in the lint's limits list |
 | Rule-file hashes in the RULE records | OPEN. Both records say `NOT_COMPUTED ... runner must verify externally`, and the runner is retired. Both hashes are **computed and verified correct** against `mod004-s0-capability.json`'s pinned values by `tools/rule_scope/` | Recording them in the records themselves needs a change whose own subject is that; `contracts/engineering/capability-records/` sits inside ADR-0006's `Covers`, but ADR-0006's subject is the D4.3 driver selection and citing it here would use path coverage as a loophole |
 
+## 3b. Deferred: open findings from the 2026-11-07 round-three reviews
+
+**These are open defects, not deferred niceties.** Each was proved by execution by an independent
+reviewer and each is recorded here because it is not on the path to the next product slice, not
+because it is acceptable. Nothing below is closed, waived or narrowed, and the two round-three
+`CHANGES_REQUESTED` outcomes stand.
+
+**The static migration lint (`tools/migration_lint/`) has four undisclosed false negatives.** The
+reviewer reproduced each against ADR-0002 invariants the lint claims to enforce, and two are
+complete tenant-isolation bypasses of the same class as the findings that produced the first two
+`CHANGES_REQUESTED` outcomes. ADR-0007 stays `PROPOSED` and `BLK-SKL-MIGRATION-LINT` stays OPEN;
+the proposed CI wiring in its D3 is not authorized while the lint passes these.
+
+- `CREATE SCHEMA <name> <schema_element...>` silences every statement rule in the file. The
+  statement splitter breaks on `;` only, and PostgreSQL accepts `CREATE TABLE`, `CREATE VIEW`,
+  `CREATE INDEX` and `GRANT` as schema elements without semicolons. Nine rules go quiet at once,
+  and the reviewer's fixture produced an unprotected tenant table — no RLS, no FORCE RLS, no
+  policy, no tenant-leading index, no negative test — carrying a non-`security_invoker` view and
+  `TRUNCATE`, `DELETE` and `REFERENCES` to `veyro_cp_app`. Same shape as round one's `DO $$ ... $$`
+  finding: one construct, whole file silenced.
+- The policy-predicate rule constrains only the left of the `=`. `tenant_id = COALESCE(NULLIF(
+  current_setting('app.tenant_id', true), '')::uuid, tenant_id)` passes, and with no context set
+  it collapses to `tenant_id = tenant_id`, i.e. true for every row — the exact state ADR-0002 D3
+  forbids ("never returns unrestricted rows"). A `CASE` form and an `ANY(ARRAY[...])` form pass
+  too. This is round two's `OR 1=1` finding with the widening moved to the other side of the
+  operator.
+- `REASSIGN OWNED BY veyro_cp_migrator TO veyro_cp_app;` passes. The owner check sits inside the
+  `ALTER TABLE` branch. One statement transfers every tenant table to the runtime role, which may
+  then `DISABLE ROW LEVEL SECURITY` on its own tables — worse than the `OWNER TO` hole round two
+  closed, because it is table-count-independent. Violates D1.1 item 1 `[SRC]` directly.
+- `ALTER SCHEMA plt01 OWNER TO veyro_cp_app;` passes, for the same structural reason. Narrower
+  impact: it hands the runtime role `CREATE` in the tenant schema rather than table ownership.
+
+Two further items from the same review, both smaller: the D6.2 privilege matrix is implemented
+only for the three named privileges, so `GRANT USAGE ON SCHEMA plt01_platform TO veyro_cp_app`
+passes in the platform track although D6.2 bars it (this one *is* disclosed in the lint's
+docstring, so it is a declared gap rather than a false claim); and one corpus fixture,
+`corpus/mutations/TENANT_ID_COLUMN/tenant/0002_wrong_type.sql`, uses a non-D3 predicate form,
+which is internally consistent and fail-closed but not the prescribed spelling. The reviewer also
+noted that mutation density tracks where the last two reviews looked rather than where the rules
+are weakest: `RLS_ENABLE`, `RLS_FORCE`, `RLS_POLICY`, `TENANT_LEADING_INDEX` and `NEGATIVE_TESTS`
+have exactly one spelling each, and those are the five the `CREATE SCHEMA` finding defeats.
+
+**A runtime audit hook is the stronger control for the lane boundary, and it is not built.** Every
+rule in `tools/domain_closure/` reads source; none observes a slice running. Three review rounds
+produced eleven escapes, and the two most recent — a string annotation evaluated by
+`typing.get_type_hints`, and a module imported through a symlinked directory — would both have
+been caught by observation without anyone anticipating the spelling. `sys.addaudithook` refuses
+the `exec`, `compile`, `import`, `open`, socket and subprocess events behaviourally and is
+stdlib-only. Deferred because the owner's standing directive is not to expand tooling scope, and
+recorded because `OWNER-2026-11-07-local-domain-slice-lane.md` §3.2 must not be read as claiming
+a control that does not exist. Its known limit, so the eventual implementer does not rediscover
+it: clock reads and entropy raise no audit event, so those stay statically enforced.
+
 ## 4. Not deferrable here: owner-reserved
 
 Listed so this file is not read as having swept them up. None of these is an agent's to take,
