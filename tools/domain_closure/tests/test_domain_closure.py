@@ -2,7 +2,7 @@
 Run: python3 -m unittest discover -s tools/domain_closure/tests -t tools/domain_closure
 
 Every test builds its own temporary tree; the real repository is never written and is read only to
-assert that the lane roots are currently empty. Each escape test is a file that would pass a
+assert that whatever the lane roots currently hold passes the check and stays inside them. Each escape test is a file that would pass a
 regex-based import scan of the kind the S0 closure used, and is caught here because the check reads
 an AST instead: that is the reason this tool exists in this form, and the reason the tests are
 written as escapes rather than as unit tests of the visitor.
@@ -746,10 +746,31 @@ class TestAnnotationStrings(LaneCase):
 
 
 class TestRealRepository(unittest.TestCase):
-    def test_the_lane_is_empty_in_this_repository(self):
+    def test_the_real_repository_passes_the_closure_check(self):
+        """Whatever the lane holds here, the check passes and the walk stayed inside the lane.
+
+        This replaced an assertion that `files_checked` was empty. That one held only while no
+        slice existed: it failed on the first published slice however pure that slice was, so
+        wiring this suite into CI and then publishing a slice would have reddened `main` -- and the
+        obvious way to go green again would have been the slice's own author deleting an assertion
+        from the checker that judges the slice. `tools/domain_closure/` is not a controlled path,
+        so nothing would have stopped that. These assertions hold before and after the first slice,
+        and they narrow the gate rather than loosen it: a stray file outside the lane roots, or any
+        violation at all, still fails.
+        """
         report = dc.check(REPO, dc._owner_record_effective(REPO))
-        self.assertEqual(report["files_checked"], [])
         self.assertEqual(report["result"], "PASS")
+        self.assertEqual(report["violations"], [])
+        for path in report["files_checked"]:
+            self.assertTrue(any(path.startswith(root + "/") for root in dc.LANE_ROOTS),
+                            f"{path} is outside the lane roots {dc.LANE_ROOTS}")
+        source = [p for p in report["files_checked"] if not p.startswith(dc.TESTS_ROOT + "/")]
+        named = [p for p in report["files_checked"]
+                 if p.startswith(dc.TESTS_ROOT + "/") and p.rsplit("/", 1)[-1].startswith("test")]
+        if source and not named:
+            self.fail("lane source exists with no test file under "
+                      f"{dc.TESTS_ROOT}: the owner record's section 3.3 makes a slice's unit tests "
+                      "its entire evidence, so source without tests is not a publishable slice")
 
     def test_an_uncommitted_draft_of_the_record_does_not_open_the_lane(self):
         """The detector requires the record to be tracked, not merely to exist on disk.
