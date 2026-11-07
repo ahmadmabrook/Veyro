@@ -7,9 +7,12 @@
 Exit 0 = PASS, 1 = BLOCKED (stdout JSON lists violations), 2 = malformed input/usage (fail closed).
 
 **What this is for.** It is the mechanical boundary of the local-domain-slice lane: the thing that
-makes "pure domain logic, no I/O" a checked property rather than a promise an author makes in a
-commit message. Without it the lane would be an honour system, and the lane is only defensible
-because the boundary is enforced. The lane itself is established by
+makes "pure domain logic, no I/O" a filter rather than only a promise an author makes in a commit
+message. It is **not** what makes the lane defensible -- an earlier revision of this paragraph said
+it was, and the lane's owner record withdrew that: what the supersession rests on is each slice's
+unit tests, the independent exact-diff review of every slice, and the bar on citing a slice as
+evidence of anything. See "This is a mistake filter, not a sandbox" below, which is the paragraph
+to read before relying on a PASS. The lane itself is established by
 `knowledge/00-Decisions/OWNER-2026-11-07-local-domain-slice-lane.md`; until that record is
 published and effective, **no file may exist under the lane roots at all**, and this tool reports
 any that do as a violation rather than checking them.
@@ -125,9 +128,12 @@ A file under a lane root passes only if all of the following hold.
     would let an object answer for an attribute the closure refused, or re-enter class creation.
     Ordinary dunders a dataclass needs, such as `__post_init__`, `__eq__` and `__hash__`, are
     allowed.
-  * No `async def`, `await`, `yield` into an event loop, `global` or `nonlocal` statement. The
-    first two would need a runtime this lane does not have; the last two are mutable module state,
-    and the lane's contract is that a slice keeps none.
+  * No `async def`, `await`, `global` or `nonlocal` statement. The first two would need a runtime
+    this lane does not have; the last two are mutable module state, and the lane's contract is that
+    a slice keeps none. There is **no `yield` rule**: an earlier revision of this line claimed one
+    ("`yield` into an event loop") and the code has never had it. A generator is pure, so the gap is
+    harmless, but the claim was not -- it is the same defect as the bare-relative-import sentence,
+    found the same way, by a reviewer reading the code instead of the list.
   * No module-level statement other than an import, a docstring, an assignment, a `pass`, a
     `def`/`class`, or an `if __name__ == "__main__"` guard written exactly that way. Module-level work runs at
     import time, which is a side effect of being imported. An assignment may call, because
@@ -843,9 +849,17 @@ def check(root: Path, lane_effective: bool) -> dict:
               "attestation, its publication or its exact-SHA CI run"),
         "files_checked": files,
         "violations": violations,
-        "purity_only": ("a PASS means the file performs no I/O and consumes no clock, randomness, "
-                        "process or database; it says nothing about correctness, tenant isolation, "
-                        "authentication, authorization or any database constraint"),
+        # This field used to read "a PASS means the file performs no I/O and consumes no clock,
+        # randomness, process or database" -- the exact inference the lane record forbids a slice
+        # reviewer from drawing, emitted by the tool on every run. The record's §3.4 makes that
+        # reviewer the control, so the tool was telling the control the opposite of its instruction.
+        # Found by the record's obligation-1 review, which read the committed bytes rather than the
+        # prose about them.
+        "pass_means": ("no route these rules know of, over the files this walk enumerated: "
+                       "evidence that an author did not make one of the mistakes the rules cover, "
+                       "NOT evidence that the file performs no I/O, and never evidence of "
+                       "correctness, tenant isolation, authentication, authorization, data "
+                       "integrity or database integration"),
     }
 
 

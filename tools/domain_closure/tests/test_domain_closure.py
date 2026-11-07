@@ -797,10 +797,18 @@ class TestCli(unittest.TestCase):
         code, out = self.run_main(["check", "--root", "/nonexistent-veyro-root"])
         self.assertEqual((code, out["result"]), (2, "MALFORMED"))
 
-    def test_check_states_the_purity_only_limit(self):
+    def test_check_does_not_claim_a_pass_proves_purity(self):
+        """The field used to be `purity_only` and asserted the file "performs no I/O".
+
+        That is the inference the lane record forbids a slice reviewer from drawing, and the tool
+        emitted it on every run -- so the test pinned the wrong thing and would have kept pinning
+        it. It now asserts the honest wording and, explicitly, that the old overclaim is gone.
+        """
         _, out = self.run_main(["check", "--root", str(REPO)])
-        self.assertIn("says nothing about correctness", out["purity_only"])
-        self.assertIn("tenant isolation", out["purity_only"])
+        self.assertNotIn("purity_only", out)
+        self.assertIn("no route these rules know of", out["pass_means"])
+        self.assertIn("NOT evidence that the file performs no I/O", out["pass_means"])
+        self.assertIn("tenant isolation", out["pass_means"])
 
 
 if __name__ == "__main__":
