@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "note": "EIP Appendix H 11818 path-scope corpus for the two existing MOD-004 rules. Representative matching and non-matching paths, both directions required: positives alone would qualify a glob of '**', negatives alone would qualify an empty glob set. 'declared_paths' pins the globs each rule declared when this corpus was written, so a later widening of a rule's scope fails the corpus instead of passing it silently. This corpus qualifies the DECLARED globs under the semantics in rule_scope.py; it does not exercise Claude Code's own rule matcher and no RULE evidence ID follows from it.",
+  "rules": [
+    {
+      "rule": ".claude/rules/backend/mod004-rls.md",
+      "declared_paths": [
+        "backend/app/tenancy/**",
+        "backend/migrations/**",
+        "backend/tests/integration/tenancy/**",
+        "infra/db/**"
+      ],
+      "must_match_note": "The four representative paths RULE-001's record names, plus nested forms. None of these files exists yet: all four declared directories are absent, so the globs are forward-looking.",
+      "must_match": [
+        "backend/app/tenancy/__init__.py",
+        "backend/app/tenancy/context.py",
+        "backend/app/tenancy/internal/pool.py",
+        "backend/migrations/0001.sql",
+        "backend/migrations/tenant/0002_brand_appearance.sql",
+        "backend/tests/integration/tenancy/test_rls.py",
+        "backend/tests/integration/tenancy/fixtures/seed.sql",
+        "infra/db/init.sql",
+        "infra/db/roles/bootstrap.sql"
+      ],
+      "must_not_match_note": "Three groups. (1) The published S0 slice, which contracts/engineering/mod004-s0-capability.json already asserts is outside both rule globs -- re-checked here rather than restated. (2) Prefix near-misses, which a startswith() implementation would wrongly match. (3) Unrelated contexts, which 11818 calls pollution.",
+      "must_not_match": [
+        "backend/app/tenancy_s0.py",
+        "backend/tests/test_tenancy_s0.py",
+        "backend/app/tenancy",
+        "backend/migrations",
+        "infra/db",
+        "backend/app/tenancyx/context.py",
+        "backend/app/tenancy_s0/context.py",
+        "backend/migrations_old/0001.sql",
+        "backend/tests/integration/tenancyx/test_rls.py",
+        "infra/dbx/init.sql",
+        "infra/database/init.sql",
+        "xbackend/app/tenancy/context.py",
+        "backend/app/other/x.py",
+        "backend/app/main.py",
+        "backend/app/l10n/plural.py",
+        "backend/requirements.txt",
+        "frontend/console/con-04-tenant-provisioning/Page.tsx",
+        "knowledge/03-Modules/MOD-004/MOD-004.md",
+        "tools/migration_lint/migration_lint.py",
+        ".github/workflows/veyro-foundation-ci.yml",
+        "CLAUDE.md"
+      ]
+    },
+    {
+      "rule": ".claude/rules/admin/mod004-privileged-console.md",
+      "declared_paths": [
+        "frontend/console/con-04-tenant-provisioning/**"
+      ],
+      "must_match_note": "RULE-002's single glob is described by the rule file itself as a non-operative provisional placeholder that 'matches no existing repository path'. These paths exercise the glob; none exists, and there is no frontend/ directory at all, so the rule file's own claim holds and `check` reports it.",
+      "must_match": [
+        "frontend/console/con-04-tenant-provisioning/Page.tsx",
+        "frontend/console/con-04-tenant-provisioning/components/TenantForm.tsx"
+      ],
+      "must_not_match_note": "CON-01/02/03 belong to MOD-029 and MOD-031 per the rule file, so reaching them would be exactly the pollution 11818 tests for. The bare directory path is excluded because a trailing /** selects what is below a directory, not the directory itself.",
+      "must_not_match": [
+        "frontend/console/con-04-tenant-provisioning",
+        "frontend/console/con-01-tenants/Page.tsx",
+        "frontend/console/con-02-billing/Page.tsx",
+        "frontend/console/con-03-support/Page.tsx",
+        "frontend/console/Page.tsx",
+        "frontend/console/con-04-tenant-provisioningX/Page.tsx",
+        "backend/app/tenancy/context.py",
+        "backend/app/tenancy_s0.py",
+        "contracts/ui/screen-contracts.yaml",
+        "knowledge/03-Modules/MOD-004/MOD-004.md"
+      ]
+    }
+  ]
+}
