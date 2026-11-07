@@ -121,12 +121,17 @@ are weakest: `RLS_ENABLE`, `RLS_FORCE`, `RLS_POLICY`, `TENANT_LEADING_INDEX` and
 have exactly one spelling each, and those are the five the `CREATE SCHEMA` finding defeats.
 
 **A runtime audit hook is the stronger control for the lane boundary, and it is not built.** Every
-rule in `tools/domain_closure/` reads source; none observes a slice running. Three review rounds
-produced eleven escapes, and the two most recent — a string annotation evaluated by
-`typing.get_type_hints`, and a module imported through a symlinked directory — would both have
-been caught by observation without anyone anticipating the spelling. `sys.addaudithook` refuses
-the `exec`, `compile`, `import`, `open`, socket and subprocess events behaviourally and is
-stdlib-only. Deferred because the owner's standing directive is not to expand tooling scope, and
+rule in `tools/domain_closure/` reads source; none observes a slice running. **Four** review rounds
+have proved escapes against four successive versions, tabulated in
+`OWNER-2026-11-07-local-domain-slice-lane.md` §3.2, which also records why the running total is not
+the point and why earlier counts here and there disagree. An earlier revision of this paragraph said
+"three review rounds produced eleven escapes" and was stale on both figures. Three of the proved
+routes would have been caught by observation without anyone anticipating a spelling: a string
+annotation evaluated by `typing.get_type_hints`, a module imported through a symlinked directory,
+and an annotation that merely *evaluated to* a payload with no annotation string present at all.
+`sys.addaudithook` refuses the `exec`, `compile`, `import`, `open`, socket and subprocess events
+behaviourally and is stdlib-only. Deferred because the owner's standing directive is not to expand
+tooling scope, and
 recorded because `OWNER-2026-11-07-local-domain-slice-lane.md` §3.2 must not be read as claiming
 a control that does not exist. Its known limit, so the eventual implementer does not rediscover
 it: clock reads and entropy raise no audit event, so those stay statically enforced.
