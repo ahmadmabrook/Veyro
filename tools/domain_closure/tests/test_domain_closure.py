@@ -11,6 +11,7 @@ import contextlib
 import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,12 +25,6 @@ import domain_closure as dc  # noqa: E402
 REPO = HERE.parent.parent.parent
 RECORD = "knowledge/00-Decisions/OWNER-2026-11-07-local-domain-slice-lane.md"
 
-
-def _tracked(rel):
-    import subprocess
-    out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z", "--", rel],
-                         capture_output=True, check=False)
-    return out.returncode == 0 and out.stdout.strip(b"\0").decode() == rel
 
 PURE = '''"""A pure slice."""
 from __future__ import annotations
@@ -634,7 +629,6 @@ class TestTheLaneIsActuallyUsable(LaneCase):
         `sys.path`; the relative one cannot. That asymmetry is why a slice uses the relative form,
         and the closure check refusing the absolute form is a cost the lane record discloses.
         """
-        import subprocess
         self._usable_slice()
         done = subprocess.run(
             [sys.executable, "-m", "unittest", "discover",
@@ -745,6 +739,202 @@ class TestAnnotationStrings(LaneCase):
         self.assertEqual(self.codes(source), [])
 
 
+class TestLaneEffectiveness(LaneCase):
+    """Section 5.3's three checkable conditions, and the ones this tool cannot check.
+
+    These build throwaway git repositories, because all three conditions read committed state and a
+    non-repository tree cannot distinguish them. Deliberately no real-repository agreement test:
+    index and HEAD agree here, so such a test cannot tell a HEAD-reading detector from an
+    index-reading one. Two index-based tests were removed from `TestRealRepository` for that reason
+    -- an independent review mutation-proved that neither fired when the detector was reverted,
+    that one was vacuous while the record is committed, and that the other could only fire as a
+    false alarm on a `git rm --cached` state the detector handles correctly, which with this suite
+    wired into CI would redden `main` and point at the detector. The property they claimed to cover
+    is pinned by `test_a_staged_but_uncommitted_record_does_not_open_the_lane` below, which builds
+    a repository in the state that discriminates.
+    """
+
+    def _repo(self, record=True, workflow=None, commit=True):
+        root = self.tmp / f"repo{len(list(self.tmp.iterdir()))}"
+        (root / "knowledge/00-Decisions").mkdir(parents=True)
+        (root / dc.WORKFLOW_PATH).parent.mkdir(parents=True)
+        (root / "seed.txt").write_text("seed\n", encoding="utf-8")
+        git = ["git", "-C", str(root), "-c", "user.email=t@example.invalid", "-c", "user.name=t"]
+        subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+        subprocess.run(git + ["add", "seed.txt"], check=True, capture_output=True)
+        subprocess.run(git + ["commit", "-qm", "seed"], check=True, capture_output=True)
+        if record:
+            (root / RECORD).write_text("# lane record\n", encoding="utf-8")
+        if workflow is not None:
+            (root / dc.WORKFLOW_PATH).write_text(workflow, encoding="utf-8")
+        if commit:
+            subprocess.run(git + ["add", "-A"], check=True, capture_output=True)
+            # --allow-empty: the (no record, no workflow) combination stages nothing.
+            subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "state"],
+                           check=True, capture_output=True)
+        return root
+
+    @staticmethod
+    def _wired(prefix="        run: ", steps=None, suppress=" -B "):
+        steps = dc.REQUIRED_CI_STEPS if steps is None else steps
+        lines = []
+        for step in steps:
+            carrier = suppress if step == dc.REQUIRED_CI_STEPS[2] else " "
+            lines.append(f"{prefix}python{carrier}{step} --root .")
+        return "jobs:\n" + "\n".join(lines) + "\n"
+
+    def test_the_required_commands_are_exactly_these_three(self):
+        """Membership, not only that each member is required: deleting one was caught by nothing."""
+        self.assertEqual(dc.REQUIRED_CI_STEPS, (
+            "tools/domain_closure/domain_closure.py check",
+            "unittest discover -s tools/domain_closure/tests",
+            "-m unittest discover -s app/tenancy/domain/tests",
+        ))
+        self.assertEqual(dc.BYTECODE_SUPPRESSIONS, (" -B ", "PYTHONDONTWRITEBYTECODE=1"))
+
+    def test_the_lane_needs_the_record_and_the_wiring_together(self):
+        """All four combinations, so neither `record or wired` nor either half alone passes."""
+        cases = ((True, self._wired(), True), (True, None, False),
+                 (False, self._wired(), False), (False, None, False))
+        for record, workflow, expected in cases:
+            with self.subTest(record=record, wired=workflow is not None):
+                root = self._repo(record=record, workflow=workflow)
+                effective, why = dc.lane_effective(root)
+                self.assertIs(effective, expected)
+                if not expected:
+                    self.assertIn("the lane is closed", why)
+
+    def test_a_staged_but_uncommitted_record_does_not_open_the_lane(self):
+        """The record half reads HEAD, like the wiring half.
+
+        An earlier version read the index and called that committed, so `git add` of a forged
+        record opened the lane -- and staging is the normal state for running the change gate.
+        """
+        root = self._repo(record=False, workflow=self._wired())
+        (root / RECORD).write_text("# forged\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(root), "add", "--", RECORD], check=True,
+                       capture_output=True)
+        self.assertFalse(dc._owner_record_effective(root))
+        self.assertFalse(dc.lane_effective(root)[0])
+
+    def test_an_uncommitted_wiring_edit_does_not_open_the_lane(self):
+        root = self._repo(record=True, workflow=None)
+        (root / dc.WORKFLOW_PATH).write_text(self._wired(), encoding="utf-8")
+        self.assertFalse(dc._ci_wiring_present(root))
+        self.assertFalse(dc.lane_effective(root)[0])
+
+    def test_commands_in_a_comment_do_not_count_as_wiring(self):
+        root = self._repo(record=True, workflow=self._wired(prefix="# "))
+        self.assertFalse(dc._ci_wiring_present(root))
+
+    def test_section_5_3s_own_spelling_of_the_lane_command_is_accepted(self):
+        """An earlier revision folded `-B` into the required string and refused this spelling."""
+        literal = "python3 -m unittest discover -s app/tenancy/domain/tests -t ."
+        self.assertIn(dc.REQUIRED_CI_STEPS[2], literal)
+
+    def test_bytecode_suppression_is_required_on_the_lane_test_line(self):
+        root = self._repo(record=True, workflow=self._wired(suppress=" "))
+        self.assertFalse(dc._ci_wiring_present(root))
+        effective, why = dc.lane_effective(root)
+        self.assertFalse(effective)
+        self.assertIn("does not suppress bytecode writing", why)
+        self.assertIn("beyond section 5.3", why)
+
+    def test_a_spelling_that_does_not_actually_suppress_is_refused(self):
+        """`PYTHONDONTWRITEBYTECODE=0` matched a shorter spelling of the list and writes bytecode."""
+        root = self._repo(record=True,
+                          workflow=self._wired(suppress=" PYTHONDONTWRITEBYTECODE=0 python "))
+        self.assertFalse(dc._ci_wiring_present(root))
+
+    def test_the_two_accepted_spellings_are_accepted(self):
+        """Two, not every correct spelling: the list is narrow, fail-closed, and says so."""
+        for spelling in (" -B ", "PYTHONDONTWRITEBYTECODE=1 python "):
+            with self.subTest(spelling=spelling):
+                root = self._repo(record=True, workflow=self._wired(suppress=spelling))
+                self.assertTrue(dc._ci_wiring_present(root), spelling)
+
+    def test_suppression_elsewhere_in_the_file_does_not_count(self):
+        workflow = "jobs:\n        run: python -B something-else\n" + self._wired(suppress=" ")
+        root = self._repo(record=True, workflow=workflow)
+        self.assertFalse(dc._ci_wiring_present(root))
+
+    def test_every_required_command_is_load_bearing(self):
+        root = self._repo(record=True, workflow=self._wired())
+        self.assertTrue(dc._ci_wiring_present(root))
+        for dropped in dc.REQUIRED_CI_STEPS:
+            with self.subTest(dropped=dropped):
+                partial = tuple(s for s in dc.REQUIRED_CI_STEPS if s != dropped)
+                other = self._repo(record=True, workflow=self._wired(steps=partial))
+                self.assertFalse(dc._ci_wiring_present(other))
+
+    def test_a_root_that_is_not_a_repository_top_level_closes_the_lane(self):
+        """Both git reads are cwd-relative, so a subtree root cannot borrow an ancestor's commits.
+
+        An earlier revision spelled the revision `HEAD:<path>`, which git resolves against the
+        repository top level and so ignored `--root` whenever `--root` was a subdirectory. A review
+        proved the effect: an untracked subtree holding a lane file reported the lane effective, and
+        the basis asserted that the record and the workflow were committed for a tree where neither
+        existed. CI always passes `--root .`, so what this pins is the hand-run case.
+        """
+        root = self._repo(record=True, workflow=self._wired())
+        self.assertTrue(dc.lane_effective(root)[0])
+        sub = root / "sandbox"
+        sub.mkdir()
+        self.assertFalse(dc._owner_record_effective(sub))
+        self.assertFalse(dc._ci_wiring_present(sub))
+        self.assertEqual(dc._ci_wiring_text(sub), "")
+        effective, why = dc.lane_effective(sub)
+        self.assertFalse(effective)
+        self.assertIn("the lane is closed", why)
+
+    def test_the_computed_basis_reaches_the_result(self):
+        """`check()` must emit the basis it is handed, not its fallback.
+
+        Pinned because a mutation making `check()` ignore the argument left the whole suite green:
+        the only test touching the field called `check()` without a basis, so it exercised the
+        fallback alone and half of this signature change was unverified.
+        """
+        root = self._repo(record=True, workflow=self._wired())
+        effective, why = dc.lane_effective(root)
+        self.assertTrue(effective)
+        basis = dc.check(root, effective, why)["lane_effective_basis"]
+        self.assertTrue(basis.startswith(why), basis)
+        self.assertNotIn("the caller asserted", basis)
+
+    def test_a_missing_workflow_closes_the_lane(self):
+        self.assertFalse(dc._ci_wiring_present(self.tmp / "nowhere"))
+        self.assertEqual(dc._ci_wiring_text(self.tmp / "nowhere"), "")
+
+    def test_the_workflow_in_the_working_tree_satisfies_the_wiring_conditions(self):
+        """Pins the real file, so a reformat that silently closes the lane fails here at once."""
+        text = (REPO / dc.WORKFLOW_PATH).read_text(encoding="utf-8")
+        body = "\n".join(line for line in text.splitlines()
+                         if not line.lstrip().startswith("#"))
+        for step in dc.REQUIRED_CI_STEPS:
+            self.assertIn(step, body, step)
+        self.assertTrue(dc._lane_test_run_suppresses_bytecode(body))
+
+    def test_the_basis_never_claims_the_commands_run_or_that_ci_was_green(self):
+        for effective in (True, False):
+            with self.subTest(effective=effective):
+                basis = dc.check(self.tmp, effective)["lane_effective_basis"]
+                self.assertIn("does NOT verify", basis)
+                self.assertIn("exact SHA", basis)
+                self.assertIn("disabled step", basis)
+                # The enforcement half, added after a review proved that four states match while
+                # nothing gates. Pinned because the whole clause could be reverted to the earlier
+                # reachability-only wording with the three assertions above still passing.
+                self.assertIn("actually gates", basis)
+                self.assertIn("trailing-comment", basis)
+                self.assertIn("continue-on-error", basis)
+        root = self._repo(record=True, workflow=self._wired())
+        _, why = dc.lane_effective(root)
+        self.assertIn("contains all three section 5.3 commands", why)
+        self.assertIn("carries a bytecode-suppression flag", why)
+        self.assertNotIn("runs all three", why)
+        self.assertNotIn("test run", why)
+
+
 class TestRealRepository(unittest.TestCase):
     def test_the_real_repository_passes_the_closure_check(self):
         """Whatever the lane holds here, the check passes and the walk stayed inside the lane.
@@ -758,7 +948,8 @@ class TestRealRepository(unittest.TestCase):
         and they narrow the gate rather than loosen it: a stray file outside the lane roots, or any
         violation at all, still fails.
         """
-        report = dc.check(REPO, dc._owner_record_effective(REPO))
+        effective, why = dc.lane_effective(REPO)
+        report = dc.check(REPO, effective, why)
         self.assertEqual(report["result"], "PASS")
         self.assertEqual(report["violations"], [])
         for path in report["files_checked"]:
@@ -772,23 +963,9 @@ class TestRealRepository(unittest.TestCase):
                       f"{dc.TESTS_ROOT}: the owner record's section 3.3 makes a slice's unit tests "
                       "its entire evidence, so source without tests is not a publishable slice")
 
-    def test_an_uncommitted_draft_of_the_record_does_not_open_the_lane(self):
-        """The detector requires the record to be tracked, not merely to exist on disk.
-
-        This is a regression test for a real flaw: the first version returned True for any file
-        present, so writing the draft would have opened the lane before it was attested, reviewed,
-        published or CI-verified. The draft may or may not be on disk when this runs; what is
-        asserted is the rule -- an untracked path is not effective.
-        """
-        self.assertFalse(dc._owner_record_effective(REPO) and not _tracked(dc.RECORD_PATH))
-
-    def test_the_detector_agrees_with_git(self):
-        import subprocess
-        tracked = _tracked(dc.RECORD_PATH)
-        self.assertEqual(dc._owner_record_effective(REPO), tracked)
-
     def test_the_result_discloses_what_effectiveness_was_not_verified(self):
-        report = dc.check(REPO, dc._owner_record_effective(REPO))
+        effective, why = dc.lane_effective(REPO)
+        report = dc.check(REPO, effective, why)
         self.assertIn("does NOT verify", report["lane_effective_basis"])
         self.assertIn("attestation", report["lane_effective_basis"])
 

@@ -814,7 +814,7 @@ def lane_files(root: Path) -> tuple[list[str], list[dict]]:
     return files, problems
 
 
-def check(root: Path, lane_effective: bool) -> dict:
+def check(root: Path, lane_effective: bool, basis: str | None = None) -> dict:
     if not root.is_dir():
         raise Malformed(f"root not found: {root}")
     files, violations = lane_files(root)
@@ -842,11 +842,16 @@ def check(root: Path, lane_effective: bool) -> dict:
         # the field explaining the basis stated the opposite of the value it explained. A review
         # caught it. The disclaimer half is the valuable half and is unchanged.
         "lane_effective_basis": (
-            ("the owner record is committed" if lane_effective else
-             "the owner record is NOT committed, so the lane is closed and any file under a lane "
-             "root is a violation rather than a subject")
-            + "; this tool does NOT verify its independent review, its first-publication owner "
-              "attestation, its publication or its exact-SHA CI run"),
+            (basis if basis is not None else
+             ("the caller asserted the lane is effective" if lane_effective else
+              "the caller asserted the lane is not effective"))
+            + "; this tool does NOT verify the record's independent review, its first-publication "
+              "owner attestation or its publication, does NOT verify that the three commands sit "
+              "in steps that actually run and that a failure of them actually gates -- a disabled "
+              "step, an unreachable job, a string literal and a trailing-comment position all "
+              "match without running, and a changed trigger, `continue-on-error: true` and a "
+              "workflow that is not valid YAML at all match without gating -- and does NOT verify "
+              "that any CI run of them was green on an exact SHA"),
         "files_checked": files,
         "violations": violations,
         # This field used to read "a PASS means the file performs no I/O and consumes no clock,
@@ -864,12 +869,23 @@ def check(root: Path, lane_effective: bool) -> dict:
 
 
 def _owner_record_effective(root: Path) -> bool:
-    """Whether the lane's owner record is **committed**, which is the strongest test available here.
+    """Whether the lane's owner record is in `HEAD`, which is the strongest test available here.
 
-    Tracked rather than merely present: an earlier version of this function returned True for any
-    file on disk, which an unpublished draft of the record satisfies -- so drafting the record would
-    have opened the lane before it was attested, reviewed, published or CI-verified. Requiring the
-    path to be in the git index means the record has at least been committed.
+    Three versions of this function, each stricter. The first returned True for any file on disk,
+    which an unpublished draft satisfies. The second required the path to be in the git **index**,
+    and described that as committed -- it is not: `git add` of a forged record opened the lane while
+    this tool asserted in its own output that the record was committed, and staging is the normal
+    working state for running the change gate. An independent review demonstrated it. This version
+    reads `HEAD`, which is the same standard `_ci_wiring_text` applies to the workflow, so the two
+    halves of one sentence are no longer held to opposite standards.
+
+    The revision is spelled `HEAD:./<path>`, which git resolves against the **caller's directory**,
+    not against the repository top level. A review proved why the shorter `HEAD:<path>` was wrong:
+    it ignored `--root` entirely whenever `--root` was a subdirectory, so an untracked subtree
+    holding a lane file read an ancestor repository's commits, returned True, and had the basis
+    assert that the record and the workflow were committed for a tree where neither existed. The
+    pre-diff spelling did not have that hole, so it was a loosening introduced here rather than an
+    old limit carried forward.
 
     Still weak, and reported as such in every result. The record's own effectiveness rule requires
     independent exact-subject review, a first-publication owner attestation written under admin
@@ -878,12 +894,132 @@ def _owner_record_effective(root: Path) -> bool:
     that the lane cannot be used before the record exists in history.
     """
     try:
-        tracked = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z", "--", RECORD_PATH],
+        committed = subprocess.run(
+            ["git", "-C", str(root), "cat-file", "-e", f"HEAD:./{RECORD_PATH}"],
             capture_output=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):
         return False
-    return tracked.returncode == 0 and tracked.stdout.strip(b"\0").decode("utf-8", "replace") == RECORD_PATH
+    return committed.returncode == 0
+
+
+WORKFLOW_PATH = ".github/workflows/veyro-foundation-ci.yml"
+# The three commands the owner record's section 5.3 names, spelled as it spells them, so a workflow
+# running section 5.3's literal command matches. An earlier revision folded `-B` into the third
+# string, which made this tool report a workflow running section 5.3's own command as not containing
+# section 5.3's commands. `-B` is required separately, below, and named as a strictening.
+REQUIRED_CI_STEPS = (
+    "tools/domain_closure/domain_closure.py check",
+    "unittest discover -s tools/domain_closure/tests",
+    "-m unittest discover -s app/tenancy/domain/tests",
+)
+# Suppressing bytecode on the lane's own test run is required beyond section 5.3, which does not
+# mention it: without it that run writes __pycache__ into the lane and the closure check refuses it
+# as PYCACHE_IN_LANE.
+# A deliberately narrow allowlist of two spellings, not a survey of correct ones. Reviews proved
+# both halves of why: `PYTHONDONTWRITEBYTECODE=0` matched an earlier, shorter entry and does **not**
+# suppress, since CPython reads the value as the flag; and ` -Bm ` was unreachable, because the
+# required step string is "-m unittest discover ...", which `python -Bm unittest discover` does not
+# contain. Correct spellings this refuses -- clustered `-Bm`, the quoted `="1"` and
+# `='1'`, and `=2`, `=yes`, `=true`, `=-1`, all of which do suppress -- close the lane rather than
+# open it, so the over-refusal is fail-closed, and the list of them is not exhaustive. Of the
+# variable's *value* spellings, none that fails to suppress matches: unset,
+# empty, `0` and `00` all miss `=1`. That is the scoped claim; it is not a claim about any line, as
+# ` -B ` would also match an unrelated `grep -B 2`, and a suppression applied to some other command
+# on the same line would match too. The gate it guards is the lane's own test command, and a line
+# that carries that command and a suppression spelling is the state this condition is for.
+BYTECODE_SUPPRESSIONS = (" -B ", "PYTHONDONTWRITEBYTECODE=1")
+
+
+def _ci_wiring_text(root: Path) -> str:
+    """The **committed** workflow, comment lines dropped. Empty string if it cannot be read.
+
+    Committed, not the working tree, because the sibling condition requires the owner record to be
+    tracked for a stated reason -- "so that the lane cannot be used before the record exists in
+    history" -- and reading one from history while reading the other from the working tree applies
+    opposite standards to the two halves of one sentence. An independent review found the effect
+    live: with this file's own wiring edit uncommitted and no CI run of it ever green, the tool
+    reported the lane effective. A slice author with a local edit would have had an open lane.
+
+    `HEAD:./<path>` for the same reason `_owner_record_effective` uses it: the revision resolves
+    against the caller's directory, so a `--root` that is not the repository top level reads
+    nothing and the lane closes.
+    """
+    try:
+        shown = subprocess.run(["git", "-C", str(root), "show", f"HEAD:./{WORKFLOW_PATH}"],
+                               capture_output=True, timeout=30, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if shown.returncode != 0:
+        return ""
+    text = shown.stdout.decode("utf-8", "replace")
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+def _ci_wiring_present(root: Path) -> bool:
+    """Whether the committed workflow **text contains** all three section 5.3 commands.
+
+    Read the verb: contains. This is a substring test over the committed file with **line-leading**
+    comment lines dropped, and nothing more. Two independent reviews between them demonstrated eight
+    states where the three commands are present and none of them gates: in a whole-line comment, in
+    steps carrying `if: false`, in a second job carrying `if: false`, inside an `echo` in an
+    unrelated step, in a trailing `#` comment on a `run:` line, under a trigger changed away from
+    push-to-main, under `continue-on-error: true` on every step, and in a file that is not valid
+    YAML at all. Dropping line-leading comments closes **one spelling of the first** and nothing
+    else: an earlier revision of this paragraph claimed it closed "in a comment", and a trailing
+    `#` comment on a `run:` line still matches. Of the last three, `continue-on-error` runs and
+    has its failure ignored, so "steps that actually run" does not describe that failure at all; a
+    changed trigger and invalid YAML keep the steps from running, which the reachability half does
+    cover. The distinction is why the result string groups them as matching "without gating"
+    rather than stretching the running clause over all three. The result string names all of this
+    rather than claiming the checks run. `workflow_check.py` independently pins the push-to-main
+    and read-only shape, and it is not this tool.
+
+    Establishing that they actually run would need a YAML parser and a reachability judgment, and
+    establishing that a run of them was green on an exact SHA would need the network, which this
+    tool must not touch. That half of section 5.3 stays a human and CI obligation.
+    """
+    text = _ci_wiring_text(root)
+    if not text or not all(step in text for step in REQUIRED_CI_STEPS):
+        return False
+    return _lane_test_run_suppresses_bytecode(text)
+
+
+def _lane_test_run_suppresses_bytecode(text: str) -> bool:
+    """Whether the line running the lane's own tests suppresses bytecode writing.
+
+    Checked on that line rather than file-wide, so a `-B` somewhere else does not satisfy it.
+    """
+    lane_command = REQUIRED_CI_STEPS[2]
+    lines = [line for line in text.splitlines() if lane_command in line]
+    return bool(lines) and all(
+        any(spelling in line for spelling in BYTECODE_SUPPRESSIONS) for line in lines)
+
+
+def lane_effective(root: Path) -> tuple[bool, str]:
+    """`(effective, why)` for the lane, by the two conditions this tool can actually check."""
+    record = _owner_record_effective(root)
+    wired = _ci_wiring_present(root)
+    if record and wired:
+        return True, ("the owner record is committed and the committed text of "
+                      f"{WORKFLOW_PATH} contains all three section 5.3 commands, and every line "
+                      "carrying the lane's own test command also carries a bytecode-suppression "
+                      "flag")
+    missing = []
+    if not record:
+        missing.append("the owner record is NOT committed")
+    if not wired:
+        text = _ci_wiring_text(root)
+        if text and all(step in text for step in REQUIRED_CI_STEPS):
+            missing.append(f"the committed text of {WORKFLOW_PATH} contains all three section 5.3 "
+                           "commands but does not suppress bytecode writing on the lane's own test "
+                           "run, which this tool requires beyond section 5.3 because the run would "
+                           "otherwise write __pycache__ into the lane")
+        else:
+            missing.append(f"the committed text of {WORKFLOW_PATH} does not contain all three "
+                           "section 5.3 commands")
+    return False, (", and ".join(missing)
+                   + "; the lane is closed, so any file under a lane root is a violation rather "
+                     "than a subject")
 
 
 def main(argv=None) -> int:
@@ -917,7 +1053,8 @@ def main(argv=None) -> int:
                                    "definition is refused as a class")}
         else:
             root = Path(args.root)
-            out = {"command": "check", **check(root, _owner_record_effective(root))}
+            effective, why = lane_effective(root)
+            out = {"command": "check", **check(root, effective, why)}
     except Malformed as exc:
         print(json.dumps({"result": "MALFORMED", "detail": str(exc)}, indent=1, sort_keys=True))
         return 2

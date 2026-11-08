@@ -25,7 +25,7 @@ jobs:
           python-version: "3.13"
 
       - name: Compile / syntax check
-        run: python -m compileall -q tools/mission_runner tools/governance
+        run: python -m compileall -q tools/mission_runner tools/governance tools/domain_closure
 
       - name: Workflow trigger shape (push to main only, read-only, trusted gate disabled)
         run: python tools/mission_runner/workflow_check.py
@@ -89,6 +89,12 @@ jobs:
       - name: Governance static structural check (not a change-control gate)
         run: python tools/governance/governance_check.py check --root .
 
+      - name: Local-domain-slice closure check (mistake filter, not a purity proof)
+        run: python tools/domain_closure/domain_closure.py check --root .
+
+      - name: Local-domain-slice closure check unittest suite
+        run: python -m unittest discover -s tools/domain_closure/tests -t tools/domain_closure -v
+
       - name: MOD-001 product source-binding negative check
         run: |
           set -eu
@@ -126,7 +132,17 @@ jobs:
 
       - name: Backend focused tests
         working-directory: backend
-        run: python -m unittest discover -s tests -t . -v
+        run: python -B -m unittest discover -s tests -t . -v
+
+      - name: Local-domain-slice lane unit tests (a slice's entire evidence per section 3.3)
+        working-directory: backend
+        run: |
+          set -eu
+          if [ -d app/tenancy/domain/tests ]; then
+            python -B -m unittest discover -s app/tenancy/domain/tests -t . -v
+          else
+            echo "the lane holds no tests yet; lane source without them fails the closure suite"
+          fi
 
       - name: Backend container build
         run: docker build -t veyro-api:ci backend
