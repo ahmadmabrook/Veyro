@@ -42,10 +42,59 @@ Module documents live in `knowledge/03-Modules/`. Read the decision before chang
 1. Read the governing decision and the module document first.
 2. Smallest reviewable change. Match the surrounding code's naming, idiom and comment density.
 3. Run the local checks below.
-4. Independent Opus review of the exact diff before it is published.
+4. Independent Opus review of the exact diff before publication when required by the effective review policy. Apply the risk-based review scope and review-loop circuit breaker below; do not confuse a time or iteration limit with approval.
 5. Commit, then push to `main` without force. No history rewrite, no branch deletion.
 6. Confirm GitHub Actions is green on the published commit. If it fails, repair forward or revert —
    never force-push — and do not stack more work on a red `main`.
+
+## Product-first review discipline and review-loop circuit breaker
+
+This is an execution discipline for the orchestrator, implementer and reviewer. It does **not**
+supersede effective OWNER records, accepted ADRs, controlled-path change control, the independent
+review required for substantive product code, or any mandatory product-security gate. If another
+binding record explicitly requires exact-diff review before publication, perform it; do not
+silently waive the requirement through this file.
+
+**Priority:** finish the next independently authorized MOD-004 product implementation and tests.
+A review, governance document or tooling improvement is not itself product completion. Never
+start optional review or documentation work merely to improve its polish.
+
+**Classify once before review:**
+
+- **Product code, tenant/security-sensitive behavior, architecture, and mandatory controlled
+  changes:** perform the independent review and real tests required by their governing records.
+  Material unresolved findings block publication or activation, regardless of review count.
+- **Incidental prose, optional tooling and ordinary documentation:** use focused checks, and only
+  request an independent review if an effective rule requires one or there is a demonstrated
+  material risk. Separate editorial suggestions from material defects.
+- **Purely editorial advisories on otherwise APPROVED exact bytes:** record them for a later
+  authorized change; do not invalidate an approval by editing just to polish wording.
+
+**Circuit breaker — at most two consecutive unsuccessful review attempts per unchanged objective
+before mandatory reassessment:**
+
+1. Preserve every `CHANGES_REQUESTED` result and the concrete reproductions. Do not recast it as
+   approval, and do not publish unapproved material changes.
+2. Stop the patch-and-resubmit pattern. Identify the common failure mechanism and whether the
+   reviewed artifact is actually on the shortest product-delivery path.
+3. If optional, defer it with its real status, and immediately select an independently authorized
+   product task. If necessary, simplify the design or make one bounded redesign with executable
+   acceptance criteria; do not produce increasingly elaborate review-history prose.
+4. A further independent review is permitted **only** for the revised material that a binding gate
+   requires, after the root-cause redesign. This is not automatic permission for unlimited rounds;
+   repeat this reassessment instead of blindly resubmitting. Never treat the iteration cap as a
+   waiver of a blocking security or correctness finding.
+5. The orchestrator decides prioritization and executes the next eligible task without asking the
+   owner to choose. If no eligible task exists, report the precise effective blocker and minimum
+   genuinely nondelegable owner action; do not invent a bypass.
+
+**Each review must be actionable:** bind exact bytes and give evidence and a reproducible failure
+for material findings. Do not request another review just to re-review prose that narrates earlier
+reviews. Store historical verdicts in their existing records rather than embedding a growing
+review-by-review story in the artifact under review.
+
+**After a successful review/commit/CI:** immediately continue to the next independently eligible
+product task within the active session. Do not treat a status report as a stop condition.
 
 Steps 4 and 6 are **procedural, not mechanical**: branch protection enforces `enforce_admins` and
 blocks force-pushes and deletions, but has no required status checks and no required reviews. The

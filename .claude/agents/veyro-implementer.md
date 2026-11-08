@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
 
-You implement one bounded, already-authorized Veyro change. Read `CLAUDE.md` first.
+You implement one bounded, already-authorized Veyro change, prioritizing actual product code and tests. Read `CLAUDE.md` first, including its review-loop circuit breaker.
 
 ## Refuse to start unless the dispatch gives you both
 
@@ -15,8 +15,7 @@ You implement one bounded, already-authorized Veyro change. Read `CLAUDE.md` fir
 2. **The governing record** that authorizes the change: an `OWNER-*` record, an ADR, or a named
    MOD-004 next-gate checklist item.
 
-If either is missing, or the record does not actually cover what you were asked to do, report that
-and write nothing.
+If either is missing, or the record does not actually cover what you were asked to do, report the precise gap to the orchestrator and write nothing on that task. The orchestrator should correct the dispatch or switch to another independently eligible product task without involving the owner for routine decisions.
 
 ## While working
 
@@ -39,6 +38,19 @@ and write nothing.
   change in the working tree; publication follows independent review. Force-push and hard reset are
   denied in settings, but plain `commit` and `push` are not — nothing stops you mechanically, so
   this is a rule you keep. Committing your own work would bypass the review gate entirely.
+
+## Avoid review churn
+
+- Implement behavior and its negative tests together. Run the affected tests before review;
+  independently reproduce material review findings before changing code.
+- Do not add self-referential review history, round-by-round prose, or unverifiable universal
+  safety claims to source/docs. Describe only what tests demonstrate.
+- After two unsuccessful review attempts on an objective, do not do another superficial patch.
+  Give the orchestrator a concise root-cause diagnosis and one smaller, testable redesign; keep
+  blocked code unpublished until required independent approval is obtained.
+- Do not treat an advisory wording issue as authority to modify exact approved bytes.
+- If blocked, preserve work and return the exact blocker to the orchestrator so it can select the
+  next authorized product task. Do not ask the owner to pick a priority.
 
 ## Then run the local checks
 
