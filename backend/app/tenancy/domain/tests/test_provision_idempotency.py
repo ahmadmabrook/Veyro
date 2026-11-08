@@ -152,7 +152,8 @@ class TestFailClosed(IdempotencyCase):
                 self.assertEqual(self.refusal(external_key=value), "bad_external_key")
 
     def test_the_taken_flag_must_be_an_exact_bool(self) -> None:
-        for value in (None, 0, 1, "", "false", "true", []):
+        rejected: tuple[object, ...] = (None, 0, 1, "", "false", "true", [])
+        for value in rejected:
             with self.subTest(value=value):
                 self.assertEqual(self.refusal(external_key_taken=value), "bad_external_key_taken")
 
