@@ -95,7 +95,8 @@ class TestMappingPolicy(EnvelopeCase):
         class Subclass(dict[str, object]):
             pass
 
-        for value in ("{}", b"{}", None, 1, [], Subclass(_envelope())):
+        rejected: tuple[object, ...] = ("{}", b"{}", None, 1, [], Subclass(_envelope()))
+        for value in rejected:
             with self.subTest(value=type(value).__name__):
                 self.assertEqual(self.refusal(value), "not_mapping")
 
@@ -110,7 +111,7 @@ class TestMappingPolicy(EnvelopeCase):
         self.assertEqual(self.refusal(envelope), "too_many_fields")
 
     def test_a_non_string_key_is_refused(self) -> None:
-        envelope: dict[object, object] = dict(_envelope())
+        envelope: dict[object, object] = {k: v for k, v in _envelope().items()}
         envelope[1] = "x"
         self.assertEqual(self.refusal(envelope), "bad_key_type")
 
