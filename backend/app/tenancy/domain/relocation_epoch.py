@@ -79,8 +79,20 @@ class EpochDecision:
     rule_fires: bool
 
 
-def _epoch_ok(value: object) -> bool:
-    return type(value) is int and 0 <= value <= EPOCH_MAX
+def _epoch_or_refuse(value: object, code: str) -> int:
+    """Return `value` as an `int`, or refuse with `code`.
+
+    The leading `isinstance` is what lets a type checker carry the narrowing out of this function;
+    the `type(value) is not int` beside it is what refuses `bool` and every other `int` subclass,
+    so no comparison downstream can reach a subclass's operators. An earlier revision returned
+    `bool` from a predicate, which left the caller comparing `object` with `>` -- a defect mypy
+    caught and the lane's AST pre-check cannot see, because it replicates no type inference.
+    """
+    if not isinstance(value, int) or type(value) is not int:
+        raise EpochError(code)
+    if not 0 <= value <= EPOCH_MAX:
+        raise EpochError(code)
+    return value
 
 
 def evaluate_relocation_epoch(
@@ -89,16 +101,14 @@ def evaluate_relocation_epoch(
     route_switched: object,
 ) -> EpochDecision:
     """Decide whether paragraph 778's rejection rule fires for these three claims."""
-    if not _epoch_ok(command_epoch):
-        raise EpochError("bad_command_epoch")
-    if not _epoch_ok(current_epoch):
-        raise EpochError("bad_current_epoch")
+    command = _epoch_or_refuse(command_epoch, "bad_command_epoch")
+    current = _epoch_or_refuse(current_epoch, "bad_current_epoch")
     if type(route_switched) is not bool:
         raise EpochError("bad_route_switched")
 
-    if command_epoch > current_epoch:
+    if command > current:
         raise EpochError("epoch_ahead_of_current")
-    if command_epoch == current_epoch:
+    if command == current:
         return EpochDecision(outcome=CURRENT, rule_fires=False)
     if route_switched:
         return EpochDecision(outcome=REJECT, rule_fires=True)
