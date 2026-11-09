@@ -6,6 +6,15 @@ authorize a consequence-bearing mutation beyond budget." Paragraph 1238 is why a
 exists to compare: "every projection exposes freshness/version metadata when asynchronously
 built."
 
+Both are rows of §10.1 "PLT-01 - Tenant, Organization, Brand & Location Management": paragraph
+1242 is its `Failure/degraded behavior` row and paragraph 1238 its `Queries/read models` row. The
+row labels are given because the paragraph numbers alone do not survive a baseline renumbering
+here. Paragraph 1242's sentence is cross-module boilerplate that recurs in 40 paragraphs of the
+pinned TSD -- 57 sections carry a `Failure/degraded behavior` row -- so matching on its text
+cannot identify which one is PLT-01's. The §10.1 heading occurs exactly once, and each of these
+labels occurs exactly once inside that section, so heading plus label is a unique pair where the
+number is not.
+
 This module answers one question: does that bar refuse, for the three values handed in?
 
 **It supplies no budget, and that is the point rather than an omission.**

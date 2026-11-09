@@ -6,6 +6,14 @@ primary list/detail paths; unique external/provider identifiers are scoped by te
 aggregate version supports optimistic concurrency." This module decides the comparison those two
 sentences imply and nothing beyond it.
 
+Both are rows of §10.1 "PLT-01 - Tenant, Organization, Brand & Location Management": paragraph
+1237 is its `Command inventory` row and paragraph 1239 its `Indexes/concurrency` row. The row
+labels are given because the paragraph numbers alone do not survive a baseline renumbering here.
+Paragraph 1239's sentence is cross-module boilerplate that recurs in 49 paragraphs of the pinned
+TSD -- 57 sections carry an `Indexes/concurrency` row -- so matching on its text cannot identify
+which one is PLT-01's. The §10.1 heading occurs exactly once, and each of these labels occurs
+exactly once inside that section, so heading plus label is a unique pair where the number is not.
+
 Scope. The result is a comparison of two numbers the caller supplies. It is **not** a concurrency
 control, not a lock, not a read of any stored version, and not evidence that the `current_version`
 handed in is the aggregate's real version -- that is the database's, under D6.3's serialization on
