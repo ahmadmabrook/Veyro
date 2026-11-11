@@ -6,16 +6,17 @@ Rollback before source deletion switches routing back only after target writes a
 discarded." This module reads the first two sentences. The third is a different rule about
 rollback ordering and is **not** implemented here.
 
-Every citation in this file carries an explicit `TSD` prefix, and paragraph 779 is the reason the
-convention exists rather than an instance of it. Both pinned baselines number paragraphs through
+Every citation in this file carries an explicit `TSD` prefix, and TSD paragraph 779 is the reason
+the convention exists rather than an instance of it. Both pinned baselines number paragraphs through
 741-783 and there the two texts are unrelated: **EIP** paragraph 779 opens the scenario-category
 supplement that `knowledge/03-Modules/MOD-004/MOD-004.md` cites as "EIP ¶779-857" for application
 and session lifecycle, while **TSD** paragraph 779 is this write-freeze target. A bare "paragraph
-779" would therefore name two different rules, which is the defect `tools/module_docs/
-cite_check.py` exists to catch. The surrounding rows are given too, since the number alone does
-not survive a renumbering: TSD paragraph 775 heads "7.5 Tenant Placement and Relocation Workflow",
-paragraph 777 lists the twelve relocation stages and paragraph 778 states the relocation_epoch
-rule.
+779" would therefore name two different rules, which is the defect
+`tools/module_docs/cite_check.py` exists to catch -- though it reads a module document rather than
+a Python source, so nothing automated holds this file to the convention. The surrounding rows are
+given too, since the number alone does not survive a renumbering: TSD paragraph 775 heads "7.5
+Tenant Placement and Relocation Workflow", TSD paragraph 777 lists the twelve relocation stages
+and TSD paragraph 778 states the relocation_epoch rule.
 
 This module answers one question: for the tenant class and the write-freeze figure handed in, does
 TSD paragraph 779's stated target hold?
@@ -34,11 +35,11 @@ becomes standard or large/dedicated: `MOD-004.md` lists "plan tiers and dedicate
 eligibility" in the same owner-reserved item 3. TSD paragraph 782 is adjacent and worth reading
 beside it -- "Domain code never assumes whether the tenant is shared or dedicated" -- which is
 consistent with taking the class as an input rather than deriving one, and is also why this module
-derives nothing from it beyond which sentence of paragraph 779 applies.
+derives nothing from it beyond which sentence of TSD paragraph 779 applies.
 
-**Why the class is an enum and not a name closure.** The lane's three existing name closures admit
-the sources' exact spellings, which works because the sources spell those names in a fixed
-position. Paragraph 779 does not: "standard" appears mid-sentence in lower case while
+**Why the class is an enum and not a name closure.** The lane's six existing name closures admit
+the sources' exact spellings, which works because the sources spell those names in a fixed list or
+table position. TSD paragraph 779 does not: "standard" appears mid-sentence in lower case while
 "Large/dedicated" is sentence-initial, so its capital is positional and there is no stated
 canonical spelling to admit. A string closure would have to invent one. `TenantClass` names the
 two classes the source states and nothing else: there is deliberately **no third member**, because
@@ -51,9 +52,12 @@ intuition and the stated text can part, so it is pinned by its own test.
 
 **Minutes only, and no rounding.** The unit is the source's: "15 minutes". No sub-minute precision
 is stated, so `minutes` is a whole number of minutes and a caller holding seconds must convert
-before calling. This module does not accept seconds and does not round, because rounding down
-would read a freeze of fifteen minutes and thirty seconds as within a target the source states as
-strictly under fifteen.
+before calling. The reason this module will not convert for them is that the source states no
+rounding rule and the choice is not neutral: flooring happens to be verdict-preserving, since
+`floor(x) < 15` exactly when `x < 15`, but rounding to nearest turns a freeze of 14.6 minutes --
+under the target as stated -- into a 15 that is beyond it. An earlier revision of this paragraph
+offered flooring as the reason and was wrong about which way it cuts; a review falsified it by
+execution, and the claim is corrected here rather than dropped.
 
 Scope. The result is a reading of two caller claims against one stated sentence. It is **not** a
 measurement of any write freeze, not a relocation, not a relocation stage, not a placement

@@ -3,10 +3,11 @@
 These evidence the pure reading `write_freeze_target` makes of two values handed to it. They
 evidence no write freeze, no relocation, no relocation stage, no placement resolution, no
 maintenance window, no service-level objective, no database behaviour, no tenant isolation and no
-integration. Every refusal is asserted by its `code`, so no test can pass because an unrelated
-refusal fired.
+integration. Every refusal assertion but one is made by its `code`, so no test can pass because an
+unrelated refusal fired; the exception is `test_the_refusal_message_carries_no_raw_input`, which
+asserts the message instead, and for whose inputs only `bad_minutes` can fire.
 
-The citation convention of the module under test holds here too: paragraph 779 is inside the
+The citation convention of the module under test holds here too: TSD paragraph 779 is inside the
 741-783 range both pinned baselines number, so every reference carries its `TSD` prefix.
 """
 
