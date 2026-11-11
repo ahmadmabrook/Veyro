@@ -17,8 +17,22 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import FrozenInstanceError
+from enum import Enum
 
 from .. import rollback_routing as rr
+
+
+class ForeignState(Enum):
+    """A different enum whose member value collides with a real one.
+
+    It exists so that the exact-type check is load-bearing under test. Without a member of some
+    other enum in the refusal list, relaxing `type(x) is not TargetWriteState` to
+    `isinstance(x, Enum)` leaves the whole suite green while admitting this member -- which the
+    shipped code refuses, but which no test would have noticed.
+    """
+
+    RECONCILED = "reconciled"
+
 
 BEFORE_DELETION: dict[str, object] = {
     "before_source_deletion": True,
@@ -119,6 +133,19 @@ class TestItFailsClosed(RollbackCase):
         for bad in ("reconciled", "discarded", None, 0, True, rr.TargetWriteState):
             with self.subTest(target_writes=bad):
                 self.assertEqual(self.refusal(target_writes=bad), "bad_target_writes")
+
+    def test_a_member_of_another_enum_is_refused_even_at_the_same_value(self) -> None:
+        """What makes the exact-type check load-bearing rather than decorative.
+
+        `ForeignState.RECONCILED` is an `Enum` member, so relaxing the check to
+        `isinstance(_, Enum)` admits it past validation. The module then reads it as
+        `WRITES_OUTSTANDING`, not as a satisfying state: enum members compare by identity, so the
+        shared value plays no part in that comparison. The collision earns its place against a
+        second, independent relaxation -- comparing values rather than members in the membership
+        test -- under which this member *is* read as satisfying. The shipped bytes refuse both.
+        """
+        self.assertEqual(ForeignState.RECONCILED.value, rr.TargetWriteState.RECONCILED.value)
+        self.assertEqual(self.refusal(target_writes=ForeignState.RECONCILED), "bad_target_writes")
 
     def test_the_ordering_claim_is_validated_first(self) -> None:
         """Both malformed: the ordering refusal must be the one reported."""

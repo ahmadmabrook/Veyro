@@ -8,7 +8,7 @@ sentence out as a different rule; this module is that rule.
 Citations in this file carry an explicit `TSD` or `EIP` prefix wherever the number falls inside the
 741-783 window both pinned baselines number, including in passing references, because hand-keeping
 that convention has already failed twice in this lane -- slice 13's docstring claimed it while
-breaking it four times, and slice 14 reintroduced two bare references one commit after they were
+breaking it five times, and slice 14 reintroduced two bare references one commit after they were
 corrected. Nothing automated enforces it: `tools/module_docs/cite_check.py` exists for this defect,
 reads a module document rather than a Python source, and CI never invokes it. The surrounding rows
 are given because the number alone does not survive a renumbering: TSD paragraph 775 heads "7.5

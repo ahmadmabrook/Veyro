@@ -21,7 +21,7 @@ This module answers one question: for the five claims handed in, is TSD paragrap
 reconciliation precondition satisfied?
 
 **Satisfying it is not permission to delete, and this is the module's most important limit.**
-Paragraph 778 states one necessary condition. TSD paragraph 777's own stage list puts source
+TSD paragraph 778 states one necessary condition. TSD paragraph 777's own stage list puts source
 deletion "after retention gate", and `knowledge/03-Modules/MOD-004/MOD-004.md` records
 PLT-01-R07 -- "Tenant lifecycle history; no hard deletion before legal, billing and retention gates
 pass" -- as OPEN, its reason beginning "Gate criteria and durations owner-reserved", and lists
@@ -59,7 +59,7 @@ no tenant isolation; it is not a database constraint and not integration evidenc
 performs no I/O, keeps no state, logs nothing and echoes no raw input.
 
 Two outcomes, one of `OUTCOMES`:
-    RECONCILED    all five subjects are claimed reconciled, so paragraph 778's precondition is
+    RECONCILED    all five subjects are claimed reconciled, so TSD paragraph 778's precondition is
                   met. Not a deletion decision; see above.
     OUTSTANDING   at least one is not. `outstanding` names which, in the sentence's order.
 
