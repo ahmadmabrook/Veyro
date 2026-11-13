@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import date, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, Request
@@ -21,6 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app import db
+from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import ServiceError
@@ -137,6 +139,94 @@ def evaluation_context(request: Request) -> dict[str, str]:
     """
     reserved = {"subject_id", "brand_id", "location_id"}
     return {k: v for k, v in request.query_params.items() if k not in reserved}
+
+
+class PlanBody(BaseModel):
+    plan_code: str
+    plan_version: int
+    edition: str
+    currency: str = Field(min_length=3, max_length=3)
+    region: str
+    billing_interval: str
+    base_price_minor: int
+    trial_days: int = 0
+    contract_months: int | None = None
+    prices: list[dict[str, Any]] = Field(default_factory=list)
+    entitlements: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PlanStatusBody(BaseModel):
+    status: str
+
+
+class StartSubscriptionBody(BaseModel):
+    plan_code: str
+    plan_version: int | None = None
+    actor_id: str
+    correlation_id: str
+    start_on: date | None = None
+    partner_code: str | None = None
+    revenue_share_bp: int | None = None
+
+
+class SubscriptionCommandBody(BaseModel):
+    command: str
+    actor_id: str
+    correlation_id: str
+    reason: str | None = None
+    expected_version: int | None = None
+
+
+class ChangePlanBody(BaseModel):
+    plan_code: str
+    plan_version: int | None = None
+    actor_id: str
+    correlation_id: str
+    effective_on: date | None = None
+    in_use: dict[str, int] = Field(default_factory=dict)
+    acknowledge_reductions: bool = False
+
+
+class EntitlementGrantBody(BaseModel):
+    feature_code: str
+    limit_value: int | None = None
+    unlimited: bool = False
+
+
+class MeterBody(BaseModel):
+    meter_code: str
+    unit: str
+    aggregation: str = "sum"
+
+
+class QuotaBody(BaseModel):
+    period: str
+    limit_quantity: int
+    overage_allowed: bool = False
+    hard_stop: bool = False
+
+
+class UsageBody(BaseModel):
+    meter_code: str
+    quantity: int
+    idempotency_key: str
+    actor_id: str
+    correlation_id: str
+    occurred_at: datetime | None = None
+    corrects_record_id: str | None = None
+
+
+class InvoiceBody(BaseModel):
+    actor_id: str
+    correlation_id: str
+    tax_rate_bp: int | None = None
+
+
+class CreditNoteBody(BaseModel):
+    amount_minor: int
+    reason: str
+    actor_id: str
+    correlation_id: str
 
 
 def tenant_claim(x_veyro_tenant: Annotated[str | None, Header()] = None) -> str:
@@ -371,6 +461,141 @@ def create_app(
         return config.bundle(
             tenant_pool, tenant_id, subject_id=subject_id, context=context,
             brand_id=brand_id, location_id=location_id,
+        )
+
+    # --------------------------------------------------- MOD-006 plans and billing
+
+    @app.post("/platform/plans", status_code=201)
+    def create_plan(body: PlanBody) -> dict[str, Any]:
+        return billing.create_plan(
+            platform_pool, plan_code=body.plan_code, plan_version=body.plan_version,
+            edition=body.edition, currency=body.currency, region=body.region,
+            billing_interval=body.billing_interval, base_price_minor=body.base_price_minor,
+            trial_days=body.trial_days, contract_months=body.contract_months,
+            prices=body.prices, entitlements=body.entitlements,
+        )
+
+    @app.post("/platform/plans/{plan_code}/{plan_version}/status")
+    def plan_status(plan_code: str, plan_version: int, body: PlanStatusBody) -> dict[str, Any]:
+        return billing.set_plan_status(
+            platform_pool, plan_code=plan_code, plan_version=plan_version, status=body.status
+        )
+
+    @app.get("/platform/plans")
+    def get_plans() -> list[dict[str, Any]]:
+        return billing.list_plans(platform_pool)
+
+    @app.get("/platform/plans/{plan_code}")
+    def get_one_plan(plan_code: str, plan_version: int | None = None) -> dict[str, Any]:
+        return billing.get_plan(platform_pool, plan_code=plan_code, plan_version=plan_version)
+
+    @app.post("/subscription", status_code=201)
+    def start_subscription(
+        tenant_id: TenantId, body: StartSubscriptionBody
+    ) -> dict[str, Any]:
+        return billing.start_subscription(
+            tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
+            plan_version=body.plan_version, actor_id=body.actor_id,
+            correlation_id=body.correlation_id, start_on=body.start_on,
+            partner_code=body.partner_code, revenue_share_bp=body.revenue_share_bp,
+        )
+
+    @app.get("/subscription")
+    def read_subscription(tenant_id: TenantId) -> dict[str, Any]:
+        return billing.get_subscription(tenant_pool, tenant_id)
+
+    @app.get("/subscription/history")
+    def read_subscription_history(tenant_id: TenantId) -> list[dict[str, Any]]:
+        return billing.subscription_history(tenant_pool, tenant_id)
+
+    @app.post("/subscription/transition")
+    def transition_subscription(
+        tenant_id: TenantId, body: SubscriptionCommandBody
+    ) -> dict[str, Any]:
+        return billing.transition_subscription(
+            tenant_pool, tenant_id, command=body.command, actor_id=body.actor_id,
+            correlation_id=body.correlation_id, reason=body.reason,
+            expected_version=body.expected_version,
+        )
+
+    @app.post("/subscription/plan")
+    def change_subscription_plan(tenant_id: TenantId, body: ChangePlanBody) -> dict[str, Any]:
+        return billing.change_plan(
+            tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
+            plan_version=body.plan_version, actor_id=body.actor_id,
+            correlation_id=body.correlation_id, effective_on=body.effective_on,
+            in_use=body.in_use, acknowledge_reductions=body.acknowledge_reductions,
+        )
+
+    @app.post("/entitlements", status_code=201)
+    def grant_entitlement(tenant_id: TenantId, body: EntitlementGrantBody) -> dict[str, Any]:
+        return billing.grant_entitlement(
+            tenant_pool, tenant_id, feature_code=body.feature_code,
+            limit_value=body.limit_value, unlimited=body.unlimited,
+        )
+
+    @app.get("/entitlements")
+    def get_entitlements(tenant_id: TenantId) -> list[dict[str, Any]]:
+        return billing.list_entitlements(tenant_pool, tenant_id)
+
+    @app.get("/entitlements/{feature_code}/check")
+    def entitlement_check(
+        tenant_id: TenantId, feature_code: str, quantity: int
+    ) -> dict[str, Any]:
+        return billing.check_entitlement(
+            tenant_pool, tenant_id, feature_code=feature_code, quantity=quantity
+        )
+
+    @app.post("/meters", status_code=201)
+    def define_meter(tenant_id: TenantId, body: MeterBody) -> dict[str, Any]:
+        return billing.define_meter(
+            tenant_pool, tenant_id, meter_code=body.meter_code, unit=body.unit,
+            aggregation=body.aggregation,
+        )
+
+    @app.post("/meters/{meter_code}/quota")
+    def set_quota(tenant_id: TenantId, meter_code: str, body: QuotaBody) -> dict[str, Any]:
+        return billing.set_quota(
+            tenant_pool, tenant_id, meter_code=meter_code, period=body.period,
+            limit_quantity=body.limit_quantity, overage_allowed=body.overage_allowed,
+            hard_stop=body.hard_stop,
+        )
+
+    @app.post("/usage", status_code=201)
+    def record_usage(tenant_id: TenantId, body: UsageBody) -> dict[str, Any]:
+        return billing.record_usage(
+            tenant_pool, tenant_id, meter_code=body.meter_code, quantity=body.quantity,
+            idempotency_key=body.idempotency_key, actor_id=body.actor_id,
+            correlation_id=body.correlation_id, occurred_at=body.occurred_at,
+            corrects_record_id=body.corrects_record_id,
+        )
+
+    @app.get("/usage/{meter_code}")
+    def get_usage(tenant_id: TenantId, meter_code: str) -> dict[str, Any]:
+        return billing.usage_summary(tenant_pool, tenant_id, meter_code=meter_code)
+
+    @app.post("/invoices", status_code=201)
+    def issue_invoice(tenant_id: TenantId, body: InvoiceBody) -> dict[str, Any]:
+        return billing.issue_invoice(
+            tenant_pool, tenant_id, actor_id=body.actor_id,
+            correlation_id=body.correlation_id, tax_rate_bp=body.tax_rate_bp,
+        )
+
+    @app.get("/invoices")
+    def get_invoices(tenant_id: TenantId) -> list[dict[str, Any]]:
+        return billing.list_invoices(tenant_pool, tenant_id)
+
+    @app.get("/invoices/{invoice_id}")
+    def get_one_invoice(tenant_id: TenantId, invoice_id: str) -> dict[str, Any]:
+        return billing.get_invoice(tenant_pool, tenant_id, invoice_id)
+
+    @app.post("/invoices/{invoice_id}/credit-notes", status_code=201)
+    def credit_invoice(
+        tenant_id: TenantId, invoice_id: str, body: CreditNoteBody
+    ) -> dict[str, Any]:
+        return billing.issue_credit_note(
+            tenant_pool, tenant_id, invoice_id=invoice_id, amount_minor=body.amount_minor,
+            reason=body.reason, actor_id=body.actor_id, correlation_id=body.correlation_id,
         )
 
     return app

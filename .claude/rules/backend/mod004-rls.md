@@ -1,7 +1,8 @@
 # Tenant isolation rule (control-plane tables)
 
 Every table in `plt01` obeys this, whichever module owns it. It began as MOD-004's rule and now
-also governs MOD-005's `cfg_*` tables; a later module's tables are covered the same way.
+also governs MOD-005's `cfg_*` and MOD-006's `bil_*` tables; a later module's tables are
+covered the same way.
 
 ## Authority
 
@@ -31,7 +32,7 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 20 checks covering both tracks' tables, and **every one has been run against a
+CI. It carries 26 checks covering both tracks' tables, and **every one has been run against a
 deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash

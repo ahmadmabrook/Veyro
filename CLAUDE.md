@@ -18,6 +18,7 @@ backend/app/            service code
   tenancy/domain/       pure decision functions derived from the TSD; no I/O
   tenancy_s0.py         ProvisionTenant envelope validation (reused by the service)
   configuration/        MOD-005: evaluation.py decides, service.py does the I/O
+  billing/              MOD-006: money.py, subscription.py, usage.py decide; service.py writes
   errors.py             the four service errors every module's service raises
 backend/migrations/     platform/ and tenant/ SQL, applied in filename order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -166,7 +167,45 @@ Known gaps, deliberate:
   names are all expressible that way; set membership and ranges are not, and would need a richer
   match format.
 
-**Next:** MOD-006 onward. Finish a module's real requirements and tests, then move on.
+**MOD-006 (PLT-03 plans, subscriptions, metering and invoices) — implemented.** The plan
+catalogue lives in `plt01_platform` with no runtime-role grant; nine `bil_*` tables live in
+`plt01` under forced RLS. Working: plan versions with prices and entitlement limits, subscriptions
+that snapshot the plan they were sold on, the trial/dunning/grace/suspension/reactivation
+lifecycle, plan changes with day-count proration, entitlement grants and checks, idempotent
+metering with late events and corrections, quotas with overage or hard stop, and issued invoices
+with lines, tax, partner revenue share and credit notes. Proven: isolation checks 21-26, each
+mutation-tested (13 mutations, every one caught by its own check); 74 domain unit tests that need
+no database; 50 integration tests.
+
+Three decisions in this module are worth knowing before extending it:
+
+- **Every amount is an integer in minor units.** No column and no function is floating point.
+  Rounding is half away from zero, so a credit and the charge it reverses have the same
+  magnitude, and `money.allocate` splits by largest remainder so a divided total still sums to
+  itself. The conventions are stated at the top of `app/billing/money.py` because the sources
+  state none; proration is actual days over actual days in the period.
+- **A published plan version is immutable, by privilege.** `saas_prices` and
+  `saas_plan_entitlements` carry no UPDATE grant at all and `saas_plans` carries a column-level
+  UPDATE on its three lifecycle columns only. Re-pricing means a new version; subscriptions
+  already sold keep their snapshot, so an old invoice stays reconstructible.
+- **An invoice has no draft state.** The five ledger tables are insert-only for both runtime
+  roles, so a row exists only once issued and a correction is a credit note rather than an edit.
+
+Known gaps, deliberate:
+
+- **No payment provider and no stored payment methods.** Taking a card is real money and the
+  owner reserves that. `payment_failed` and `payment_recovered` are the commands an integration
+  would call, and they work today against synthetic input.
+- **No tax engine.** `issue_invoice` takes a rate; rates are jurisdictional and the sources state
+  none. A credit-balance invoice carries no tax rather than a negative one.
+- **No cost or gross-margin view** (PLT-03-R07). It needs cloud, AI, messaging and support cost
+  feeds that do not exist here.
+- **No outbox and no published events**, as in MOD-005.
+- `change_plan` takes the tenant's current usage from the caller. The modules that own those
+  counts are not this one, so it does not guess at them, and it never deletes anything to make a
+  smaller plan fit — it refuses, lists the breaches, and proceeds only when acknowledged.
+
+**Next:** MOD-007 onward. Finish a module's real requirements and tests, then move on.
 
 ## Tooling that still earns its place
 

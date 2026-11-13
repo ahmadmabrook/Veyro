@@ -579,4 +579,316 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 20/20 checks passed'
+-- ================================================================ MOD-006 PLT-03 (bil_* tables)
+-- Nine more tenant tables, five of them the billing ledger. The ledger tables get the same
+-- interrogation as every other table plus a direct assertion that no runtime role can revise
+-- them, because "financial correctness" is not a property anyone can read off a schema.
+
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-006)
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.bil_subscriptions
+    (tenant_id, subscription_id, plan_code, plan_version, terms, status, currency,
+     billing_interval, period_start, period_end, started_on)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000001', 'growth', 1,
+        '{"base_price_minor": 29900}'::jsonb, 'active', 'EUR', 'monthly',
+        DATE '2026-11-01', DATE '2026-12-01', DATE '2026-11-01');
+INSERT INTO plt01.bil_subscription_changes
+    (tenant_id, subscription_id, change_kind, to_plan_code, to_plan_version, to_status,
+     effective_on, actor_id, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000001', 'start', 'growth', 1, 'active',
+        DATE '2026-11-01', :'actor', :'actor');
+INSERT INTO plt01.bil_entitlements
+    (tenant_id, subscription_id, feature_code, limit_value)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000001', 'locations', 5);
+INSERT INTO plt01.bil_usage_meters (tenant_id, meter_id, meter_code, unit)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000002', 'messaging.sms', 'message');
+INSERT INTO plt01.bil_usage_records
+    (tenant_id, record_id, meter_id, idempotency_key, quantity, occurred_at,
+     actor_id, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000003',
+        'dddddddd-0000-4000-8000-000000000002', 'seed-key-1', 120,
+        TIMESTAMPTZ '2026-11-05 10:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.bil_quotas (tenant_id, meter_id, period, limit_quantity, overage_allowed)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000002', 'billing_period', 1000, true);
+INSERT INTO plt01.bil_invoices
+    (tenant_id, invoice_id, invoice_number, subscription_id, currency, period_start, period_end,
+     subtotal_minor, tax_minor, total_minor, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000004', 'INV-SEED-1',
+        'dddddddd-0000-4000-8000-000000000001', 'EUR', DATE '2026-11-01', DATE '2026-12-01',
+        29900, 7176, 37076, :'actor');
+INSERT INTO plt01.bil_invoice_lines
+    (tenant_id, invoice_id, line_no, kind, description, quantity, unit_price_minor, amount_minor)
+VALUES (:'tenant_a', 'dddddddd-0000-4000-8000-000000000004', 1, 'base', 'Growth monthly',
+        1, 29900, 29900);
+INSERT INTO plt01.bil_credit_notes
+    (tenant_id, credit_note_number, invoice_id, amount_minor, reason, actor_id, correlation_id)
+VALUES (:'tenant_a', 'CN-SEED-1', 'dddddddd-0000-4000-8000-000000000004', 1000,
+        'goodwill', :'actor', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 21. bil tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['bil_subscriptions', 'bil_subscription_changes',
+                               'bil_entitlements', 'bil_usage_meters', 'bil_usage_records',
+                               'bil_quotas', 'bil_invoices', 'bil_invoice_lines',
+                               'bil_credit_notes'] LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 21 FAILED: tenant B sees % rows in plt01.%', seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.bil_invoices) <> 1
+       OR (SELECT count(*) FROM plt01.bil_usage_records) <> 1
+       OR (SELECT count(*) FROM plt01.bil_subscriptions) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 21 FAILED: tenant A cannot see its own billing rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 22. fail closed, and FORCE
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['bil_subscriptions', 'bil_subscription_changes',
+                               'bil_entitlements', 'bil_usage_meters', 'bil_usage_records',
+                               'bil_quotas', 'bil_invoices', 'bil_invoice_lines',
+                               'bil_credit_notes'] LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION
+                'CHECK 22 FAILED: unset context read % rows from plt01.% -- fails OPEN', seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.bil_invoices) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 22 FAILED: the table owner read % invoices',
+            (SELECT count(*) FROM plt01.bil_invoices);
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'bil\_%'
+          AND relrowsecurity AND relforcerowsecurity) <> 9 THEN
+        RAISE EXCEPTION 'CHECK 22 FAILED: expected 9 bil_ tables with RLS enabled and forced, got %',
+            (SELECT count(*) FROM pg_class
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+               AND relname LIKE 'bil\_%' AND relrowsecurity AND relforcerowsecurity);
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 23. cross-tenant parents
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.bil_entitlements (tenant_id, subscription_id, feature_code, limit_value)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'dddddddd-0000-4000-8000-000000000001', 'locations', 99);
+        RAISE EXCEPTION 'CHECK 23 FAILED: an entitlement was attached across tenants';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_usage_records
+            (tenant_id, meter_id, idempotency_key, quantity, occurred_at, actor_id,
+             correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'dddddddd-0000-4000-8000-000000000002', 'intruder', 1, now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 23 FAILED: usage was recorded against another tenant''s meter';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_invoice_lines
+            (tenant_id, invoice_id, line_no, kind, description, quantity, unit_price_minor,
+             amount_minor)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'dddddddd-0000-4000-8000-000000000004', 9, 'base', 'stolen line', 1, 1, 1);
+        RAISE EXCEPTION 'CHECK 23 FAILED: a line was added to another tenant''s invoice';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_credit_notes
+            (tenant_id, credit_note_number, invoice_id, amount_minor, reason, actor_id,
+             correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222', 'CN-X',
+                'dddddddd-0000-4000-8000-000000000004', 100, 'not mine',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 23 FAILED: another tenant''s invoice was credited';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 24. the metering control
+-- PLT-03's stated control is that metering records are idempotent, attributable and auditable.
+-- Each word is asserted separately, because each is carried by a different mechanism.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_cp_app', 'plt01.bil_usage_records', 'UPDATE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.bil_usage_records', 'DELETE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_usage_records', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_usage_records', 'DELETE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.bil_subscription_changes', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_subscription_changes', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 24 FAILED: a runtime role can revise metering or change history';
+    END IF;
+    BEGIN
+        UPDATE plt01.bil_usage_records SET quantity = 0;
+        RAISE EXCEPTION 'CHECK 24 FAILED: a recorded quantity was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_usage_records
+            (tenant_id, meter_id, idempotency_key, quantity, occurred_at, actor_id,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000002', 'seed-key-1', 500, now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 24 FAILED: a replayed idempotency key double-counted usage';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_usage_records
+            (tenant_id, meter_id, idempotency_key, quantity, occurred_at, actor_id,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000002', 'negative-original', -5, now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 24 FAILED: a negative quantity was recorded without correcting anything';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 25. the invoice ledger
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_cp_app', 'plt01.bil_invoices', 'UPDATE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.bil_invoices', 'DELETE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_invoices', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_invoices', 'DELETE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.bil_invoice_lines', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_invoice_lines', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 25 FAILED: a runtime role can rewrite an issued invoice';
+    END IF;
+    BEGIN
+        UPDATE plt01.bil_invoices SET total_minor = 0;
+        RAISE EXCEPTION 'CHECK 25 FAILED: an issued invoice total was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- The arithmetic the database can check for itself must actually refuse bad arithmetic.
+    BEGIN
+        INSERT INTO plt01.bil_invoices
+            (tenant_id, invoice_number, subscription_id, currency, period_start, period_end,
+             subtotal_minor, tax_minor, total_minor, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'INV-BAD-TOTAL',
+                'dddddddd-0000-4000-8000-000000000001', 'EUR', DATE '2026-12-01',
+                DATE '2027-01-01', 10000, 2400, 99999,
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 25 FAILED: an invoice whose total is not subtotal plus tax was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_invoice_lines
+            (tenant_id, invoice_id, line_no, kind, description, quantity, unit_price_minor,
+             amount_minor)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000004', 9, 'base', 'does not multiply out',
+                3, 100, 250);
+        RAISE EXCEPTION 'CHECK 25 FAILED: a line whose amount is not quantity times price was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 26. credits, and one live sub
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_cp_app', 'plt01.bil_credit_notes', 'UPDATE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.bil_credit_notes', 'DELETE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_credit_notes', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.bil_credit_notes', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 26 FAILED: a runtime role can rewrite a credit note';
+    END IF;
+    BEGIN
+        UPDATE plt01.bil_credit_notes SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 26 FAILED: a credit note was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A tenant on two live subscriptions would be billed twice, and no later code could decide
+    -- which one was real.
+    BEGIN
+        INSERT INTO plt01.bil_subscriptions
+            (tenant_id, plan_code, plan_version, terms, status, currency, billing_interval,
+             period_start, period_end, started_on)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'scale', 1, '{}'::jsonb, 'active',
+                'EUR', 'monthly', DATE '2026-11-01', DATE '2026-12-01', DATE '2026-11-01');
+        RAISE EXCEPTION 'CHECK 26 FAILED: a tenant was given a second live subscription';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.bil_quotas
+            (tenant_id, meter_id, period, limit_quantity, overage_allowed, hard_stop)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000002', 'day', 10, true, true);
+        RAISE EXCEPTION 'CHECK 26 FAILED: a quota both allowed overage and hard-stopped';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 26/26 checks passed'
