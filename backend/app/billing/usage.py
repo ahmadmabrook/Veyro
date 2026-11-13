@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03-R04: usage aggregation, late events, corrections, quotas and overage.
+"""MOD-015 PLT-03-R04: usage aggregation, late events, corrections, quotas and overage.
 
 Pure functions over records the caller has already read. The database holds the control PLT-03
 states -- records are idempotent, attributable and append-only, enforced by a unique key, two

@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03 billing API against a real PostgreSQL with row-level security in force.
+"""MOD-015 PLT-03 billing API against a real PostgreSQL with row-level security in force.
 
 The arithmetic is covered by `test_billing_domain.py`, which needs no database. What is checked
 here is what only the database can answer: that an issued invoice cannot be rewritten, that a

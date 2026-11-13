@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03 service: plan catalogue, subscriptions, entitlements, metering, invoices.
+"""MOD-015 PLT-03 service: plan catalogue, subscriptions, entitlements, metering, invoices.
 
 The decisions live in `app.billing.money`, `app.billing.subscription` and `app.billing.usage`.
 This module reads rows, calls those, and writes what they return. No arithmetic and no transition

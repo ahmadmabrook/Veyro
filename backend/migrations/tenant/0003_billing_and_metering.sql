@@ -1,4 +1,4 @@
--- MOD-006 PLT-03-R02..R06 tenant track: subscriptions, entitlements, metering and invoices.
+-- MOD-015 PLT-03-R02..R06 tenant track: subscriptions, entitlements, metering and invoices.
 --
 -- Protections are the four documented at the head of `0001_organization_hierarchy.sql`. What
 -- follows is only what is specific to money, because money fails differently from the rest of

@@ -18,7 +18,7 @@ backend/app/            service code
   tenancy/domain/       pure decision functions derived from the TSD; no I/O
   tenancy_s0.py         ProvisionTenant envelope validation (reused by the service)
   configuration/        MOD-005: evaluation.py decides, service.py does the I/O
-  billing/              MOD-006: money.py, subscription.py, usage.py decide; service.py writes
+  billing/              MOD-015: money.py, subscription.py, usage.py decide; service.py writes
   errors.py             the four service errors every module's service raises
 backend/migrations/     platform/ and tenant/ SQL, applied in filename order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -108,7 +108,7 @@ against a deliberate mutation and shown to fail; a new one earns its place the s
 caught a weak check already: an earlier "the app role cannot DELETE" test passed only because a
 foreign key refused the delete first.
 
-**Also binding:** authentication and AAL-3 (MOD-002, not yet wired in), immutable audit,
+**Also binding:** authentication and AAL-3 (MOD-007, not yet wired in), immutable audit,
 financial correctness, residency and retention. Validate input at trust boundaries. Historical
 review outcomes and the preserved evidence trees outside the repository are never rewritten.
 
@@ -118,6 +118,11 @@ authentication. `governance/registry.json` `reserved_actions` keeps the four nam
 
 ## State
 
+Module ids come from `tools/mission_runner/module_catalog.json`, and they are **not** the
+TSD's section order. PLT-01 is MOD-004, PLT-02 is MOD-005, but PLT-03 is MOD-015 — MOD-006 is
+the Compose Multiplatform qualification. Check the catalogue before naming a module; this
+session has already labelled one wrong by assuming the two orders matched.
+
 **MOD-004 (tenancy control plane) — implemented, not accepted.** Working: the `plt01_platform`
 registry with tenant lifecycle and append-only history, idempotent provisioning, the `plt01`
 organization/legal-entity/brand/location hierarchy under forced RLS, and an HTTP surface over
@@ -126,7 +131,8 @@ both planes. Proven: isolation checks 1-13, each mutation-tested.
 Known gaps, deliberate and worth reading before extending:
 
 - **No authentication.** `X-Veyro-Tenant` is a claim, shape-checked and nothing more. Isolation
-  does not depend on it being honest, but authorization does not exist yet. MOD-002 owns it.
+  does not depend on it being honest, but authorization does not exist yet. MOD-007 owns
+  identity and authentication; MOD-008 owns roles, permissions, approvals and audit.
 - **No reactivation.** `domain/lifecycle.py` admits only `provisioned → active → suspended →
   archived`. TSD §10.3 puts reactivation in PLT-03; do not invent the edge here.
 - **No hard deletion.** `delete_tenant` refuses by design: PLT-01-R07 bars it until the legal,
@@ -157,7 +163,7 @@ Known gaps, deliberate:
   metrics pipeline that does not exist; a decision record with no measurements behind it would be
   worse than the gap.
 - **No approval workflow** (part of PLT-02-R05). Approval needs an authenticated principal and
-  MOD-002 is not wired in, so there is nobody to approve as. TSD paragraph 1020's change control
+  MOD-007 is not wired in, so there is nobody to approve as. TSD paragraph 1020's change control
   for financial and security flag changes in production is therefore not satisfied by anything
   here; this service runs in local, development and staging only.
 - **No outbox and no published events.** `configuration.changed`, `feature_flag.evaluated`,
@@ -167,7 +173,7 @@ Known gaps, deliberate:
   names are all expressible that way; set membership and ranges are not, and would need a richer
   match format.
 
-**MOD-006 (PLT-03 plans, subscriptions, metering and invoices) — implemented.** The plan
+**MOD-015 (PLT-03 plans, subscriptions, metering and invoices) — implemented.** The plan
 catalogue lives in `plt01_platform` with no runtime-role grant; nine `bil_*` tables live in
 `plt01` under forced RLS. Working: plan versions with prices and entitlement limits, subscriptions
 that snapshot the plan they were sold on, the trial/dunning/grace/suspension/reactivation
@@ -205,7 +211,19 @@ Known gaps, deliberate:
   counts are not this one, so it does not guess at them, and it never deletes anything to make a
   smaller plan fit — it refuses, lists the breaches, and proceeds only when acknowledged.
 
-**Next:** MOD-007 onward. Finish a module's real requirements and tests, then move on.
+**Next.** The control plane now has tenancy, configuration and commerce, and the gap every one
+of those three modules ran into is the same: there is no authenticated principal. MOD-005 could
+not build approval, MOD-015 could not build change control for financial flag changes, and
+`X-Veyro-Tenant` is still a claim nobody checks. **MOD-007 (identity, authentication, passkeys and
+device sessions) is therefore the next thing worth building**, with MOD-008 (authorization, roles,
+approvals, audit) behind it.
+
+The catalogue lists MOD-006 (Compose Multiplatform qualification) as a dependency of MOD-007. That
+dependency is a client-side proof — whether the mobile stack is production-worthy — and the
+server-side identity plane does not need it to exist. Build the server side first and record
+MOD-006 as unbuilt rather than pretending the order was met.
+
+Finish a module's real requirements and tests, then move on.
 
 ## Tooling that still earns its place
 

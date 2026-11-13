@@ -579,12 +579,12 @@ BEGIN
 END $$;
 ROLLBACK;
 
--- ================================================================ MOD-006 PLT-03 (bil_* tables)
+-- ================================================================ MOD-015 PLT-03 (bil_* tables)
 -- Nine more tenant tables, five of them the billing ledger. The ledger tables get the same
 -- interrogation as every other table plus a direct assertion that no runtime role can revise
 -- them, because "financial correctness" is not a property anyone can read off a schema.
 
--- ---------------------------------------------------------------- seed (tenant plane, MOD-006)
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-015)
 BEGIN;
 SET LOCAL ROLE veyro_cp_app;
 SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';

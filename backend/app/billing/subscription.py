@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03-R02/R05: the subscription lifecycle and what a plan change is allowed to do.
+"""MOD-015 PLT-03-R02/R05: the subscription lifecycle and what a plan change is allowed to do.
 
 Pure functions. The service persists what these admit, so there is one transition table in the
 codebase rather than one per call site.

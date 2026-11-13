@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03 domain: money, lifecycle and metering decisions, with no database.
+"""MOD-015 PLT-03 domain: money, lifecycle and metering decisions, with no database.
 
 The arithmetic is the part that has to be right. A tenant-isolation bug is caught by the suite in
 tests/sql; a rounding bug is caught here or it is caught by a customer.

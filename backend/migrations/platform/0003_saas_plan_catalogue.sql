@@ -1,4 +1,4 @@
--- MOD-006 PLT-03-R01 platform track: the SaaS plan catalogue Veyro sells itself on.
+-- MOD-015 PLT-03-R01 platform track: the SaaS plan catalogue Veyro sells itself on.
 --
 -- This is platform state, not tenant state, so it sits in `plt01_platform` with no row-level
 -- security and no grant to either runtime role -- the same boundary `0002_tenant_registry.sql`

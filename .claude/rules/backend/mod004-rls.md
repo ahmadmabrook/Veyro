@@ -1,7 +1,7 @@
 # Tenant isolation rule (control-plane tables)
 
 Every table in `plt01` obeys this, whichever module owns it. It began as MOD-004's rule and now
-also governs MOD-005's `cfg_*` and MOD-006's `bil_*` tables; a later module's tables are
+also governs MOD-005's `cfg_*` and MOD-015's `bil_*` tables; a later module's tables are
 covered the same way.
 
 ## Authority

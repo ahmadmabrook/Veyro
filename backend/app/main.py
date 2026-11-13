@@ -2,7 +2,7 @@
 
 **The tenant on a request is a claim, not an authentication.** ``X-Veyro-Tenant`` is read and
 shape-checked and nothing more; no principal is authenticated and no permission is evaluated,
-because authentication and AAL-3 belong to MOD-002, which is not wired in. The environments this
+because authentication and AAL-3 belong to MOD-007, which is not wired in. The environments this
 service accepts are local, development and staging -- there is no production value -- so the
 claim never reaches real member data. Isolation does not rest on this header being honest: it
 rests on row-level security, which confines whatever tenant the header names and returns nothing
@@ -463,7 +463,7 @@ def create_app(
             brand_id=brand_id, location_id=location_id,
         )
 
-    # --------------------------------------------------- MOD-006 plans and billing
+    # --------------------------------------------------- MOD-015 plans and billing
 
     @app.post("/platform/plans", status_code=201)
     def create_plan(body: PlanBody) -> dict[str, Any]:

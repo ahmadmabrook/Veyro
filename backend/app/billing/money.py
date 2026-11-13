@@ -1,4 +1,4 @@
-"""MOD-006 PLT-03: money arithmetic, in integers, with the conventions written down.
+"""MOD-015 PLT-03: money arithmetic, in integers, with the conventions written down.
 
 **Every amount is an integer count of minor units** -- cents, aurar, pence. Nothing here takes or
 returns a float. That is not fussiness: `0.1 + 0.2 != 0.3` in binary floating point, and an
