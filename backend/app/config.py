@@ -14,6 +14,7 @@ class ConfigError(ValueError):
 class Settings:
     environment: str
     release: str
+    database_url: str
 
 
 def load_settings(env: dict[str, str] | None = None) -> Settings:
@@ -26,4 +27,7 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     release = source.get("VEYRO_RELEASE", "unversioned")
     if not release.strip():
         raise ConfigError("VEYRO_RELEASE must not be blank")
-    return Settings(environment=environment, release=release)
+    database_url = source.get("VEYRO_DATABASE_URL", "")
+    if not database_url.strip():
+        raise ConfigError("VEYRO_DATABASE_URL must be set")
+    return Settings(environment=environment, release=release, database_url=database_url)

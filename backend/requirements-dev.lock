@@ -325,6 +325,33 @@ pathspec==1.1.1 \
     --hash=sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a \
     --hash=sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
     # via mypy
+psycopg==3.3.9 \
+    --hash=sha256:87c1d85c3e0e88e811d3c0b3808f947bd967c6faf34af6cd86fd021f77793d6c \
+    --hash=sha256:d2d7d04a1ce6dab4f5b27316bea3b52585cafa2f2d631e5b09dd69823f5c26f6
+    # via
+    #   -c backend/requirements.lock
+    #   -r backend/requirements.txt
+psycopg-binary==3.3.9 ; implementation_name != 'pypy' \
+    --hash=sha256:13bfe814718c8a1b9b656c0d754962e0027cc3e43630661825fe197babc99320 \
+    --hash=sha256:14666a85aa330058929e4abedd940f754f0e5589efae6366d95c513288856fb5 \
+    --hash=sha256:180e4a99904d7a77f826fbb6dd16834bb3313675d8a6f055e39742fda00c33dc \
+    --hash=sha256:366e2021a785afed9154f83f64793f662348a9ef244fef9779175c0906e8aacc \
+    --hash=sha256:417c3fe0ac2079a82a8c72ba214a65c66c22036a5d2d8c24c77c5708a58938b9 \
+    --hash=sha256:4b44a09bb7c92666aec8a00d5d390ff6f4e573d345ccde0f71b45597511449fb \
+    --hash=sha256:a0ed63b05046bc40d76109d95c757d3eac38488b17c68ae9e8160040d0ed0f89 \
+    --hash=sha256:b98ecad106cd48998517e03aaee56f9d88f8857e043b8e3dbc2aa7facd475db6 \
+    --hash=sha256:e835af41e74176041d2290b167af92b74793b916ca3413598c39b535dd3674a5 \
+    --hash=sha256:eb74f5299501f83f3ad7b8e99405ca451b77c74d65767bac7f46d22c4e9411ae \
+    --hash=sha256:f85821eba1f8c27e080eba955eb9dddaa638f61e363b4f3b2266bd9ec4ff73bd
+    # via
+    #   -c backend/requirements.lock
+    #   psycopg
+psycopg-pool==3.3.3 \
+    --hash=sha256:9b9cd6a4fcec47a410f7e82d408540e7f77b478509e91b44c1a5457a13e5ff37 \
+    --hash=sha256:df87b5d9d0ad7db37f6cdad4fa8ce113d250f5997f6db38e9a99192fb67f9e1d
+    # via
+    #   -c backend/requirements.lock
+    #   psycopg
 pydantic==2.14.1 \
     --hash=sha256:9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454 \
     --hash=sha256:94f478203dd03404682a1ada216965651dd74b1d2d5ffd62e00e0837caab5c26
@@ -507,6 +534,7 @@ typing-extensions==4.16.0 \
     #   fastapi
     #   mypy
     #   opentelemetry-api
+    #   psycopg-pool
     #   pydantic
     #   pydantic-core
     #   typing-inspection
@@ -517,6 +545,12 @@ typing-inspection==0.4.4 \
     #   -c backend/requirements.lock
     #   fastapi
     #   pydantic
+tzdata==2026.6 ; sys_platform == 'win32' \
+    --hash=sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec \
+    --hash=sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d
+    # via
+    #   -c backend/requirements.lock
+    #   psycopg
 uvicorn==0.54.0 \
     --hash=sha256:505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf \
     --hash=sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620

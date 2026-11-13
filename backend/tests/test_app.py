@@ -5,10 +5,14 @@ from fastapi.testclient import TestClient
 from app.config import ConfigError, Settings, load_settings
 from app.main import create_app
 
+DSN = "postgresql://postgres:unused@127.0.0.1:5432/veyro"
+
 
 class HealthzTests(unittest.TestCase):
     def client(self, environment: str = "local", release: str = "r1") -> TestClient:
-        return TestClient(create_app(Settings(environment, release)))
+        return TestClient(
+            create_app(Settings(environment, release, "postgresql://unused/veyro"))
+        )
 
     def test_healthz_is_deterministic_and_reports_environment_and_release(self):
         c = self.client("staging", "abc123")
@@ -37,17 +41,26 @@ class HealthzTests(unittest.TestCase):
 class ConfigTests(unittest.TestCase):
     def test_each_supported_environment_loads(self):
         for name in ("local", "development", "staging"):
-            s = load_settings({"VEYRO_ENV": name})
+            s = load_settings({"VEYRO_ENV": name, "VEYRO_DATABASE_URL": DSN})
             self.assertEqual((s.environment, s.release), (name, "unversioned"))
+            self.assertEqual(s.database_url, DSN)
 
     def test_missing_or_unknown_environment_fails_closed(self):
         for env in ({}, {"VEYRO_ENV": "production"}, {"VEYRO_ENV": ""}):
             with self.assertRaises(ConfigError):
-                load_settings(env)
+                load_settings({**env, "VEYRO_DATABASE_URL": DSN})
 
     def test_blank_release_rejected(self):
         with self.assertRaises(ConfigError):
-            load_settings({"VEYRO_ENV": "local", "VEYRO_RELEASE": "  "})
+            load_settings(
+                {"VEYRO_ENV": "local", "VEYRO_RELEASE": "  ", "VEYRO_DATABASE_URL": DSN}
+            )
+
+    def test_missing_database_url_fails_closed(self):
+        """The service has no in-memory fallback, so a missing DSN must not start it."""
+        for env in ({"VEYRO_ENV": "local"}, {"VEYRO_ENV": "local", "VEYRO_DATABASE_URL": " "}):
+            with self.assertRaises(ConfigError):
+                load_settings(env)
 
 
 if __name__ == "__main__":
