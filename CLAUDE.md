@@ -318,11 +318,32 @@ simulator, approvals with thresholds and separation of duties, access reviews, a
 audit log. Proven: isolation checks 30-32, each mutation-tested (13 breaks); 7 tamper tests
 against the chain; 75 domain unit tests with no database; 32 integration tests.
 
-**Nothing outside MOD-008 is gated yet.** `require` is the only way anything asks whether a
-caller may act, and the only callers are MOD-008's own routes. The catalogue's `tenancy.*`,
-`config.*` and `billing.*` permissions are real entries that nothing checks, so MOD-004, MOD-005
-and MOD-015 are still open to anyone holding a tenant UUID. Wiring them is the next change and it
-is deliberately separate: it touches every surface in the product and wants its own review.
+**The product is gated.** All 36 tenant-plane routes -- the organization hierarchy, configuration
+and flags, subscriptions, metering and invoices -- go through `permit`, which calls
+`authz.require`, which asks authorization and assurance together and writes the denial to the
+audit log itself. `backend/tests/test_gating.py` is the suite that says so, and it is written as
+the attacker rather than the user: it sweeps every route with no session (422), with a session
+holding nothing (403), with a read permission against a write route, and with a permission held
+on a session too weak for it.
+
+**The platform plane is deliberately still open, and that is wider than it sounds.** `/platform/*`
+provisions tenants, moves them through their lifecycle and reads their history, and none of it
+asks for anything. Anyone who can reach that surface can create a tenant and bootstrap it -- and
+can **suspend or archive a tenant that already exists**, which is denial of service against a live
+customer, not merely unwanted signup. Authenticating it is a different problem from authorizing a
+tenant's own users: there is no platform identity to be yet, and inventing one here would be
+inventing product. **Nothing should be deployed anywhere this surface is reachable.**
+
+Two consequences to know before touching a product route:
+
+- **A caller needs a session, and the session needs a role.** A tenant is unusable until somebody
+  bootstraps it, which is one call and self-closing. `backend/tests/support.py` is how the suites
+  get an owner; it builds one through the service layer rather than HTTP, because the HTTP path
+  spends a dozen scrypt hashes per tenant and that is most of the suite's wall-clock.
+- **Several writes need a stepped-up session as well as the permission**, because
+  `catalog.action_class` marks them `financial`: every billing write, flag and configuration
+  changes, and the hierarchy writes. Holding the permission on an AAL-1 session is not enough.
+  That is the point, and it will surprise a caller that read only the permission list.
 
 The design decisions worth knowing:
 
@@ -402,8 +423,10 @@ Known gaps, deliberate:
   retention-controlled; the third is a policy about deleting old records on purpose and has no
   implementation here.
 
-**Next.** Gate the product: make MOD-004, MOD-005 and MOD-015 routes call `require`, which is
-what turns the catalogue from a list into a control. Then MOD-009 onward.
+**Next.** MOD-009 (security, privacy, compliance and consent) onward. Two things the gating
+change named rather than did: the platform plane is unauthenticated, and `Decision.mask` is
+computed on every allowed read while no read path applies it -- the masked field list comes back
+with the decision and the callers ignore it.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

@@ -1,0 +1,242 @@
+"""The product surfaces are behind MOD-008's gate. These are the tests that say so.
+
+Every other product suite runs as a fully-privileged owner, which proves the routes still work
+and proves nothing about whether they are guarded. This one approaches them the way an attacker
+would: with no session, with a session holding nothing, and with a session holding the read
+permission when the route wants the write one.
+
+IAM-03's control is that default deny is mandatory. A catalogue nothing checks is a list, so the
+thing worth testing is the refusal.
+"""
+
+from __future__ import annotations
+
+import unittest
+import uuid
+
+from app.authorization import service as authz
+from tests.support import GatedApiTestCase
+
+# Every tenant-plane route, with the permission it demands and a body that would otherwise
+# succeed. A route added without a `permit` call shows up here as a 2xx.
+READ_ROUTES = [
+    ("get", "/organizations", None),
+    ("get", "/locations", None),
+    ("get", "/config/definitions", None),
+    ("get", "/config/resolved", None),
+    ("get", "/invoices", None),
+    ("get", "/entitlements", None),
+]
+
+WRITE_ROUTES = [
+    ("post", "/organizations", {"legal_name": "X ehf", "country_code": "IS"}),
+    ("post", "/config/definitions", {"config_key": "a.b", "value_type": "integer",
+                                     "default_value": 1, "owner_module": "MOD-005"}),
+    ("put", "/flags/pay.test", {"enabled": True, "default_variant": "off", "rules": []}),
+    ("post", "/meters", {"meter_code": "m.sms", "unit": "message", "aggregation": "sum"}),
+]
+
+
+class NoSessionTests(GatedApiTestCase):
+    def test_every_product_route_refuses_a_caller_with_no_session(self):
+        """The tenant header is an unauthenticated claim; on its own it now opens nothing."""
+        tenant_id = self.tenant()
+        bare = {"X-Veyro-Tenant": tenant_id}
+        for method, path, body in READ_ROUTES + WRITE_ROUTES:
+            call = getattr(self.client, method)
+            kwargs = {"json": body} if body is not None else {}
+            response = call(path, headers=bare, **kwargs)
+            self.assertEqual(response.status_code, 422, f"{method.upper()} {path}")
+
+    def test_a_garbage_token_is_refused(self):
+        tenant_id = self.tenant()
+        head = {"X-Veyro-Tenant": tenant_id, "Authorization": "Bearer nonsense"}
+        self.assertEqual(self.client.get("/organizations", headers=head).status_code, 401)
+
+    def test_platform_routes_stay_open_deliberately(self):
+        """The control plane is not behind MOD-008; see the gap note in CLAUDE.md."""
+        response = self.client.post("/platform/tenants", json={
+            "external_key": f"open-{uuid.uuid4()}", "display_name": "Open", "region": "eu-west",
+            "actor_id": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4()),
+            "idempotency_key": str(uuid.uuid4())})
+        self.assertEqual(response.status_code, 201)
+
+
+class UnprivilegedSessionTests(GatedApiTestCase):
+    def test_a_session_holding_nothing_is_refused_everywhere(self):
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.unprivileged(tenant_id))
+        for method, path, body in READ_ROUTES + WRITE_ROUTES:
+            call = getattr(self.client, method)
+            kwargs = {"json": body} if body is not None else {}
+            response = call(path, headers=head, **kwargs)
+            self.assertEqual(response.status_code, 403, f"{method.upper()} {path}")
+
+    def test_the_refusal_reaches_the_audit_log(self):
+        """`require` writes the denial itself, so a route cannot forget to record it."""
+        tenant_id = self.tenant()
+        head = self.headers(tenant_id, self.unprivileged(tenant_id))
+        self.client.get("/organizations", headers=head)
+        entries = authz.read_audit(self._identity_pool, tenant_id, limit=500)
+        denials = [e for e in entries
+                   if e["outcome"] == "denied" and e["action"] == "tenancy.organization.read"]
+        self.assertTrue(denials, "a denied product call is an access event worth recording")
+
+
+class LeastPrivilegeTests(GatedApiTestCase):
+    def test_a_read_permission_does_not_confer_the_write(self):
+        tenant_id = self.tenant()
+        token = self.grant(tenant_id, ["tenancy.organization.read"])
+        head = self.headers(tenant_id, token)
+        self.assertEqual(self.client.get("/organizations", headers=head).status_code, 200)
+        refused = self.client.post("/organizations", headers=head,
+                                   json={"legal_name": "X ehf", "country_code": "IS"})
+        self.assertEqual(refused.status_code, 403)
+
+    def test_a_configuration_permission_does_not_reach_billing(self):
+        tenant_id = self.tenant()
+        token = self.grant(tenant_id, ["config.definition.read", "config.flag.read"])
+        head = self.headers(tenant_id, token)
+        self.assertEqual(self.client.get("/config/definitions", headers=head).status_code, 200)
+        self.assertEqual(self.client.get("/invoices", headers=head).status_code, 403)
+
+    def test_a_financial_write_needs_a_stepped_up_session_as_well_as_the_permission(self):
+        """`config.flag.write` is `financial` per TSD paragraph 1020's change control."""
+        tenant_id = self.tenant()
+        token = self.grant(tenant_id, ["config.flag.write", "config.flag.read"])
+        head = self.headers(tenant_id, token)
+        refused = self.client.put("/flags/pay.test", headers=head, json={
+            "enabled": True, "default_variant": "off", "rules": []})
+        self.assertEqual(refused.status_code, 403,
+                         "holding the permission on an AAL-1 session is not enough")
+        allowed = self.client.put("/flags/pay.test", headers=self.headers(tenant_id), json={
+            "enabled": True, "default_variant": "off", "rules": []})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+    def test_a_routine_read_works_on_an_unstepped_session(self):
+        tenant_id = self.tenant()
+        token = self.grant(tenant_id, ["config.flag.read"])
+        response = self.client.get("/flags", params={"subject_id": "member-1"},
+                                   headers=self.headers(tenant_id, token))
+        self.assertEqual(response.status_code, 200, response.text)
+
+
+class CrossTenantTests(GatedApiTestCase):
+    def test_an_owner_of_one_tenant_authorizes_nothing_in_another(self):
+        first, second = self.tenant(), self.tenant()
+        borrowed = self.headers(second, self.owner_token(first))
+        self.assertEqual(self.client.get("/organizations", headers=borrowed).status_code, 401,
+                         "the session does not resolve under another tenant at all")
+
+
+class ReviewRegressionTests(GatedApiTestCase):
+    """One test per defect an independent review of the gate found, named for the attack.
+
+    Each of these passed as a route-is-guarded check before the review and still let the caller
+    through, because the permission the route named was not the permission the route needed. A
+    route guarded by the wrong permission reads exactly like a guarded route from the outside;
+    only asking what the weakest credential that satisfies it can do tells them apart.
+    """
+
+    def test_a_flag_reader_cannot_write_an_experiment_exposure(self):
+        """`/experiments/{key}/allocate` was guarded by `config.flag.read`: "See feature flags".
+
+        It inserts into `cfg_exposures`, which carries no UPDATE or DELETE grant, so what a
+        read-only kiosk credential wrote there was permanent and became the basis of the
+        experiment's analysis -- including exposures for subjects that do not exist.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        key = f"exp.{uuid.uuid4().hex[:8]}"
+        created = self.client.post("/experiments", headers=owner, json={
+            "experiment_key": key,
+            "variants": [{"variant_key": "control", "weight": 1},
+                         {"variant_key": "treatment", "weight": 1}]})
+        self.assertEqual(created.status_code, 201, created.text)
+        # A draft experiment assigns nobody, so it would refuse the write for the wrong reason.
+        self.assertEqual(self.client.post(f"/experiments/{key}/status", headers=owner,
+                                          json={"status": "running"}).status_code, 200)
+
+        reader = self.headers(tenant_id, self.grant(tenant_id, ["config.flag.read"]))
+        refused = self.client.post(f"/experiments/{key}/allocate", headers=reader,
+                                   json={"subject_id": "ghost-1"})
+        self.assertEqual(refused.status_code, 403, "reading flags must not write an exposure")
+
+        exposures = self.client.get(f"/experiments/{key}/exposures", headers=owner)
+        self.assertEqual(exposures.json(), [], "the refusal must leave nothing behind")
+
+        allowed = self.client.post(f"/experiments/{key}/allocate", headers=owner,
+                                   json={"subject_id": "member-1"})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertTrue(allowed.json()["newly_exposed"])
+        self.assertEqual(
+            [e["subject_id"] for e in self.client.get(f"/experiments/{key}/exposures",
+                                                      headers=owner).json()],
+            ["member-1"], "a permitted allocation still writes one")
+
+    def test_a_usage_emitter_cannot_define_a_meter_or_move_its_quota(self):
+        """`/meters` and `/meters/{code}/quota` were guarded by `billing.usage.record`.
+
+        That is the one finance permission deliberately left `routine`, because recording a
+        measurement is telemetry a device does continuously. Defining what is measured, and
+        setting the limit at which usage starts costing money or stops being allowed, are
+        decisions that spend the measurement -- so the credential being metered could raise its
+        own ceiling and switch its own hard stop off.
+        """
+        tenant_id = self.tenant()
+        owner = self.headers(tenant_id)
+        code = f"m.{uuid.uuid4().hex[:6]}"
+        self.assertEqual(self.client.post("/meters", headers=owner, json={
+            "meter_code": code, "unit": "message", "aggregation": "sum"}).status_code, 201)
+        self.assertEqual(self.client.post(f"/meters/{code}/quota", headers=owner, json={
+            "period": "billing_period", "limit_quantity": 100, "hard_stop": True}).status_code, 200)
+
+        emitter = self.headers(tenant_id, self.grant(tenant_id, ["billing.usage.record"]))
+        self.assertEqual(self.client.post("/meters", headers=emitter, json={
+            "meter_code": f"m.{uuid.uuid4().hex[:6]}", "unit": "message"}).status_code, 403)
+        raised = self.client.post(f"/meters/{code}/quota", headers=emitter, json={
+            "period": "billing_period", "limit_quantity": 100_000_000,
+            "overage_allowed": True, "hard_stop": False})
+        self.assertEqual(raised.status_code, 403, "the metered credential must not move its cap")
+
+        # ...and the permission still does the job it was granted for.
+        recorded = self.client.post("/usage", headers=emitter, json={
+            "meter_code": code, "quantity": 1, "idempotency_key": str(uuid.uuid4()),
+            "actor_id": str(uuid.uuid4()), **self.correlation()})
+        self.assertEqual(recorded.status_code, 201, recorded.text)
+
+    def test_defining_a_meter_needs_a_stepped_up_session(self):
+        """The new permissions are `financial`, so holding one on an AAL-1 session is not enough."""
+        tenant_id = self.tenant()
+        scoped = self.headers(
+            tenant_id, self.grant(tenant_id, ["billing.meter.write", "billing.quota.write"]))
+        refused = self.client.post("/meters", headers=scoped, json={
+            "meter_code": f"m.{uuid.uuid4().hex[:6]}", "unit": "message"})
+        self.assertEqual(refused.status_code, 403)
+
+    def test_the_gate_records_the_correlation_id_the_caller_sent(self):
+        """The refusal and the request that caused it have to be joinable.
+
+        Eight routes took a `correlation_id` in the body and did not hand it to the gate, so the
+        gate minted its own: the denial was recorded under an id the caller had never seen and
+        could not search for. Only denials are written -- an allow leaves its evidence in the
+        business record the call goes on to make -- so a denial is what this looks for.
+        """
+        tenant_id = self.tenant()
+        correlation = str(uuid.uuid4())
+        onlooker = self.headers(tenant_id, self.grant(tenant_id, ["billing.subscription.read"]))
+        refused = self.client.post("/subscription", headers=onlooker, json={
+            "plan_code": "starter", "plan_version": 1,
+            "actor_id": str(uuid.uuid4()), "correlation_id": correlation})
+        self.assertEqual(refused.status_code, 403, refused.text)
+
+        entries = authz.read_audit(self._identity_pool, tenant_id, limit=500)
+        matched = [e for e in entries
+                   if e["correlation_id"] == correlation
+                   and e["action"] == "billing.subscription.write"
+                   and e["outcome"] == "denied"]
+        self.assertTrue(matched, "the gate must record the caller's own correlation id")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -222,12 +222,16 @@ class GateTests(AuthorizationTestCase):
 
 class ScopeAndPolicyTests(AuthorizationTestCase):
     def brand(self, tenant_id: str, token: str) -> str:
+        """Built through the hierarchy routes, which are themselves gated now."""
+        head = self.headers(tenant_id, token)
         org = self.client.post("/organizations",
                                json={"legal_name": "Authz ehf", "country_code": "IS"},
-                               headers=self.headers(tenant_id))
+                               headers=head)
+        self.assertEqual(org.status_code, 201, org.text)
         brand = self.client.post("/brands", json={
             "organization_id": org.json()["organization_id"], "brand_name": "Authz City"},
-            headers=self.headers(tenant_id))
+            headers=head)
+        self.assertEqual(brand.status_code, 201, brand.text)
         return str(brand.json()["brand_id"])
 
     def test_a_brand_scoped_assignment_grants_only_at_that_brand(self):
@@ -503,9 +507,9 @@ class AccessReviewTests(AuthorizationTestCase):
 class ReviewRegressionTests(AuthorizationTestCase):
     """One test per finding from the independent review, as the attack that must fail."""
 
-    def hierarchy(self, tenant_id: str) -> tuple[str, str, str]:
-        """Two brands and a location under the second one."""
-        head = self.headers(tenant_id)
+    def hierarchy(self, tenant_id: str, token: str) -> tuple[str, str, str]:
+        """Two brands and a location under the second one, built through the gated routes."""
+        head = self.headers(tenant_id, token)
         org = self.client.post("/organizations",
                                json={"legal_name": "Two Brands ehf", "country_code": "IS"},
                                headers=head).json()["organization_id"]
@@ -524,7 +528,7 @@ class ReviewRegressionTests(AuthorizationTestCase):
         """Sending your own brand id beside somebody else's location used to work."""
         tenant_id, _, admin_token = self.admin()
         head = self.headers(tenant_id, admin_token)
-        brand_a, brand_b, location_of_b = self.hierarchy(tenant_id)
+        brand_a, brand_b, location_of_b = self.hierarchy(tenant_id, admin_token)
         self.client.post("/authz/roles", json={
             "role_key": "brand_mgr", "display_name": "Brand Manager",
             "permissions": ["member.profile.read"], **self.correlation()}, headers=head)
@@ -553,7 +557,7 @@ class ReviewRegressionTests(AuthorizationTestCase):
     def test_b2b_a_brand_scope_still_reaches_its_own_locations(self):
         tenant_id, _, admin_token = self.admin()
         head = self.headers(tenant_id, admin_token)
-        _, brand_b, location_of_b = self.hierarchy(tenant_id)
+        _, brand_b, location_of_b = self.hierarchy(tenant_id, admin_token)
         self.client.post("/authz/roles", json={
             "role_key": "own_brand", "display_name": "Own Brand",
             "permissions": ["member.profile.read"], **self.correlation()}, headers=head)

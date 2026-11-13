@@ -9,54 +9,14 @@ configuration keys do not see each other at all.
 
 from __future__ import annotations
 
-import os
 import unittest
 import uuid
 
-from fastapi.testclient import TestClient
-
-from app.config import Settings
-from app.db import make_platform_pool, make_tenant_pool
-from app.main import create_app
-
-DSN = os.environ.get("VEYRO_DATABASE_URL", "")
+from tests.support import GatedApiTestCase
 
 
-@unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
-class ConfigurationApiTests(unittest.TestCase):
-    client: TestClient
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls._tenant_pool = make_tenant_pool(DSN)
-        cls._platform_pool = make_platform_pool(DSN)
-        app = create_app(
-            Settings(environment="local", release="test", database_url=DSN),
-            tenant_pool=cls._tenant_pool,
-            platform_pool=cls._platform_pool,
-        )
-        cls._client_cm = TestClient(app)
-        cls.client = cls._client_cm.__enter__()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls._client_cm.__exit__(None, None, None)
-        cls._tenant_pool.close()
-        cls._platform_pool.close()
-
+class ConfigurationApiTests(GatedApiTestCase):
     # ------------------------------------------------------------------ helpers
-
-    def tenant(self) -> str:
-        response = self.client.post("/platform/tenants", json={
-            "external_key": f"cfg-{uuid.uuid4()}", "display_name": "Config Gym",
-            "region": "eu-west", "actor_id": str(uuid.uuid4()),
-            "correlation_id": str(uuid.uuid4()), "idempotency_key": str(uuid.uuid4()),
-        })
-        self.assertEqual(response.status_code, 201, response.text)
-        return str(response.json()["tenant_id"])
-
-    def headers(self, tenant_id: str) -> dict[str, str]:
-        return {"X-Veyro-Tenant": tenant_id}
 
     def define(self, tenant_id: str, key: str = "checkin.grace_minutes", **overrides):
         body = {"config_key": key, "value_type": "integer", "default_value": 15,

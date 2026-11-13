@@ -70,6 +70,22 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("config.kill_switch.engage", "Engage or release a kill switch",
        "configuration", "financial"),
     _p("config.experiment.write", "Create or move an experiment", "configuration", "financial"),
+    # Allocating is a runtime act a device performs on a member's first screen, so it is routine
+    # like the other evaluation permissions -- but it **writes**, and `cfg_exposures` carries no
+    # UPDATE or DELETE grant, so what it writes is permanent and is the basis of every analysis
+    # of the experiment. It had been guarded by `config.flag.read`, whose own description is
+    # "See feature flags"; a read-only kiosk credential could fabricate exposures for subjects
+    # that do not exist, and nothing could remove them.
+    #
+    # Routine is correct here rather than merely pragmatic: a device cannot reach assurance
+    # level 2 at all, because `complete_step_up` accepts only a verified password or recovery
+    # code and there is nobody at the kiosk to present one. Marking this `financial` would not
+    # add a factor; it would make the route unusable by its only caller, which is how a control
+    # ends up switched off or routed around. What bounds the write instead is that it is its own
+    # permission and that it is idempotent per (experiment, subject), so a compromised credential
+    # can add rows for subject ids it invents but cannot rewrite one. The residual is volume, and
+    # volume is the missing rate limiter's job -- see the gap list in CLAUDE.md.
+    _p("config.experiment.allocate", "Assign a subject to an experiment variant", "data_access"),
     # MOD-015, commerce.
     _p("billing.plan.write", "Create or publish a plan version", "finance", "financial"),
     _p("billing.subscription.read", "See the subscription", "finance"),
@@ -85,6 +101,13 @@ PERMISSIONS: dict[str, Permission] = dict([
     # check switched off; the decisions that spend the measurement (issuing, crediting,
     # approving) are the ones that need a second factor, and they have one.
     _p("billing.usage.record", "Record metered usage", "finance"),
+    # Separate from recording, and financial, for the reason the comment above gives: a quota is
+    # what decides when usage starts costing money and when it stops being allowed at all, and
+    # defining a meter decides what is measured. Guarding them with the telemetry permission let
+    # the credential being measured raise its own limit and switch its hard stop off.
+    _p("billing.meter.write", "Define or change a usage meter", "finance", "financial"),
+    _p("billing.quota.write", "Set a usage quota, overage or hard stop", "finance",
+       "financial"),
     # MOD-007, identity.
     _p("identity.identity.read", "See identities", "data_access"),
     _p("identity.identity.write", "Create or change an identity", "access", "financial"),

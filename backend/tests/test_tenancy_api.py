@@ -11,17 +11,10 @@ no test depends on another's rows and nothing needs tearing down.
 
 from __future__ import annotations
 
-import os
 import unittest
 import uuid
 
-from fastapi.testclient import TestClient
-
-from app.config import Settings
-from app.db import make_platform_pool, make_tenant_pool
-from app.main import create_app
-
-DSN = os.environ.get("VEYRO_DATABASE_URL", "")
+from tests.support import GatedApiTestCase
 
 
 def _envelope(external_key: str, **overrides: object) -> dict[str, object]:
@@ -37,27 +30,9 @@ def _envelope(external_key: str, **overrides: object) -> dict[str, object]:
     return body
 
 
-@unittest.skipUnless(DSN, "VEYRO_DATABASE_URL is not set")
-class TenancyApiTests(unittest.TestCase):
-    client: TestClient
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls._tenant_pool = make_tenant_pool(DSN)
-        cls._platform_pool = make_platform_pool(DSN)
-        app = create_app(
-            Settings(environment="local", release="test", database_url=DSN),
-            tenant_pool=cls._tenant_pool,
-            platform_pool=cls._platform_pool,
-        )
-        cls._client_cm = TestClient(app)
-        cls.client = cls._client_cm.__enter__()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls._client_cm.__exit__(None, None, None)
-        cls._tenant_pool.close()
-        cls._platform_pool.close()
+class TenancyApiTests(GatedApiTestCase):
+    """Platform-plane routes are ungated (see the module docstring in app/main.py), but the
+    hierarchy routes under them are not, so this suite still needs an owner."""
 
     def provision(self, **overrides: object) -> dict[str, object]:
         response = self.client.post(
@@ -67,6 +42,7 @@ class TenancyApiTests(unittest.TestCase):
         return response.json()
 
     def active_tenant(self) -> str:
+        """An active tenant with an owner, since the hierarchy routes are gated now."""
         tenant = self.provision()
         tenant_id = str(tenant["tenant_id"])
         response = self.client.post(
@@ -74,6 +50,7 @@ class TenancyApiTests(unittest.TestCase):
             json={"actor_id": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4())},
         )
         self.assertEqual(response.status_code, 200, response.text)
+        self._owners[tenant_id] = self.make_owner(tenant_id)[1]
         return tenant_id
 
     # ------------------------------------------------------------------ lifecycle
@@ -170,13 +147,13 @@ class TenancyApiTests(unittest.TestCase):
         first, second = self.active_tenant(), self.active_tenant()
         created = self.client.post(
             "/organizations",
-            headers={"X-Veyro-Tenant": first},
+            headers=self.headers(first),
             json={"legal_name": "First ehf", "country_code": "IS"},
         )
         self.assertEqual(created.status_code, 201, created.text)
 
-        mine = self.client.get("/organizations", headers={"X-Veyro-Tenant": first}).json()
-        theirs = self.client.get("/organizations", headers={"X-Veyro-Tenant": second}).json()
+        mine = self.client.get("/organizations", headers=self.headers(first)).json()
+        theirs = self.client.get("/organizations", headers=self.headers(second)).json()
         self.assertEqual(len(mine), 1)
         self.assertEqual(theirs, [], "a second tenant must not see the first tenant's rows")
 
@@ -184,19 +161,19 @@ class TenancyApiTests(unittest.TestCase):
         first, second = self.active_tenant(), self.active_tenant()
         organization = self.client.post(
             "/organizations",
-            headers={"X-Veyro-Tenant": first},
+            headers=self.headers(first),
             json={"legal_name": "First ehf", "country_code": "IS"},
         ).json()
         stolen = self.client.post(
             "/brands",
-            headers={"X-Veyro-Tenant": second},
+            headers=self.headers(second),
             json={"organization_id": organization["organization_id"], "brand_name": "Stolen"},
         )
         self.assertEqual(stolen.status_code, 404, "the composite foreign key must refuse this")
 
     def test_hierarchy_round_trips_within_one_tenant(self) -> None:
         tenant_id = self.active_tenant()
-        headers = {"X-Veyro-Tenant": tenant_id}
+        headers = self.headers(tenant_id)
         organization = self.client.post(
             "/organizations", headers=headers,
             json={"legal_name": "Acme ehf", "country_code": "IS"},
@@ -223,17 +200,22 @@ class TenancyApiTests(unittest.TestCase):
             self.client.get("/organizations", headers={"X-Veyro-Tenant": "nope"}).status_code, 422
         )
 
-    def test_a_well_formed_but_unknown_tenant_writes_nothing(self) -> None:
+    def test_an_unknown_tenant_is_refused_before_it_reaches_the_database(self) -> None:
+        """Since MOD-008 the hierarchy routes are gated, so this is refused earlier.
+
+        It used to assert a 404 from the composite foreign key. There is now no session for a
+        tenant nobody has bootstrapped, so there is nobody to authorize and the request stops at
+        the gate. The foreign key still refuses the write -- isolation check 7 proves it against
+        the database directly -- but no HTTP caller can get far enough to find out.
+        """
         ghost = str(uuid.uuid4())
-        response = self.client.post(
-            "/organizations",
-            headers={"X-Veyro-Tenant": ghost},
-            json={"legal_name": "Ghost ehf", "country_code": "IS"},
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(
-            self.client.get("/organizations", headers={"X-Veyro-Tenant": ghost}).json(), []
-        )
+        for call in (
+            lambda: self.client.post(
+                "/organizations", headers={"X-Veyro-Tenant": ghost},
+                json={"legal_name": "Ghost ehf", "country_code": "IS"}),
+            lambda: self.client.get("/organizations", headers={"X-Veyro-Tenant": ghost}),
+        ):
+            self.assertEqual(call().status_code, 422)
 
 
 if __name__ == "__main__":  # pragma: no cover

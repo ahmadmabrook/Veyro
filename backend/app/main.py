@@ -1,17 +1,25 @@
 """Veyro API: the HTTP surface over all four planes.
 
-**`X-Veyro-Tenant` is a claim, not an authentication.** It is read, shape-checked, and nothing
-more. No caller proves which tenant it is, so anyone who knows a tenant UUID can address that
-tenant's API. Isolation does not rest on the header being honest -- it rests on row-level
-security, which confines whatever tenant the header names and returns nothing at all when it
-names none -- but **authorization does not exist**, and the header is why.
+**Every tenant-plane route is gated.** A caller presents a bearer session, and `permit` asks
+MOD-008 whether that identity holds the route's permission at the request's scope and whether the
+session's assurance level is high enough for the action's class. A refusal is written to the audit
+log by the authorization service itself, before the error leaves it. `/healthz` and the MOD-007
+authentication routes are the exceptions, because they are how a caller gets a session in the
+first place.
 
-MOD-007 changes part of that picture and not all of it. Its own routes now authenticate: every
-operation on an identity resolves a bearer token and refuses unless the session belongs to that
-identity. An independent review of the first version found that they did not, and demonstrated a
-full account takeover from the tenant UUID alone. What is still missing is the other direction --
-nothing ties a session to the tenant header, and no route outside MOD-007 asks for a session at
-all. MOD-008 owns roles, permissions and approvals, and is unbuilt.
+**The platform plane is not.** `/platform/*` provisions tenants, moves them through their
+lifecycle and reads their history, and none of it asks for anything. Anyone who can reach that
+surface can create a tenant, and can **suspend or archive an existing one** -- denial of service
+against a live customer, not merely self-service signup. Authenticating it is a different problem
+from authorizing a tenant's own users: there is no platform identity to be yet, and inventing one
+here would be inventing product.
+
+**`X-Veyro-Tenant` is still a claim.** It is read and shape-checked, and nothing proves the caller
+belongs to the tenant it names. What has changed is that naming a tenant now buys nothing on its
+own: with no session the gate refuses, and `authz.bootstrap` -- the one call that mints the first
+role -- refuses once any assignment exists. Isolation never rested on the header being honest. It
+rests on row-level security, which confines whatever tenant the header names and returns nothing
+at all when it names none.
 
 The environments this service accepts are local, development and staging; there is no production
 value, so the claim never reaches real member data.
@@ -26,6 +34,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.responses import JSONResponse
@@ -138,6 +147,11 @@ class ExperimentStatusBody(BaseModel):
 
 class AllocateBody(BaseModel):
     subject_id: str
+    # Optional, unlike the command bodies above, because this one is called by a device on a
+    # member's first screen rather than by an operator running a command -- but it writes a
+    # permanent `cfg_exposures` row, so a caller that does carry a correlation id should be able
+    # to join the gate's audit entry to it.
+    correlation_id: str | None = None
 
 
 def evaluation_context(request: Request) -> dict[str, str]:
@@ -499,6 +513,25 @@ def create_app(
     async def _service_error(_: Request, exc: ServiceError) -> JSONResponse:
         return JSONResponse(status_code=exc.status, content={"error": exc.code})
 
+    def permit(session: dict[str, Any], action: str, correlation_id: str | None = None,
+               **context: Any) -> dict[str, Any]:
+        """The one way a route asks whether its caller may act.
+
+        Every gated route in this file goes through here, and `authz.require` writes the denial
+        to the audit log itself, so a surface cannot ask the question and forget to record the
+        answer. The tenant comes from the resolved session rather than the header, so the two
+        cannot drift.
+
+        A caller that supplies no `correlation_id` gets one minted here. Most read routes carry
+        none, and an audit row with a handle nobody can trace back is still better than a row
+        that could not be written at all -- but a caller that wants its denials findable should
+        send one.
+        """
+        authz.require(identity_pool, session["tenant_id"], identity_id=session["identity_id"],
+                      session_aal=session["aal"], action=action,
+                      correlation_id=correlation_id or str(uuid4()), **context)
+        return session
+
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {
@@ -549,33 +582,47 @@ def create_app(
     # ------------------------------------------------------------------ tenant plane
 
     @app.post("/organizations", status_code=201)
-    def add_organization(tenant_id: TenantId, body: OrganizationBody) -> dict[str, Any]:
+    def add_organization(
+        tenant_id: TenantId,
+        session: Session,
+        body: OrganizationBody,
+    ) -> dict[str, Any]:
+        permit(session, "tenancy.organization.write")
         return service.create_organization(
             tenant_pool, tenant_id, body.legal_name, body.country_code
         )
 
     @app.get("/organizations")
-    def get_organizations(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def get_organizations(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "tenancy.organization.read")
         return service.list_organizations(tenant_pool, tenant_id)
 
     @app.post("/brands", status_code=201)
-    def add_brand(tenant_id: TenantId, body: BrandBody) -> dict[str, Any]:
+    def add_brand(tenant_id: TenantId, session: Session, body: BrandBody) -> dict[str, Any]:
+        permit(session, "tenancy.brand.write")
         return service.create_brand(tenant_pool, tenant_id, body.organization_id, body.brand_name)
 
     @app.post("/locations", status_code=201)
-    def add_location(tenant_id: TenantId, body: LocationBody) -> dict[str, Any]:
+    def add_location(tenant_id: TenantId, session: Session, body: LocationBody) -> dict[str, Any]:
+        permit(session, "tenancy.location.write")
         return service.create_location(
             tenant_pool, tenant_id, body.brand_id, body.location_name, body.timezone
         )
 
     @app.get("/locations")
-    def get_locations(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def get_locations(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "tenancy.organization.read")
         return service.list_locations(tenant_pool, tenant_id)
 
     # --------------------------------------------------- MOD-005 configuration and flags
 
     @app.post("/config/definitions", status_code=201)
-    def define_config(tenant_id: TenantId, body: DefinitionBody) -> dict[str, Any]:
+    def define_config(
+        tenant_id: TenantId,
+        session: Session,
+        body: DefinitionBody,
+    ) -> dict[str, Any]:
+        permit(session, "config.definition.write")
         return config.define_config(
             tenant_pool, tenant_id, config_key=body.config_key, value_type=body.value_type,
             default_value=body.default_value, owner_module=body.owner_module,
@@ -583,11 +630,17 @@ def create_app(
         )
 
     @app.get("/config/definitions")
-    def get_definitions(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def get_definitions(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "config.definition.read")
         return config.list_definitions(tenant_pool, tenant_id)
 
     @app.post("/config/values", status_code=201)
-    def publish_value(tenant_id: TenantId, body: PublishValueBody) -> dict[str, Any]:
+    def publish_value(
+        tenant_id: TenantId,
+        session: Session,
+        body: PublishValueBody,
+    ) -> dict[str, Any]:
+        permit(session, "config.value.publish", body.correlation_id)
         return config.publish_config_version(
             tenant_pool, tenant_id, config_key=body.config_key, scope_type=body.scope_type,
             value=body.value, published_by=body.published_by,
@@ -596,13 +649,19 @@ def create_app(
         )
 
     @app.get("/config/values/{config_key}/history")
-    def value_history(tenant_id: TenantId, config_key: str) -> list[dict[str, Any]]:
+    def value_history(
+        tenant_id: TenantId,
+        session: Session,
+        config_key: str,
+    ) -> list[dict[str, Any]]:
+        permit(session, "config.definition.read")
         return config.config_history(tenant_pool, tenant_id, config_key)
 
     @app.post("/config/values/{config_key}/rollback", status_code=201)
     def rollback_value(
-        tenant_id: TenantId, config_key: str, body: RollbackBody
+        tenant_id: TenantId, session: Session, config_key: str, body: RollbackBody
     ) -> dict[str, Any]:
+        permit(session, "config.value.rollback", body.correlation_id)
         return config.rollback_config(
             tenant_pool, tenant_id, config_key=config_key, scope_type=body.scope_type,
             to_version=body.to_version, published_by=body.published_by,
@@ -612,21 +671,32 @@ def create_app(
 
     @app.get("/config/resolved")
     def resolved_config(
-        tenant_id: TenantId, brand_id: str | None = None, location_id: str | None = None
+        tenant_id: TenantId,
+        session: Session,
+        brand_id: str | None = None,
+        location_id: str | None = None,
     ) -> dict[str, Any]:
+        permit(session, "config.definition.read")
         return config.resolve_config(
             tenant_pool, tenant_id, brand_id=brand_id, location_id=location_id
         )
 
     @app.post("/config/preview")
-    def preview_value(tenant_id: TenantId, body: PreviewBody) -> dict[str, Any]:
+    def preview_value(tenant_id: TenantId, session: Session, body: PreviewBody) -> dict[str, Any]:
+        permit(session, "config.definition.read")
         return config.preview_config(
             tenant_pool, tenant_id, config_key=body.config_key, value=body.value,
             scope_type=body.scope_type, brand_id=body.brand_id, location_id=body.location_id,
         )
 
     @app.put("/flags/{flag_key}")
-    def set_flag(tenant_id: TenantId, flag_key: str, body: FeaturePolicyBody) -> dict[str, Any]:
+    def set_flag(
+        tenant_id: TenantId,
+        session: Session,
+        flag_key: str,
+        body: FeaturePolicyBody,
+    ) -> dict[str, Any]:
+        permit(session, "config.flag.write")
         return config.set_feature_policy(
             tenant_pool, tenant_id, flag_key=flag_key, enabled=body.enabled,
             default_variant=body.default_variant, rules=body.rules,
@@ -634,58 +704,78 @@ def create_app(
         )
 
     @app.post("/flags/{flag_key}/kill-switch")
-    def kill_switch(tenant_id: TenantId, flag_key: str, body: KillSwitchBody) -> dict[str, Any]:
+    def kill_switch(
+        tenant_id: TenantId,
+        session: Session,
+        flag_key: str,
+        body: KillSwitchBody,
+    ) -> dict[str, Any]:
+        permit(session, "config.kill_switch.engage")
         return config.set_kill_switch(
             tenant_pool, tenant_id, flag_key=flag_key, engaged=body.engaged, reason=body.reason
         )
 
     @app.get("/flags")
     def evaluate_flags(
-        tenant_id: TenantId,
+        tenant_id: TenantId, session: Session,
         context: Annotated[dict[str, str], Depends(evaluation_context)],
         subject_id: str,
     ) -> dict[str, Any]:
+        permit(session, "config.flag.read")
         return config.evaluate_flags(
             tenant_pool, tenant_id, subject_id=subject_id, context=context
         )
 
     @app.post("/experiments", status_code=201)
-    def create_experiment(tenant_id: TenantId, body: ExperimentBody) -> dict[str, Any]:
+    def create_experiment(
+        tenant_id: TenantId,
+        session: Session,
+        body: ExperimentBody,
+    ) -> dict[str, Any]:
+        permit(session, "config.experiment.write")
         return config.create_experiment(
             tenant_pool, tenant_id, experiment_key=body.experiment_key, variants=body.variants
         )
 
     @app.post("/experiments/{experiment_key}/status")
     def experiment_status(
-        tenant_id: TenantId, experiment_key: str, body: ExperimentStatusBody
+        tenant_id: TenantId, session: Session, experiment_key: str, body: ExperimentStatusBody
     ) -> dict[str, Any]:
+        permit(session, "config.experiment.write")
         return config.set_experiment_status(
             tenant_pool, tenant_id, experiment_key=experiment_key, status=body.status
         )
 
     @app.post("/experiments/{experiment_key}/allocate")
     def allocate(
-        tenant_id: TenantId, experiment_key: str, body: AllocateBody
+        tenant_id: TenantId, session: Session, experiment_key: str, body: AllocateBody
     ) -> dict[str, Any]:
+        permit(session, "config.experiment.allocate", body.correlation_id)
         return config.allocate_experiment(
             tenant_pool, tenant_id, experiment_key=experiment_key, subject_id=body.subject_id
         )
 
     @app.get("/experiments/{experiment_key}/exposures")
-    def exposures(tenant_id: TenantId, experiment_key: str) -> list[dict[str, Any]]:
+    def exposures(
+        tenant_id: TenantId,
+        session: Session,
+        experiment_key: str,
+    ) -> list[dict[str, Any]]:
+        permit(session, "config.flag.read")
         return config.experiment_exposures(
             tenant_pool, tenant_id, experiment_key=experiment_key
         )
 
     @app.get("/config/bundle")
     def config_bundle(
-        tenant_id: TenantId,
+        tenant_id: TenantId, session: Session,
         context: Annotated[dict[str, str], Depends(evaluation_context)],
         subject_id: str,
         brand_id: str | None = None,
         location_id: str | None = None,
     ) -> dict[str, Any]:
         """PLT-02-R06: one read for a mobile app, kiosk or managed device."""
+        permit(session, "config.flag.read")
         return config.bundle(
             tenant_pool, tenant_id, subject_id=subject_id, context=context,
             brand_id=brand_id, location_id=location_id,
@@ -719,8 +809,9 @@ def create_app(
 
     @app.post("/subscription", status_code=201)
     def start_subscription(
-        tenant_id: TenantId, body: StartSubscriptionBody
+        tenant_id: TenantId, session: Session, body: StartSubscriptionBody
     ) -> dict[str, Any]:
+        permit(session, "billing.subscription.write", body.correlation_id)
         return billing.start_subscription(
             tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
             plan_version=body.plan_version, actor_id=body.actor_id,
@@ -729,17 +820,20 @@ def create_app(
         )
 
     @app.get("/subscription")
-    def read_subscription(tenant_id: TenantId) -> dict[str, Any]:
+    def read_subscription(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        permit(session, "billing.subscription.read")
         return billing.get_subscription(tenant_pool, tenant_id)
 
     @app.get("/subscription/history")
-    def read_subscription_history(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def read_subscription_history(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "billing.subscription.read")
         return billing.subscription_history(tenant_pool, tenant_id)
 
     @app.post("/subscription/transition")
     def transition_subscription(
-        tenant_id: TenantId, body: SubscriptionCommandBody
+        tenant_id: TenantId, session: Session, body: SubscriptionCommandBody
     ) -> dict[str, Any]:
+        permit(session, "billing.subscription.write", body.correlation_id)
         return billing.transition_subscription(
             tenant_pool, tenant_id, command=body.command, actor_id=body.actor_id,
             correlation_id=body.correlation_id, reason=body.reason,
@@ -747,7 +841,12 @@ def create_app(
         )
 
     @app.post("/subscription/plan")
-    def change_subscription_plan(tenant_id: TenantId, body: ChangePlanBody) -> dict[str, Any]:
+    def change_subscription_plan(
+        tenant_id: TenantId,
+        session: Session,
+        body: ChangePlanBody,
+    ) -> dict[str, Any]:
+        permit(session, "billing.subscription.write", body.correlation_id)
         return billing.change_plan(
             tenant_pool, platform_pool, tenant_id, plan_code=body.plan_code,
             plan_version=body.plan_version, actor_id=body.actor_id,
@@ -756,33 +855,47 @@ def create_app(
         )
 
     @app.post("/entitlements", status_code=201)
-    def grant_entitlement(tenant_id: TenantId, body: EntitlementGrantBody) -> dict[str, Any]:
+    def grant_entitlement(
+        tenant_id: TenantId,
+        session: Session,
+        body: EntitlementGrantBody,
+    ) -> dict[str, Any]:
+        permit(session, "billing.subscription.write")
         return billing.grant_entitlement(
             tenant_pool, tenant_id, feature_code=body.feature_code,
             limit_value=body.limit_value, unlimited=body.unlimited,
         )
 
     @app.get("/entitlements")
-    def get_entitlements(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def get_entitlements(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "billing.subscription.read")
         return billing.list_entitlements(tenant_pool, tenant_id)
 
     @app.get("/entitlements/{feature_code}/check")
     def entitlement_check(
-        tenant_id: TenantId, feature_code: str, quantity: int
+        tenant_id: TenantId, session: Session, feature_code: str, quantity: int
     ) -> dict[str, Any]:
+        permit(session, "billing.subscription.read")
         return billing.check_entitlement(
             tenant_pool, tenant_id, feature_code=feature_code, quantity=quantity
         )
 
     @app.post("/meters", status_code=201)
-    def define_meter(tenant_id: TenantId, body: MeterBody) -> dict[str, Any]:
+    def define_meter(tenant_id: TenantId, session: Session, body: MeterBody) -> dict[str, Any]:
+        permit(session, "billing.meter.write")
         return billing.define_meter(
             tenant_pool, tenant_id, meter_code=body.meter_code, unit=body.unit,
             aggregation=body.aggregation,
         )
 
     @app.post("/meters/{meter_code}/quota")
-    def set_quota(tenant_id: TenantId, meter_code: str, body: QuotaBody) -> dict[str, Any]:
+    def set_quota(
+        tenant_id: TenantId,
+        session: Session,
+        meter_code: str,
+        body: QuotaBody,
+    ) -> dict[str, Any]:
+        permit(session, "billing.quota.write")
         return billing.set_quota(
             tenant_pool, tenant_id, meter_code=meter_code, period=body.period,
             limit_quantity=body.limit_quantity, overage_allowed=body.overage_allowed,
@@ -790,7 +903,8 @@ def create_app(
         )
 
     @app.post("/usage", status_code=201)
-    def record_usage(tenant_id: TenantId, body: UsageBody) -> dict[str, Any]:
+    def record_usage(tenant_id: TenantId, session: Session, body: UsageBody) -> dict[str, Any]:
+        permit(session, "billing.usage.record", body.correlation_id)
         return billing.record_usage(
             tenant_pool, tenant_id, meter_code=body.meter_code, quantity=body.quantity,
             idempotency_key=body.idempotency_key, actor_id=body.actor_id,
@@ -799,28 +913,33 @@ def create_app(
         )
 
     @app.get("/usage/{meter_code}")
-    def get_usage(tenant_id: TenantId, meter_code: str) -> dict[str, Any]:
+    def get_usage(tenant_id: TenantId, session: Session, meter_code: str) -> dict[str, Any]:
+        permit(session, "billing.subscription.read")
         return billing.usage_summary(tenant_pool, tenant_id, meter_code=meter_code)
 
     @app.post("/invoices", status_code=201)
-    def issue_invoice(tenant_id: TenantId, body: InvoiceBody) -> dict[str, Any]:
+    def issue_invoice(tenant_id: TenantId, session: Session, body: InvoiceBody) -> dict[str, Any]:
+        permit(session, "billing.invoice.issue", body.correlation_id)
         return billing.issue_invoice(
             tenant_pool, tenant_id, actor_id=body.actor_id,
             correlation_id=body.correlation_id, tax_rate_bp=body.tax_rate_bp,
         )
 
     @app.get("/invoices")
-    def get_invoices(tenant_id: TenantId) -> list[dict[str, Any]]:
+    def get_invoices(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "billing.invoice.read")
         return billing.list_invoices(tenant_pool, tenant_id)
 
     @app.get("/invoices/{invoice_id}")
-    def get_one_invoice(tenant_id: TenantId, invoice_id: str) -> dict[str, Any]:
+    def get_one_invoice(tenant_id: TenantId, session: Session, invoice_id: str) -> dict[str, Any]:
+        permit(session, "billing.invoice.read")
         return billing.get_invoice(tenant_pool, tenant_id, invoice_id)
 
     @app.post("/invoices/{invoice_id}/credit-notes", status_code=201)
     def credit_invoice(
-        tenant_id: TenantId, invoice_id: str, body: CreditNoteBody
+        tenant_id: TenantId, session: Session, invoice_id: str, body: CreditNoteBody
     ) -> dict[str, Any]:
+        permit(session, "billing.credit_note.issue", body.correlation_id)
         return billing.issue_credit_note(
             tenant_pool, tenant_id, invoice_id=invoice_id, amount_minor=body.amount_minor,
             reason=body.reason, actor_id=body.actor_id, correlation_id=body.correlation_id,
@@ -1009,13 +1128,6 @@ def create_app(
     # authorization and assurance together and writes the denial to the audit log itself, so a
     # surface cannot ask whether somebody may act and then forget to record that they were
     # refused.
-
-    def permit(session: dict[str, Any], action: str, correlation_id: str, **context: Any
-               ) -> dict[str, Any]:
-        authz.require(identity_pool, session["tenant_id"], identity_id=session["identity_id"],
-                      session_aal=session["aal"], action=action,
-                      correlation_id=correlation_id, **context)
-        return session
 
     @app.post("/authz/bootstrap", status_code=201)
     def bootstrap_authorization(
