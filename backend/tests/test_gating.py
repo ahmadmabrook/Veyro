@@ -48,6 +48,12 @@ READ_ROUTES = [
     ("get", f"/privacy/consent/history?subject_id={_SUBJECT}", None),
     ("get", f"/privacy/requests/{_ID}", None),
     ("get", f"/privacy/requests/{_ID}/plan", None),
+    ("get", "/events/health", None),
+    ("get", f"/events/trace?correlation_id={_CORR['correlation_id']}", None),
+    ("get", f"/events/aggregate?aggregate_type=tenant&aggregate_id={_ID}", None),
+    ("get", f"/events/{_ID}", None),
+    ("get", "/events/subscriptions/all", None),
+    ("get", "/events/dead-letters/all", None),
 ]
 
 WRITE_ROUTES = [
@@ -84,6 +90,16 @@ WRITE_ROUTES = [
     ("post", "/privacy/incidents", {"severity": "low", "category": "access_anomaly",
                                     "summary": "s", "detected_at": _WHEN,
                                     "personal_data_involved": "unknown", **_CORR}),
+    ("post", "/events/subscriptions", {"consumer": "timeline",
+                                       "event_type": "tenant.provisioned", **_CORR}),
+    ("post", f"/events/subscriptions/{_ID}/deactivate", _CORR),
+    ("post", "/events/dispatch", _CORR),
+    ("post", f"/events/dead-letters/{_ID}/release", {"reason": "fixed", **_CORR}),
+    ("post", "/events/replays", {"consumer": "timeline",
+                                 "event_types": ["tenant.provisioned"],
+                                 "from_time": _WHEN, "to_time": "2026-12-01T00:00:00+00:00",
+                                 **_CORR}),
+    ("post", f"/events/replays/{_ID}/run", _CORR),
 ]
 
 
@@ -410,17 +426,37 @@ class GateCoverageTests(unittest.TestCase):
         self.assertEqual(sorted(set(self.UNGATED) & guarded), [],
                          "these routes do ask the gate and should not be listed as open")
 
-    def test_every_privacy_route_is_in_the_behavioural_sweep(self):
-        """The sweeps are a sample everywhere else; for MOD-009 they are the whole surface."""
+    #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
+    #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
+    FULLY_SWEPT_PREFIXES = ("/privacy", "/events")
+
+    def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
+        """The sweeps are a sample elsewhere; for these modules they are the whole surface.
+
+        Without this, a route added to one of them is caught by the gate-coverage test above
+        (it must call `permit`) but never actually called with a weak credential, so a wrong
+        permission on it would go unnoticed -- and a wrong permission reads exactly like a
+        right one from outside.
+        """
         swept = {(method.upper(), path.split("?")[0])
                  for method, path, _ in READ_ROUTES + WRITE_ROUTES}
         swept = {(method, path.replace(_ID, "{id}").replace(_SUBJECT, "{id}"))
                  for method, path in swept}
-        live = {(method, path.replace("{purpose_id}", "{id}").replace("{hold_id}", "{id}")
-                 .replace("{request_id}", "{id}"))
-                for method, path, _ in self._routes() if path.startswith("/privacy/")}
+        live = set()
+        for method, path, _ in self._routes():
+            # `path == prefix or path.startswith(prefix + "/")`, not a bare prefix match: a
+            # collection route registered at exactly `/events` -- the natural shape for a
+            # listing -- slipped past a `startswith("/events/")` test silently, and a silent
+            # escape in the test that licenses the sweeps to be a sample is the worst kind.
+            if not any(path == prefix or path.startswith(prefix + "/")
+                       for prefix in self.FULLY_SWEPT_PREFIXES):
+                continue
+            for name in ("purpose_id", "hold_id", "request_id", "event_id", "job_id",
+                         "subscription_id", "dead_letter_id"):
+                path = path.replace("{" + name + "}", "{id}")
+            live.add((method, path))
         self.assertEqual(sorted(live - swept), [],
-                         "these privacy routes are never called by the gating sweep")
+                         "these routes are never called by the gating sweep")
 
 
 if __name__ == "__main__":

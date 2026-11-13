@@ -22,12 +22,14 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from psycopg import Connection, errors
 from psycopg_pool import ConnectionPool
 
 from app.db import platform_scope, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
+from app.events import service as events
 from app.tenancy.domain.lifecycle import (
     ACTIVATE,
     ARCHIVE,
@@ -259,7 +261,8 @@ def delete_tenant(pool: Pool, tenant_id: str) -> None:
 
 
 def create_organization(
-    pool: Pool, tenant_id: str, legal_name: str, country_code: str
+    pool: Pool, tenant_id: str, legal_name: str, country_code: str,
+    correlation_id: str | None = None,
 ) -> dict[str, Any]:
     if not legal_name.strip():
         raise InvalidRequest("bad_legal_name")
@@ -278,6 +281,15 @@ def create_organization(
         except errors.ForeignKeyViolation:
             raise NotFound("tenant_not_found") from None
         assert row is not None
+        events.append_event(
+            conn, tenant_id, event_type="organization.updated",
+            aggregate_type="organization", aggregate_id=str(row[0]),
+            payload={"organization_id": str(row[0]), "legal_name": row[1],
+                     "country_code": row[2]},
+            # The caller's, so the event and the authorization decision share one handle and
+            # `/events/trace` can join them. Minted only for a caller that has none.
+            correlation_id=correlation_id or str(uuid4()),
+        )
     return {"organization_id": str(row[0]), "legal_name": row[1], "country_code": row[2]}
 
 

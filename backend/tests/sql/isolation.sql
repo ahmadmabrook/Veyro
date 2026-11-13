@@ -2162,4 +2162,742 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 38/38 checks passed'
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-010)
+-- The outbox is the one table in this repository a producer writes from inside somebody else's
+-- transaction, so its isolation matters in a way the others' does not: a leak here is not a
+-- read of another tenant's row, it is another tenant's *business event* arriving in this
+-- tenant's consumers and projections.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.evt_subscriptions
+    (tenant_id, subscription_id, consumer, event_type, replay_safety, registered_by,
+     correlation_id)
+VALUES (:'tenant_a', '77777777-0000-4000-8000-000000000001', 'timeline',
+        'tenant.provisioned', 'safe', :'actor', :'actor');
+INSERT INTO plt01.evt_outbox
+    (tenant_id, event_id, event_type, schema_version, aggregate_type, aggregate_id,
+     actor_id, correlation_id, payload, idempotency_key)
+VALUES (:'tenant_a', '77777777-0000-4000-8000-000000000002', 'tenant.provisioned', 1,
+        'tenant', :'tenant_a', :'actor', :'actor',
+        '{"tenant_id": "a", "external_key": "k", "display_name": "n", "region": "eu-west"}'::jsonb,
+        'seed-provision-1');
+INSERT INTO plt01.evt_deliveries (tenant_id, consumer, event_id)
+VALUES (:'tenant_a', 'timeline', '77777777-0000-4000-8000-000000000002');
+INSERT INTO plt01.evt_dead_letters
+    (tenant_id, dead_letter_id, event_id, consumer, reason, attempts)
+VALUES (:'tenant_a', '77777777-0000-4000-8000-000000000003',
+        '77777777-0000-4000-8000-000000000002', 'ledger', 'handler raised', 5);
+INSERT INTO plt01.evt_replay_jobs
+    (tenant_id, job_id, consumer, event_types, from_time, to_time, requested_by,
+     correlation_id)
+VALUES (:'tenant_a', '77777777-0000-4000-8000-000000000004', 'timeline',
+        ARRAY['tenant.provisioned'], TIMESTAMPTZ '2026-11-01 00:00:00+00',
+        TIMESTAMPTZ '2026-12-01 00:00:00+00', :'actor', :'actor');
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.evt_subscriptions
+    (tenant_id, subscription_id, consumer, event_type, registered_by, correlation_id)
+VALUES (:'tenant_b', '66666666-0000-4000-8000-000000000001', 'timeline',
+        'tenant.provisioned', :'actor', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 39. evt tables isolate
+-- Swept from the catalogue, not named table by table, and that is not a stylistic choice: the
+-- MOD-009 review removed FORCE RLS from a table whose name happened not to appear in a check
+-- and watched the whole suite report success. Checks 17, 22, 28 and 33 all do it this way.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    unprotected text;
+BEGIN
+    SELECT string_agg(relname, ', ') INTO unprotected
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'evt\_%'
+      AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF unprotected IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: evt_ tables without ENABLE and FORCE RLS: %',
+            unprotected;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+          AND relname LIKE 'evt\_%') < 5 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: fewer than 5 evt_ tables, so the sweep proved nothing';
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'evt\_%'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: an evt_ table is not owned by the migrator';
+    END IF;
+    -- Every policy must exist, must carry a WITH CHECK that says exactly what USING says, and
+    -- must actually read the tenant GUC. A policy whose halves agree on `true` would pass the
+    -- first two tests and nothing else.
+    IF (SELECT count(*) FROM pg_policies
+        WHERE schemaname = 'plt01' AND tablename LIKE 'evt\_%'
+          AND (with_check IS NULL OR with_check IS DISTINCT FROM qual)) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: WITH CHECK missing or weaker than USING on an evt_ table';
+    END IF;
+    IF (SELECT count(*) FROM pg_policies
+        WHERE schemaname = 'plt01' AND tablename LIKE 'evt\_%') < 5 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: fewer than 5 evt_ policies, so the sweep proved nothing';
+    END IF;
+    IF (SELECT count(*) FROM pg_policies
+        WHERE schemaname = 'plt01' AND tablename LIKE 'evt\_%'
+          AND qual NOT LIKE '%current_setting(''app.tenant_id''%') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: an evt_ policy does not read app.tenant_id';
+    END IF;
+END $$;
+COMMIT;
+
+-- Behaviourally, both directions, over every table.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['evt_outbox', 'evt_deliveries', 'evt_dead_letters',
+                               'evt_replay_jobs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 39 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.evt_subscriptions) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: tenant B sees % subscriptions, expected its own 1',
+            (SELECT count(*) FROM plt01.evt_subscriptions);
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.evt_outbox) <> 1
+       OR (SELECT count(*) FROM plt01.evt_subscriptions) <> 1
+       OR (SELECT count(*) FROM plt01.evt_deliveries) <> 1
+       OR (SELECT count(*) FROM plt01.evt_dead_letters) <> 1
+       OR (SELECT count(*) FROM plt01.evt_replay_jobs) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 39 FAILED: tenant A cannot see its own event rows';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['evt_outbox', 'evt_subscriptions', 'evt_deliveries',
+                               'evt_dead_letters', 'evt_replay_jobs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 39 FAILED: the table owner read % rows of %, so FORCE RLS is off',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 40. fail closed, evt tables
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['evt_outbox', 'evt_subscriptions', 'evt_deliveries',
+                               'evt_dead_letters', 'evt_replay_jobs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 40 FAILED: % returned % rows with no tenant context',
+                tbl, seen;
+        END IF;
+    END LOOP;
+
+    -- An event appended with no context is an event nobody can attribute to a tenant, which is
+    -- worse than no event: it would fan out to whichever tenant's consumers happened to match.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb);
+        RAISE EXCEPTION 'CHECK 40 FAILED: an event was appended with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- Tenant B cannot plant an event into tenant A. This is the write-side case, and for this table
+-- it is the one that matters most: a forged event is acted on by every consumer that subscribes
+-- to its type, and the outbox has no DELETE for any runtime role, so it cannot be taken back.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.suspended', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"planted": true}'::jsonb);
+        RAISE EXCEPTION 'CHECK 40 FAILED: tenant B planted an event in tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.evt_replay_jobs
+            (tenant_id, consumer, event_types, from_time, to_time, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline',
+                ARRAY['tenant.provisioned'], TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                TIMESTAMPTZ '2027-01-01 00:00:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 40 FAILED: tenant B requested a replay in tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 41. cross-tenant parents
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.evt_deliveries (tenant_id, consumer, event_id)
+        VALUES ('22222222-2222-4222-8222-222222222222', 'timeline',
+                '77777777-0000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 41 FAILED: a delivery was queued for another tenant''s event';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.evt_dead_letters
+            (tenant_id, event_id, consumer, reason, attempts)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '77777777-0000-4000-8000-000000000002', 'ledger', 'borrowed', 1);
+        RAISE EXCEPTION 'CHECK 41 FAILED: another tenant''s event was dead-lettered here';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- `event_id` is globally unique, which is the one index in this schema that spans tenants. It
+-- is safe only because the value is generated by the database and `append_event` refuses to
+-- take one; asserted here so that a later change making it caller-supplied has to confront this.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '77777777-0000-4000-8000-000000000002', 'tenant.activated', 1, 'tenant',
+                '22222222-2222-4222-8222-222222222222',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb);
+        RAISE EXCEPTION 'CHECK 41 FAILED: event_id is not globally unique';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 42. the relay cannot forge
+-- The whole point of separating dispatch state from the envelope: a relay marks an event sent
+-- and cannot change what it says. A relay that could rewrite a payload is a relay that can
+-- forge an event, and every consumer downstream would believe it.
+--
+-- **The column grants are compared in full against the catalogue, not checked against a list of
+-- names somebody thought to write down.** The first version of this check named nine columns
+-- across two tables and tested one of them for the worker role; an independent reviewer widened
+-- ten different grants and the suite reported 43/43 every time -- including UPDATE on
+-- `evt_outbox.event_type` for the relay, which re-routes a committed event to a different
+-- consumer set. That is check 39's lesson one level further in: a denylist proves the names in
+-- it, and the moment somebody adds a column is the moment the list is wrong. In this module the
+-- column-scoped grant *is* the integrity mechanism -- there is no DELETE and no hash chain
+-- behind it -- so it gets the sweep.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('evt_outbox',
+         'attempts,available_at,dispatched_at,last_error,status'),
+        ('evt_subscriptions',
+         'active,deactivate_correlation_id,deactivated_at,deactivated_by,max_attempts,replay_safety'),
+        ('evt_deliveries',
+         'attempts,available_at,from_replay_job_id,handled_at,last_error,status'),
+        ('evt_dead_letters',
+         'release_correlation_id,release_reason,released_at,released_by'),
+        ('evt_replay_jobs',
+         'events_replayed,finished_at,last_error,ran_by,run_correlation_id,started_at,status'))
+    SELECT string_agg(
+               e.tbl || ' / ' || g.grantee || ': ' || coalesce(a.actual, '(none)'), '; ')
+    INTO wrong
+    FROM expected e
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS g(grantee)
+    -- `has_column_privilege` over `pg_attribute`, not `information_schema.column_privileges`:
+    -- the information_schema views are filtered to what the *current* user can see, so running
+    -- as `veyro_cp_app` they report nothing at all about `veyro_cp_worker` and the comparison
+    -- would be vacuous for the relay role -- the very role this check is most about.
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = ('plt01.' || e.tbl)::regclass
+          AND att.attnum > 0 AND NOT att.attisdropped
+          AND has_column_privilege(g.grantee, att.attrelid, att.attname, 'UPDATE')
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 42 FAILED: UPDATE column grants differ from the expected set: %',
+            wrong;
+    END IF;
+
+    -- A table-level UPDATE grant would make every column writable while leaving the
+    -- column-privilege view above looking correct, because PostgreSQL reports the table grant
+    -- as a grant on every column -- so this is belt and braces rather than a duplicate.
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES anywhere in this module, and no
+    -- role outside the three expected ones holds anything at all. Read from `pg_class.relacl`
+    -- for the same visibility reason as above.
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'evt\_%'
+          AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
+          AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 42 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'evt\_%'
+          AND acl.grantee <> 0
+          AND pg_get_userbyid(acl.grantee)
+              NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 42 FAILED: an evt_ table is granted to somebody unexpected';
+    END IF;
+    -- PUBLIC is grantee 0 in an ACL entry, and a PUBLIC grant would make every assertion above
+    -- irrelevant.
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'evt\_%' AND acl.grantee = 0) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 42 FAILED: an evt_ table carries a PUBLIC grant';
+    END IF;
+
+    -- Behaviourally too, because a catalogue row is a claim about behaviour.
+    BEGIN
+        UPDATE plt01.evt_outbox SET payload = '{"forged": true}'::jsonb;
+        RAISE EXCEPTION 'CHECK 42 FAILED: an event payload was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.evt_outbox SET event_type = 'tenant.suspended';
+        RAISE EXCEPTION 'CHECK 42 FAILED: a committed event was re-routed to another type';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The same from the relay role's own seat. Nothing in this file had ever acted as
+-- `veyro_cp_worker`, so a policy carrying `OR current_user = 'veyro_cp_worker'` passed every
+-- check while the relay read and wrote every tenant's events. MOD-010 is the first module where
+-- the worker has an operational job on the tables, so this is where the block belongs.
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['evt_outbox', 'evt_deliveries', 'evt_dead_letters',
+                               'evt_replay_jobs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 42 FAILED: the worker role read % rows of tenant A in %',
+                seen, tbl;
+        END IF;
+    END LOOP;
+    BEGIN
+        UPDATE plt01.evt_outbox SET payload = '{"forged": true}'::jsonb;
+        RAISE EXCEPTION 'CHECK 42 FAILED: the worker rewrote an event payload';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.evt_outbox) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 42 FAILED: the worker read events with no tenant context';
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 43. the CHECKs actually bite
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- A payload that is not an object passes `jsonb` and breaks every consumer that reads a
+    -- field out of it.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '[1, 2, 3]'::jsonb);
+        RAISE EXCEPTION 'CHECK 43 FAILED: an event payload was an array';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- "Dispatched" and a dispatch time are one fact written twice.
+    BEGIN
+        UPDATE plt01.evt_outbox SET status = 'dispatched'
+        WHERE event_id = '77777777-0000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 43 FAILED: an event was dispatched with no dispatch time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank idempotency key is not a key, and every blank one would collide under the
+    -- partial unique index.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb, '   ');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a blank idempotency key was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The producer's dedupe: the same key twice in one tenant is the same event.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload, idempotency_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb,
+                'seed-provision-1');
+        RAISE EXCEPTION 'CHECK 43 FAILED: the same idempotency key was appended twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- Allowing side effects on a replay is the decision somebody will be asked about.
+    BEGIN
+        INSERT INTO plt01.evt_replay_jobs
+            (tenant_id, consumer, event_types, from_time, to_time, side_effects,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'messaging',
+                ARRAY['tenant.provisioned'], TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                TIMESTAMPTZ '2027-01-01 00:00:00+00', 'allow',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay allowed side effects with no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A backwards window selects nothing and reads as a replay that found no events.
+    BEGIN
+        INSERT INTO plt01.evt_replay_jobs
+            (tenant_id, consumer, event_types, from_time, to_time, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline',
+                ARRAY['tenant.provisioned'], TIMESTAMPTZ '2027-01-01 00:00:00+00',
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A consumer that never runs, and one whose retries would run for a month.
+    BEGIN
+        INSERT INTO plt01.evt_subscriptions
+            (tenant_id, consumer, event_type, max_attempts, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'broken', 'tenant.activated', 0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a subscription allowed zero attempts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- `active` and the deactivation stamp are one fact written twice.
+    BEGIN
+        UPDATE plt01.evt_subscriptions SET active = false
+        WHERE subscription_id = '77777777-0000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a subscription went inactive with no deactivation time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- ...and deactivation is attributed, like every other state change here. This case has to
+    -- set `active` and `deactivated_at` together, or `evt_subscriptions_active_consistent`
+    -- refuses it first and the attribution constraint is never reached: dropping the
+    -- attribution constraint left the first version of this check passing, which is the
+    -- "fails for the wrong reason" trap check 10 in this file was written to remember.
+    BEGIN
+        UPDATE plt01.evt_subscriptions
+        SET active = false, deactivated_at = now()
+        WHERE subscription_id = '77777777-0000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a subscription was deactivated with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A dead letter released with no reason, or by nobody.
+    BEGIN
+        UPDATE plt01.evt_dead_letters SET released_at = now()
+        WHERE dead_letter_id = '77777777-0000-4000-8000-000000000003';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a dead letter was released with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A delivery cannot be terminal without saying when.
+    BEGIN
+        UPDATE plt01.evt_deliveries SET status = 'handled'
+        WHERE consumer = 'timeline' AND event_id = '77777777-0000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a delivery was handled at no particular time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The delivery primary key is the deduplication**, and nothing proved it. Dropping it
+    -- left the suite green: `dispatch_pending` inserts with `ON CONFLICT DO NOTHING` and no
+    -- conflict target, which stays valid SQL with no primary key and simply stops
+    -- deduplicating, so at-least-once silently became at-least-twice -- and for a `suppress`
+    -- consumer that means the effect runs again.
+    BEGIN
+        INSERT INTO plt01.evt_deliveries (tenant_id, consumer, event_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline',
+                '77777777-0000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 43 FAILED: one event was queued twice for one consumer';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- One consumer, one subscription per event type.
+    BEGIN
+        INSERT INTO plt01.evt_subscriptions
+            (tenant_id, consumer, event_type, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline', 'tenant.provisioned',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a consumer was subscribed to one type twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A live dead letter per (consumer, event): quarantining the same delivery twice while the
+    -- first quarantine is unreleased would double-count the failure.
+    BEGIN
+        INSERT INTO plt01.evt_dead_letters
+            (tenant_id, event_id, consumer, reason, attempts)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-0000-4000-8000-000000000002', 'ledger', 'again', 5);
+        RAISE EXCEPTION 'CHECK 43 FAILED: one delivery was quarantined twice at once';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- An event type outside the catalogue's grammar reaches no consumer and no archive knows
+    -- how to read it.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Tenant Activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb);
+        RAISE EXCEPTION 'CHECK 43 FAILED: a malformed event type was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three the relay understands, and a version that cannot name a schema.
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload, status)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 1, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb, 'maybe');
+        RAISE EXCEPTION 'CHECK 43 FAILED: an unknown outbox status was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tenant.activated', 0, 'tenant',
+                '11111111-1111-4111-8111-111111111111',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb);
+        RAISE EXCEPTION 'CHECK 43 FAILED: schema version zero was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A consumer name outside the grammar cannot be matched by a subscription lookup.
+    BEGIN
+        INSERT INTO plt01.evt_subscriptions
+            (tenant_id, consumer, event_type, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Timeline Service',
+                'tenant.activated', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a malformed consumer name was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A quarantine with no reason, or none attempted, says nothing about what broke.
+    BEGIN
+        INSERT INTO plt01.evt_dead_letters
+            (tenant_id, event_id, consumer, reason, attempts)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-0000-4000-8000-000000000002', 'other', '   ', 3);
+        RAISE EXCEPTION 'CHECK 43 FAILED: a dead letter was filed with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.evt_dead_letters
+            (tenant_id, event_id, consumer, reason, attempts)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '77777777-0000-4000-8000-000000000002', 'other', 'broke', 0);
+        RAISE EXCEPTION 'CHECK 43 FAILED: a dead letter claimed zero attempts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A replay type list that is empty, or carries something that is not an event name. The
+    -- second used to pass: `cardinality > 0` admits ARRAY[NULL] and ARRAY[''], and a job for a
+    -- type that cannot exist completes with `events_replayed = 0`, which reads as "there was
+    -- nothing to replay" rather than "you mistyped it".
+    BEGIN
+        INSERT INTO plt01.evt_replay_jobs
+            (tenant_id, consumer, event_types, from_time, to_time, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline', ARRAY[]::text[],
+                TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2027-01-01 00:00:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay named no event types';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.evt_replay_jobs
+            (tenant_id, consumer, event_types, from_time, to_time, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'timeline', ARRAY['Billing.*'],
+                TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2027-01-01 00:00:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay named a type that is not an event name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Starting a replay is a second decision, and it had nobody's name on it.
+    BEGIN
+        UPDATE plt01.evt_replay_jobs SET status = 'running', started_at = now()
+        WHERE job_id = '77777777-0000-4000-8000-000000000004';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay was run with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A finished job must say when it finished.
+    BEGIN
+        UPDATE plt01.evt_replay_jobs SET status = 'completed'
+        WHERE job_id = '77777777-0000-4000-8000-000000000004';
+        RAISE EXCEPTION 'CHECK 43 FAILED: a replay completed at no particular time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Every reference carries the tenant into its parent, including the registry.
+    BEGIN
+        INSERT INTO plt01.evt_deliveries
+            (tenant_id, consumer, event_id, from_replay_job_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'ghost',
+                '77777777-0000-4000-8000-000000000002',
+                '77777777-0000-4000-8000-0000000000ff');
+        RAISE EXCEPTION 'CHECK 43 FAILED: a delivery named a replay job that does not exist';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The registry reference, which the composite foreign keys do not cover: an event for a tenant
+-- that is not in `plt01_platform.tenants` at all.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '44444444-4444-4444-8444-444444444444';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.evt_outbox
+            (tenant_id, event_type, schema_version, aggregate_type, aggregate_id,
+             correlation_id, payload)
+        VALUES ('44444444-4444-4444-8444-444444444444', 'tenant.activated', 1, 'tenant',
+                '44444444-4444-4444-8444-444444444444',
+                '33333333-3333-4333-8333-333333333333', '{"a": 1}'::jsonb);
+        RAISE EXCEPTION 'CHECK 43 FAILED: an event was appended for an unregistered tenant';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 43/43 checks passed'

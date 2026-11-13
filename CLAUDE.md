@@ -22,6 +22,7 @@ backend/app/            service code
   identity/             MOD-007: secrets.py (crypto), policy.py (decisions), service.py (I/O)
   authorization/        MOD-008: catalog, decision, gate, approval, audit; service.py (I/O)
   privacy/              MOD-009: classification, consent, retention, dsar decide; service.py (I/O)
+  events/               MOD-010: catalog and dispatch decide; service.py is the outbox and relay
   errors.py             the four service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -574,12 +575,193 @@ Known gaps, deliberate:
   not done here because it is not this module.
 - **No outbox and no published events**, as in MOD-005, MOD-015 and MOD-008.
 
-**Next.** MOD-010 (domain events, event bus and reliability) is the one that closes the gap four
-modules now share: every one of them names events it publishes nowhere, and each new module makes
-the outbox more expensive to retrofit. Two things the gating change named rather than did remain
-open: the platform plane is unauthenticated, and `Decision.mask` is computed on every allowed read
-while no read path applies it -- the masked field list comes back with the decision and the
-callers ignore it.
+**MOD-010 (DAT-01 domain events, event bus and operational timeline) -- implemented, gated and
+reviewed.** Five `evt_` tables in `plt01` under the same forced RLS, `app/events/` beside them,
+and twelve HTTP routes. Working: a transactional outbox, a canonical envelope, a code-resident
+event catalogue with compatibility and payload validation, fan-out to per-consumer deliveries,
+at-least-once delivery with deduplication, per-consumer retry with exponential backoff,
+dead-letter quarantine with attributed release, and controlled replay that suppresses side
+effects by default. Proven: isolation checks 39-43, mutation-tested in two rounds -- 33
+mutations before the review and 26 after it showed that check 42 proved almost nothing, all 59
+caught by the check that guards what was broken; 31 domain unit tests with no database; 45
+service integration tests; 17 API tests that drive the *other* modules' routes and then read the
+outbox.
+
+**Three reviewers worked this module too, and all three returned CHANGES_REQUESTED.** Seven
+blocking defects. Carried forward as rules:
+
+- **A decision made once per job and applied per item is not the decision it claims to be.**
+  `run_replay` read one subscription with `LIMIT 1` and used its `replay_safety` for every event
+  in the job. It fails in both directions and which one you get depends on the query planner: a
+  consumer `safe` for one type and `suppress` for another had its suppress-class events
+  delivered under the default policy -- TSD paragraph 200 defeated by naming a second type, with
+  `suppress` recorded on the job and no reason written -- or, with the rows in the other order,
+  the whole job suppressed including the type the operator asked to rebuild. A `suppressed`
+  delivery row is terminal and every later insert is `ON CONFLICT DO NOTHING`, so nothing in the
+  module could undo that. **I flagged the `LIMIT 1` in the reviewer's brief as the thing I was
+  least sure about; it was worse than I thought in both directions.**
+- **A lookup that proves something exists does not authorise what you do next.** The same
+  function queued events of types the consumer had no subscription to, because the events query
+  filtered on the job's caller-supplied list while the subscription check was satisfied by one
+  match. A holder of the replay permissions could route any event type to any consumer name,
+  bypassing `evt_subscriptions` -- the table that is supposed to *be* the routing authority.
+- **A failure path inside a batch loop must not raise.** `_record_failure` raised `NotFound`
+  when a delivery had no matching subscription. That propagated out of the relay, so the failure
+  counted no attempt, wrote no error, never dead-lettered, and aborted every healthy delivery
+  behind it -- permanently, since the poison row sorts first. `outbox_health` then showed a
+  growing backlog with zero dead letters, pointing an operator away from the cause.
+- **A lease is not a lock, so the writer has to re-check.** The success path wrote `handled`
+  with no `status = 'pending'` guard and `attempts = attempts + 1`, and the claim only pushed
+  `available_at` out by the first backoff -- two seconds. A handler slower than that had its row
+  settled by another relay and then overwrote the settlement, leaving a delivery reading
+  `handled` beside a live quarantine row and an attempt count past its budget.
+- **`events.event.read` was a lateral read path around four other modules' read permissions.**
+  One routine permission returned `evt_outbox.payload` from `/events/{id}` and
+  `/events/aggregate`: a reviewer was refused 403 by `/privacy/consent/history` and
+  `/privacy/requests`, then read who consented to what and who filed which data subject request
+  out of the event plane. `get_event` and `aggregate_history` no longer return payloads at all;
+  a consumer still gets one on the delivery path, which is what a handler is for.
+- **The restricted-field rule checks names, and a value can carry anything.**
+  `cfg_exposures.subject_id` is caller-chosen free text at AAL 1, and a reviewer put an email
+  address, a date of birth, a national id and a lab result in it -- then read it back out of the
+  outbox. `experiment.exposed` now carries `subject_hash`, because an event is the one store
+  this build cannot erase from.
+- **Applying a lesson at one level does not apply it at the next.** Check 39 sweeps `pg_class`
+  and `pg_policies` because MOD-009's review taught that; check 42 then proved the *column*
+  grants with a hand-written list of names, and ten distinct grant-widenings passed 43/43 --
+  including UPDATE on `evt_outbox.event_type` for the relay role, which re-routes a committed
+  event to a different consumer set and is forging an event from every consumer's point of view.
+  Check 42 now compares the whole column list against the catalogue for both roles. **In this
+  module the column-scoped grant *is* the integrity mechanism: there is no DELETE and no hash
+  chain behind it.**
+
+Also found and fixed: the delivery primary key -- which the module calls the deduplication --
+had no test, and `ON CONFLICT DO NOTHING` with no conflict target stays valid SQL when the key is
+dropped and silently stops deduplicating (the targets are named now); eight constraints, two
+unique indexes and the registry foreign keys had no case in check 43; `veyro_cp_worker` was never
+exercised behaviourally anywhere in the suite, so a policy carrying `OR current_user =
+'veyro_cp_worker'` passed everything; `from_replay_job_id` was a parent reference with no foreign
+key; a deactivated subscription could never be reactivated and the error said the opposite of
+what was true; running a replay recorded no actor; `organization.updated` minted its own
+correlation id so `/events/trace` could never join it to the decision that authorized it.
+
+**And four of MOD-009's own reachability declarations turned out to be false**, found by
+strengthening the test the MOD-010 review broke. `test_an_unreachable_declaration_is_actually_unreachable`
+read `information_schema.role_table_grants`, which reports table-level grants only -- so for
+every table whose UPDATE is column-scoped, which is most of them here, it passed vacuously. It
+now asks `has_column_privilege` per column. `unreachable` means the database refuses the write;
+the new `write_once` mechanism means a service writes it once under a predicate and no erasure
+path clears it, which is the weaker and truer statement for five columns that claimed the
+stronger one. The single exception is `sec_legal_holds.released_by`, which really is immutable --
+by a trigger, which the test now looks for and requires the reason to name.
+
+**`append_event` takes a connection, not a pool, and that is the whole module.** TSD paragraph
+105 requires state and outbox to commit atomically, and the only way to mean it is to run the
+append inside the caller's transaction on the caller's connection. Every other service here
+takes a pool and opens its own `tenant_scope`; a version of this one that did the same would
+read identically and guarantee nothing -- the state change would commit with the event in a
+separate transaction that can fail on its own, or the event would commit and the state roll
+back. **A pool-taking convenience wrapper around it is the bug**, which is why the one that
+exists is called `append_event_in_its_own_transaction` and is correct only where there is no
+state change to be atomic with.
+
+**Events are declared in code, not registered in a table** (`app/events/catalog.py`), the same
+deviation MOD-008 makes for permissions and for the same reason: an event type is a fact about
+what the software emits, so a per-tenant registry lets two tenants disagree about what
+`invoice.issued` means. Two controls ride on that:
+
+- **A payload carries exactly its declared fields.** An undeclared key is refused at the
+  producer, because an event is fanned out, archived and replayed -- a field that should not be
+  in one is in more places than any other kind of mistake, and the deletion-reachability
+  registry reaches none of them.
+- **No declared field may be one MOD-008 classifies as restricted.** Checked at import, so the
+  catalogue cannot name `national_id` or `health_notes` at all; carry an identifier and let a
+  consumer that holds the permission read the value from the owning module. Contact fields are
+  allowed, because a rule that forbade an email address in a confirmation event would be worked
+  around rather than obeyed.
+- **Compatibility is checked at import.** A later version may add fields and may not drop one:
+  a consumer on v1 reads a dropped field as absent rather than wrong, which is the failure that
+  surfaces weeks later. Enforcing it where somebody writes the change is worth more than
+  enforcing it at a registration endpoint.
+
+**The producers that can be atomic are wired; the ones that cannot are named.** The outbox is in
+`plt01` under `veyro_cp_app`, so a write on another plane cannot share its transaction -- the
+roles hold nothing in each other's schemas and are members of no role. Wired, in the same
+transaction as the business write: `configuration.changed`, `experiment.exposed`,
+`consent.granted`, `consent.withdrawn`, `data_subject_request.created`,
+`data_subject_request.completed`, `security.alert.detected` and `organization.updated`.
+**Declared and deliberately unproduced**: `tenant.provisioned` and the rest of the tenant
+lifecycle (the registry is in `plt01_platform`), and every IAM-01 and IAM-03 event (`iam`).
+Appending those in a second transaction would mean a tenant that exists with no event, or an
+event for a tenant that does not;
+`test_cross_plane_events_have_no_producer_and_the_plane_separation_is_why` fails the day
+somebody gives those planes an outbox, which is when this note should be deleted.
+
+Other decisions worth knowing:
+
+- **Retry is per consumer, not per event.** `evt_deliveries` is one row per (consumer, event)
+  with its own attempt count, and its primary key is the deduplication -- at-least-once means a
+  consumer sees an event twice, and the row already saying `handled` is what makes the second
+  time free. Counting attempts on the event would let one failing consumer exhaust the budget
+  for every other.
+- **Replay suppresses side effects unless somebody writes down why not.** Two statements have to
+  agree: the job's policy (what this replay is for) and the subscription's `replay_safety` (what
+  re-running that consumer does). A `suppress`-class consumer gets a `suppressed` delivery row
+  rather than nothing at all, so the evidence says the event was considered and deliberately
+  skipped. A `safe` consumer is delivered even under the default, because rebuilding a
+  projection is the ordinary use of replay and a rule that stopped it would make the feature
+  useless.
+- **A replay queues deliveries; it does not call handlers.** A replayed event takes the same
+  path as a live one, including the deduplication. A separate replay path that called handlers
+  directly would be a second delivery implementation, and the two would drift.
+- **The relay cannot forge.** `evt_outbox` grants UPDATE on the four dispatch columns and
+  nothing else, so a relay marks an event sent and cannot change what it says. Check 42 proves
+  it from the catalogue and by attempting the write.
+- **`event_id` is globally unique and never caller-supplied.** TSD paragraph 3253 requires the
+  first; the second is what makes it safe, because a cross-tenant unique index is otherwise a
+  refusal one tenant can observe about another. The producer's own handle is `idempotency_key`,
+  which is tenant-scoped exactly because it is caller-supplied.
+- **Backoff is deterministic with no jitter**, stated as a tradeoff rather than hidden: identical
+  failures retry in lockstep. `dispatch.backoff_seconds` is the only place to change it.
+
+Known gaps, deliberate:
+
+- **There is no transport.** TSD paragraph 271 names EventBridge, SNS, per-consumer SQS and an S3
+  archive; none exists here and none is simulated, because a module writing "published to SNS"
+  into a row while sending nothing is the fabricated-evidence shape this codebase has been bitten
+  by. What is built is the half that must be correct whatever the transport turns out to be, plus
+  a `Handler` protocol for it to implement. **There is no `POST /events/deliver` route** for the
+  same reason: this process registers no handlers, and a route that found an empty registry would
+  read as a control and do nothing.
+- **No event archive and no retention.** Paragraph 3240 wants retention, compaction, PII
+  minimization, encryption and regional routing. PII minimization is built (the payload rule
+  above); the rest needs an object store and a residency decision, both unmade. **`evt_outbox`
+  therefore grows without bound** -- it has no DELETE grant for any runtime role, which is right
+  for evidence and means the archive is the thing that will eventually have to move rows out.
+- **`feature_flag.evaluated` is declared and unproduced.** It is in the TSD's list for PLT-02,
+  and one durable outbox row per flag evaluation is a write amplification nothing here can
+  absorb. It wants sampling or aggregation, which is a decision about a metrics pipeline that
+  does not exist.
+- **Nothing drives the relay.** `dispatch_pending` and `deliver_pending` are called by a route
+  and by tests; no worker loops on them, which is the same missing worker runtime as MOD-007's
+  challenge sweep and MOD-009's retention sweep. Three modules now want it.
+- **No consumers.** The subscription table routes to names, and no name in this build has a
+  handler behind it.
+- **One delivery can still run two handlers concurrently.** The claim is a lease, not a lock, so
+  a handler slower than `_CLAIM_LEASE` can be joined by a second relay. That is within the
+  at-least-once contract the schema documents, and the `status = 'pending'` guard means the late
+  writer cannot corrupt the row -- but no consumer in this build has its own idempotency guard,
+  so the contract is currently carried by the lease length alone.
+- **`evt_outbox.payload` is residue an erasure cannot reach**, and it is declared by hand because
+  the reachability sweep matches column names and the subject identifier is inside `jsonb`. Five
+  wired producers put one there. No sweep will find the next one either, which is why
+  `test_the_subject_identifiers_inside_jsonb_are_declared_by_hand` names it.
+
+**Next.** MOD-011 (observability, performance, capacity and FinOps) is the next Foundation module
+by dependency, and MOD-012 and MOD-014 are both unblocked now that MOD-010 exists. Three things
+named rather than done remain open across the build: the platform plane is unauthenticated,
+`Decision.mask` is computed on every allowed read while no read path applies it, and no worker
+runtime exists for the three sweeps that want one.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

@@ -168,6 +168,26 @@ PERMISSIONS: dict[str, Permission] = dict([
     # events are the ones that go unrecorded. The row is insert-only either way, so a false
     # incident record is visible rather than destructive.
     _p("privacy.incident.record", "Record a security incident", "access"),
+    # MOD-010, domain events. Categories are IAM-03-R06's closed set again; there is no
+    # `events` audit category and this file does not invent one.
+    _p("events.event.read", "Read the outbox, a trace or an aggregate's timeline",
+       "data_access"),
+    _p("events.subscription.read", "See which consumers receive which events", "data_access"),
+    _p("events.subscription.write", "Route an event type to a consumer, or stop routing it",
+       "configuration", "financial"),
+    # Routine, and the third entry of its kind. A relay runs this on a loop as a worker; a
+    # step-up requirement would mean no events are ever delivered. Its reach is bounded by what
+    # it can do: the outbox grants UPDATE on the dispatch columns only, so a compromised relay
+    # can mark events sent and cannot change what any of them says.
+    _p("events.dispatch.run", "Fan pending events out to their subscribers", "data_access"),
+    _p("events.dead_letter.read", "See quarantined deliveries", "data_access"),
+    # Releasing is a decision to run a consumer against an event that already broke it, and
+    # re-requesting a replay is a decision to send things again. Both are financial-class, and
+    # both record who decided and why.
+    _p("events.dead_letter.release", "Requeue a quarantined delivery",
+       "configuration", "financial"),
+    _p("events.replay.request", "Open a replay job", "configuration", "financial"),
+    _p("events.replay.run", "Execute a replay job", "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

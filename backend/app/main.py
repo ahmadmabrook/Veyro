@@ -46,6 +46,7 @@ from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError
+from app.events import service as events
 from app.identity import service as identity
 from app.privacy import service as privacy
 from app.tenancy import service
@@ -78,8 +79,18 @@ class TransitionBody(BaseModel):
 
 
 class OrganizationBody(BaseModel):
+    """`correlation_id` is optional and threaded through to the event MOD-010 appends.
+
+    Without it the route minted one for `permit` and the producer minted a second, so the same
+    request produced two unrelated correlation ids and `/events/trace` could never join an
+    organization creation to the decision that authorized it -- which is the whole purpose of
+    the trace route. Optional rather than required, because requiring it would break every
+    existing caller of a route that has never asked for one.
+    """
+
     legal_name: str
     country_code: str = Field(min_length=2, max_length=2)
+    correlation_id: str | None = None
 
 
 class BrandBody(BaseModel):
@@ -438,6 +449,39 @@ class ReviewItemBody(BaseModel):
     note: str | None = None
 
 
+# ------------------------------------------------------------------ MOD-010 request bodies
+
+
+class SubscriptionBody(BaseModel):
+    consumer: str
+    event_type: str
+    correlation_id: str
+    replay_safety: str = "suppress"
+    max_attempts: int = Field(default=5, ge=1, le=100)
+
+
+class ReplayBody(BaseModel):
+    """`side_effects` defaults to `suppress` here as well as in the schema.
+
+    Two defaults for one value is usually a smell. Here it is deliberate: a caller that omits
+    the field and a caller that sends the column's default must get the same answer, and the
+    answer has to be the safe one at both ends. TSD paragraph 200.
+    """
+
+    consumer: str
+    event_types: list[str]
+    from_time: datetime
+    to_time: datetime
+    correlation_id: str
+    side_effects: str = "suppress"
+    side_effects_reason: str | None = None
+
+
+class ReleaseDeadLetterBody(BaseModel):
+    reason: str
+    correlation_id: str
+
+
 # ------------------------------------------------------------------ MOD-009 request bodies
 
 
@@ -718,9 +762,10 @@ def create_app(
         session: Session,
         body: OrganizationBody,
     ) -> dict[str, Any]:
-        permit(session, "tenancy.organization.write")
+        permit(session, "tenancy.organization.write", body.correlation_id)
         return service.create_organization(
-            tenant_pool, tenant_id, body.legal_name, body.country_code
+            tenant_pool, tenant_id, body.legal_name, body.country_code,
+            correlation_id=body.correlation_id
         )
 
     @app.get("/organizations")
@@ -883,7 +928,8 @@ def create_app(
     ) -> dict[str, Any]:
         permit(session, "config.experiment.allocate", body.correlation_id)
         return config.allocate_experiment(
-            tenant_pool, tenant_id, experiment_key=experiment_key, subject_id=body.subject_id
+            tenant_pool, tenant_id, experiment_key=experiment_key, subject_id=body.subject_id,
+            correlation_id=body.correlation_id,
         )
 
     @app.get("/experiments/{experiment_key}/exposures")
@@ -1766,6 +1812,123 @@ def create_app(
             notification_assessment=body.notification_assessment, detail=body.detail,
             supersedes_incident_id=optional_uuid(
                 body.supersedes_incident_id, "supersedes_incident_id"),
+        )
+
+    # --------------------------------------------------- MOD-010 domain events
+
+    # There is no route that runs a consumer's handlers. Delivery needs handlers registered in
+    # this process, and this build registers none -- a `POST /events/deliver` that found an
+    # empty registry would be a route that reads as a control and does nothing. `deliver_pending`
+    # is exercised by the tests with their own handlers, and the transport that will register
+    # real ones is the gap recorded in CLAUDE.md.
+
+    @app.get("/events/health")
+    def event_health(tenant_id: TenantId, session: Session) -> dict[str, Any]:
+        permit(session, "events.event.read")
+        return events.outbox_health(tenant_pool, tenant_id)
+
+    @app.get("/events/trace")
+    def event_trace(
+        tenant_id: TenantId, session: Session, correlation_id: str
+    ) -> list[dict[str, Any]]:
+        permit(session, "events.event.read", correlation_id)
+        return events.trace(tenant_pool, tenant_id,
+                            correlation_id=require_uuid(correlation_id, "correlation_id"))
+
+    @app.get("/events/aggregate")
+    def event_aggregate(
+        tenant_id: TenantId, session: Session, aggregate_type: str, aggregate_id: str
+    ) -> list[dict[str, Any]]:
+        permit(session, "events.event.read")
+        return events.aggregate_history(
+            tenant_pool, tenant_id, aggregate_type=aggregate_type,
+            aggregate_id=require_uuid(aggregate_id, "aggregate_id"),
+        )
+
+    @app.get("/events/{event_id}")
+    def read_event(tenant_id: TenantId, session: Session, event_id: str) -> dict[str, Any]:
+        permit(session, "events.event.read")
+        return events.get_event(tenant_pool, tenant_id,
+                                event_id=require_uuid(event_id, "event_id"))
+
+    @app.get("/events/subscriptions/all")
+    def read_subscriptions(
+        tenant_id: TenantId, session: Session, include_inactive: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "events.subscription.read")
+        return events.list_subscriptions(tenant_pool, tenant_id,
+                                         include_inactive=include_inactive)
+
+    @app.post("/events/subscriptions", status_code=201)
+    def create_subscription(
+        tenant_id: TenantId, session: Session, body: SubscriptionBody
+    ) -> dict[str, Any]:
+        permit(session, "events.subscription.write", body.correlation_id)
+        return events.subscribe(
+            tenant_pool, tenant_id, consumer=body.consumer, event_type=body.event_type,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            replay_safety=body.replay_safety, max_attempts=body.max_attempts,
+        )
+
+    @app.post("/events/subscriptions/{subscription_id}/deactivate")
+    def deactivate_subscription(
+        tenant_id: TenantId, session: Session, subscription_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "events.subscription.write", body.correlation_id)
+        return events.unsubscribe(
+            tenant_pool, tenant_id,
+            subscription_id=require_uuid(subscription_id, "subscription_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/events/dispatch")
+    def run_dispatch(
+        tenant_id: TenantId, session: Session, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "events.dispatch.run", body.correlation_id)
+        return events.dispatch_pending(tenant_pool, tenant_id)
+
+    @app.get("/events/dead-letters/all")
+    def read_dead_letters(
+        tenant_id: TenantId, session: Session, include_released: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "events.dead_letter.read")
+        return events.list_dead_letters(tenant_pool, tenant_id,
+                                        include_released=include_released)
+
+    @app.post("/events/dead-letters/{dead_letter_id}/release")
+    def release_dead_letter(
+        tenant_id: TenantId, session: Session, dead_letter_id: str,
+        body: ReleaseDeadLetterBody,
+    ) -> dict[str, Any]:
+        permit(session, "events.dead_letter.release", body.correlation_id)
+        return events.release_dead_letter(
+            tenant_pool, tenant_id,
+            dead_letter_id=require_uuid(dead_letter_id, "dead_letter_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/events/replays", status_code=201)
+    def create_replay(
+        tenant_id: TenantId, session: Session, body: ReplayBody
+    ) -> dict[str, Any]:
+        permit(session, "events.replay.request", body.correlation_id)
+        return events.request_replay(
+            tenant_pool, tenant_id, consumer=body.consumer, event_types=body.event_types,
+            from_time=body.from_time, to_time=body.to_time,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            side_effects=body.side_effects, side_effects_reason=body.side_effects_reason,
+        )
+
+    @app.post("/events/replays/{job_id}/run")
+    def execute_replay(
+        tenant_id: TenantId, session: Session, job_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "events.replay.run", body.correlation_id)
+        return events.run_replay(
+            tenant_pool, tenant_id, job_id=require_uuid(job_id, "job_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
     return app

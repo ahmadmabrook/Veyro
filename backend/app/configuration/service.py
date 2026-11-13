@@ -45,8 +45,10 @@ nothing drains is a table that grows. `configuration.changed`, `feature_flag.eva
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from typing import Any
+from uuid import uuid4
 
 from psycopg import Connection, errors
 from psycopg.types.json import Jsonb
@@ -54,6 +56,7 @@ from psycopg.types.json import Jsonb
 from app.configuration import evaluation as ev
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
+from app.events import service as events
 
 SCOPES = ("tenant", "brand", "location")
 
@@ -247,6 +250,16 @@ def publish_config_version(
         except errors.ForeignKeyViolation:
             raise NotFound("scope_not_found") from None
         assert row is not None
+        # MOD-010: in the same transaction as the value, so a consumer cannot be told about a
+        # configuration change that did not commit.
+        events.append_event(
+            conn, tenant_id, event_type="configuration.changed", aggregate_type="config_value",
+            aggregate_id=str(row[0]),
+            payload={"config_key": config_key, "scope_type": scope_type,
+                     "scope_id": brand_id or location_id, "version": int(row[1]),
+                     "published_by": published_by},
+            correlation_id=correlation_id, actor_id=published_by,
+        )
     return {
         "value_id": str(row[0]), "config_key": config_key, "scope_type": scope_type,
         "brand_id": brand_id, "location_id": location_id, "value": value,
@@ -647,7 +660,8 @@ def set_experiment_status(
 
 
 def allocate_experiment(
-    pool: Pool, tenant_id: str, *, experiment_key: str, subject_id: str
+    pool: Pool, tenant_id: str, *, experiment_key: str, subject_id: str,
+    correlation_id: str | None = None,
 ) -> dict[str, Any]:
     """Assign a subject and record the exposure (AllocateExperiment, PLT-02-R04).
 
@@ -700,6 +714,21 @@ def allocate_experiment(
             # the request and will be handed the recorded exposure. The transaction is already
             # aborted at this point, so re-reading it here is not available.
             raise Conflict("exposure_race") from None
+        # The exposure row and the event commit together: an analysis that reads the events and
+        # one that reads `cfg_exposures` must not be able to disagree about who saw what.
+        # `correlation_id` comes from the caller when there is one -- the HTTP route always sends
+        # it -- and is minted only for a caller that has none, which is a worker rather than a
+        # request. A minted one traces to nothing, so it is the fallback and not the rule.
+        events.append_event(
+            conn, tenant_id, event_type="experiment.exposed", aggregate_type="experiment",
+            aggregate_id=str(experiment_id),
+            payload={"experiment_key": experiment_key,
+                     # Hashed, never the raw string: `subject_id` here is caller-chosen free
+                     # text, and an event is the one store this build cannot erase from.
+                     "subject_hash": hashlib.sha256(subject_id.encode()).hexdigest(),
+                     "variant": assigned},
+            correlation_id=correlation_id or str(uuid4()),
+        )
     return {"experiment_key": experiment_key, "subject_id": subject_id, "variant": assigned,
             "exposed": True, "newly_exposed": True}
 

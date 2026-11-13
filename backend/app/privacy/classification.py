@@ -129,7 +129,19 @@ class Reachability:
         return self.locate_by or self.column
 
 
-MECHANISMS = ("delete", "anonymize", "covered", "pseudonymize", "unreachable")
+MECHANISMS = ("delete", "anonymize", "covered", "pseudonymize", "unreachable", "write_once")
+#: `write_once` exists because `unreachable` was being claimed for columns the database *can*
+#: write. An independent reviewer showed two MOD-010 entries declaring "the database refuses to
+#: change it" over columns sitting in a column-scoped UPDATE grant, with nothing but a service
+#: predicate between them and a rewritten record -- application convention, which is exactly
+#: what this registry exists not to rely on.
+#:
+#: The distinction that matters to erasure is the same for both: no erasure path touches the
+#: column. The distinction that matters to a reviewer is not. `unreachable` means the grants
+#: make the column immutable, and the test asserts that. `write_once` means a service writes it
+#: once under a predicate and no erasure path clears it, and the test asserts the grant exists
+#: and that nothing claims to clear it -- an honest, weaker statement rather than a false strong
+#: one.
 
 # Every column in either plane that names a natural person: the subject of a request, the
 # guardian who signed for them, or the actor who did something. An actor is a data subject too --
@@ -237,8 +249,14 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "the request's own subject: the UPDATE grant is column-scoped to the state "
                  "machine, so that a deletion request cannot be turned into an access request"),
     Reachability("plt01", "sec_dsar_requests", "opened_by", "unreachable", "same row"),
-    Reachability("plt01", "sec_dsar_requests", "identity_verified_by", "unreachable", "same row"),
-    Reachability("plt01", "sec_dsar_requests", "legal_checked_by", "unreachable", "same row"),
+    # `write_once`, not `unreachable`: these columns sit in `sec_dsar_requests`'s
+    # column-scoped UPDATE grant, so the database does not refuse to change them -- the request
+    # state machine does. Written as `unreachable` before the registry's test could tell the
+    # difference, and found when it could.
+    Reachability("plt01", "sec_dsar_requests", "identity_verified_by", "write_once",
+                 "written when the gate passes; guarded by the state machine, not by the grant"),
+    Reachability("plt01", "sec_dsar_requests", "legal_checked_by", "write_once",
+                 "written when the gate passes; guarded by the state machine, not by the grant"),
     Reachability("plt01", "sec_legal_holds", "subject_id", "unreachable",
                  "a hold names who it protects; the UPDATE is scoped to release"),
     Reachability("plt01", "sec_legal_holds", "placed_by", "unreachable", "same row"),
@@ -254,14 +272,57 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     # principle (the column is writable) and unreachable in fact: the writable window closes the
     # moment the value is set, because the same constraint that requires an actor also refuses a
     # second retirement, and the legal-hold trigger refuses any later change at all.
-    Reachability("plt01", "sec_processing_purposes", "retired_by", "unreachable",
-                 "write-once with the retirement; a second retirement is refused"),
-    Reachability("plt01", "sec_retention_policies", "retired_by", "unreachable",
-                 "write-once with the retirement; a retired policy is never re-retired"),
+    Reachability("plt01", "sec_processing_purposes", "retired_by", "write_once",
+                 "written with the retirement; `retired_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "sec_retention_policies", "retired_by", "write_once",
+                 "written with the retirement; the service retires the live policy only"),
+    # The one actual `unreachable` among the actor columns, and the only one backed by
+    # something the database enforces: `sec_legal_holds_release_is_final` refuses any change to
+    # a released row. The column is in the UPDATE grant, so the registry's test allows this
+    # entry only because the trigger exists and the reason says so.
     Reachability("plt01", "sec_legal_holds", "released_by", "unreachable",
-                 "write-once with the release, and the trigger refuses any later change"),
+                 "written with the release, and a BEFORE UPDATE trigger refuses any later "
+                 "change to a released hold"),
     Reachability("plt01", "sec_consent_definitions", "defined_by", "unreachable",
                  "the definitions table carries no UPDATE grant at all"),
+    # MOD-010. `evt_outbox.actor_id` is the one here that can name the data subject rather than
+    # a member of staff: an event about somebody's own action carries them as the actor. It is
+    # unreachable all the same, and that is the honest answer rather than a comfortable one --
+    # a published event has been fanned out to consumers and archived, and rewriting the copy
+    # in this table would not reach any of them. The catalogue's own rule is what keeps the
+    # residue small: a payload may not carry a restricted field, so what survives here is an
+    # identifier and not a person's details.
+    Reachability("plt01", "evt_outbox", "actor_id", "unreachable",
+                 "an appended event is history; no UPDATE grant on this column"),
+    # Declared by hand, because the completeness sweep cannot see it: the subject identifier is
+    # inside a `jsonb` column, and that sweep matches column *names*. Five wired producers put a
+    # `subject_id` in here -- consent granted and withdrawn, both DSAR events, and the
+    # experiment exposure (hashed). The residue report would otherwise name `actor_id` and stay
+    # silent about the newest and largest store of subject identifiers in the build, which is a
+    # residue list that reports something untrue. Found by review.
+    Reachability("plt01", "evt_outbox", "payload", "unreachable",
+                 "an appended event is history; no UPDATE grant on this column, and no DELETE "
+                 "for any runtime role on the table"),
+    Reachability("plt01", "evt_subscriptions", "registered_by", "unreachable",
+                 "the UPDATE is scoped to activation and the retry budget"),
+    # `write_once`, not `unreachable`: both columns are in the runtime roles' column-scoped
+    # UPDATE grant, so the database does **not** refuse to change them -- only a service
+    # predicate (`AND active`, `AND released_at IS NULL`) does, and MOD-010 defines no trigger
+    # of the kind `sec_legal_holds` has. These two entries claimed otherwise and a reviewer
+    # rewrote both columns as `veyro_cp_app` to prove it.
+    Reachability("plt01", "evt_subscriptions", "deactivated_by", "write_once",
+                 "written with the deactivation and cleared only by a reactivation; no erasure "
+                 "path touches it, and the grant is column-scoped rather than absent"),
+    Reachability("plt01", "evt_dead_letters", "released_by", "write_once",
+                 "written with the release; guarded by `released_at IS NULL` in the service "
+                 "rather than by the database, which is the honest statement"),
+    Reachability("plt01", "evt_replay_jobs", "requested_by", "unreachable",
+                 "a replay job's terms are fixed when it is requested; no UPDATE grant on this "
+                 "column"),
+    Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
+                 "written when the job starts; `status = 'requested'` in the service is what "
+                 "refuses a second run, not the grant"),
 )
 
 
@@ -280,9 +341,25 @@ def covered_columns() -> tuple[Reachability, ...]:
     return tuple(r for r in SUBJECT_COLUMNS if r.mechanism == "covered")
 
 
+#: Mechanisms no erasure path touches. Both belong in the residue a completion report
+#: discloses: the distinction between them is about *why* the column does not change, which
+#: matters to a reviewer and not to the subject whose identifier survives either way.
+_NOT_ERASED = ("unreachable", "write_once")
+
+
 def unreachable_columns() -> tuple[Reachability, ...]:
-    """The columns it cannot, which is what a completion report has to disclose."""
-    return tuple(r for r in SUBJECT_COLUMNS if r.mechanism == "unreachable")
+    """The columns erasure cannot reach, which is what a completion report has to disclose.
+
+    Includes `write_once` as well as `unreachable`. Returning only the latter would have
+    dropped two columns out of every residue report the moment `write_once` was introduced --
+    the report would have got shorter without anything becoming erasable.
+    """
+    return tuple(r for r in SUBJECT_COLUMNS if r.mechanism in _NOT_ERASED)
+
+
+def write_once_columns() -> tuple[Reachability, ...]:
+    """Columns a service writes once and no erasure path clears. Not the same as unreachable."""
+    return tuple(r for r in SUBJECT_COLUMNS if r.mechanism == "write_once")
 
 
 def deletion_is_complete() -> bool:

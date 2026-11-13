@@ -33,8 +33,9 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 38 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
-MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, and MOD-009's `sec_` -- and **every one has been
+CI. It carries 43 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_` and MOD-010's `evt_` -- and
+**every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash

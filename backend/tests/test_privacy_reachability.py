@@ -26,7 +26,12 @@ import unittest
 
 import psycopg
 
-from app.privacy.classification import MECHANISMS, SUBJECT_COLUMNS
+from app.privacy.classification import (
+    MECHANISMS,
+    SUBJECT_COLUMNS,
+    unreachable_columns,
+    write_once_columns,
+)
 
 # A column names a natural person if it is one of these, or if it ends in `_by`. The suffix rule
 # is deliberately broad: it will one day catch something like `ordered_by` that is not a person,
@@ -80,6 +85,48 @@ class ReachabilityRegistryTests(unittest.TestCase):
         ).fetchall():
             cls.grants.setdefault((schema, table), set()).add(privilege)
 
+        # **Column-scoped UPDATE, per column.** `role_table_grants` reports table-level grants
+        # only, so for every table whose UPDATE is column-scoped -- which is most of them in
+        # this repository -- the table-level sweep above returns nothing and
+        # `test_an_unreachable_declaration_is_actually_unreachable` passed vacuously. An
+        # independent reviewer used that to land two `unreachable` declarations over columns in
+        # a column-scoped grant, and then rewrote both as `veyro_cp_app`. `has_column_privilege`
+        # over `pg_attribute` rather than the information_schema views, because those are
+        # filtered to what the connecting user can see and would hide the worker role's grants.
+        cls.column_updates: set[tuple[str, str, str]] = {
+            (s, t, c) for s, t, c in cls._conn.execute(
+                """
+                SELECT n.nspname, c.relname, a.attname
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_attribute a ON a.attrelid = c.oid
+                CROSS JOIN unnest(%s::text[]) AS r(role)
+                WHERE n.nspname IN ('plt01', 'iam') AND c.relkind = 'r'
+                  AND a.attnum > 0 AND NOT a.attisdropped
+                  AND has_column_privilege(r.role, c.oid, a.attname, 'UPDATE')
+                """,
+                (list(RUNTIME_ROLES),),
+            ).fetchall()
+        }
+
+        # Tables with a row-level BEFORE UPDATE trigger. A trigger can refuse what a grant
+        # permits, which is the only sanctioned way an `unreachable` declaration may stand over
+        # a writable column.
+        cls.update_triggers: set[tuple[str, str]] = {
+            (s, t) for s, t in cls._conn.execute(
+                """
+                SELECT n.nspname, c.relname
+                FROM pg_trigger tg
+                JOIN pg_class c ON c.oid = tg.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE NOT tg.tgisinternal
+                  AND (tg.tgtype & 16) <> 0   -- UPDATE
+                  AND (tg.tgtype & 2) <> 0    -- BEFORE
+                  AND (tg.tgtype & 1) <> 0    -- FOR EACH ROW
+                """
+            ).fetchall()
+        }
+
     @classmethod
     def tearDownClass(cls) -> None:
         cls._conn.close()
@@ -99,10 +146,20 @@ class ReachabilityRegistryTests(unittest.TestCase):
         )
 
     def test_the_registry_names_no_column_that_does_not_exist(self):
-        """The other direction: a stale entry would claim coverage of a table that is gone."""
+        """The other direction: a stale entry would claim coverage of a table that is gone.
+
+        Asked of the catalogue, not of `self.live`. `self.live` is the subject-name heuristic,
+        and an entry declared by hand because the heuristic cannot see it -- a subject id inside
+        a `jsonb` payload -- is not stale merely because the heuristic missed it.
+        """
+        columns = {
+            (s, t, c) for s, t, c in self._conn.execute(
+                "SELECT table_schema, table_name, column_name FROM information_schema.columns"
+                " WHERE table_schema IN ('plt01','iam')"
+            ).fetchall()
+        }
         declared = {(r.schema, r.table, r.column) for r in SUBJECT_COLUMNS}
-        stale = sorted(declared - self.live)
-        self.assertEqual(stale, [],
+        self.assertEqual(sorted(declared - columns), [],
                          "these entries name columns the database does not have")
 
     def test_every_declaration_is_well_formed(self):
@@ -209,10 +266,15 @@ class ReachabilityRegistryTests(unittest.TestCase):
     def test_an_unreachable_declaration_is_actually_unreachable(self):
         """The strongest of the six, and the one most likely to fire years from now.
 
-        `unreachable` is a statement that the database refuses to change these rows. If a later
-        migration grants UPDATE or DELETE on one of them, two things are true at once: erasure
-        became possible, and the insert-only guarantee that something else depends on was lost.
-        Either way the registry entry is now wrong and somebody has to look at it.
+        `unreachable` is a statement that the database refuses to change this column. If a later
+        migration grants UPDATE or DELETE over it, two things are true at once: erasure became
+        possible, and the immutability something else depends on was lost. Either way the
+        registry entry is wrong and somebody has to look at it.
+
+        Checked at **table and column** level. The table-level half is what this test always
+        did, and on its own it passed vacuously for every column-scoped grant in the repository
+        -- which is most of them. `write_once` is the mechanism for a column a service really
+        does write; a declaration that claims more than that fails here.
         """
         for r in SUBJECT_COLUMNS:
             if r.mechanism != "unreachable":
@@ -221,10 +283,59 @@ class ReachabilityRegistryTests(unittest.TestCase):
             self.assertEqual(
                 held, set(),
                 f"{r.schema}.{r.table}.{r.column} is declared unreachable but a runtime role now "
-                f"holds {sorted(held)} on it. Either the grant is a mistake and the insert-only "
-                f"property has been lost, or erasure is now possible and this entry should say "
-                f"so. Reason on file: {r.reason}",
+                f"holds {sorted(held)} on the table. Either the grant is a mistake and the "
+                f"insert-only property has been lost, or erasure is now possible and this entry "
+                f"should say so. Reason on file: {r.reason}",
             )
+            if (r.schema, r.table, r.column) in self.column_updates:
+                # One sanctioned exception: a BEFORE UPDATE trigger can refuse what a grant
+                # permits, which is how `sec_legal_holds` makes a release final. The reason has
+                # to say so, because otherwise this branch is a hole somebody can park a false
+                # declaration in.
+                self.assertIn(
+                    "trigger", r.reason,
+                    f"{r.schema}.{r.table}.{r.column} is declared unreachable and a runtime "
+                    f"role holds a column-scoped UPDATE on exactly it. The database does not "
+                    f"refuse to change it -- only a predicate in the service does, which is "
+                    f"what this registry exists not to rely on. `write_once` is the mechanism "
+                    f"for that. Reason on file: {r.reason}",
+                )
+                self.assertIn(
+                    (r.schema, r.table), self.update_triggers,
+                    f"{r.schema}.{r.table}.{r.column}'s reason claims a trigger and the table "
+                    f"has no BEFORE UPDATE trigger",
+                )
+
+    def test_a_write_once_declaration_really_has_a_grant_behind_it(self):
+        """The other direction, so `write_once` cannot become a place to park anything.
+
+        It is the weaker claim -- a service writes the column once and no erasure path clears it
+        -- and it is only the right answer when the column genuinely is writable. A column with
+        no grant at all is `unreachable`, and saying `write_once` of it understates what the
+        database guarantees.
+        """
+        written = write_once_columns()
+        self.assertTrue(written, "if nothing is write_once, delete the mechanism")
+        for r in written:
+            self.assertIn(
+                (r.schema, r.table, r.column), self.column_updates,
+                f"{r.schema}.{r.table}.{r.column} is declared write_once and no runtime role "
+                f"can write it; it is unreachable, which is a stronger and truer statement",
+            )
+            self.assertEqual(r.clears, (), f"{r.table}.{r.column} clears nothing")
+
+    def test_the_subject_identifiers_inside_jsonb_are_declared_by_hand(self):
+        """The completeness sweep matches column *names*, so a subject id inside a `jsonb`
+        payload is invisible to it. `evt_outbox.payload` holds one for five of MOD-010's eight
+        wired producers, and a residue report that omitted the newest and largest store of
+        subject identifiers in the build would report something untrue. Found by review; named
+        here because no sweep can find the next one either.
+        """
+        declared = {(r.schema, r.table, r.column) for r in SUBJECT_COLUMNS}
+        self.assertIn(("plt01", "evt_outbox", "payload"), declared)
+        residue = {(r.schema, r.table, r.column) for r in unreachable_columns()}
+        self.assertIn(("plt01", "evt_outbox", "payload"), residue,
+                      "it has to appear in what a completion report discloses")
 
     def test_this_build_cannot_fully_erase_a_subject_and_says_so(self):
         """Stated as its own test so the disclosure cannot lapse quietly.
@@ -232,7 +343,7 @@ class ReachabilityRegistryTests(unittest.TestCase):
         If the unreachable set ever empties, this fails -- which is the right failure: somebody
         should then delete this test, and the gap note in CLAUDE.md with it.
         """
-        from app.privacy.classification import deletion_is_complete, unreachable_columns
+        from app.privacy.classification import deletion_is_complete
 
         self.assertFalse(deletion_is_complete())
         self.assertTrue(unreachable_columns())

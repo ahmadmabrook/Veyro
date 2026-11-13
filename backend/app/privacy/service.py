@@ -42,12 +42,14 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from psycopg import Connection, errors
 from psycopg.types.json import Jsonb
 
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
+from app.events import service as events
 from app.privacy import classification, consent, dsar, retention
 
 
@@ -261,7 +263,8 @@ def register_consent(
             conn, tenant_id, subject_id=subject_id, definition_id=definition["definition_id"],
             consent_version_id=chosen.consent_version_id, action="granted", signed_at=signed_at,
             source=source, correlation_id=correlation_id, guardian=guardian_subject_id,
-            evidence_hash_value=evidence_hash_value, evidence_ref=evidence_ref, locale=language,
+            evidence_hash_value=evidence_hash_value, evidence_ref=evidence_ref,
+            locale=language, consent_type=consent_type,
         )
     return {"record_id": row, "subject_id": subject_id, "consent_type": consent_type,
             "consent_version_id": chosen.consent_version_id, "action": "granted",
@@ -296,7 +299,7 @@ def withdraw_consent(
             consent_version_id=state.consent_version_id, action="withdrawn",
             signed_at=signed_at, source=source, correlation_id=correlation_id, guardian=None,
             evidence_hash_value=None, evidence_ref=evidence_ref,
-            locale=_DEFAULT_LANGUAGE,
+            locale=_DEFAULT_LANGUAGE, consent_type=consent_type,
         )
     return {"record_id": row, "subject_id": subject_id, "consent_type": consent_type,
             "action": "withdrawn", "signed_at": signed_at.isoformat()}
@@ -508,6 +511,14 @@ def open_dsar(
             (tenant_id, subject_id, request_type, opened["received_at"], due_at,
              actor_id, correlation_id),
         ).fetchone()
+        assert row is not None
+        events.append_event(
+            conn, tenant_id, event_type="data_subject_request.created",
+            aggregate_type="dsar", aggregate_id=str(row[0]),
+            payload={"request_id": str(row[0]), "subject_id": subject_id,
+                     "request_type": request_type, "due_at": due_at.isoformat()},
+            correlation_id=correlation_id, actor_id=actor_id,
+        )
     assert row is not None
     return {"request_id": str(row[0]), "subject_id": subject_id, "request_type": request_type,
             "status": "received", "received_at": arrived.isoformat(),
@@ -672,6 +683,18 @@ def fulfil_dsar(
                 " WHERE request_id = %s",
                 (request_id,),
             )
+            events.append_event(
+                conn, tenant_id, event_type="data_subject_request.completed",
+                aggregate_type="dsar", aggregate_id=request_id,
+                payload={"request_id": request_id, "subject_id": request["subject_id"],
+                         "request_type": request["request_type"],
+                         "has_residue": bool(settled["has_residue"])},
+                # The caller's correlation id when it sent one. A fulfilment reached through
+                # a worker rather than a request has none, and minting one is better than
+                # reaching for a column `_request` does not project.
+                correlation_id=correlation_id or str(uuid4()),
+                actor_id=actor_id,
+            )
     return {"request_id": request_id, **settled}
 
 
@@ -738,6 +761,14 @@ def record_incident(
             raise NotFound("superseded_incident_not_found") from None
         except errors.CheckViolation as e:
             raise InvalidRequest(_check_name(e)) from None
+        assert row is not None
+        events.append_event(
+            conn, tenant_id, event_type="security.alert.detected",
+            aggregate_type="incident", aggregate_id=str(row[0]),
+            payload={"incident_id": str(row[0]), "severity": severity, "category": category,
+                     "personal_data_involved": personal_data_involved},
+            correlation_id=correlation_id, actor_id=actor_id,
+        )
     assert row is not None
     return {"incident_id": str(row[0]), "severity": severity, "category": category,
             "personal_data_involved": personal_data_involved,
@@ -843,7 +874,7 @@ def _append_consent(
     conn: Connection, tenant_id: str, *, subject_id: str, definition_id: str,
     consent_version_id: str, action: str, signed_at: datetime, source: str,
     correlation_id: str, guardian: str | None, evidence_hash_value: str | None,
-    evidence_ref: str | None, locale: str,
+    evidence_ref: str | None, locale: str, consent_type: str, actor_id: str | None = None,
 ) -> str:
     try:
         row = conn.execute(
@@ -861,6 +892,23 @@ def _append_consent(
     except errors.CheckViolation as e:
         raise InvalidRequest(_check_name(e)) from None
     assert row is not None
+    # MOD-010: the event is appended on this connection, inside the transaction that wrote the
+    # consent record, so the two commit together or not at all. A consumer cannot learn that a
+    # member consented to something the database then rolled back, and a consent that committed
+    # cannot fail to tell anybody.
+    events.append_event(
+        conn, tenant_id,
+        event_type="consent.granted" if action == "granted" else "consent.withdrawn",
+        aggregate_type="consent", aggregate_id=subject_id,
+        payload=({"subject_id": subject_id, "consent_type": consent_type,
+                  "consent_version_id": consent_version_id,
+                  "signed_at": signed_at.isoformat(), "source": source}
+                 if action == "granted" else
+                 {"subject_id": subject_id, "consent_type": consent_type,
+                  "consent_version_id": consent_version_id,
+                  "signed_at": signed_at.isoformat()}),
+        correlation_id=correlation_id, actor_id=actor_id,
+    )
     return str(row[0])
 
 
