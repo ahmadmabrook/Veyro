@@ -303,4 +303,280 @@ BEGIN
 END $$;
 COMMIT;
 
-\echo 'tenant isolation: 13/13 checks passed'
+-- ================================================================ MOD-005 PLT-02 (cfg_* tables)
+-- The configuration and flag tables repeat PLT-01's protections, so they get the same
+-- interrogation rather than being trusted to have copied it correctly. Two of them are
+-- additionally insert-only in the privilege layer; checks 19 and 20 are what make that a fact
+-- about the database rather than a claim in a migration comment.
+
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-005)
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.cfg_definitions
+    (tenant_id, definition_id, config_key, value_type, default_value, owner_module)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000001',
+        'checkin.grace_minutes', 'integer', '15'::jsonb, 'MOD-005');
+INSERT INTO plt01.cfg_values
+    (tenant_id, definition_id, scope_type, value, version, published_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000001', 'tenant',
+        '20'::jsonb, 1, :'actor', :'actor');
+INSERT INTO plt01.cfg_flags (tenant_id, flag_id, flag_key, enabled, default_variant)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000002', 'pay.new_provider', true, 'off');
+INSERT INTO plt01.cfg_flag_rules (tenant_id, flag_id, priority, match, rollout_bp, variant)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000002', 1, '{}'::jsonb, 5000, 'on');
+INSERT INTO plt01.cfg_experiments (tenant_id, experiment_id, experiment_key, status, salt)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000003',
+        'checkout.copy', 'running', 'seed-salt');
+INSERT INTO plt01.cfg_variants (tenant_id, experiment_id, variant_key, weight)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000003', 'control', 1),
+       (:'tenant_a', 'cccccccc-0000-4000-8000-000000000003', 'treatment', 1);
+INSERT INTO plt01.cfg_exposures (tenant_id, experiment_id, subject_id, variant_key)
+VALUES (:'tenant_a', 'cccccccc-0000-4000-8000-000000000003', 'member-1', 'control');
+COMMIT;
+
+-- ---------------------------------------------------------------- 14. cfg tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['cfg_definitions', 'cfg_values', 'cfg_flags', 'cfg_flag_rules',
+                               'cfg_experiments', 'cfg_variants', 'cfg_exposures'] LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 14 FAILED: tenant B sees % rows in plt01.%', seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.cfg_definitions) <> 1
+       OR (SELECT count(*) FROM plt01.cfg_flags) <> 1
+       OR (SELECT count(*) FROM plt01.cfg_exposures) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 14 FAILED: tenant A cannot see its own configuration rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 15. unset context, cfg tables
+-- The same fail-closed property as check 3, asserted on the new tables. A policy copied with a
+-- typo in the GUC name would still read as correct and would still return every row here.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['cfg_definitions', 'cfg_values', 'cfg_flags', 'cfg_flag_rules',
+                               'cfg_experiments', 'cfg_variants', 'cfg_exposures'] LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION
+                'CHECK 15 FAILED: unset context read % rows from plt01.% -- fails OPEN', seen, tbl;
+        END IF;
+    END LOOP;
+    BEGIN
+        INSERT INTO plt01.cfg_flags (tenant_id, flag_key)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'written.without_context');
+        RAISE EXCEPTION 'CHECK 15 FAILED: insert into cfg_flags succeeded with no context';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 16. cross-tenant parents
+-- Every composite foreign key is exercised from the wrong tenant. Containment must be the
+-- database's answer, not the service's.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.cfg_values
+            (tenant_id, definition_id, scope_type, value, version, published_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'cccccccc-0000-4000-8000-000000000001', 'tenant', '99'::jsonb, 1,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 16 FAILED: a value was attached to another tenant''s definition';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.cfg_flag_rules (tenant_id, flag_id, priority, variant)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'cccccccc-0000-4000-8000-000000000002', 1, 'on');
+        RAISE EXCEPTION 'CHECK 16 FAILED: a rule was attached to another tenant''s flag';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.cfg_variants (tenant_id, experiment_id, variant_key, weight)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'cccccccc-0000-4000-8000-000000000003', 'stolen', 1);
+        RAISE EXCEPTION 'CHECK 16 FAILED: a variant was attached to another tenant''s experiment';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.cfg_exposures (tenant_id, experiment_id, subject_id, variant_key)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'cccccccc-0000-4000-8000-000000000003', 'member-9', 'control');
+        RAISE EXCEPTION 'CHECK 16 FAILED: an exposure was recorded against another tenant''s experiment';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 17. FORCE RLS binds the owner
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+DO $$
+DECLARE
+    forced boolean;
+BEGIN
+    IF (SELECT count(*) FROM plt01.cfg_flags) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 17 FAILED: the table owner read % cfg_flags rows',
+            (SELECT count(*) FROM plt01.cfg_flags);
+    END IF;
+    -- relkind 'r' only: pg_class also holds this schema's indexes, and an index never carries
+    -- row security, so matching on the name alone reports every table as unprotected.
+    FOR forced IN
+        SELECT relforcerowsecurity FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'cfg\_%'
+    LOOP
+        IF NOT forced THEN
+            RAISE EXCEPTION 'CHECK 17 FAILED: a cfg_ table does not FORCE row level security';
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'cfg\_%'
+          AND relrowsecurity AND relforcerowsecurity) <> 7 THEN
+        RAISE EXCEPTION 'CHECK 17 FAILED: expected 7 cfg_ tables with RLS enabled and forced, got %',
+            (SELECT count(*) FROM pg_class
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+               AND relname LIKE 'cfg\_%' AND relrowsecurity AND relforcerowsecurity);
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 18. the CHECKs actually bite
+-- A constraint nobody tests is a comment. These three carry product meaning: a kill switch
+-- without a reason, a scope that names the wrong target, and a rollout outside 0-100%.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.cfg_flags SET kill_switch_engaged = true
+        WHERE flag_id = 'cccccccc-0000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 18 FAILED: a kill switch was engaged with no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.cfg_values
+            (tenant_id, definition_id, scope_type, brand_id, value, version,
+             published_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000001', 'tenant',
+                'aaaaaaaa-0000-4000-8000-000000000002', '1'::jsonb, 9,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 18 FAILED: a tenant-scoped value carried a brand target';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.cfg_flag_rules (tenant_id, flag_id, priority, rollout_bp, variant)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000002', 9, 10001, 'on');
+        RAISE EXCEPTION 'CHECK 18 FAILED: a rollout above 100%% was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 19. cfg_values is append-only
+-- Published configuration is history. The privilege is asserted directly rather than inferred
+-- from a failed statement, because a statement can fail for the wrong reason -- that mistake was
+-- already made once in this file, at check 10, and caught by mutation testing.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_cp_app', 'plt01.cfg_values', 'UPDATE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.cfg_values', 'DELETE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.cfg_values', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.cfg_values', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 19 FAILED: a runtime role can rewrite published configuration';
+    END IF;
+    IF NOT has_table_privilege('veyro_cp_app', 'plt01.cfg_values', 'INSERT') THEN
+        RAISE EXCEPTION 'CHECK 19 FAILED: configuration cannot be published at all';
+    END IF;
+    BEGIN
+        UPDATE plt01.cfg_values SET value = '0'::jsonb;
+        RAISE EXCEPTION 'CHECK 19 FAILED: a published value was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 20. cfg_exposures append-only
+-- What a subject was shown cannot be revised after the fact, or an experiment's result can be
+-- edited into whatever the reader wanted.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_cp_app', 'plt01.cfg_exposures', 'UPDATE')
+       OR has_table_privilege('veyro_cp_app', 'plt01.cfg_exposures', 'DELETE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.cfg_exposures', 'UPDATE')
+       OR has_table_privilege('veyro_cp_worker', 'plt01.cfg_exposures', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 20 FAILED: a runtime role can rewrite recorded exposures';
+    END IF;
+    BEGIN
+        UPDATE plt01.cfg_exposures SET variant_key = 'treatment';
+        RAISE EXCEPTION 'CHECK 20 FAILED: a recorded exposure was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.cfg_exposures (tenant_id, experiment_id, subject_id, variant_key)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-0000-4000-8000-000000000003', 'member-1', 'treatment');
+        RAISE EXCEPTION 'CHECK 20 FAILED: a subject was exposed twice to one experiment';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 20/20 checks passed'

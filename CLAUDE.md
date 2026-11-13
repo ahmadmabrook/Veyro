@@ -17,6 +17,8 @@ backend/app/            service code
   tenancy/service.py    tenant lifecycle and the organization hierarchy
   tenancy/domain/       pure decision functions derived from the TSD; no I/O
   tenancy_s0.py         ProvisionTenant envelope validation (reused by the service)
+  configuration/        MOD-005: evaluation.py decides, service.py does the I/O
+  errors.py             the four service errors every module's service raises
 backend/migrations/     platform/ and tenant/ SQL, applied in filename order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
 backend/scripts/        verify_db.sh rebuilds the database and runs the isolation suite
@@ -118,7 +120,7 @@ authentication. `governance/registry.json` `reserved_actions` keeps the four nam
 **MOD-004 (tenancy control plane) — implemented, not accepted.** Working: the `plt01_platform`
 registry with tenant lifecycle and append-only history, idempotent provisioning, the `plt01`
 organization/legal-entity/brand/location hierarchy under forced RLS, and an HTTP surface over
-both planes. Proven: 13 isolation checks, each mutation-tested.
+both planes. Proven: isolation checks 1-13, each mutation-tested.
 
 Known gaps, deliberate and worth reading before extending:
 
@@ -135,7 +137,36 @@ Known gaps, deliberate and worth reading before extending:
   rest are spec analyses, and several say in their own docstrings that their answers are the
   author's reading rather than a sourced fact — read that before depending on one.
 
-**Next:** MOD-005 onward. Finish a module's real requirements and tests, then move on.
+**MOD-005 (PLT-02 configuration, feature flags and experimentation) — implemented.** Seven
+`cfg_*` tables in `plt01` under the same forced RLS, a typed configuration registry with
+validation and tenant/brand/location inheritance, append-only value versions with rollback and
+preview, feature flags with arbitrary targeting attributes and basis-point rollout, kill switches
+that outrank every rule, deterministic experiment assignment with recorded exposures, and a
+single-read bundle for mobile, kiosks and devices. Proven: isolation checks 14-20, each
+mutation-tested; 32 evaluation unit tests that need no database; 34 integration tests.
+
+Two tables are insert-only in the privilege layer — `cfg_values` and `cfg_exposures` — so a
+published value cannot be rewritten and a recorded exposure cannot be revised. That is the
+mechanism behind "every change is reversible" and "repair without history rewrite", and checks 19
+and 20 prove the grants rather than trusting the migration's comment.
+
+Known gaps, deliberate:
+
+- **No experiment metrics, guardrails or decision records** (part of PLT-02-R04). They need a
+  metrics pipeline that does not exist; a decision record with no measurements behind it would be
+  worse than the gap.
+- **No approval workflow** (part of PLT-02-R05). Approval needs an authenticated principal and
+  MOD-002 is not wired in, so there is nobody to approve as. TSD paragraph 1020's change control
+  for financial and security flag changes in production is therefore not satisfied by anything
+  here; this service runs in local, development and staging only.
+- **No outbox and no published events.** `configuration.changed`, `feature_flag.evaluated`,
+  `experiment.exposed` and `experiment.completed` are named in the TSD and nothing consumes them
+  yet. An outbox nothing drains is a table that grows.
+- Targeting attributes are flat strings compared for equality. The seven dimensions PLT-02-R02
+  names are all expressible that way; set membership and ranges are not, and would need a richer
+  match format.
+
+**Next:** MOD-006 onward. Finish a module's real requirements and tests, then move on.
 
 ## Tooling that still earns its place
 

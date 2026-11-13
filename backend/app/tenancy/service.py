@@ -27,6 +27,7 @@ from psycopg import Connection, errors
 from psycopg_pool import ConnectionPool
 
 from app.db import platform_scope, tenant_scope
+from app.errors import Conflict, InvalidRequest, NotFound, ServiceError
 from app.tenancy.domain.lifecycle import (
     ACTIVATE,
     ARCHIVE,
@@ -44,26 +45,9 @@ Pool = ConnectionPool[Connection[Any]]
 COMMAND_FOR_ACTION = {"activate": ACTIVATE, "suspend": SUSPEND, "archive": ARCHIVE}
 
 
-class ServiceError(Exception):
-    """Base class; `code` is a stable identifier, never raw input."""
-
-    status = 400
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
-
-
-class InvalidRequest(ServiceError):
-    status = 422
-
-
-class Conflict(ServiceError):
-    status = 409
-
-
-class NotFound(ServiceError):
-    status = 404
+# Re-exported from `app.errors`, which MOD-005's service shares. Importing them from here still
+# works, so the HTTP handler and the existing tests are unaffected.
+__all__ = ["Conflict", "DeletionGated", "InvalidRequest", "NotFound", "ServiceError"]
 
 
 class DeletionGated(ServiceError):

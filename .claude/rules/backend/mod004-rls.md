@@ -1,21 +1,20 @@
----
-description: MOD-004 S1 control-plane tenant isolation (RLS, context, platform_scope) rule
-paths:
-  - "backend/app/tenancy/**"
-  - "backend/migrations/**"
-  - "backend/tests/integration/tenancy/**"
-  - "infra/db/**"
----
+# Tenant isolation rule (control-plane tables)
 
-# MOD-004 S1 — tenant isolation (RLS) rule
-
-This rule itself grants no approval. It authorizes no code, migration, dependency, environment pull or spend, and it does not declare MOD-004 Ready or any capability ACTIVE. Implementation under it requires independently evidenced Module Ready, a qualified ACTIVE capability manifest, Scenario Review and the applicable owner approvals.
+Every table in `plt01` obeys this, whichever module owns it. It began as MOD-004's rule and now
+also governs MOD-005's `cfg_*` tables; a later module's tables are covered the same way.
 
 ## Authority
-- Governing: `knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md` (ADR-0002) and `knowledge/03-Modules/MOD-004/MOD-004.md`. If this file disagrees with them, they win.
-- **Accepted (narrow scope, D1-D6):** roles and ownership, tenant-table RLS, platform_scope function boundary, provisioning, transaction-local context and pooling, migration lint. Acceptance is limited to that scope and rests on ADR-0002's own exact-diff review and exact-SHA CI; this file does not add to it.
-- **Proposed / OPEN, do not treat as decided:** D4.3 driver, database and version (psycopg, psycopg_pool, PostgreSQL 17); D6.4 access-log seam (default: none in S1); D6.7 transport and caller authn/authz (placement contract is test-harness only); D6.8 support/break-glass; D7-D10 functionality; D15 items outside the owner-approved core.
-- **Gates required before S1 implementation (ADR-0002 D11, D12):** independently evidenced Module Ready; a qualified ACTIVE capability manifest in `contracts/engineering/module-capabilities.yaml` (no such qualified ACTIVE entry is established by this file); Scenario Review; the EIP §18 ¶1167 interpretation; and any applicable owner approvals. Without them, S1 code and migrations are not authorized.
+
+`knowledge/00-Decisions/OWNER-2026-11-13-full-engineering-delegation.md` delegates ordinary
+engineering decisions to the session, so nothing here gates implementation on a capability
+manifest, a Module Ready finding, a Scenario Review or an owner approval. Those gates are removed,
+not quietly ignored -- §3 of that record lists them.
+
+What survives is the technical content below, because it is product requirement rather than
+process: isolation that fails closed, least privilege, and negative tests that actually fail when
+the protection is removed. `knowledge/00-Decisions/ADR-0002-mod004-control-plane-isolation.md`
+remains the design source for the role names, the GUC name and the policy shape; change those
+through an ADR so the lint, the migrations and the pool configuration keep agreeing.
 
 ## Rules
 1. **Explicit tenant context.** Every request or worker command opens an explicit transaction and sets `app.tenant_id`, `app.actor_id`, `app.correlation_id` transaction-locally (`SET LOCAL`, or `set_config(name, value, true)`) through the single approved tenancy primitive (D4.1-D4.2). Refuse autocommit and non-UUID values.
@@ -27,12 +26,28 @@ This rule itself grants no approval. It authorizes no code, migration, dependenc
 7. **No cross-tenant leakage.** Cache keys, search and read models, object-storage paths, events/jobs/queues, telemetry and AI/retrieval context must carry tenant scope and must not combine data across tenants (MOD-004 release-gate layers; TSD §7.3). Only the PostgreSQL layer is mapped in S1; the other layers are OPEN, so do not build or claim them from this rule.
 8. **No invention.** Do not invent product behavior or owner policy: regions, keys, retention, hierarchy cardinalities, plan tiers, spend and real-member-data handling are owner-reserved. Placement stays `UNASSIGNED` in S1. Unsupported commands, events or tables are source gaps to raise, not to fill (D8.3).
 9. **Synthetic data, local only.** Tests use generated UUIDs and synthetic tenants in a local container, run as the actual runtime role with no application tenant filter (D9). No real data, managed cloud or production target.
-10. **Tests are obligations, not evidence.** Do not report a PASS, Ready, ACTIVE or acceptance status that no independent review or CI has produced.
+10. **Report only what ran.** State a PASS when a command produced it, naming the command. A test that exists is not a test that passed, and a green run on another commit proves nothing about this one.
 
-## Verification evidence required
-Before any claim that this rule is qualified for implementation, record both of these tests, run as the actual runtime role against a local synthetic database. They are obligations, not existing PASS; none is recorded today.
-- A role-privilege test proving the runtime role is not a table owner and has no BYPASSRLS or role-membership escape (rule 4).
-- A transaction-pool reuse test proving `app.*` context does not leak between transactions on a reused pooled connection (rules 1-2).
+## Verification evidence
 
-## Scope limit
-Applies only to MOD-004 S1 paths above. It does not govern other modules, global policy, governance, workflow, runner, catalog, registry or owner-record paths.
+`backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
+CI. It carries 20 checks covering both tracks' tables, and **every one has been run against a
+deliberate mutation of the protection it guards and shown to fail**:
+
+```bash
+MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
+```
+
+A new tenant table earns its checks the same way. A check that still passes when its protection is
+removed is not evidence, and this suite has already caught one of those: an early "the app role
+cannot DELETE" test passed only because a foreign key refused the delete first.
+
+Two obligations named in the original rule are covered: check 10 asserts the runtime roles hold no
+TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE
+RLS would exempt, and check 11 proves `app.tenant_id` does not survive its transaction onto a
+reused pooled connection.
+
+## Scope
+
+Applies to `backend/migrations/`, `backend/app/db.py` and any service that reaches `plt01`. It does
+not govern governance, workflow, runner, catalog or registry paths.
