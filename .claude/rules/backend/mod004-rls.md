@@ -1,8 +1,9 @@
 # Tenant isolation rule (control-plane tables)
 
 Every table in `plt01` obeys this, whichever module owns it. It began as MOD-004's rule and now
-also governs MOD-005's `cfg_*` and MOD-015's `bil_*` tables; a later module's tables are
-covered the same way.
+also governs MOD-005's `cfg_*` and MOD-015's `bil_*` tables in `plt01`, and MOD-007's tables in
+the `iam` schema, whose policies name `veyro_iam_app` instead. A later module's tables are covered
+the same way.
 
 ## Authority
 
@@ -32,7 +33,7 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 26 checks covering both tracks' tables, and **every one has been run against a
+CI. It carries 29 checks covering all three tracks' tables, and **every one has been run against a
 deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -50,5 +51,6 @@ reused pooled connection.
 
 ## Scope
 
-Applies to `backend/migrations/`, `backend/app/db.py` and any service that reaches `plt01`. It does
+Applies to `backend/migrations/`, `backend/app/db.py` and any service that reaches `plt01` or
+`iam`. It does
 not govern governance, workflow, runner, catalog or registry paths.

@@ -1,11 +1,14 @@
-"""Control-plane database access for MOD-004.
+"""Database access, one pool per plane.
 
-Two pools, one per plane, and the split is a security boundary rather than a convenience:
+Three pools, one per plane, and the split is a security boundary rather than a convenience:
 
 * the **tenant plane** runs as ``veyro_cp_app``, which holds privileges only on ``plt01`` and
   nothing at all on the tenant registry, and
 * the **platform plane** runs as ``veyro_cp_platform``, which holds the registry and the
-  lifecycle history and nothing in ``plt01``.
+  lifecycle history and nothing in ``plt01``, and
+* the **identity plane** (MOD-007) runs as ``veyro_iam_app``, which holds the ``iam`` schema and
+  nothing in either control-plane schema, so a mistake in a configuration or billing query cannot
+  reach a credential hash.
 
 Neither role is a member of the other -- ADR-0002 D6.1 bars membership edges -- so a connection
 pinned to one plane cannot reach the other by switching role at runtime. ``SET ROLE`` is issued
@@ -33,6 +36,7 @@ Pool = ConnectionPool[Connection[Any]]
 
 TENANT_ROLE = "veyro_cp_app"
 PLATFORM_ROLE = "veyro_cp_platform"
+IDENTITY_ROLE = "veyro_iam_app"
 
 # Same shape the S0 envelope validator accepts, so a value that passed the edge is accepted here.
 _UUID = re.compile(
@@ -63,6 +67,18 @@ def make_tenant_pool(dsn: str) -> Pool:
 def make_platform_pool(dsn: str) -> Pool:
     """A pool whose every connection is pinned to the platform-plane role."""
     return ConnectionPool(dsn, configure=_pin_role(PLATFORM_ROLE), open=True)
+
+
+def make_identity_pool(dsn: str) -> Pool:
+    """A pool pinned to the identity-plane role (MOD-007).
+
+    ``veyro_iam_app`` holds privileges in ``iam`` and nothing whatever in ``plt01`` or
+    ``plt01_platform``, and no control-plane role holds anything in ``iam``. Three pools now reach
+    the same cluster as three different roles, and ``tenant_scope`` works for all of them because
+    the tenant context is a setting rather than a privilege -- the role decides which schema a
+    connection can see, and the context decides which tenant's rows inside it.
+    """
+    return ConnectionPool(dsn, configure=_pin_role(IDENTITY_ROLE), open=True)
 
 
 @contextmanager

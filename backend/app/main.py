@@ -1,16 +1,26 @@
-"""Veyro API: MOD-004 tenancy control plane.
+"""Veyro API: the HTTP surface over all four planes.
 
-**The tenant on a request is a claim, not an authentication.** ``X-Veyro-Tenant`` is read and
-shape-checked and nothing more; no principal is authenticated and no permission is evaluated,
-because authentication and AAL-3 belong to MOD-007, which is not wired in. The environments this
-service accepts are local, development and staging -- there is no production value -- so the
-claim never reaches real member data. Isolation does not rest on this header being honest: it
-rests on row-level security, which confines whatever tenant the header names and returns nothing
-at all when it names none.
+**`X-Veyro-Tenant` is a claim, not an authentication.** It is read, shape-checked, and nothing
+more. No caller proves which tenant it is, so anyone who knows a tenant UUID can address that
+tenant's API. Isolation does not rest on the header being honest -- it rests on row-level
+security, which confines whatever tenant the header names and returns nothing at all when it
+names none -- but **authorization does not exist**, and the header is why.
+
+MOD-007 changes part of that picture and not all of it. Its own routes now authenticate: every
+operation on an identity resolves a bearer token and refuses unless the session belongs to that
+identity. An independent review of the first version found that they did not, and demonstrated a
+full account takeover from the tenant UUID alone. What is still missing is the other direction --
+nothing ties a session to the tenant header, and no route outside MOD-007 asks for a session at
+all. MOD-008 owns roles, permissions and approvals, and is unbuilt.
+
+The environments this service accepts are local, development and staging; there is no production
+value, so the claim never reaches real member data.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -25,7 +35,8 @@ from app import db
 from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
-from app.errors import ServiceError
+from app.errors import InvalidRequest, NotFound, ServiceError
+from app.identity import service as identity
 from app.tenancy import service
 
 _UUID = re.compile(
@@ -229,6 +240,125 @@ class CreditNoteBody(BaseModel):
     correlation_id: str
 
 
+class RegisterIdentityBody(BaseModel):
+    display_name: str
+    correlation_id: str
+    email: str | None = None
+    phone: str | None = None
+    password: str | None = None
+    person_id: str | None = None
+
+
+class PasswordBody(BaseModel):
+    password: str
+    correlation_id: str
+    current_password: str | None = None
+
+
+class LoginBody(BaseModel):
+    identifier: str
+    password: str
+    correlation_id: str
+    device_fingerprint: str | None = None
+    device_label: str | None = None
+
+
+class LoginChallengeBody(BaseModel):
+    identifier: str
+    challenge: str
+    recovery_code: str
+    correlation_id: str
+
+
+class StepUpBody(BaseModel):
+    """Credentials, never factor names.
+
+    The first version of this body carried a `factors: list[str]`, which the service believed.
+    Anyone could post `["passkey_hardware"]` and be handed the highest assurance level with
+    nothing presented. What a caller holds is now proved, not declared.
+    """
+
+    challenge: str
+    correlation_id: str
+    password: str | None = None
+    recovery_code: str | None = None
+
+
+class RecoverBody(BaseModel):
+    identifier: str
+    code: str
+    correlation_id: str
+
+
+class RevokeBody(BaseModel):
+    correlation_id: str
+    reason: str = "revoked_by_user"
+
+
+class CorrelationBody(BaseModel):
+    """`correlation_id` travels in the body, not the query string, so access logs do not
+    keep it."""
+
+    correlation_id: str
+
+
+class RecoveryCodesBody(BaseModel):
+    correlation_id: str
+    current_password: str | None = None
+
+
+class PasskeyBody(BaseModel):
+    webauthn_credential_id: str
+    public_key: str
+    correlation_id: str
+    label: str | None = None
+    aaguid: str | None = None
+    transports: list[str] | None = None
+    backed_up: bool = False
+
+
+class AssertionBody(BaseModel):
+    sign_count: int
+    correlation_id: str
+
+
+def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
+    """Read the session token from an Authorization header and nothing else.
+
+    A token in a query string ends up in access logs, browser history and referrer headers, so
+    this is the only place a session token is accepted.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise InvalidRequest("missing_bearer_token")
+    token = authorization[7:].strip()
+    if not token:
+        raise InvalidRequest("missing_bearer_token")
+    return token
+
+
+BearerToken = Annotated[str, Depends(bearer_token)]
+
+
+def _b64(value: str, field: str) -> bytes:
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        raise InvalidRequest(f"bad_{field}") from None
+
+
+def current_session(
+    request: Request, tenant_id: TenantId, token: BearerToken
+) -> dict[str, Any]:
+    """Resolve the bearer token into the session it names, or refuse.
+
+    Module level on purpose. `from __future__ import annotations` turns every annotation into a
+    string and FastAPI resolves those against this module's globals, so a dependency defined
+    inside `create_app` is never found -- FastAPI falls back to treating the parameter as a query
+    field, and the route ends up unauthenticated while looking authenticated.
+    """
+    return identity.resolve_session(request.app.state.identity_pool, tenant_id, token=token)
+
+
 def tenant_claim(x_veyro_tenant: Annotated[str | None, Header()] = None) -> str:
     """Shape-check the claimed tenant. Rejecting here keeps a malformed value out of the pool."""
     if x_veyro_tenant is None or not _UUID.fullmatch(x_veyro_tenant):
@@ -237,6 +367,18 @@ def tenant_claim(x_veyro_tenant: Annotated[str | None, Header()] = None) -> str:
 
 
 TenantId = Annotated[str, Depends(tenant_claim)]
+Session = Annotated[dict[str, Any], Depends(current_session)]
+
+
+def owned(session: dict[str, Any], identity_id: str) -> str:
+    """Refuse unless the session belongs to the identity being acted on.
+
+    A 404 rather than a 403: whether an identity id exists in this tenant is not something a
+    caller holding the wrong session gets to learn.
+    """
+    if session["identity_id"] != identity_id:
+        raise NotFound("identity_not_found")
+    return identity_id
 
 
 def create_app(
@@ -244,19 +386,26 @@ def create_app(
     *,
     tenant_pool: Any = None,
     platform_pool: Any = None,
+    identity_pool: Any = None,
 ) -> FastAPI:
     cfg = settings or load_settings()
     owned_pools: list[Any] = []
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        nonlocal tenant_pool, platform_pool
+        nonlocal tenant_pool, platform_pool, identity_pool
+        if identity_pool is None:
+            identity_pool = db.make_identity_pool(cfg.database_url)
+            owned_pools.append(identity_pool)
         if tenant_pool is None:
             tenant_pool = db.make_tenant_pool(cfg.database_url)
             owned_pools.append(tenant_pool)
         if platform_pool is None:
             platform_pool = db.make_platform_pool(cfg.database_url)
             owned_pools.append(platform_pool)
+        app.state.identity_pool = identity_pool
+        app.state.tenant_pool = tenant_pool
+        app.state.platform_pool = platform_pool
         try:
             yield
         finally:
@@ -596,6 +745,182 @@ def create_app(
         return billing.issue_credit_note(
             tenant_pool, tenant_id, invoice_id=invoice_id, amount_minor=body.amount_minor,
             reason=body.reason, actor_id=body.actor_id, correlation_id=body.correlation_id,
+        )
+
+    # --------------------------------------------------- MOD-007 identity and sessions
+    #
+    # **Every route that touches one identity requires a session belonging to that identity.**
+    # `owned` is the check, and it is on every one of them. An independent review found the first
+    # version left password changes, recovery-code issuing, session listing and device revocation
+    # open to anyone holding the tenant UUID -- which is an unauthenticated claim, not a secret --
+    # and demonstrated a full takeover from it. The open routes below are open on purpose:
+    # registration, login, the login challenge and recovery are the paths a caller uses precisely
+    # because it has no session yet.
+
+    @app.post("/identities", status_code=201)
+    def register_identity(tenant_id: TenantId, body: RegisterIdentityBody) -> dict[str, Any]:
+        return identity.register_identity(
+            identity_pool, tenant_id, display_name=body.display_name,
+            correlation_id=body.correlation_id, email=body.email, phone=body.phone,
+            password=body.password, person_id=body.person_id,
+        )
+
+    @app.post("/identities/{identity_id}/password")
+    def set_password(
+        tenant_id: TenantId, session: Session, identity_id: str, body: PasswordBody
+    ) -> dict[str, Any]:
+        return identity.set_password(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id),
+            password=body.password, correlation_id=body.correlation_id,
+            current_password=body.current_password,
+            session_factors=session["factors"], session_aal=session["aal"],
+        )
+
+    @app.post("/auth/login")
+    def login(tenant_id: TenantId, body: LoginBody) -> dict[str, Any]:
+        return identity.authenticate(
+            identity_pool, tenant_id, identifier=body.identifier, password=body.password,
+            correlation_id=body.correlation_id, device_fingerprint=body.device_fingerprint,
+            device_label=body.device_label,
+        )
+
+    @app.post("/auth/challenge")
+    def answer_login_challenge(
+        tenant_id: TenantId, body: LoginChallengeBody
+    ) -> dict[str, Any]:
+        """Answer the challenge `/auth/login` returned. Open, because the caller has no session."""
+        return identity.complete_login_challenge(
+            identity_pool, tenant_id, identifier=body.identifier, challenge=body.challenge,
+            recovery_code=body.recovery_code, correlation_id=body.correlation_id,
+        )
+
+    @app.get("/auth/session")
+    def read_session(session: Session) -> dict[str, Any]:
+        return session
+
+    @app.post("/auth/rotate")
+    def rotate(
+        tenant_id: TenantId, token: BearerToken, body: CorrelationBody
+    ) -> dict[str, Any]:
+        return identity.rotate_session(
+            identity_pool, tenant_id, token=token, correlation_id=body.correlation_id
+        )
+
+    @app.get("/auth/require/{action_class}")
+    def require_assurance(
+        tenant_id: TenantId, token: BearerToken, action_class: str
+    ) -> dict[str, Any]:
+        return identity.require_assurance(
+            identity_pool, tenant_id, token=token, action_class=action_class
+        )
+
+    @app.post("/auth/step-up")
+    def step_up(tenant_id: TenantId, token: BearerToken, body: StepUpBody) -> dict[str, Any]:
+        return identity.complete_step_up(
+            identity_pool, tenant_id, token=token, challenge=body.challenge,
+            password=body.password, recovery_code=body.recovery_code,
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/auth/recover")
+    def recover(tenant_id: TenantId, body: RecoverBody) -> dict[str, Any]:
+        return identity.recover_with_code(
+            identity_pool, tenant_id, identifier=body.identifier, code=body.code,
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/identities/{identity_id}/recovery-codes", status_code=201)
+    def issue_recovery_codes(
+        tenant_id: TenantId, session: Session, identity_id: str, body: RecoveryCodesBody
+    ) -> dict[str, Any]:
+        return identity.issue_recovery_codes(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id),
+            correlation_id=body.correlation_id, current_password=body.current_password,
+            session_factors=session["factors"], session_aal=session["aal"],
+        )
+
+    @app.get("/identities/{identity_id}/sessions")
+    def identity_sessions(
+        tenant_id: TenantId, session: Session, identity_id: str
+    ) -> list[dict[str, Any]]:
+        return identity.list_sessions(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id)
+        )
+
+    @app.post("/sessions/{session_id}/revoke")
+    def revoke_session(
+        tenant_id: TenantId, session: Session, session_id: str, body: RevokeBody
+    ) -> dict[str, Any]:
+        return identity.revoke_session(
+            identity_pool, tenant_id, session_id=session_id,
+            identity_id=session["identity_id"], correlation_id=body.correlation_id,
+            reason=body.reason,
+        )
+
+    @app.get("/identities/{identity_id}/devices")
+    def identity_devices(
+        tenant_id: TenantId, session: Session, identity_id: str
+    ) -> list[dict[str, Any]]:
+        return identity.list_devices(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id)
+        )
+
+    @app.post("/devices/{device_id}/revoke")
+    def revoke_device(
+        tenant_id: TenantId, session: Session, device_id: str, body: RevokeBody
+    ) -> dict[str, Any]:
+        return identity.revoke_device(
+            identity_pool, tenant_id, device_id=device_id,
+            identity_id=session["identity_id"], correlation_id=body.correlation_id,
+            reason=body.reason,
+        )
+
+    @app.post("/devices/{device_id}/trust")
+    def trust_device(
+        tenant_id: TenantId, session: Session, device_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        return identity.trust_device(
+            identity_pool, tenant_id, device_id=device_id,
+            identity_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/identities/{identity_id}/passkeys", status_code=201)
+    def enroll_passkey(
+        tenant_id: TenantId, session: Session, identity_id: str, body: PasskeyBody
+    ) -> dict[str, Any]:
+        return identity.enroll_passkey(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id),
+            webauthn_credential_id=_b64(body.webauthn_credential_id, "credential_id"),
+            public_key=_b64(body.public_key, "public_key"),
+            correlation_id=body.correlation_id, label=body.label, aaguid=body.aaguid,
+            transports=body.transports, backed_up=body.backed_up,
+        )
+
+    @app.get("/identities/{identity_id}/passkeys")
+    def identity_passkeys(
+        tenant_id: TenantId, session: Session, identity_id: str
+    ) -> list[dict[str, Any]]:
+        return identity.list_passkeys(
+            identity_pool, tenant_id, identity_id=owned(session, identity_id)
+        )
+
+    @app.post("/passkeys/{passkey_id}/assertion")
+    def passkey_assertion(
+        tenant_id: TenantId, session: Session, passkey_id: str, body: AssertionBody
+    ) -> dict[str, Any]:
+        return identity.record_passkey_assertion(
+            identity_pool, tenant_id, passkey_id=passkey_id,
+            identity_id=session["identity_id"], sign_count=body.sign_count,
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/auth/events")
+    def auth_events(
+        tenant_id: TenantId, session: Session, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """The caller's own log. There is no tenant-wide view until MOD-008 can authorize one."""
+        return identity.auth_events(
+            identity_pool, tenant_id, identity_id=session["identity_id"], limit=limit
         )
 
     return app

@@ -891,4 +891,314 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 26/26 checks passed'
+-- ================================================================ MOD-007 IAM-01 (iam schema)
+-- The identity plane is a different schema and a different role. Two properties have to hold and
+-- both are asserted directly: tenants cannot see each other inside `iam` (check 28), and the
+-- control plane and the identity plane cannot see each other at all (check 27). The second is
+-- the reason the schema exists -- a mistake in a configuration or billing query must not be able
+-- to read a credential hash.
+
+-- ---------------------------------------------------------------- seed (identity plane)
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO iam.identities
+    (tenant_id, identity_id, person_id, email_normalized, display_name)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000002',
+        'eeeeeeee-0000-4000-8000-000000000001', 'staff@acme.test', 'Acme Staff');
+INSERT INTO iam.credentials
+    (tenant_id, credential_id, identity_id, kind, algorithm, salt, secret_hash)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000003',
+        'eeeeeeee-0000-4000-8000-000000000002', 'password', 'scrypt',
+        decode(repeat('ab', 16), 'hex'), decode(repeat('cd', 32), 'hex'));
+INSERT INTO iam.devices (tenant_id, device_id, identity_id, fingerprint)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000004',
+        'eeeeeeee-0000-4000-8000-000000000002', 'device-fingerprint-1');
+INSERT INTO iam.sessions
+    (tenant_id, session_id, identity_id, device_id, token_hash, expires_at)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000005',
+        'eeeeeeee-0000-4000-8000-000000000002', 'eeeeeeee-0000-4000-8000-000000000004',
+        decode(repeat('01', 32), 'hex'), now() + interval '1 hour');
+INSERT INTO iam.passkeys
+    (tenant_id, passkey_id, identity_id, webauthn_credential_id, public_key)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000006',
+        'eeeeeeee-0000-4000-8000-000000000002',
+        decode(repeat('02', 16), 'hex'), decode(repeat('03', 32), 'hex'));
+INSERT INTO iam.challenges
+    (tenant_id, identity_id, kind, nonce_hash, expires_at)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000002', 'step_up',
+        decode(repeat('04', 32), 'hex'), now() + interval '5 minutes');
+INSERT INTO iam.auth_events (tenant_id, identity_id, kind, outcome, correlation_id)
+VALUES (:'tenant_a', 'eeeeeeee-0000-4000-8000-000000000002',
+        'identity.created', 'succeeded', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 27. the two planes are apart
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+DO $$
+DECLARE
+    tbl text;
+BEGIN
+    -- Neither direction may hold schema USAGE on the other's schema. Without USAGE no table
+    -- privilege in that schema can be exercised, whatever else was granted by accident.
+    IF has_schema_privilege('veyro_cp_app', 'iam', 'USAGE')
+       OR has_schema_privilege('veyro_cp_worker', 'iam', 'USAGE')
+       OR has_schema_privilege('veyro_cp_platform', 'iam', 'USAGE') THEN
+        RAISE EXCEPTION 'CHECK 27 FAILED: a control-plane role can reach the iam schema';
+    END IF;
+    IF has_schema_privilege('veyro_iam_app', 'plt01', 'USAGE')
+       OR has_schema_privilege('veyro_iam_app', 'plt01_platform', 'USAGE') THEN
+        RAISE EXCEPTION 'CHECK 27 FAILED: the identity role can reach a control-plane schema';
+    END IF;
+
+    FOREACH tbl IN ARRAY ARRAY['identities', 'credentials', 'passkeys', 'devices', 'sessions',
+                               'challenges', 'auth_events'] LOOP
+        IF has_table_privilege('veyro_cp_app', 'iam.' || tbl, 'SELECT')
+           OR has_table_privilege('veyro_cp_worker', 'iam.' || tbl, 'SELECT') THEN
+            RAISE EXCEPTION 'CHECK 27 FAILED: a control-plane role holds SELECT on iam.%', tbl;
+        END IF;
+    END LOOP;
+    FOREACH tbl IN ARRAY ARRAY['organizations', 'cfg_flags', 'bil_invoices'] LOOP
+        IF has_table_privilege('veyro_iam_app', 'plt01.' || tbl, 'SELECT') THEN
+            RAISE EXCEPTION 'CHECK 27 FAILED: the identity role holds SELECT on plt01.%', tbl;
+        END IF;
+    END LOOP;
+    IF has_table_privilege('veyro_iam_app', 'plt01_platform.tenants', 'SELECT') THEN
+        RAISE EXCEPTION 'CHECK 27 FAILED: the identity role can enumerate the tenant registry';
+    END IF;
+
+    -- No membership edge touching any veyro role, in either direction. One would hand a role
+    -- every privilege of the other and make every assertion above decorative.
+    IF (SELECT count(*) FROM pg_auth_members am
+        JOIN pg_roles r ON r.oid = am.roleid
+        JOIN pg_roles m ON m.oid = am.member
+        WHERE r.rolname LIKE 'veyro\_%' OR m.rolname LIKE 'veyro\_%') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 27 FAILED: a veyro role is a member of another role';
+    END IF;
+
+    IF (SELECT count(*) FROM pg_roles
+        WHERE rolname = 'veyro_iam_app'
+          AND (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 27 FAILED: the identity role carries a superuser-like attribute';
+    END IF;
+END $$;
+ROLLBACK;
+
+-- The same boundary, exercised rather than read off the catalogue.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        PERFORM count(*) FROM iam.credentials;
+        RAISE EXCEPTION 'CHECK 27 FAILED: the control-plane role read iam.credentials';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        PERFORM count(*) FROM plt01.organizations;
+        RAISE EXCEPTION 'CHECK 27 FAILED: the identity role read plt01.organizations';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 28. iam isolates by tenant
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['identities', 'credentials', 'passkeys', 'devices', 'sessions',
+                               'challenges', 'auth_events'] LOOP
+        EXECUTE format('SELECT count(*) FROM iam.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 28 FAILED: tenant B sees % rows in iam.%', seen, tbl;
+        END IF;
+    END LOOP;
+    BEGIN
+        INSERT INTO iam.credentials
+            (tenant_id, identity_id, kind, algorithm, salt, secret_hash)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'eeeeeeee-0000-4000-8000-000000000002', 'password', 'scrypt',
+                decode(repeat('ab', 16), 'hex'), decode(repeat('cd', 32), 'hex'));
+        RAISE EXCEPTION 'CHECK 28 FAILED: a credential was attached to another tenant''s identity';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['identities', 'credentials', 'passkeys', 'devices', 'sessions',
+                               'challenges', 'auth_events'] LOOP
+        EXECUTE format('SELECT count(*) FROM iam.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION
+                'CHECK 28 FAILED: unset context read % rows from iam.% -- fails OPEN', seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM iam.credentials) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: the table owner read % credentials',
+            (SELECT count(*) FROM iam.credentials);
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+          AND relrowsecurity AND relforcerowsecurity) <> 7 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: expected 7 iam tables with RLS enabled and forced, got %',
+            (SELECT count(*) FROM pg_class
+             WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+               AND relrowsecurity AND relforcerowsecurity);
+    END IF;
+    -- Every iam table must be owned by the migrator. One owned by a superuser would ignore
+    -- FORCE entirely, and the `RESET ROLE` in the platform migration makes that a live risk.
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: an iam table is not owned by the migrator';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM iam.identities) <> 1
+       OR (SELECT count(*) FROM iam.credentials) <> 1
+       OR (SELECT count(*) FROM iam.sessions) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: tenant A cannot see its own identity rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 29. the credential controls
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- The audit trail cannot be edited or erased by the role that writes it.
+    IF has_table_privilege('veyro_iam_app', 'iam.auth_events', 'UPDATE')
+       OR has_table_privilege('veyro_iam_app', 'iam.auth_events', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 29 FAILED: the identity role can revise the authentication log';
+    END IF;
+    BEGIN
+        UPDATE iam.auth_events SET outcome = 'succeeded';
+        RAISE EXCEPTION 'CHECK 29 FAILED: an authentication event was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+
+    -- No role may delete an identity, a credential or a session: revocation is a status change
+    -- that leaves evidence, and a DELETE would leave none.
+    IF has_table_privilege('veyro_iam_app', 'iam.identities', 'DELETE')
+       OR has_table_privilege('veyro_iam_app', 'iam.credentials', 'DELETE')
+       OR has_table_privilege('veyro_iam_app', 'iam.sessions', 'DELETE')
+       OR has_table_privilege('veyro_iam_app', 'iam.passkeys', 'TRUNCATE')
+       OR has_table_privilege('veyro_iam_app', 'iam.credentials', 'REFERENCES') THEN
+        RAISE EXCEPTION 'CHECK 29 FAILED: the identity role holds DELETE, TRUNCATE or REFERENCES';
+    END IF;
+
+    -- One active password per identity.
+    BEGIN
+        INSERT INTO iam.credentials
+            (tenant_id, identity_id, kind, algorithm, salt, secret_hash)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', 'password', 'scrypt',
+                decode(repeat('ef', 16), 'hex'), decode(repeat('12', 32), 'hex'));
+        RAISE EXCEPTION 'CHECK 29 FAILED: a second active password was accepted';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A truncated hash or salt cannot be stored as if it were real.
+    BEGIN
+        INSERT INTO iam.credentials
+            (tenant_id, identity_id, kind, algorithm, salt, secret_hash)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', 'recovery_code', 'scrypt',
+                decode('00', 'hex'), decode(repeat('12', 32), 'hex'));
+        RAISE EXCEPTION 'CHECK 29 FAILED: a one-byte salt was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A session token digest is exactly 32 bytes, and no two sessions share one.
+    BEGIN
+        INSERT INTO iam.sessions (tenant_id, identity_id, token_hash, expires_at)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', decode('0011', 'hex'),
+                now() + interval '1 hour');
+        RAISE EXCEPTION 'CHECK 29 FAILED: a short session token digest was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO iam.sessions (tenant_id, identity_id, token_hash, expires_at)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', decode(repeat('01', 32), 'hex'),
+                now() + interval '1 hour');
+        RAISE EXCEPTION 'CHECK 29 FAILED: two sessions shared one token digest';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A session cannot be rotated twice: the second use of a rotated token is the stolen-token
+    -- signal the service acts on, and it must be impossible to record it as ordinary.
+    INSERT INTO iam.sessions (tenant_id, identity_id, token_hash, expires_at, rotated_from)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'eeeeeeee-0000-4000-8000-000000000002', decode(repeat('05', 32), 'hex'),
+            now() + interval '1 hour', 'eeeeeeee-0000-4000-8000-000000000005');
+    BEGIN
+        INSERT INTO iam.sessions (tenant_id, identity_id, token_hash, expires_at, rotated_from)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', decode(repeat('06', 32), 'hex'),
+                now() + interval '1 hour', 'eeeeeeee-0000-4000-8000-000000000005');
+        RAISE EXCEPTION 'CHECK 29 FAILED: one session was rotated twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- An assurance level outside 1..3 has no meaning, so no code could act on it correctly.
+    BEGIN
+        INSERT INTO iam.sessions (tenant_id, identity_id, token_hash, expires_at, aal)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002', decode(repeat('07', 32), 'hex'),
+                now() + interval '1 hour', 9);
+        RAISE EXCEPTION 'CHECK 29 FAILED: an out-of-range assurance level was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 29/29 checks passed'

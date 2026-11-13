@@ -19,8 +19,9 @@ backend/app/            service code
   tenancy_s0.py         ProvisionTenant envelope validation (reused by the service)
   configuration/        MOD-005: evaluation.py decides, service.py does the I/O
   billing/              MOD-015: money.py, subscription.py, usage.py decide; service.py writes
+  identity/             MOD-007: secrets.py (crypto), policy.py (decisions), service.py (I/O)
   errors.py             the four service errors every module's service raises
-backend/migrations/     platform/ and tenant/ SQL, applied in filename order
+backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
 backend/scripts/        verify_db.sh rebuilds the database and runs the isolation suite
 knowledge/              decisions and module notes
@@ -97,10 +98,13 @@ session level, never interpolated into SQL. With no context the predicate is NUL
 nothing and writes are refused: **isolation fails closed, and that is the property to protect.**
 `app.tenancy.db.tenant_scope` is the only way to reach `plt01`; do not add another.
 
-**The two planes are separate.** `veyro_cp_app` holds privileges in `plt01` and nothing on the
-tenant registry; `veyro_cp_platform` holds the registry and nothing in `plt01`. Neither is a member
-of the other — never write `GRANT <role> TO <role>`. Neither runtime role may hold `TRUNCATE` or
-`REFERENCES`, and `veyro_cp_app` may not hold `DELETE`.
+**The planes are separate.** There are three. `veyro_cp_app` holds privileges in `plt01` and
+nothing on the tenant registry; `veyro_cp_platform` holds the registry and nothing in `plt01`;
+`veyro_iam_app` (MOD-007) holds the `iam` schema and nothing in either control-plane schema, so a
+mistake in a configuration or billing query cannot read a credential hash. **No role is a member
+of any other — never write `GRANT <role> TO <role>`.** No runtime role may hold `TRUNCATE` or
+`REFERENCES`; `veyro_cp_app` may not hold `DELETE`; and `veyro_iam_app` may not hold `DELETE` on
+anything, because revocation in `iam` is a status change that leaves evidence.
 
 **Negative tests must actually fail closed.** A test that still passes when you remove the
 protection is not evidence. Every isolation check in `backend/tests/sql/isolation.sql` has been run
@@ -108,9 +112,10 @@ against a deliberate mutation and shown to fail; a new one earns its place the s
 caught a weak check already: an earlier "the app role cannot DELETE" test passed only because a
 foreign key refused the delete first.
 
-**Also binding:** authentication and AAL-3 (MOD-007, not yet wired in), immutable audit,
-financial correctness, residency and retention. Validate input at trust boundaries. Historical
-review outcomes and the preserved evidence trees outside the repository are never rewritten.
+**Also binding:** authentication and AAL-3 (MOD-007, built but not enforced on any request yet),
+immutable audit, financial correctness, residency and retention. Validate input at trust
+boundaries. Historical review outcomes and the preserved evidence trees outside the repository
+are never rewritten.
 
 **Owner-reserved**, on the owner's standing instruction and never inferred: real financial
 expenditure, production deployment, real member data, and anything needing the owner's personal
@@ -130,9 +135,10 @@ both planes. Proven: isolation checks 1-13, each mutation-tested.
 
 Known gaps, deliberate and worth reading before extending:
 
-- **No authentication.** `X-Veyro-Tenant` is a claim, shape-checked and nothing more. Isolation
-  does not depend on it being honest, but authorization does not exist yet. MOD-007 owns
-  identity and authentication; MOD-008 owns roles, permissions, approvals and audit.
+- **Requests are still unauthenticated.** `X-Veyro-Tenant` is a claim, shape-checked and nothing
+  more, and isolation does not depend on it being honest. MOD-007 now authenticates people and
+  issues sessions, but nothing ties a session to the tenant header on a request, and
+  authorization is MOD-008's unbuilt work.
 - **No reactivation.** `domain/lifecycle.py` admits only `provisioned → active → suspended →
   archived`. TSD §10.3 puts reactivation in PLT-03; do not invent the edge here.
 - **No hard deletion.** `delete_tenant` refuses by design: PLT-01-R07 bars it until the legal,
@@ -163,7 +169,8 @@ Known gaps, deliberate:
   metrics pipeline that does not exist; a decision record with no measurements behind it would be
   worse than the gap.
 - **No approval workflow** (part of PLT-02-R05). Approval needs an authenticated principal and
-  MOD-007 is not wired in, so there is nobody to approve as. TSD paragraph 1020's change control
+  nothing authorizes an approver yet -- MOD-007 can say who someone is, and MOD-008, which
+  would say what they may approve, is unbuilt. TSD paragraph 1020's change control
   for financial and security flag changes in production is therefore not satisfied by anything
   here; this service runs in local, development and staging only.
 - **No outbox and no published events.** `configuration.changed`, `feature_flag.evaluated`,
@@ -211,47 +218,113 @@ Known gaps, deliberate:
   counts are not this one, so it does not guess at them, and it never deletes anything to make a
   smaller plan fit — it refuses, lists the breaches, and proceeds only when acknowledged.
 
-**Next.** The control plane now has tenancy, configuration and commerce, and the gap every one
-of those three modules ran into is the same: there is no authenticated principal. MOD-005 could
-not build approval, MOD-015 could not build change control for financial flag changes, and
-`X-Veyro-Tenant` is still a claim nobody checks. **MOD-007 (identity, authentication, passkeys and
-device sessions) is therefore the next thing worth building**, with MOD-008 (authorization, roles,
-approvals, audit) behind it.
+**MOD-007 (IAM-01 identity, authentication, passkeys and device sessions) — implemented
+server-side, and reviewed.** A third plane: schema `iam`, role `veyro_iam_app`, seven tables, all
+tenant-bound under forced RLS. Working: identities linked across tenants by a bare `person_id`,
+scrypt passwords, recovery codes, device inventory with confirmation, trust and revocation, bearer
+sessions stored only as a SHA-256 digest, rotation with stolen-token reuse detection, assurance
+levels with step-up against **verified** credentials, lockout, answerable risk challenges, and an
+insert-only authentication log. Proven: isolation checks 27-29, each mutation-tested (15
+mutations, every one caught by its own check); 55 domain unit tests including all 18 published RFC
+4226 and RFC 6238 vectors; 52 integration tests.
 
-The catalogue lists MOD-006 (Compose Multiplatform qualification) as a dependency of MOD-007. That
-dependency is a client-side proof — whether the mobile stack is production-worthy — and the
-server-side identity plane does not need it to exist. Build the server side first and record
-MOD-006 as unbuilt rather than pretending the order was met.
+**This module was independently reviewed twice and failed twice.** Round one found a complete
+account takeover and ten other defects. Round two confirmed all eleven fixed and found two more
+in the *new* code -- both in the challenge and recovery paths, one of them in the flow written to
+close a round-one finding. The regressions in `ReviewRegressionTests` are named for the attacks,
+not the fixes. Six defects are worth carrying forward as rules, because each is a shape that
+recurs:
+
+- **Never believe a caller's description of itself.** `/auth/step-up` took a list of factor
+  *names* and granted the level they implied, so `{"factors": ["passkey_hardware"]}` bought the
+  highest assurance level with nothing presented. It now takes credentials and verifies them, and
+  a session records which factors actually opened it.
+- **A tenant header is not an authentication.** Password changes, recovery-code issuing and
+  session listing were open to anyone holding the tenant UUID. Every identity-scoped route now
+  resolves a bearer token and checks it belongs to that identity.
+- **A control that commits anything before it refuses is not a control.** The risk challenge
+  wrote the device row and then challenged, so sending the same login twice walked past it. A
+  device is confirmed only by a login that needed no challenge or by one whose challenge was
+  answered -- and there was no endpoint to answer one at all, so it was unanswerable by an honest
+  user and free to skip for an attacker.
+- **A refusal must not say why.** A locked identity answered 423 in under two milliseconds while
+  everything else answered 401 in fifty, which identified every registered address in five
+  requests. All refusals now cost one scrypt and return the same 401.
+- **Bind a challenge to what it is about.** The login challenge recorded no device, so answering
+  it confirmed whichever device had been seen most recently -- an attacker holding the password
+  kept theirs newest by retrying, and the victim's own answer whitelisted it. `iam.challenges`
+  now carries `device_id` and the answer confirms that one.
+- **Verify, decide, then consume.** A step-up burned the recovery code it had verified before
+  deciding whether to accept, so a refusal destroyed it for nothing -- and a recovered user, who
+  cannot reach level 2 from recovery codes alone, lost one per attempt at a reset they could
+  never complete. A session opened with a recovery code may now set a password directly, which is
+  what recovery is for.
+- **A remedy is new capability, so review it as such.** That recovery allowance reached
+  `issue_recovery_codes` as well, and there it was a backdoor: a stolen recovery session minted
+  ten fresh codes with no password, and those codes survived the owner's own password reset. The
+  allowance now applies to `set_password` only, which is self-limiting because it revokes every
+  session including the one that used it.
+- **A check belongs where every caller passes.** The identity-status read sat in
+  `resolve_session`, so `/auth/rotate` and `/auth/step-up`, which resolve a token directly, let a
+  suspended identity refresh indefinitely. It lives in `_session_by_token` now.
+- **A session's lifetime follows what it can do, not what it scored.** A recovery-code session is
+  level 1 but can reset a password, so `policy.session_expiry` gives it the elevated window and
+  `policy.window_is_fixed` stops rotation renewing it.
+
+Things to know before extending it:
+
+- **A failure path must commit before it refuses.** `tenant_scope` rolls back when the block
+  raises, so an exception thrown inside it takes the failure's own evidence with it. Every
+  recording failure path returns its error and `_settled` raises it after the commit. Two places
+  raise inside the block on purpose, where nothing should survive the refusal.
+- **Recovery has its own lockout budget**, separate from the password one. Honouring the password
+  lock here would shut the only door left, and sharing one counter could not do both jobs.
+- **AAL-3 is unreachable today**, and `/auth/require/*` says so in a `reachable` field rather than
+  implying otherwise. It needs a hardware authenticator, which needs WebAuthn verification.
+
+Known gaps, deliberate:
+
+- **Passkeys are not an authentication factor.** Enrolment stores the credential, the public key
+  and the signature counter, and the clone check on that counter is real and revokes on sight. The
+  WebAuthn signature is not verified — CBOR, COSE and ECDSA, and hand-rolling it is how
+  authentication bypasses get written. `VERIFIABLE_FACTORS` is the list of what any path accepts
+  as proof, and a passkey is not in it.
+- **No TOTP enrolment.** The algorithm is implemented and RFC-tested; storing a reversible shared
+  secret needs a vault this repository does not have.
+- **No OIDC/SAML federation and no SCIM** (IAM-01-R04).
+- **No rate limiting.** Lockout bounds guessing against one identity -- on login, on recovery and
+  on the re-authentication paths, each metered through `_verify_presented` -- but nothing bounds
+  request volume. An attacker who knows an address can still lock its owner out, and a refused
+  bearer token writes no audit row, because recording one would let anyone grow an insert-only
+  table without limit. Both want the same missing limiter.
+- **`iam.challenges` is never swept.** One row per `/auth/require/*` call and per challenged
+  login, with no DELETE grant by design. Harmless at this size; it wants a worker, not a grant.
+- **Metering cuts both ways.** Now that the re-authentication paths count failures, somebody
+  holding a stolen session token can lock the victim out of their own login with five wrong
+  passwords at `/auth/step-up`, and lock their recovery budget with five wrong codes. That is the
+  usual lockout tradeoff and the right call, but it is a real denial of service and it belongs
+  here next to the one above.
+- **Registration is open.** Anyone holding the tenant UUID can create an identity in it. That is
+  the same unauthenticated-header problem above, not a separate one.
+- **The identity plane is a schema, not a separate database.** TSD paragraph 1151 says "Product
+  PostgreSQL"; this repository provisions one cluster. The privilege boundary is real and checked
+  in both directions; the physical separation is not there.
+
+One thing to carry into MOD-008, from the review that approved this module. The capability test
+is still written out by hand at two call sites, and they differ on purpose: `set_password` accepts
+a recovery-code session, `issue_recovery_codes` does not. Two is fine. **A third hand-written
+expression is where this restarts** -- every blocking defect in rounds one to three came from a
+capability granted in one place and bounded in another. When MOD-008 starts reading
+`session_factors` and `session_aal` to decide permissions, give it one `policy.may(session,
+action)` rather than a third copy of the condition.
+
+**Next.** MOD-008 (authorization, roles, permissions, approvals and audit) is what turns an
+authenticated identity into an authorized one, and it is what MOD-005's approval workflow and
+MOD-015's financial change control were both waiting for. After that the catalogue's own order
+resumes.
+
+Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
+MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a
+client-side proof that the server plane does not need.
 
 Finish a module's real requirements and tests, then move on.
-
-## Tooling that still earns its place
-
-- `tools/migration_lint/migration_lint.py lint --track tenant|platform --tests-root backend/tests/sql <files>`
-  — static checks on migration SQL. **Run it on every new migration.** It is strict and useful: it
-  refused the hierarchy migration until `legal_entities` had a real negative test. It reads SQL
-  only and asserts nothing about a live cluster; `verify_db.sh` is the live half.
-- `python3 tools/governance/governance_check.py check --root .` — structural check; mainly catches
-  drift between `PROJECT_INDEX.md` and `governance/registry.json`. CI runs it. It is not a gate on
-  your work, but keep it green.
-- `node tools/screen_contracts/screen_contracts.mjs check-identity` — screen registry identity.
-  `check-complete` fails by design (1530 per-screen fields deferred to the owning product modules).
-- `tools/mission_runner/` is retired as an execution path — its launchd services are stopped and
-  it must not be restarted or rebuilt — but it is tracked code whose tests CI runs. Leave it.
-
-## Workflow
-
-Smallest reviewable change. Match the surrounding code's naming and comment density. Run the
-checks above, then commit and push to `main` — no force, no history rewrite. Confirm CI is green
-on the pushed commit:
-
-```bash
-gh run list --commit "$(git rev-parse HEAD)" --json headSha,databaseId,conclusion,event
-```
-
-Look for `event` `push`, a matching `headSha` and `conclusion` `success`. A green run on another
-SHA proves nothing. If it fails, repair forward or revert; never force-push, and do not stack work
-on a red `main`.
-
-Use an independent review for genuinely risky work — tenant isolation, authentication, money,
-anything whose failure is silent. Not for prose. Do not open a review loop on documentation.

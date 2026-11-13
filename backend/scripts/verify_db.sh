@@ -18,6 +18,7 @@ run() { $PSQL -v ON_ERROR_STOP=1 -q "$@"; }
 # database first leaves the roles owning nothing, which is what lets DROP ROLE succeed.
 run -d postgres <<'EOF'
 DROP DATABASE IF EXISTS veyro;
+DROP ROLE IF EXISTS veyro_iam_app;
 DROP ROLE IF EXISTS veyro_cp_app;
 DROP ROLE IF EXISTS veyro_cp_worker;
 DROP ROLE IF EXISTS veyro_cp_platform;
@@ -29,7 +30,8 @@ EOF
 # 0001 creates the roles and so runs as the bootstrap connection; everything after it runs as
 # the migrator, which is what makes the migrator -- not a superuser -- the table owner. A
 # superuser-owned table would bypass RLS no matter what FORCE says.
-for f in "$ROOT"/migrations/platform/*.sql "$ROOT"/migrations/tenant/*.sql; do
+for f in "$ROOT"/migrations/platform/*.sql "$ROOT"/migrations/tenant/*.sql \
+         "$ROOT"/migrations/product/*.sql; do
     if $PSQL -tAq -d veyro -c "SELECT 1 FROM pg_roles WHERE rolname='veyro_cp_migrator'" | grep -q 1; then
         { echo "SET ROLE veyro_cp_migrator;"; cat "$f"; } | run -d veyro
     else
