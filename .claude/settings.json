@@ -1,12 +1,24 @@
 {
   "$comment": [
-    "Veyro project settings — deny rules only, native Claude Code permissions.",
+    "Veyro project settings - deny rules, plus a narrow allowlist for the local check tooling.",
     "Two jobs: keep preserved historical evidence and the frozen baseline from being modified,",
-    "and keep git history from being rewritten. This grants nothing and adds no approval",
-    "workflow; the rules in CLAUDE.md still apply if this file is removed.",
+    "and keep git history from being rewritten. The rules in CLAUDE.md still apply if this file",
+    "is removed.",
     "Reads stay open except for credentials, so preserved evidence can be consulted but not",
     "changed. Each protected path denies BOTH Edit and Write: Edit alone would still allow Write",
     "to replace the whole file.",
+    "The blanket `pip install` denies were replaced by an allowlist that names the hash-pinned",
+    "lock files explicitly. Reasoning and authority: see",
+    "knowledge/00-Decisions/OWNER-2026-11-13-local-check-tooling-permissions.md. An install from",
+    "a lock is reproducible and shows up as a lock diff in the commit, which is where an",
+    "unreviewed dependency can actually be seen; the blanket deny only stopped the checks from",
+    "running locally, which made a red main more likely rather than less. The allowlist does NOT",
+    "cover installing an arbitrary package: `uv pip install <name>` still prompts, because",
+    "nothing about it is pinned and the reasoning above would not apply to it. `sudo`, `brew",
+    "install` and `npm install` stay denied.",
+    "The baseline .docx files and PROJECT_INDEX.md stay denied. That pair is a governance pin:",
+    "adopting an edited baseline means re-pinning PROJECT_INDEX.md and governance/registry.json",
+    "together, and the deny is what forces that to be a deliberate act rather than a side effect.",
     "Not enforced here, deliberately: plain `git commit` and `git push` stay available because the",
     "documented workflow needs them. Review-before-push is therefore procedural. See CLAUDE.md."
   ],
@@ -16,7 +28,6 @@
       "Read(~/.openclaw/service-env/**)",
       "Read(~/.openclaw/veyro-worker-initial-password)",
       "Read(~/.openclaw/state/**)",
-
       "Edit(/Library/Application Support/Veyro/**)",
       "Write(/Library/Application Support/Veyro/**)",
       "Edit(~/Library/Application Support/Veyro/**)",
@@ -25,7 +36,6 @@
       "Write(/Users/Shared/veyroworker/**)",
       "Edit(~/Veyro-Migration-Archive-*/**)",
       "Write(~/Veyro-Migration-Archive-*/**)",
-
       "Edit(PROJECT_INDEX.md)",
       "Write(PROJECT_INDEX.md)",
       "Edit(Gym_OS_Master_Product_Blueprint_v1_English.docx)",
@@ -36,7 +46,6 @@
       "Write(Veyro_Engineering_Implementation_Plan_v2.0_Lean_Foundation.docx)",
       "Edit(veyro-product-experience-design/**)",
       "Write(veyro-product-experience-design/**)",
-
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git reset --hard*)",
@@ -44,11 +53,18 @@
       "Bash(git rebase*)",
       "Bash(launchctl*)",
       "Bash(sudo*)",
-      "Bash(pip install*)",
-      "Bash(python -m pip install*)",
-      "Bash(python3 -m pip install*)",
       "Bash(brew install*)",
       "Bash(npm install*)"
+    ],
+    "allow": [
+      "Bash(.venv/bin/python3 -m pip install --require-hashes -r backend/requirements.lock*)",
+      "Bash(.venv/bin/python3 -m pip install --require-hashes -r backend/requirements-dev.lock*)",
+      "Bash(uv pip compile*)",
+      "Bash(uv pip install --require-hashes -r backend/requirements.lock*)",
+      "Bash(uv pip install --require-hashes -r backend/requirements-dev.lock*)",
+      "Bash(.venv/bin/python3 -m ruff*)",
+      "Bash(.venv/bin/python3 -m mypy*)",
+      "Bash(.venv/bin/python3 -m unittest*)"
     ]
   }
 }
