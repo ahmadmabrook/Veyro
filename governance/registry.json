@@ -3,7 +3,7 @@
   "module": "MOD-002",
   "module_catalog": "tools/mission_runner/module_catalog.json",
   "index": {
-    "sha256": "0ffa29ce97a0243e96826c8295e6a3ddb69460166e7beedc3567d1dbdf1cc1d2",
+    "sha256": "bc27d87d9cca076e4e9370c11b3678ca0534d4626b88ee758381e989ab9e3dac",
     "authority_rows": [
       "Gym_OS_Master_Product_Blueprint_v1_English.docx",
       "Veyro_Technical_System_Design_v1.4.2_Foundation_Clarification.docx",

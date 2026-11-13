@@ -31,10 +31,18 @@ tools/                  governance and lint tooling (see "Tooling that still ear
 
 Sources of product scope and architecture: the two `.docx` baselines and
 `veyro-product-experience-design/`, pinned by SHA-256 in `PROJECT_INDEX.md`. The owner edited the
-EIP and TSD on 2026-11-13; those edits are **uncommitted working-tree changes** and the pins still
-bind the committed bytes. Adopting them means re-pinning `PROJECT_INDEX.md` and
-`governance/registry.json` together, which is authorized but not yet done — see §5 of the
-delegation record.
+EIP and TSD on 2026-11-13; those revisions are **adopted** — committed, and re-pinned together
+with `governance/registry.json`'s `index.sha256`, under §5 of the delegation record, which names
+the two digests the re-pin binds. The Blueprint and the design directory keep their 2026-10-15
+pins.
+
+What that adoption does **not** mean: neither revision is independently certified, and the check
+behind it was structural — document identity, and survival of the functional content by probe —
+not a line-by-line review of 2,566 changed paragraphs. The deletions are process scaffolding
+(Document Control blocks, the Development Constitution table, the DC-16 apparatus); the
+requirement text the implementation reads is unchanged, which is what the probes checked. Re-pin
+the two files together or not at all: a pin whose witness disagrees with it is worse than no pin,
+and `governance_check.py check --root .` is what catches the disagreement.
 
 ## Running it
 
