@@ -11,14 +11,24 @@ thing worth testing is the refusal.
 
 from __future__ import annotations
 
+import ast
+import pathlib
 import unittest
 import uuid
 
 from app.authorization import service as authz
 from tests.support import GatedApiTestCase
 
-# Every tenant-plane route, with the permission it demands and a body that would otherwise
-# succeed. A route added without a `permit` call shows up here as a 2xx.
+# Ids that exist nowhere. The gate refuses before any lookup, so a route that answers 404
+# rather than 403 to these is a route whose guard runs after its work.
+_ID = "00000000-0000-4000-8000-000000000001"
+_SUBJECT = "00000000-0000-4000-8000-000000000002"
+_WHEN = "2026-11-01T00:00:00+00:00"
+_CORR = {"correlation_id": "00000000-0000-4000-8000-000000000003"}
+
+# A behavioural sweep of the gated product routes, with a body that would otherwise succeed. A
+# route added without a `permit` call shows up here as a 2xx -- and `GateCoverageTests` below
+# is what stops a route being added without appearing here at all.
 READ_ROUTES = [
     ("get", "/organizations", None),
     ("get", "/locations", None),
@@ -26,6 +36,18 @@ READ_ROUTES = [
     ("get", "/config/resolved", None),
     ("get", "/invoices", None),
     ("get", "/entitlements", None),
+    ("get", "/privacy/purposes", None),
+    ("get", "/privacy/retention", None),
+    ("get", "/privacy/legal-holds", None),
+    ("get", "/privacy/requests", None),
+    ("get", "/privacy/incidents", None),
+    # Query parameters are part of the path here on purpose: FastAPI validates them alongside
+    # the session dependency, so a route swept without its required query would answer 422 for
+    # a missing parameter and be read as a refusal it did not make.
+    ("get", f"/privacy/consent/state?subject_id={_SUBJECT}", None),
+    ("get", f"/privacy/consent/history?subject_id={_SUBJECT}", None),
+    ("get", f"/privacy/requests/{_ID}", None),
+    ("get", f"/privacy/requests/{_ID}/plan", None),
 ]
 
 WRITE_ROUTES = [
@@ -34,6 +56,34 @@ WRITE_ROUTES = [
                                      "default_value": 1, "owner_module": "MOD-005"}),
     ("put", "/flags/pay.test", {"enabled": True, "default_variant": "off", "rules": []}),
     ("post", "/meters", {"meter_code": "m.sms", "unit": "message", "aggregation": "sum"}),
+    ("post", "/privacy/purposes", {"purpose_code": "member.x", "description": "d",
+                                   "lawful_basis": "consent", "controller_role": "controller",
+                                   "data_classes": ["internal"], **_CORR}),
+    ("post", f"/privacy/purposes/{_ID}/retire", _CORR),
+    ("post", "/privacy/consent/definitions", {"consent_type": "marketing",
+                                              "purpose_id": _ID, **_CORR}),
+    ("post", "/privacy/consent/versions", {"consent_type": "marketing", "language": "en",
+                                           "document_ref": "r", "document_hash": "0" * 64,
+                                           "effective_from": _WHEN, **_CORR}),
+    ("post", "/privacy/consent/records", {"consent_type": "marketing", "signed_at": _WHEN,
+                                          "source": "web", **_CORR}),
+    ("post", "/privacy/consent/withdrawals", {"consent_type": "marketing", "signed_at": _WHEN,
+                                              "source": "web", **_CORR}),
+    ("post", "/privacy/retention", {"resource_type": "x", "data_class": "internal",
+                                    "retention_days": 30, "legal_basis": "b",
+                                    "region": "eu-west", **_CORR}),
+    ("post", "/privacy/legal-holds", {"reason": "r", "reference": "CASE-1", **_CORR}),
+    ("post", f"/privacy/legal-holds/{_ID}/release", {"release_reason": "done", **_CORR}),
+    ("post", "/privacy/requests", {"subject_id": _SUBJECT, "request_type": "access",
+                                   "response_days": 30, **_CORR}),
+    ("post", f"/privacy/requests/{_ID}/identity-check", _CORR),
+    ("post", f"/privacy/requests/{_ID}/verify-identity", _CORR),
+    ("post", f"/privacy/requests/{_ID}/legal-check", _CORR),
+    ("post", f"/privacy/requests/{_ID}/fulfil", _CORR),
+    ("post", f"/privacy/requests/{_ID}/refuse", {"reason": "not a subject", **_CORR}),
+    ("post", "/privacy/incidents", {"severity": "low", "category": "access_anomaly",
+                                    "summary": "s", "detected_at": _WHEN,
+                                    "personal_data_involved": "unknown", **_CORR}),
 ]
 
 
@@ -236,6 +286,141 @@ class ReviewRegressionTests(GatedApiTestCase):
                    and e["action"] == "billing.subscription.write"
                    and e["outcome"] == "denied"]
         self.assertTrue(matched, "the gate must record the caller's own correlation id")
+
+
+class GateCoverageTests(unittest.TestCase):
+    """Every route either asks the gate or is listed here as deliberately not asking.
+
+    The sweeps above are a sample, and a sample cannot prove a negative: a route added without
+    a `permit` call is invisible to them, because they never call it. This reads `main.py`
+    instead and requires each route to do one of three things -- call `permit`, scope itself to
+    the caller's own identity, or appear in `UNGATED` with a reason somebody wrote down.
+
+    It needs no database, which is the point: it is the check that still runs when the suite
+    that exercises the routes is skipped.
+    """
+
+    #: Routes that deliberately do not ask MOD-008, and why. A new entry here is a decision to
+    #: leave something open and should be hard to add without noticing.
+    UNGATED = {
+        ("GET", "/healthz"): "liveness, no tenant and no data",
+        # The platform plane is unauthenticated by design and that is the largest open gap in
+        # this build: these five routes provision tenants and move them through their
+        # lifecycle, so reaching them is enough to suspend a live customer. See CLAUDE.md.
+        ("POST", "/platform/tenants"): "the platform plane is not authenticated",
+        ("GET", "/platform/tenants/{tenant_id}"): "the platform plane is not authenticated",
+        ("DELETE", "/platform/tenants/{tenant_id}"): "the platform plane is not authenticated",
+        ("GET", "/platform/tenants/{tenant_id}/history"):
+            "the platform plane is not authenticated",
+        ("POST", "/platform/tenants/{tenant_id}/{action}"):
+            "the platform plane is not authenticated",
+        ("POST", "/platform/plans"): "the platform plane is not authenticated",
+        ("GET", "/platform/plans"): "the platform plane is not authenticated",
+        ("GET", "/platform/plans/{plan_code}"): "the platform plane is not authenticated",
+        ("POST", "/platform/plans/{plan_code}/{plan_version}/status"):
+            "the platform plane is not authenticated",
+        # How a caller gets a session in the first place. A gate in front of these would mean
+        # needing a session to get a session.
+        ("POST", "/auth/login"): "authentication",
+        ("POST", "/auth/challenge"): "authentication",
+        ("POST", "/auth/rotate"): "authentication",
+        ("POST", "/auth/step-up"): "authentication",
+        ("POST", "/auth/recover"): "authentication",
+        ("GET", "/auth/session"): "reads the caller's own session",
+        ("GET", "/auth/events"): "reads the caller's own authentication log",
+        ("GET", "/auth/require/{action_class}"): "states what an action class needs, of nobody",
+        ("POST", "/passkeys/{passkey_id}/assertion"): "authentication",
+        ("POST", "/identities"): "registration is open; see the gap note in CLAUDE.md",
+        ("POST", "/authz/bootstrap"):
+            "the one-time grant that makes a tenant administrable; refuses once any assignment "
+            "exists",
+        ("GET", "/authz/check"): "asks the gate about the caller's own session",
+        ("POST", "/authz/approvals"):
+            "the service checks the requester holds the action's own permission",
+        # Scoped to the caller in the service rather than by a permission: each passes the
+        # session's own identity_id into a WHERE clause, so another identity's device or
+        # session is not found rather than refused.
+        ("POST", "/devices/{device_id}/revoke"): "scoped to the caller's own device",
+        ("POST", "/devices/{device_id}/trust"): "scoped to the caller's own device",
+        ("POST", "/sessions/{session_id}/revoke"): "scoped to the caller's own session",
+    }
+
+    #: Calling any of these counts as asking. `owned` refuses a path identity that is not the
+    #: session's; `consent_subject` charges a stronger permission when the subject is not self.
+    GUARDS = {"permit", "owned", "consent_subject"}
+
+    #: The decorators that make a function a route. Anything else on `app` -- an exception
+    #: handler, middleware -- is not a caller-facing path and has nothing to gate.
+    HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+    def _routes(self):
+        source = pathlib.Path(__file__).resolve().parents[1] / "app" / "main.py"
+        tree = ast.parse(source.read_text())
+        create_app = next(n for n in tree.body
+                          if isinstance(n, ast.FunctionDef) and n.name == "create_app")
+        # Both kinds, because `async def` is FastAPI's ordinary idiom and `create_app` already
+        # contains one. The filter saw only `ast.FunctionDef`, so an async route was neither
+        # required to call a guard nor required to appear in UNGATED -- it was simply absent,
+        # and all three tests below passed. A checker with a blind spot in the shape the next
+        # route will be written is worse than no checker, because the sweeps are allowed to be
+        # a sample on the strength of this one.
+        #
+        # Still a top-level walk of `create_app.body`: a route defined inside an `if`, a `with`
+        # or a loop is invisible here too. Nothing in this file does that, and the day
+        # something does, this comment is where to start.
+        routes = (ast.FunctionDef, ast.AsyncFunctionDef)
+        for node in create_app.body:
+            if not isinstance(node, routes):
+                continue
+            for dec in node.decorator_list:
+                if (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
+                        and isinstance(dec.func.value, ast.Name)
+                        and dec.func.value.id == "app"
+                        # `app.<verb>("/path")` and nothing else. Including async routes also
+                        # brought in `@app.exception_handler(ServiceError)`, whose argument is a
+                        # name rather than a path -- it is not a route and has no caller to gate.
+                        and dec.func.attr.upper() in self.HTTP_METHODS
+                        and dec.args and isinstance(dec.args[0], ast.Constant)
+                        and isinstance(dec.args[0].value, str)):
+                    called = {c.func.id for c in ast.walk(node)
+                              if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+                    yield dec.func.attr.upper(), dec.args[0].value, called
+
+    def test_every_route_asks_the_gate_or_is_a_named_exception(self):
+        unguarded = [(method, path) for method, path, called in self._routes()
+                     if not (self.GUARDS & called)
+                     and (method, path) not in self.UNGATED]
+        self.assertEqual(
+            unguarded, [],
+            "these routes neither ask MOD-008 nor scope themselves to the caller. Add the "
+            "`permit` call, or add the route to GateCoverageTests.UNGATED with the reason it "
+            "is open -- deliberately, in writing, where a reviewer will see it",
+        )
+
+    def test_the_exception_list_names_no_route_that_is_gone(self):
+        """A stale exemption would silently excuse a path somebody reuses later."""
+        live = {(method, path) for method, path, _ in self._routes()}
+        self.assertEqual(sorted(set(self.UNGATED) - live), [],
+                         "these exemptions name routes this build no longer has")
+
+    def test_the_exception_list_names_no_route_that_does_ask(self):
+        """An exemption on a gated route reads as a gap that is not there."""
+        guarded = {(method, path) for method, path, called in self._routes()
+                   if self.GUARDS & called}
+        self.assertEqual(sorted(set(self.UNGATED) & guarded), [],
+                         "these routes do ask the gate and should not be listed as open")
+
+    def test_every_privacy_route_is_in_the_behavioural_sweep(self):
+        """The sweeps are a sample everywhere else; for MOD-009 they are the whole surface."""
+        swept = {(method.upper(), path.split("?")[0])
+                 for method, path, _ in READ_ROUTES + WRITE_ROUTES}
+        swept = {(method, path.replace(_ID, "{id}").replace(_SUBJECT, "{id}"))
+                 for method, path in swept}
+        live = {(method, path.replace("{purpose_id}", "{id}").replace("{hold_id}", "{id}")
+                 .replace("{request_id}", "{id}"))
+                for method, path, _ in self._routes() if path.startswith("/privacy/")}
+        self.assertEqual(sorted(live - swept), [],
+                         "these privacy routes are never called by the gating sweep")
 
 
 if __name__ == "__main__":

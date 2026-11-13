@@ -33,8 +33,9 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 29 checks covering all three tracks' tables, and **every one has been run against a
-deliberate mutation of the protection it guards and shown to fail**:
+CI. It carries 38 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, and MOD-009's `sec_` -- and **every one has been
+run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
 MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
@@ -43,6 +44,15 @@ MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/sc
 A new tenant table earns its checks the same way. A check that still passes when its protection is
 removed is not evidence, and this suite has already caught one of those: an early "the app role
 cannot DELETE" test passed only because a foreign key refused the delete first.
+
+**Mutate the catalogue, not a table you happened to name.** A sweep proves the tables it names
+and nothing else. MOD-009's first version probed FORCE RLS on two of its nine tables and ran
+sixteen mutations against them, all caught -- and an independent reviewer then removed FORCE from
+a third table and watched the suite report every check passing while the migrator read every
+tenant's legal holds. Seven of nine tables had no evidence behind them. Checks 17, 22, 28 and 33
+assert over `pg_class` and `pg_policies` for exactly this reason, each with a minimum-count guard
+so the sweep cannot pass vacuously: a per-table list has to be edited whenever a module adds a
+table, and that edit is the moment an unprotected one slips through.
 
 Two obligations named in the original rule are covered: check 10 asserts the runtime roles hold no
 TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE

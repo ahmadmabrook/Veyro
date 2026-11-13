@@ -126,6 +126,48 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("member.profile.write", "Change a member's profile", "data_access", "financial"),
     _p("member.health.read", "See a member's health information",
        "data_access", "biometric_sensitive"),
+    # MOD-009, privacy, consent and data subject requests.
+    #
+    # The categories are IAM-03-R06's closed set. There is no `privacy` audit category and this
+    # file does not invent one: `iam.audit_events` has a CHECK over exactly those seven names,
+    # so a permission categorised `privacy` would pass here and then fail at the moment a
+    # denial had to be written -- which is the moment the record matters most.
+    _p("privacy.purpose.read", "See the register of processing purposes", "data_access"),
+    _p("privacy.purpose.write", "Register or retire a processing purpose",
+       "configuration", "financial"),
+    _p("privacy.consent.read", "See a subject's consent state and history", "data_access"),
+    _p("privacy.consent.define", "Define a consent kind or publish a consent document",
+       "configuration", "financial"),
+    # Recording one's own consent is routine because the subject doing it is on a phone or a
+    # kiosk at AAL-1, and a consent that can only be given from a stepped-up session cannot be
+    # given at all. Recording somebody *else's* is a different act: it writes an insert-only
+    # claim that a named person agreed to something, and nothing can remove it afterwards. The
+    # route derives the subject from the session and asks for the second permission only when
+    # the caller names a different one -- MOD-008's "derive a scope, never accept one", applied
+    # to the subject of a consent record.
+    _p("privacy.consent.record", "Record or withdraw one's own consent", "data_access"),
+    _p("privacy.consent.record_on_behalf", "Record or withdraw consent for somebody else",
+       "data_access", "financial"),
+    _p("privacy.retention.read", "See retention policies and legal holds", "data_access"),
+    _p("privacy.retention.write", "Set or retire a retention policy",
+       "configuration", "financial"),
+    # Placing a hold suspends deletion; releasing one resumes it. Both change what the product
+    # is allowed to destroy, so both are financial-class and neither is available to a session
+    # that only proved a password on an unfamiliar device.
+    _p("privacy.legal_hold.write", "Place or release a legal hold", "configuration", "financial"),
+    _p("privacy.dsar.read", "See data subject requests and their evidence", "data_access"),
+    _p("privacy.dsar.open", "Open a data subject request", "data_access"),
+    _p("privacy.dsar.verify", "Verify a requester's identity or clear the legal check",
+       "data_access", "financial"),
+    _p("privacy.dsar.fulfil", "Fulfil or refuse a data subject request",
+       "data_access", "financial"),
+    _p("privacy.incident.read", "See recorded security incidents", "access"),
+    # Routine on purpose, and the one place in this module where that is a judgement rather than
+    # an obvious call. An incident is recorded *during* an incident, and the incident may be the
+    # authentication plane being unavailable; a step-up requirement here would mean the worst
+    # events are the ones that go unrecorded. The row is insert-only either way, so a false
+    # incident record is visible rather than destructive.
+    _p("privacy.incident.record", "Record a security incident", "access"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

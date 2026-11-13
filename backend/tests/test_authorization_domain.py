@@ -50,7 +50,7 @@ class CatalogTests(unittest.TestCase):
     # Reading is routine; recording a measurement is machine telemetry. Everything else under
     # finance or access is a decision somebody makes, and must cost a second factor. A new
     # permission added at `routine` under either category fails this.
-    ROUTINE_BY_DESIGN = {"billing.usage.record"}
+    ROUTINE_BY_DESIGN = {"billing.usage.record", "privacy.incident.record"}
 
     def test_money_and_access_decisions_are_not_routine(self):
         """A permission that moves money or grants access must need a second factor."""
@@ -61,10 +61,26 @@ class CatalogTests(unittest.TestCase):
                 continue
             self.assertNotEqual(permission.action_class, "routine", name)
 
-    def test_recording_usage_is_routine_deliberately(self):
-        """Stated as its own test so the exception cannot be widened by accident."""
+    def test_the_two_routine_exceptions_are_deliberate(self):
+        """Stated as its own test so the exception set cannot be widened by accident.
+
+        Both are writes under a category whose other members all demand a second factor, and
+        both are exceptions for the same reason: the thing doing them cannot step up.
+
+        `billing.usage.record` is a device emitting measurements continuously, and its reach is
+        bounded -- defining what is measured and moving the quota are separate, financial-class
+        permissions, which is a defect an independent review found and the gating suite now
+        holds in place.
+
+        `privacy.incident.record` is somebody writing down that something went wrong, and the
+        something may be that authentication is unavailable. A step-up requirement there means
+        the worst incidents are the ones with no record. The row is insert-only either way, so
+        the cost of a false one is noise rather than destruction.
+        """
         self.assertEqual(action_class("billing.usage.record"), "routine")
-        self.assertEqual(self.ROUTINE_BY_DESIGN, {"billing.usage.record"})
+        self.assertEqual(action_class("privacy.incident.record"), "routine")
+        self.assertEqual(self.ROUTINE_BY_DESIGN,
+                         {"billing.usage.record", "privacy.incident.record"})
 
     def test_configuration_changes_need_a_second_factor(self):
         """TSD paragraph 1020 requires change control for financial and security flag changes."""

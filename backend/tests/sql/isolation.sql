@@ -1405,4 +1405,761 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 32/32 checks passed'
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-009)
+-- `subject_id` is a bare uuid by design: identities live in `iam`, which veyro_cp_app cannot
+-- reach, so there is no foreign key available to carry the tenant into. That makes RLS the only
+-- thing standing between one tenant's consent evidence and another's, which is why checks 33
+-- and 34 test these tables directly rather than resting on the parent-chain argument that
+-- covers the `cfg_` and `bil_` children.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.sec_processing_purposes
+    (tenant_id, purpose_id, purpose_code, description, lawful_basis, controller_role,
+     data_classes, registered_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000001', 'member.training',
+        'Deliver training sessions', 'contract', 'processor',
+        ARRAY['confidential'], :'actor', :'actor');
+INSERT INTO plt01.sec_consent_definitions
+    (tenant_id, definition_id, consent_type, purpose_id, withdrawable, defined_by,
+     correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000002', 'waiver',
+        '99999999-0000-4000-8000-000000000001', false, :'actor', :'actor');
+INSERT INTO plt01.sec_consent_versions
+    (tenant_id, consent_version_id, definition_id, version, language, document_ref,
+     document_hash, effective_from, published_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000003',
+        '99999999-0000-4000-8000-000000000002', 1, 'en', 'waiver/v1',
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        TIMESTAMPTZ '2026-11-01 00:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.sec_consent_definitions
+    (tenant_id, definition_id, consent_type, purpose_id, withdrawable, defined_by,
+     correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-00000000000b', 'marketing',
+        '99999999-0000-4000-8000-000000000001', true, :'actor', :'actor');
+INSERT INTO plt01.sec_consent_versions
+    (tenant_id, consent_version_id, definition_id, version, language, document_ref,
+     document_hash, effective_from, published_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-00000000000c',
+        '99999999-0000-4000-8000-00000000000b', 1, 'en', 'marketing/v1',
+        'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+        TIMESTAMPTZ '2026-11-01 00:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.sec_consent_records
+    (tenant_id, record_id, subject_id, definition_id, consent_version_id, action, signed_at,
+     source, locale, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000004',
+        '99999999-0000-4000-8000-00000000000a',
+        '99999999-0000-4000-8000-000000000002', '99999999-0000-4000-8000-000000000003',
+        'granted', TIMESTAMPTZ '2026-11-02 09:00:00+00', 'member_app', 'en-GB', :'actor');
+INSERT INTO plt01.sec_retention_policies
+    (tenant_id, policy_id, resource_type, data_class, retention_days, legal_basis, region,
+     set_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000005', 'consent_record', 'confidential',
+        3650, 'PDPL No. 24 of 2023 art. 4', 'eu-west', :'actor', :'actor');
+INSERT INTO plt01.sec_legal_holds
+    (tenant_id, hold_id, subject_id, resource_type, reason, reference, placed_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000006',
+        '99999999-0000-4000-8000-00000000000a', 'consent_record',
+        'injury claim under investigation', 'CASE-2026-11', :'actor', :'actor');
+INSERT INTO plt01.sec_dsar_requests
+    (tenant_id, request_id, subject_id, request_type, status, received_at, due_at,
+     opened_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000007',
+        '99999999-0000-4000-8000-00000000000a', 'deletion', 'received',
+        TIMESTAMPTZ '2026-11-10 08:00:00+00', TIMESTAMPTZ '2026-12-10 08:00:00+00',
+        :'actor', :'actor');
+INSERT INTO plt01.sec_dsar_actions
+    (tenant_id, action_id, request_id, store, target, mechanism, outcome, rows_affected,
+     evidence_hash)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000008',
+        '99999999-0000-4000-8000-000000000007', 'postgresql', 'iam.identities.identity_id',
+        'anonymize', 'done', 1,
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
+INSERT INTO plt01.sec_incidents
+    (tenant_id, incident_id, severity, category, summary, detected_at,
+     personal_data_involved, recorded_by, correlation_id)
+VALUES (:'tenant_a', '99999999-0000-4000-8000-000000000009', 'low', 'access_anomaly',
+        'Repeated failed logins from one address', TIMESTAMPTZ '2026-11-08 22:00:00+00',
+        'unknown', :'actor', :'actor');
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.sec_processing_purposes
+    (tenant_id, purpose_id, purpose_code, description, lawful_basis, controller_role,
+     data_classes, registered_by, correlation_id)
+VALUES (:'tenant_b', '88888888-0000-4000-8000-000000000001', 'security.audit',
+        'Detect and investigate abuse', 'legitimate_interest', 'controller',
+        ARRAY['restricted'], :'actor', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 33. sec tables isolate
+-- The same sweep the other two tracks get. Tenant B holds one purpose of its own, so a
+-- predicate that leaked would show up as a count above the expected one rather than as the
+-- zero that an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['sec_consent_definitions', 'sec_consent_versions',
+                               'sec_consent_records', 'sec_retention_policies',
+                               'sec_legal_holds', 'sec_dsar_requests', 'sec_dsar_actions',
+                               'sec_incidents']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 33 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.sec_processing_purposes) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: tenant B sees % purposes, expected its own 1',
+            (SELECT count(*) FROM plt01.sec_processing_purposes);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.sec_processing_purposes
+               WHERE purpose_code = 'member.training') THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: tenant B read tenant A''s processing purpose';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- All nine, not the four this once covered. A table whose positive case nobody asserts
+    -- could return zero for the wrong reason and only the negative sweep would notice, which
+    -- is the direction that reads as a pass.
+    IF (SELECT count(*) FROM plt01.sec_processing_purposes) <> 1
+       OR (SELECT count(*) FROM plt01.sec_consent_definitions) <> 2
+       OR (SELECT count(*) FROM plt01.sec_consent_versions) <> 2
+       OR (SELECT count(*) FROM plt01.sec_consent_records) <> 1
+       OR (SELECT count(*) FROM plt01.sec_retention_policies) <> 1
+       OR (SELECT count(*) FROM plt01.sec_legal_holds) <> 1
+       OR (SELECT count(*) FROM plt01.sec_dsar_requests) <> 1
+       OR (SELECT count(*) FROM plt01.sec_dsar_actions) <> 1
+       OR (SELECT count(*) FROM plt01.sec_incidents) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: tenant A cannot see its own privacy rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- The migrator owns these tables and no policy names it, so FORCE RLS denies it by default.
+-- Asserted here rather than assumed: without FORCE, the owner reads every tenant at once, and
+-- the owner is the role the application could be misconfigured to connect as.
+--
+-- **Swept from the catalogue, not named table by table.** The first version of this check probed
+-- two tables behaviourally and `ALTER TABLE plt01.sec_legal_holds NO FORCE ROW LEVEL SECURITY`
+-- left the suite reporting every check passed while the migrator read every tenant's legal
+-- holds. Checks 17, 22 and 28 already got this right and MOD-009 regressed; a per-table list has
+-- to be edited whenever a module adds a table, and that edit is exactly the moment an
+-- unprotected one slips through. The count guard stops the sweep passing vacuously.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    unprotected text;
+    total bigint;
+BEGIN
+    SELECT string_agg(relname, ', '), count(*) FILTER (WHERE true)
+    INTO unprotected, total
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'sec\_%'
+      AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF unprotected IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: sec_ tables without ENABLE and FORCE RLS: %',
+            unprotected;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+          AND relname LIKE 'sec\_%') < 9 THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: fewer than 9 sec_ tables, so the sweep proved nothing';
+    END IF;
+    -- A table owned by a superuser ignores FORCE entirely, so the sweep above would be reading
+    -- a flag that does not bind.
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'sec\_%'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 33 FAILED: a sec_ table is not owned by the migrator';
+    END IF;
+END $$;
+COMMIT;
+
+-- And behaviourally, because a catalogue flag is a claim about behaviour: the owner reads
+-- nothing even with a tenant context set.
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['sec_processing_purposes', 'sec_consent_definitions',
+                               'sec_consent_versions', 'sec_consent_records',
+                               'sec_retention_policies', 'sec_legal_holds',
+                               'sec_dsar_requests', 'sec_dsar_actions', 'sec_incidents']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 33 FAILED: the table owner read % rows of %, so FORCE RLS is off',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 34. fail closed, sec tables
+-- With no context the predicate is NULL, so reads return nothing and writes are refused. This
+-- is the property the whole module rests on: consent evidence and a legal hold are exactly the
+-- rows a bug in some unrelated query must never surface.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['sec_processing_purposes', 'sec_consent_definitions',
+                               'sec_consent_versions', 'sec_consent_records',
+                               'sec_retention_policies', 'sec_legal_holds',
+                               'sec_dsar_requests', 'sec_dsar_actions', 'sec_incidents']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 34 FAILED: % returned % rows with no tenant context',
+                tbl, seen;
+        END IF;
+    END LOOP;
+
+    BEGIN
+        INSERT INTO plt01.sec_incidents
+            (tenant_id, severity, category, summary, detected_at, personal_data_involved,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'critical', 'breach', 'no context',
+                now(), 'yes', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 34 FAILED: an incident was recorded with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sec_legal_holds
+            (tenant_id, reason, reference, placed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'no context', 'X',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 34 FAILED: a legal hold was placed with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- **WITH CHECK, swept.** The behavioural case below exercises one table. That is not enough:
+-- replacing `sec_consent_records`'s policy with `WITH CHECK (true)` left the suite green while
+-- tenant B could plant a forged *withdrawal* of consent into tenant A's ledger -- and because
+-- the table is insert-only by privilege, tenant A could never remove it. That is the one
+-- combination in this module where a write-side isolation failure is unrecoverable rather than
+-- merely wrong, and it was the one case the suite did not cover.
+--
+-- Every policy's WITH CHECK must exist and must say exactly what its USING says. A policy with
+-- a USING predicate and no WITH CHECK silently reuses USING for reads but permits any insert.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    broken text;
+BEGIN
+    SELECT string_agg(tablename || ' (' || policyname || ')', ', ') INTO broken
+    FROM pg_policies
+    WHERE schemaname = 'plt01' AND tablename LIKE 'sec\_%'
+      AND (with_check IS NULL OR with_check IS DISTINCT FROM qual);
+    IF broken IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 34 FAILED: WITH CHECK missing or weaker than USING on: %', broken;
+    END IF;
+    IF (SELECT count(*) FROM pg_policies
+        WHERE schemaname = 'plt01' AND tablename LIKE 'sec\_%') < 9 THEN
+        RAISE EXCEPTION 'CHECK 34 FAILED: fewer than 9 sec_ policies, so the sweep proved nothing';
+    END IF;
+    -- The predicate itself, not merely that the two halves agree: a policy whose USING and
+    -- WITH CHECK are both `true` would pass the comparison above.
+    IF (SELECT count(*) FROM pg_policies
+        WHERE schemaname = 'plt01' AND tablename LIKE 'sec\_%'
+          AND qual NOT LIKE '%current_setting(''app.tenant_id''%') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 34 FAILED: a sec_ policy does not read app.tenant_id';
+    END IF;
+END $$;
+COMMIT;
+
+-- A write aimed at another tenant while holding a context is refused by WITH CHECK, not merely
+-- hidden by USING. Kept behavioural as well as structural: the sweep above reads the catalogue's
+-- idea of the policy, and this proves the database acts on it.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.sec_incidents
+            (tenant_id, severity, category, summary, detected_at, personal_data_involved,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'critical', 'breach',
+                'planted by another tenant', now(), 'yes',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 34 FAILED: tenant B wrote an incident into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 35. cross-tenant parents
+-- Every reference inside this module is composite and carries `tenant_id`, so a row that names
+-- another tenant's parent is refused by the database rather than by the service. A consent
+-- record pointing at another tenant's published document would otherwise be a way to attribute
+-- an agreement to a text its signer never saw.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.sec_consent_definitions
+            (tenant_id, consent_type, purpose_id, defined_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222', 'marketing',
+                '99999999-0000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 35 FAILED: a consent definition cited another tenant''s purpose';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sec_dsar_actions
+            (tenant_id, request_id, store, target, mechanism, outcome, rows_affected,
+             evidence_hash)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-0000-4000-8000-000000000007', 'postgresql', 'plt01.organizations',
+                'delete', 'done', 1,
+                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
+        RAISE EXCEPTION 'CHECK 35 FAILED: evidence was filed against another tenant''s request';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The same within one tenant: a consent record must cite a version of the definition it names.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.sec_consent_records
+            (tenant_id, subject_id, definition_id, consent_version_id, action, signed_at,
+             source, locale, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-0000-4000-8000-00000000000a',
+                '99999999-0000-4000-8000-000000000002',
+                '99999999-0000-4000-8000-0000000000ff', 'granted', now(), 'web', 'en',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 35 FAILED: consent was recorded against a version that does not exist';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+
+    -- The harder case, and the one a plain pair of foreign keys does not refuse: a version that
+    -- *exists* but belongs to a different definition. Both ids are real here -- the waiver
+    -- definition and the marketing document -- so two independent references would accept it,
+    -- and the row would say a member agreed to a waiver while carrying the hash and reference
+    -- of the marketing text. Insert-only, so nobody could correct it. The reference is a triple
+    -- for this reason.
+    BEGIN
+        INSERT INTO plt01.sec_consent_records
+            (tenant_id, subject_id, definition_id, consent_version_id, action, signed_at,
+             source, locale, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-0000-4000-8000-00000000000a',
+                '99999999-0000-4000-8000-000000000002',
+                '99999999-0000-4000-8000-00000000000c', 'granted', now(), 'web', 'en',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 35 FAILED: a waiver consent cited the marketing document';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 36. evidence is insert-only
+-- Four tables here answer questions asked later, by somebody auditing the party that holds
+-- them: what was consented to, what document said so, what a deletion job actually did, and
+-- what happened during an incident. Each is worthless if the holder can revise it, so the
+-- append-only property is a privilege rather than a convention, and it is asserted from the
+-- catalogue as well as exercised -- a statement can fail for the wrong reason, which this file
+-- learned at check 10.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    role_name text;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['sec_consent_definitions', 'sec_consent_versions',
+                               'sec_consent_records', 'sec_dsar_actions', 'sec_incidents']
+    LOOP
+        FOREACH role_name IN ARRAY ARRAY['veyro_cp_app', 'veyro_cp_worker']
+        LOOP
+            IF has_table_privilege(role_name, 'plt01.' || tbl, 'UPDATE')
+               OR has_table_privilege(role_name, 'plt01.' || tbl, 'DELETE') THEN
+                RAISE EXCEPTION 'CHECK 36 FAILED: % can revise %', role_name, tbl;
+            END IF;
+        END LOOP;
+    END LOOP;
+
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES anywhere in this module. DELETE is
+    -- the one that matters most: a retention job that could delete a legal hold could delete
+    -- the evidence that deletion was suspended.
+    FOREACH tbl IN ARRAY ARRAY['sec_processing_purposes', 'sec_consent_definitions',
+                               'sec_consent_versions', 'sec_consent_records',
+                               'sec_retention_policies', 'sec_legal_holds',
+                               'sec_dsar_requests', 'sec_dsar_actions', 'sec_incidents']
+    LOOP
+        FOREACH role_name IN ARRAY ARRAY['veyro_cp_app', 'veyro_cp_worker']
+        LOOP
+            IF has_table_privilege(role_name, 'plt01.' || tbl, 'DELETE')
+               OR has_table_privilege(role_name, 'plt01.' || tbl, 'TRUNCATE')
+               OR has_table_privilege(role_name, 'plt01.' || tbl, 'REFERENCES') THEN
+                RAISE EXCEPTION 'CHECK 36 FAILED: % holds DELETE, TRUNCATE or REFERENCES on %',
+                    role_name, tbl;
+            END IF;
+        END LOOP;
+    END LOOP;
+
+    BEGIN
+        UPDATE plt01.sec_consent_records SET action = 'withdrawn';
+        RAISE EXCEPTION 'CHECK 36 FAILED: a consent record was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+
+    BEGIN
+        DELETE FROM plt01.sec_legal_holds;
+        RAISE EXCEPTION 'CHECK 36 FAILED: a legal hold was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The mutable registries move on named columns only. A table-level UPDATE here would let the
+-- lawful basis a consent was collected under change after the fact, or a retention period
+-- already applied be shortened, or a deletion request become an access request.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF NOT has_column_privilege('veyro_cp_app', 'plt01.sec_processing_purposes',
+                                'retired_by', 'UPDATE')
+       OR NOT has_column_privilege('veyro_cp_app', 'plt01.sec_legal_holds',
+                                   'released_by', 'UPDATE')
+       OR NOT has_column_privilege('veyro_cp_app', 'plt01.sec_processing_purposes',
+                                   'retired_at', 'UPDATE')
+       OR NOT has_column_privilege('veyro_cp_app', 'plt01.sec_retention_policies',
+                                   'retired_at', 'UPDATE')
+       OR NOT has_column_privilege('veyro_cp_app', 'plt01.sec_legal_holds',
+                                   'released_at', 'UPDATE')
+       OR NOT has_column_privilege('veyro_cp_app', 'plt01.sec_dsar_requests',
+                                   'status', 'UPDATE') THEN
+        RAISE EXCEPTION 'CHECK 36 FAILED: a retirement or state column cannot be written';
+    END IF;
+    IF has_column_privilege('veyro_cp_app', 'plt01.sec_processing_purposes',
+                            'lawful_basis', 'UPDATE')
+       OR has_column_privilege('veyro_cp_app', 'plt01.sec_retention_policies',
+                               'retention_days', 'UPDATE')
+       OR has_column_privilege('veyro_cp_app', 'plt01.sec_legal_holds', 'reason', 'UPDATE')
+       OR has_column_privilege('veyro_cp_app', 'plt01.sec_dsar_requests',
+                               'subject_id', 'UPDATE')
+       OR has_column_privilege('veyro_cp_app', 'plt01.sec_dsar_requests',
+                               'request_type', 'UPDATE')
+       OR has_column_privilege('veyro_cp_app', 'plt01.sec_dsar_requests',
+                               'due_at', 'UPDATE') THEN
+        RAISE EXCEPTION 'CHECK 36 FAILED: a column that fixes the terms of a record is writable';
+    END IF;
+
+    BEGIN
+        UPDATE plt01.sec_retention_policies SET retention_days = 1;
+        RAISE EXCEPTION 'CHECK 36 FAILED: a retention period was shortened in place';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+
+    BEGIN
+        UPDATE plt01.sec_dsar_requests SET request_type = 'access';
+        RAISE EXCEPTION 'CHECK 36 FAILED: a deletion request became an access request';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 37. the CHECKs actually bite
+-- Each of these encodes a decision that would otherwise live only in a comment: which lawful
+-- bases exist, which consent kinds exist, that a guardian is somebody else, that a refusal and
+-- a release carry their reasons, and that a completed request has a completion time.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- The six bases are Jordan PDPL's, not GDPR's. "legitimate_interests" plural is GDPR's
+    -- spelling and is exactly the kind of near-miss that would otherwise be accepted.
+    BEGIN
+        INSERT INTO plt01.sec_processing_purposes
+            (tenant_id, purpose_code, description, lawful_basis, controller_role,
+             data_classes, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'member.marketing', 'Send offers',
+                'legitimate_interests', 'controller', ARRAY['internal'],
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: an unlisted lawful basis was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A purpose with no data classes names nothing, so no retention policy and no export can
+    -- find it.
+    BEGIN
+        INSERT INTO plt01.sec_processing_purposes
+            (tenant_id, purpose_code, description, lawful_basis, controller_role,
+             data_classes, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'member.unclassed', 'Nothing',
+                'consent', 'controller', ARRAY[]::text[],
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: a purpose covering no data class was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An invented consent kind would be collected under a name no retention policy and no DSAR
+    -- export knows about.
+    BEGIN
+        INSERT INTO plt01.sec_consent_definitions
+            (tenant_id, consent_type, purpose_id, defined_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'facial_recognition',
+                '99999999-0000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: an invented consent kind was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A guardian who is the subject reads as a valid minor's consent and is not one.
+    BEGIN
+        INSERT INTO plt01.sec_consent_records
+            (tenant_id, subject_id, definition_id, consent_version_id, action, signed_at,
+             source, guardian_subject_id, locale, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-0000-4000-8000-00000000000a',
+                '99999999-0000-4000-8000-000000000002',
+                '99999999-0000-4000-8000-000000000003', 'granted', now(), 'staff_entry',
+                '99999999-0000-4000-8000-00000000000a', 'en',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: a subject consented as their own guardian';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A refusal is a decision the subject can appeal, so the reason is in the row.
+    BEGIN
+        INSERT INTO plt01.sec_dsar_requests
+            (tenant_id, subject_id, request_type, status, received_at, due_at,
+             opened_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-0000-4000-8000-00000000000a', 'access', 'refused', now(),
+                now() + interval '30 days', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: a request was refused with no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- "Completed" and a completion time are one fact written twice; they cannot disagree.
+    BEGIN
+        INSERT INTO plt01.sec_dsar_requests
+            (tenant_id, subject_id, request_type, status, received_at, due_at,
+             opened_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-0000-4000-8000-00000000000a', 'access', 'completed', now(),
+                now() + interval '30 days', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: a request was completed with no completion time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A release with no reason is indistinguishable from a mistake, and this row is the
+    -- evidence somebody will be asked about.
+    BEGIN
+        UPDATE plt01.sec_legal_holds SET released_at = now()
+        WHERE hold_id = '99999999-0000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 37 FAILED: a legal hold was released with no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An unbounded retention period is written as no policy, not as a very large number.
+    BEGIN
+        INSERT INTO plt01.sec_retention_policies
+            (tenant_id, resource_type, data_class, retention_days, legal_basis, region,
+             set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'session_log', 'internal', -1,
+                'none', 'eu-west', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: a negative retention period was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A data class outside the four of TSD section 21.2 would carry no classification rule.
+    BEGIN
+        INSERT INTO plt01.sec_retention_policies
+            (tenant_id, resource_type, data_class, retention_days, legal_basis, region,
+             set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'session_log', 'top_secret', 30,
+                'none', 'eu-west', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 37 FAILED: an unknown data class was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 38. evidence stays answerable
+-- Four controls an independent review asked for, each closing a way the record of a decision
+-- could be rewritten or left with nobody's name on it.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- Releasing a hold un-blocks destruction of preserved evidence. It is the one act in this
+    -- module with no audit row anywhere else -- `veyro_cp_app` holds nothing in `iam`, so
+    -- MOD-008's chain is out of reach -- which makes the row itself the only record of who.
+    BEGIN
+        UPDATE plt01.sec_legal_holds
+        SET released_at = now(), release_reason = 'anonymous'
+        WHERE hold_id = '99999999-0000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 38 FAILED: a hold was released with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Retiring a purpose withdraws the stated justification for processing. Registering one
+    -- records an actor; retiring one must too.
+    BEGIN
+        UPDATE plt01.sec_processing_purposes SET retired_at = now()
+        WHERE purpose_id = '99999999-0000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 38 FAILED: a purpose was retired with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A data class outside the four of TSD section 21.2 names a classification no rule exists
+    -- for. The empty-array case is at check 37; this is the element case, which the first
+    -- version of the constraint admitted.
+    BEGIN
+        INSERT INTO plt01.sec_processing_purposes
+            (tenant_id, purpose_code, description, lawful_basis, controller_role,
+             data_classes, registered_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'member.odd', 'Odd',
+                'consent', 'controller', ARRAY['top_secret'],
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 38 FAILED: a purpose named an unknown data class';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The live-policy index is unique on (resource_type, region), so free text defeats it: three
+    -- spellings of one resource are three live policies and whichever is read first wins.
+    BEGIN
+        INSERT INTO plt01.sec_retention_policies
+            (tenant_id, resource_type, data_class, retention_days, legal_basis, region,
+             set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Consent_Record', 'confidential', 1,
+                'none', 'eu-west', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 38 FAILED: a second spelling of a resource type was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The same for an incident category. No source here enumerates a taxonomy, so the shape is
+    -- all there is; without it one category arrives in three spellings and nothing groups.
+    BEGIN
+        INSERT INTO plt01.sec_incidents
+            (tenant_id, severity, category, summary, detected_at, personal_data_involved,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'low', 'Access Anomaly',
+                'mis-spelled category', now(), 'no',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 38 FAILED: a free-text incident category was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The release is final, and only a trigger can say so: a CHECK sees one row and not what the row
+-- used to be, so the constraint above happily permits a released hold to be released again with
+-- a different date, or set back to NULL so it reads as a hold that was never lifted. Either
+-- rewrites how long deletion was suspended, which is the whole reason the row is kept.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+UPDATE plt01.sec_legal_holds
+SET released_at = now(), release_reason = 'claim settled',
+    released_by = '33333333-3333-4333-8333-333333333333',
+    release_correlation_id = '33333333-3333-4333-8333-333333333333'
+WHERE hold_id = '99999999-0000-4000-8000-000000000006';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.sec_legal_holds
+        SET released_at = TIMESTAMPTZ '2020-01-01 00:00:00+00', release_reason = 'clerical'
+        WHERE hold_id = '99999999-0000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 38 FAILED: a release was backdated after the fact';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sec_legal_holds
+        SET released_at = NULL, release_reason = NULL, released_by = NULL,
+            release_correlation_id = NULL
+        WHERE hold_id = '99999999-0000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 38 FAILED: a released hold was made to read as never released';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 38/38 checks passed'

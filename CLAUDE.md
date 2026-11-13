@@ -21,6 +21,7 @@ backend/app/            service code
   billing/              MOD-015: money.py, subscription.py, usage.py decide; service.py writes
   identity/             MOD-007: secrets.py (crypto), policy.py (decisions), service.py (I/O)
   authorization/        MOD-008: catalog, decision, gate, approval, audit; service.py (I/O)
+  privacy/              MOD-009: classification, consent, retention, dsar decide; service.py (I/O)
   errors.py             the four service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -326,13 +327,19 @@ simulator, approvals with thresholds and separation of duties, access reviews, a
 audit log. Proven: isolation checks 30-32, each mutation-tested (13 breaks); 7 tamper tests
 against the chain; 75 domain unit tests with no database; 32 integration tests.
 
-**The product is gated.** All 36 tenant-plane routes -- the organization hierarchy, configuration
-and flags, subscriptions, metering and invoices -- go through `permit`, which calls
-`authz.require`, which asks authorization and assurance together and writes the denial to the
-audit log itself. `backend/tests/test_gating.py` is the suite that says so, and it is written as
-the attacker rather than the user: it sweeps every route with no session (422), with a session
-holding nothing (403), with a read permission against a write route, and with a permission held
-on a session too weak for it.
+**The product is gated.** Every tenant-plane route -- the organization hierarchy, configuration
+and flags, subscriptions, metering and invoices, and MOD-009's privacy surface -- goes through
+`permit`, which calls `authz.require`, which asks authorization and assurance together and writes
+the denial to the audit log itself. `backend/tests/test_gating.py` is the suite that says so, and
+it is written as the attacker rather than the user: it sweeps the routes with no session (422),
+with a session holding nothing (403), with a read permission against a write route, and with a
+permission held on a session too weak for it.
+
+A sweep is a sample, though, and a sample cannot prove a negative: a route added without a
+`permit` call is invisible to it, because nothing ever calls that route. `GateCoverageTests` reads
+`main.py` with `ast` instead and requires every route to do one of three things -- ask the gate,
+scope itself to the caller's own identity, or appear in `UNGATED` with a written reason. That
+list is where the open surfaces are enumerated, and adding to it is meant to be uncomfortable.
 
 **The platform plane is deliberately still open, and that is wider than it sounds.** `/platform/*`
 provisions tenants, moves them through their lifecycle and reads their history, and none of it
@@ -430,11 +437,149 @@ Known gaps, deliberate:
 - **Retention control is not implemented.** IAM-03 asks for write-once, integrity-protected *and*
   retention-controlled; the third is a policy about deleting old records on purpose and has no
   implementation here.
+**MOD-009 (SEC-01 security, privacy, compliance and consent) -- implemented, gated, and
+reviewed.** Nine `sec_` tables in `plt01` under the same forced RLS, and `app/privacy/` beside
+them: a data classification registry, consent with versioned documents, retention with legal
+hold, the data subject request workflow, and an incident record. Twenty-five HTTP routes, every
+one through `permit`. Proven: isolation checks 33-38, each mutation-tested -- 40 mutations, 39
+caught by the check that guards the thing broken and one (dropping a policy outright) caught by
+the seed failing closed, which is the property but not a check. Two of those 40 first came back
+"caught" for the wrong reason: one broke the seed, and one named a constraint that does not
+exist, so the ALTER errored and the mutation never ran at all. Both were re-run correctly.
+Also: 62 domain unit tests with no database; 30 service integration tests; 11 reachability tests
+against the live catalogue; 18 API tests.
 
-**Next.** MOD-009 (security, privacy, compliance and consent) onward. Two things the gating
-change named rather than did: the platform plane is unauthenticated, and `Decision.mask` is
-computed on every allowed read while no read path applies it -- the masked field list comes back
-with the decision and the callers ignore it.
+**This build cannot fully erase a person, and that is a tested disclosure rather than a
+silence.** Every `plt01` column naming a subject has neither UPDATE nor DELETE for any runtime
+role -- the financial ledger, published configuration, recorded exposures and MOD-009's own
+evidence -- and three `iam` tables likewise: the audit chain, the authentication log and
+approval decisions. Each is correct on its own terms: insert-only is what makes the ledger
+reconstructible and the audit chain tamper-evident. Together they mean erasure reaches the
+identity plane's mutable tables and nothing else. TSD section 21.6 anticipates exactly this and
+points at crypto-shred, which needs a key vault this repository does not have.
+
+So the deliverable is a registry rather than a routine that pretends. `SUBJECT_COLUMNS` in
+`app/privacy/classification.py` declares, per subject-bearing column, what erasure does to it and
+why, in five mechanisms (`delete`, `anonymize`, `covered`, `pseudonymize`, `unreachable`), and
+`test_privacy_reachability.py` checks it against the live catalogue **in both directions**: a new
+table carrying a subject id fails until somebody declares it, and a declaration that disagrees
+with the grants fails too -- `anonymize` needs UPDATE behind it, `unreachable` needs the absence
+of both. `deletion_is_complete()` returns False, `settle()` names the residue, and
+`test_this_build_cannot_fully_erase_a_subject_and_says_so` fails if the disclosure ever lapses.
+
+**Three independent reviewers worked this module in parallel -- the schema, the Python, the gate
+-- and all three returned CHANGES_REQUESTED.** Seven blocking defects between them, and two of
+the three found the same one. Each is carried forward below as a rule, because each is a shape
+that recurs:
+
+- **A control consulted once is a control with a window.** Legal holds were read at the DSAR's
+  legal-check step and never again. `ready` is durable with no expiry, and litigation ordinarily
+  starts *after* a request is queued -- so a correctly-served preservation order was ignored and
+  the erasure reported `completed`. `fulfil_dsar` re-reads holds now, along with three other
+  facts, and writes nothing until all four pass. Found by two reviewers independently.
+- **A locator that exists is not a locator that matched.** `subject_id` carries no foreign key --
+  the planes are separate -- and nothing resolved it, so an erasure against an unknown id updated
+  zero rows on every target, recorded `done / 0` for each, and completed. The realistic input is
+  a caller supplying a `person_id` where an `identity_id` was meant. This is the same defect as
+  the `locate_by` one fixed during development, one layer up: there, a static test proved the
+  locator column *existed*. Nothing proved it *matched*.
+- **A control that commits anything before it refuses is not a control** -- MOD-007's rule, hit
+  again. `fulfil_dsar` committed `status = 'fulfilling'` and *then* refused the four non-deletion
+  request types. `fulfilling` exits only to `completed` or `refused`, so attempting to answer an
+  access request -- the commonest DSAR there is -- made it permanently unanswerable.
+- **Derive-don't-accept applies to every field that makes a claim, not just the obvious one.**
+  `consent_subject` charged the stronger permission for naming another *subject* and said nothing
+  about `guardian_subject_id`, which is the entire control behind `requires_guardian` and has no
+  foreign key to check it, or about `source`, where `staff_entry` and `paper_import` assert that
+  a signed document exists off-system. A minor on an AAL-1 session satisfied their own guardian
+  requirement by typing a UUID, and wrote a row that read as a scanned waiver. All three fields
+  now route to `privacy.consent.record_on_behalf`.
+- **Evidence with nobody's name on it answers nothing.** Releasing a legal hold -- the single act
+  that un-blocks destruction of preserved evidence -- recorded no actor anywhere in the system:
+  `veyro_cp_app` holds nothing in `iam`, so MOD-008's audit chain is out of reach, and the row
+  was the only possible record. Retiring a processing purpose was the same. Both now carry an
+  actor and a correlation id, and the constraint requires them.
+- **A CHECK cannot see what a row used to be.** `sec_legal_holds` could be released twice with
+  different dates, or set back to NULL so it read as never lifted -- both rewrite how long
+  deletion was suspended, which is why the row is kept. A trigger is the only thing that can see
+  `OLD`, and this is the one place in the schema that needs one.
+- **A mutation sweep proves the tables it names, and nothing else.** My own sweep broke 16 things
+  and caught 16, and a reviewer then removed FORCE RLS from `sec_legal_holds` and watched the
+  suite report every check passing while the migrator read every tenant's holds. Seven of nine
+  tables had no FORCE evidence and eight of nine no `WITH CHECK` evidence. Checks 17, 22 and 28
+  already swept `pg_class` for exactly this reason and MOD-009 regressed to a per-table list.
+  **Sweep the catalogue; a per-table list has to be edited when a module adds a table, and that
+  edit is the moment an unprotected one slips through.**
+- **A checker with a blind spot in the shape the next line will be written is worse than none.**
+  `GateCoverageTests` filtered on `ast.FunctionDef`, so an `async def` route -- FastAPI's
+  ordinary idiom, already used in this file -- was neither gated nor listed, and all three
+  coverage tests passed.
+
+Also found and fixed: no id anywhere in MOD-009 was shape-checked, so eight of eight id-bearing
+routes answered 500 with a database exception rather than 422; `plan()` derived each step's
+mechanism from the request type, advertising `delete` for seven targets the executor anonymizes;
+a consent record could cite a version belonging to a *different* definition (now a three-column
+foreign key); `data_classes` admitted unknown elements; `received_at` was unbounded, so the
+caller set the regulator-facing deadline; free-text `resource_type` defeated the live-policy
+unique index. Every one has a named regression test.
+
+Things worth knowing before extending it:
+
+- **Tombstones are per-column, not a generic NULL.** `identities_has_an_identifier` forbids
+  nulling both contact columns, and `salt`, `secret_hash`, `token_hash` and `nonce_hash` are
+  `bytea` under `octet_length` checks. Erasure *replaces* an address with a per-row tombstone
+  rather than emptying it. `_CLEAR_SQL` is that mapping and every entry answers a real constraint.
+- **`coalesce` in a CHECK is load-bearing.** `length(btrim(NULL)) > 0` is NULL and a CHECK passes
+  on NULL, so `sec_legal_holds_release_reasoned` admitted the exact row it exists to refuse.
+  Check 37 caught it during development; a reviewer then traced all 29 `sec_` CHECKs and found no
+  second instance.
+- **An interrupted erasure resumes.** `check_ready_to_fulfil` accepts `fulfilling` as well as
+  `ready`, because every clear expression is idempotent or writes a fresh tombstone over one
+  already written, and the evidence trail is insert-only so both attempts stay visible. Without
+  it a transient outage on the identity plane stranded the request for ever.
+- **No deadline is defaulted.** The TSD says "within DSAR SLA" and never states one, so
+  `response_days` is required -- the same precedent as MOD-015's tax rate.
+- **There is no `privacy` audit category.** IAM-03-R06's seven names are a CHECK on
+  `iam.audit_events`, so a permission categorised `privacy` would pass the catalogue and then
+  fail at the moment a denial had to be written. The fifteen MOD-009 permissions reuse the
+  existing categories.
+- **`privacy.incident.record` is routine on purpose**, and it is the second entry ever added to
+  `ROUTINE_BY_DESIGN`. An incident is recorded during an incident, and the incident may be that
+  authentication is unavailable.
+
+Known gaps, deliberate:
+
+- **No crypto-shred, so erasure is incomplete** -- the disclosure above. Closing it needs a key
+  vault and per-subject key material, which is a different module's work.
+- **Only a deletion has an executor.** Access, portability, correction and restriction can be
+  opened, verified and legal-checked; fulfilling one is refused with a reason and leaves the
+  request where a human can act on it. An export needs an object store and a residency decision,
+  both unmade, and `_perform` recording "exported" with no file would be evidence of work never
+  done.
+- **No subprocessor propagation.** SEC-01-R07 asks a DSAR to reach subprocessors; there are none
+  wired up.
+- **No retention sweep.** `retention.may_delete` decides and nothing calls it on a schedule --
+  the same missing worker as MOD-007's challenge sweep. `may_delete` also passes
+  `subject_id=None`, so under the (correct) hold asymmetry one live per-subject hold blocks
+  scheduled expiry of that resource type for every subject. Fail-closed, and a real limitation
+  the day a sweep exists.
+- **No breach-notification clock.** `sec_incidents` records whether personal data was involved,
+  which is what starts one; nothing computes a deadline or notifies anybody.
+- **`privacy.consent.read` is routine and tenant-wide** over health and biometric consent history
+  including guardian identifiers, while `member.health.read` beside it is `biometric_sensitive`.
+  Defensible -- consent state is what a kiosk checks before letting somebody train -- and worth
+  revisiting when a read path applies `Decision.mask`.
+- **Id validation is MOD-009-wide, not repository-wide.** `require_uuid` guards every privacy
+  route; `POST /brands` and its siblings still answer 500 to a malformed id. Same one-line fix,
+  not done here because it is not this module.
+- **No outbox and no published events**, as in MOD-005, MOD-015 and MOD-008.
+
+**Next.** MOD-010 (domain events, event bus and reliability) is the one that closes the gap four
+modules now share: every one of them names events it publishes nowhere, and each new module makes
+the outbox more expensive to retrofit. Two things the gating change named rather than did remain
+open: the platform plane is unauthenticated, and `Decision.mask` is computed on every allowed read
+while no read path applies it -- the masked field list comes back with the decision and the
+callers ignore it.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

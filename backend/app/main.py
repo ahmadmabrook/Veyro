@@ -47,11 +47,18 @@ from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError
 from app.identity import service as identity
+from app.privacy import service as privacy
 from app.tenancy import service
 
 _UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", re.ASCII
 )
+
+#: Consent provenances only a member of staff is in a position to assert: both say a signed
+#: document exists off-system and somebody keyed it in. A self-service session claiming one is
+#: writing an insert-only record that reads as evidence nobody produced, so it is charged the
+#: `record_on_behalf` permission like naming another subject is.
+STAFF_ASSERTED_SOURCES = frozenset({"staff_entry", "paper_import"})
 
 
 class ProvisionTenantBody(BaseModel):
@@ -431,6 +438,113 @@ class ReviewItemBody(BaseModel):
     note: str | None = None
 
 
+# ------------------------------------------------------------------ MOD-009 request bodies
+
+
+class PurposeBody(BaseModel):
+    purpose_code: str
+    description: str
+    lawful_basis: str
+    controller_role: str
+    data_classes: list[str]
+    correlation_id: str
+
+
+class ConsentDefinitionBody(BaseModel):
+    consent_type: str
+    purpose_id: str
+    correlation_id: str
+    requires_guardian: bool = False
+    withdrawable: bool = True
+
+
+class ConsentVersionBody(BaseModel):
+    consent_type: str
+    language: str
+    document_ref: str
+    document_hash: str
+    effective_from: datetime
+    correlation_id: str
+
+
+class ConsentRecordBody(BaseModel):
+    """`subject_id` is optional and defaults to the session's own identity.
+
+    Naming somebody else is a separate, stronger permission -- see the catalogue note on
+    `privacy.consent.record_on_behalf`. Defaulting rather than requiring it means the ordinary
+    case, a member agreeing to something on their own phone, cannot name the wrong person.
+    """
+
+    consent_type: str
+    language: str = "en"
+    signed_at: datetime
+    source: str
+    correlation_id: str
+    subject_id: str | None = None
+    guardian_subject_id: str | None = None
+    evidence_hash: str | None = None
+    evidence_ref: str | None = None
+    consent_version_id: str | None = None
+
+
+class ConsentWithdrawalBody(BaseModel):
+    consent_type: str
+    signed_at: datetime
+    source: str
+    correlation_id: str
+    subject_id: str | None = None
+    evidence_ref: str | None = None
+
+
+class RetentionPolicyBody(BaseModel):
+    resource_type: str
+    data_class: str
+    retention_days: int
+    legal_basis: str
+    region: str
+    correlation_id: str
+
+
+class LegalHoldBody(BaseModel):
+    reason: str
+    reference: str
+    correlation_id: str
+    subject_id: str | None = None
+    resource_type: str | None = None
+
+
+class ReleaseHoldBody(BaseModel):
+    release_reason: str
+    correlation_id: str
+
+
+class DsarBody(BaseModel):
+    """`response_days` has no default here either; see `app.privacy.dsar`."""
+
+    subject_id: str
+    request_type: str
+    response_days: int
+    correlation_id: str
+    received_at: datetime | None = None
+
+
+class RefuseDsarBody(BaseModel):
+    reason: str
+    correlation_id: str
+
+
+class IncidentBody(BaseModel):
+    severity: str
+    category: str
+    summary: str
+    detected_at: datetime
+    personal_data_involved: str
+    correlation_id: str
+    notification_assessment: str | None = None
+    detail: dict[str, Any] = Field(default_factory=dict)
+    supersedes_incident_id: str | None = None
+
+
 class BootstrapBody(BaseModel):
     """The one-time grant that makes a tenant administrable at all."""
 
@@ -450,6 +564,23 @@ def current_session(
     field, and the route ends up unauthenticated while looking authenticated.
     """
     return identity.resolve_session(request.app.state.identity_pool, tenant_id, token=token)
+
+
+def require_uuid(value: str, field: str) -> str:
+    """Shape-check an identifier at the trust boundary, the way `tenant_claim` does the header.
+
+    Every id in a MOD-009 body or path was a bare `str`, so a malformed one reached psycopg and
+    came back as an uncaught `InvalidTextRepresentation` -- a 500 carrying a database exception
+    rather than a 422. `field` is a fixed identifier written here, never the input, so nothing
+    from the request travels in the error code.
+    """
+    if not _UUID.fullmatch(value):
+        raise InvalidRequest(f"bad_{field}")
+    return value
+
+
+def optional_uuid(value: str | None, field: str) -> str | None:
+    return None if value is None else require_uuid(value, field)
 
 
 def tenant_claim(x_veyro_tenant: Annotated[str | None, Header()] = None) -> str:
@@ -1345,6 +1476,296 @@ def create_app(
         return authz.complete_access_review(
             identity_pool, tenant_id, review_id=review_id,
             correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
+        )
+
+    # --------------------------------------------------- MOD-009 privacy, consent and DSARs
+
+    def consent_subject(
+        session: dict[str, Any], supplied: str | None, correlation_id: str, *,
+        guardian: str | None = None, source: str = "member_app",
+    ) -> str:
+        """Decide whose consent this is, and charge the right permission for it.
+
+        Derived, not accepted: a caller that names nobody is recording its own consent, and a
+        caller that names somebody else is making a permanent, insert-only claim about a person
+        who is not present. That needs `privacy.consent.record_on_behalf`, which is
+        financial-class. MOD-008's rule -- derive, never accept -- applied to a consent record.
+
+        **`subject_id` is not the only field that makes a claim about somebody else**, which is
+        what an independent review found. Two others do:
+
+        * `guardian_subject_id` asserts that a named person consented *for* this subject. It is
+          the entire control behind `requires_guardian`, the thing that makes a minor's health
+          consent valid, and nothing can check it -- the guardian is an identity in another
+          plane, so there is no foreign key, and the row is insert-only so nobody can correct
+          it afterwards. A member on an AAL-1 session could satisfy it by typing any UUID.
+        * `source` declares provenance. `staff_entry` and `paper_import` say a member of staff
+          keyed this in from a signed document, which a self-service session is not in a
+          position to assert; with an `evidence_ref` of the caller's choosing it reads as a
+          scanned waiver that nobody scanned.
+
+        So the stronger permission is charged for any of the three, not only for a foreign
+        subject. The ordinary case -- a member agreeing to something on their own phone, from
+        their own app -- is untouched and still routine, which is the point.
+        """
+        subject = optional_uuid(supplied, "subject_id")
+        on_behalf = (
+            (subject is not None and subject != session["identity_id"])
+            or guardian is not None
+            or source in STAFF_ASSERTED_SOURCES
+        )
+        permit(session,
+               "privacy.consent.record_on_behalf" if on_behalf else "privacy.consent.record",
+               correlation_id)
+        return subject if subject is not None else str(session["identity_id"])
+
+    @app.get("/privacy/purposes")
+    def read_purposes(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "privacy.purpose.read")
+        return privacy.list_purposes(tenant_pool, tenant_id)
+
+    @app.post("/privacy/purposes", status_code=201)
+    def register_purpose(
+        tenant_id: TenantId, session: Session, body: PurposeBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.purpose.write", body.correlation_id)
+        return privacy.register_purpose(
+            tenant_pool, tenant_id, purpose_code=body.purpose_code,
+            description=body.description, lawful_basis=body.lawful_basis,
+            controller_role=body.controller_role, data_classes=body.data_classes,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/privacy/purposes/{purpose_id}/retire")
+    def retire_purpose(
+        tenant_id: TenantId, session: Session, purpose_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.purpose.write", body.correlation_id)
+        return privacy.retire_purpose(
+            tenant_pool, tenant_id, purpose_id=require_uuid(purpose_id, "purpose_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/privacy/consent/definitions", status_code=201)
+    def define_consent(
+        tenant_id: TenantId, session: Session, body: ConsentDefinitionBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.consent.define", body.correlation_id)
+        return privacy.define_consent(
+            tenant_pool, tenant_id, consent_type=body.consent_type,
+            purpose_id=require_uuid(body.purpose_id, "purpose_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            requires_guardian=body.requires_guardian, withdrawable=body.withdrawable,
+        )
+
+    @app.post("/privacy/consent/versions", status_code=201)
+    def publish_consent_version(
+        tenant_id: TenantId, session: Session, body: ConsentVersionBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.consent.define", body.correlation_id)
+        return privacy.publish_consent_version(
+            tenant_pool, tenant_id, consent_type=body.consent_type, language=body.language,
+            document_ref=body.document_ref, document_hash=body.document_hash,
+            effective_from=body.effective_from, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/privacy/consent/records", status_code=201)
+    def record_consent(
+        tenant_id: TenantId, session: Session, body: ConsentRecordBody
+    ) -> dict[str, Any]:
+        subject_id = consent_subject(
+            session, body.subject_id, body.correlation_id,
+            guardian=body.guardian_subject_id, source=body.source,
+        )
+        return privacy.register_consent(
+            tenant_pool, tenant_id, subject_id=subject_id, consent_type=body.consent_type,
+            language=body.language, signed_at=body.signed_at, source=body.source,
+            correlation_id=body.correlation_id,
+            guardian_subject_id=optional_uuid(body.guardian_subject_id, "guardian_subject_id"),
+            evidence_hash_value=body.evidence_hash, evidence_ref=body.evidence_ref,
+            consent_version_id=optional_uuid(body.consent_version_id, "consent_version_id"),
+        )
+
+    @app.post("/privacy/consent/withdrawals", status_code=201)
+    def withdraw_consent(
+        tenant_id: TenantId, session: Session, body: ConsentWithdrawalBody
+    ) -> dict[str, Any]:
+        subject_id = consent_subject(session, body.subject_id, body.correlation_id,
+                                     source=body.source)
+        return privacy.withdraw_consent(
+            tenant_pool, tenant_id, subject_id=subject_id, consent_type=body.consent_type,
+            signed_at=body.signed_at, source=body.source,
+            correlation_id=body.correlation_id, evidence_ref=body.evidence_ref,
+        )
+
+    @app.get("/privacy/consent/state")
+    def read_consent_state(
+        tenant_id: TenantId, session: Session, subject_id: str, language: str = "en"
+    ) -> dict[str, Any]:
+        permit(session, "privacy.consent.read")
+        return privacy.consent_state(
+            tenant_pool, tenant_id, subject_id=require_uuid(subject_id, "subject_id"),
+            language=language,
+        )
+
+    @app.get("/privacy/consent/history")
+    def read_consent_history(
+        tenant_id: TenantId, session: Session, subject_id: str
+    ) -> list[dict[str, Any]]:
+        permit(session, "privacy.consent.read")
+        return privacy.consent_history(
+            tenant_pool, tenant_id, subject_id=require_uuid(subject_id, "subject_id")
+        )
+
+    @app.get("/privacy/retention")
+    def read_retention(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "privacy.retention.read")
+        return privacy.list_retention_policies(tenant_pool, tenant_id)
+
+    @app.post("/privacy/retention", status_code=201)
+    def set_retention(
+        tenant_id: TenantId, session: Session, body: RetentionPolicyBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.retention.write", body.correlation_id)
+        return privacy.set_retention_policy(
+            tenant_pool, tenant_id, resource_type=body.resource_type,
+            data_class=body.data_class, retention_days=body.retention_days,
+            legal_basis=body.legal_basis, region=body.region,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/privacy/legal-holds")
+    def read_legal_holds(
+        tenant_id: TenantId, session: Session, include_released: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "privacy.retention.read")
+        return privacy.list_legal_holds(
+            tenant_pool, tenant_id, include_released=include_released
+        )
+
+    @app.post("/privacy/legal-holds", status_code=201)
+    def place_legal_hold(
+        tenant_id: TenantId, session: Session, body: LegalHoldBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.legal_hold.write", body.correlation_id)
+        return privacy.place_legal_hold(
+            tenant_pool, tenant_id, reason=body.reason, reference=body.reference,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            resource_type=body.resource_type,
+        )
+
+    @app.post("/privacy/legal-holds/{hold_id}/release")
+    def release_legal_hold(
+        tenant_id: TenantId, session: Session, hold_id: str, body: ReleaseHoldBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.legal_hold.write", body.correlation_id)
+        return privacy.release_legal_hold(
+            tenant_pool, tenant_id, hold_id=require_uuid(hold_id, "hold_id"),
+            release_reason=body.release_reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/privacy/requests")
+    def read_dsars(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "privacy.dsar.read")
+        return privacy.list_dsars(tenant_pool, tenant_id)
+
+    @app.post("/privacy/requests", status_code=201)
+    def open_dsar(tenant_id: TenantId, session: Session, body: DsarBody) -> dict[str, Any]:
+        permit(session, "privacy.dsar.open", body.correlation_id)
+        return privacy.open_dsar(
+            tenant_pool, tenant_id, subject_id=require_uuid(body.subject_id, "subject_id"),
+            request_type=body.request_type, response_days=body.response_days,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            received_at=body.received_at,
+        )
+
+    @app.get("/privacy/requests/{request_id}")
+    def read_dsar(tenant_id: TenantId, session: Session, request_id: str) -> dict[str, Any]:
+        permit(session, "privacy.dsar.read")
+        return privacy.get_dsar(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id")
+        )
+
+    @app.get("/privacy/requests/{request_id}/plan")
+    def read_dsar_plan(
+        tenant_id: TenantId, session: Session, request_id: str
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.read")
+        return privacy.plan_dsar(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id")
+        )
+
+    @app.post("/privacy/requests/{request_id}/identity-check")
+    def start_dsar_identity_check(
+        tenant_id: TenantId, session: Session, request_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.verify", body.correlation_id)
+        return privacy.start_dsar_identity_check(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id")
+        )
+
+    @app.post("/privacy/requests/{request_id}/verify-identity")
+    def verify_dsar_identity(
+        tenant_id: TenantId, session: Session, request_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.verify", body.correlation_id)
+        return privacy.verify_dsar_identity(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id"),
+            actor_id=session["identity_id"],
+        )
+
+    @app.post("/privacy/requests/{request_id}/legal-check")
+    def check_dsar_legal(
+        tenant_id: TenantId, session: Session, request_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.verify", body.correlation_id)
+        return privacy.check_dsar_legal(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id"),
+            actor_id=session["identity_id"],
+        )
+
+    @app.post("/privacy/requests/{request_id}/fulfil")
+    def fulfil_dsar(
+        tenant_id: TenantId, session: Session, request_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.fulfil", body.correlation_id)
+        return privacy.fulfil_dsar(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id"),
+            identity_pool=identity_pool, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/privacy/requests/{request_id}/refuse")
+    def refuse_dsar(
+        tenant_id: TenantId, session: Session, request_id: str, body: RefuseDsarBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.dsar.fulfil", body.correlation_id)
+        return privacy.refuse_dsar(
+            tenant_pool, tenant_id, request_id=require_uuid(request_id, "request_id"),
+            reason=body.reason,
+        )
+
+    @app.get("/privacy/incidents")
+    def read_incidents(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "privacy.incident.read")
+        return privacy.list_incidents(tenant_pool, tenant_id)
+
+    @app.post("/privacy/incidents", status_code=201)
+    def record_incident(
+        tenant_id: TenantId, session: Session, body: IncidentBody
+    ) -> dict[str, Any]:
+        permit(session, "privacy.incident.record", body.correlation_id)
+        return privacy.record_incident(
+            tenant_pool, tenant_id, severity=body.severity, category=body.category,
+            summary=body.summary, detected_at=body.detected_at,
+            personal_data_involved=body.personal_data_involved,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+            notification_assessment=body.notification_assessment, detail=body.detail,
+            supersedes_incident_id=optional_uuid(
+                body.supersedes_incident_id, "supersedes_incident_id"),
         )
 
     return app
