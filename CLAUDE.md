@@ -20,6 +20,7 @@ backend/app/            service code
   configuration/        MOD-005: evaluation.py decides, service.py does the I/O
   billing/              MOD-015: money.py, subscription.py, usage.py decide; service.py writes
   identity/             MOD-007: secrets.py (crypto), policy.py (decisions), service.py (I/O)
+  authorization/        MOD-008: catalog, decision, gate, approval, audit; service.py (I/O)
   errors.py             the four service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -310,18 +311,99 @@ Known gaps, deliberate:
   PostgreSQL"; this repository provisions one cluster. The privilege boundary is real and checked
   in both directions; the physical separation is not there.
 
-One thing to carry into MOD-008, from the review that approved this module. The capability test
-is still written out by hand at two call sites, and they differ on purpose: `set_password` accepts
-a recovery-code session, `issue_recovery_codes` does not. Two is fine. **A third hand-written
-expression is where this restarts** -- every blocking defect in rounds one to three came from a
-capability granted in one place and bounded in another. When MOD-008 starts reading
-`session_factors` and `session_aal` to decide permissions, give it one `policy.may(session,
-action)` rather than a third copy of the condition.
+**MOD-008 (IAM-03 authorization, roles, approvals and audit) — implemented, and reviewed.**
+Eleven more tables in `iam`. Working: roles with explicit permission lists, assignments scoped to
+tenant, brand or location and optionally expiring, allow/deny/mask policies, a permission
+simulator, approvals with thresholds and separation of duties, access reviews, and a hash-chained
+audit log. Proven: isolation checks 30-32, each mutation-tested (13 breaks); 7 tamper tests
+against the chain; 75 domain unit tests with no database; 32 integration tests.
 
-**Next.** MOD-008 (authorization, roles, permissions, approvals and audit) is what turns an
-authenticated identity into an authorized one, and it is what MOD-005's approval workflow and
-MOD-015's financial change control were both waiting for. After that the catalogue's own order
-resumes.
+**Nothing outside MOD-008 is gated yet.** `require` is the only way anything asks whether a
+caller may act, and the only callers are MOD-008's own routes. The catalogue's `tenancy.*`,
+`config.*` and `billing.*` permissions are real entries that nothing checks, so MOD-004, MOD-005
+and MOD-015 are still open to anyone holding a tenant UUID. Wiring them is the next change and it
+is deliberately separate: it touches every surface in the product and wants its own review.
+
+The design decisions worth knowing:
+
+- **Permissions live in code** (`app/authorization/catalog.py`), not in a table. TSD paragraph
+  1281 names Permission as an authoritative entity and that module is it. A permission is a fact
+  about what the software can do; a per-tenant table would let two tenants disagree about which
+  permissions exist with only the code able to settle it. `iam.role_permissions` references the
+  names and a CHECK constrains their shape.
+- **There is no wildcard**, in the grammar or the evaluator. `billing.*` is refused by the
+  catalogue at the API and by a CHECK at the table.
+- **`catalog.action_class` decides what needs a stepped-up session**, written per permission
+  rather than derived, because each one is a judgement. A wrong `routine` is a real defect: a
+  test caught `config.flag.write` classified too low against TSD paragraph 1020. `privileged`
+  means level 3, which needs a hardware factor MOD-007 cannot verify, so break-glass support
+  access and AI acting for a member **cannot be exercised in this build at all** — deliberately.
+- **The audit chain detects editing, not truncation.** It catches any change to an entry, a
+  deletion from the middle, a rewritten anchor or link, and a deletion from the end that forgets
+  the head. It does **not** catch truncation from the end by somebody who also moves the head,
+  because every value the verifier compares lives in the database that actor already controls.
+  Closing it needs the head digest published somewhere the database cannot reach, on a schedule;
+  there is no such place here. Found by tamper-testing, not reasoned about afterwards.
+- **A brand-scoped grantor cannot delegate at location granularity** inside their own brand:
+  `assign_role` builds its target with no brand, so a location-scoped grant fails the
+  scope-coverage check. Fail-closed, and it will surprise somebody.
+- **Approval policies are tenant-wide.** IAM-03-R05 names location among its dimensions and the
+  schema briefly carried scope columns for it — never selected, never matched, so a
+  location-scoped policy would have applied everywhere while reading as though it did not. The
+  columns are gone and this is the gap.
+
+**The review found seven defects and four of them were the same mistake in different clothes:
+believing the caller.** Worth carrying forward as rules:
+
+- **An unknown attribute must not grant, and must not excuse.** `Policy.matches` is asymmetric by
+  effect: an allow needs every attribute it names to be present and equal, a deny or a mask fires
+  unless the request positively contradicts it. The first version treated both alike, so leaving
+  a field out of the request turned off the deny protecting a minor's record. The reasoning
+  behind it was an allow-shaped example applied to both.
+  **The operational consequence, which is the correct trade and still a surprise:** a deny policy
+  whose attribute nobody supplies denies the action outright. A caller gated by one has to start
+  sending the attribute -- `is_minor=false` -- rather than omitting it. Fail-closed, and it will
+  break existing callers the day a deny policy is written for an action they use.
+- **Derive a scope, never accept one.** A brand-scoped manager reached another brand's location
+  by sending their own brand id beside it, and the simulator confirmed the escalation. A
+  location's brand is now looked up through `tenancy.brand_of_location`, and `resolve_scope` is
+  the only sanctioned way to turn request input into a `Scope`.
+- **Terms are snapshotted when a request is made.** Re-deriving them at decision time let
+  somebody holding `authz.policy.write` switch separation of duties off for a request already in
+  flight and then approve their own. `policy_for` also now combines every applicable policy into
+  the strictest terms rather than picking the highest threshold, which are the same only until a
+  lenient policy sits above a strict one.
+- **A grantor may only grant what they hold** -- when granting a role, when creating one, and
+  when editing one. Each is a way of handing out a permission, and guarding only the first left
+  the next two open: an actor holding just `authz.role.write` rewrote a role it already held to
+  include refunds. `_refuse_escalation` is the one rule, applied in all three places.
+- **A refusal that must be recorded cannot be raised from inside the block that recorded it.**
+  `tenant_scope` rolls back on a raise, so three denial paths wrote an audit row and threw it
+  away -- an attempted privilege escalation, a refused approval request, and every attempt to
+  approve one's own request. `_settled` is the pattern, and MOD-007 has the same helper for the
+  same reason, which is why it is a rule here rather than a third fix: **anywhere
+  `_append_audit` precedes a refusal, return the error and raise it outside.**
+- Two smaller ones with the same shape as MOD-007's: a stored column outside the digest
+  (`on_behalf_of`, the field recording an agent acting as a member) was editable undetected, and
+  a column implying a control nobody implemented (`delegated_from`, approval-policy scope) is
+  worse than no column. Both are gone or covered.
+
+Known gaps, deliberate:
+
+- **The bootstrap.** `authz.bootstrap` creates a role holding everything and grants it to the
+  caller, refusing once any assignment exists, under a lock that survived ten concurrent
+  attempts. It is only as strong as the surface around it, and `X-Veyro-Tenant` is an
+  unauthenticated claim — anyone who knows a tenant id can register an identity and bootstrap it
+  if nobody has. **When the header stops being a claim, this function needs revisiting with it.**
+- **Field masking is computed, not applied.** `Decision.mask` exists and is tested; no read path
+  calls it, because no read path is gated yet.
+- **No outbox.** IAM-03's five events are written to `iam.audit_events` and published nowhere.
+- **Retention control is not implemented.** IAM-03 asks for write-once, integrity-protected *and*
+  retention-controlled; the third is a policy about deleting old records on purpose and has no
+  implementation here.
+
+**Next.** Gate the product: make MOD-004, MOD-005 and MOD-015 routes call `require`, which is
+what turns the catalogue from a list into a control. Then MOD-009 onward.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

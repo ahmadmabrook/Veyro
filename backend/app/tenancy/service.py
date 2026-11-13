@@ -349,6 +349,24 @@ def create_location(
     }
 
 
+def brand_of_location(pool: Pool, tenant_id: str, location_id: str) -> str | None:
+    """Which brand a location belongs to, from the table that owns the answer.
+
+    MOD-008 needs this and cannot read it: `veyro_iam_app` holds nothing in `plt01`, by design.
+    Without it, authorization had to take the pair from the caller -- and a review demonstrated a
+    brand-scoped manager reaching another brand's location simply by sending their own brand id
+    beside it. The hierarchy is a fact about the tenant plane, so the tenant plane answers.
+
+    Returns None when the location does not exist in this tenant, which row-level security makes
+    the same answer as "belongs to somebody else".
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        row = conn.execute(
+            "SELECT brand_id FROM plt01.locations WHERE location_id = %s", (location_id,)
+        ).fetchone()
+    return str(row[0]) if row is not None else None
+
+
 def list_locations(pool: Pool, tenant_id: str) -> list[dict[str, Any]]:
     with tenant_scope(pool, tenant_id) as conn:
         rows = conn.execute(

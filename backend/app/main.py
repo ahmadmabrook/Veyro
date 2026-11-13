@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app import db
+from app.authorization import service as authz
 from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
@@ -344,6 +345,84 @@ def _b64(value: str, field: str) -> bytes:
         return base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
         raise InvalidRequest(f"bad_{field}") from None
+
+
+class RoleBody(BaseModel):
+    role_key: str
+    display_name: str
+    correlation_id: str
+    permissions: list[str] = Field(default_factory=list)
+    description: str | None = None
+
+
+class RolePermissionsBody(BaseModel):
+    permissions: list[str]
+    correlation_id: str
+
+
+class AssignRoleBody(BaseModel):
+    identity_id: str
+    role_key: str
+    correlation_id: str
+    scope_type: str = "tenant"
+    brand_id: str | None = None
+    location_id: str | None = None
+    expires_at: datetime | None = None
+
+
+class AuthzPolicyBody(BaseModel):
+    policy_key: str
+    effect: str
+    action: str
+    correlation_id: str
+    match: dict[str, str] = Field(default_factory=dict)
+    masked_fields: list[str] = Field(default_factory=list)
+    priority: int = 100
+    description: str | None = None
+
+
+class ApprovalPolicyBody(BaseModel):
+    action: str
+    required_permission: str
+    correlation_id: str
+    threshold_minor: int = 0
+    required_approvals: int = 1
+    separation_of_duties: bool = True
+
+
+class ApprovalRequestBody(BaseModel):
+    action: str
+    resource_type: str
+    correlation_id: str
+    resource_id: str | None = None
+    amount_minor: int | None = None
+    currency: str | None = None
+    reason: str | None = None
+
+
+class ApprovalDecisionBody(BaseModel):
+    decision: str
+    correlation_id: str
+    reason: str | None = None
+
+
+class AccessReviewBody(BaseModel):
+    title: str
+    correlation_id: str
+
+
+class ReviewItemBody(BaseModel):
+    decision: str
+    correlation_id: str
+    note: str | None = None
+
+
+class BootstrapBody(BaseModel):
+    """The one-time grant that makes a tenant administrable at all."""
+
+    role_key: str = "tenant_admin"
+    display_name: str = "Tenant Administrator"
+    correlation_id: str
 
 
 def current_session(
@@ -921,6 +1000,239 @@ def create_app(
         """The caller's own log. There is no tenant-wide view until MOD-008 can authorize one."""
         return identity.auth_events(
             identity_pool, tenant_id, identity_id=session["identity_id"], limit=limit
+        )
+
+    # --------------------------------------------------- MOD-008 authorization and audit
+    #
+    # Every route here needs a session, and all but the bootstrap need a permission. The
+    # permission check goes through `authz.require`, which is the single gate: it asks
+    # authorization and assurance together and writes the denial to the audit log itself, so a
+    # surface cannot ask whether somebody may act and then forget to record that they were
+    # refused.
+
+    def permit(session: dict[str, Any], action: str, correlation_id: str, **context: Any
+               ) -> dict[str, Any]:
+        authz.require(identity_pool, session["tenant_id"], identity_id=session["identity_id"],
+                      session_aal=session["aal"], action=action,
+                      correlation_id=correlation_id, **context)
+        return session
+
+    @app.post("/authz/bootstrap", status_code=201)
+    def bootstrap_authorization(
+        tenant_id: TenantId, session: Session, body: BootstrapBody
+    ) -> dict[str, Any]:
+        """Create the first role and grant it to the caller. Works **only while a tenant has no
+        assignments at all**, and refuses afterwards.
+
+        Something has to break the circle: creating a role needs `authz.role.write`, which is
+        held through a role, which has to be created. This is that something, and it is narrow --
+        one tenant-wide grant, once, recorded in the audit log, refused the moment any assignment
+        exists. It is no weaker than the surface around it, since `X-Veyro-Tenant` is still an
+        unauthenticated claim; when that changes this route needs revisiting with it.
+        """
+        return authz.bootstrap(
+            identity_pool, tenant_id, identity_id=session["identity_id"],
+            role_key=body.role_key, display_name=body.display_name,
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/authz/roles", status_code=201)
+    def create_role(tenant_id: TenantId, session: Session, body: RoleBody) -> dict[str, Any]:
+        permit(session, "authz.role.write", body.correlation_id)
+        return authz.create_role(
+            identity_pool, tenant_id, role_key=body.role_key,
+            display_name=body.display_name, correlation_id=body.correlation_id,
+            permissions=body.permissions, description=body.description,
+            actor_identity_id=session["identity_id"],
+        )
+
+    @app.get("/authz/roles")
+    def get_roles(tenant_id: TenantId, session: Session, correlation_id: str
+                  ) -> list[dict[str, Any]]:
+        permit(session, "authz.role.read", correlation_id)
+        return authz.list_roles(identity_pool, tenant_id)
+
+    @app.put("/authz/roles/{role_key}/permissions")
+    def set_role_permissions(
+        tenant_id: TenantId, session: Session, role_key: str, body: RolePermissionsBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.role.write", body.correlation_id)
+        return authz.set_role_permissions(
+            identity_pool, tenant_id, role_key=role_key, permissions=body.permissions,
+            correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
+        )
+
+    @app.post("/authz/assignments", status_code=201)
+    def assign_role(
+        tenant_id: TenantId, session: Session, body: AssignRoleBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.assignment.write", body.correlation_id)
+        return authz.assign_role(
+            identity_pool, tenant_id, identity_id=body.identity_id, role_key=body.role_key,
+            granted_by=session["identity_id"], correlation_id=body.correlation_id,
+            scope_type=body.scope_type, brand_id=body.brand_id,
+            location_id=body.location_id, expires_at=body.expires_at,
+        )
+
+    @app.get("/authz/assignments/{identity_id}")
+    def get_assignments(
+        tenant_id: TenantId, session: Session, identity_id: str, correlation_id: str
+    ) -> list[dict[str, Any]]:
+        permit(session, "authz.role.read", correlation_id)
+        return authz.list_assignments(identity_pool, tenant_id, identity_id=identity_id)
+
+    @app.post("/authz/assignments/{assignment_id}/revoke")
+    def revoke_assignment(
+        tenant_id: TenantId, session: Session, assignment_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.assignment.write", body.correlation_id)
+        return authz.revoke_assignment(
+            identity_pool, tenant_id, assignment_id=assignment_id,
+            correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
+        )
+
+    @app.post("/authz/policies", status_code=201)
+    def write_policy(
+        tenant_id: TenantId, session: Session, body: AuthzPolicyBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.policy.write", body.correlation_id)
+        return authz.write_policy(
+            identity_pool, tenant_id, policy_key=body.policy_key, effect=body.effect,
+            action=body.action, correlation_id=body.correlation_id, match=body.match,
+            masked_fields=body.masked_fields, priority=body.priority,
+            description=body.description, actor_identity_id=session["identity_id"],
+        )
+
+    @app.get("/authz/policies")
+    def get_policies(tenant_id: TenantId, session: Session, correlation_id: str
+                     ) -> list[dict[str, Any]]:
+        permit(session, "authz.role.read", correlation_id)
+        return authz.list_policies(identity_pool, tenant_id)
+
+    @app.get("/authz/simulate")
+    def simulate(
+        tenant_id: TenantId, session: Session, identity_id: str, correlation_id: str,
+        brand_id: str | None = None, location_id: str | None = None,
+    ) -> dict[str, Any]:
+        """The permission simulator (IAM-03-R07), answered from the evaluator's own rules.
+
+        The scope goes through `resolve_scope`, so a location's brand is looked up rather than
+        taken from the query string. A simulator that accepts a scope the evaluator would never
+        see is worse than none: it confirms an escalation instead of exposing it.
+        """
+        permit(session, "authz.role.read", correlation_id)
+        return authz.effective_permissions(
+            identity_pool, tenant_id, identity_id=identity_id,
+            scope=authz.resolve_scope(tenant_pool, tenant_id, brand_id=brand_id,
+                                      location_id=location_id),
+        )
+
+    @app.get("/authz/check")
+    def check_action(
+        tenant_id: TenantId, session: Session, action: str, correlation_id: str,
+        brand_id: str | None = None, location_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Ask the gate about the caller's own session. No permission needed to ask about self."""
+        decided = authz.check(
+            identity_pool, tenant_id, identity_id=session["identity_id"],
+            session_aal=session["aal"], action=action, correlation_id=correlation_id,
+            scope=authz.resolve_scope(tenant_pool, tenant_id, brand_id=brand_id,
+                                      location_id=location_id),
+            record_denial=False,
+        )
+        return {"action": action, "allowed": decided.allowed, "reason": decided.reason,
+                "step_up_required": decided.step_up_required,
+                "required_aal": decided.required_aal, "reachable": decided.reachable,
+                "masked_fields": list(decided.masked_fields)}
+
+    @app.post("/authz/approval-policies", status_code=201)
+    def write_approval_policy(
+        tenant_id: TenantId, session: Session, body: ApprovalPolicyBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.policy.write", body.correlation_id)
+        return authz.write_approval_policy(
+            identity_pool, tenant_id, action=body.action,
+            required_permission=body.required_permission,
+            correlation_id=body.correlation_id, threshold_minor=body.threshold_minor,
+            required_approvals=body.required_approvals,
+            separation_of_duties=body.separation_of_duties,
+            actor_identity_id=session["identity_id"],
+        )
+
+    @app.post("/authz/approvals", status_code=201)
+    def request_approval(
+        tenant_id: TenantId, session: Session, body: ApprovalRequestBody
+    ) -> dict[str, Any]:
+        """The service checks the requester holds the action's own permission; see its
+        docstring for why assurance is deliberately not required at this point."""
+        return authz.request_approval(
+            identity_pool, tenant_id, action=body.action, resource_type=body.resource_type,
+            requested_by=session["identity_id"], correlation_id=body.correlation_id,
+            resource_id=body.resource_id, amount_minor=body.amount_minor,
+            currency=body.currency, reason=body.reason,
+        )
+
+    @app.get("/authz/approvals")
+    def get_approvals(
+        tenant_id: TenantId, session: Session, correlation_id: str, state: str | None = None
+    ) -> list[dict[str, Any]]:
+        permit(session, "authz.role.read", correlation_id)
+        return authz.list_approval_requests(identity_pool, tenant_id, state=state)
+
+    @app.post("/authz/approvals/{request_id}/decide")
+    def decide_approval(
+        tenant_id: TenantId, session: Session, request_id: str, body: ApprovalDecisionBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.approval.decide", body.correlation_id)
+        return authz.decide_approval(
+            identity_pool, tenant_id, request_id=request_id,
+            decided_by=session["identity_id"], decision=body.decision,
+            correlation_id=body.correlation_id, reason=body.reason,
+        )
+
+    @app.get("/authz/audit")
+    def read_audit(
+        tenant_id: TenantId, session: Session, correlation_id: str,
+        category: str | None = None, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        permit(session, "authz.audit.read", correlation_id)
+        return authz.read_audit(identity_pool, tenant_id, limit=limit, category=category)
+
+    @app.get("/authz/audit/verify")
+    def verify_audit(tenant_id: TenantId, session: Session, correlation_id: str
+                     ) -> dict[str, Any]:
+        permit(session, "authz.audit.read", correlation_id)
+        return authz.verify_audit_chain(identity_pool, tenant_id)
+
+    @app.post("/authz/access-reviews", status_code=201)
+    def open_access_review(
+        tenant_id: TenantId, session: Session, body: AccessReviewBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.access_review.conduct", body.correlation_id)
+        return authz.open_access_review(
+            identity_pool, tenant_id, title=body.title, opened_by=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/authz/access-reviews/items/{item_id}")
+    def decide_review_item(
+        tenant_id: TenantId, session: Session, item_id: str, body: ReviewItemBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.access_review.conduct", body.correlation_id)
+        return authz.decide_review_item(
+            identity_pool, tenant_id, item_id=item_id, decision=body.decision,
+            decided_by=session["identity_id"], correlation_id=body.correlation_id,
+            note=body.note,
+        )
+
+    @app.post("/authz/access-reviews/{review_id}/complete")
+    def complete_access_review(
+        tenant_id: TenantId, session: Session, review_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "authz.access_review.conduct", body.correlation_id)
+        return authz.complete_access_review(
+            identity_pool, tenant_id, review_id=review_id,
+            correlation_id=body.correlation_id, actor_identity_id=session["identity_id"],
         )
 
     return app

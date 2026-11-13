@@ -4,6 +4,7 @@
 #
 #   backend/scripts/verify_db.sh                      # local, against the veyro-pg container
 #   MUTATE="ALTER TABLE ... ;" backend/scripts/verify_db.sh   # mutation test: the suite MUST fail
+#   TAMPER="DELETE FROM ... ;" backend/scripts/verify_db.sh   # edits seeded rows, then re-verifies
 #
 # PSQL defaults to the local container. Set PSQL to any psql invocation that reads SQL on stdin
 # (CI passes a plain `psql "$DATABASE_URL"`).
@@ -46,3 +47,13 @@ if [ -n "${MUTATE:-}" ]; then
 fi
 
 run -d veyro < "$ROOT/tests/sql/isolation.sql"
+
+# TAMPER applies here, between the isolation suite and the audit-chain verification, because
+# MUTATE runs before any data exists: a DELETE or an UPDATE aimed at the audit log has to land
+# on rows the suite has already seeded, or it silently tests nothing.
+if [ -n "${TAMPER:-}" ]; then
+    echo "applying tamper: $TAMPER"
+    run -d veyro -c "$TAMPER"
+fi
+
+run -d veyro < "$ROOT/tests/sql/audit_chain.sql"

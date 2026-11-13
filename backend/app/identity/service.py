@@ -955,7 +955,12 @@ def resolve_session(pool: Pool, tenant_id: str, *, token: str) -> dict[str, Any]
                      (now, row[0]))
     return {"session_id": str(row[0]), "identity_id": str(row[1]),
             "device_id": str(row[2]) if row[2] else None, "aal": int(row[3]),
-            "factors": list(row[7]), "expires_at": row[4].isoformat(), "reason": why}
+            "factors": list(row[7]), "expires_at": row[4].isoformat(), "reason": why,
+            # The tenant the session was resolved under. Defence in depth rather than a fix:
+            # row-level security already means a token from another tenant does not resolve at
+            # all. What it buys is that a caller downstream reads the tenant from the resolved
+            # session instead of re-reading the header, so the two cannot drift.
+            "tenant_id": tenant_id}
 
 
 def rotate_session(

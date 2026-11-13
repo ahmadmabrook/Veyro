@@ -1069,13 +1069,21 @@ BEGIN
         RAISE EXCEPTION 'CHECK 28 FAILED: the table owner read % credentials',
             (SELECT count(*) FROM iam.credentials);
     END IF;
+    -- Every table in the schema, not a counted subset. A fixed expected count has to be edited
+    -- whenever a module adds a table, and the edit is exactly the moment an unprotected one
+    -- would slip through; asking for zero unprotected tables needs no maintenance and catches
+    -- the next one automatically.
     IF (SELECT count(*) FROM pg_class
         WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
-          AND relrowsecurity AND relforcerowsecurity) <> 7 THEN
-        RAISE EXCEPTION 'CHECK 28 FAILED: expected 7 iam tables with RLS enabled and forced, got %',
-            (SELECT count(*) FROM pg_class
+          AND NOT (relrowsecurity AND relforcerowsecurity)) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: iam tables without forced RLS: %',
+            (SELECT string_agg(relname, ', ') FROM pg_class
              WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
-               AND relrowsecurity AND relforcerowsecurity);
+               AND NOT (relrowsecurity AND relforcerowsecurity));
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r') < 7 THEN
+        RAISE EXCEPTION 'CHECK 28 FAILED: the iam schema is missing tables, so the sweep above proved nothing';
     END IF;
     -- Every iam table must be owned by the migrator. One owned by a superuser would ignore
     -- FORCE entirely, and the `RESET ROLE` in the platform migration makes that a live risk.
@@ -1201,4 +1209,200 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 29/29 checks passed'
+-- ================================================================ MOD-008 IAM-03 (authz, audit)
+-- Eleven more tables in `iam`. Check 28's sweep already covers their row-level security, so what
+-- is added here is what is specific to authorization: that the tables isolate and cannot be
+-- parented across tenants (30), that the audit log is append-only **and** that its hash chain
+-- detects tampering by somebody who can reach the database directly (31), and that the schema
+-- cannot express the things default deny and separation of duties forbid (32).
+
+-- ---------------------------------------------------------------- seed (authorization)
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO iam.roles (tenant_id, role_id, role_key, display_name)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000001', 'front_desk', 'Front Desk');
+INSERT INTO iam.role_permissions (tenant_id, role_id, permission)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000001', 'member.profile.read');
+INSERT INTO iam.role_assignments
+    (tenant_id, assignment_id, identity_id, role_id, scope_type, brand_id, granted_by)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000002',
+        'eeeeeeee-0000-4000-8000-000000000002', 'ffffffff-0000-4000-8000-000000000001',
+        'brand', 'aaaaaaaa-0000-4000-8000-000000000002',
+        'eeeeeeee-0000-4000-8000-000000000002');
+INSERT INTO iam.policies (tenant_id, policy_id, policy_key, effect, action, masked_fields)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000003', 'mask_health', 'mask',
+        'member.profile.read', ARRAY['health_notes']);
+INSERT INTO iam.approval_requests
+    (tenant_id, request_id, action, resource_type, requested_by, required_approvals,
+     separation_of_duties, required_permissions, expires_at)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000004', 'billing.refund.issue', 'invoice',
+        'eeeeeeee-0000-4000-8000-000000000002', 2, true, ARRAY['billing.refund.approve'],
+        now() + interval '1 day');
+INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+VALUES (:'tenant_a', 'ffffffff-0000-4000-8000-000000000004',
+        'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+
+-- A short, valid chain. The digests here are fixed test values: check 31 verifies the **link**
+-- between entries, which holds whatever produced them, and `app.authorization.audit` is what
+-- recomputes each digest from its own payload.
+INSERT INTO iam.audit_chain_heads (tenant_id, sequence, head_hash)
+VALUES (:'tenant_a', 3, decode(repeat('c3', 32), 'hex'));
+INSERT INTO iam.audit_events
+    (tenant_id, sequence, category, action, outcome, correlation_id, prev_hash, entry_hash)
+VALUES (:'tenant_a', 1, 'access', 'role.assigned', 'recorded', :'actor',
+        decode(repeat('00', 32), 'hex'), decode(repeat('c1', 32), 'hex')),
+       (:'tenant_a', 2, 'data_access', 'member.profile.read', 'allowed', :'actor',
+        decode(repeat('c1', 32), 'hex'), decode(repeat('c2', 32), 'hex')),
+       (:'tenant_a', 3, 'finance', 'billing.refund.issue', 'denied', :'actor',
+        decode(repeat('c2', 32), 'hex'), decode(repeat('c3', 32), 'hex'));
+COMMIT;
+
+-- ---------------------------------------------------------------- 30. authorization isolates
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['roles', 'role_permissions', 'role_assignments', 'policies',
+                               'approval_policies', 'approval_requests', 'approval_decisions',
+                               'audit_events', 'audit_chain_heads', 'access_reviews',
+                               'access_review_items'] LOOP
+        EXECUTE format('SELECT count(*) FROM iam.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 30 FAILED: tenant B sees % rows in iam.%', seen, tbl;
+        END IF;
+    END LOOP;
+
+    BEGIN
+        INSERT INTO iam.role_permissions (tenant_id, role_id, permission)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'ffffffff-0000-4000-8000-000000000001', 'member.profile.write');
+        RAISE EXCEPTION 'CHECK 30 FAILED: a permission was added to another tenant''s role';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-000000000002', 'approved');
+        RAISE EXCEPTION 'CHECK 30 FAILED: another tenant''s approval was decided';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM iam.roles) <> 1
+       OR (SELECT count(*) FROM iam.audit_events) <> 3 THEN
+        RAISE EXCEPTION 'CHECK 30 FAILED: tenant A cannot see its own authorization rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 31. the audit chain
+-- Append-only is a privilege. Integrity is the chain, and the chain is what still says something
+-- when the attacker can reach the database directly -- it cannot stop them, but it stops them
+-- doing it quietly.
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF has_table_privilege('veyro_iam_app', 'iam.audit_events', 'UPDATE')
+       OR has_table_privilege('veyro_iam_app', 'iam.audit_events', 'DELETE')
+       OR has_table_privilege('veyro_iam_app', 'iam.audit_events', 'TRUNCATE')
+       OR has_table_privilege('veyro_iam_app', 'iam.approval_decisions', 'UPDATE')
+       OR has_table_privilege('veyro_iam_app', 'iam.approval_decisions', 'DELETE') THEN
+        RAISE EXCEPTION 'CHECK 31 FAILED: a runtime role can revise the audit log or a decision';
+    END IF;
+    BEGIN
+        UPDATE iam.audit_events SET outcome = 'allowed';
+        RAISE EXCEPTION 'CHECK 31 FAILED: an audit entry was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+
+    -- The chain walk itself lives in `audit_chain.sql`, which runs after this file so that a
+    -- tamper applied to the seeded rows has something to tamper with. `MUTATE` is applied before
+    -- the seed, so a DELETE expressed there would hit an empty table and prove nothing -- which
+    -- it silently did until the mutation test caught it.
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 32. what the schema forbids
+-- Default deny and separation of duties are claims about what cannot be expressed, so they are
+-- tested by trying to express them.
+BEGIN;
+SET LOCAL ROLE veyro_iam_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- No wildcard permission. A role that could hold `billing.*` would be least privilege in
+    -- name only.
+    BEGIN
+        INSERT INTO iam.role_permissions (tenant_id, role_id, permission)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000001', 'billing.*');
+        RAISE EXCEPTION 'CHECK 32 FAILED: a wildcard permission was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One decision per approver per request: "two approvals" must mean two people.
+    BEGIN
+        INSERT INTO iam.approval_decisions (tenant_id, request_id, decided_by, decision)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-0000-4000-8000-000000000004',
+                'eeeeeeee-0000-4000-8000-000000000002', 'rejected');
+        RAISE EXCEPTION 'CHECK 32 FAILED: one approver decided the same request twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A scope that names no target is a scope that means everything.
+    BEGIN
+        INSERT INTO iam.role_assignments
+            (tenant_id, identity_id, role_id, scope_type, granted_by)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-0000-4000-8000-000000000002',
+                'ffffffff-0000-4000-8000-000000000001', 'brand',
+                'eeeeeeee-0000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 32 FAILED: a brand-scoped assignment named no brand';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A mask policy that masks nothing cannot be read off its own columns.
+    BEGIN
+        INSERT INTO iam.policies (tenant_id, policy_key, effect, action)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'empty_mask', 'mask',
+                'member.profile.read');
+        RAISE EXCEPTION 'CHECK 32 FAILED: a mask policy with no masked fields was accepted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An approval policy requiring zero approvals is an approval policy that approves nothing.
+    BEGIN
+        INSERT INTO iam.approval_policies
+            (tenant_id, action, required_permission, required_approvals)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'billing.refund.issue',
+                'billing.refund.approve', 0);
+        RAISE EXCEPTION 'CHECK 32 FAILED: an approval policy required zero approvals';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 32/32 checks passed'
