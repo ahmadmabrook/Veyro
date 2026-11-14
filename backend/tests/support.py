@@ -62,6 +62,9 @@ class GatedApiTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         self._owners: dict[str, str] = {}
+        #: The owner's own identity id, for the tests that need an actor to *be* somebody --
+        #: a separation-of-duties refusal cannot be written without it.
+        self._owner_identities: dict[str, str] = {}
 
     # ------------------------------------------------------------------ fixtures
 
@@ -78,7 +81,9 @@ class GatedApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         tenant_id = str(response.json()["tenant_id"])
         if with_owner:
-            self._owners[tenant_id] = self.make_owner(tenant_id)[1]
+            identity_id, token = self.make_owner(tenant_id)
+            self._owners[tenant_id] = token
+            self._owner_identities[tenant_id] = identity_id
         return tenant_id
 
     def make_owner(self, tenant_id: str) -> tuple[str, str]:
@@ -118,6 +123,9 @@ class GatedApiTestCase(unittest.TestCase):
 
     def owner_token(self, tenant_id: str) -> str:
         return self._owners[tenant_id]
+
+    def owner_identity(self, tenant_id: str) -> str:
+        return self._owner_identities[tenant_id]
 
     def headers(self, tenant_id: str, token: str | None = None) -> dict[str, str]:
         """The tenant claim plus, by default, that tenant's owner session."""

@@ -33,10 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 60 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 72 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
-MOD-011's `ops_`, MOD-012's `int_` and MOD-013's `ntf_` -- and **every one has been
-run against a deliberate mutation of the protection it guards and shown to fail**:
+MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_` and MOD-016's `cat_` --
+and **every one has been run against a deliberate mutation of the protection it guards and
+shown to fail**:
 
 ```bash
 MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
@@ -101,6 +102,19 @@ one constraint to close a review finding, and it fired on every row three existi
 module whose own sweep had been clean an hour earlier. The sweep is the only thing that sees
 this; a reader of the new constraint has no reason to look at cases that do not mention it.
 
+MOD-016 then did it again in the session that wrote the paragraph above. Closing the
+"evidence with nobody's name on it" finding added `cat_prices_supersession_attributed`, which
+fires on any row naming a replacement with no actor -- which is exactly what the existing
+`cat_prices_not_self` case inserted. That case began passing on the new sibling, and the
+second sweep caught it as the one real miss in 483 mutations. **Adding a constraint is a
+change to every case that inserts a row the constraint can see, and the author of the
+constraint is the last person who will notice.**
+
+**And a "mutation" that changes nothing is not evidence either.** The same sweep reported
+`GRANT UPDATE (revoked_by) ON cat_coupons` as uncaught; that column was already in the grant,
+so the statement was a no-op and there was nothing for a check to catch. A generated mutation
+list needs the already-true ones filtered out, or they read as gaps on every run.
+
 **And a case that passes because a *sibling* constraint fired first proves nothing about the one
 it names.** Three of MOD-012's constraint cases did exactly that -- a run with an unknown status
 also tripped the "a finished run is not running" check, a definition with an unknown status also
@@ -116,7 +130,12 @@ is the argument for the sweep rather than for reading harder.
 
 **And a case proves the constraint it names only in the direction it exercises.** Dropping a
 constraint is caught; *editing* one is a different mutation, and an equality -- `(A) = (B)`,
-the commonest shape in these schemas -- needs a case per side. A reviewer weakened eight of
+the commonest shape in these schemas -- needs a case per side. This is not only about
+equalities: MOD-016's `cat_price_resolutions_adds_up` is `final = list - discount`, and its
+only case was the under-charging side, so weakening it to `final >= list - discount` passed
+72/72 -- a stored receipt reading "10% off 450.00" that charges 900.00, in a table with no
+UPDATE and no DELETE grant, on the one invariant that migration's own comment calls "the defect
+nobody would spot by reading the number". A reviewer weakened eight of
 MOD-013's to one-way implications and the suite reported 60/60 every time: a transactional
 receipt could cite a marketing consent and make it read as used, a failed delivery could carry
 a delivery time and read as delivered on a status page, a suppression could be released with a
@@ -135,6 +154,14 @@ is now one prefix-free sweep over all of `plt01` requiring ENABLE and FORCE RLS,
 permissive policy and a tenant-registry foreign key, so a table nobody prefixed is caught by the
 schema rather than by whoever remembers to add a sweep.
 
+**A primary-key mutation needs `CASCADE`, or it never runs.** `ALTER TABLE ... DROP CONSTRAINT
+<pkey>` fails at *mutation* time when a foreign key depends on it, so the suite goes red for a
+reason that has nothing to do with the check under test and the sweep records a false catch.
+MOD-016's sweep reported fifteen of those. The mutation is `DROP CONSTRAINT <pkey> CASCADE`,
+which takes the dependent keys with it and actually exercises the assertion -- and it is the
+same trap as the next paragraph, one level up: a protection that resists for a reason other
+than the check is a protection with no evidence behind it.
+
 **A primary-key check written as an inner join proves nothing about a table that has none.**
 Checking that the first key column is `tenant_id` by joining `pg_index ... indisprimary` means a
 table with no primary key contributes no row and is never flagged: thirteen of MOD-014's sixteen
@@ -147,8 +174,25 @@ like any other and it carries load the CHECKs beside it are written to assume: M
 `ppl_contact_points_normalized_not_blank` correctly has no `coalesce` *because* the column is
 NOT NULL, so dropping the NOT NULL admitted a NULL dedup key that passed the not-blank check and
 was distinct in the unique index -- unlimited duplicate addresses per person, and the detector
-blind to all of them. Each module now pins the nullability of the columns whose absence would
-change another constraint's meaning.
+blind to all of them.
+
+**And a hand-written list of the columns that matter is not the pin.** MOD-016's first version
+of that pin named 37 (table, column) pairs it had reasoned about; a sweep then dropped NOT NULL
+from all 120 of its non-key columns one at a time and **84 of them passed 72/72**. Two reasons
+that matters more than "a NULL where a value was expected", and the second is the one nobody
+would predict:
+
+  * **A NOT NULL is what makes a sibling CHECK bite.** `cat_discount_approvals_amounts_sane`
+    evaluates to NULL and therefore passes the moment `list_amount_minor` is nullable, so "an
+    override cannot exceed the list price" stops being enforced -- and the service then raises
+    on `int(None)` and answers 500.
+  * **MATCH SIMPLE.** A NULL in *any* column of a composite foreign key skips the check
+    entirely, so dropping NOT NULL from `cat_prices.price_book_id` or
+    `cat_price_resolutions.price_id` silently switches off a tenant-carrying parent reference.
+    The foreign-key *set* comparison cannot see it, because the key is still there.
+
+So each module pins **every** NOT NULL on its tables, compared as a set in both directions
+against the catalogue, exactly like the column lists and the grants.
 
 **A `coalesce` case has to use NULL, not a blank string.** Every attributed-decision case in
 this file tested `'  '`, which the constraint refuses either way -- so the `coalesce` the
@@ -183,6 +227,15 @@ Two obligations named in the original rule are covered: check 10 asserts the run
 TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE
 RLS would exempt, and check 11 proves `app.tenant_id` does not survive its transaction onto a
 reused pooled connection.
+
+**A constraint that is subsumed by a sibling should be deleted, not tested harder.** MOD-016
+carried both `cat_eligibility_rules_kind` (a domain over seven kinds) and
+`operand_matches_kind` (a four-branch disjunction that names all seven and the operand each
+takes). Every value that violates the domain violates the disjunction too, so the domain CHECK
+had no isolating case and could not have one: the sweep caught its drop as uncaught, and the
+repair was to remove it. One constraint that is the stronger statement beats two where the
+weaker is permanently unprovable -- which is the same judgement as splitting MOD-014's compound
+CHECK, arrived at from the other direction.
 
 ## Scope
 

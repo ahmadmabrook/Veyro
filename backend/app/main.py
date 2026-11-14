@@ -36,7 +36,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 from datetime import time as clock_time
 from time import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, Query, Request
@@ -49,6 +49,7 @@ from app.authorization import catalog as authz_catalog
 from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
+from app.catalog import service as catalog
 from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
@@ -995,6 +996,249 @@ class MergeBody(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
     correlation_id: str
     candidate_id: str | None = None
+
+
+class VariantBody(BaseModel):
+    variant_key: str = Field(min_length=1, max_length=63)
+    display_name: str = Field(min_length=1, max_length=200)
+    entitlement_quantity: int | None = Field(default=None, ge=1, le=1000000)
+    term_days: int | None = Field(default=None, ge=1, le=36500)
+    sku: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class ProductTextBody(BaseModel):
+    locale: str = Field(min_length=2, max_length=5)
+    display_name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    terms: str | None = Field(default=None, max_length=20000)
+
+
+class ProductBody(BaseModel):
+    """CreateProduct, with its text and variants in one command.
+
+    A product with no variant cannot be priced and one with no text cannot be displayed, so
+    three commands would leave two windows in which the catalogue holds something unsellable.
+    """
+
+    product_key: str = Field(min_length=2, max_length=63)
+    product_type: str
+    correlation_id: str
+    tax_category_id: str | None = None
+    brand_id: str | None = None
+    merchandising_rank: int = Field(default=1000, ge=0, le=1000000)
+    texts: list[ProductTextBody] = Field(default_factory=list, max_length=40)
+    variants: list[VariantBody] = Field(default_factory=list, max_length=100)
+
+
+class TaxCategoryBody(BaseModel):
+    """A tax regime's name. **It holds no rate**, which is paragraph 4077's requirement."""
+
+    category_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=120)
+    correlation_id: str
+    jurisdiction_note: str | None = Field(default=None, max_length=500)
+
+
+class VersionedBody(BaseModel):
+    expected_version: int = Field(ge=1, le=10**9)
+    correlation_id: str
+
+
+class PriceBookBody(BaseModel):
+    """COM-02-R02's seven dimensions."""
+
+    price_book_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=120)
+    currency: str = Field(min_length=3, max_length=3)
+    effective_from: datetime
+    correlation_id: str
+    brand_id: str | None = None
+    location_id: str | None = None
+    channel: str = "any"
+    customer_segment: str = Field(default="any", min_length=2, max_length=63)
+    tax_category_id: str | None = None
+    effective_to: datetime | None = None
+    priority: int = Field(default=0, ge=-1000, le=1000)
+
+
+class PriceBody(BaseModel):
+    """A new price. **Never an edit**, which is COM-02-R07.
+
+    The currency is not here: it comes from the book, because a price in a currency its book
+    does not use is a row the resolver would refuse at read time.
+    """
+
+    price_book_id: str
+    variant_id: str
+    amount_minor: int = Field(ge=0, le=10**12)
+    effective_from: datetime
+    correlation_id: str
+    effective_to: datetime | None = None
+
+
+class SupersedeBody(BaseModel):
+    replacement_price_id: str
+    correlation_id: str
+
+
+class EligibilityRuleBody(BaseModel):
+    """One named condition. Each kind carries exactly one operand, which the schema enforces."""
+
+    rule_kind: str
+    amount_minor: int | None = Field(default=None, ge=1, le=10**12)
+    quantity: int | None = Field(default=None, ge=1, le=1000000)
+    text_value: str | None = Field(default=None, min_length=1, max_length=200)
+    date_from: date | None = None
+    date_to: date | None = None
+
+
+class PromotionBody(BaseModel):
+    """A promotion and its rules in one command.
+
+    The rules come together because a promotion whose conditions arrive a moment later is a
+    promotion that is briefly unconditional, and `cat_eligibility_rules` is insert-only so
+    there is no way to tighten one afterwards.
+    """
+
+    promotion_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=120)
+    promotion_kind: str
+    effective_from: datetime
+    correlation_id: str
+    percent_bp: int | None = Field(default=None, ge=1, le=10000)
+    amount_minor: int | None = Field(default=None, ge=1, le=10**12)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    stacking_group: str = Field(default="default", min_length=2, max_length=63)
+    priority: int = Field(default=0, ge=-1000, le=1000)
+    approval_threshold_bp: int = Field(default=0, ge=0, le=10000)
+    effective_to: datetime | None = None
+    rules: list[EligibilityRuleBody] = Field(default_factory=list, max_length=20)
+
+
+class CouponBody(BaseModel):
+    promotion_id: str
+    code: str = Field(min_length=3, max_length=32)
+    correlation_id: str
+
+
+class ResolvePriceBody(BaseModel):
+    """ResolvePrice.
+
+    **An override needs an approval id that resolves to a real approval** for this variant at
+    this list amount, in this currency, unexpired and unspent; the service checks the row
+    rather than believing the field. A discount field with no approval behind it would be the
+    authority bought with a body field, which is the shape MOD-009, MOD-013 and MOD-014 each
+    shipped once.
+
+    **There is no `customer_segment` and no `brand_id` here, and their absence is the fix for a
+    finding.** Both chose which price book the sale priced from, and both were free strings:
+    a routine AAL-1 session took a 90% reduction by sending `"customer_segment": "staff"`, with
+    the stored resolution citing the staff book as its authority. The segment is now derived
+    from the subject's own tags and the brand from the location -- MOD-008's "derive a scope,
+    never accept one", which this module had to learn separately.
+
+    `channel` remains the caller's word, bounded to the seven. There is no server-side source
+    for what kind of client is calling, so a channel-scoped book is only as trustworthy as the
+    client; that is recorded as a gap rather than papered over.
+    """
+
+    variant_id: str
+    currency: str = Field(min_length=3, max_length=3)
+    correlation_id: str
+    quantity: int = Field(default=1, ge=1, le=1000000)
+    channel: Literal["any", "pos", "member_app", "admin_web", "crm", "kiosk", "web"] = "any"
+    location_id: str | None = None
+    subject_id: str | None = None
+    coupon_code: str | None = Field(default=None, min_length=3, max_length=32)
+    #: Required when a coupon is applied and the resolution is stored, because the redemption
+    #: is written in the same transaction. See `catalog.service.resolve_price`.
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=200)
+    override_amount_minor: int | None = Field(default=None, ge=0, le=10**12)
+    override_reason: str | None = Field(default=None, max_length=500)
+    approval_id: str | None = None
+
+
+class ValidatePromotionBody(BaseModel):
+    code: str = Field(min_length=3, max_length=32)
+    subtotal_minor: int = Field(ge=0, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    channel: Literal["any", "pos", "member_app", "admin_web", "crm", "kiosk", "web"] = "any"
+    product_type: str = ""
+    subject_id: str | None = None
+
+
+class RequestDiscountBody(BaseModel):
+    """Ask for an override. The requester is the caller's own session, never a field."""
+
+    variant_id: str
+    list_amount_minor: int = Field(ge=1, le=10**12)
+    override_amount_minor: int = Field(ge=0, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ApproveDiscountBody(BaseModel):
+    """Decide a recorded request. Paragraph 10220's approval.
+
+    **Only the request and the approver's own reason are here.** Every figure comes from the
+    request row, and `requested_by` with it -- so the schema's `approved_by <> requested_by`
+    compares two identities the server derived. While `requested_by` was a field on this body
+    the constraint compared one derived identity against one the approver typed, and all three
+    reviewers independently demonstrated a single person approving their own override naming a
+    requester who does not exist.
+    """
+
+    request_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class RedeemCouponBody(BaseModel):
+    """Consume a code for a sale priced outside this module.
+
+    **No `discount_minor`.** The service computes it from the promotion and the subtotal: this
+    field let the caller write any figure into an insert-only ledger with no correction path,
+    and the same invented figure was then what a minimum-spend rule was compared against.
+    """
+
+    code: str = Field(min_length=3, max_length=32)
+    subtotal_minor: int = Field(ge=1, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+    channel: Literal["any", "pos", "member_app", "admin_web", "crm", "kiosk", "web"] = "any"
+    subject_id: str | None = None
+    order_reference: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class BundleItemBody(BaseModel):
+    variant_id: str
+    quantity: int = Field(default=1, ge=1, le=1000)
+    fulfilment_kind: str
+
+
+class BundleBody(BaseModel):
+    product_id: str
+    items: list[BundleItemBody] = Field(min_length=1, max_length=50)
+    correlation_id: str
+
+
+class FulfilmentBody(BaseModel):
+    """What somebody says was delivered. **Nothing in this build delivers anything.**"""
+
+    bundle_id: str
+    variant_id: str
+    order_reference: str = Field(min_length=1, max_length=200)
+    quantity: int = Field(ge=1, le=1000)
+    outcome: Literal["delivered", "failed", "cancelled", "reversed"]
+    #: What makes a retried report free. The unique index that used to be on
+    #: (order, bundle, variant) made a failed delivery permanently unfixable instead.
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+    subject_id: str | None = None
+    external_reference: str | None = Field(default=None, min_length=1, max_length=200)
+    detail: str | None = Field(default=None, max_length=2000)
 
 
 class ObjectiveBody(BaseModel):
@@ -3760,6 +4004,337 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
             masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
             actor_person_id=actor_person_id(tenant_id, session),
+        )
+
+    # ------------------------------------------------------------ MOD-016, catalog
+
+    @app.post("/catalog/tax-categories", status_code=201)
+    def register_tax_category(
+        tenant_id: TenantId, session: Session, body: TaxCategoryBody
+    ) -> dict[str, Any]:
+        """Name a tax regime. It holds no rate; paragraph 4077 puts rates elsewhere."""
+        permit(session, "catalog.product.write", body.correlation_id)
+        return catalog.register_tax_category(
+            tenant_pool, tenant_id, category_key=body.category_key,
+            display_name=body.display_name, jurisdiction_note=body.jurisdiction_note,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/products", status_code=201)
+    def create_product(
+        tenant_id: TenantId, session: Session, body: ProductBody
+    ) -> dict[str, Any]:
+        """CreateProduct, with its localized text and its variants."""
+        permit(session, "catalog.product.write", body.correlation_id)
+        return catalog.create_product(
+            tenant_pool, tenant_id, product_key=body.product_key,
+            product_type=body.product_type,
+            tax_category_id=optional_uuid(body.tax_category_id, "tax_category_id"),
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            merchandising_rank=body.merchandising_rank,
+            texts=[t.model_dump() for t in body.texts],
+            variants=[v.model_dump() for v in body.variants],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/catalog/products")
+    def read_products(
+        tenant_id: TenantId, session: Session, status: str | None = None,
+        locale: str = "en", limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        """The listing, in COM-02-R06's merchandising order, with no locale fallback."""
+        permit(session, "catalog.product.read")
+        return catalog.list_products(
+            tenant_pool, tenant_id, status=status, locale=locale, limit=limit
+        )
+
+    @app.post("/catalog/products/{product_id}/publish")
+    def publish_product(
+        tenant_id: TenantId, session: Session, product_id: str, body: VersionedBody
+    ) -> dict[str, Any]:
+        """PublishCatalog, for one product. A product with no price anywhere is refused."""
+        permit(session, "catalog.product.publish", body.correlation_id)
+        return catalog.publish_product(
+            tenant_pool, tenant_id, require_uuid(product_id, "product_id"),
+            expected_version=body.expected_version, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/products/{product_id}/retire")
+    def retire_product(
+        tenant_id: TenantId, session: Session, product_id: str, body: VersionedBody
+    ) -> dict[str, Any]:
+        """Stop selling it. Sales already made keep resolving, which is COM-02-R07."""
+        permit(session, "catalog.product.publish", body.correlation_id)
+        return catalog.retire_product(
+            tenant_pool, tenant_id, require_uuid(product_id, "product_id"),
+            expected_version=body.expected_version, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/price-books", status_code=201)
+    def create_price_book(
+        tenant_id: TenantId, session: Session, body: PriceBookBody
+    ) -> dict[str, Any]:
+        permit(session, "catalog.price.write", body.correlation_id)
+        return catalog.create_price_book(
+            tenant_pool, tenant_id, price_book_key=body.price_book_key,
+            display_name=body.display_name, currency=body.currency,
+            effective_from=body.effective_from, effective_to=body.effective_to,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            channel=body.channel, customer_segment=body.customer_segment,
+            tax_category_id=optional_uuid(body.tax_category_id, "tax_category_id"),
+            priority=body.priority, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/catalog/price-books")
+    def read_price_books(
+        tenant_id: TenantId, session: Session,
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        """The pricing structure: keys, currencies, channels, segments and priorities.
+
+        Gated on `catalog.price.read` rather than on `catalog.product.read`, whose description
+        is "see the product catalog". Promotions have their own read permission; price books
+        were riding on the product one and returning a different thing from what it says.
+        """
+        permit(session, "catalog.price.read")
+        return catalog.list_price_books(tenant_pool, tenant_id, limit=limit)
+
+    @app.post("/catalog/price-books/{price_book_id}/activate")
+    def activate_price_book(
+        tenant_id: TenantId, session: Session, price_book_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "catalog.price.write", body.correlation_id)
+        return catalog.activate_price_book(
+            tenant_pool, tenant_id, require_uuid(price_book_id, "price_book_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/prices", status_code=201)
+    def create_price(
+        tenant_id: TenantId, session: Session, body: PriceBody
+    ) -> dict[str, Any]:
+        """CreatePrice. A new row, never an edit -- COM-02-R07 as a privilege."""
+        permit(session, "catalog.price.write", body.correlation_id)
+        return catalog.create_price(
+            tenant_pool, tenant_id,
+            price_book_id=require_uuid(body.price_book_id, "price_book_id"),
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            amount_minor=body.amount_minor, effective_from=body.effective_from,
+            effective_to=body.effective_to, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/prices/{price_id}/supersede")
+    def supersede_price(
+        tenant_id: TenantId, session: Session, price_id: str, body: SupersedeBody
+    ) -> dict[str, Any]:
+        """Withdraw a price in favour of another, without editing either."""
+        permit(session, "catalog.price.write", body.correlation_id)
+        return catalog.supersede_price(
+            tenant_pool, tenant_id, require_uuid(price_id, "price_id"),
+            replacement_price_id=require_uuid(
+                body.replacement_price_id, "replacement_price_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/promotions", status_code=201)
+    def create_promotion(
+        tenant_id: TenantId, session: Session, body: PromotionBody
+    ) -> dict[str, Any]:
+        permit(session, "catalog.promotion.write", body.correlation_id)
+        return catalog.create_promotion(
+            tenant_pool, tenant_id, promotion_key=body.promotion_key,
+            display_name=body.display_name, promotion_kind=body.promotion_kind,
+            effective_from=body.effective_from, effective_to=body.effective_to,
+            percent_bp=body.percent_bp, amount_minor=body.amount_minor,
+            currency=body.currency, stacking_group=body.stacking_group,
+            priority=body.priority, approval_threshold_bp=body.approval_threshold_bp,
+            rules=[r.model_dump() for r in body.rules],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/catalog/promotions")
+    def read_promotions(
+        tenant_id: TenantId, session: Session,
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        permit(session, "catalog.promotion.read")
+        return catalog.list_promotions(tenant_pool, tenant_id, limit=limit)
+
+    @app.post("/catalog/promotions/{promotion_id}/activate")
+    def activate_promotion(
+        tenant_id: TenantId, session: Session, promotion_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "catalog.promotion.write", body.correlation_id)
+        return catalog.activate_promotion(
+            tenant_pool, tenant_id, require_uuid(promotion_id, "promotion_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/coupons", status_code=201)
+    def issue_coupon(
+        tenant_id: TenantId, session: Session, body: CouponBody
+    ) -> dict[str, Any]:
+        permit(session, "catalog.promotion.write", body.correlation_id)
+        return catalog.issue_coupon(
+            tenant_pool, tenant_id,
+            promotion_id=require_uuid(body.promotion_id, "promotion_id"),
+            code=body.code, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/coupons/{coupon_id}/revoke")
+    def revoke_coupon(
+        tenant_id: TenantId, session: Session, coupon_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Stop a code working without ending the campaign it reaches."""
+        permit(session, "catalog.promotion.write", body.correlation_id)
+        return catalog.revoke_coupon(
+            tenant_pool, tenant_id, require_uuid(coupon_id, "coupon_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/promotions/validate")
+    def validate_promotion(
+        tenant_id: TenantId, session: Session, body: ValidatePromotionBody
+    ) -> dict[str, Any]:
+        """ValidatePromotion: would this code work, and if not, why not? A read, no side effect."""
+        permit(session, "catalog.price.resolve")
+        return catalog.validate_promotion(
+            tenant_pool, tenant_id, code=body.code, subtotal_minor=body.subtotal_minor,
+            currency=body.currency, channel=body.channel,
+            product_type=body.product_type,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+        )
+
+    @app.post("/catalog/prices/resolve", status_code=201)
+    def resolve_price(
+        tenant_id: TenantId, session: Session, body: ResolvePriceBody
+    ) -> dict[str, Any]:
+        """ResolvePrice: the number, and the whole reasoning, recorded.
+
+        Paragraph 10220's two controls meet here: the resolution is deterministic and its
+        explanation is stored insert-only, and an override or a deep discount is refused
+        without an approval row that covers this variant at this list amount.
+        """
+        permit(session, "catalog.price.resolve", body.correlation_id)
+        return catalog.resolve_price(
+            tenant_pool, tenant_id,
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            currency=body.currency, quantity=body.quantity, channel=body.channel,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            coupon_code=body.coupon_code, idempotency_key=body.idempotency_key,
+            override_amount_minor=body.override_amount_minor,
+            override_reason=body.override_reason,
+            approval_id=optional_uuid(body.approval_id, "approval_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/catalog/resolutions/{resolution_id}")
+    def read_resolution(
+        tenant_id: TenantId, session: Session, resolution_id: str
+    ) -> dict[str, Any]:
+        """One stored resolution with its whole explanation."""
+        permit(session, "catalog.price.resolve")
+        return catalog.get_resolution(
+            tenant_pool, tenant_id, require_uuid(resolution_id, "resolution_id")
+        )
+
+    @app.post("/catalog/discount-requests", status_code=201)
+    def request_discount(
+        tenant_id: TenantId, session: Session, body: RequestDiscountBody
+    ) -> dict[str, Any]:
+        """Ask for an override. The requester is this session, not a field in the body."""
+        permit(session, "catalog.discount.request", body.correlation_id)
+        return catalog.request_discount(
+            tenant_pool, tenant_id,
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            list_amount_minor=body.list_amount_minor,
+            override_amount_minor=body.override_amount_minor, currency=body.currency,
+            reason=body.reason, requester_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/discount-approvals", status_code=201)
+    def approve_discount(
+        tenant_id: TenantId, session: Session, body: ApproveDiscountBody
+    ) -> dict[str, Any]:
+        """The audit half of paragraph 10220. Decides a request somebody else recorded."""
+        permit(session, "catalog.discount.approve", body.correlation_id)
+        return catalog.approve_discount(
+            tenant_pool, tenant_id,
+            request_id=require_uuid(body.request_id, "request_id"),
+            reason=body.reason, approver_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/coupons/redeem", status_code=201)
+    def redeem_coupon(
+        tenant_id: TenantId, session: Session, body: RedeemCouponBody
+    ) -> dict[str, Any]:
+        """RedeemCoupon, for a sale priced outside this module.
+
+        The limits are re-checked here, by reason code rather than by words in the reason, and
+        the discount is computed rather than supplied. Where the price comes from this module,
+        `/catalog/prices/resolve` redeems in the same transaction instead.
+        """
+        permit(session, "catalog.coupon.redeem", body.correlation_id)
+        return catalog.redeem_coupon(
+            tenant_pool, tenant_id, code=body.code, subtotal_minor=body.subtotal_minor,
+            currency=body.currency, idempotency_key=body.idempotency_key,
+            channel=body.channel,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            order_reference=body.order_reference, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/bundles", status_code=201)
+    def define_bundle(
+        tenant_id: TenantId, session: Session, body: BundleBody
+    ) -> dict[str, Any]:
+        """Declare what a sale of this product owes."""
+        permit(session, "catalog.bundle.write", body.correlation_id)
+        return catalog.define_bundle(
+            tenant_pool, tenant_id,
+            product_id=require_uuid(body.product_id, "product_id"),
+            items=[{"variant_id": require_uuid(i.variant_id, "variant_id"),
+                    "quantity": i.quantity, "fulfilment_kind": i.fulfilment_kind}
+                   for i in body.items],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/catalog/bundles/fulfilments", status_code=201)
+    def record_fulfilment(
+        tenant_id: TenantId, session: Session, body: FulfilmentBody
+    ) -> dict[str, Any]:
+        """FulfillBundle, as a record. Nothing in this build delivers anything."""
+        permit(session, "catalog.bundle.fulfil", body.correlation_id)
+        return catalog.record_fulfilment(
+            tenant_pool, tenant_id,
+            bundle_id=require_uuid(body.bundle_id, "bundle_id"),
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            order_reference=body.order_reference, quantity=body.quantity,
+            outcome=body.outcome, idempotency_key=body.idempotency_key,
+            subject_id=optional_uuid(body.subject_id, "subject_id"),
+            external_reference=body.external_reference, detail=body.detail,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/catalog/bundles/{bundle_id}/status")
+    def read_bundle_status(
+        tenant_id: TenantId, session: Session, bundle_id: str, order_reference: str
+    ) -> dict[str, Any]:
+        """What this sale of this bundle still owes."""
+        permit(session, "catalog.bundle.fulfil")
+        return catalog.bundle_status(
+            tenant_pool, tenant_id, require_uuid(bundle_id, "bundle_id"),
+            order_reference=order_reference,
         )
 
     return app

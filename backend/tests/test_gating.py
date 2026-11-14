@@ -81,6 +81,11 @@ READ_ROUTES = [
     ("get", f"/people/{_ID}/notes", None),
     ("get", f"/people/{_ID}/timeline", None),
     ("get", f"/people/{_ID}/360", None),
+    ("get", "/catalog/products", None),
+    ("get", "/catalog/price-books", None),
+    ("get", "/catalog/promotions", None),
+    ("get", f"/catalog/resolutions/{_ID}", None),
+    ("get", f"/catalog/bundles/{_ID}/status?order_reference=sweep", None),
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
 ]
@@ -235,6 +240,45 @@ WRITE_ROUTES = [
       **_CORR}),
     ("post", f"/people/merges/{_ID}/reverse", {"reason": "wrong call", **_CORR}),
     ("post", "/people/timeline/project", _CORR),
+    ("post", "/catalog/tax-categories",
+     {"category_key": "standard", "display_name": "Standard", **_CORR}),
+    ("post", "/catalog/products",
+     {"product_key": "sweep.product", "product_type": "service", **_CORR}),
+    ("post", f"/catalog/products/{_ID}/publish", {"expected_version": 1, **_CORR}),
+    ("post", f"/catalog/products/{_ID}/retire", {"expected_version": 1, **_CORR}),
+    ("post", "/catalog/price-books",
+     {"price_book_key": "sweep.book", "display_name": "Sweep", "currency": "JOD",
+      "effective_from": "2026-01-01T00:00:00+00:00", **_CORR}),
+    ("post", f"/catalog/price-books/{_ID}/activate", _CORR),
+    ("post", "/catalog/prices",
+     {"price_book_id": _ID, "variant_id": _SUBJECT, "amount_minor": 1000,
+      "effective_from": "2026-01-01T00:00:00+00:00", **_CORR}),
+    ("post", f"/catalog/prices/{_ID}/supersede",
+     {"replacement_price_id": _SUBJECT, **_CORR}),
+    ("post", "/catalog/promotions",
+     {"promotion_key": "sweep.promo", "display_name": "Sweep", "promotion_kind": "automatic",
+      "percent_bp": 1000, "effective_from": "2026-01-01T00:00:00+00:00", **_CORR}),
+    ("post", f"/catalog/promotions/{_ID}/activate", _CORR),
+    ("post", "/catalog/coupons", {"promotion_id": _ID, "code": "SWEEP10", **_CORR}),
+    ("post", f"/catalog/coupons/{_ID}/revoke", {"reason": "leaked", **_CORR}),
+    ("post", "/catalog/promotions/validate",
+     {"code": "SWEEP10", "subtotal_minor": 5000, "currency": "JOD"}),
+    ("post", "/catalog/prices/resolve",
+     {"variant_id": _ID, "currency": "JOD", **_CORR}),
+    ("post", "/catalog/discount-requests",
+     {"variant_id": _ID, "list_amount_minor": 1000, "override_amount_minor": 500,
+      "currency": "JOD", "reason": "goodwill", **_CORR}),
+    ("post", "/catalog/discount-approvals",
+     {"request_id": _ID, "reason": "goodwill", **_CORR}),
+    ("post", "/catalog/coupons/redeem",
+     {"code": "SWEEP10", "subtotal_minor": 5000, "currency": "JOD",
+      "idempotency_key": "sweep-1", **_CORR}),
+    ("post", "/catalog/bundles",
+     {"product_id": _ID, "items": [{"variant_id": _SUBJECT, "quantity": 1,
+                                    "fulfilment_kind": "entitlement_grant"}], **_CORR}),
+    ("post", "/catalog/bundles/fulfilments",
+     {"bundle_id": _ID, "variant_id": _SUBJECT, "order_reference": "sweep",
+      "quantity": 1, "outcome": "delivered", "idempotency_key": "sweep-f1", **_CORR}),
 ]
 
 
@@ -573,7 +617,7 @@ class GateCoverageTests(unittest.TestCase):
     #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
     #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
     FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops", "/integrations",
-                            "/notifications", "/people")
+                            "/notifications", "/people", "/catalog")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

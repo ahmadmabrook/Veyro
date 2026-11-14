@@ -333,6 +333,52 @@ PERMISSIONS: dict[str, Permission] = dict([
     # financial-class and the schema only admits it for an unsubscribe.
     _p("notifications.suppression.release", "Release a suppression",
        "configuration", "financial"),
+    # MOD-016, the commercial catalog and its pricing.
+    #
+    # **The two reads a till does constantly are routine**, because a step-up requirement on
+    # resolving a price or redeeming a code would mean nothing is ever sold. Their reach is
+    # bounded by what they can change -- and the first version of this comment claimed more
+    # than was true, which is worth leaving in place as the correction it is. It said a
+    # resolution "carries no authority of its own" and that a redemption "cannot exceed the
+    # limits counted from the ledger beside it". Both were false: the resolution *is* the
+    # number the customer pays, and nothing on the pricing path wrote the ledger the limits
+    # were counted from, so a single-use 90% code priced six sales on `catalog.price.resolve`
+    # alone. `resolve_price` now redeems in the same transaction, which is what makes the
+    # second half of that sentence true; the first half is simply withdrawn.
+    _p("catalog.product.read", "See the product catalog", "data_access"),
+    _p("catalog.price.read", "See price books and what a sale would cost", "data_access"),
+    _p("catalog.price.resolve", "Resolve a price and record the explanation", "data_access"),
+    _p("catalog.coupon.redeem", "Redeem a coupon code", "data_access"),
+    # Asking for a discount changes nothing by itself -- the approval is the authority -- so
+    # this is routine and the one beside it is financial. The two exist separately because a
+    # separation of duties needs two acts to compare.
+    _p("catalog.discount.request", "Ask for a manual price override", "configuration"),
+    # Writing the catalogue is a commercial act with a financial consequence for every sale
+    # that follows, so each of these is financial class and needs a stepped-up session.
+    _p("catalog.product.write", "Create or change a product", "configuration", "financial"),
+    _p("catalog.product.publish", "Publish or retire a product",
+       "configuration", "financial"),
+    _p("catalog.price.write", "Write a price or a price book", "configuration", "financial"),
+    _p("catalog.promotion.read", "See promotions and coupons", "data_access"),
+    _p("catalog.promotion.write", "Create, activate or revoke a promotion or coupon",
+       "configuration", "financial"),
+    # **The one permission that lets somebody choose the price.** Paragraph 10220: "manual
+    # price overrides and high discounts require explicit permission and audit." The permission
+    # is this; the audit is `cat_discount_approvals`, and the schema refuses an approver who is
+    # also the requester.
+    _p("catalog.discount.approve", "Approve a recorded discount request",
+       "configuration", "financial"),
+    _p("catalog.bundle.write", "Define what a bundle owes", "configuration", "financial"),
+    # **Financial, not routine, and the first version had it wrong for an instructive reason.**
+    # It was classed routine on MOD-013's dispatcher precedent -- whatever fulfils a bundle
+    # runs on a loop -- with "the record it writes is insert-only" offered as why that was
+    # safe. Insert-only was in fact what made it unrecoverable: a reviewer recorded all ten
+    # sessions of a ten-session bundle as delivered on a routine AAL-1 session, and the real
+    # fulfiller was then refused for ever, with no UPDATE and no DELETE grant to undo it.
+    # There is now a `reversed` outcome, so the act is correctable -- and it is still
+    # financial, because extinguishing a paid-for entitlement is not a routine read.
+    _p("catalog.bundle.fulfil", "Record what a bundle sale delivered",
+       "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

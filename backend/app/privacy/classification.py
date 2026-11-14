@@ -601,6 +601,129 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "ppl_member_profiles", "member_number", "write_once",
                  "the tenant's own member number, which agreements, cards and turnstiles may "
                  "carry; in the UPDATE grant, and no erasure path clears it"),
+    # ---------------------------------------------------------------- MOD-016, COM-02
+    #
+    # **Almost all of this is commercial record rather than personal data**, and the three
+    # columns that do name a person are on insert-only tables. A coupon redemption, a price
+    # resolution and a bundle fulfilment are each evidence of a commercial act: a receipt
+    # somebody could rewrite afterwards is worse than one that survives an erasure, so they are
+    # declared as residue rather than made clearable.
+    #
+    # **Five free-text columns are declared too, and the reason is a review finding.** An
+    # earlier version of this block said the resolutions carry "no name and no contact detail
+    # -- only the subject id and the arithmetic", and a reviewer disproved it with an ordinary
+    # override: `override_reason` is caller text that `pricing.override` renders into a `Step`
+    # and the service stores into `explanation`, so "waived for Jane Smith,
+    # jane.smith@example.com, 07700 900123, after her knee surgery in March" landed in the
+    # least erasable store in the module. The reachability sweep matches column *names*, so
+    # none of these five would ever be found by it -- the same reason MOD-010 declares
+    # `evt_outbox.payload` and MOD-014 its timeline summaries by hand.
+    Reachability("plt01", "cat_tax_categories", "created_by", "unreachable",
+                 "who named the regime; no UPDATE grant on this column"),
+    Reachability("plt01", "cat_products", "created_by", "unreachable",
+                 "insert-only authorship of the product"),
+    Reachability("plt01", "cat_products", "published_by", "write_once",
+                 "written when the product is published; `status = 'draft'` in the service is "
+                 "what refuses a second publication, not the grant"),
+    Reachability("plt01", "cat_product_texts", "updated_by", "write_once",
+                 "rewritten on each change, because editing a translation is a fresh act by "
+                 "whoever did it"),
+    Reachability("plt01", "cat_variants", "created_by", "unreachable",
+                 "insert-only authorship of the variant"),
+    Reachability("plt01", "cat_price_books", "created_by", "unreachable",
+                 "insert-only authorship of the book"),
+    Reachability("plt01", "cat_prices", "created_by", "unreachable",
+                 "**COM-02-R07 as a privilege**: a price carries no UPDATE on anything it "
+                 "says, so who wrote it survives with the amount"),
+    Reachability("plt01", "cat_prices", "superseded_by_actor", "write_once",
+                 "**who withdrew the price** -- and the one the sweep cannot see, because it "
+                 "matches columns ending in `_by` and this one does not. It is here by hand "
+                 "for the same reason MOD-010 declares `evt_outbox.payload` by hand. Written "
+                 "with the supersession; `superseded_by IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "cat_price_books", "activated_by", "write_once",
+                 "who switched the tenant's prices on; `status = 'draft'` in the service is "
+                 "what refuses a second activation, not the grant"),
+    Reachability("plt01", "cat_products", "retired_by", "write_once",
+                 "who withdrew the product; the status transition in the service is what "
+                 "refuses a second retirement, not the grant"),
+    Reachability("plt01", "cat_bundle_items", "created_by", "unreachable",
+                 "who composed the bundle. Insert-only in full: what a sale owed is what it "
+                 "owed on the day, and a clearable composition would make a past obligation "
+                 "unanswerable"),
+    Reachability("plt01", "cat_prices", "superseded_by", "write_once",
+                 "**not a person.** This names the price that replaced this one, and the "
+                 "registry's sweep matches any column ending in `_by`; declared so the sweep "
+                 "has an answer rather than so an erasure has a target"),
+    Reachability("plt01", "cat_promotions", "created_by", "unreachable",
+                 "insert-only authorship of the campaign"),
+    Reachability("plt01", "cat_promotions", "activated_by", "write_once",
+                 "written when the promotion goes live; `status = 'draft'` in the service is "
+                 "what refuses a second activation, not the grant"),
+    Reachability("plt01", "cat_eligibility_rules", "created_by", "unreachable",
+                 "a rule is insert-only in full: editing one would change what a past "
+                 "resolution would have decided, which the stored explanation exists to make "
+                 "answerable"),
+    Reachability("plt01", "cat_coupons", "created_by", "unreachable",
+                 "insert-only authorship of the code"),
+    Reachability("plt01", "cat_coupons", "revoked_by", "write_once",
+                 "written with the revocation; `status = 'active'` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "cat_coupon_redemptions", "subject_id", "unreachable",
+                 "who redeemed the code. The ledger is insert-only because the usage limits "
+                 "are counted from it -- a clearable row would be a single-use coupon with "
+                 "unlimited uses -- so this is residue an erasure cannot reach"),
+    Reachability("plt01", "cat_coupon_redemptions", "redeemed_by", "unreachable",
+                 "the staff member who took the redemption; insert-only for the same reason"),
+    Reachability("plt01", "cat_price_resolutions", "subject_id", "unreachable",
+                 "who the price was resolved for. Paragraph 10220 requires the explanation to "
+                 "be kept and the table carries no UPDATE grant at all, so an order citing a "
+                 "resolution still explains after an erasure -- which is the point and is also "
+                 "the residue"),
+    Reachability("plt01", "cat_price_resolutions", "requested_by", "unreachable",
+                 "the till or the staff member who asked; insert-only"),
+    Reachability("plt01", "cat_discount_approvals", "approved_by", "unreachable",
+                 "**paragraph 10220's audit half.** An override approved by somebody whose "
+                 "name could later be removed would not be an audit at all; insert-only in "
+                 "full"),
+    Reachability("plt01", "cat_discount_approvals", "requested_by", "unreachable",
+                 "who asked for the override, which is the other half of the separation of "
+                 "duties the constraint enforces"),
+    Reachability("plt01", "cat_bundles", "created_by", "unreachable",
+                 "insert-only authorship of the bundle composition"),
+    Reachability("plt01", "cat_bundle_fulfilments", "subject_id", "unreachable",
+                 "who the bundle was delivered to. Insert-only, because over-delivery is "
+                 "checked by counting these rows and a clearable one would be a member with "
+                 "more sessions than they bought"),
+    Reachability("plt01", "cat_bundle_fulfilments", "recorded_by", "unreachable",
+                 "who says it was delivered -- the whole reason the row exists, since nothing "
+                 "in this build fulfils anything"),
+    # The five free-text columns. Each is prose a caller wrote, on a table with no UPDATE and
+    # no DELETE grant, so each is residue an erasure cannot reach and says so.
+    Reachability("plt01", "cat_price_resolutions", "explanation", "unreachable",
+                 "**the explanation paragraph 10220 requires**, and it includes the reason "
+                 "text of any manual override -- caller prose, which is where a name, an "
+                 "address or a health fact realistically ends up. No UPDATE grant at all, "
+                 "because a receipt somebody can rewrite is not a receipt"),
+    Reachability("plt01", "cat_discount_approvals", "reason", "unreachable",
+                 "why the override was approved; caller prose on the table that is paragraph "
+                 "10220's audit half, insert-only in full"),
+    Reachability("plt01", "cat_discount_requests", "reason", "unreachable",
+                 "why it was asked for; the same shape as the approval's reason"),
+    Reachability("plt01", "cat_discount_requests", "requested_by", "unreachable",
+                 "who asked, derived from their own session -- which is what makes the "
+                 "separation of duties on the approval real"),
+    Reachability("plt01", "cat_bundle_fulfilments", "detail", "unreachable",
+                 "why a delivery failed or was reversed; whatever the fulfilling module "
+                 "reports, which in practice is a provider's own error text"),
+    Reachability("plt01", "cat_bundle_fulfilments", "external_reference", "unreachable",
+                 "the fulfilling module's own handle for the delivery; opaque by intent and "
+                 "free text in fact"),
+    Reachability("plt01", "cat_bundle_fulfilments", "order_reference", "unreachable",
+                 "the sale this delivery was against. COM-01 owns orders and is not built, so "
+                 "this is free text with no foreign key behind it"),
+    Reachability("plt01", "cat_coupon_redemptions", "order_reference", "unreachable",
+                 "the same, on the redemption ledger"),
     Reachability("plt01", "int_connector_runs", "settled_by", "write_once",
                  "written when the run is settled; `status = 'running'` in the service is what "
                  "refuses a second settlement, not the grant"),

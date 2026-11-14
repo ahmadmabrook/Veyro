@@ -9310,4 +9310,2579 @@ END $$;
 ROLLBACK;
 
 
-\echo 'tenant isolation: 66/66 checks passed'
+
+
+-- ================================================================ MOD-016, COM-02
+--
+-- Fifteen `cat_` tables. The sweeps are the shape the MOD-014 review arrived at and are
+-- prefix-free where the lesson said they should be: the whole-schema sweep in check 61b
+-- already covers RLS, the single permissive policy and the tenant-registry reference for
+-- every table in `plt01`, including these, so the checks below add what is specific to this
+-- module -- the per-role column grants, the pinned column lists, the foreign-key set, the
+-- primary keys, the nullability and a case per side of every constraint.
+--
+-- Two things here exist because of paragraph 10220:
+--
+--   * **`cat_prices` carries no UPDATE on anything it says**, which is COM-02-R07 as a
+--     privilege: re-pricing is a new row, so an order resolved last March still re-derives.
+--   * **`cat_price_resolutions` and `cat_discount_approvals` are insert-only in full**, which
+--     is what makes an explanation an explanation and an audit an audit. Check 71 proves both
+--     per column and per role and then attempts the write.
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.cat_tax_categories
+    (tenant_id, tax_category_id, category_key, display_name, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000001', 'standard', 'Standard',
+        :'actor', :'actor');
+INSERT INTO plt01.cat_products
+    (tenant_id, product_id, product_key, product_type, tax_category_id, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000002', 'personal.training', 'service',
+        'cccccccc-1000-4000-8000-000000000001', :'actor', :'actor');
+INSERT INTO plt01.cat_product_texts
+    (tenant_id, product_id, locale, display_name, updated_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000002', 'en', 'Personal training',
+        :'actor', :'actor');
+INSERT INTO plt01.cat_variants
+    (tenant_id, variant_id, product_id, variant_key, display_name, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000003',
+        'cccccccc-1000-4000-8000-000000000002', 'single', 'One hour', :'actor', :'actor');
+INSERT INTO plt01.cat_price_books
+    (tenant_id, price_book_id, price_book_key, display_name, currency, effective_from,
+     status, activated_at, activated_by, activate_correlation_id, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000004', 'standard.jod', 'Standard JOD',
+        'JOD', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'active', now(), :'actor', :'actor',
+        :'actor', :'actor');
+INSERT INTO plt01.cat_prices
+    (tenant_id, price_id, price_book_id, variant_id, amount_minor, currency,
+     effective_from, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000005',
+        'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003',
+        45000, 'JOD', TIMESTAMPTZ '2026-01-01 00:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.cat_promotions
+    (tenant_id, promotion_id, promotion_key, display_name, promotion_kind, percent_bp,
+     status, activated_at, activated_by, effective_from, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000006', 'spring.ten', 'Spring 10%',
+        'automatic', 1000, 'active', now(), :'actor',
+        TIMESTAMPTZ '2026-01-01 00:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.cat_eligibility_rules
+    (tenant_id, rule_id, promotion_id, rule_kind, amount_minor, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000007',
+        'cccccccc-1000-4000-8000-000000000006', 'minimum_spend', 10000, :'actor', :'actor');
+INSERT INTO plt01.cat_coupons
+    (tenant_id, coupon_id, promotion_id, code, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000008',
+        'cccccccc-1000-4000-8000-000000000006', 'SPRING10', :'actor', :'actor');
+INSERT INTO plt01.cat_coupon_redemptions
+    (tenant_id, redemption_id, coupon_id, promotion_id, idempotency_key, discount_minor,
+     currency, redeemed_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-000000000009',
+        'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006',
+        'seed-redemption-1', 4500, 'JOD', :'actor', :'actor');
+INSERT INTO plt01.cat_bundles
+    (tenant_id, bundle_id, product_id, status, created_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000a',
+        'cccccccc-1000-4000-8000-000000000002', 'active', :'actor', :'actor');
+INSERT INTO plt01.cat_bundle_items
+    (tenant_id, bundle_id, variant_id, quantity, fulfilment_kind, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000a',
+        'cccccccc-1000-4000-8000-000000000003', 2, 'entitlement_grant', :'actor',
+        :'actor');
+INSERT INTO plt01.cat_bundle_fulfilments
+    (tenant_id, fulfilment_id, bundle_id, variant_id, order_reference, quantity, outcome,
+     idempotency_key, recorded_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000b',
+        'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003',
+        'order-seed-1', 2, 'delivered', 'seed-fulfilment-1', :'actor', :'actor');
+INSERT INTO plt01.cat_discount_requests
+    (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor, currency,
+     reason, requested_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000e',
+        'cccccccc-1000-4000-8000-000000000003', 45000, 40000, 'JOD',
+        'long-standing member', '44444444-4444-4444-8444-444444444444', :'actor');
+INSERT INTO plt01.cat_discount_approvals
+    (tenant_id, approval_id, request_id, variant_id, list_amount_minor,
+     override_amount_minor, discount_bp, currency, reason, expires_at, approved_by,
+     requested_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000c',
+        'cccccccc-1000-4000-8000-00000000000e',
+        'cccccccc-1000-4000-8000-000000000003', 45000, 40000, 1111, 'JOD',
+        'long-standing member', now() + interval '12 hours', :'actor',
+        '44444444-4444-4444-8444-444444444444', :'actor');
+INSERT INTO plt01.cat_price_resolutions
+    (tenant_id, resolution_id, variant_id, price_book_id, price_id, channel,
+     customer_segment, quantity, resolved_at, list_amount_minor, discount_minor,
+     final_amount_minor, currency, applied_promotions, rejected_promotions, explanation,
+     policy_version, requested_by, correlation_id)
+VALUES (:'tenant_a', 'cccccccc-1000-4000-8000-00000000000d',
+        'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004',
+        'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 45000, 4500, 40500,
+        'JOD', ARRAY['spring.ten'], ARRAY[]::text[],
+        ARRAY['price_book_chosen: standard.jod', 'final_amount: 45000 less 4500'], 1,
+        :'actor', :'actor');
+COMMIT;
+
+-- Tenant B holds one product of its own, so a leaked predicate shows as a count above the
+-- expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.cat_products
+    (tenant_id, product_key, product_type, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'rival.membership', 'membership',
+        '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ---------------------------------------------------------------- 67. cat tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['cat_bundle_fulfilments', 'cat_bundle_items', 'cat_bundles',
+                               'cat_coupon_redemptions', 'cat_coupons', 'cat_discount_approvals',
+                               'cat_eligibility_rules', 'cat_price_books', 'cat_price_resolutions',
+                               'cat_prices', 'cat_product_texts', 'cat_promotions',
+                               'cat_tax_categories', 'cat_variants']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 67 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.cat_products) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: tenant B sees % products, expected its own 1',
+            (SELECT count(*) FROM plt01.cat_products);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.cat_products WHERE product_key = 'personal.training') THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: tenant B read tenant A''s product';
+    END IF;
+END $$;
+COMMIT;
+
+-- The worker role gets a seat too: PostgreSQL ORs permissive policies, so a role nobody sits
+-- as is a role nothing is proved about.
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.cat_products) <> 1
+       OR (SELECT count(*) FROM plt01.cat_prices) <> 0
+       OR (SELECT count(*) FROM plt01.cat_price_resolutions) <> 0
+       OR (SELECT count(*) FROM plt01.cat_discount_approvals) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: the worker role crossed a tenant boundary';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.cat_bundle_fulfilments) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_bundle_items) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_bundles) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_coupon_redemptions) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_coupons) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_discount_approvals) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_eligibility_rules) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_price_books) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_price_resolutions) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_prices) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_product_texts) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_products) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_promotions) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_tax_categories) <> 1
+       OR  (SELECT count(*) FROM plt01.cat_variants) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: tenant A cannot see its own catalog rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- The catalogue sweep. RLS, the single permissive policy and the tenant foreign key are
+-- covered prefix-free by check 61b for every table in `plt01`; what is left here is this
+-- module's own count guard, the primary keys and the policy predicate.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+          AND relname LIKE 'cat\_%') < 15 THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: expected at least 15 cat_ tables, found %',
+            (SELECT count(*) FROM pg_class
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+               AND relname LIKE 'cat\_%');
+    END IF;
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01' AND p.tablename LIKE 'cat\_%'
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: cat_ policies with a different predicate: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_index i
+                      WHERE i.indrelid = c.oid AND i.indisprimary);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: a cat_ table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = i.indkey[0]
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%' AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: a cat_ primary key does not lead with tenant_id: %',
+            wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%' AND pg_get_userbyid(c.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 67 FAILED: a cat_ table is owned by something else: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------- 68. fail closed, cat tables
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.cat_products) <> 0
+       OR (SELECT count(*) FROM plt01.cat_prices) <> 0
+       OR (SELECT count(*) FROM plt01.cat_price_resolutions) <> 0
+       OR (SELECT count(*) FROM plt01.cat_discount_approvals) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 68 FAILED: the app role read catalog rows with no context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'smuggled', 'service',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 68 FAILED: a product was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.cat_prices) <> 0
+       OR (SELECT count(*) FROM plt01.cat_coupon_redemptions) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 68 FAILED: the worker role read catalog rows with no context';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'smuggled', 'service',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 68 FAILED: tenant B wrote a product into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 69. cross-tenant parents
+-- Every foreign key on this module's tables, compared as a set.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.cat_bundle_fulfilments: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_bundle_fulfilments: tenant_id,bundle_id,variant_id -> plt01.cat_bundle_items'),
+        ('plt01.cat_bundle_items: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_bundle_items: tenant_id,bundle_id -> plt01.cat_bundles'),
+        ('plt01.cat_bundle_items: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.cat_bundles: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_bundles: tenant_id,product_id -> plt01.cat_products'),
+        ('plt01.cat_coupon_redemptions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_coupon_redemptions: tenant_id,coupon_id -> plt01.cat_coupons'),
+        ('plt01.cat_coupon_redemptions: tenant_id,promotion_id -> plt01.cat_promotions'),
+        ('plt01.cat_coupons: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_coupons: tenant_id,promotion_id -> plt01.cat_promotions'),
+        ('plt01.cat_discount_approvals: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_discount_approvals: tenant_id,request_id -> plt01.cat_discount_requests'),
+        ('plt01.cat_discount_approvals: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.cat_discount_requests: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_discount_requests: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.cat_eligibility_rules: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_eligibility_rules: tenant_id,promotion_id -> plt01.cat_promotions'),
+        ('plt01.cat_price_books: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_price_books: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.cat_price_books: tenant_id,location_id -> plt01.locations'),
+        ('plt01.cat_price_books: tenant_id,tax_category_id -> plt01.cat_tax_categories'),
+        ('plt01.cat_price_resolutions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_price_resolutions: tenant_id,approval_id -> plt01.cat_discount_approvals'),
+        ('plt01.cat_price_resolutions: tenant_id,price_book_id -> plt01.cat_price_books'),
+        ('plt01.cat_price_resolutions: tenant_id,price_book_id,price_id -> plt01.cat_prices'),
+        ('plt01.cat_price_resolutions: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.cat_prices: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_prices: tenant_id,price_book_id -> plt01.cat_price_books'),
+        ('plt01.cat_prices: tenant_id,superseded_by -> plt01.cat_prices'),
+        ('plt01.cat_prices: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.cat_product_texts: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_product_texts: tenant_id,product_id -> plt01.cat_products'),
+        ('plt01.cat_products: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_products: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.cat_products: tenant_id,tax_category_id -> plt01.cat_tax_categories'),
+        ('plt01.cat_promotions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_tax_categories: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_variants: tenant_id -> plt01_platform.tenants'),
+        ('plt01.cat_variants: tenant_id,product_id -> plt01.cat_products')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'cat\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 69 FAILED: foreign keys differ from the expected set: %', wrong;
+    END IF;
+END $$;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             created_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'cccccccc-1000-4000-8000-000000000004',
+                'cccccccc-1000-4000-8000-000000000003', 100, 'JOD', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 69 FAILED: a price was written against another tenant''s book';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- --------------------------------------------- 70. the catalog's columns are pinned
+-- The masking and the erasure registry both match column names, so a column added here is
+-- either declared or invisible to both -- MOD-014's check 64, applied from the start.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.cat_bundle_fulfilments',
+         'bundle_id,correlation_id,detail,external_reference,fulfilment_id,'
+         'idempotency_key,order_reference,outcome,quantity,recorded_at,'
+         'recorded_by,subject_id,tenant_id,variant_id'),
+        ('plt01.cat_bundle_items',
+         'bundle_id,correlation_id,created_at,created_by,fulfilment_kind,'
+         'quantity,tenant_id,variant_id'),
+        ('plt01.cat_bundles',
+         'bundle_id,correlation_id,created_at,created_by,product_id,status,'
+         'tenant_id,version'),
+        ('plt01.cat_coupon_redemptions',
+         'correlation_id,coupon_id,currency,discount_minor,idempotency_key,'
+         'order_reference,promotion_id,redeemed_at,redeemed_by,'
+         'redemption_id,resolution_id,subject_id,tenant_id'),
+        ('plt01.cat_coupons',
+         'code,correlation_id,coupon_id,created_at,created_by,promotion_id,'
+         'revoke_reason,revoked_at,revoked_by,status,tenant_id'),
+        ('plt01.cat_discount_approvals',
+         'approval_id,approved_at,approved_by,correlation_id,currency,'
+         'discount_bp,expires_at,list_amount_minor,override_amount_minor,'
+         'reason,request_id,requested_by,tenant_id,variant_id'),
+        ('plt01.cat_discount_requests',
+         'correlation_id,currency,list_amount_minor,override_amount_minor,'
+         'reason,request_id,requested_at,requested_by,tenant_id,variant_id'),
+        ('plt01.cat_eligibility_rules',
+         'amount_minor,correlation_id,created_at,created_by,date_from,'
+         'date_to,promotion_id,quantity,rule_id,rule_kind,tenant_id,'
+         'text_value'),
+        ('plt01.cat_price_books',
+         'activate_correlation_id,activated_at,activated_by,brand_id,'
+         'channel,correlation_id,created_at,created_by,currency,'
+         'customer_segment,display_name,effective_from,effective_to,'
+         'location_id,price_book_id,price_book_key,priority,status,'
+         'tax_category_id,tenant_id'),
+        ('plt01.cat_price_resolutions',
+         'applied_promotions,approval_id,channel,correlation_id,currency,'
+         'customer_segment,discount_minor,explanation,final_amount_minor,'
+         'list_amount_minor,policy_version,price_book_id,price_id,quantity,'
+         'rejected_promotions,requested_by,resolution_id,resolved_at,'
+         'subject_id,tenant_id,variant_id'),
+        ('plt01.cat_prices',
+         'amount_minor,correlation_id,created_at,created_by,currency,'
+         'effective_from,effective_to,price_book_id,price_id,'
+         'supersede_correlation_id,superseded_at,superseded_by,'
+         'superseded_by_actor,tenant_id,variant_id'),
+        ('plt01.cat_product_texts',
+         'correlation_id,description,display_name,locale,product_id,'
+         'tenant_id,terms,updated_at,updated_by'),
+        ('plt01.cat_products',
+         'brand_id,correlation_id,created_at,created_by,merchandising_rank,'
+         'product_id,product_key,product_type,published_at,published_by,'
+         'retire_correlation_id,retired_at,retired_by,status,'
+         'tax_category_id,tenant_id,updated_at,version'),
+        ('plt01.cat_promotions',
+         'activated_at,activated_by,amount_minor,approval_threshold_bp,'
+         'correlation_id,created_at,created_by,currency,display_name,'
+         'effective_from,effective_to,percent_bp,priority,promotion_id,'
+         'promotion_key,promotion_kind,stacking_group,status,tenant_id'),
+        ('plt01.cat_tax_categories',
+         'category_key,correlation_id,created_at,created_by,display_name,'
+         'jurisdiction_note,retired_at,tax_category_id,tenant_id'),
+        ('plt01.cat_variants',
+         'correlation_id,created_at,created_by,display_name,'
+         'entitlement_quantity,merchandising_rank,product_id,sku,status,'
+         'tenant_id,term_days,updated_at,variant_id,variant_key,version')
+    )
+    SELECT string_agg(e.tbl || ': ' || coalesce(a.actual, '(none)'), '; ' ORDER BY e.tbl)
+    INTO wrong
+    FROM expected e
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = e.tbl::regclass AND att.attnum > 0 AND NOT att.attisdropped
+    ) a ON true
+    WHERE a.actual IS DISTINCT FROM e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 70 FAILED: cat_ columns are not the expected set, so a column the masking '
+            'and the erasure registry both key on by name may be undeclared: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%'
+      AND ('plt01.' || c.relname) NOT IN (
+          'plt01.cat_bundle_fulfilments', 'plt01.cat_bundle_items',
+          'plt01.cat_bundles', 'plt01.cat_coupon_redemptions',
+          'plt01.cat_coupons', 'plt01.cat_discount_approvals',
+          'plt01.cat_discount_requests', 'plt01.cat_eligibility_rules',
+          'plt01.cat_price_books', 'plt01.cat_price_resolutions',
+          'plt01.cat_prices', 'plt01.cat_product_texts',
+          'plt01.cat_products', 'plt01.cat_promotions',
+          'plt01.cat_tax_categories', 'plt01.cat_variants');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 70 FAILED: a cat_ table is outside the pinned column lists: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------- 71. catalog privileges
+-- The UPDATE column grants as a set, per table and per role, through `has_column_privilege`
+-- over `pg_attribute`.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    -- Compared as a SET, in both directions, over the catalogue rather than over the
+    -- expected list. The first version read `FROM expected e CROSS JOIN roles r`, so a table
+    -- absent from the list below was never looked at -- the MOD-010 lesson about per-table
+    -- lists, one level in. A row here per (table, role); `(none)` means no UPDATE at all.
+    WITH expected(tbl, grantee, cols) AS (VALUES
+        ('cat_bundle_fulfilments', 'veyro_cp_app',
+         '(none)'),
+        ('cat_bundle_fulfilments', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_bundle_items', 'veyro_cp_app',
+         '(none)'),
+        ('cat_bundle_items', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_bundles', 'veyro_cp_app',
+         'status,version'),
+        ('cat_bundles', 'veyro_cp_worker',
+         'status,version'),
+        ('cat_coupon_redemptions', 'veyro_cp_app',
+         '(none)'),
+        ('cat_coupon_redemptions', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_coupons', 'veyro_cp_app',
+         'revoke_reason,revoked_at,revoked_by,status'),
+        ('cat_coupons', 'veyro_cp_worker',
+         'revoke_reason,revoked_at,revoked_by,status'),
+        ('cat_discount_approvals', 'veyro_cp_app',
+         '(none)'),
+        ('cat_discount_approvals', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_discount_requests', 'veyro_cp_app',
+         '(none)'),
+        ('cat_discount_requests', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_eligibility_rules', 'veyro_cp_app',
+         '(none)'),
+        ('cat_eligibility_rules', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_price_books', 'veyro_cp_app',
+         'activate_correlation_id,activated_at,activated_by,'
+         'display_name,status'),
+        ('cat_price_books', 'veyro_cp_worker',
+         'activate_correlation_id,activated_at,activated_by,'
+         'display_name,status'),
+        ('cat_price_resolutions', 'veyro_cp_app',
+         '(none)'),
+        ('cat_price_resolutions', 'veyro_cp_worker',
+         '(none)'),
+        ('cat_prices', 'veyro_cp_app',
+         'supersede_correlation_id,superseded_at,superseded_by,'
+         'superseded_by_actor'),
+        ('cat_prices', 'veyro_cp_worker',
+         'supersede_correlation_id,superseded_at,superseded_by,'
+         'superseded_by_actor'),
+        ('cat_product_texts', 'veyro_cp_app',
+         'correlation_id,description,display_name,terms,updated_at,'
+         'updated_by'),
+        ('cat_product_texts', 'veyro_cp_worker',
+         'correlation_id,description,display_name,terms,updated_at,'
+         'updated_by'),
+        ('cat_products', 'veyro_cp_app',
+         'brand_id,merchandising_rank,published_at,published_by,'
+         'retire_correlation_id,retired_at,retired_by,status,'
+         'tax_category_id,updated_at,version'),
+        ('cat_products', 'veyro_cp_worker',
+         'brand_id,merchandising_rank,published_at,published_by,'
+         'retire_correlation_id,retired_at,retired_by,status,'
+         'tax_category_id,updated_at,version'),
+        ('cat_promotions', 'veyro_cp_app',
+         'activated_at,activated_by,display_name,effective_to,status'),
+        ('cat_promotions', 'veyro_cp_worker',
+         'activated_at,activated_by,display_name,effective_to,status'),
+        ('cat_tax_categories', 'veyro_cp_app',
+         'display_name,jurisdiction_note,retired_at'),
+        ('cat_tax_categories', 'veyro_cp_worker',
+         'display_name,jurisdiction_note,retired_at'),
+        ('cat_variants', 'veyro_cp_app',
+         'display_name,entitlement_quantity,merchandising_rank,sku,'
+         'status,term_days,updated_at,version'),
+        ('cat_variants', 'veyro_cp_worker',
+         'display_name,entitlement_quantity,merchandising_rank,sku,'
+         'status,term_days,updated_at,version')
+    ), actual(tbl, grantee, cols) AS (
+        SELECT t.relname, r.rolname,
+               coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
+        FROM pg_class t
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        LEFT JOIN pg_attribute att
+          ON att.attrelid = t.oid AND att.attnum > 0 AND NOT att.attisdropped
+             AND has_column_privilege(r.rolname, t.oid, att.attname, 'UPDATE')
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'cat\_%'
+          AND t.relkind IN ('r', 'p')
+        GROUP BY t.relname, r.rolname
+    )
+    SELECT string_agg(tbl || ' / ' || grantee || ': ' || cols, '; '
+                      ORDER BY tbl, grantee)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 71 FAILED: UPDATE column grants differ from the expected set: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class c
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%'
+      AND has_table_privilege(r.grantee, c.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 71 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class c
+    JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0 AND NOT att.attisdropped
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'cat\_%'
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 71 FAILED: a cat_ column carries a PUBLIC grant: %', wrong;
+    END IF;
+    -- **Every NOT NULL on every `cat_` table, compared as a set.** Nothing in this file
+    -- had ever read `attnotnull` for this module and the first version of this check carried a
+    -- hand-written list of 37 (table, column) pairs: a sweep then dropped NOT NULL from all
+    -- 120 non-key columns one at a time and 84 of them passed. Two reasons that matters more
+    -- than it sounds, and neither is "a NULL where a value was expected":
+    --
+    --   * **A NOT NULL is what makes a sibling CHECK bite.** `amounts_sane` on an approval
+    --     evaluates to NULL and therefore passes once `list_amount_minor` is nullable, so
+    --     "an override cannot exceed the list price" stops being enforced -- and
+    --     `_check_approval` then raises on None and answers 500.
+    --   * **MATCH SIMPLE.** A NULL in *any* column of a composite foreign key skips the whole
+    --     check, so dropping NOT NULL from `cat_prices.price_book_id` or
+    --     `cat_price_resolutions.price_id` silently switches off a tenant-carrying parent
+    --     reference. Check 69 compares the foreign-key *set* and cannot see it.
+    WITH expected(tbl, cols) AS (VALUES
+        ('cat_bundle_fulfilments',
+         'bundle_id,correlation_id,fulfilment_id,idempotency_key,'
+         'order_reference,outcome,quantity,recorded_at,recorded_by,'
+         'tenant_id,variant_id'),
+        ('cat_bundle_items',
+         'bundle_id,correlation_id,created_at,created_by,'
+         'fulfilment_kind,quantity,tenant_id,variant_id'),
+        ('cat_bundles',
+         'bundle_id,correlation_id,created_at,created_by,product_id,'
+         'status,tenant_id,version'),
+        ('cat_coupon_redemptions',
+         'correlation_id,coupon_id,currency,discount_minor,'
+         'idempotency_key,promotion_id,redeemed_at,redeemed_by,'
+         'redemption_id,tenant_id'),
+        ('cat_coupons',
+         'code,correlation_id,coupon_id,created_at,created_by,'
+         'promotion_id,status,tenant_id'),
+        ('cat_discount_approvals',
+         'approval_id,approved_at,approved_by,correlation_id,currency,'
+         'discount_bp,expires_at,list_amount_minor,'
+         'override_amount_minor,reason,request_id,requested_by,'
+         'tenant_id,variant_id'),
+        ('cat_discount_requests',
+         'correlation_id,currency,list_amount_minor,'
+         'override_amount_minor,reason,request_id,requested_at,'
+         'requested_by,tenant_id,variant_id'),
+        ('cat_eligibility_rules',
+         'correlation_id,created_at,created_by,promotion_id,rule_id,'
+         'rule_kind,tenant_id'),
+        ('cat_price_books',
+         'channel,correlation_id,created_at,created_by,currency,'
+         'customer_segment,display_name,effective_from,price_book_id,'
+         'price_book_key,priority,status,tenant_id'),
+        ('cat_price_resolutions',
+         'applied_promotions,channel,correlation_id,currency,'
+         'customer_segment,discount_minor,explanation,'
+         'final_amount_minor,list_amount_minor,policy_version,'
+         'price_book_id,price_id,quantity,rejected_promotions,'
+         'requested_by,resolution_id,resolved_at,tenant_id,variant_id'),
+        ('cat_prices',
+         'amount_minor,correlation_id,created_at,created_by,currency,'
+         'effective_from,price_book_id,price_id,tenant_id,variant_id'),
+        ('cat_product_texts',
+         'correlation_id,display_name,locale,product_id,tenant_id,'
+         'updated_at,updated_by'),
+        ('cat_products',
+         'correlation_id,created_at,created_by,merchandising_rank,'
+         'product_id,product_key,product_type,status,tenant_id,'
+         'updated_at,version'),
+        ('cat_promotions',
+         'approval_threshold_bp,correlation_id,created_at,created_by,'
+         'display_name,effective_from,priority,promotion_id,'
+         'promotion_key,promotion_kind,stacking_group,status,tenant_id'),
+        ('cat_tax_categories',
+         'category_key,correlation_id,created_at,created_by,'
+         'display_name,tax_category_id,tenant_id'),
+        ('cat_variants',
+         'correlation_id,created_at,created_by,display_name,'
+         'merchandising_rank,product_id,status,tenant_id,updated_at,'
+         'variant_id,variant_key,version')
+    ), actual(tbl, cols) AS (
+        SELECT t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'cat\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 71 FAILED: a cat_ column lost its NOT NULL: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants: COM-02-R07 and paragraph 10220's two
+-- insert-only tables.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.cat_prices SET amount_minor = 1
+        WHERE price_id = 'cccccccc-1000-4000-8000-000000000005';
+        RAISE EXCEPTION 'CHECK 71 FAILED: a price amount was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.cat_price_resolutions SET final_amount_minor = 1
+        WHERE resolution_id = 'cccccccc-1000-4000-8000-00000000000d';
+        RAISE EXCEPTION 'CHECK 71 FAILED: a stored resolution was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.cat_price_resolutions SET explanation = ARRAY['nothing to see']
+        WHERE resolution_id = 'cccccccc-1000-4000-8000-00000000000d';
+        RAISE EXCEPTION 'CHECK 71 FAILED: a stored explanation was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.cat_discount_approvals SET approved_by = requested_by
+        WHERE approval_id = 'cccccccc-1000-4000-8000-00000000000c';
+        RAISE EXCEPTION 'CHECK 71 FAILED: an approval''s approver was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.cat_eligibility_rules SET amount_minor = 1
+        WHERE rule_id = 'cccccccc-1000-4000-8000-000000000007';
+        RAISE EXCEPTION 'CHECK 71 FAILED: an eligibility rule was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.cat_coupon_redemptions SET discount_minor = 1
+        WHERE redemption_id = 'cccccccc-1000-4000-8000-000000000009';
+        RAISE EXCEPTION 'CHECK 71 FAILED: a redemption was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.cat_price_resolutions
+        WHERE resolution_id = 'cccccccc-1000-4000-8000-00000000000d';
+        RAISE EXCEPTION 'CHECK 71 FAILED: a stored resolution was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+
+
+-- ---------------------------------------------------------------- 72. the cat_ constraints
+-- Every CHECK constraint and every unique index on this module's tables, generated from the
+-- catalogue of constraints that exist rather than from the ones somebody thought to write
+-- down. The two rules the last four review rounds paid for:
+--
+--   * **Each case sets every other column so the row violates exactly one rule.** A case that
+--     passes because a *sibling* constraint fired first proves nothing about the one it names.
+--   * **An equality needs a case per side, and a `coalesce` needs a NULL case.** A blank
+--     string proves the `btrim`; only NULL proves the `coalesce`.
+--   * **Every parent a case names is seeded.** PostgreSQL evaluates a CHECK before the
+--     foreign-key trigger, so a case naming a row that does not exist passes for the wrong
+--     reason -- and keeps passing with its own CHECK dropped, as a foreign_key_violation the
+--     handler does not catch. MOD-014 shipped three of those.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+
+-- Two fixtures the seed does not carry, rolled back with the rest of this block. A second
+-- product, because the seeded one already has a bundle and `cat_bundles` admits one per
+-- product -- so every bundle case would otherwise prove the unique index. And a second
+-- variant holding a SKU, because the seeded variant has none and a partial unique index on a
+-- column nothing fills can never be reached.
+INSERT INTO plt01.cat_products
+    (tenant_id, product_id, product_key, product_type, tax_category_id, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000001',
+        'other.product', 'service', 'cccccccc-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.cat_variants
+    (tenant_id, variant_id, product_id, variant_key, display_name, sku, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000002',
+        'cccccccc-1000-4000-8000-000000000002', 'sku.holder', 'Holds a stock code', 'SKU-1',
+        '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+-- And an undecided request, because the seeded one already has its approval and one decision
+-- per request is itself a constraint: every other approval case would otherwise prove that
+-- unique index instead of the constraint it names.
+INSERT INTO plt01.cat_discount_requests
+    (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor, currency,
+     reason, requested_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003',
+        'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 'JOD', 'undecided',
+        '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+-- A seeded resolution already spends the seeded approval, so the single-use index has
+-- something to collide with.
+INSERT INTO plt01.cat_price_resolutions
+    (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment, quantity,
+     resolved_at, list_amount_minor, discount_minor, final_amount_minor, currency,
+     explanation, policy_version, approval_id, requested_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003',
+        'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005',
+        'pos', 'any', 1, now(), 45000, 5000, 40000, 'JOD',
+        ARRAY['list_price: 45000'], 1, 'cccccccc-1000-4000-8000-00000000000c',
+        '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+
+DO $$
+BEGIN
+    -- A category key that is not a key names a regime nothing can resolve.
+    BEGIN
+        INSERT INTO plt01.cat_tax_categories
+            (tenant_id, category_key, display_name, jurisdiction_note, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Standard Rate', 'Standard', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a tax category took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name is a regime nobody can pick in a list.
+    BEGIN
+        INSERT INTO plt01.cat_tax_categories
+            (tenant_id, category_key, display_name, jurisdiction_note, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'reduced', '  ', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a tax category took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank jurisdiction note is neither a note nor its absence.
+    BEGIN
+        INSERT INTO plt01.cat_tax_categories
+            (tenant_id, category_key, display_name, jurisdiction_note, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'reduced', 'Reduced', '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a tax category took a blank jurisdiction note';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One category per key.
+    BEGIN
+        INSERT INTO plt01.cat_tax_categories
+            (tenant_id, category_key, display_name, jurisdiction_note, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'standard', 'Standard Again', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second tax category took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A product key that is not a key breaks every export and integration that refers to it.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Personal Training', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A ninth product type is a product decision, not a migration.** The eight are
+    -- COM-02-R01's list, and a type decides which module fulfils the sale.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'subscription', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product took a type outside the eight';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three is a product nothing can move.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'archived', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A publication names who did it.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, now(), NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product was published by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of that equality: a publisher with no publication time.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product named a publisher but no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A published product has a publication**, or the catalogue cannot say when it became
+    -- sellable.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'published', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product reads published with no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A retired product has a retirement date.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'retired', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product reads retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And nothing else carries one, or a live product reads as withdrawn.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a draft product carried a retirement date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Retirement is the act that stops a product being sold**, so it names who, on the same
+    -- terms publication does.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'retired', 1000, NULL, NULL, now(), NULL, '33333333-3333-4333-8333-333333333333', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product was retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of that equality.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'retired', 1000, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product retirement carried no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A merchandising rank outside the range is a listing position nothing can sort.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000001, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product took an out-of-range rank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero would make the first optimistic-concurrency check compare against nothing.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, NULL, NULL, NULL, NULL, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One product per key.
+    BEGIN
+        INSERT INTO plt01.cat_products
+            (tenant_id, product_key, product_type, tax_category_id, status, merchandising_rank,
+             published_at, published_by, retired_at, retired_by,
+             retire_correlation_id, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'personal.training', 'service', 'cccccccc-1000-4000-8000-000000000001', 'draft', 1000, NULL, NULL, NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second product took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A locale that is not a language tag makes a localized listing unroutable.
+    BEGIN
+        INSERT INTO plt01.cat_product_texts
+            (tenant_id, product_id, locale, display_name, description, terms, updated_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'english', 'Training', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product text took a locale that is not a tag';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name is a product nobody can read in a list.
+    BEGIN
+        INSERT INTO plt01.cat_product_texts
+            (tenant_id, product_id, locale, display_name, description, terms, updated_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'fr', '  ', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product text took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank description is neither a description nor its absence.
+    BEGIN
+        INSERT INTO plt01.cat_product_texts
+            (tenant_id, product_id, locale, display_name, description, terms, updated_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'fr', 'Entrainement', '  ', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product text took a blank description';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the terms a member agrees to at the point of sale.
+    BEGIN
+        INSERT INTO plt01.cat_product_texts
+            (tenant_id, product_id, locale, display_name, description, terms, updated_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'fr', 'Entrainement', NULL, '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a product text took blank terms';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A variant key that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'Two Hours', 'Two hours', NULL, NULL, NULL, 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', '  ', NULL, NULL, NULL, 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the two.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', NULL, NULL, NULL, 'retired', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An entitlement quantity of zero is a pack that grants nothing**, which is a sale
+    -- nothing can fulfil.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', 0, NULL, NULL, 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant granted zero units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A term of zero days is a membership that ends before it starts.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', NULL, 0, NULL, 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took a term of zero days';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank SKU is not a stock code.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', NULL, NULL, '  ', 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took a blank sku';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A rank outside the range.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', NULL, NULL, NULL, 'active', -1, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took an out-of-range rank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'double', 'Two hours', NULL, NULL, NULL, 'active', 1000, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a variant took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One variant per key within a product.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'single', 'Two hours', NULL, NULL, NULL, 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second variant took the same key in one product';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **A SKU identifies one variant**, which is the only thing it is for.
+    BEGIN
+        INSERT INTO plt01.cat_variants
+            (tenant_id, product_id, variant_key, display_name, entitlement_quantity, term_days,
+             sku, status, merchandising_rank, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'another', 'Two hours', NULL, NULL, 'SKU-1', 'active', 1000, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: two variants took the same sku';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A book key that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Other Book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', '  ', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A currency that is not an ISO code** is a book whose amounts mean nothing.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'jod', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A channel outside the seven is a book nothing routes to.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'carrier_pigeon', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A segment that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'Corporate', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took a segment that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'live', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A window that closes before it opens.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2025-01-01 00:00:00+00', 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A priority outside the range.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 1001, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book took an out-of-range priority';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An activation names who did it, and under which correlation.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', now(), NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book was activated by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of that equality.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book named an activator but no activation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An active book has an activation**, or nobody can say who switched the tenant's
+    -- prices on.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.book', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'active', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price book reads active with no activation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One book per key.
+    BEGIN
+        INSERT INTO plt01.cat_price_books
+            (tenant_id, price_book_key, display_name, currency, channel, customer_segment,
+             effective_from, effective_to, priority, status, activated_at,
+             activated_by, activate_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'standard.jod', 'Other', 'JOD', 'any', 'any', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, 0, 'draft', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second price book took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **A negative price is money flowing the wrong way.** Zero is a real price -- a free
+    -- trial variant -- and negative is not.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', -1, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price was negative';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd figure is a 422 rather than an overflow reaching the caller as a 500,
+    -- which MOD-011 and MOD-012 each shipped once.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000000000001, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price exceeded the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'jod', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A window that closes before it opens.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', TIMESTAMPTZ '2025-01-01 00:00:00+00', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And one that closes at the instant it opens**, which is a price that can never be in
+    -- force. The boundary needs its own case: a window years backwards proves the drop and
+    -- not the `>`.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price window was zero-length';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A supersession names who withdrew the price.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, 'cccccccc-1000-4000-8000-000000000005', now(), NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price was superseded by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: an actor with no supersession.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD', TIMESTAMPTZ '2026-02-01 00:00:00+00', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price named a withdrawing actor but no supersession';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A price cannot supersede itself**, which would make the chain that answers "what was
+    -- this on the fourteenth" a loop. The three supersession-attribution columns are set
+    -- because `cat_prices_supersession_attributed` -- added in the same round as this comment,
+    -- to close a review finding -- fires on a row that names a replacement and no actor. With
+    -- them left out the case passed on that sibling and kept passing with `not_self` dropped.
+    -- Found by re-running the sweep after the schema change, which is the only thing that sees
+    -- this: a reader of the new constraint has no reason to look at a case that predates it.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_id, price_book_id, variant_id, amount_minor, currency,
+             effective_from, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'cccccccc-3000-4000-8000-000000000001',
+                'cccccccc-1000-4000-8000-000000000004',
+                'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD',
+                TIMESTAMPTZ '2026-03-01 00:00:00+00',
+                'cccccccc-3000-4000-8000-000000000001', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a price superseded itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One price per variant per book per start instant.** Two would make the resolution
+    -- depend on which row the planner returned first, and deterministic is the requirement.
+    BEGIN
+        INSERT INTO plt01.cat_prices
+            (tenant_id, price_book_id, variant_id, amount_minor, currency, effective_from,
+             effective_to, superseded_by, superseded_at, superseded_by_actor,
+             supersede_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000003', 1000, 'JOD', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second price took the same start in one book';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A promotion key that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Other Promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', '  ', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A kind outside COM-02-R04's five plus manual.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'magic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A percentage or an amount, never both.** A reader of a receipt has to be able to say
+    -- which.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, 500, 'JOD', 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion was both a percentage and an amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And never neither, which is a promotion that discounts nothing.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', NULL, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion was neither a percentage nor an amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fixed amount carries its currency.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', NULL, 500, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fixed-amount promotion carried no currency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a percentage does not, because a currency on one reads as a restriction nobody
+    -- applies.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, 'JOD', 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a percentage promotion carried a currency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', NULL, 500, 'jod', 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A discount above 100% is money flowing to the customer**, which is what a percentage
+    -- over 10000 basis points would mean.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 10001, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion discounted more than the whole price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And zero percent is a promotion that does nothing.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 0, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion discounted nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fixed amount of zero, likewise.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', NULL, 0, 'JOD', 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fixed-amount promotion discounted nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd fixed amount.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', NULL, 1000000000001, 'JOD', 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fixed-amount promotion exceeded the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A stacking group that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'Default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took a stacking group that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A priority outside the range.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', -1001, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took an out-of-range priority';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An approval threshold outside the basis-point range.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 10001, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took an out-of-range approval threshold';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'paused', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An activation names who did it.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', now(), NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion was activated by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of that equality.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, '33333333-3333-4333-8333-333333333333', TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion named an activator but no activation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An active promotion has an activation**, or nobody can say when it went live.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'active', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion reads active with no activation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A window that closes before it opens.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.promo', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2025-01-01 00:00:00+00', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a promotion window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One promotion per key.
+    BEGIN
+        INSERT INTO plt01.cat_promotions
+            (tenant_id, promotion_key, display_name, promotion_kind, percent_bp, amount_minor,
+             currency, stacking_group, priority, approval_threshold_bp, status,
+             activated_at, activated_by, effective_from, effective_to, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'spring.ten', 'Other', 'automatic', 1000, NULL, NULL, 'default', 0, 0, 'draft', NULL, NULL, TIMESTAMPTZ '2026-01-01 00:00:00+00', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second promotion took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A minimum spend of zero is a condition that is always met.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'minimum_spend', 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an eligibility rule took a minimum spend of zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd one.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'minimum_spend', 1000000000001, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an eligibility rule exceeded the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A usage limit of zero is a coupon nobody may ever use.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'max_total_redemptions', NULL, 0, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an eligibility rule took a usage limit of zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank segment value is a condition matching nothing.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'customer_segment', NULL, NULL, '  ', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an eligibility rule took a blank text value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blackout window that runs backwards.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'blackout_dates', NULL, NULL, NULL, DATE '2026-06-01', DATE '2026-01-01', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an eligibility rule blackout ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Each kind carries the operand it needs and no other.** A rule with the wrong operand
+    -- is one the evaluator reads as vacuous, which is the direction that silently grants a
+    -- discount nobody meant to give.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'minimum_spend', NULL, 5, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a minimum-spend rule carried a quantity instead of an amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The same, from the other kind's side.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'customer_segment', 5000, NULL, 'corporate', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a segment rule carried an amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blackout with only one end.
+    BEGIN
+        INSERT INTO plt01.cat_eligibility_rules
+            (tenant_id, promotion_id, rule_kind, amount_minor, quantity, text_value, date_from,
+             date_to, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'blackout_dates', NULL, NULL, NULL, DATE '2026-06-01', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a blackout rule carried only one end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A code is uppercase and long enough to be unguessable**, which the shape enforces.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'save10', 'active', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon took a lowercase code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And not two characters.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'AB', 'active', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon took a code that is too short';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the two.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'expired', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A revocation names who.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'revoked', now(), NULL, 'leaked', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon was revoked by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And why, which is the half a blank string walks past when the `coalesce` is missing**
+    -- -- MOD-009's legal-hold finding, which this build has paid for four times.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'revoked', now(), '33333333-3333-4333-8333-333333333333', '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon was revoked for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a NULL reason, which is the half the `coalesce` exists for.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'revoked', now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon was revoked with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: a live coupon carries no revocation.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'active', NULL, '33333333-3333-4333-8333-333333333333', 'leaked', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a live coupon carried a revoker';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A revoked coupon has a revocation**, or a code reads as dead with nothing saying
+    -- when.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'revoked', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a coupon reads revoked with no revocation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an active one does not.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'OTHER10', 'active', now(), '33333333-3333-4333-8333-333333333333', 'leaked', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an active coupon carried a revocation time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One coupon per code.
+    BEGIN
+        INSERT INTO plt01.cat_coupons
+            (tenant_id, promotion_id, code, status, revoked_at, revoked_by, revoke_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000006', 'SPRING10', 'active', NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second coupon took the same code';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A redemption that discounts nothing is not a redemption.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, NULL, 'other-key-1', 0, 'JOD', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a redemption discounted nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd one.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, NULL, 'other-key-1', 1000000000001, 'JOD', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a redemption exceeded the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, NULL, 'other-key-1', 1000, 'jod', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a redemption took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank idempotency key is a retry nothing can recognise.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, NULL, '  ', 1000, 'JOD', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a redemption took a blank idempotency key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank order reference is neither a reference nor its absence.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, '  ', 'other-key-1', 1000, 'JOD', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a redemption took a blank order reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One redemption per idempotency key**, which is what stops a retried till request
+    -- taking a second use off a single-use coupon.
+    BEGIN
+        INSERT INTO plt01.cat_coupon_redemptions
+            (tenant_id, coupon_id, promotion_id, subject_id, order_reference, idempotency_key,
+             discount_minor, currency, resolution_id, redeemed_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000008', 'cccccccc-1000-4000-8000-000000000006', NULL, NULL, 'seed-redemption-1', 1000, 'JOD', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second redemption took the same idempotency key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A bundle status outside the three.
+    BEGIN
+        INSERT INTO plt01.cat_bundles
+            (tenant_id, product_id, status, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000001', 'live', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a bundle took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01.cat_bundles
+            (tenant_id, product_id, status, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000001', 'draft', 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a bundle took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One bundle definition per product**, or what a sale owes is ambiguous at the moment
+    -- somebody has already paid.
+    BEGIN
+        INSERT INTO plt01.cat_bundles
+            (tenant_id, product_id, status, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000002', 'draft', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second bundle took the same product';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A bundle item owing zero units owes nothing.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_items
+            (tenant_id, bundle_id, variant_id, quantity, fulfilment_kind, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-2000-4000-8000-000000000002', 0, 'entitlement_grant', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a bundle item owed zero units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd quantity.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_items
+            (tenant_id, bundle_id, variant_id, quantity, fulfilment_kind, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-2000-4000-8000-000000000002', 1001, 'entitlement_grant', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a bundle item exceeded the quantity bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fulfilment kind outside the five is an obligation nothing can deliver.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_items
+            (tenant_id, bundle_id, variant_id, quantity, fulfilment_kind, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-2000-4000-8000-000000000002', 1, 'telepathy', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a bundle item took an unknown fulfilment kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fulfilment of zero units delivers nothing.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 0, 'delivered', 'other-fulfilment-1', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fulfilment delivered zero units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd quantity.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1001, 'delivered', 'other-fulfilment-1', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fulfilment exceeded the quantity bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An outcome outside the four**, with a detail set so that the failure-explained
+    -- constraint beside it is not what fires. The first version left the detail NULL, so the
+    -- case passed on its sibling and kept passing with this constraint dropped -- which
+    -- admitted `pending`, an obligation `bundle_status` reads as neither met nor failed.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1, 'probably', 'other-fulfilment-1', NULL, 'waiting on the provider', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fulfilment took an unknown outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank order reference is a delivery nothing can be reconciled against.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', '  ', NULL, 1, 'delivered', 'other-fulfilment-1', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fulfilment took a blank order reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank external reference.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1, 'delivered', 'other-fulfilment-1', '  ', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a fulfilment took a blank external reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A failure says why**, or the member is owed something nobody can act on.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1, 'failed', 'other-fulfilment-1', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a failed fulfilment said nothing about why';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blank detail is not a reason -- the `coalesce` half.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1, 'cancelled', 'other-fulfilment-1', NULL, '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a cancelled fulfilment gave a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One record per handle.** Over-delivery is the arithmetic's job, in
+    -- `bundles.check_fulfilment`; this is what makes a retry free.
+    BEGIN
+        INSERT INTO plt01.cat_bundle_fulfilments
+            (tenant_id, bundle_id, variant_id, order_reference, subject_id, quantity, outcome,
+             idempotency_key, external_reference, detail, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000a', 'cccccccc-1000-4000-8000-000000000003', 'order-other-1', NULL, 1, 'delivered', 'seed-fulfilment-1', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second fulfilment took the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A request measured against a zero list price measures nothing.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 0, 0, 'JOD', 'goodwill', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request measured against a zero list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An absurd list price, which psycopg would otherwise answer as a 500.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 1000000000001, 1000000000001, 'JOD', 'goodwill', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request measured against an absurd list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A request to be charged more is not a discount request**, which is a different act
+    -- with different consequences.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 10000, 10001, 'JOD', 'goodwill', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request asked to charge more than the list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative override.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 10000, -1, 'JOD', 'goodwill', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request asked for a negative price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 'jod', 'goodwill', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank reason on the act that asks somebody to choose the price.
+    BEGIN
+        INSERT INTO plt01.cat_discount_requests
+            (tenant_id, variant_id, list_amount_minor, override_amount_minor, currency,
+             reason, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 'JOD', '  ', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a request stated a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An approval measured against a zero list price measures nothing.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 0, 0, 1, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval measured against a zero list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An override above the list price is charging more**, which is a different act with
+    -- different consequences and is not what COM-02 asks for.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 10001, 5000, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval allowed charging more than the list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative override.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, -1, 5000, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval allowed a negative price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an absurd list price, which psycopg would otherwise answer as a 500.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 1000000000001, 1000000000001, 5000, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval measured against an absurd list price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A discount basis-point figure outside the range.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 10001, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval took an out-of-range discount figure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And zero, which is an approval covering no discount at all.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 0, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval covered no discount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 5000, 'jod', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank reason on the one act that lets somebody choose the price.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 5000, 'JOD', '  ', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval stated a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An approver cannot approve their own request** -- MOD-008's separation of duties,
+    -- applied to the one act in this module that lets somebody choose the price. Both sides
+    -- of this comparison are now derived: `requested_by` is copied from the request row,
+    -- which recorded the requester's own session. While it came from the request *body* the
+    -- constraint compared one derived identity against one the approver typed, and all three
+    -- reviewers independently walked past it.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 5000, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: somebody approved their own discount request';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An approval expires.** Without a window it is a standing authority to sell that
+    -- variant at that price for ever.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-2000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 5000, 'JOD', 'goodwill', now() - interval '1 hour', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: an approval expired before it was granted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One decision per request**, so a refused-then-reasked discount is a new request.
+    BEGIN
+        INSERT INTO plt01.cat_discount_approvals
+            (tenant_id, request_id, variant_id, list_amount_minor, override_amount_minor,
+             discount_bp, currency, reason, expires_at, approved_by, requested_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-00000000000e', 'cccccccc-1000-4000-8000-000000000003', 10000, 5000, 5000, 'JOD', 'goodwill', now() + interval '12 hours', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second approval decided the same request';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A resolution for zero units prices nothing.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 0, now(), 0, 0, 0, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution priced zero units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A negative discount is a surcharge wearing a discount's name.** List and final need
+    -- no constraint of their own: this one and the bound below imply both.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, -1, 10001, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution carried a negative discount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The parts have to add up, in the row itself.** A resolution whose parts do not sum to
+    -- its total is the one defect nobody would spot by reading the number.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 8000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution did not add up';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And a discount cannot exceed what is being discounted**, which would be money flowing
+    -- to the customer.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 1000, 2000, -1000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution discounted more than the list amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not an ISO code.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 9000, 'jod', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution took a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An empty explanation is the whole control missing.** Paragraph 10220 requires the
+    -- resolution to return one, and a row with none is a receipt nobody can dispute.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution carried no explanation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A policy version of zero names no version of the rules.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 0, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution carried policy version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A segment that is not a key.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'Corporate', 1, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution took a segment that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And the other side of the arithmetic**, which charges the customer more than the
+    -- parts say. The first version had only the under-charging side, and a reviewer weakened
+    -- the constraint to `final >= list - discount` with the suite reporting 72/72: a stored
+    -- receipt reading "10% off 450.00" that charges 900.00, in a table with no UPDATE and no
+    -- DELETE grant. An equality needs a case per side, and this is the equality the migration
+    -- itself calls the one defect nobody would spot by reading the number.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 10000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution charged more than its parts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A quantity past the sane bound, which is the second conjunct of its constraint.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1000001, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution priced an absurd quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A channel outside the seven.** The snapshot is only reproducible if every field in it
+    -- is a value the resolver would accept; this column was free text while the price book's
+    -- was constrained.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'telepathy', 'any', 1, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a resolution recorded a channel that is not one';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An approval is spendable once**, and the uniqueness is here rather than on the
+    -- approval, which has no UPDATE grant and so cannot be marked consumed.
+    BEGIN
+        INSERT INTO plt01.cat_price_resolutions
+            (tenant_id, variant_id, price_book_id, price_id, channel, customer_segment,
+             quantity, resolved_at, list_amount_minor, discount_minor,
+             final_amount_minor, currency, applied_promotions,
+             rejected_promotions, explanation, policy_version, approval_id,
+             requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cccccccc-1000-4000-8000-000000000003', 'cccccccc-1000-4000-8000-000000000004', 'cccccccc-1000-4000-8000-000000000005', 'pos', 'any', 1, now(), 10000, 1000, 9000, 'JOD', ARRAY[]::text[], ARRAY[]::text[], ARRAY['list_price: 10000'], 1, 'cccccccc-1000-4000-8000-00000000000c', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 72 FAILED: a second resolution spent the same approval';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 72/72 checks passed'

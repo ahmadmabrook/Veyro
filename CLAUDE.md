@@ -29,6 +29,10 @@ backend/app/            service code
                         planes and snapshots the definition into the install
   notifications/        MOD-013: templates, preferences and delivery decide; service.py
                         authors the message and never sends it
+  people/               MOD-014: visibility.py masks, dedup, merge and timeline decide;
+                        service.py takes the gate's masked-field list as a required argument
+  catalog/              MOD-016: pricing.py, promotions.py, products.py and bundles.py
+                        decide; service.py redeems a coupon in the resolution's transaction
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -1574,16 +1578,240 @@ Known gaps, deliberate:
   every reader has to follow it; `merge.survivor_of` is the walk, and no other module calls it
   because no other module exists yet.
 
-**Next.** MOD-016 (Catalog & Pricing Pilot) and MOD-019 (Scheduling Pilot) are the first Pilot
-modules MOD-014 unblocks; MOD-017 (Commercial Core) needs MOD-016 first. Nothing in the
+**MOD-016 (COM-02 catalog, pricing, promotions and bundles) -- implemented, gated and
+reviewed.** Sixteen `cat_` tables in `plt01` under the same forced RLS, `app/catalog/` beside
+them, and twenty-four HTTP routes. Working: a product catalogue over COM-02-R01's eight types
+with localized text and merchandising order; price books matching on COM-02-R02's dimensions;
+time-bounded prices whose figures no runtime role may edit; promotions with eligibility rules,
+stacking groups and approval thresholds; coupons with usage limits counted from an insert-only
+ledger; a two-party discount request and approval; deterministic price resolution with a stored
+explanation; and bundles with fulfilment obligations, partial delivery and reversal. Seven
+events are produced. Proven: isolation checks 67-72, mutation-tested in two rounds -- 431 before the
+review and 483 after it, of which 482 were caught by the check that guards what was broken and
+one was a no-op statement granting a privilege the role already held; 50 domain unit tests with
+no database; 43 HTTP tests.
+
+Six decisions carry the module:
+
+- **A price's figures are never updated, and the privilege is what says so.** `cat_prices`
+  carries UPDATE on the four supersession columns and nothing else, so an order resolved last
+  March re-derives to the same figure a year later because the row it read cannot have changed.
+  `cat_prices_one_per_start` makes the choice between two rows deterministic rather than
+  planner-dependent.
+- **A resolution is a receipt, insert-only in full.** Three constraints hold its arithmetic in
+  the row: the parts add up, the discount does not exceed what is being discounted, and the
+  discount is not negative. Paragraph 10220 requires the resolution to return an explanation; a
+  row with an empty one is refused by the schema.
+- **A coupon is redeemed in the same transaction as the resolution it discounts.** This is the
+  module's money correctness and it is the lesson MOD-010's `append_event` teaches: a control
+  and the state it bounds commit together, or the control is decoration.
+- **The two-party discount.** A request records what was asked and who asked, derived from their
+  session; an approval decides a request and copies every figure from it. `approved_by <>
+  requested_by` then compares two identities the server derived.
+- **An approval is spendable once and expires.** Single use is a partial unique index on the
+  resolution that cites it, because the approval table has no UPDATE grant and so cannot be
+  marked consumed.
+- **A bundle's deliveries are rows, and a mistake is reversed by another row.** `reversed`
+  subtracts, which is MOD-015's credit note applied to an obligation and the only correction
+  path a table with no UPDATE and no DELETE grant can have.
+
+**Three reviewers worked this module in parallel -- the schema, the Python, the request path --
+and all three returned CHANGES_REQUESTED. Twenty-seven blocking defects**, every one executed
+rather than reasoned about, and the largest single cause was one shape: **the module decided the
+price on one route and recorded the facts that bounded that price on other routes nobody had to
+call.** Carried forward as rules:
+
+- **A control and the state it bounds commit together, or the control is decoration.**
+  `resolve_price` applied a coupon's discount and read its usage count; only `redeem_coupon` --
+  a separate route the caller was free never to call -- wrote the ledger that count came from.
+  One single-use 90% code priced six sales on the routine till permission, and
+  `max_total_redemptions`, `max_per_subject` and every other usage rule were decorative on the
+  only path that sets a price. The permission catalogue's own justification for that permission
+  being routine said a redemption "cannot exceed the limits counted from the ledger beside it";
+  the discount that reached the customer did not go through a redemption at all.
+- **A separation of duties needs two acts, or it is unverifiable in principle.** `requested_by`
+  was a field on the approval body with no foreign key and no request record behind it, so all
+  three reviewers independently approved their own 99.99% override naming a requester who does
+  not exist -- and spent it in the same session. There was nothing a stricter check could have
+  consulted. MOD-009's `guardian_subject_id`, MOD-013's `bypass_policy_ref` and MOD-014's
+  guardian field are the same shape; this is the fourth, and the first where collapsing two
+  acts into one insert is what made it unfixable rather than merely unfixed.
+- **An authority with no expiry and no consumption is a bearer token.** `_check_approval`
+  verified the variant, the list amount and the depth, and then nothing ever happened to the
+  row: a one-off goodwill decision became a standing authority to sell that variant for 0.01,
+  five times over, exercisable by the cheapest permission in the module. It also ignored the
+  currency, so an approval reasoned and audited as "100.00 JOD down to 1.00 JOD" authorised the
+  same minor-unit counts in USD -- the one comparison MOD-015's money discipline forbids.
+- **A status selected and discarded is a control that does not exist.** `resolve_price` read
+  `p.status` into a variable it never used, so a product nobody had ever published sold and a
+  product explicitly retired went on selling. `catalog.product.publish` gated a flag and an
+  event and bought nothing on the sales path, and retirement -- the module's only stated way to
+  withdraw something -- had no effect at all. The unused select was the trace of the check that
+  was intended.
+- **Derive, never accept, reaches the dimensions that choose a price.** `customer_segment` and
+  `brand_id` were free strings on the resolve body, and a routine AAL-1 session took a 90%
+  reduction by sending `"customer_segment": "staff"` -- with the stored resolution citing the
+  staff book as its authority. MOD-008's finding, which this module had to learn separately.
+  The segment now comes from the subject's own MOD-014 tags and the brand from the location.
+- **A control decided by matching words in prose is a control anybody can edit away.**
+  `redeem_coupon` refused only if the reason text contained one of `("redeemed", "revoked",
+  "ended", "not started")`, which made four English words the whole enforcement of every usage
+  limit here: a draft promotion reads "is draft, not active" and matched none of them, so a
+  code on a campaign nobody activated redeemed while `/catalog/promotions/validate` said it
+  would not -- and a promotion keyed `extended.summer` contains "ended", so a benign rejection
+  naming it refused a legitimate redemption. `Eligibility.blocks_redemption` now asks the
+  inverse question, so a code nobody thought about refuses.
+- **A rule that cannot be evaluated must refuse.** `max_per_subject` was enforced only against
+  callers who volunteered a subject: `by_subject` reads 0 both for "never used it" and for
+  "nobody said who this is". `promotions.Usage.subject_known` is the distinction. And a usage
+  rule on a non-coupon promotion was inert by construction, since nothing writes a redemption
+  for a promotion reached without a code -- refused at the write now, because there is nowhere
+  else to say it.
+- **A guard that admits a state nothing can leave is worse than no guard.** The fulfilment
+  ledger carried `UNIQUE (order_reference, bundle_id, variant_id)`, which both
+  `bundles.outstanding` and `check_fulfilment` contradicted -- they count only `delivered` rows
+  and sum partial deliveries, neither of which that index allowed. A transient provider failure
+  recorded `failed` and the retry was refused for ever, with no UPDATE and no DELETE grant: the
+  member had paid, the obligation stood, and no call in the module could satisfy it.
+- **An irreversible act must not be declarable on a routine permission** -- MOD-013's rule,
+  recurring. A routine AAL-1 session recorded all ten sessions of a ten-session bundle as
+  delivered and the real fulfiller was then refused permanently. "The record it writes is
+  insert-only" was offered as why that was safe and was in fact what made it unrecoverable.
+- **Evidence with nobody's name on it answers nothing** -- the fourth module. Activating a price
+  book, the act that switches a tenant's prices on, recorded nobody: the table had no
+  activation columns at all while every sibling act in the module was attributed. So did
+  retiring a product and superseding a price, and neither published an event, so a consumer
+  tracking the catalogue saw things appear and never disappear.
+- **A value can carry anything, so nothing free-text goes in the outbox.** `bundle.fulfilled`
+  carried `order_reference`, caller free text, into the one store no erasure reaches. Third
+  occurrence after MOD-010's `cfg_exposures.subject_id` and MOD-013's `notification.failed`
+  reason.
+- **A second rounding rule is a pair of numbers that disagree on a receipt.**
+  `approve_discount` computed its basis-point figure with `round(... * 10_000 / list)` --
+  Python's banker's rounding on a float -- while every other figure in the module goes through
+  `money.round_half_up`. It disagreed with the resolver on ordinary inputs and overflowed
+  float's exact-integer range at the top of the allowed amount.
+
+Also found and fixed: an unneeded `approval_id` was stored unchecked, so a resolution that
+needed no approval could permanently cite an unrelated one and the table that *is* the audit
+read as though it had authorised a price it has nothing to do with; `publish_product` counted
+any non-superseded price including one in a draft or retired book or outside its window, so the
+till the check exists to protect could still stop working; an idempotency key reused across two
+different codes returned the first redemption with `repeated: True`, telling the caller the
+second coupon had been redeemed when it had not; an unknown channel answered 409 rather than
+422; a non-coupon promotion with no targeting rule applied to every sale in the tenant, which
+halved the price for every customer the moment somebody activated a staff discount; and
+`cat_bundle_items` was the only insert-only table in the module with no actor on it.
+
+**And the module's own prose claimed a control it did not have.** Three places said `cat_prices`
+"carries no UPDATE grant for any runtime role at all" while the grant included `effective_to` --
+the one column whose value decides whether a price is in force, so granting it was granting the
+power to withdraw a price with no record of who did it. Nothing in the service ever wrote it.
+`cat_price_books` had `priority` and `effective_to` granted and unwritten for the same reason,
+and both re-aim every price already written into the book. All three are out of the grants, and
+the header now says what the grant actually covers.
+
+**Four schema repairs came out of the mutation sweeps rather than the reviews**, which is the
+argument for running them:
+
+- **84 of 431 mutations were missed in the first round, and 80 were `DROP NOT NULL`.** Nothing
+  in 11,000 lines of isolation suite had ever read `attnotnull`, in any module, and check 71
+  carried a hand-written list of 37 (table, column) pairs. Two reasons it matters more than "a
+  NULL where a value was expected": a NOT NULL is what makes a sibling CHECK bite --
+  `amounts_sane` evaluates to NULL and therefore passes once `list_amount_minor` is nullable, so
+  "an override cannot exceed the list price" stops being enforced -- and **MATCH SIMPLE**, where
+  a NULL in any column of a composite foreign key skips the whole check, so dropping NOT NULL
+  from `cat_prices.price_book_id` silently switches off a tenant-carrying parent reference that
+  check 69's set comparison cannot see. The pin is now the whole catalogue, compared both ways.
+- **`cat_price_resolutions_adds_up` was proved on one side only.** A reviewer weakened it to
+  `final >= list - discount` and the suite reported 72/72: in that world `final_amount_minor`
+  has no upper bound, so a stored receipt reading "10% off 450.00" could charge 900.00, in a
+  table with no UPDATE and no DELETE grant. The one invariant the migration itself calls the
+  defect nobody would spot by reading the number.
+- **Two constraints were proved by a sibling.** `cat_bundle_fulfilments_outcome`'s case left
+  `detail` NULL, so `failure_explained` fired first -- and with the outcome domain dropped,
+  `pending` stores and `bundle_status` reads the obligation as neither met nor failed.
+  `cat_eligibility_rules_kind` was subsumed outright by `operand_matches_kind`, which names all
+  seven kinds: the repair was to delete the redundant constraint rather than to write a case
+  that cannot exist.
+- **The primary keys were unproven.** Their drops failed at mutation time because dependent
+  foreign keys block them, so the mutation never ran and the sweep recorded a false catch. They
+  need `CASCADE` to actually execute -- this file's own MOD-014 trap, one level up.
+
+Things worth knowing before extending it:
+
+- **`resolve_price` is the sale, not the quote.** It redeems the coupon it applies, so a caller
+  that wants to know what a code is worth without consuming it uses
+  `/catalog/promotions/validate`, which is a read with no side effect.
+- **`channel` is still the caller's word.** There is no server-side source for what kind of
+  client is calling, so a channel-scoped price book is only as trustworthy as the client. It is
+  bounded to the seven and recorded as a gap rather than papered over.
+- **A segmented price book is unreachable for an anonymous sale.** The segment comes from the
+  named subject's tags, so a walk-in with no person record cannot be given a corporate rate.
+  That is the correct direction: the alternative is letting the till say who it is selling to.
+- **There is no tax rate anywhere.** `cat_tax_categories` names a regime and carries no
+  percentage -- MOD-015's precedent, where `issue_invoice` takes a rate rather than inventing
+  one.
+- **A published product with no live price cannot be published**, and the check is over active
+  books and live windows rather than over any row at all.
+
+Known gaps, deliberate:
+
+- **Nothing sells anything.** This is the catalogue and the price; the order, the cart and the
+  payment are MOD-017's. `order_reference` is free text because the module that owns orders does
+  not exist, so a redemption or a fulfilment can cite a reference nothing resolves.
+- **No tax calculation.** A tax category is a classification waiting for an engine.
+- **No approval threshold by default.** `approval_threshold_bp` defaults to 0, which means
+  never, so paragraph 10220's "high discounts require explicit permission" is opt-in per
+  campaign: a 100% automatic promotion created with the default needs no approval at any depth.
+  Defensible as a product decision and worth saying out loud, because the control is off out of
+  the box.
+- **A price can be written with an arbitrary past `effective_from`.** The stored resolution is
+  immutable so a receipt stands, but a *re-derivation* of a historical order changes.
+  `catalog.price.write` is financial class, which is the only thing bounding it.
+- **No segments of the kind COM-02-R02 implies.** A customer segment is one tag key on a
+  person, chosen by lowest key when somebody has several. A richer segment -- a saved query, or
+  a tier derived from spend -- needs what PPL-01-R05 calls segments and MOD-014 does not have.
+- **A coupon's limit is serialised per code, not per tenant.** `FOR UPDATE` on the coupon row
+  closes the race the reviewers demonstrated; two different codes on one promotion still race
+  each other's `max_total_redemptions`, which is counted per promotion.
+- **Nothing expires anything on a schedule.** A promotion's window and a price's window are
+  read at resolution time and nothing sweeps them, which is the same missing worker runtime as
+  MOD-007's challenge sweep, MOD-009's retention sweep, MOD-010's relay, MOD-011's objectives,
+  MOD-012's rotations, MOD-013's digests and MOD-014's timeline projection. The eighth module
+  to want it, and here the absence is benign: an expired promotion stops applying because the
+  resolver reads the window, not because a sweep retired it.
+- **An approval's window is twelve hours and the sources state none.** `APPROVAL_VALID_FOR` is a
+  judgement -- a shift is the unit of time a till decision belongs to -- and it is a decision
+  somebody may want configurable.
+- **Five free-text columns are residue an erasure cannot reach**: the resolution's explanation
+  (which includes any override reason a caller typed), the request's and the approval's reasons,
+  and the fulfilment's detail, external reference and order reference. All declared in
+  `SUBJECT_COLUMNS`; closing it needs an erasure path into `plt01` for prose, which is a
+  different problem from the per-column tombstones MOD-014 added.
+- **Bundle fulfilment records what somebody says happened.** Nothing here grants an entitlement
+  or books a session, so the ledger is what COM-01 and OPS-01 will write to -- the same shape as
+  MOD-012's `validated` install state and MOD-014's contact verification, and for the same
+  reason.
+- **A `manual` promotion is storable and unreachable.** `_applicable_promotions` excludes it
+  along with `coupon`, because the whole meaning of the kind is "somebody applies this by hand"
+  and nothing in this module does. The manual path here is `pricing.override`, which needs a
+  recorded approval. Excluding it was a fix, not a gap: the first version excluded only
+  `coupon`, so a `manual` promotion applied automatically to every sale in the tenant -- the
+  defect a reviewer found for `staff_discount`, in the one kind no targeting rule could fix.
+
+**Next.** MOD-017 (Commercial Core: orders, carts, payments and refunds) is what MOD-016
+unblocks and is the natural next module -- it is also where `order_reference` stops being free
+text. MOD-019 (Scheduling Pilot) is unblocked by MOD-014 and independent of both. Nothing in the
 Foundation wave is left except MOD-006, the Compose Multiplatform qualification, which is a
 client-side proof the server plane does not need.
 
-Two things named rather than done remain open across the build: the platform plane is
+Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- and no worker runtime exists for the seven
-schedules that want one, which MOD-011 makes the most pressing because an objective nobody
-evaluates raises no alert.
+scopes a tenant may hand to a third party -- no worker runtime exists for the eight schedules
+that want one, which MOD-011 makes the most pressing because an objective nobody evaluates
+raises no alert, and there is no key vault, which is what MOD-009's crypto-shred, MOD-007's
+TOTP seeds and MOD-012's inbound webhook signatures are all waiting on.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and
@@ -1593,7 +1821,17 @@ five modules in the first place.
 
 MOD-014 also left a counterpart for MOD-013's unverifiable `recipient_id`: `ppl_identity_links`
 now relates an identity to a person, so a notification could be bound to a person record rather
-than to a caller-supplied uuid. Nothing wires the two together yet.
+than to a caller-supplied uuid. Nothing wires the two together yet. **MOD-016 is the first
+module to read MOD-014's tags for a decision of its own** -- the customer segment that chooses a
+price book -- which is the shape the rest of that wiring will take.
+
+**The recurring lesson across the last four reviews, stated once.** Every module since MOD-011
+has shipped at least one control keyed on a value the caller supplies, shape-checked and never
+checked for correspondence with anything. MOD-016 shipped four of them and two were worse than
+the earlier ones: a separation of duties that no stricter check could have rescued, because
+there was no second act to compare against, and a usage limit whose counter was never moved by
+the act it bounded. **The question to ask of any control is not "is this field validated" but
+"what did the server derive, and did the thing I am bounding write the state I am reading".**
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

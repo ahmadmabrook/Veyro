@@ -306,6 +306,44 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("relationship.created", 1, "MOD-014", "restricted",
        ("from_person_id", "to_person_id", "kind"),
        "A relationship between two people was recorded"),
+
+    # ---------------------------------------------------------------- MOD-016, COM-02
+    #
+    # **No amount is in any of these.** A price is commercially sensitive and the outbox is the
+    # store MOD-009's registry declares unreachable, so what travels is the identifiers and the
+    # shape of the change -- a consumer that needs the figure reads it from `cat_prices`, under
+    # the permission that gates it. `price.changed` says a price changed and from when, not what
+    # it changed to.
+    _e("product.published", 1, "MOD-016", "confidential",
+       ("product_id", "product_key", "product_type"),
+       "A product became sellable on every channel"),
+    # The withdrawal half. Publication was announced and retirement was not, which left a
+    # consumer tracking the catalogue seeing things appear and never disappear.
+    _e("product.retired", 1, "MOD-016", "confidential",
+       ("product_id", "product_key"),
+       "A product was withdrawn and can no longer be sold"),
+    _e("price.changed", 1, "MOD-016", "confidential",
+       ("price_id", "price_book_id", "variant_id", "currency", "effective_from"),
+       "A new price was written; the amount is not in the payload"),
+    # Likewise: withdrawing a price *is* a price change, and a consumer of `price.changed`
+    # that only saw the replacement appear would never see the row it replaced stop applying.
+    _e("price.withdrawn", 1, "MOD-016", "confidential",
+       ("price_id", "price_book_id", "variant_id", "replacement_price_id"),
+       "A price was superseded and no longer applies"),
+    _e("promotion.activated", 1, "MOD-016", "confidential",
+       ("promotion_id", "promotion_key"),
+       "A promotion became live"),
+    _e("coupon.redeemed", 1, "MOD-016", "confidential",
+       ("coupon_id", "promotion_id", "redemption_id", "currency"),
+       "A coupon code was redeemed"),
+    # **No `order_reference`.** It is caller free text with no shape constraint, and the
+    # outbox is the one store in this build no erasure reaches -- MOD-010's
+    # `cfg_exposures.subject_id` and MOD-013's `notification.failed.reason` are the same
+    # finding: the restricted-field rule reads declared *names* and a value carries anything.
+    # A consumer that needs the order reads it from `cat_bundle_fulfilments`.
+    _e("bundle.fulfilled", 1, "MOD-016", "confidential",
+       ("bundle_id", "variant_id", "fulfilment_id", "outcome"),
+       "A bundle item was recorded as delivered, failed, cancelled or reversed"),
 ])
 
 
