@@ -453,22 +453,31 @@ BEGIN
         RAISE EXCEPTION 'CHECK 17 FAILED: the table owner read % cfg_flags rows',
             (SELECT count(*) FROM plt01.cfg_flags);
     END IF;
-    -- relkind 'r' only: pg_class also holds this schema's indexes, and an index never carries
-    -- row security, so matching on the name alone reports every table as unprotected.
+    -- Ordinary and partitioned tables ('r' and 'p'): pg_class also holds this schema's indexes,
+    -- and an index never carries row security, so matching on the name alone reports every
+    -- table as unprotected.
+    -- **'p' is not optional, and leaving it out is how a sweep passes vacuously.** A
+    -- partitioned table is relkind 'p'; it holds no storage of its own and is what rows are
+    -- addressed through, so a sweep testing only 'r' reports every check passing while
+    -- CREATE TABLE ... PARTITION BY LIST (tenant_id) carries unprotected rows under this very
+    -- prefix. A reviewer demonstrated it against MOD-013's sweep with a table holding
+    -- plaintext contact addresses, readable from another tenant's context and from none. The
+    -- filter had been copied forward through nine modules, so it is fixed in all of them at
+    -- once rather than in the module where it was found.
     FOR forced IN
         SELECT relforcerowsecurity FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'cfg\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'cfg\_%'
     LOOP
         IF NOT forced THEN
             RAISE EXCEPTION 'CHECK 17 FAILED: a cfg_ table does not FORCE row level security';
         END IF;
     END LOOP;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'cfg\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'cfg\_%'
           AND relrowsecurity AND relforcerowsecurity) <> 7 THEN
         RAISE EXCEPTION 'CHECK 17 FAILED: expected 7 cfg_ tables with RLS enabled and forced, got %',
             (SELECT count(*) FROM pg_class
-             WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
                AND relname LIKE 'cfg\_%' AND relrowsecurity AND relforcerowsecurity);
     END IF;
 END $$;
@@ -692,11 +701,11 @@ BEGIN
             (SELECT count(*) FROM plt01.bil_invoices);
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'bil\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'bil\_%'
           AND relrowsecurity AND relforcerowsecurity) <> 9 THEN
         RAISE EXCEPTION 'CHECK 22 FAILED: expected 9 bil_ tables with RLS enabled and forced, got %',
             (SELECT count(*) FROM pg_class
-             WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
                AND relname LIKE 'bil\_%' AND relrowsecurity AND relforcerowsecurity);
     END IF;
 END $$;
@@ -1074,21 +1083,21 @@ BEGIN
     -- would slip through; asking for zero unprotected tables needs no maintenance and catches
     -- the next one automatically.
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'iam'::regnamespace AND relkind IN ('r', 'p')
           AND NOT (relrowsecurity AND relforcerowsecurity)) <> 0 THEN
         RAISE EXCEPTION 'CHECK 28 FAILED: iam tables without forced RLS: %',
             (SELECT string_agg(relname, ', ') FROM pg_class
-             WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+             WHERE relnamespace = 'iam'::regnamespace AND relkind IN ('r', 'p')
                AND NOT (relrowsecurity AND relforcerowsecurity));
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r') < 7 THEN
+        WHERE relnamespace = 'iam'::regnamespace AND relkind IN ('r', 'p')) < 7 THEN
         RAISE EXCEPTION 'CHECK 28 FAILED: the iam schema is missing tables, so the sweep above proved nothing';
     END IF;
     -- Every iam table must be owned by the migrator. One owned by a superuser would ignore
     -- FORCE entirely, and the `RESET ROLE` in the platform migration makes that a live risk.
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'iam'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'iam'::regnamespace AND relkind IN ('r', 'p')
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 28 FAILED: an iam table is not owned by the migrator';
     END IF;
@@ -1570,21 +1579,21 @@ BEGIN
     SELECT string_agg(relname, ', '), count(*) FILTER (WHERE true)
     INTO unprotected, total
     FROM pg_class
-    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'sec\_%'
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'sec\_%'
       AND NOT (relrowsecurity AND relforcerowsecurity);
     IF unprotected IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 33 FAILED: sec_ tables without ENABLE and FORCE RLS: %',
             unprotected;
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
           AND relname LIKE 'sec\_%') < 9 THEN
         RAISE EXCEPTION 'CHECK 33 FAILED: fewer than 9 sec_ tables, so the sweep proved nothing';
     END IF;
     -- A table owned by a superuser ignores FORCE entirely, so the sweep above would be reading
     -- a flag that does not bind.
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'sec\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'sec\_%'
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 33 FAILED: a sec_ table is not owned by the migrator';
     END IF;
@@ -2218,19 +2227,19 @@ DECLARE
 BEGIN
     SELECT string_agg(relname, ', ') INTO unprotected
     FROM pg_class
-    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'evt\_%'
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'evt\_%'
       AND NOT (relrowsecurity AND relforcerowsecurity);
     IF unprotected IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 39 FAILED: evt_ tables without ENABLE and FORCE RLS: %',
             unprotected;
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
           AND relname LIKE 'evt\_%') < 5 THEN
         RAISE EXCEPTION 'CHECK 39 FAILED: fewer than 5 evt_ tables, so the sweep proved nothing';
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'evt\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'evt\_%'
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 39 FAILED: an evt_ table is not owned by the migrator';
     END IF;
@@ -2492,14 +2501,14 @@ BEGIN
     -- role outside the three expected ones holds anything at all. Read from `pg_class.relacl`
     -- for the same visibility reason as above.
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'evt\_%'
           AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
           AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
         RAISE EXCEPTION 'CHECK 42 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
     END IF;
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'evt\_%'
           AND acl.grantee <> 0
           AND pg_get_userbyid(acl.grantee)
@@ -2509,7 +2518,7 @@ BEGIN
     -- PUBLIC is grantee 0 in an ACL entry, and a PUBLIC grant would make every assertion above
     -- irrelevant.
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'evt\_%' AND acl.grantee = 0) <> 0 THEN
         RAISE EXCEPTION 'CHECK 42 FAILED: an evt_ table carries a PUBLIC grant';
     END IF;
@@ -3030,20 +3039,20 @@ DECLARE
 BEGIN
     SELECT string_agg(relname, ', ') INTO unprotected
     FROM pg_class
-    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'ops\_%'
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'ops\_%'
       AND NOT (relrowsecurity AND relforcerowsecurity);
     IF unprotected IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without ENABLE and FORCE RLS: %',
             unprotected;
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
           AND relname LIKE 'ops\_%') < 8 THEN
         RAISE EXCEPTION 'CHECK 44 FAILED: fewer than 8 ops_ tables, so the sweep proved nothing';
     END IF;
     -- A table owned by a superuser ignores FORCE entirely, so the flag above would not bind.
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'ops\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'ops\_%'
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 44 FAILED: an ops_ table is not owned by the migrator';
     END IF;
@@ -3057,7 +3066,7 @@ BEGIN
       ON p.schemaname = 'plt01' AND p.tablename = c.relname
      AND p.qual = '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
      AND p.with_check = p.qual
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'ops\_%' AND p.policyname IS NULL;
     IF unprotected IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without the exact tenant predicate in '
@@ -3170,7 +3179,7 @@ BEGIN
         SELECT count(*) AS n FROM pg_policies p
         WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
     ) counted
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'ops\_%' AND counted.n <> 1;
     IF extra IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without exactly one permissive policy: %',
@@ -3181,7 +3190,7 @@ BEGIN
     SELECT string_agg(c.relname, ', ') INTO extra
     FROM pg_class c
     JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'ops\_%'
       AND (SELECT attname FROM pg_attribute
            WHERE attrelid = c.oid AND attnum = i.indkey[0]) <> 'tenant_id';
@@ -3318,7 +3327,7 @@ DECLARE
 BEGIN
     SELECT string_agg(c.relname, ', ') INTO missing
     FROM pg_class c
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'ops\_%'
       AND NOT EXISTS (
           SELECT 1 FROM pg_constraint fk
@@ -3403,7 +3412,7 @@ BEGIN
     -- update a failure rather than an omission.
     SELECT string_agg(c.relname, ', ') INTO wrong
     FROM pg_class c
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'ops\_%'
       AND c.relname NOT IN ('ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
                             'ops_synthetic_results', 'ops_capacity_forecasts',
@@ -3424,7 +3433,7 @@ BEGIN
         JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0
                              AND NOT att.attisdropped AND att.attacl IS NOT NULL,
         LATERAL aclexplode(att.attacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'ops\_%'
           AND (acl.grantee = 0
                OR acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')
@@ -3435,14 +3444,14 @@ BEGIN
     END IF;
 
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'ops\_%'
           AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
           AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
         RAISE EXCEPTION 'CHECK 47 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
     END IF;
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'ops\_%'
           AND acl.grantee <> 0
           AND pg_get_userbyid(acl.grantee)
@@ -3451,7 +3460,7 @@ BEGIN
     END IF;
     -- PUBLIC is grantee 0, and a PUBLIC grant would make every assertion above irrelevant.
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'ops\_%' AND acl.grantee = 0) <> 0 THEN
         RAISE EXCEPTION 'CHECK 47 FAILED: an ops_ table carries a PUBLIC grant';
     END IF;
@@ -4210,18 +4219,18 @@ DECLARE
 BEGIN
     SELECT string_agg(relname, ', ') INTO bad
     FROM pg_class
-    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'int\_%'
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'int\_%'
       AND NOT (relrowsecurity AND relforcerowsecurity);
     IF bad IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without ENABLE and FORCE RLS: %', bad;
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
           AND relname LIKE 'int\_%') < 5 THEN
         RAISE EXCEPTION 'CHECK 49 FAILED: fewer than 5 int_ tables, so the sweep proved nothing';
     END IF;
     IF (SELECT count(*) FROM pg_class
-        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'int\_%'
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'int\_%'
           AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
         RAISE EXCEPTION 'CHECK 49 FAILED: an int_ table is not owned by the migrator';
     END IF;
@@ -4231,7 +4240,7 @@ BEGIN
       ON p.schemaname = 'plt01' AND p.tablename = c.relname
      AND p.qual = '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
      AND p.with_check = p.qual
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'int\_%' AND p.policyname IS NULL;
     IF bad IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without the exact tenant predicate in '
@@ -4243,7 +4252,7 @@ BEGIN
         SELECT count(*) AS n FROM pg_policies p
         WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
     ) counted
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'int\_%' AND counted.n <> 1;
     IF bad IS NOT NULL THEN
         RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without exactly one permissive policy: %',
@@ -4252,7 +4261,7 @@ BEGIN
     SELECT string_agg(c.relname, ', ') INTO bad
     FROM pg_class c
     JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'int\_%'
       AND (SELECT attname FROM pg_attribute
            WHERE attrelid = c.oid AND attnum = i.indkey[0]) <> 'tenant_id';
@@ -4458,7 +4467,7 @@ DECLARE
 BEGIN
     SELECT string_agg(c.relname, ', ') INTO missing
     FROM pg_class c
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'int\_%'
       AND NOT EXISTS (
           SELECT 1 FROM pg_constraint fk
@@ -4719,7 +4728,7 @@ BEGIN
 
     SELECT string_agg(c.relname, ', ') INTO wrong
     FROM pg_class c
-    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
       AND c.relname LIKE 'int\_%'
       AND c.relname NOT IN ('int_installs', 'int_connections', 'int_credential_refs',
                             'int_sync_cursors', 'int_connector_runs');
@@ -4729,21 +4738,21 @@ BEGIN
     END IF;
 
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'int\_%'
           AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
           AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
         RAISE EXCEPTION 'CHECK 53 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
     END IF;
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'int\_%' AND acl.grantee <> 0
           AND pg_get_userbyid(acl.grantee)
               NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator')) <> 0 THEN
         RAISE EXCEPTION 'CHECK 53 FAILED: an int_ table is granted to somebody unexpected';
     END IF;
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'int\_%' AND acl.grantee = 0) <> 0 THEN
         RAISE EXCEPTION 'CHECK 53 FAILED: an int_ table carries a PUBLIC grant';
     END IF;
@@ -4751,7 +4760,7 @@ BEGIN
         JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0
                              AND NOT att.attisdropped AND att.attacl IS NOT NULL,
         LATERAL aclexplode(att.attacl) acl
-        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'int\_%'
           AND (acl.grantee = 0
                OR acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')
@@ -4820,7 +4829,7 @@ SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
 DO $$
 BEGIN
     IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
-        WHERE c.relnamespace = 'plt01_platform'::regnamespace AND c.relkind = 'r'
+        WHERE c.relnamespace = 'plt01_platform'::regnamespace AND c.relkind IN ('r', 'p')
           AND c.relname LIKE 'int\_%'
           AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')) <> 0 THEN
         RAISE EXCEPTION 'CHECK 53 FAILED: a runtime role is granted the definition catalogue';
@@ -5655,4 +5664,1708 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 54/54 checks passed'
+
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-013)
+-- A notification carries the text a tenant sent to one of its members, so a leak here is one
+-- tenant reading another's correspondence -- the most personal thing this build renders.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.ntf_templates
+    (tenant_id, template_id, template_key, version, category, channel, locale, subject, body,
+     variables, status, authored_by, correlation_id, approved_at, approved_by, published_at)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1,
+        'transactional', 'email', 'en', 'Invoice {{ number }}',
+        'Your invoice {{ number }} is ready.', ARRAY['number'], 'published', :'actor',
+        :'actor', now(), '44444444-4444-4444-8444-444444444444', now());
+INSERT INTO plt01.ntf_preferences
+    (tenant_id, preference_id, recipient_id, category, channel, allowed, digest_mode, set_by,
+     correlation_id)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000002',
+        '55555555-5555-4555-8555-555555555555', 'marketing', 'email', false, 'immediate',
+        :'actor', :'actor');
+INSERT INTO plt01.ntf_channel_policies
+    (tenant_id, policy_id, channel, enabled, fallback_channel, cost_per_message_minor,
+     currency, set_by, correlation_id)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000003', 'email', true, 'sms', 12, 'EUR',
+        :'actor', :'actor');
+INSERT INTO plt01.ntf_notifications
+    (tenant_id, notification_id, template_id, template_key, template_version, category,
+     channel, locale, rendered_subject, rendered_body, recipient_id, address_digest,
+     priority, status, decision_reason, idempotency_key, requested_by, correlation_id)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000004',
+        'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email',
+        'en', 'Invoice INV-1', 'Your invoice INV-1 is ready.',
+        '55555555-5555-4555-8555-555555555555', repeat('a', 64), 'normal', 'requested',
+        'no_preference_stops_it', 'seed-invoice-1', :'actor', :'actor');
+INSERT INTO plt01.ntf_deliveries
+    (tenant_id, delivery_id, notification_id, channel)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000005',
+        'aaaaaaaa-1000-4000-8000-000000000004', 'email');
+INSERT INTO plt01.ntf_suppressions
+    (tenant_id, suppression_id, channel, address_digest, reason, correlation_id)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000006', 'email', repeat('b', 64),
+        'bounced', :'actor');
+INSERT INTO plt01.ntf_digests
+    (tenant_id, digest_id, recipient_id, category, channel, window_start, window_end)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000007',
+        '55555555-5555-4555-8555-555555555555', 'coaching', 'email',
+        TIMESTAMPTZ '2026-11-14 00:00:00+00', TIMESTAMPTZ '2026-11-15 00:00:00+00');
+INSERT INTO plt01.ntf_digest_entries (tenant_id, digest_id, notification_id)
+VALUES (:'tenant_a', 'aaaaaaaa-1000-4000-8000-000000000007',
+        'aaaaaaaa-1000-4000-8000-000000000004');
+INSERT INTO plt01.ntf_recipient_channels
+    (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id)
+VALUES (:'tenant_a', '55555555-5555-4555-8555-555555555555', 'email', repeat('9', 64),
+        :'actor', :'actor');
+COMMIT;
+
+-- Tenant B holds one template of its own, so a leaked predicate shows up as a count above the
+-- expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.ntf_templates
+    (tenant_id, template_key, version, category, channel, locale, subject, body, variables,
+     authored_by, correlation_id)
+VALUES (:'tenant_b', 'welcome.sent', 1, 'operational', 'email', 'is', 'Velkomin',
+        'Velkomin {{ name }}.', ARRAY['name'], :'actor', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 55. ntf tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ntf_preferences', 'ntf_channel_policies',
+                               'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                               'ntf_digests', 'ntf_digest_entries',
+                               'ntf_recipient_channels']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 55 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.ntf_templates) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: tenant B sees % templates, expected its own 1',
+            (SELECT count(*) FROM plt01.ntf_templates);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.ntf_templates WHERE template_key = 'invoice.issued') THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: tenant B read tenant A''s template';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.ntf_templates) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_preferences) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_channel_policies) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_notifications) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_deliveries) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_suppressions) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_digests) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_digest_entries) <> 1
+       OR (SELECT count(*) FROM plt01.ntf_recipient_channels) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: tenant A cannot see its own notification rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- The catalogue sweep: RLS on both halves of the policy, one permissive policy per table, the
+-- migrator as owner, a count guard, and a tenant-leading primary key. The full shape checks 44
+-- and 49 arrived at.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    bad text;
+BEGIN
+    SELECT string_agg(relname, ', ') INTO bad
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'ntf\_%'
+      AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: ntf_ tables without ENABLE and FORCE RLS: %', bad;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+          AND relname LIKE 'ntf\_%') < 9 THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: fewer than 8 ntf_ tables, so the sweep proved nothing';
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p') AND relname LIKE 'ntf\_%'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: an ntf_ table is not owned by the migrator';
+    END IF;
+    SELECT string_agg(c.relname, ', ') INTO bad
+    FROM pg_class c
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'plt01' AND p.tablename = c.relname
+     AND p.qual = '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
+     AND p.with_check = p.qual
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ntf\_%' AND p.policyname IS NULL;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: ntf_ tables without the exact tenant predicate in '
+            'both USING and WITH CHECK: %', bad;
+    END IF;
+    SELECT string_agg(c.relname || ' (' || n::text || ')', ', ') INTO bad
+    FROM pg_class c
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS n FROM pg_policies p
+        WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
+    ) counted
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ntf\_%' AND counted.n <> 1;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: ntf_ tables without exactly one permissive policy: %',
+            bad;
+    END IF;
+    SELECT string_agg(c.relname, ', ') INTO bad
+    FROM pg_class c
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ntf\_%'
+      AND (SELECT attname FROM pg_attribute
+           WHERE attrelid = c.oid AND attnum = i.indkey[0]) <> 'tenant_id';
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: ntf_ tables whose primary key does not lead with '
+            'tenant_id: %', bad;
+    END IF;
+END $$;
+COMMIT;
+
+-- The owner seat, then the worker seat, under another tenant's context and under none.
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ntf_templates', 'ntf_preferences', 'ntf_channel_policies',
+                               'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                               'ntf_digests', 'ntf_digest_entries',
+                               'ntf_recipient_channels']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 55 FAILED: the table owner read % rows of %, so FORCE RLS is off',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ntf_preferences', 'ntf_channel_policies',
+                               'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                               'ntf_digests', 'ntf_digest_entries',
+                               'ntf_recipient_channels']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 55 FAILED: the worker read % rows of tenant A in % from '
+                'tenant B''s context', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.ntf_templates) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 55 FAILED: the worker sees % templates in tenant B, expected 1',
+            (SELECT count(*) FROM plt01.ntf_templates);
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ntf_templates', 'ntf_preferences', 'ntf_channel_policies',
+                               'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                               'ntf_digests', 'ntf_digest_entries',
+                               'ntf_recipient_channels']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 55 FAILED: the worker read % rows of % with no tenant context',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 56. fail closed, ntf tables
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ntf_templates', 'ntf_preferences', 'ntf_channel_policies',
+                               'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                               'ntf_digests', 'ntf_digest_entries',
+                               'ntf_recipient_channels']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 56 FAILED: % returned % rows with no tenant context',
+                tbl, seen;
+        END IF;
+    END LOOP;
+    -- A notification written with no context is a message addressed to nobody's tenant, which
+    -- would read as belonging to whichever tenant's query found it.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest, status,
+             decision_reason, idempotency_key, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional',
+                'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555',
+                repeat('c', 64), 'requested', 'r', 'no-context-1',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 56 FAILED: a notification was authored with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'email', repeat('d', 64), 'bounced',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 56 FAILED: a suppression was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, set_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '55555555-5555-4555-8555-555555555555', 'coaching', 'email',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 56 FAILED: a preference was written into another tenant';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 57. cross-tenant parents
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest, status,
+             decision_reason, idempotency_key, requested_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional',
+                'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555',
+                repeat('e', 64), 'requested', 'r', 'borrowed-template-1',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 57 FAILED: a notification was rendered from another tenant''s '
+            'template';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries (tenant_id, notification_id, channel)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'aaaaaaaa-1000-4000-8000-000000000004', 'email');
+        RAISE EXCEPTION 'CHECK 57 FAILED: a delivery was attached to another tenant''s '
+            'notification';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ntf_digest_entries (tenant_id, digest_id, notification_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'aaaaaaaa-1000-4000-8000-000000000007',
+                'aaaaaaaa-1000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 57 FAILED: another tenant''s notification was folded into a '
+            'digest here';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- Every foreign key compared as a set, which is the shape check 51 ended up with after a
+-- reviewer dropped two that only a behavioural sample covered.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    missing text;
+BEGIN
+    WITH live AS (
+        SELECT c.conrelid::regclass::text || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum)
+               || ' -> ' || c.confrelid::regclass::text AS fk
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE c.contype = 'f' AND t.relname LIKE 'ntf\_%'
+          AND t.relnamespace = 'plt01'::regnamespace
+    ), expected(fk) AS (VALUES
+        ('plt01.ntf_templates: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_preferences: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_channel_policies: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_notifications: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_notifications: tenant_id,template_id -> plt01.ntf_templates'),
+        ('plt01.ntf_notifications: tenant_id,consent_record_id -> plt01.sec_consent_records'),
+        ('plt01.ntf_deliveries: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_deliveries: tenant_id,notification_id -> plt01.ntf_notifications'),
+        ('plt01.ntf_suppressions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_digests: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_digest_entries: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ntf_digest_entries: tenant_id,digest_id -> plt01.ntf_digests'),
+        ('plt01.ntf_digest_entries: tenant_id,notification_id -> plt01.ntf_notifications'),
+        ('plt01.ntf_recipient_channels: tenant_id -> plt01_platform.tenants'))
+    SELECT string_agg(fk, '; ') INTO missing FROM (
+        (SELECT fk FROM expected EXCEPT SELECT fk FROM live)
+        UNION ALL
+        (SELECT fk FROM live EXCEPT SELECT fk FROM expected)
+    ) differences;
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 57 FAILED: foreign keys differ from the expected set: %',
+            missing;
+    END IF;
+END $$;
+COMMIT;
+
+-- The registry reference behaviourally, for one table.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '44444444-4444-4444-8444-444444444444';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, set_by, correlation_id)
+        VALUES ('44444444-4444-4444-8444-444444444444', 'email',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 57 FAILED: a channel policy was set for an unregistered tenant';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ------------------------------------------- 58. this module holds no contact address
+-- **The control is the absence of a column**, as it was for MOD-012's credential references --
+-- and an absence is exactly what a later migration adds back without anybody noticing. Every
+-- table's column list is compared in full, not just the two that carry a digest, because the
+-- next migration's address will not be on the table that happens to be pinned.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.ntf_templates',
+         'approved_at,approved_by,authored_by,body,category,channel,correlation_id,'
+         'created_at,locale,published_at,retired_at,status,subject,template_id,'
+         'template_key,tenant_id,variables,version'),
+        ('plt01.ntf_preferences',
+         'allowed,category,channel,correlation_id,daily_cap,digest_mode,preference_id,'
+         'quiet_from,quiet_timezone,quiet_until,recipient_id,set_by,tenant_id,updated_at'),
+        ('plt01.ntf_channel_policies',
+         'channel,correlation_id,cost_per_message_minor,currency,enabled,fallback_channel,'
+         'policy_id,set_by,tenant_id,updated_at'),
+        ('plt01.ntf_notifications',
+         'address_digest,bypass_policy_ref,category,channel,consent_record_id,'
+         'correlation_id,decision_reason,idempotency_key,locale,notification_id,priority,'
+         'recipient_id,rendered_body,rendered_subject,requested_at,requested_by,'
+         'scheduled_for,status,template_id,template_key,template_version,tenant_id'),
+        ('plt01.ntf_deliveries',
+         'attempts,channel,created_at,delivered_at,delivery_id,dispatched_at,last_error,'
+         'max_attempts,next_attempt_at,notification_id,provider_ref,state,tenant_id'),
+        ('plt01.ntf_suppressions',
+         'address_digest,channel,correlation_id,detail,reason,recorded_at,recorded_by,'
+         'release_correlation_id,release_reason,released_at,released_by,suppression_id,'
+         'tenant_id'),
+        ('plt01.ntf_digests',
+         'category,channel,closed_at,created_at,digest_id,notification_count,recipient_id,'
+         'state,tenant_id,window_end,window_start'),
+        ('plt01.ntf_digest_entries',
+         'added_at,digest_id,notification_id,tenant_id'),
+        -- No address column here either: the binding is digest to recipient, and the thing
+        -- being bound is still only ever a digest.
+        ('plt01.ntf_recipient_channels',
+         'address_digest,bound_at,bound_by,channel,correlation_id,rebind_correlation_id,'
+         'rebind_reason,rebound_at,rebound_by,recipient_id,tenant_id'))
+    SELECT string_agg(e.tbl || ': ' || coalesce(a.actual, '(none)'), '; ') INTO wrong
+    FROM expected e
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = e.tbl::regclass AND att.attnum > 0 AND NOT att.attisdropped
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 58 FAILED: ntf_ columns are not the expected set, so a contact '
+            'address may now have somewhere to live: %', wrong;
+    END IF;
+
+    -- The table list has to cover the catalogue, so a ninth table is a failure rather than an
+    -- omission -- which is what check 47 was missing until a reviewer added a table and
+    -- watched the suite pass.
+    SELECT string_agg(c.relname, ', ') INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ntf\_%'
+      AND ('plt01.' || c.relname) NOT IN (
+          'plt01.ntf_templates', 'plt01.ntf_preferences', 'plt01.ntf_channel_policies',
+          'plt01.ntf_notifications', 'plt01.ntf_deliveries', 'plt01.ntf_suppressions',
+          'plt01.ntf_digests', 'plt01.ntf_digest_entries',
+          'plt01.ntf_recipient_channels');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 58 FAILED: ntf_ tables with no stated column list: %', wrong;
+    END IF;
+
+    -- And the two digests are digests. A column that admitted an address would make the
+    -- absence of an address column a naming convention, which is MOD-012's `vault_ref`
+    -- finding one module later.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'email', 'member@example.test',
+                'bounced', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 58 FAILED: an address was accepted where a digest belongs';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 59. notification privileges
+-- Two sentences in this module rest entirely on the privilege layer.
+--
+--   * **"Delivery failure never rewrites the authored message"** (paragraph 2474). The rendered
+--     subject and body, the recipient, the digest of their address, the category and the
+--     consent that permitted it carry no UPDATE grant at all; only the status and the schedule
+--     move.
+--   * **"Only an unsubscribe may be released."** `reason` carries no UPDATE, so a bounce cannot
+--     be relabelled an unsubscribe and then lifted -- which is the route around the constraint
+--     that refuses the lift itself.
+--
+-- Swept per column and per role, with the table list required to cover the catalogue.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('ntf_templates',
+         'approved_at,approved_by,body,published_at,retired_at,status,subject,variables'),
+        ('ntf_preferences',
+         'allowed,correlation_id,daily_cap,digest_mode,quiet_from,quiet_timezone,'
+         'quiet_until,set_by,updated_at'),
+        ('ntf_channel_policies',
+         'correlation_id,cost_per_message_minor,currency,enabled,fallback_channel,set_by,'
+         'updated_at'),
+        ('ntf_notifications', 'scheduled_for,status'),
+        ('ntf_deliveries',
+         'attempts,delivered_at,dispatched_at,last_error,next_attempt_at,provider_ref,state'),
+        ('ntf_suppressions',
+         'release_correlation_id,release_reason,released_at,released_by'),
+        ('ntf_digests', 'closed_at,notification_count,state'),
+        ('ntf_digest_entries', '(none)'),
+        ('ntf_recipient_channels',
+         'address_digest,rebind_correlation_id,rebind_reason,rebound_at,rebound_by'))
+    SELECT string_agg(
+               e.tbl || ' / ' || g.grantee || ': ' || coalesce(a.actual, '(none)'), '; ')
+    INTO wrong
+    FROM expected e
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS g(grantee)
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = ('plt01.' || e.tbl)::regclass
+          AND att.attnum > 0 AND NOT att.attisdropped
+          AND has_column_privilege(g.grantee, att.attrelid, att.attname, 'UPDATE')
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: UPDATE column grants differ from the expected set: %',
+            wrong;
+    END IF;
+
+    SELECT string_agg(c.relname, ', ') INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ntf\_%'
+      AND c.relname NOT IN ('ntf_templates', 'ntf_preferences', 'ntf_channel_policies',
+                            'ntf_notifications', 'ntf_deliveries', 'ntf_suppressions',
+                            'ntf_digests', 'ntf_digest_entries',
+                            'ntf_recipient_channels');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: ntf_ tables with no stated UPDATE expectation: %',
+            wrong;
+    END IF;
+
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname LIKE 'ntf\_%'
+          AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
+          AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname LIKE 'ntf\_%' AND acl.grantee <> 0
+          AND pg_get_userbyid(acl.grantee)
+              NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: an ntf_ table is granted to somebody unexpected';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname LIKE 'ntf\_%' AND acl.grantee = 0) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: an ntf_ table carries a PUBLIC grant';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c
+        JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0
+                             AND NOT att.attisdropped AND att.attacl IS NOT NULL,
+        LATERAL aclexplode(att.attacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+          AND c.relname LIKE 'ntf\_%'
+          AND (acl.grantee = 0
+               OR acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')
+               OR pg_get_userbyid(acl.grantee)
+                  NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator'))) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 59 FAILED: a column-level grant is PUBLIC, is REFERENCES, or '
+            'names a role outside the three expected ones';
+    END IF;
+
+    -- Behaviourally. Each of these is the rewrite somebody with a motive would reach for.
+    BEGIN
+        UPDATE plt01.ntf_notifications SET rendered_body = 'something else';
+        RAISE EXCEPTION 'CHECK 59 FAILED: an authored message was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_notifications SET category = 'marketing';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a notification''s category was changed after the fact';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_notifications SET address_digest = repeat('f', 64);
+        RAISE EXCEPTION 'CHECK 59 FAILED: a notification was readdressed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_suppressions SET reason = 'unsubscribed';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a bounce was relabelled an unsubscribe';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_suppressions SET address_digest = repeat('f', 64);
+        RAISE EXCEPTION 'CHECK 59 FAILED: a suppression was moved to another address';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_templates SET authored_by = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 59 FAILED: a template''s author was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.ntf_notifications;
+        RAISE EXCEPTION 'CHECK 59 FAILED: an authored notification was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.ntf_digest_entries;
+        RAISE EXCEPTION 'CHECK 59 FAILED: a digest entry was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- A published template's content is immutable by trigger as well as by grant, because the
+-- grant admits a body change on a draft and cannot see the status -- MOD-012's finding, which
+-- this module inherits rather than rediscovers.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.ntf_templates SET body = 'a different message'
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a published template''s body was changed';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_templates SET variables = ARRAY['number', 'amount']
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a published template gained a variable';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_templates SET published_at = now() - INTERVAL '1 year'
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a publication date was moved';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ntf_templates SET status = 'retired', retired_at = now()
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        UPDATE plt01.ntf_templates SET status = 'published', retired_at = NULL
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a retired template was un-retired';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    -- **Immutability by trigger has to refuse the demotion, not only the edit.** `status` is
+    -- in the UPDATE grant, so a single-statement test proves nothing about a writer willing
+    -- to use three: demote to draft (no content field moves, so the body guard sleeps),
+    -- rewrite the body (OLD.status now reads 'draft'), publish again (approved_at and
+    -- approved_by were never cleared, so the approval constraint is satisfied). The row then
+    -- carries an attacker's text under the original approver's name and timestamp, which is
+    -- the separation of duties on content defeated end to end. Found by review; the case is
+    -- three statements because the defect was.
+    BEGIN
+        UPDATE plt01.ntf_templates SET status = 'draft'
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        UPDATE plt01.ntf_templates SET body = 'Pay at http://attacker.example/pay'
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        UPDATE plt01.ntf_templates SET status = 'published'
+        WHERE template_id = 'aaaaaaaa-1000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 59 FAILED: a published template was demoted and rewritten';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 60. the ntf_ constraints
+-- Every CHECK constraint and every unique index on this module's tables. Generated from the
+-- catalogue of constraints that exist rather than from the ones somebody thought to write
+-- down, and **each case sets every other column so the row violates exactly one rule** -- the
+-- sibling-constraint vacuity MOD-011 shipped and MOD-012 reintroduced within the hour.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- A template key that is not a key names content nothing can resolve.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Invoice Issued', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a malformed template key was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 0, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A category outside the four decides nothing about consent or opt-out.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'promotional', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template took an unknown category';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A channel outside the five is a template nothing can send.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'carrier_pigeon', 'en', '', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A locale that is not a locale cannot be matched by a request.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'English', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template took a malformed locale';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A template with no body is a message with nothing in it.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', '   ', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template was stored with a blank body';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Only email shows a subject: one on an SMS is text its author expects to be read and that goes nowhere.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'sms', 'en', 'Subject', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: an sms template carried a subject';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And an email without one has nothing in the inbox line.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', '  ', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: an email template carried no subject';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three the authoring path reads.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'review', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An approval with a timestamp and no approver is an approval by nobody.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template was approved by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An author cannot approve their own template.** It goes out under the tenant's name to everybody, which is MOD-008's separation of duties applied to content.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: an author approved their own template';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Publication requires an approval, which is what makes the approval a control rather than a field.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'published', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, now(), NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template was published without an approval';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the retirement flag and timestamp cannot disagree.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'retired', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template reads retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And nothing else carries a retirement date, so a live template cannot read as withdrawn to anybody auditing what was in use when.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 2, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'published', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '44444444-4444-4444-8444-444444444444', now(), now());
+        RAISE EXCEPTION 'CHECK 60 FAILED: a published template carried a retirement date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An approval is a moment and a person together. The sibling case nulls both, so the half that says an approver with no timestamp is refused had no evidence -- and that half is what keeps `approved_by` from reading as an approval nobody dated.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 3, 'operational', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, '44444444-4444-4444-8444-444444444444', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a template carried an approver with no approval time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One row per key and version.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second template took the same key and version';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **One key is one message, so one key is one category.** A key whose email version is
+    -- transactional and whose SMS version is marketing would let a fallback change what the
+    -- message is permitted to do: paragraph 2463's separation walked around by sending to the
+    -- other channel. The service checks it with a SELECT, which two concurrent creates of a
+    -- new key both pass, so the trigger is the control and this is its evidence.
+    BEGIN
+        INSERT INTO plt01.ntf_templates
+            (tenant_id, template_key, version, category, channel, locale, subject,
+             body, variables, status, authored_by, correlation_id, approved_at,
+             approved_by, published_at, retired_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'invoice.issued', 1, 'marketing', 'sms', 'en', '', 'B', ARRAY[]::text[], 'draft', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: one template key carried two categories';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+
+    -- A category outside the four.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'promotional', 'push', true, NULL, NULL, NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a preference took an unknown category';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'fax', true, NULL, NULL, NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a preference took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A digest mode outside the three the decision reads.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'push', true, NULL, NULL, NULL, NULL, 'weekly', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a preference took an unknown digest mode';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative cap would refuse everything including the first message.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'push', true, NULL, NULL, NULL, -1, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a negative daily cap was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Quiet hours need both ends: one alone is a window with no other side.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'push', true, TIME '22:00', NULL, NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: quiet hours were stored with one end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a timezone, because a quiet hour in the server's zone is a quiet hour for nobody -- this module has no person record to read one from.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'push', true, TIME '22:00', TIME '07:00', NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: quiet hours were stored with no timezone';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Only an optional category may be switched off.** A member who mutes marketing still gets their invoice: a preference that could suppress a transactional message would mean a tenant unable to tell somebody their payment failed.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'transactional', 'push', false, NULL, NULL, NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a transactional notification was switched off by a preference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One preference per recipient, category and channel.
+    BEGIN
+        INSERT INTO plt01.ntf_preferences
+            (tenant_id, recipient_id, category, channel, allowed, quiet_from,
+             quiet_until, quiet_timezone, daily_cap, digest_mode, set_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'marketing', 'email', true, NULL, NULL, NULL, NULL, 'immediate', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second preference took the same slot';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'fax', true, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a channel policy named an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fallback to itself is a loop that sends nothing.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', true, 'sms', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a channel fell back to itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A fallback outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', true, 'fax', NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a channel fell back to an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A cost needs its currency, or it is a number with no unit.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', true, NULL, 12, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a cost was stored with no currency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative cost would make a margin report read as income.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', true, NULL, -1, 'EUR', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a negative message cost was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A currency that is not three upper-case letters cannot be grouped.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', true, NULL, 12, 'eur', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a malformed currency was stored';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One policy per channel.
+    BEGIN
+        INSERT INTO plt01.ntf_channel_policies
+            (tenant_id, channel, enabled, fallback_channel, cost_per_message_minor,
+             currency, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'email', true, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second policy took the same channel';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A category outside the four.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'promotional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification took an unknown category';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'fax', 'en', '', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A malformed locale.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'English', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification took a malformed locale';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A priority outside the three the decision reads.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'urgent', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification took an unknown priority';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'queued',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A message with no body.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', '  ', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification was authored with a blank body';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An email with no subject, and the same rule as the template's.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', '  ', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: an email notification carried no subject';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An address where a digest belongs.** The absence of an address column is this module's control; a column that accepted one would make it a naming convention.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', 'member@example.test', 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: an address was accepted where a digest belongs';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank idempotency key is a request nothing can deduplicate, which is half of paragraph 2464.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, '  ', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification was authored with a blank idempotency key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A decision with no reason recorded is a notification nobody can explain to the member who asks why they never heard anything.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                '  ', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification recorded no decision reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A critical alert names the policy that lets it bypass preferences.** Paragraph 2461 says only under documented policy, and a boolean would be a field every caller sets.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'critical', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a critical notification named no bypass policy';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a bypass reference on something that is not critical is a field claiming an authority it does not have.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', 'RB-ENG-02#alerts', 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a non-critical notification carried a bypass policy';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Marketing cites the consent that permitted it.** A marketing notification with no consent record is the separation in paragraph 2463 defeated at the one place it is enforceable.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'marketing', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a marketing notification cited no consent';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And nothing else may cite one**, which is the direction that stops a transactional receipt riding on a marketing consent and making it read as used. An equality constraint needs a case per side; one case proves half of it.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', '99999999-0000-4000-8000-000000000004', 'case-cites', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a transactional notification cited a consent record';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A deferred notification carries the moment it is due, or nothing will ever send it.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'deferred',
+                'r', NULL, 'case-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a deferred notification carried no schedule';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An SMS carries no subject line**, the direction the sibling case leaves open. The template's twin constraint has both sides; the notification's had one, so an email subject travelling on an SMS was undetected -- which is the bug this module's own fallback rework was written to stop producing.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'sms', 'en', 'Your invoice', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'case-sms-subject', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: an sms notification carried a subject line';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One notification per idempotency key, which is the request half of paragraph 2464: a caller that asks twice authors one notification.
+    BEGIN
+        INSERT INTO plt01.ntf_notifications
+            (tenant_id, template_id, template_key, template_version, category, channel,
+             locale, rendered_subject, rendered_body, recipient_id, address_digest,
+             priority, bypass_policy_ref, status, decision_reason, consent_record_id,
+             idempotency_key, scheduled_for, requested_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000001', 'invoice.issued', 1, 'transactional', 'email', 'en', 'S', 'B', '55555555-5555-4555-8555-555555555555', repeat('9', 64), 'normal', NULL, 'requested',
+                'r', NULL, 'seed-invoice-1', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second notification took the same idempotency key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'fax', 'pending', 0, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A state outside the six the machine admits.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'queued', 0, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery took an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Attempts past the budget is a delivery that outlived its own retry policy.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'dead', 6, 5, 'boom', NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery exceeded its own attempt budget';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A failure with no error is a diagnostic nobody can act on.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'failed', 1, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery failed with nothing recorded about why';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A delivered message carries the moment it was delivered, and nothing else does.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'delivered', 1, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery reads delivered with no delivery time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And nothing but a delivered one carries that time**, so a failure cannot be read off a status page as a success.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'failed', 1, 5, 'boom', now());
+        RAISE EXCEPTION 'CHECK 60 FAILED: a failed delivery carried a delivery time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative attempt count is a budget running backwards. `attempts_sane` is three conjuncts and the sibling case exercises one of them.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'pending', -1, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery recorded a negative attempt count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a budget of zero is a delivery that may never be tried, which reads as a message silently dropped rather than as one that failed.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'sms', 'pending', 0, 0, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a delivery took an attempt budget of zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One delivery per notification and channel.** That uniqueness is the transport half of paragraph 2464: a dispatcher that sent a message, timed out and retried settles the row it already holds.
+    BEGIN
+        INSERT INTO plt01.ntf_deliveries
+            (tenant_id, notification_id, channel, state, attempts, max_attempts,
+             last_error, delivered_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'aaaaaaaa-1000-4000-8000-000000000004', 'email', 'pending', 0, 5, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second delivery was created for one notification and channel';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'fax', repeat('9', 64), 'bounced', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a suppression took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An address where a digest belongs, as above.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', 'member@example.test', 'bounced', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: an address was accepted where a suppression digest belongs';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A reason outside the three.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', repeat('9', 64), 'disliked', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a suppression took an unknown reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Only an unsubscribe may be released.** A bounce or a complaint is the channel's judgement about deliverability, and a tenant that could clear those would be choosing to keep sending to an address that rejected them.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', repeat('9', 64), 'bounced', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', 'we think it is fine now', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a bounce suppression was released';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a release carries who and why.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', repeat('9', 64), 'unsubscribed', '33333333-3333-4333-8333-333333333333', now(), NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a suppression was released by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And the reason is the half that matters, so it has its own case.** The constraint is one disjunction over four columns, and a single case nulling all four proves the `who` and says nothing about the `why` -- MOD-009's `sec_legal_holds_release_reasoned` coalesce finding, which passes a blank string where a null is refused.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'sms', repeat('9', 64), 'unsubscribed', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', '   ', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a suppression was released for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One live suppression per channel and address: a second would mean a release that cleared one left the other standing.
+    BEGIN
+        INSERT INTO plt01.ntf_suppressions
+            (tenant_id, channel, address_digest, reason, correlation_id, released_at,
+             released_by, release_reason, release_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'email', repeat('b', 64), 'bounced', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second live suppression took the same address';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A category outside the four.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'promotional', 'sms', TIMESTAMPTZ '2026-12-01 00:00:00+00', TIMESTAMPTZ '2026-12-02 00:00:00+00', 'open', 0, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest took an unknown category';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A channel outside the five.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'fax', TIMESTAMPTZ '2026-12-01 00:00:00+00', TIMESTAMPTZ '2026-12-02 00:00:00+00', 'open', 0, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A window that runs backwards covers nothing.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'sms', TIMESTAMPTZ '2026-12-02 00:00:00+00', TIMESTAMPTZ '2026-12-01 00:00:00+00', 'open', 0, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A state outside the three.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'sms', TIMESTAMPTZ '2026-12-01 00:00:00+00', TIMESTAMPTZ '2026-12-02 00:00:00+00', 'draft', 0, now());
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest took an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative count is a batch with fewer than nothing in it.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'sms', TIMESTAMPTZ '2026-12-01 00:00:00+00', TIMESTAMPTZ '2026-12-02 00:00:00+00', 'open', -1, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest recorded a negative count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An open digest has not been closed, and a closed one has.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'sms', TIMESTAMPTZ '2026-12-01 00:00:00+00', TIMESTAMPTZ '2026-12-02 00:00:00+00', 'open', 0, now());
+        RAISE EXCEPTION 'CHECK 60 FAILED: a digest reads open and closed at once';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a closed digest carries the moment it closed, or the window it batched is unknowable afterwards.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'sms', TIMESTAMPTZ '2026-12-03 00:00:00+00', TIMESTAMPTZ '2026-12-04 00:00:00+00', 'closed', 1, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a closed digest recorded no closing time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A binding on a channel nothing sends over routes a member nowhere.
+    BEGIN
+        INSERT INTO plt01.ntf_recipient_channels
+            (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555556', 'pigeon', repeat('1', 64), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a binding took an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **An address where a digest belongs is the thing this module cannot hold.** The shape
+    -- check is the control, not a convention: without it the binding table becomes the second
+    -- copy of everyone's contact details that the digest design exists to avoid.
+    BEGIN
+        INSERT INTO plt01.ntf_recipient_channels
+            (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555556', 'email', 'alice@tenant-a.test', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a binding took an address where a digest belongs';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A rebinding carries who and when, or neither.
+    BEGIN
+        INSERT INTO plt01.ntf_recipient_channels
+            (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id,
+             rebound_at, rebound_by, rebind_reason, rebind_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555556', 'email', repeat('1', 64), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), NULL, 'they changed address', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a binding was moved by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a written reason, which is the half a blank string walks past when the coalesce is
+    -- missing -- the same case the suppression release has, for the same reason.
+    BEGIN
+        INSERT INTO plt01.ntf_recipient_channels
+            (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id,
+             rebound_at, rebound_by, rebind_reason, rebind_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555556', 'email', repeat('1', 64), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', '  ', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a binding was moved for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One digest belongs to one recipient.** Without this the correspondence holds in one
+    -- direction only, and a caller supplying a person id where an identity id was meant binds
+    -- the right address to the wrong person with nothing refusing it.
+    BEGIN
+        INSERT INTO plt01.ntf_recipient_channels
+            (tenant_id, recipient_id, channel, address_digest, bound_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555556', 'email', repeat('9', 64), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 60 FAILED: one address digest was bound to two recipients';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- One open digest per recipient, category, channel and window: two would split a batch that exists to be one message.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, recipient_id, category, channel, window_start, window_end,
+             state, notification_count, closed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '55555555-5555-4555-8555-555555555555', 'coaching', 'email', TIMESTAMPTZ '2026-11-14 00:00:00+00', TIMESTAMPTZ '2026-11-15 00:00:00+00', 'open', 0, NULL);
+        RAISE EXCEPTION 'CHECK 60 FAILED: a second open digest took the same window';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **A notification belongs to at most one digest**, because two would send it twice -- the
+    -- one thing paragraph 2464 forbids. A *second* digest, not the same one: repeating the
+    -- same triple is refused by the primary key, so that version of this case proved nothing
+    -- about the constraint it names. The mutation sweep is what found it.
+    BEGIN
+        INSERT INTO plt01.ntf_digests
+            (tenant_id, digest_id, recipient_id, category, channel, window_start, window_end)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-1000-4000-8000-00000000000f',
+                '55555555-5555-4555-8555-555555555555', 'coaching', 'email',
+                TIMESTAMPTZ '2026-12-20 00:00:00+00', TIMESTAMPTZ '2026-12-21 00:00:00+00');
+        INSERT INTO plt01.ntf_digest_entries (tenant_id, digest_id, notification_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-1000-4000-8000-00000000000f',
+                'aaaaaaaa-1000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 60 FAILED: a notification was folded into a second digest';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 60/60 checks passed'

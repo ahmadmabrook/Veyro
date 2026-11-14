@@ -34,6 +34,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime
+from datetime import time as clock_time
 from time import time
 from typing import Annotated, Any
 from uuid import uuid4
@@ -53,6 +54,7 @@ from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import service as identity
 from app.integrations import service as integrations
+from app.notifications import service as notifications
 from app.observability import metrics as obs_metrics
 from app.observability import ratelimit
 from app.observability import service as observability
@@ -736,6 +738,115 @@ class ReconciliationBody(BaseModel):
     local_count: int = Field(ge=0, le=10**12)
     provider_count: int = Field(ge=0, le=10**12)
     matched: int = Field(ge=0, le=10**12)
+    correlation_id: str
+
+
+class TemplateBody(BaseModel):
+    """A draft notification template version.
+
+    The category may not be changed by a later version, and no request field overrides it: a
+    caller able to declare a campaign `transactional` would escape both the consent requirement
+    and the recipient's opt-out, which is paragraph 2463's control defeated by a body field.
+    """
+
+    template_key: str
+    version: int = Field(ge=1, le=2_000_000_000)
+    category: str
+    channel: str
+    locale: str
+    body: str
+    correlation_id: str
+    subject: str = ""
+    variables: list[str] = Field(default_factory=list)
+
+
+class PreferenceBody(BaseModel):
+    recipient_id: str
+    category: str
+    channel: str
+    correlation_id: str
+    allowed: bool = True
+    quiet_from: clock_time | None = None
+    quiet_until: clock_time | None = None
+    quiet_timezone: str | None = None
+    daily_cap: int | None = Field(default=None, ge=0, le=10_000)
+    digest_mode: str = "immediate"
+
+
+class ChannelPolicyBody(BaseModel):
+    channel: str
+    correlation_id: str
+    enabled: bool = True
+    fallback_channel: str | None = None
+    cost_per_message_minor: int | None = Field(default=None, ge=0, le=10**12)
+    # `char(3)`. Unbounded, psycopg raises StringDataRightTruncation -- a DataError, not the
+    # CheckViolation the handlers catch -- so a four-letter currency answered 500.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
+class NotificationBody(BaseModel):
+    """Address digests, never addresses -- and **one per channel**.
+
+    This module holds no contact data: the caller computes the digest from the address it
+    already has, so a bounce can be remembered and a recipient matched without a second copy of
+    everyone's email beside the one MOD-007 and MOD-014 own.
+
+    A map rather than a single value, because the channel policy may send this somewhere other
+    than the template's own channel. A single digest meant the fallback carried the digest
+    computed for the channel it fell back *from*, so the suppression check ran against a key
+    the other channel can never produce and the eventual bounce was recorded against a key no
+    later request would ever match. The map has to carry the channel actually used; a fallback
+    to a channel the caller gave no digest for is refused rather than guessed at.
+    """
+
+    template_key: str
+    recipient_id: str
+    #: Channel to the SHA-256 of `channel:address`, from `delivery.address_digest`.
+    address_digests: dict[str, str] = Field(min_length=1, max_length=8)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+    variables: dict[str, str] = Field(default_factory=dict)
+    locale: str | None = Field(default=None, max_length=35)
+    priority: str = "normal"
+    bypass_policy_ref: str | None = Field(default=None, max_length=200)
+
+
+class OutcomeBody(BaseModel):
+    outcome: str
+    correlation_id: str
+    #: The provider's own text. It stays on `ntf_deliveries.last_error` and is **not** put into
+    #: an event: an SMTP rejection quotes the address it rejected, and the event outbox is the
+    #: one store no erasure in this build can reach.
+    error: str | None = Field(default=None, max_length=2000)
+    provider_ref: str | None = Field(default=None, max_length=200)
+
+
+class SuppressionBody(BaseModel):
+    channel: str
+    address_digest: str
+    #: Only `unsubscribed`; the service refuses the rest and says why. A bounce or a complaint
+    #: is written by `record_outcome` from a reported delivery, because only a release can
+    #: undo one and a release refuses anything else.
+    reason: str
+    correlation_id: str
+    detail: str | None = Field(default=None, max_length=1000)
+
+
+class RebindBody(BaseModel):
+    """Move a recipient's address binding on one channel.
+
+    Stronger than requesting a notification, because it is the one act that moves a person away
+    from a suppression recorded against them.
+    """
+
+    channel: str
+    address_digest: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ReleaseSuppressionBody(BaseModel):
+    reason: str
     correlation_id: str
 
 
@@ -2827,6 +2938,253 @@ def create_app(
             local_count=body.local_count, provider_count=body.provider_count,
             matched=body.matched, actor_id=session["identity_id"],
             correlation_id=body.correlation_id,
+        )
+
+    # ------------------------------------------------- MOD-013 notification platform
+
+    @app.get("/notifications/templates")
+    def read_templates(
+        tenant_id: TenantId, session: Session, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        permit(session, "notifications.template.read")
+        return notifications.list_templates(tenant_pool, tenant_id, status=status)
+
+    @app.post("/notifications/templates", status_code=201)
+    def create_template(
+        tenant_id: TenantId, session: Session, body: TemplateBody
+    ) -> dict[str, Any]:
+        permit(session, "notifications.template.write", body.correlation_id)
+        return notifications.create_template(
+            tenant_pool, tenant_id, template_key=body.template_key, version=body.version,
+            category=body.category, channel=body.channel, locale=body.locale, body=body.body,
+            subject=body.subject, variables=body.variables,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/templates/{template_id}/approve")
+    def approve_template(
+        tenant_id: TenantId, session: Session, template_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """An author cannot approve their own template: it goes out under the tenant's name to
+        everybody, which is MOD-008's separation of duties applied to content."""
+        permit(session, "notifications.template.approve", body.correlation_id)
+        return notifications.approve_template(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/templates/{template_id}/publish")
+    def publish_template(
+        tenant_id: TenantId, session: Session, template_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "notifications.template.write", body.correlation_id)
+        return notifications.publish_template(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/templates/{template_id}/retire")
+    def retire_template(
+        tenant_id: TenantId, session: Session, template_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "notifications.template.write", body.correlation_id)
+        return notifications.retire_template(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/notifications/preferences")
+    def read_preferences(
+        tenant_id: TenantId, session: Session, recipient_id: str
+    ) -> list[dict[str, Any]]:
+        permit(session, "notifications.preference.read")
+        return notifications.list_preferences(
+            tenant_pool, tenant_id, recipient_id=require_uuid(recipient_id, "recipient_id")
+        )
+
+    @app.put("/notifications/preferences")
+    def set_preference(
+        tenant_id: TenantId, session: Session, body: PreferenceBody
+    ) -> dict[str, Any]:
+        """A preference can switch off `coaching` and `marketing` and nothing else: a member who
+        mutes marketing still gets their invoice."""
+        permit(session, "notifications.preference.write", body.correlation_id)
+        return notifications.set_preference(
+            tenant_pool, tenant_id,
+            recipient_id=require_uuid(body.recipient_id, "recipient_id"),
+            category=body.category, channel=body.channel, allowed=body.allowed,
+            quiet_from=body.quiet_from, quiet_until=body.quiet_until,
+            quiet_timezone=body.quiet_timezone, daily_cap=body.daily_cap,
+            digest_mode=body.digest_mode, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/notifications/channels")
+    def read_channel_policies(
+        tenant_id: TenantId, session: Session
+    ) -> list[dict[str, Any]]:
+        permit(session, "notifications.policy.read")
+        return notifications.list_channel_policies(tenant_pool, tenant_id)
+
+    @app.put("/notifications/channels")
+    def set_channel_policy(
+        tenant_id: TenantId, session: Session, body: ChannelPolicyBody
+    ) -> dict[str, Any]:
+        permit(session, "notifications.policy.write", body.correlation_id)
+        return notifications.set_channel_policy(
+            tenant_pool, tenant_id, channel=body.channel, enabled=body.enabled,
+            fallback_channel=body.fallback_channel,
+            cost_per_message_minor=body.cost_per_message_minor, currency=body.currency,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/notifications")
+    def read_notifications(
+        tenant_id: TenantId, session: Session, recipient_id: str | None = None,
+        status: str | None = None, limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> list[dict[str, Any]]:
+        """The list carries no message text. A list route that did would be a read path to
+        everything this tenant has ever said to anybody, under one permission."""
+        permit(session, "notifications.notification.read")
+        return notifications.list_notifications(
+            tenant_pool, tenant_id,
+            recipient_id=optional_uuid(recipient_id, "recipient_id"), status=status,
+            limit=limit,
+        )
+
+    @app.get("/notifications/{notification_id}")
+    def read_notification(
+        tenant_id: TenantId, session: Session, notification_id: str
+    ) -> dict[str, Any]:
+        """The text that was sent, behind its own permission."""
+        permit(session, "notifications.notification.read_content")
+        return notifications.get_notification(
+            tenant_pool, tenant_id, require_uuid(notification_id, "notification_id")
+        )
+
+    @app.post("/notifications", status_code=201)
+    def request_notification(
+        tenant_id: TenantId, session: Session, body: NotificationBody
+    ) -> dict[str, Any]:
+        """RequestNotification. Decides, renders, authors -- and never sends."""
+        # **A critical alert is a different permission.** `priority: "critical"` with any
+        # non-blank `bypass_policy_ref` overrides the opt-out, the quiet window and the
+        # frequency cap, and the first version charged the same routine, AAL-1 permission as an
+        # ordinary request -- so paragraph 2461's "only under documented policy" was satisfied
+        # by typing one character. The repository's own remedy for that shape is MOD-009's
+        # `privacy.consent.record_on_behalf`: route the claim to a stronger permission rather
+        # than trust the field. Nothing here resolves the reference against a real policy; that
+        # is a gap, and it is now a gap behind a stepped-up, financial-class permission.
+        action = ("notifications.notification.request_critical"
+                  if body.priority == "critical" else "notifications.notification.request")
+        permit(session, action, body.correlation_id)
+        return notifications.request_notification(
+            tenant_pool, tenant_id, template_key=body.template_key,
+            recipient_id=require_uuid(body.recipient_id, "recipient_id"),
+            address_digests=body.address_digests, idempotency_key=body.idempotency_key,
+            variables=body.variables, locale=body.locale, priority=body.priority,
+            bypass_policy_ref=body.bypass_policy_ref, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/{notification_id}/dispatch")
+    def dispatch_notification(
+        tenant_id: TenantId, session: Session, notification_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Claims the delivery for whatever does the sending. Nothing here sends."""
+        permit(session, "notifications.delivery.dispatch", body.correlation_id)
+        return notifications.dispatch_notification(
+            tenant_pool, tenant_id, require_uuid(notification_id, "notification_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/{notification_id}/outcome")
+    def record_outcome(
+        tenant_id: TenantId, session: Session, notification_id: str, body: OutcomeBody
+    ) -> dict[str, Any]:
+        """A bounce or a complaint suppresses the address in the same transaction, which is
+        what stops the next notification going out before anybody noticed."""
+        permit(session, "notifications.delivery.dispatch", body.correlation_id)
+        return notifications.record_outcome(
+            tenant_pool, tenant_id, require_uuid(notification_id, "notification_id"),
+            outcome=body.outcome, error=body.error, provider_ref=body.provider_ref,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/notifications/suppressions/all")
+    def read_suppressions(
+        tenant_id: TenantId, session: Session, channel: str | None = None,
+        include_released: bool = False, limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> list[dict[str, Any]]:
+        permit(session, "notifications.suppression.read")
+        return notifications.list_suppressions(
+            tenant_pool, tenant_id, channel=channel, include_released=include_released,
+            limit=limit,
+        )
+
+    @app.post("/notifications/suppressions", status_code=201)
+    def suppress_address(
+        tenant_id: TenantId, session: Session, body: SuppressionBody
+    ) -> dict[str, Any]:
+        permit(session, "notifications.suppression.write", body.correlation_id)
+        return notifications.suppress_address(
+            tenant_pool, tenant_id, channel=body.channel,
+            address_digest=body.address_digest, reason=body.reason, detail=body.detail,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/notifications/suppressions/{suppression_id}/release")
+    def release_suppression(
+        tenant_id: TenantId, session: Session, suppression_id: str,
+        body: ReleaseSuppressionBody,
+    ) -> dict[str, Any]:
+        """Only an unsubscribe may be released: a bounce or a complaint is the channel's
+        judgement, and overriding it damages every other notification's chance of arriving."""
+        permit(session, "notifications.suppression.release", body.correlation_id)
+        return notifications.release_suppression(
+            tenant_pool, tenant_id, require_uuid(suppression_id, "suppression_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/notifications/digests/all")
+    def read_digests(
+        tenant_id: TenantId, session: Session, recipient_id: str | None = None,
+        state: str | None = None, limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        permit(session, "notifications.notification.read")
+        return notifications.list_digests(
+            tenant_pool, tenant_id,
+            recipient_id=optional_uuid(recipient_id, "recipient_id"), state=state,
+            limit=limit,
+        )
+
+    @app.get("/notifications/recipients/{recipient_id}/channels")
+    def read_recipient_channels(
+        tenant_id: TenantId, session: Session, recipient_id: str
+    ) -> list[dict[str, Any]]:
+        """Which address digest this recipient is bound to on each channel."""
+        permit(session, "notifications.preference.read")
+        return notifications.list_recipient_channels(
+            tenant_pool, tenant_id, require_uuid(recipient_id, "recipient_id")
+        )
+
+    @app.put("/notifications/recipients/{recipient_id}/channels")
+    def rebind_recipient_channel(
+        tenant_id: TenantId, session: Session, recipient_id: str, body: RebindBody
+    ) -> dict[str, Any]:
+        """Move a recipient's address binding, with an actor and a written reason.
+
+        A separate, stronger permission from requesting a notification: a suppression is keyed
+        on the digest, so rebinding is how somebody would walk a complainant's address away
+        from the bounce recorded against it.
+        """
+        permit(session, "notifications.recipient.rebind", body.correlation_id)
+        return notifications.rebind_recipient_channel(
+            tenant_pool, tenant_id,
+            recipient_id=require_uuid(recipient_id, "recipient_id"),
+            channel=body.channel, address_digest=body.address_digest, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
     return app

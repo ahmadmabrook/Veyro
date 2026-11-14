@@ -27,6 +27,8 @@ backend/app/            service code
                         service.py does the rest of the I/O
   integrations/         MOD-012: contract, lifecycle and sync decide; service.py spans both
                         planes and snapshots the definition into the install
+  notifications/        MOD-013: templates, preferences and delivery decide; service.py
+                        authors the message and never sends it
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -1125,11 +1127,235 @@ Known gaps, deliberate:
   compare against a local one, so the policy is recorded per cursor and consulted by nobody --
   the same shape as `Decision.mask` in MOD-008.
 
-**Next.** MOD-014 (People, Profiles & Member 360) is unblocked, and MOD-013 (Notification
-Platform) becomes unblocked now that MOD-012 exists. Three things named rather than done remain open across the build: the platform plane is
+**MOD-013 (ENG-02 notification platform, templates and preferences) -- implemented, gated and
+reviewed.** Nine `ntf_` tables in `plt01` under the same forced RLS, `app/notifications/`
+beside them, and twenty HTTP routes. Working: versioned, approved, immutable templates with
+localization and variable checking; recipient preferences with quiet hours, frequency caps and
+digesting; channel policies with fallback and per-message cost; recipient-to-address bindings;
+notification authoring with rendering, deduplication and a recorded decision; one delivery row
+per notification and channel with a leased claim, retry and quarantine; bounce and complaint
+suppression; and digest batching. Five of ENG-02's six events are produced. Proven: isolation
+checks 55-60, mutation-tested in two rounds -- 99 before the review and 154 after it, every one
+caught by the check that guards what was broken: 63 table-level (RLS, both policy halves, a
+second permissive policy, DELETE, TRUNCATE and an added column, on all nine tables), all 75
+CHECK, unique and foreign-key constraints dropped one at a time, the three remaining unique
+indexes, both triggers, nine constraint *weakenings* rather than drops, and the partitioned
+table a reviewer used to walk past the whole sweep. 32 domain unit tests with no database; 49
+service integration tests.
+
+**Three reviewers worked this module in parallel -- the schema, the Python, the request path --
+and all three returned CHANGES_REQUESTED.** Twenty-one blocking defects, and the largest single
+cause was a control keyed on a value the caller supplies, checked for shape and never for
+correspondence. Each is carried forward below as a rule.
+
+- **Resolve the channel before you evaluate anything against it.** The fallback was resolved in
+  the middle of `decide`, after the preference, the suppression check and the address digest
+  had been read for the channel the message was no longer going to. A tenant falling back from
+  email to SMS -- the ordinary response to a provider outage, and exactly when volume gets
+  re-routed -- texted a member who had said "don't text me", over a channel that was itself
+  disabled, to a number that had reported the tenant as spam. The suppression key is
+  `sha256(channel:address)`, so the SMS suppression was not merely unchecked, it was
+  *unreachable* from that path; and the row stored the email digest, so the eventual bounce
+  wrote a suppression key no later request could ever produce. Four controls, one ordering.
+  `preferences.resolve_channel` is now a separate function and `decide` takes the resolved
+  channel.
+- **Two caller-supplied keys that nothing relates are two halves of a control, each failing
+  open.** `recipient_id` keyed the preference, the quiet window and the cap; `address_digest`
+  keyed the suppression list; both were shape-checked and neither was ever checked against the
+  other. A digest that is not the recipient's finds no suppression and gets the complainant
+  mailed; a `person_id` supplied where an `identity_id` was meant misses the preference while
+  `GET /notifications/preferences` still shows the opt-out standing. `ntf_recipient_channels`
+  binds them in both directions -- one digest per recipient and channel, one recipient per
+  digest and channel -- so a suppression recorded against a digest is reachable from every
+  later request for that person. **It cannot verify that a digest is really that person's
+  address**; there is none on this plane. Correspondence and stability are what the controls
+  rest on, and those are enforced.
+- **A body field that buys an authority is a permission, so charge one.** `priority:
+  "critical"` with any non-blank `bypass_policy_ref` overrode the opt-out, the quiet window and
+  the frequency cap, on the same routine AAL-1 permission an ordinary request costs -- so
+  paragraph 2461's "only under documented policy" was satisfied by typing `x`. That is MOD-009's
+  `consent_subject` finding in this module's clothes, and it takes the same remedy:
+  `notifications.notification.request_critical`, financial class, chosen by the route from the
+  body. Nothing resolves the reference against a real policy, which is still a gap -- now a gap
+  behind a stepped-up permission.
+- **The event outbox is the one store no erasure reaches, so nothing free-text goes in it.**
+  `notification.failed` carried `reason`, built from the dispatcher's `error` -- and the
+  ordinary content of an SMTP rejection is `550 5.1.1 <jane@example.com>: Recipient address
+  rejected`. So the realistic bounce, with nobody trying, put a contact address into
+  `evt_outbox.payload` from the module whose defining property is that it holds none. MOD-010's
+  rule: the restricted-field check reads declared *names*, and a value carries anything. All
+  three delivery events dropped the field; the text stays on `ntf_deliveries.last_error`.
+- **A claim that does not mark the row claimed is a handout.** `dispatch_notification` set
+  `next_attempt_at = NULL`, which the claim query reads as "due now", so five calls handed one
+  message to five dispatchers. It now leases the row for `delivery.CLAIM_LEASE` and checks the
+  row count. `record_outcome` had the matching half: its guarded UPDATE's row count was
+  ignored, so a dispatcher whose claim had already been settled published an outcome nothing
+  recorded, and could schedule redelivery of a delivered message.
+- **A control consulted once is a control with a window** -- MOD-009's rule, and a deferred
+  notification can sit for eight hours. The suppression list was read at request time and never
+  again, so an unsubscribe between the request and the dispatch did nothing. It is re-read in
+  `dispatch_notification`, which settles the delivery as `suppressed` rather than refusing
+  blind -- **and raises the refusal after the commit**, because `tenant_scope` rolls back on a
+  raise and the first version threw its own evidence away. That is MOD-007's and MOD-008's rule
+  reintroduced; the test asserting the notification reads `suppressed` is what caught it.
+- **A state nothing creates is a feature that silently drops messages.** The delivery row was
+  inserted only for `send`, so a quiet-hours `defer` had none and `dispatch_notification`
+  answered "no delivery is due" for ever -- including for a transactional message, and the
+  dispatcher's own `status IN ('requested', 'deferred')` clause was unreachable. "Quiet hours
+  defer, they do not suppress" was a comment rather than a behaviour.
+- **Irreversible state must not be declarable.** `suppress_address` accepted `bounced` and
+  `complained`, and only an unsubscribe may be released -- so a routine AAL-1 permission could
+  block an address from every transactional notice for ever, with no remedy anywhere in the
+  module. It takes `unsubscribed` only; the genuine ones are written by `record_outcome` from a
+  reported delivery, which is where the judgement actually comes from.
+- **"Immutable" has to refuse the demotion, not only the edit.** `status` is in the template
+  UPDATE grant, so immutability was a two-step: demote to draft (no content field moves),
+  rewrite the body, publish again -- leaving the attacker's text under the original approver's
+  name and timestamp, the separation of duties on content bypassed entirely. The same trigger
+  now refuses `published -> draft`. Not reachable through a route as shipped, which is what
+  makes it a finding rather than an incident: the trigger exists for the writer the service's
+  choice of SQL is not.
+- Three advisories were worth taking as well, each a permission reaching past what its own
+  description claims. `record_outcome` selected the delivery with no state filter and required
+  no claim, so the routine dispatch permission could settle any pending delivery in the tenant
+  as delivered -- or report a bounce on one and write the suppression that follows, which only
+  an unsubscribe can undo; it now refuses a delivery that was never dispatched.
+  `GET /notifications/channels` was gated on `notifications.template.read`, so "see notification
+  templates" also read what every message costs the tenant; `notifications.policy.read` is its
+  own permission now. And the reachability reason for `ntf_notifications.recipient_id` disclosed
+  that an identifier survives an erasure without saying that the row it keeps alive carries the
+  full text of every message ever sent to that person.
+- Three smaller ones with the same shapes as earlier modules: `_live_consent` let
+  `ORDER BY signed_at DESC LIMIT 1` pick between a grant and a withdrawal carrying the same
+  caller-supplied instant (a tie now goes to the withdrawal, deliberately the opposite of
+  MOD-009's `consent.latest`, and said so); the digest INSERT omitted `notification_count`, so
+  every digest reported one fewer than it held; and `currency` reached `char(3)` unbounded,
+  where `StringDataRightTruncation` is a `DataError` rather than the `CheckViolation` the
+  handlers catch -- MOD-011's and MOD-012's finding for the third time.
+
+Six decisions carry the module:
+
+- **No column here is for a contact address, and three free-text ones will hold one anyway.**
+  `ntf_notifications`, `ntf_suppressions` and `ntf_recipient_channels` carry a SHA-256 of
+  `channel:address` and never the address, so a bounce is remembered and a recipient matched
+  without a second copy of everyone's email beside the one MOD-007 and MOD-014 own. MOD-009's
+  objection to a shadow database is that the copies disagree and only one is reachable by an
+  erasure. Check 58 pins every table's column list, because the control is an absence.
+  **The digest is pseudonymous, not anonymous** -- somebody with a candidate address can test
+  it -- so those columns are declared in `SUBJECT_COLUMNS` and appear in the residue a
+  completion report discloses. The header used to claim the module held no contact address at
+  all; a reviewer disproved it with an ordinary bounce. `ntf_suppressions.detail`,
+  `ntf_deliveries.last_error` and `ntf_deliveries.provider_ref` are free text a dispatcher
+  supplies, all three are now declared with the mechanism their grants support, and the first
+  of them is residue no erasure can reach.
+- **A recipient and an address digest answer to each other** -- the binding above, and the one
+  thing that makes the suppression list reach a person rather than a string.
+- **The category is paragraph 2463's separation, and no request field overrides it.** A template
+  declares it, and the category decides whether a consent record is required before a
+  notification may be requested at all and whether a recipient's opt-out can stop it. Only
+  `coaching` and `marketing` may be muted -- a constraint, not a convention -- so a tenant can
+  always tell somebody their payment failed. A caller able to declare its own category would
+  escape both controls with a body field.
+- **A marketing notification cites the consent record that permitted it, by foreign key.**
+  MOD-009's `sec_consent_records` is on this plane and under this role, so this is the one
+  cross-module reference in the module the database can enforce -- not a boolean somebody set,
+  and not a call to a service that may have moved on. The constraint makes the citation
+  mandatory for marketing and forbidden for anything else, so a receipt cannot ride on a
+  marketing consent and make it look used.
+- **Paragraph 2464's "cannot be delivered repeatedly" needs both halves.** The *request* is
+  deduplicated by `(tenant, idempotency_key)`, so a caller whose own retry fired -- or an event
+  redelivered under MOD-010's at-least-once contract -- authors one notification. The *delivery*
+  is one row per `(tenant, notification, channel)`, so a dispatcher that sent a message, timed
+  out and retried settles the row it already holds. Neither is sufficient alone.
+- **The authored message carries no UPDATE grant at all.** Paragraph 2474: "delivery failure
+  never rewrites the authored message". The rendered text, the recipient, the digest of their
+  address, the category and the consent are what was decided at request time; only the status
+  and the schedule move.
+
+Things worth knowing before extending it:
+
+- **A template key is one *message*, not one channel.** Versions are per `(key, channel,
+  locale)`, which is what lets a fallback find the text written for the channel it falls back
+  *to*. The first version keyed versions on `(key, version)` alone, which forced one channel per
+  key and made a fallback carry an email subject onto an SMS -- refused outright by
+  `ntf_notifications_subject_matches_channel`. Found by this module's own tests. A key with no
+  template for the fallback channel is suppressed with a reason rather than sent as text nobody
+  wrote for it, and the category is pinned key-wide so a fallback cannot change what the message
+  is allowed to do.
+- **A suppressed notification is still authored.** A request that vanished because a preference
+  said no is a request nobody can account for when the member asks why they never heard
+  anything.
+- **A frequency cap digests rather than drops**, which is what makes a cap safe to set low.
+- **An author cannot approve their own template**, by constraint: it goes out under the tenant's
+  name to everybody, which is MOD-008's separation of duties applied to content.
+- **Only an unsubscribe may be released.** A bounce or a complaint is the channel's judgement
+  about deliverability, and a tenant that could clear those would be choosing to keep sending to
+  an address that rejected them -- which damages the chance of every other notification
+  arriving, including the transactional ones nobody opted out of. `reason` carries no UPDATE
+  grant, so a bounce cannot be relabelled an unsubscribe and then lifted.
+- **A value is never itself expanded.** `templates.render` substitutes in one pass, so a value
+  containing `{{ other }}` is inserted literally -- the values come from a caller and the text
+  comes from a tenant author, and a second pass would be a template-injection primitive.
+- **A request carries one address digest per channel**, because the channel policy may send it
+  somewhere other than the template's own channel and a digest is channel-scoped by
+  construction. A fallback to a channel the caller gave no digest for is refused rather than
+  guessed at.
+- **A rebinding is a different permission from a preference change.** `notifications.recipient
+  .rebind` is financial class because moving a binding is how somebody would walk a
+  complainant's address away from the bounce suppression recorded against it. It carries an
+  actor and a written reason, and `bound_at`/`bound_by` carry no UPDATE, so when the binding
+  was first made stays answerable after it has moved.
+- **The frequency cap counts per channel**, because `ntf_preferences` is keyed on category
+  *and* channel: a count across channels compared against one channel's cap is two different
+  questions joined by a variable name.
+
+Known gaps, deliberate:
+
+- **Nothing sends.** No provider, no SMTP, no outbound HTTP. `dispatch_notification` claims a
+  delivery for whatever does the sending and `record_outcome` is written by it; a module that
+  wrote "delivered" with nothing having answered would be the fabricated-evidence shape this
+  codebase has been bitten by four times.
+- **No provider failover.** Paragraph 2459 asks for it; failing over needs two providers and
+  there are none. Channel fallback, which is the half that does not, is built.
+- **Digests are batched and never sent.** `ntf_digests` fills and closes; rendering a batch into
+  one message needs a digest template format the sources do not state, and nothing sweeps the
+  open windows -- the sixth module now waiting on a worker runtime.
+- **`status_update.published` is declared and unproduced.** A status page is a surface this
+  build does not have, and an event announcing a publication that never happened would be worse
+  than the gap.
+- **No localization fallback chain.** A template per locale is the mechanism; quietly sending
+  English to somebody who asked for Arabic is worse than refusing, and picking a chain is a
+  product decision the sources do not state.
+- **No delivery analytics or cost reporting.** The per-message cost is recorded on the channel
+  policy and nothing aggregates it; that is MOD-011's `ops_cost_records`, and wiring the two
+  together is a decision about who owns the figure.
+- **A `bypass_policy_ref` is still not resolved against anything.** The constraint refuses a
+  blank and the route charges a stepped-up financial permission for using one, and nothing in
+  the catalogue, the configuration plane or any table establishes that the reference names a
+  documented policy. Paragraph 2461's "documented" is carried by the permission, not by the
+  field.
+- **The binding cannot verify an address**, only correspondence. A caller that supplies a wrong
+  `recipient_id` *consistently*, with a digest no other recipient has claimed, is indistinguish-
+  able from a correct one; what is closed is the far commoner case where the two keys disagree
+  with each other or with what was bound before.
+- **Three free-text columns hold whatever a dispatcher sends**, including an address, and the
+  erasure executor reaches only `iam`. `ntf_deliveries.last_error` and `provider_ref` carry an
+  UPDATE grant and nothing clears them on a request; `ntf_suppressions.detail` carries none at
+  all. Declared, disclosed, and not fixed here -- closing it needs either a provider error
+  vocabulary or an erasure path into `plt01`.
+- **A lease is not a lock.** A dispatcher slower than `delivery.CLAIM_LEASE` can be joined by a
+  second one, which is inside the at-least-once contract; the `state = <what we read>` guard on
+  the settling write is what stops the late writer corrupting the row.
+
+**Next.** MOD-014 (People, Profiles & Member 360) is unblocked and is the module where
+`Decision.mask` finally has a read path to apply to. It is also where MOD-013's binding table
+finds its counterpart: a notification's `recipient_id` is whatever the caller says it is, and
+MOD-014 owns the record that would make it checkable.
+
+Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
 scopes a tenant may hand to a third party; `Decision.mask` is computed on every allowed read
-while no read path applies it; and no worker runtime exists for the five schedules that want
+while no read path applies it; and no worker runtime exists for the six schedules that want
 one -- which MOD-011 makes the most pressing, because an objective nobody evaluates raises no
 alert.
 

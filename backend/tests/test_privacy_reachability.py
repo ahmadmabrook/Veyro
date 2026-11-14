@@ -40,6 +40,10 @@ from app.privacy.classification import (
 SUBJECT_NAMES = frozenset({
     "identity_id", "person_id", "subject_id", "guardian_subject_id",
     "actor_identity_id", "actor_id",
+    # MOD-013's name for the same thing. Added with that module: the sweep matches column
+    # names, so a person held under a name nobody listed is invisible to it -- which is how
+    # `evt_outbox.payload` came to need a hand-written declaration.
+    "recipient_id",
 })
 RUNTIME_ROLES = ("veyro_cp_app", "veyro_cp_worker", "veyro_iam_app")
 
@@ -336,6 +340,20 @@ class ReachabilityRegistryTests(unittest.TestCase):
         residue = {(r.schema, r.table, r.column) for r in unreachable_columns()}
         self.assertIn(("plt01", "evt_outbox", "payload"), residue,
                       "it has to appear in what a completion report discloses")
+
+    def test_the_pseudonymous_contact_digests_are_declared_by_hand(self):
+        """MOD-013 holds a SHA-256 of `channel:address` and never an address, which is what
+        keeps a second copy of everyone's email out of this build. It is **pseudonymous and not
+        anonymous**: somebody holding a candidate address can test it against the digest. The
+        sweep matches names and would never find it, and a residue report that omitted it would
+        understate what survives an erasure.
+        """
+        declared = {(r.schema, r.table, r.column) for r in SUBJECT_COLUMNS}
+        residue = {(r.schema, r.table, r.column) for r in unreachable_columns()}
+        for table in ("ntf_notifications", "ntf_suppressions"):
+            self.assertIn(("plt01", table, "address_digest"), declared)
+            self.assertIn(("plt01", table, "address_digest"), residue,
+                          "it has to appear in what a completion report discloses")
 
     def test_this_build_cannot_fully_erase_a_subject_and_says_so(self):
         """Stated as its own test so the disclosure cannot lapse quietly.

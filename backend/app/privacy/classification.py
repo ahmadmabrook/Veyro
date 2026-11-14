@@ -371,6 +371,78 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "twice is two decisions somebody made"),
     Reachability("plt01", "int_connector_runs", "started_by", "unreachable",
                  "insert-only evidence; no UPDATE grant on this column"),
+    # MOD-013. A notification is the one place this build stores what a tenant said to a
+    # person, and the recipient is named on four tables. None is an erasure target today:
+    # the authored message carries no UPDATE grant at all (paragraph 2474 -- "delivery failure
+    # never rewrites the authored message"), and no runtime role holds DELETE anywhere in the
+    # module. That is a real residue and it is disclosed rather than glossed.
+    Reachability("plt01", "ntf_notifications", "recipient_id", "unreachable",
+                 "the authored message is insert-only; no UPDATE grant on this column -- and "
+                 "the row it keeps alive carries `rendered_subject` and `rendered_body`, so "
+                 "the full text of every message ever sent to this person survives verbatim "
+                 "beside the identifier"),
+    Reachability("plt01", "ntf_notifications", "requested_by", "unreachable",
+                 "the authored message is insert-only; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_preferences", "recipient_id", "unreachable",
+                 "a preference's subject is its identity; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_preferences", "set_by", "write_once",
+                 "rewritten on each change, because setting a preference again is a new act "
+                 "by whoever did it"),
+    Reachability("plt01", "ntf_digests", "recipient_id", "unreachable",
+                 "a digest's subject is its identity; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_templates", "authored_by", "unreachable",
+                 "insert-only authorship; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_templates", "approved_by", "write_once",
+                 "written with the approval; `approved_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "ntf_channel_policies", "set_by", "write_once",
+                 "rewritten on each change, as the preference's is"),
+    Reachability("plt01", "ntf_suppressions", "recorded_by", "unreachable",
+                 "insert-only evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_suppressions", "released_by", "write_once",
+                 "written with the release; `released_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    # **Declared by hand, because no sweep matching column names would find it.** A digest of
+    # `channel:address` is how this module remembers a bounce and matches a recipient without
+    # holding a contact address -- but it is *pseudonymous, not anonymous*: somebody with a
+    # candidate address can test it. Neither table carries UPDATE on it or DELETE at all, so an
+    # erasure leaves it, and a residue report that omitted it would understate what survives.
+    Reachability("plt01", "ntf_notifications", "address_digest", "unreachable",
+                 "a SHA-256 of channel:address, held so a bounce can be remembered without a "
+                 "contact address; pseudonymous rather than anonymous, and no runtime role can "
+                 "update or delete it"),
+    Reachability("plt01", "ntf_suppressions", "address_digest", "unreachable",
+                 "the suppression list is keyed on this digest, so clearing it would resume "
+                 "sending to an address that bounced or complained; no UPDATE grant"),
+    Reachability("plt01", "ntf_recipient_channels", "recipient_id", "unreachable",
+                 "the binding's subject is its identity; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_recipient_channels", "bound_by", "unreachable",
+                 "insert-only attribution; no UPDATE grant on this column"),
+    Reachability("plt01", "ntf_recipient_channels", "rebound_by", "write_once",
+                 "written with the rebinding, which is a fresh act by whoever did it"),
+    Reachability("plt01", "ntf_recipient_channels", "address_digest", "write_once",
+                 "the same pseudonymous digest as the two above; a rebinding overwrites it, so "
+                 "the grant exists, but no erasure path locates this table and nothing clears "
+                 "it on a request"),
+    # **Free text a caller supplies, which is where a contact address actually ends up.** The
+    # column names say nothing about a person, so the name sweep finds none of these; the
+    # ordinary content of an SMTP rejection is `550 5.1.1 <jane@example.com>: Recipient address
+    # rejected`, and a dispatcher reports exactly that. This is MOD-010's `cfg_exposures`
+    # finding again -- the restricted-field rule reads names and a value carries anything --
+    # and these three are the module's honest answer to it: declared, with the mechanism each
+    # one's grants actually support.
+    Reachability("plt01", "ntf_deliveries", "last_error", "write_once",
+                 "a provider's own error text, which routinely quotes the address it "
+                 "rejected; rewritten on each attempt, so the grant exists, but the erasure "
+                 "executor reaches only `iam` and `ntf_deliveries` names no subject it could "
+                 "be located by -- so nothing clears it"),
+    Reachability("plt01", "ntf_deliveries", "provider_ref", "write_once",
+                 "a provider's handle for the message, free text from the same caller, with "
+                 "the same grant and the same absence of an erasure path"),
+    Reachability("plt01", "ntf_suppressions", "detail", "unreachable",
+                 "why an address was suppressed, free text that for a bounce quotes the "
+                 "address; the table carries no UPDATE on it and no DELETE, deliberately, so "
+                 "this is residue an erasure cannot reach"),
     Reachability("plt01", "int_connector_runs", "settled_by", "write_once",
                  "written when the run is settled; `status = 'running'` in the service is what "
                  "refuses a second settlement, not the grant"),

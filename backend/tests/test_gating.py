@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 import unittest
 import uuid
 
@@ -68,6 +69,14 @@ READ_ROUTES = [
     ("get", "/integrations/credentials", None),
     ("get", "/integrations/cursors", None),
     ("get", "/integrations/runs", None),
+    ("get", "/notifications/templates", None),
+    ("get", f"/notifications/preferences?recipient_id={_SUBJECT}", None),
+    ("get", "/notifications/channels", None),
+    ("get", "/notifications", None),
+    ("get", f"/notifications/{_ID}", None),
+    ("get", "/notifications/suppressions/all", None),
+    ("get", "/notifications/digests/all", None),
+    ("get", f"/notifications/recipients/{_SUBJECT}/channels", None),
 ]
 
 WRITE_ROUTES = [
@@ -165,6 +174,29 @@ WRITE_ROUTES = [
     ("post", f"/integrations/runs/{_ID}/reconciliation", {"local_count": 1,
                                                           "provider_count": 1, "matched": 1,
                                                           **_CORR}),
+    ("post", "/notifications/templates", {"template_key": "invoice.issued", "version": 1,
+                                          "category": "transactional", "channel": "email",
+                                          "locale": "en", "subject": "Invoice",
+                                          "body": "Your invoice is ready.", **_CORR}),
+    ("post", f"/notifications/templates/{_ID}/approve", _CORR),
+    ("post", f"/notifications/templates/{_ID}/publish", _CORR),
+    ("post", f"/notifications/templates/{_ID}/retire", _CORR),
+    ("put", "/notifications/preferences", {"recipient_id": _SUBJECT,
+                                           "category": "marketing", "channel": "email",
+                                           "allowed": False, **_CORR}),
+    ("put", "/notifications/channels", {"channel": "email", **_CORR}),
+    ("post", "/notifications", {"template_key": "invoice.issued", "recipient_id": _SUBJECT,
+                                "address_digests": {"email": "0" * 64},
+                                "idempotency_key": "gate-sweep-1", **_CORR}),
+    ("post", f"/notifications/{_ID}/dispatch", _CORR),
+    ("post", f"/notifications/{_ID}/outcome", {"outcome": "sent", **_CORR}),
+    ("post", "/notifications/suppressions", {"channel": "email",
+                                             "address_digest": "0" * 64,
+                                             "reason": "unsubscribed", **_CORR}),
+    ("post", f"/notifications/suppressions/{_ID}/release", {"reason": "member asked",
+                                                            **_CORR}),
+    ("put", f"/notifications/recipients/{_SUBJECT}/channels",
+     {"channel": "email", "address_digest": "0" * 64, "reason": "they moved house", **_CORR}),
 ]
 
 
@@ -502,7 +534,8 @@ class GateCoverageTests(unittest.TestCase):
 
     #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
     #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
-    FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops", "/integrations")
+    FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops", "/integrations",
+                            "/notifications")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.
@@ -516,7 +549,7 @@ class GateCoverageTests(unittest.TestCase):
                  for method, path, _ in READ_ROUTES + WRITE_ROUTES}
         swept = {(method, path.replace(_ID, "{id}").replace(_SUBJECT, "{id}"))
                  for method, path in swept}
-        swept = {(method, "/ops/metrics/{metric_key}" if path.startswith("/ops/metrics/")
+        swept = {(method, "/ops/metrics/{id}" if path.startswith("/ops/metrics/")
                   else path) for method, path in swept}
         live = set()
         for method, path, _ in self._routes():
@@ -527,11 +560,13 @@ class GateCoverageTests(unittest.TestCase):
             if not any(path == prefix or path.startswith(prefix + "/")
                        for prefix in self.FULLY_SWEPT_PREFIXES):
                 continue
-            for name in ("purpose_id", "hold_id", "request_id", "event_id", "job_id",
-                         "subscription_id", "dead_letter_id", "objective_id", "check_id",
-                         "budget_id", "install_id", "connection_id", "run_id"):
-                path = path.replace("{" + name + "}", "{id}")
-            live.add((method, path))
+            # **Every path parameter, not a list of the ones somebody remembered.** This was a
+            # hand-written list of sixteen names, so a module adding a route with a
+            # seventeenth got a route neither swept nor reported -- the per-item-list hazard
+            # this very test exists to close, inside the test itself. Found by MOD-013 adding
+            # `{recipient_id}`. Two routes that normalise alike differ only in what they call
+            # a parameter, which is not a difference a URL shape has.
+            live.add((method, re.sub(r"\{[^}]+\}", "{id}", path)))
         self.assertEqual(sorted(live - swept), [],
                          "these routes are never called by the gating sweep")
 

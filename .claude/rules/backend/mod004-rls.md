@@ -33,9 +33,9 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 54 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 60 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
-MOD-011's `ops_` and MOD-012's `int_` -- and **every one has been
+MOD-011's `ops_`, MOD-012's `int_` and MOD-013's `ntf_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -54,6 +54,16 @@ tenant's legal holds. Seven of nine tables had no evidence behind them. Checks 1
 and 44 assert over `pg_class` and `pg_policies` for exactly this reason, each with a
 minimum-count guard so the sweep cannot pass vacuously: a per-table list has to be edited
 whenever a module adds a table, and that edit is the moment an unprotected one slips through.
+
+**A sweep that filters `relkind = 'r'` is not a sweep of the schema.** A partitioned table is
+`relkind = 'p'`: it holds no storage of its own and is what rows are addressed through, so the
+filter -- copied forward through nine modules from the comment explaining why indexes have to
+be excluded -- made every catalogue sweep blind to one. A reviewer created
+`plt01.ntf_contacts ... PARTITION BY LIST (tenant_id)` holding plaintext email addresses, with
+no RLS, no policy, no tenant foreign key and DELETE granted to both runtime roles, read it from
+another tenant's context and from no context at all, and the suite reported 60/60. It escaped
+the RLS sweep, the column-list pin and the DELETE/TRUNCATE/REFERENCES ban at once. Every sweep
+in the file now reads `relkind IN ('r', 'p')`.
 
 **The same holds one level in, for column grants.** MOD-010's first version of check 42 proved
 its column-scoped UPDATE grants against a hand-written list of column names, and a reviewer
@@ -98,6 +108,28 @@ tripped "a published version has a publication date", and a third collided with 
 unique index before reaching the constraint under test. All three looked correct and all three
 passed with their own constraint dropped. The mutation sweep is the only thing that finds this:
 set every *other* column so that the row violates exactly one rule.
+
+MOD-013's sweep found four more of these in one module: three siblings firing first, and one
+case that inserted a duplicate row and so tested the *primary key* rather than the unique
+constraint it named. Three modules in a row have shipped this shape past a careful read, which
+is the argument for the sweep rather than for reading harder.
+
+**And a case proves the constraint it names only in the direction it exercises.** Dropping a
+constraint is caught; *editing* one is a different mutation, and an equality -- `(A) = (B)`,
+the commonest shape in these schemas -- needs a case per side. A reviewer weakened eight of
+MOD-013's to one-way implications and the suite reported 60/60 every time: a transactional
+receipt could cite a marketing consent and make it read as used, a failed delivery could carry
+a delivery time and read as delivered on a status page, a suppression could be released with a
+blank reason (MOD-009's `coalesce` finding, in a module that had already paid for it once), and
+an SMS notification could carry an email subject. Nothing was broken in the shipped schema; the
+*evidence* was half of what its own preamble claimed. **So the sweep's mutations are
+weakenings as well as drops**, one per conjunct and one per side of an equality.
+
+**A new trigger invalidates existing cases the same way a new constraint does, and in the
+other direction too.** MOD-013 added a BEFORE INSERT trigger pinning one category per template
+key, which then fired first on an existing case that tested the unique index with a row
+carrying the wrong category -- so that case began proving the trigger instead. Found by the
+sweep, immediately, which is the only reason it is a footnote rather than a finding.
 
 Two obligations named in the original rule are covered: check 10 asserts the runtime roles hold no
 TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE

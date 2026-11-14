@@ -241,6 +241,43 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("integration.uninstalled", 1, "MOD-012", "internal",
        ("install_id", "definition_key", "reason", "connections_revoked"),
        "A tenant removed an integration, revoking every connection it held"),
+    # ---------------------------------------------------------------- MOD-013, ENG-02
+    # Paragraph 2473's six. **No payload carries the message text or a contact address**: a
+    # notification body is the most personal thing this build renders, and an event is fanned
+    # out, archived and replayed into more places than any other row. A consumer that needs the
+    # text reads it from `GET /notifications/{id}` under its own permission.
+    _e("notification.requested", 1, "MOD-013", "confidential",
+       ("notification_id", "template_key", "category", "channel", "recipient_id", "outcome",
+        "reason"),
+       "A notification was authored, and what the preferences decided about it"),
+    # The three delivery events share a payload builder, so `reason` is gone from all three --
+    # see the note on `notification.failed` below for what it carried and why that matters.
+    _e("notification.sent", 1, "MOD-013", "confidential",
+       ("notification_id", "channel", "state", "attempts", "outcome"),
+       "A notification was handed to a provider"),
+    _e("notification.delivered", 1, "MOD-013", "confidential",
+       ("notification_id", "channel", "state", "attempts", "outcome"),
+       "A provider confirmed delivery"),
+    # **No `reason` field.** It carried the provider's own error text, which for an SMTP
+    # rejection quotes the address that was rejected -- so the realistic bounce, with nobody
+    # trying, put a contact address into `evt_outbox.payload`, the one store no erasure in this
+    # build can reach, published by the module whose defining property is that it holds no
+    # contact address. The restricted-field rule below reads declared *names* and a value can
+    # carry anything; this is the second time that has bitten, after `cfg_exposures.subject_id`.
+    # The text stays on `ntf_deliveries.last_error`, behind the delivery permission and
+    # overwritable.
+    _e("notification.failed", 1, "MOD-013", "confidential",
+       ("notification_id", "channel", "state", "attempts", "outcome"),
+       "A delivery failed, bounced or drew a complaint"),
+    _e("preference.changed", 1, "MOD-013", "confidential",
+       ("preference_id", "recipient_id", "category", "channel", "allowed", "digest_mode"),
+       "A recipient's notification preference changed"),
+    # Declared and deliberately unproduced, like `feature_flag.evaluated`. Paragraph 2473 lists
+    # it, and a status page is a surface this build does not have -- an event announcing a
+    # publication that never happened would be worse than the gap.
+    _e("status_update.published", 1, "MOD-013", "internal",
+       ("update_id", "severity", "summary"),
+       "An operational status update was published"),
 ])
 
 

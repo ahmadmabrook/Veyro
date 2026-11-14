@@ -245,6 +245,57 @@ PERMISSIONS: dict[str, Permission] = dict([
     # publishes definitions, and it is unauthenticated today like the rest of that plane.
     _p("integrations.definition.publish", "Publish or retire an integration definition",
        "configuration", "financial"),
+    # MOD-013, notifications. Authoring a template is content that goes out under the tenant's
+    # name to everybody, so writing and approving it are `financial`-class and are **separate
+    # permissions** -- an author cannot approve their own, which the schema enforces too.
+    _p("notifications.template.read", "See notification templates", "data_access"),
+    _p("notifications.template.write", "Create or retire a notification template",
+       "configuration", "financial"),
+    _p("notifications.template.approve", "Approve a template for publication",
+       "configuration", "financial"),
+    _p("notifications.preference.read", "See a recipient's notification preferences",
+       "data_access"),
+    _p("notifications.preference.write", "Set a recipient's notification preferences",
+       "data_access"),
+    # Separate from `template.read`, which shared it at first: the channel policy carries
+    # `cost_per_message_minor`, so a role granted "see notification templates" was also
+    # reading what every message costs the tenant.
+    _p("notifications.policy.read", "See channel policies and their per-message cost",
+       "configuration"),
+    _p("notifications.policy.write", "Enable a channel, set its fallback or its cost",
+       "configuration", "financial"),
+    _p("notifications.notification.read", "See notifications and their delivery state",
+       "data_access"),
+    # The message text, which is the most personal thing this build renders. Separate from the
+    # list permission so a support role can see that something was sent without reading it --
+    # MOD-010's lateral-read finding, answered by splitting the read rather than by a comment.
+    _p("notifications.notification.read_content",
+       "Read the text of a notification that was sent", "data_access", "financial"),
+    _p("notifications.notification.request", "Request a notification", "data_access"),
+    # **A critical alert is a different permission from an ordinary request.** It overrides the
+    # recipient's opt-out, their quiet hours and their frequency cap, and the first version
+    # bought that with the routine permission above plus a non-blank string in the body --
+    # paragraph 2461's "only under documented policy" satisfied by one keystroke, which is
+    # MOD-009's `consent_subject` finding in this module's clothes. Financial class, so it
+    # needs a stepped-up session as well as the grant.
+    _p("notifications.notification.request_critical",
+       "Request a notification that overrides a recipient's preferences",
+       "data_access", "financial"),
+    # Moving a recipient's address binding is how somebody would walk a complainant's address
+    # away from the bounce suppression recorded against it, so it is not the write permission
+    # that sets an ordinary preference.
+    _p("notifications.recipient.rebind",
+       "Move a recipient's address binding on a channel", "data_access", "financial"),
+    # Routine, and the sixth of its kind: a dispatcher runs on a loop and a step-up requirement
+    # would mean nothing is ever sent. Its reach is bounded by what it can change -- a delivery
+    # settles itself, and the authored message carries no UPDATE grant at all.
+    _p("notifications.delivery.dispatch", "Claim and settle a delivery", "data_access"),
+    _p("notifications.suppression.read", "See suppressed addresses", "data_access"),
+    _p("notifications.suppression.write", "Suppress an address", "data_access"),
+    # Releasing is a decision to resume sending to an address that asked to stop, so it is
+    # financial-class and the schema only admits it for an unsubscribe.
+    _p("notifications.suppression.release", "Release a suppression",
+       "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),
