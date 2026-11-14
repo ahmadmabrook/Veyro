@@ -19,7 +19,7 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from tests.support import GatedApiTestCase
+from tests.support import DSN, GatedApiTestCase
 
 TODAY = date.today()
 
@@ -1106,14 +1106,18 @@ class ConcurrencyTests(SchedulingApiTestCase):
         gym, session_id = self.one_place_session()
         tenant_id = gym["tenant_id"]
         people = [self.person(tenant_id, f"Direct {n}") for n in range(2)]
-        dsn = "postgresql://postgres:veyro_dev@127.0.0.1:55432/veyro"
+        # **The suite's own DSN.** It was hard-coded to the local development port, so in CI
+        # both connections failed, both threads died before recording anything, and the test
+        # reported an empty list -- a red suite whose message named no cause. A test that
+        # reaches past the app still has to get its connection from the same place the app
+        # does.
         results: list[str] = []
         lock = threading.Lock()
 
         def insert(person_id: str, delay: float) -> None:
             outcome = "ok"
             try:
-                with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+                with psycopg.connect(DSN) as conn, conn.cursor() as cur:
                     cur.execute("SET LOCAL ROLE veyro_cp_app")
                     cur.execute("SELECT set_config('app.tenant_id', %s, true)",
                                 (tenant_id,))
@@ -1130,6 +1134,12 @@ class ConcurrencyTests(SchedulingApiTestCase):
                         cur.execute("SELECT pg_sleep(1.5)")
             except psycopg.errors.RaiseException as e:
                 outcome = str(e).splitlines()[0]
+            except Exception as e:  # noqa: BLE001
+                # **Every outcome is recorded, including an unexpected one.** The first version
+                # caught only the trigger's refusal, so anything else -- a connection that
+                # could not be made -- killed the thread silently and the assertion below
+                # reported an empty list with nothing to read.
+                outcome = f"unexpected {type(e).__name__}: {e}"
             with lock:
                 results.append(outcome)
 
@@ -1139,6 +1149,8 @@ class ConcurrencyTests(SchedulingApiTestCase):
             thread.start()
         for thread in threads:
             thread.join()
+        self.assertEqual(len(results), 2, results)
+        self.assertNotIn(True, ["unexpected" in r for r in results], results)
         refused = [r for r in results if r != "ok"]
         self.assertEqual(len(refused), 1, results)
         self.assertIn("places", refused[0])
