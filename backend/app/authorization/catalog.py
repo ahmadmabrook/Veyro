@@ -453,6 +453,63 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("finance.payment.reconcile",
        "Reconcile a payment whose provider state is unknown",
        "configuration", "financial"),
+    # MOD-018, the ledger. **`finance.ledger.*` rather than more `finance.account.*`**,
+    # because the two answer different questions and one role routinely holds only the first:
+    # a bookkeeper reads and posts journals and has no business creating a member's billing
+    # account, and a front-desk role is the reverse.
+    #
+    # **Reading the ledger is `data_access` and routine**, which is deliberate and worth
+    # stating: a trial balance is how somebody finds out that something is wrong, and a read
+    # that needed a step-up is a read nobody does until the month-end panic. What bounds it is
+    # that it changes nothing.
+    _p("finance.ledger.read",
+       "See the chart of accounts, journals, postings, recognition schedules, "
+       "reconciliation cases and a trial balance", "data_access"),
+    # **Posting is financial and so is correcting**, and correcting is separate: a correction
+    # reverses a figure somebody already reported, and an auditor asks which role could do
+    # that rather than which role could post at all.
+    _p("finance.ledger.post", "Post a journal to the ledger",
+       "configuration", "financial"),
+    _p("finance.ledger.correct", "Reverse a posted journal with a compensating entry",
+       "configuration", "financial"),
+    _p("finance.ledger.chart", "Open or retire a ledger account",
+       "configuration", "financial"),
+    # **The wallet is two permissions, because they move money in opposite directions.**
+    # Crediting creates a liability the tenant owes -- a giveaway, a goodwill gesture, money
+    # taken in -- and debiting spends a member's own balance. A role that could do the second
+    # and not the first is a till; one that could do the first and not the second is marketing.
+    _p("finance.wallet.read", "See a member's wallet balance and statement", "data_access"),
+    _p("finance.wallet.credit", "Add value to a member's wallet",
+       "configuration", "financial"),
+    _p("finance.wallet.debit", "Spend a member's wallet value",
+       "configuration", "financial"),
+    # Recognition moves money from a liability to revenue, which is the figure a tax return is
+    # built from.
+    _p("finance.recognition.manage",
+       "Declare how a sale earns and post what it has earned",
+       "configuration", "financial"),
+    _p("finance.settlement.import", "Import and match a provider settlement file",
+       "configuration", "financial"),
+    _p("finance.reconciliation.manage",
+       "Work a reconciliation case: investigate, resolve or write it off",
+       "configuration", "financial"),
+    # **A till session is routine.** A front desk opens and closes a drawer every shift, and a
+    # step-up per close is a step-up nobody completes -- so what bounds it is that the variance
+    # is posted to suspense and opens a case rather than disappearing. MOD-016's reasoning
+    # about the two reads a turnstile does, applied to the act a clerk does hourly.
+    _p("finance.cash.session", "Open and close a till session", "configuration"),
+    # Banking the cash is not: it is money leaving the premises.
+    _p("finance.cash.deposit", "Bank a deposit and confirm what the bank credited",
+       "configuration", "financial"),
+    # **Closing a period makes a figure final and reopening one un-makes it**, which is why
+    # they are two permissions. An auditor asks about the second.
+    _p("finance.period.close",
+       "Begin or finish closing a financial period, and post the close's own entries",
+       "configuration", "financial"),
+    _p("finance.period.reopen", "Reopen a closed financial period",
+       "configuration", "financial"),
+    _p("finance.export.run", "Export a closed period to an accounting system",
+       "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

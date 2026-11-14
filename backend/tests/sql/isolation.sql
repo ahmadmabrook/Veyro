@@ -7796,6 +7796,93 @@ BEGIN
         RAISE EXCEPTION
             'CHECK 61 FAILED: a plt01 table carries no tenant registry foreign key: %', wrong;
     END IF;
+    -- **Four more, moved here from the per-prefix sweeps, because a table satisfying the
+    -- three above with `USING (true)` passed everything.** A reviewer created
+    -- `plt01.ledger_running_balances` -- RLS enabled and forced, one permissive policy, a
+    -- tenant foreign key, and `USING (true)` with DELETE, TRUNCATE and a PUBLIC grant -- read
+    -- every tenant's rows from another tenant's context and from no context at all, and
+    -- deleted them. The predicate shape, the privilege bans, the tenant-leading key and the
+    -- forbidden column names lived only in per-module checks, so the name escaped all of
+    -- them. Prefix-free is the only version of this sweep that means anything.
+    SELECT string_agg(p.tablename || '.' || p.policyname, ', ' ORDER BY p.tablename)
+      INTO wrong
+    FROM pg_policies p
+    JOIN pg_class c ON c.relname = p.tablename
+                   AND c.relnamespace = 'plt01'::regnamespace
+    WHERE p.schemaname = 'plt01' AND c.relkind IN ('r', 'p')
+      -- **Compared against the approved text, not searched for a substring.** The
+      -- predicate's own second argument to `current_setting` is the literal `true`, so a
+      -- sweep hunting for "true" flags every policy in the schema and a sweep hunting for
+      -- "app.tenant_id" passes anything that mentions it beside an `OR true`.
+      AND (coalesce(p.qual, '') <> '(tenant_id = (NULLIF(current_setting'
+                                  '(''app.tenant_id''::text, true), ''''::text))::uuid)'
+           OR coalesce(p.with_check, '') <> '(tenant_id = (NULLIF(current_setting'
+                                            '(''app.tenant_id''::text, true), '
+                                            '''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 policy does not name app.tenant_id on both halves, '
+            'or admits true: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname || ' ' || g.rolname || ' ' || g.priv, ', '
+                      ORDER BY c.relname, g.rolname, g.priv) INTO wrong
+    FROM pg_class c
+    CROSS JOIN LATERAL (
+        SELECT r.rolname, v.priv
+        FROM (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS roles(rolname)
+        JOIN pg_roles r ON r.rolname = roles.rolname
+        CROSS JOIN (VALUES ('TRUNCATE'), ('REFERENCES')) AS v(priv)
+        WHERE has_table_privilege(r.oid, c.oid, v.priv)
+    ) g
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a runtime role holds TRUNCATE or REFERENCES in plt01: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND (has_table_privilege('public', c.oid, 'SELECT')
+           OR has_table_privilege('public', c.oid, 'INSERT')
+           OR has_table_privilege('public', c.oid, 'UPDATE')
+           OR has_table_privilege('public', c.oid, 'DELETE'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a plt01 table is granted to PUBLIC: %', wrong;
+    END IF;
+    -- A tenant-leading primary key, asserted as existence first: a join on `indisprimary`
+    -- contributes no row for a table that has none, which is how thirteen of MOD-014's
+    -- sixteen were droppable in silence.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint con
+                       WHERE con.conrelid = c.oid AND con.contype = 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a plt01 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN pg_constraint con ON con.conrelid = c.oid AND con.contype = 'p'
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = con.conkey[1]
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+    -- And the forbidden column names, schema-wide: a card number, a bank identifier or a
+    -- cached balance under a name no module prefix covers.
+    SELECT string_agg(c.relname || '.' || a.attname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND a.attname IN ('card_number', 'pan', 'cvv', 'cvc', 'iban',
+                        'account_number_raw', 'sort_code', 'routing_number',
+                        'secret', 'password', 'private_key');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 column invites a secret or a card number: %', wrong;
+    END IF;
 END $$;
 
 
@@ -22846,4 +22933,6717 @@ END $$;
 ROLLBACK;
 
 
-\echo 'tenant isolation: 78/78 checks passed'
+-- Tenant B holds one ledger account of its own, so a leaked predicate shows as a
+-- count above the expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_code, account_kind, display_name, currency, created_by,
+     correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'RIVAL-CASH', 'cash', 'Rival till',
+        'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ---------------------------------------------------------------- 79. led_ isolates
+-- MOD-018's fifteen tables, swept from the catalogue rather than from a list. **A sweep
+-- proves the tables it names**, and a per-table list has to be edited whenever a module adds
+-- a table -- which is the moment an unprotected one slips through. Both runtime roles are
+-- seated, because PostgreSQL ORs permissive policies and a role nobody sits as is a role
+-- nothing is proved about.
+DO $$
+DECLARE
+    wrong text;
+    seen integer;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%';
+    IF seen <> 15 THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: expected 15 MOD-018 tables, found %',
+            seen;
+    END IF;
+    -- Row-level security, forced, on every one. `relkind IN ('r', 'p')` and not just `'r'`:
+    -- a partitioned table holds no storage of its own and is what rows are addressed
+    -- through, and a reviewer used exactly that to walk past a whole sweep once.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%' AND NOT (t.relrowsecurity AND t.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: a MOD-018 table is missing ENABLE or FORCE RLS: %', wrong;
+    END IF;
+    -- **Exactly one permissive policy each.** Comparing a policy's predicate asserts that a
+    -- *matching* policy exists, which an added second policy satisfies trivially while
+    -- reading every tenant.
+    SELECT string_agg(p.tablename || ' (' || p.n || ')', ', ' ORDER BY p.tablename)
+    INTO wrong
+    FROM (SELECT tablename, count(*) AS n FROM pg_policies
+          WHERE schemaname = 'plt01' AND permissive = 'PERMISSIVE'
+            AND tablename LIKE 'led\_%'
+          GROUP BY tablename) p
+    WHERE p.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: a MOD-018 table has other than one permissive policy: %',
+            wrong;
+    END IF;
+    -- And the predicate is the one shape, on both halves.
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01'
+      AND p.tablename LIKE 'led\_%'
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: a MOD-018 policy predicate is not the approved shape: %', wrong;
+    END IF;
+    -- No table is owned by a runtime role, which FORCE RLS would exempt.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%'
+      AND pg_get_userbyid(t.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 79 FAILED: a MOD-018 table is owned by something else: %',
+            wrong;
+    END IF;
+END $$;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.led_cash_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_deposit_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_deposits) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_exports) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_journals) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_periods) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_postings) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_recognition_runs) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_recognition_schedules) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_reconciliation_cases) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_settlement_lines) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_settlements) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_wallet_entries) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_wallets) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_app read tenant A''s MOD-018 rows from tenant B';
+    END IF;
+    -- Tenant B holds one ledger account of its own, so a leaked predicate shows as a
+    -- count above the expected one rather than as the zero an empty table would give anyway.
+    IF (SELECT count(*) FROM plt01.led_accounts) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_app sees % ledger accounts from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.led_accounts);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.led_accounts WHERE account_code = 'CASH') THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_app read tenant A''s ledger account from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.led_cash_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_deposit_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_deposits) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_exports) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_journals) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_periods) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_postings) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_recognition_runs) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_recognition_schedules) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_reconciliation_cases) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_settlement_lines) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_settlements) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_wallet_entries) <> 0 OR 
+       (SELECT count(*) FROM plt01.led_wallets) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_worker read tenant A''s MOD-018 rows from tenant B';
+    END IF;
+    IF (SELECT count(*) FROM plt01.led_accounts) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_worker sees % ledger accounts from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.led_accounts);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.led_accounts
+               WHERE account_code = 'CASH') THEN
+        RAISE EXCEPTION
+            'CHECK 79 FAILED: veyro_cp_worker read tenant A''s ledger account from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+
+-- ------------------------------------------------------------- 80. fail closed, MOD-018
+-- With no context the predicate is NULL, so a read returns nothing and a write is refused.
+-- **Isolation fails closed, and that is the property to protect.**
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.led_accounts) <> 0
+       OR (SELECT count(*) FROM plt01.led_journals) <> 0
+       OR (SELECT count(*) FROM plt01.led_postings) <> 0
+       OR (SELECT count(*) FROM plt01.led_wallet_entries) <> 0
+       OR (SELECT count(*) FROM plt01.led_reconciliation_cases) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 80 FAILED: the app role read MOD-018 rows with no context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (tenant_id, account_code, account_kind, display_name, currency,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 'cash',
+                'Smuggled', 'JOD', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 80 FAILED: a ledger account was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.led_postings) <> 0
+       OR (SELECT count(*) FROM plt01.led_wallets) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 80 FAILED: the worker role read MOD-018 rows with no context';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (tenant_id, account_code, account_kind, display_name, currency,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 'cash',
+                'Smuggled', 'JOD', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 80 FAILED: tenant B wrote a ledger account into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------------------- 81. cross-tenant parents, MOD-018
+-- **Every foreign key on this module's tables, compared as a set in both directions.** A
+-- sweep of one kind of reference is not a sweep: MOD-012 swept the tenant-registry key across
+-- every table and *sampled* the intra-module parents, which left two droppable in silence.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.led_accounts: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_accounts: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.led_accounts: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_accounts: tenant_id,location_id -> plt01.locations'),
+        ('plt01.led_cash_sessions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_cash_sessions: tenant_id,cash_account_id -> plt01.led_accounts'),
+        ('plt01.led_cash_sessions: tenant_id,location_id -> plt01.locations'),
+        ('plt01.led_cash_sessions: tenant_id,variance_journal_id -> plt01.led_journals'),
+        ('plt01.led_deposit_sessions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_deposit_sessions: tenant_id,deposit_id -> plt01.led_deposits'),
+        ('plt01.led_deposit_sessions: tenant_id,session_id -> plt01.led_cash_sessions'),
+        ('plt01.led_deposits: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_deposits: tenant_id,bank_account_id -> plt01.led_accounts'),
+        ('plt01.led_deposits: tenant_id,cash_account_id -> plt01.led_accounts'),
+        ('plt01.led_deposits: tenant_id,confirm_journal_id -> plt01.led_journals'),
+        ('plt01.led_deposits: tenant_id,journal_id -> plt01.led_journals'),
+        ('plt01.led_deposits: tenant_id,location_id -> plt01.locations'),
+        ('plt01.led_exports: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_exports: tenant_id,period_id -> plt01.led_periods'),
+        ('plt01.led_journals: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_journals: tenant_id,corrects_journal_id -> plt01.led_journals'),
+        ('plt01.led_journals: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_journals: tenant_id,period_id -> plt01.led_periods'),
+        ('plt01.led_periods: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_periods: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_postings: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_postings: tenant_id,account_id -> plt01.led_accounts'),
+        ('plt01.led_postings: tenant_id,journal_id -> plt01.led_journals'),
+        ('plt01.led_postings: tenant_id,subject_person_id -> plt01.ppl_persons'),
+        ('plt01.led_recognition_runs: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_recognition_runs: tenant_id,journal_id -> plt01.led_journals'),
+        ('plt01.led_recognition_runs: tenant_id,schedule_id -> plt01.led_recognition_schedules'),
+        ('plt01.led_recognition_schedules: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_recognition_schedules: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_recognition_schedules: tenant_id,revenue_account_id -> plt01.led_accounts'),
+        ('plt01.led_recognition_schedules: tenant_id,subject_person_id -> plt01.ppl_persons'),
+        ('plt01.led_recognition_schedules: tenant_id,unearned_account_id -> plt01.led_accounts'),
+        ('plt01.led_reconciliation_cases: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_reconciliation_cases: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_reconciliation_cases: tenant_id,resolution_journal_id -> plt01.led_journals'),
+        ('plt01.led_settlement_lines: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_settlement_lines: tenant_id,matched_payment_id -> plt01.fin_payments'),
+        ('plt01.led_settlement_lines: tenant_id,matched_refund_id -> plt01.fin_refunds'),
+        ('plt01.led_settlement_lines: tenant_id,settlement_id -> plt01.led_settlements'),
+        ('plt01.led_settlements: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_settlements: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.led_wallet_entries: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_wallet_entries: tenant_id,journal_id -> plt01.led_journals'),
+        ('plt01.led_wallet_entries: tenant_id,wallet_id -> plt01.led_wallets'),
+        ('plt01.led_wallets: tenant_id -> plt01_platform.tenants'),
+        ('plt01.led_wallets: tenant_id,person_id -> plt01.ppl_persons')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'led\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 81 FAILED: MOD-018 foreign keys differ from the expected set: %', wrong;
+    END IF;
+    -- **Every primary key leads with `tenant_id`, asserted with NOT EXISTS first.** A check
+    -- written as an inner join proves nothing about a table that has none: MOD-014 had
+    -- thirteen of sixteen droppable because a keyless table contributed no row.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint c
+                      WHERE c.conrelid = t.oid AND c.contype = 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 81 FAILED: a MOD-018 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    JOIN pg_constraint c ON c.conrelid = t.oid AND c.contype = 'p'
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%' AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 81 FAILED: a MOD-018 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------- 82. MOD-018's columns are pinned
+-- **The column list and the nullability, both as sets, both ways.** The defining control in
+-- this module is an *absence*: COM-04-R07 is "statements and balances reconstructed from
+-- entries rather than mutable totals", so there is no `balance_minor` on an account, a wallet
+-- or a schedule and no column one could be cached in. An absence is exactly what a later
+-- migration adds back, and the only thing that notices is a comparison against the whole
+-- list -- which is also why the forbidden-name sweep below is there as well as this pin.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.led_accounts',
+         'account_code,account_id,account_kind,brand_id,'
+         'correlation_id,created_at,created_by,currency,display_name,'
+         'legal_entity_id,location_id,retire_correlation_id,'
+         'retired_at,retired_by,status,tenant_id'),
+        ('plt01.led_cash_sessions',
+         'cash_account_id,close_correlation_id,closed_at,closed_by,'
+         'correlation_id,counted_minor,currency,drawer_label,'
+         'expected_minor,idempotency_key,location_id,opened_at,'
+         'opened_by,opening_float_minor,session_id,status,tenant_id,'
+         'variance_journal_id,variance_reason'),
+        ('plt01.led_deposit_sessions',
+         'added_at,added_by,amount_minor,correlation_id,deposit_id,'
+         'session_id,tenant_id'),
+        ('plt01.led_deposits',
+         'bank_account_id,bank_reference,cash_account_id,'
+         'confirm_correlation_id,confirm_journal_id,confirmed_at,'
+         'confirmed_by,correlation_id,created_at,created_by,'
+         'credited_minor,credited_on,currency,declared_minor,'
+         'deposit_id,deposited_on,idempotency_key,journal_id,'
+         'location_id,status,tenant_id'),
+        ('plt01.led_exports',
+         'correlation_id,credit_total_minor,currency,'
+         'debit_total_minor,export_id,exported_at,exported_by,'
+         'idempotency_key,journal_count,period_id,target_ref,'
+         'target_system,tenant_id'),
+        ('plt01.led_journals',
+         'control_total_minor,correction_reason,corrects_journal_id,'
+         'correlation_id,currency,description,idempotency_key,'
+         'journal_id,legal_entity_id,occurred_at,period_id,posted_by,'
+         'posted_on,purpose,source_kind,source_ref,tenant_id'),
+        ('plt01.led_periods',
+         'close_correlation_id,closed_at,closed_by,correlation_id,'
+         'created_at,created_by,ends_on,legal_entity_id,period_id,'
+         'period_key,reopen_correlation_id,reopen_reason,reopened_at,'
+         'reopened_by,starts_on,status,tenant_id'),
+        ('plt01.led_postings',
+         'account_id,amount_minor,currency,journal_id,line_number,'
+         'memo,posting_id,subject_person_id,tenant_id'),
+        ('plt01.led_recognition_runs',
+         'amount_minor,as_of,correlation_id,earned_to_date_minor,'
+         'idempotency_key,journal_id,occurred_at,posted_by,'
+         'recognised_before_minor,run_id,schedule_id,tenant_id,'
+         'units_delivered'),
+        ('plt01.led_recognition_schedules',
+         'basis,close_correlation_id,close_reason,closed_at,closed_by,'
+         'correlation_id,created_at,created_by,currency,ends_on,'
+         'legal_entity_id,revenue_account_id,schedule_id,source_kind,'
+         'source_ref,starts_on,status,subject_person_id,tenant_id,'
+         'total_minor,unearned_account_id,units_total'),
+        ('plt01.led_reconciliation_cases',
+         'case_id,case_kind,correlation_id,currency,detail,'
+         'expected_minor,idempotency_key,legal_entity_id,'
+         'observed_minor,opened_by,opened_on,resolution,'
+         'resolution_journal_id,resolve_correlation_id,resolved_at,'
+         'resolved_by,status,subject_kind,subject_ref,tenant_id'),
+        ('plt01.led_settlement_lines',
+         'amount_minor,currency,line_id,line_kind,line_number,'
+         'matched_payment_id,matched_refund_id,outcome,outcome_reason,'
+         'provider_ref,settlement_id,tenant_id'),
+        ('plt01.led_settlements',
+         'claimed_total_minor,computed_total_minor,correlation_id,'
+         'currency,document_ref,idempotency_key,imported_at,'
+         'imported_by,legal_entity_id,line_count,provider_batch_ref,'
+         'provider_key,settled_on,settlement_id,status,tenant_id'),
+        ('plt01.led_wallet_entries',
+         'actor_id,amount_minor,correlation_id,entry_id,expires_on,'
+         'idempotency_key,journal_id,occurred_at,reason,source_kind,'
+         'source_ref,tenant_id,value_kind,wallet_id'),
+        ('plt01.led_wallets',
+         'correlation_id,created_at,created_by,currency,person_id,'
+         'tenant_id,wallet_id')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'led\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 82 FAILED: MOD-018 column lists differ from the pinned set: %', wrong;
+    END IF;
+    -- **Every NOT NULL, because a NOT NULL is what makes a sibling CHECK bite** -- and
+    -- because of MATCH SIMPLE: a NULL in any column of a composite foreign key skips the
+    -- check entirely, so dropping one silently switches off a tenant-carrying parent
+    -- reference that the key-set comparison above cannot see.
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.led_accounts',
+         'account_code,account_id,account_kind,correlation_id,'
+         'created_at,created_by,currency,display_name,status,'
+         'tenant_id'),
+        ('plt01.led_cash_sessions',
+         'cash_account_id,correlation_id,currency,drawer_label,'
+         'idempotency_key,location_id,opened_at,opened_by,'
+         'opening_float_minor,session_id,status,tenant_id'),
+        ('plt01.led_deposit_sessions',
+         'added_at,added_by,amount_minor,correlation_id,deposit_id,'
+         'session_id,tenant_id'),
+        ('plt01.led_deposits',
+         'bank_account_id,cash_account_id,correlation_id,created_at,'
+         'created_by,currency,declared_minor,deposit_id,deposited_on,'
+         'idempotency_key,journal_id,location_id,status,tenant_id'),
+        ('plt01.led_exports',
+         'correlation_id,credit_total_minor,currency,'
+         'debit_total_minor,export_id,exported_at,exported_by,'
+         'idempotency_key,journal_count,period_id,target_ref,'
+         'target_system,tenant_id'),
+        ('plt01.led_journals',
+         'control_total_minor,correlation_id,currency,description,'
+         'idempotency_key,journal_id,legal_entity_id,occurred_at,'
+         'period_id,posted_by,posted_on,purpose,source_kind,'
+         'source_ref,tenant_id'),
+        ('plt01.led_periods',
+         'correlation_id,created_at,created_by,ends_on,'
+         'legal_entity_id,period_id,period_key,starts_on,status,'
+         'tenant_id'),
+        ('plt01.led_postings',
+         'account_id,amount_minor,currency,journal_id,line_number,'
+         'posting_id,tenant_id'),
+        ('plt01.led_recognition_runs',
+         'amount_minor,as_of,correlation_id,earned_to_date_minor,'
+         'idempotency_key,journal_id,occurred_at,posted_by,'
+         'recognised_before_minor,run_id,schedule_id,tenant_id'),
+        ('plt01.led_recognition_schedules',
+         'basis,correlation_id,created_at,created_by,currency,'
+         'legal_entity_id,revenue_account_id,schedule_id,source_kind,'
+         'source_ref,status,tenant_id,total_minor,unearned_account_id'),
+        ('plt01.led_reconciliation_cases',
+         'case_id,case_kind,correlation_id,currency,detail,'
+         'expected_minor,idempotency_key,legal_entity_id,'
+         'observed_minor,opened_by,opened_on,status,subject_kind,'
+         'subject_ref,tenant_id'),
+        ('plt01.led_settlement_lines',
+         'amount_minor,currency,line_id,line_kind,line_number,outcome,'
+         'outcome_reason,provider_ref,settlement_id,tenant_id'),
+        ('plt01.led_settlements',
+         'claimed_total_minor,computed_total_minor,correlation_id,'
+         'currency,idempotency_key,imported_at,imported_by,'
+         'legal_entity_id,line_count,provider_batch_ref,provider_key,'
+         'settled_on,settlement_id,status,tenant_id'),
+        ('plt01.led_wallet_entries',
+         'actor_id,amount_minor,correlation_id,entry_id,'
+         'idempotency_key,journal_id,occurred_at,reason,source_kind,'
+         'tenant_id,value_kind,wallet_id'),
+        ('plt01.led_wallets',
+         'correlation_id,created_at,created_by,currency,person_id,'
+         'tenant_id,wallet_id')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'led\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 82 FAILED: MOD-018 nullability differs from the pinned set: %', wrong;
+    END IF;
+    -- **No column that could hold a card number.** Paragraph 1597, as a positive assertion
+    -- rather than as the absence of one: the names a later migration would reach for.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'led\_%'
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('pan', 'card_number', 'cardholder_name', 'cvv', 'cvc',
+                        'expiry_month', 'expiry_year', 'card_expiry', 'iban',
+                        'account_number_raw', 'sort_code', 'routing_number');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 82 FAILED: a MOD-018 table grew a column for payment instrument data: %',
+            wrong;
+    END IF;
+    -- **And no cached balance anywhere in the module.** COM-04-R07: "statements and
+    -- balances reconstructed from entries rather than mutable totals." A cached total is a
+    -- second authority that can disagree with the first, and the disagreement surfaces as a
+    -- member who cannot spend value their statement says they hold. The control is an
+    -- *absence*, which is what a later migration adds back -- so it is swept rather than
+    -- described.
+    --
+    -- `control_total_minor` on a journal is deliberately not in this list and is not a cached
+    -- balance: it is the figure the journal *claimed* at the moment it was posted, compared
+    -- against its own postings by the deferred trigger, and insert-only. A header that
+    -- disagrees with its body is the evidence; a balance that disagrees with its entries is
+    -- a bug.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND t.relname LIKE 'led\_%'
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('balance', 'balance_minor', 'running_balance_minor',
+                        'current_balance_minor', 'recognised_minor',
+                        'recognised_to_date_minor', 'spendable_minor',
+                        'cash_balance_minor', 'promotional_balance_minor',
+                        'total_debits_minor', 'total_credits_minor');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 82 FAILED: a MOD-018 table grew a cached balance: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------- 83. MOD-018's privileges
+-- **The UPDATE column grants as a set, per table and per role, compared both ways.** Every
+-- insert-only claim in the migration is a missing grant, and `pg_class.relacl` holds
+-- table-level grants only -- so a column-level widening is invisible to a check that reads
+-- only it. Read through `has_column_privilege` over `pg_attribute`, per role, because
+-- `information_schema` views are filtered to what the current user can see and a check
+-- running as one role proves nothing about the other.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, grantee, cols) AS (VALUES
+        ('led_accounts', 'veyro_cp_app',
+         'display_name,retire_correlation_id,retired_at,retired_by,'
+         'status'),
+        ('led_accounts', 'veyro_cp_worker',
+         'display_name,retire_correlation_id,retired_at,retired_by,'
+         'status'),
+        ('led_cash_sessions', 'veyro_cp_app',
+         'close_correlation_id,closed_at,closed_by,counted_minor,'
+         'expected_minor,status,variance_journal_id,variance_reason'),
+        ('led_cash_sessions', 'veyro_cp_worker',
+         'close_correlation_id,closed_at,closed_by,counted_minor,'
+         'expected_minor,status,variance_journal_id,variance_reason'),
+        ('led_deposit_sessions', 'veyro_cp_app',
+         '(none)'),
+        ('led_deposit_sessions', 'veyro_cp_worker',
+         '(none)'),
+        ('led_deposits', 'veyro_cp_app',
+         'bank_reference,confirm_correlation_id,confirm_journal_id,'
+         'confirmed_at,confirmed_by,credited_minor,credited_on,status'),
+        ('led_deposits', 'veyro_cp_worker',
+         'bank_reference,confirm_correlation_id,confirm_journal_id,'
+         'confirmed_at,confirmed_by,credited_minor,credited_on,status'),
+        ('led_exports', 'veyro_cp_app',
+         '(none)'),
+        ('led_exports', 'veyro_cp_worker',
+         '(none)'),
+        ('led_journals', 'veyro_cp_app',
+         '(none)'),
+        ('led_journals', 'veyro_cp_worker',
+         '(none)'),
+        ('led_periods', 'veyro_cp_app',
+         'close_correlation_id,closed_at,closed_by,'
+         'reopen_correlation_id,reopen_reason,reopened_at,reopened_by,'
+         'status'),
+        ('led_periods', 'veyro_cp_worker',
+         'close_correlation_id,closed_at,closed_by,'
+         'reopen_correlation_id,reopen_reason,reopened_at,reopened_by,'
+         'status'),
+        ('led_postings', 'veyro_cp_app',
+         '(none)'),
+        ('led_postings', 'veyro_cp_worker',
+         '(none)'),
+        ('led_recognition_runs', 'veyro_cp_app',
+         '(none)'),
+        ('led_recognition_runs', 'veyro_cp_worker',
+         '(none)'),
+        ('led_recognition_schedules', 'veyro_cp_app',
+         'close_correlation_id,close_reason,closed_at,closed_by,'
+         'status'),
+        ('led_recognition_schedules', 'veyro_cp_worker',
+         'close_correlation_id,close_reason,closed_at,closed_by,'
+         'status'),
+        ('led_reconciliation_cases', 'veyro_cp_app',
+         'resolution,resolution_journal_id,resolve_correlation_id,'
+         'resolved_at,resolved_by,status'),
+        ('led_reconciliation_cases', 'veyro_cp_worker',
+         'resolution,resolution_journal_id,resolve_correlation_id,'
+         'resolved_at,resolved_by,status'),
+        ('led_settlement_lines', 'veyro_cp_app',
+         '(none)'),
+        ('led_settlement_lines', 'veyro_cp_worker',
+         '(none)'),
+        ('led_settlements', 'veyro_cp_app',
+         'status'),
+        ('led_settlements', 'veyro_cp_worker',
+         'status'),
+        ('led_wallet_entries', 'veyro_cp_app',
+         '(none)'),
+        ('led_wallet_entries', 'veyro_cp_worker',
+         '(none)'),
+        ('led_wallets', 'veyro_cp_app',
+         '(none)'),
+        ('led_wallets', 'veyro_cp_worker',
+         '(none)')
+    ), actual(tbl, grantee, cols) AS (
+        SELECT t.relname, r.rolname,
+               coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
+        FROM pg_class t
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        LEFT JOIN pg_attribute att
+          ON att.attrelid = t.oid AND att.attnum > 0 AND NOT att.attisdropped
+             AND has_column_privilege(r.rolname, t.oid, att.attname, 'UPDATE')
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'led\_%'
+          AND t.relkind IN ('r', 'p')
+        GROUP BY t.relname, r.rolname
+    )
+    SELECT string_agg(tbl || ' / ' || grantee || ': ' || cols, '; '
+                      ORDER BY tbl, grantee)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 83 FAILED: MOD-018 UPDATE column grants differ from the set: %', wrong;
+    END IF;
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES on anything here.
+    SELECT string_agg(t.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class t
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%'
+      AND has_table_privilege(r.grantee, t.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 83 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    -- And nothing is granted to PUBLIC, column-level included.
+    SELECT string_agg(t.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class t
+    JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum > 0
+         AND NOT att.attisdropped
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'led\_%'
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 83 FAILED: a MOD-018 column carries a PUBLIC grant: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants. **Five tables carry no UPDATE at all**,
+-- and each is a figure somebody is accountable for: the journal and its postings (paragraph
+-- 1685's Critical Control, which is what makes a balance explicable), the wallet entry (the
+-- balance is their sum, so an editable entry is an editable balance), the recognition run (the
+-- three numbers on it have to keep agreeing) and the settlement line (its verdict is evidence
+-- of what the file and the ledger said at import).
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.led_journals SET control_total_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a posted journal was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_postings SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a posting was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_wallet_entries SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a wallet entry was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_recognition_runs SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a recognition run was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_settlement_lines SET outcome = 'matched';
+        RAISE EXCEPTION 'CHECK 83 FAILED: a settlement verdict was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- And no runtime role can delete any of it, which is the other half of paragraph 1685.
+    BEGIN
+        DELETE FROM plt01.led_postings;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a posting was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.led_journals;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a journal was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- **The chart's own identity does not move either.** Re-pointing a `liability` at an
+    -- `asset` would silently invert every balance ever read from it, and changing an
+    -- account's currency would make its existing postings unaddable.
+    BEGIN
+        UPDATE plt01.led_accounts SET account_kind = 'asset';
+        RAISE EXCEPTION 'CHECK 83 FAILED: an account kind was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_accounts SET currency = 'USD';
+        RAISE EXCEPTION 'CHECK 83 FAILED: an account currency was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A period's dates are derived from its month and never move.
+    BEGIN
+        UPDATE plt01.led_periods SET starts_on = DATE '2000-01-01';
+        RAISE EXCEPTION 'CHECK 83 FAILED: a period''s dates were changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A schedule's basis and total are what every past recognition was derived against.
+    BEGIN
+        UPDATE plt01.led_recognition_schedules SET basis = 'immediate';
+        RAISE EXCEPTION 'CHECK 83 FAILED: a recognition basis was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.led_recognition_schedules SET total_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a recognition total was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A settlement's own figures are what was imported.
+    BEGIN
+        UPDATE plt01.led_settlements SET claimed_total_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a settlement total was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A case's two figures *are* the case.
+    BEGIN
+        UPDATE plt01.led_reconciliation_cases SET expected_minor = 0;
+        RAISE EXCEPTION 'CHECK 83 FAILED: a reconciliation figure was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- An export is a record of what was sent; nothing about it moves.
+    BEGIN
+        UPDATE plt01.led_exports SET debit_total_minor = 1;
+        RAISE EXCEPTION 'CHECK 83 FAILED: an export total was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- -------------------------------------------------- 84. MOD-018's constraints, per side
+-- Every CHECK constraint and every unique index on this module's fifteen tables, generated
+-- from a valid base row per table with exactly one field overridden per case. Then the two
+-- triggers, which no CHECK could express.
+--
+-- The four rules the last five review rounds paid for:
+--
+--   * **Each case violates exactly one rule.** A case that passes because a *sibling*
+--     constraint fired first proves nothing about the one it names.
+--   * **A case catches a weakening only if the weakened constraint ADMITS the row.** MOD-017's
+--     round-two finding and the subtlest trap in this file: an export over-stating its debits
+--     is refused by `debits <= credits` as surely as by the equality, so the case that bites is
+--     the one *under*-stating them.
+--   * **A `coalesce(x, '')` needs a NULL case as well as a blank one.** The blank case proves
+--     the `btrim`; only NULL proves the `coalesce`, because a CHECK passes on NULL.
+--   * **Every parent a case names is seeded**, because PostgreSQL evaluates a CHECK before the
+--     foreign-key trigger.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+
+-- Fixtures this block creates for itself, rolled back with the rest of it. Each exists because
+-- the base row needs a parent, or because the *seeded* row already occupies the slot a
+-- `UNIQUE` would collide with -- so every other case on that table would otherwise prove the
+-- unique index instead of the constraint it names.
+INSERT INTO plt01.locations (tenant_id, location_id, brand_id, location_name, timezone)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Ledger Street', 'Asia/Amman');
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_id, account_code, account_kind, display_name, currency,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000a',
+        'CASH', 'cash', 'Front till', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000b',
+        'BANK', 'bank', 'Current account', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000c',
+        'AR', 'receivable', 'Member receivable', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000d',
+        'REV', 'revenue', 'Membership revenue', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000e',
+        'UNEARNED', 'unearned_revenue', 'Unearned revenue', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-1000-4000-8000-00000000000f',
+        'SUSPENSE', 'suspense', 'Suspense', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-11', DATE '2026-11-01',
+        DATE '2026-11-30', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **A closed period for the export fixtures.** The trigger beside `led_exports` refuses an
+-- export of a period that is not closed, because an export of an open month is a figure that
+-- changes after it was filed -- so the export cases need a month that is.
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on,
+     status, closed_at, closed_by, close_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000001d',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-09', DATE '2026-09-01',
+        DATE '2026-09-30', 'closed', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **Two journals, each balanced**, because the deferred trigger checks every journal this
+-- transaction touched -- and the trigger probe below forces that check with
+-- `SET CONSTRAINTS ALL IMMEDIATE`, which would otherwise fail on the fixtures rather than on
+-- the thing it is testing.
+INSERT INTO plt01.led_journals
+    (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on, currency,
+     control_total_minor, source_kind, source_ref, description, idempotency_key,
+     posted_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000002',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'ffffffff-2000-4000-8000-000000000001',
+        'trade', DATE '2026-11-10', 'JOD', 1000, 'manual', 'seed-1', 'a seeded sale',
+        'seed-journal-1', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000003',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'ffffffff-2000-4000-8000-000000000001',
+        'trade', DATE '2026-11-10', 'JOD', 1000, 'manual', 'seed-2', 'a second sale',
+        'seed-journal-2', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_postings
+    (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000002',
+        'ffffffff-1000-4000-8000-00000000000a', 1000, 'JOD', 1),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000002',
+        'ffffffff-1000-4000-8000-00000000000d', -1000, 'JOD', 2),
+       -- **The second journal is two credits short of balancing**, because the base
+       -- `led_postings` row completes it at line 3 with the matching debit. The deferred
+       -- trigger never runs here -- this transaction rolls back -- which is exactly why the
+       -- trigger has its own probe below, with `SET CONSTRAINTS ALL IMMEDIATE` to force it.
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000003',
+        'ffffffff-1000-4000-8000-00000000000d', -600, 'JOD', 1),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000003',
+        'ffffffff-1000-4000-8000-00000000000c', -400, 'JOD', 2);
+INSERT INTO plt01.led_wallets
+    (tenant_id, wallet_id, person_id, currency, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000004',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_wallet_entries
+    (tenant_id, wallet_id, value_kind, amount_minor, journal_id, reason, source_kind,
+     idempotency_key, actor_id, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000004',
+        'cash', 1000, 'ffffffff-2000-4000-8000-000000000002', 'paid in at the desk',
+        'purchase', 'seed-wallet-entry-1', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_recognition_schedules
+    (tenant_id, schedule_id, legal_entity_id, source_kind, source_ref, basis,
+     total_minor, currency, starts_on, ends_on, unearned_account_id,
+     revenue_account_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000005',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'manual', 'seed-schedule',
+        'straight_line', 120000, 'JOD', DATE '2026-01-01', DATE '2026-12-31',
+        'ffffffff-1000-4000-8000-00000000000e', 'ffffffff-1000-4000-8000-00000000000d',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_recognition_runs
+    (tenant_id, schedule_id, journal_id, amount_minor, earned_to_date_minor,
+     recognised_before_minor, as_of, idempotency_key, posted_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000005',
+        'ffffffff-2000-4000-8000-000000000002', 500, 500, 0, DATE '2026-11-10',
+        'seed-run-1', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_settlements
+    (tenant_id, settlement_id, legal_entity_id, provider_key, provider_batch_ref,
+     settled_on, currency, claimed_total_minor, computed_total_minor, line_count,
+     imported_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000006',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'acme.payments', 'batch-1',
+        DATE '2026-11-10', 'JOD', 1000, 1000, 1,
+        '33333333-3333-4333-8333-333333333333', 'seed-settlement-1',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_settlement_lines
+    (tenant_id, settlement_id, line_number, line_kind, provider_ref, amount_minor,
+     currency, outcome, outcome_reason)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000006',
+        1, 'payment', 'ch_seed', 1000, 'JOD', 'unmatched',
+        'nothing here carries that reference');
+INSERT INTO plt01.led_reconciliation_cases
+    (tenant_id, case_id, legal_entity_id, case_kind, subject_kind, subject_ref,
+     expected_minor, observed_minor, currency, detail, opened_on, opened_by,
+     idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000000a',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'settlement_line', 'settlement_line',
+        'seed-line', 1000, 0, 'JOD', 'the provider settled nothing against it',
+        DATE '2026-11-10', '33333333-3333-4333-8333-333333333333', 'seed-case-1',
+        '33333333-3333-4333-8333-333333333333');
+-- An *open* session on the front drawer, so the one-open-session case has something to
+-- collide with, and two *closed* ones: the deposit banks the first, and the second is what the
+-- `led_deposit_sessions` amount cases name. Without a second, those three overrode only the
+-- amount, collided with the primary key and proved *it* rather than the constraint they name.
+INSERT INTO plt01.led_cash_sessions
+    (tenant_id, session_id, location_id, cash_account_id, drawer_label, currency,
+     opening_float_minor, status, expected_minor, counted_minor, closed_at, closed_by,
+     close_correlation_id, opened_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000008',
+        'ffffffff-1000-4000-8000-000000000001', 'ffffffff-1000-4000-8000-00000000000a',
+        'front', 'JOD', 5000, 'open', NULL, NULL, NULL, NULL, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        'seed-session-1', '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000001a',
+        'ffffffff-1000-4000-8000-000000000001', 'ffffffff-1000-4000-8000-00000000000a',
+        'side', 'JOD', 5000, 'closed', 5000, 5000, now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        'seed-session-2', '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000001c',
+        'ffffffff-1000-4000-8000-000000000001', 'ffffffff-1000-4000-8000-00000000000a',
+        'rear', 'JOD', 5000, 'closed', 5000, 5000, now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        'seed-session-3', '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_deposits
+    (tenant_id, deposit_id, location_id, cash_account_id, bank_account_id, currency,
+     declared_minor, deposited_on, journal_id, created_by, idempotency_key,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000009',
+        'ffffffff-1000-4000-8000-000000000001', 'ffffffff-1000-4000-8000-00000000000a',
+        'ffffffff-1000-4000-8000-00000000000b', 'JOD', 5000, DATE '2026-11-10',
+        'ffffffff-2000-4000-8000-000000000002',
+        '33333333-3333-4333-8333-333333333333', 'seed-deposit-1',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second bag, so "one session is banked once" has a second deposit to be refused in.
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000001b',
+        'ffffffff-1000-4000-8000-000000000001', 'ffffffff-1000-4000-8000-00000000000a',
+        'ffffffff-1000-4000-8000-00000000000b', 'JOD', 5000, DATE '2026-11-10',
+        'ffffffff-2000-4000-8000-000000000002',
+        '33333333-3333-4333-8333-333333333333', 'seed-deposit-2',
+        '33333333-3333-4333-8333-333333333333');
+-- The bag holds the `rear` drawer's takings. **A closed session**, because the trigger beside
+-- the table requires one: an open drawer has no takings to bank yet.
+INSERT INTO plt01.led_deposit_sessions
+    (tenant_id, deposit_id, session_id, amount_minor, added_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-000000000009',
+        'ffffffff-2000-4000-8000-00000000001c', 2500,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_exports
+    (tenant_id, export_id, period_id, target_system, target_ref, journal_count,
+     debit_total_minor, credit_total_minor, currency, exported_by, idempotency_key,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-2000-4000-8000-00000000000b',
+        'ffffffff-2000-4000-8000-00000000001d', 'acme.books', 'batch-1', 1, 1000, 1000,
+        'JOD', '33333333-3333-4333-8333-333333333333', 'seed-export-1',
+        '33333333-3333-4333-8333-333333333333');
+
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('lower case',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'Cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account kind that is not a kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                '  ',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account with a blank name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'dormant',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                'ffffffff-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a location-scoped account naming no brand';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account naming a retirer but no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an account reading retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('OTHER',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an active account carrying a retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_accounts
+            (account_code, account_kind, brand_id, correlation_id, created_by,
+             currency, display_name, legal_entity_id, location_id,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES ('CASH',
+                'cash',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Another till',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second account with the same code';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-1',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period key that is not a month';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-09-01',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'locked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'closed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period closed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'closed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period close with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period naming a closer but no close';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'closed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period reading closed with no close';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-01',
+                'reopened',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period reopened for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-01',
+                'reopened',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period reopened for no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                '33333333-3333-4333-8333-333333333333',
+                'an error was found',
+                now(),
+                NULL,
+                DATE '2026-10-01',
+                'reopened',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period reopened by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'reopened',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period reading reopened with no reopening';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                '2026-10',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-01',
+                'closed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a period never reopened naming a reopener';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_periods
+            (close_correlation_id, closed_at, closed_by, correlation_id,
+             created_by, ends_on, legal_entity_id, period_key,
+             reopen_correlation_id, reopen_reason, reopened_at, reopened_by,
+             starts_on, status, tenant_id)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-10-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                '2026-11',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-10-01',
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second period for one entity and month';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'adjustment',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with an unknown purpose';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (0,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with a control total of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000000000001,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal past the sane control total';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (-1,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with a negative control total';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'guesswork',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                '  ',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal citing a blank source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                '  ',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal describing nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                '  ',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key, journal_id,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                'a loop',
+                'ffffffff-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'ffffffff-3000-4000-8000-000000000001',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'correction',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal correcting itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                'an error',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'correction',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a correction correcting nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an ordinary journal pointing at another one';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                '  ',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'correction',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a correction with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'correction',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a correction with no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                'tidying up',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'base-journal',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an ordinary journal carrying a correction reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (control_total_minor, correction_reason, corrects_journal_id,
+             correlation_id, currency, description, idempotency_key,
+             legal_entity_id, period_id, posted_by, posted_on, purpose,
+             source_kind, source_ref, tenant_id)
+        VALUES (1000,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'a base journal',
+                'seed-journal-1',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-2000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'trade',
+                'manual',
+                'base-row',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second journal with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                0,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                3,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a posting of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                1000000000001,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                3,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a posting past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                -1000000000001,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                3,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a credit past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                1000,
+                'jod',
+                'ffffffff-2000-4000-8000-000000000003',
+                3,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a posting in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                1000,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                0,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a posting numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                1000,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                3,
+                '  ',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a posting with a blank memo';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_postings
+            (account_id, amount_minor, currency, journal_id, line_number, memo,
+             subject_person_id, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                1000,
+                'JOD',
+                'ffffffff-2000-4000-8000-000000000003',
+                1,
+                'a base posting',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second posting with the same line number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallets
+            (correlation_id, created_by, currency, person_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'usd',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallets
+            (correlation_id, created_by, currency, person_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second wallet for one person and currency';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'points',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: wallet value of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'case-wallet-entry-zero',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet movement of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet credit past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                -1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet debit past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                '  ',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet movement with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'thin air',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet movement from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                '  ',
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet movement citing a blank reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                '  ',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet movement with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'cash',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: cash wallet value with an expiry';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                -100,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'base-wallet-entry',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a wallet debit carrying an expiry';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_wallet_entries
+            (actor_id, amount_minor, correlation_id, expires_on,
+             idempotency_key, journal_id, reason, source_kind, source_ref,
+             tenant_id, value_kind, wallet_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                500,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2027-01-01',
+                'seed-wallet-entry-1',
+                'ffffffff-2000-4000-8000-000000000002',
+                'a goodwill credit',
+                'goodwill',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'promotional',
+                'ffffffff-2000-4000-8000-000000000004');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second wallet movement with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'hunch',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                '  ',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule citing a blank source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('guesswork',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule with an unknown basis';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                0,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule for nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                1000000000001,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'paused',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a straight-line schedule with no period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('immediate',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an immediate schedule carrying a period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('on_delivery',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                10);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an on-delivery schedule carrying a period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('on_delivery',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an on-delivery schedule with no unit count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                10);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a straight-line schedule carrying a unit count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule with one end of its period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('immediate',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'case-schedule-period-pair',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule ending with no start';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-01-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-12-31',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2040-01-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule earning over more than ten years';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('on_delivery',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                0);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an on-delivery schedule over no units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('on_delivery',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                NULL,
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                100001);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an on-delivery schedule over more units than it can allocate';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000e',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule recognising from an account into itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                '33333333-3333-4333-8333-333333333333',
+                'done',
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'complete',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule closed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'complete',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule closed for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'complete',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule closed for no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'complete',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a schedule reading complete with no close';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                '33333333-3333-4333-8333-333333333333',
+                'done',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'base-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an active schedule carrying a close';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_schedules
+            (basis, close_correlation_id, close_reason, closed_at, closed_by,
+             correlation_id, created_by, currency, ends_on, legal_entity_id,
+             revenue_account_id, source_kind, source_ref, starts_on, status,
+             subject_person_id, tenant_id, total_minor, unearned_account_id,
+             units_total)
+        VALUES ('straight_line',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2026-12-31',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-1000-4000-8000-00000000000d',
+                'manual',
+                'seed-schedule',
+                DATE '2026-01-01',
+                'active',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                120000,
+                'ffffffff-1000-4000-8000-00000000000e',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second schedule for one thing sold';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (0,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run that moved nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (-100,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                -100,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run that moved backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1000000000001,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                1000000000000,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run earning past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1001,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run measured against a negative figure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1000,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                -1);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run with negative units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1000,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                100001);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run past the sane unit count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1000,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                '  ',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (900,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run moving less than it earned';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1100,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'base-run',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a recognition run moving more than it earned';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_recognition_runs
+            (amount_minor, as_of, correlation_id, earned_to_date_minor,
+             idempotency_key, journal_id, posted_by, recognised_before_minor,
+             schedule_id, tenant_id, units_delivered)
+        VALUES (1000,
+                DATE '2026-11-10',
+                '33333333-3333-4333-8333-333333333333',
+                1000,
+                'seed-run-1',
+                'ffffffff-2000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'ffffffff-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second recognition run with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'Acme Payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a provider key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                '  ',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement citing a blank batch';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000000000001,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement claiming more than the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                -1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement computing less than the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                0,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement with no lines';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                100001,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement past the sane line count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'matched',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the file I was emailed',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement document reference that is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                '  ',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'seed-settlement-1',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-2',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second settlement with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlements
+            (claimed_total_minor, computed_total_minor, correlation_id,
+             currency, document_ref, idempotency_key, imported_by,
+             legal_entity_id, line_count, provider_batch_ref, provider_key,
+             settled_on, status, tenant_id)
+        VALUES (1000,
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                's3://settlements/batch-2',
+                'base-settlement',
+                '33333333-3333-4333-8333-333333333333',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1,
+                'batch-1',
+                'acme.payments',
+                DATE '2026-11-10',
+                'imported',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second import of one provider batch';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'mystery',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                '  ',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line citing a blank reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (0,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (1000000000001,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'jod',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'probably fine',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line with an unknown outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'not_expected',
+                '  ',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                0,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                'dddddddd-1000-4000-8000-000000000015',
+                'dddddddd-1000-4000-8000-000000000017',
+                'matched',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line matching two things';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                NULL,
+                NULL,
+                'matched',
+                'they agree',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settlement line reading matched with nothing matched';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                2,
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an unmatched settlement line naming a payment';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_settlement_lines
+            (amount_minor, currency, line_kind, line_number, matched_payment_id,
+             matched_refund_id, outcome, outcome_reason, provider_ref,
+             settlement_id, tenant_id)
+        VALUES (-50,
+                'JOD',
+                'fee',
+                1,
+                NULL,
+                NULL,
+                'not_expected',
+                'a fee is the provider''s own movement',
+                'fee-1',
+                'ffffffff-2000-4000-8000-000000000006',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second settlement line with the same number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('a feeling',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'something',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case about an unknown kind of thing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                '  ',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case about a blank subject';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000000000001,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                -1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case observing less than the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                '  ',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case with a blank detail';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'maybe',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                '  ',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciliation case whose figures agree';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'the provider corrected it',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                'resolved',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case resolved by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                '  ',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'resolved',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case resolved with a blank resolution';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'resolved',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case resolved with no resolution at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'done',
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'resolved',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case resolution with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'resolved',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case reading resolved with no resolution';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                'done',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an open case carrying a resolution';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'base-case',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                'ffffffff-2000-4000-8000-000000000002',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an unresolved case citing a correcting journal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_reconciliation_cases
+            (case_kind, correlation_id, currency, detail, expected_minor,
+             idempotency_key, legal_entity_id, observed_minor, opened_by,
+             opened_on, resolution, resolution_journal_id,
+             resolve_correlation_id, resolved_at, resolved_by, status,
+             subject_kind, subject_ref, tenant_id)
+        VALUES ('control_total',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'the two figures disagree',
+                1000,
+                'seed-case-1',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-11-10',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                'account',
+                'base-case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second reconciliation case with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                '  ',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till session with a blank drawer label';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'jod',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till opening with a negative float';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till opening past the sane float';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'counting',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till session with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                'short');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till counted as holding a negative amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                'over');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till counted past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                1000000000001,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                'over');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till expecting past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till closed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till close with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till closed with only one of its two figures';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'back',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till reading closed with no count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: an open till carrying a close';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                4800,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                '  ');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till out by two hundred with a blank explanation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                4800,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till out by two hundred with no explanation at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'JOD',
+                'back',
+                5000,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                'ffffffff-2000-4000-8000-000000000002',
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a till that balanced carrying a variance journal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'front',
+                NULL,
+                'base-session',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second open session on one drawer';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_cash_sessions
+            (cash_account_id, close_correlation_id, closed_at, closed_by,
+             correlation_id, counted_minor, currency, drawer_label,
+             expected_minor, idempotency_key, location_id, opened_by,
+             opening_float_minor, status, tenant_id, variance_journal_id,
+             variance_reason)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'back',
+                NULL,
+                'seed-session-1',
+                'ffffffff-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                'open',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL);
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second till session with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'jod',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                0,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                1000000000001,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'case-deposit-credited-sane',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'short',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit credited with a negative amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                '  ',
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit with a blank bank reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'settled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit from an account into itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                '  ',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit confirmed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit confirmation with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit confirmed with no date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit reading credited with no confirmation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit in transit carrying a confirmation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                4900,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit reading credited for a different amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                6000,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'case-deposit-credited-over',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit reading credited for more than was banked';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                DATE '2026-11-11',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'short',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit reading short for the full amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5000,
+                DATE '2026-11-09',
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'base-deposit',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'credited',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a deposit credited before it was banked';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposits
+            (bank_account_id, bank_reference, cash_account_id,
+             confirm_correlation_id, confirm_journal_id, confirmed_at,
+             confirmed_by, correlation_id, created_by, credited_minor,
+             credited_on, currency, declared_minor, deposited_on,
+             idempotency_key, journal_id, location_id, status, tenant_id)
+        VALUES ('ffffffff-1000-4000-8000-00000000000b',
+                NULL,
+                'ffffffff-1000-4000-8000-00000000000a',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'JOD',
+                5000,
+                DATE '2026-11-10',
+                'seed-deposit-1',
+                'ffffffff-2000-4000-8000-000000000002',
+                'ffffffff-1000-4000-8000-000000000001',
+                'in_transit',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second deposit with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposit_sessions
+            (added_by, amount_minor, correlation_id, deposit_id, session_id,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                'ffffffff-2000-4000-8000-000000000009',
+                'ffffffff-2000-4000-8000-00000000001a',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a banked session contributing nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposit_sessions
+            (added_by, amount_minor, correlation_id, deposit_id, session_id,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                -100,
+                '33333333-3333-4333-8333-333333333333',
+                'ffffffff-2000-4000-8000-000000000009',
+                'ffffffff-2000-4000-8000-00000000001a',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a banked session contributing a negative amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_deposit_sessions
+            (added_by, amount_minor, correlation_id, deposit_id, session_id,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                'ffffffff-2000-4000-8000-00000000001b',
+                'ffffffff-2000-4000-8000-00000000001c',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a session banked in a second deposit';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'Acme Books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export target that is not a system key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                '  ',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export citing a blank reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                0,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export of no journals';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                10000001,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export past the sane journal count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'jod',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                -1,
+                'JOD',
+                -1,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export with negative totals';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000000000001,
+                'JOD',
+                1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export past the sane total';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                900,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export whose debits exceed its credits';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                900,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an export whose credits exceed its debits';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'seed-export-1',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'other.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second export with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (correlation_id, credit_total_minor, currency, debit_total_minor,
+             exported_by, idempotency_key, journal_count, period_id, target_ref,
+             target_system, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                1000,
+                'JOD',
+                1000,
+                '33333333-3333-4333-8333-333333333333',
+                'base-export',
+                1,
+                'ffffffff-2000-4000-8000-00000000001d',
+                'batch-2',
+                'acme.books',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a second export of one period to one system';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- **The deferred balanced-journal trigger, forced to fire.** It is `DEFERRABLE INITIALLY
+-- DEFERRED`, so in a transaction that rolls back it never runs at all -- which means the whole
+-- block above proves nothing about it. `SET CONSTRAINTS ALL IMMEDIATE` is what makes the check
+-- happen where a test can see it, and it is the only way to test a deferred constraint without
+-- committing.
+--
+-- Four things it enforces, each because the alternative is a silently wrong statement: the
+-- postings sum to zero, there are at least two of them, the line numbers run from one with no
+-- gaps, and the journal's stored control total equals its own debits.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_id, account_code, account_kind, display_name, currency,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-4000-4000-8000-00000000000a',
+        'TCASH', 'cash', 'Trigger till', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-4000-4000-8000-00000000000b',
+        'TREV', 'revenue', 'Trigger revenue', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-4000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-11', DATE '2026-11-01',
+        DATE '2026-11-30', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- A journal whose postings do not sum to zero.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000011',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-4000-4000-8000-000000000001', 'trade', DATE '2026-11-10',
+                'JOD', 1000, 'manual', 'trigger-1', 'unbalanced', 'trigger-j1',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000011',
+                'ffffffff-4000-4000-8000-00000000000a', 1000, 'JOD', 1),
+               ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000011',
+                'ffffffff-4000-4000-8000-00000000000b', -900, 'JOD', 2);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION 'CHECK 84 FAILED: an unbalanced journal was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- A journal with one posting, which is half a transfer.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000012',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-4000-4000-8000-000000000001', 'trade', DATE '2026-11-10',
+                'JOD', 1000, 'manual', 'trigger-2', 'one-sided', 'trigger-j2',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000012',
+                'ffffffff-4000-4000-8000-00000000000a', 0, 'JOD', 1);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION 'CHECK 84 FAILED: a one-sided journal was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            -- `amount_minor <> 0` fires first on a single zero posting, which is the
+            -- stronger refusal and is also a catch: the point is that the row does not
+            -- survive, and a case that passed for *either* reason would be the
+            -- "caught by a sibling" shape this file warns about -- so the second probe
+            -- below uses a non-zero amount and tests the count on its own.
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000013',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-4000-4000-8000-000000000001', 'trade', DATE '2026-11-10',
+                'JOD', 1000, 'manual', 'trigger-3', 'one line only', 'trigger-j3',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000013',
+                'ffffffff-4000-4000-8000-00000000000a', 1000, 'JOD', 1);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with one posting was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- A journal whose line numbers have a gap, which is the shape a truncated import takes.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000014',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-4000-4000-8000-000000000001', 'trade', DATE '2026-11-10',
+                'JOD', 1000, 'manual', 'trigger-4', 'gapped', 'trigger-j4',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000014',
+                'ffffffff-4000-4000-8000-00000000000a', 1000, 'JOD', 1),
+               ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000014',
+                'ffffffff-4000-4000-8000-00000000000b', -1000, 'JOD', 7);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with a gap in its lines was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- And a journal whose header disagrees with its own body.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000015',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-4000-4000-8000-000000000001', 'trade', DATE '2026-11-10',
+                'JOD', 9999, 'manual', 'trigger-5', 'lying header', 'trigger-j5',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000015',
+                'ffffffff-4000-4000-8000-00000000000a', 1000, 'JOD', 1),
+               ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-4000-4000-8000-000000000015',
+                'ffffffff-4000-4000-8000-00000000000b', -1000, 'JOD', 2);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a journal whose control total lies was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- **The probe count is asserted**, because a `SET CONSTRAINTS` that silently did nothing
+    -- would make every block above pass without the trigger running at all -- which is the
+    -- vacuous-sweep shape this whole file exists to refuse.
+    IF probe <> 5 THEN
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: the balance trigger fired for % of 5 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- **A closed period admits no postings, and a closing one admits no trade.** COM-04-R06's lock
+-- control, by a BEFORE trigger because the period's status is a fact about another row. Once
+-- finance has told an authority what a month was, a posting dated into it makes the statement
+-- and the filing disagree with nothing to say which is current.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on, status,
+     closed_at, closed_by, close_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-5000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-09', DATE '2026-09-01',
+        DATE '2026-09-30', 'closed', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-5000-4000-8000-000000000002',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-10', DATE '2026-10-01',
+        DATE '2026-10-31', 'closing', NULL, NULL, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, legal_entity_id, period_id, purpose, posted_on, currency,
+             control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-5000-4000-8000-000000000001', 'trade', DATE '2026-09-15',
+                'JOD', 1000, 'manual', 'locked', 'into a closed month', 'lock-j1',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal was posted into a closed period';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, legal_entity_id, period_id, purpose, posted_on, currency,
+             control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-5000-4000-8000-000000000002', 'trade', DATE '2026-10-15',
+                'JOD', 1000, 'manual', 'closing', 'trade into a closing month',
+                'lock-j2', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a trade journal was posted into a closing period';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- A journal dated outside the period it names, which is how January's trade lands in
+    -- February's open month and makes both wrong.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, legal_entity_id, period_id, purpose, posted_on, currency,
+             control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-5000-4000-8000-000000000002', 'correction',
+                DATE '2026-11-15', 'JOD', 1000, 'manual', 'misdated',
+                'dated outside its period', 'lock-j3',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a journal dated outside its own period was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            probe := probe + 1;
+    END;
+    -- **And the close's own work still goes in**, which is the whole point of the `closing`
+    -- state: a period that admitted nothing could never be closed.
+    INSERT INTO plt01.led_journals
+        (tenant_id, legal_entity_id, period_id, purpose, posted_on, currency,
+         control_total_minor, source_kind, source_ref, description, idempotency_key,
+         posted_by, correlation_id)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'aaaaaaaa-0000-4000-8000-000000000003',
+            'ffffffff-5000-4000-8000-000000000002', 'recognition', DATE '2026-10-31',
+            'JOD', 1000, 'recognition', 'the close itself', 'recognition at close',
+            'lock-j4', '33333333-3333-4333-8333-333333333333',
+            '33333333-3333-4333-8333-333333333333');
+    IF probe <> 3 THEN
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: the period lock fired for % of 3 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+-- -------------------------------------------- 84b. the obligations across rows, by trigger
+--
+-- **Five facts about other rows the first version of this module left to the service**, in a
+-- file whose own argument for the trigger mechanism is "this is the half that still holds when
+-- the service is wrong". Each probe below is an attack an independent reviewer executed and
+-- committed against the shipped schema.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.locations (tenant_id, location_id, brand_id, location_name, timezone)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Trigger Street', 'Asia/Amman'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-000000000002',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Other Street', 'Asia/Amman');
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_id, account_code, account_kind, display_name, currency,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-00000000000a',
+        'TCASH', 'cash', 'Till', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-00000000000b',
+        'TREV', 'revenue', 'Sales', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-00000000000c',
+        'TUSD', 'cash', 'Dollar till', 'USD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-00000000000d',
+        'TBANK', 'bank', 'Bank', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- One open month for each of two entities, which is what the cross-entity probe needs.
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-000000000011',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-11', DATE '2026-11-01',
+        DATE '2026-11-30', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-6000-4000-8000-000000000012',
+        'aaaaaaaa-0000-4000-8000-000000000004', '2026-11', DATE '2026-11-01',
+        DATE '2026-11-30', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. **A journal with no postings.** The balance trigger is on `led_postings`, so a header
+    -- with nothing behind it fires it zero times and nothing about the journal is ever
+    -- evaluated. A reviewer parked one claiming a 500.00 control total, then satisfied the
+    -- mandatory `journal_id` on a wallet entry with it: the member held 500.00 of spendable
+    -- value with no liability anywhere in the ledger.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000021',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-6000-4000-8000-000000000011', 'trade',
+                DATE '2026-11-10', 'JOD',
+                50000, 'manual', 'an empty journal', 'an empty journal',
+                'probe-empty', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION 'CHECK 84 FAILED: a journal with no postings was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 2. **A posting in a currency its account does not hold.** The account's `currency` is
+    -- protected from UPDATE so existing postings stay addable, which made the label immutable
+    -- and said nothing about the values it labels: a JOD posting sat in a USD account and that
+    -- account's balance -- the only balance this module has, by design -- became a sum across
+    -- two currencies.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000022',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-6000-4000-8000-000000000011', 'trade',
+                DATE '2026-11-10', 'JOD',
+                10000, 'manual', 'wrong account currency', 'wrong account currency',
+                'probe-account-ccy', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000022',
+                'ffffffff-6000-4000-8000-00000000000c', 10000, 'JOD', 1),
+               ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000022',
+                'ffffffff-6000-4000-8000-00000000000b', -10000, 'JOD', 2);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a posting in a currency its account does not hold';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. **The same account twice in one journal.** `sum(amount_minor) = 0` is exactly "the
+    -- journal balances" only when the lines are about different accounts: +N and -N on one
+    -- account satisfies every other rule here and moves nothing, which was the route to
+    -- 1000.00 of refundable wallet value with a zero balance sheet.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000023',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'ffffffff-6000-4000-8000-000000000011', 'trade',
+                DATE '2026-11-10', 'JOD',
+                10000, 'manual', 'self netting', 'self netting',
+                'probe-self-net', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        INSERT INTO plt01.led_postings
+            (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000023',
+                'ffffffff-6000-4000-8000-00000000000a', 10000, 'JOD', 1),
+               ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000023',
+                'ffffffff-6000-4000-8000-00000000000a', -10000, 'JOD', 2);
+        SET CONSTRAINTS ALL IMMEDIATE;
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a journal posting to one account twice was accepted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 4. **A journal filed into another entity's period.** Nothing related the two, so an
+    -- entity whose November was closed posted more November trade through a *sibling*
+    -- entity's open November -- one transaction, no race -- which defeats the lock outright
+    -- and puts two legal entities' journals in one export.
+    BEGIN
+        INSERT INTO plt01.led_journals
+            (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on,
+             currency, control_total_minor, source_kind, source_ref, description,
+             idempotency_key, posted_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000024',
+                'aaaaaaaa-0000-4000-8000-000000000004',
+                'ffffffff-6000-4000-8000-000000000011', 'trade',
+                DATE '2026-11-10', 'JOD',
+                10000, 'manual', 'another entity', 'another entity',
+                'probe-entity', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a journal was filed into another entity''s period';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5. **An export of a period that is not closed.** An export of an open month is a figure
+    -- that changes after it was filed; the service refused one and the schema said nothing.
+    BEGIN
+        INSERT INTO plt01.led_exports
+            (tenant_id, period_id, target_system, target_ref, journal_count,
+             debit_total_minor, credit_total_minor, currency, exported_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-6000-4000-8000-000000000011', 'acme.books', 'batch-open', 1,
+                1000, 1000, 'JOD', '33333333-3333-4333-8333-333333333333',
+                'probe-open-export', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 84 FAILED: an open period was exported';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 5 THEN
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: the cross-row triggers fired for % of 5 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- -------------------------------------------- 84c. a lifecycle decision is made once
+--
+-- **A CHECK cannot see what a row used to be**, which is MOD-009's `sec_legal_holds` finding
+-- and the one this module cited for another table and applied to none of its own. Every probe
+-- below is an UPDATE a reviewer executed and committed: a filed period un-closed with no
+-- reason and re-closed under a different actor; a 400.00 cash shortfall on a bank deposit
+-- erased; a till close rewritten so the drawer balanced; a reconciliation write-off and the
+-- name of whoever decided it replaced.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+-- Every parent this block names, seeded here: it is its own transaction, so 84a's fixtures
+-- do not exist. PostgreSQL evaluates a CHECK before the foreign-key trigger, which is how a
+-- case naming a row that does not exist comes to pass for the wrong reason.
+INSERT INTO plt01.locations (tenant_id, location_id, brand_id, location_name, timezone)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Lifecycle Street', 'Asia/Amman');
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_id, account_code, account_kind, display_name, currency,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-00000000000b',
+        'LCASH', 'cash', 'Till', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-00000000000c',
+        'LBANK', 'bank', 'Bank', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-00000000000d',
+        'LREV', 'revenue', 'Sales', 'JOD', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-00000000000e',
+        'LUNEARNED', 'unearned_revenue', 'Prepaid', 'JOD',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on,
+     created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000012',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-11', DATE '2026-11-01',
+        DATE '2026-11-30', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A balanced journal for the deposit to cite.
+INSERT INTO plt01.led_journals
+    (tenant_id, journal_id, legal_entity_id, period_id, purpose, posted_on, currency,
+     control_total_minor, source_kind, source_ref, description, idempotency_key,
+     posted_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000051',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'ffffffff-7000-4000-8000-000000000012',
+        'trade', DATE '2026-11-10', 'JOD', 1000, 'manual', 'lifecycle', 'lifecycle',
+        'lifecycle-journal', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_postings
+    (tenant_id, journal_id, account_id, amount_minor, currency, line_number)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000051',
+        'ffffffff-7000-4000-8000-00000000000b', 1000, 'JOD', 1),
+       ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000051',
+        'ffffffff-7000-4000-8000-00000000000d', -1000, 'JOD', 2);
+INSERT INTO plt01.led_accounts
+    (tenant_id, account_id, account_code, account_kind, display_name, currency,
+     status, retired_at, retired_by, retire_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-00000000000a',
+        'GONE', 'cash', 'Retired till', 'JOD', 'retired', now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_periods
+    (tenant_id, period_id, legal_entity_id, period_key, starts_on, ends_on, status,
+     closed_at, closed_by, close_correlation_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000011',
+        'aaaaaaaa-0000-4000-8000-000000000003', '2026-08', DATE '2026-08-01',
+        DATE '2026-08-31', 'closed', now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_cash_sessions
+    (tenant_id, session_id, location_id, cash_account_id, drawer_label, currency,
+     opening_float_minor, status, expected_minor, counted_minor, variance_reason,
+     closed_at, closed_by, close_correlation_id, opened_by, idempotency_key,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000021',
+        'ffffffff-7000-4000-8000-000000000001', 'ffffffff-7000-4000-8000-00000000000b',
+        'closed-drawer', 'JOD', 5000, 'closed', 10000, 9200,
+        '80.00 short, cause unknown, escalated', now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'lifecycle-session',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_deposits
+    (tenant_id, deposit_id, location_id, cash_account_id, bank_account_id, currency,
+     declared_minor, credited_minor, credited_on, deposited_on, status, journal_id,
+     confirmed_at, confirmed_by, confirm_correlation_id, created_by, idempotency_key,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000031',
+        'ffffffff-7000-4000-8000-000000000001', 'ffffffff-7000-4000-8000-00000000000b',
+        'ffffffff-7000-4000-8000-00000000000c', 'JOD', 100000, 60000,
+        DATE '2026-11-12', DATE '2026-11-10', 'short',
+        'ffffffff-7000-4000-8000-000000000051', now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'lifecycle-deposit',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_recognition_schedules
+    (tenant_id, schedule_id, legal_entity_id, source_kind, source_ref, basis,
+     total_minor, currency, unearned_account_id, revenue_account_id, status,
+     closed_at, closed_by, close_reason, close_correlation_id, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000061',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'manual', 'a settled schedule',
+        'immediate', 50000, 'JOD', 'ffffffff-7000-4000-8000-00000000000e',
+        'ffffffff-7000-4000-8000-00000000000d', 'complete', now(),
+        '33333333-3333-4333-8333-333333333333', 'delivered in full',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_settlements
+    (tenant_id, settlement_id, legal_entity_id, provider_key, provider_batch_ref,
+     settled_on, currency, claimed_total_minor, computed_total_minor, line_count,
+     status, imported_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000071',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'acme.payments', 'reconciled-batch',
+        DATE '2026-11-10', 'JOD', 1000, 1000, 1, 'reconciled',
+        '33333333-3333-4333-8333-333333333333', 'lifecycle-settlement',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.led_reconciliation_cases
+    (tenant_id, case_id, legal_entity_id, case_kind, subject_kind, subject_ref,
+     expected_minor, observed_minor, currency, detail, status, resolution,
+     resolved_at, resolved_by, resolve_correlation_id, opened_on, opened_by,
+     idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'ffffffff-7000-4000-8000-000000000041',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'cash_variance', 'cash_session',
+        'lifecycle', 10000, 9200, 'JOD', 'a till that did not balance', 'resolved',
+        'staff member admitted the shortfall', now(),
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', DATE '2026-11-10',
+        '33333333-3333-4333-8333-333333333333', 'lifecycle-case',
+        '33333333-3333-4333-8333-333333333333');
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. A filed month taken straight back to `open`. The sanctioned reopen demands a written
+    -- reason; this demanded nothing and left the row reading as a month closed once.
+    BEGIN
+        UPDATE plt01.led_periods
+           SET status = 'open', closed_at = NULL, closed_by = NULL,
+               close_correlation_id = NULL
+         WHERE period_id = 'ffffffff-7000-4000-8000-000000000011';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a filed period was un-closed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- 2. A close time moved backwards, which rewrites how long a month was open.
+    BEGIN
+        UPDATE plt01.led_periods
+           SET closed_at = now() - interval '30 days'
+         WHERE period_id = 'ffffffff-7000-4000-8000-000000000011';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a close time was moved backwards';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. A retired account revived, which is the module's only withdrawal mechanism undone.
+    BEGIN
+        UPDATE plt01.led_accounts
+           SET status = 'active', retired_at = NULL, retired_by = NULL,
+               retire_correlation_id = NULL
+         WHERE account_id = 'ffffffff-7000-4000-8000-00000000000a';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a retired account was revived';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- 4. A till close rewritten so the drawer balanced and the written variance deleted. "A
+    -- till 2.00 down every evening with nothing written against it is a pattern" -- a
+    -- rewritable close is a close that said nothing at the time.
+    BEGIN
+        UPDATE plt01.led_cash_sessions
+           SET counted_minor = 10000, variance_reason = NULL
+         WHERE session_id = 'ffffffff-7000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a closed till was counted again';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5. A 400.00 shortfall erased: `short` taken back to `in_transit` and then to `credited`
+    -- for the full amount. `led_deposits` is the only record there could be, because
+    -- `veyro_cp_app` holds nothing in `iam` and MOD-008 audits denials rather than allows.
+    BEGIN
+        UPDATE plt01.led_deposits
+           SET status = 'in_transit', credited_minor = NULL, credited_on = NULL,
+               confirmed_at = NULL, confirmed_by = NULL, confirm_correlation_id = NULL
+         WHERE deposit_id = 'ffffffff-7000-4000-8000-000000000031';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settled deposit was un-settled';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- 6. A resolution replaced, including who decided to write money off.
+    BEGIN
+        UPDATE plt01.led_reconciliation_cases
+           SET status = 'written_off', resolution = 'miscount, no action',
+               resolved_by = '44444444-4444-4444-8444-444444444444'
+         WHERE case_id = 'ffffffff-7000-4000-8000-000000000041';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a case resolution was replaced';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 7. A banked session that is still open, at another location, or over what it counted --
+    -- three facts about other rows, and without them a deposit at one site banked another
+    -- site's till for ten times what that till held.
+    BEGIN
+        INSERT INTO plt01.led_deposit_sessions
+            (tenant_id, deposit_id, session_id, amount_minor, added_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'ffffffff-7000-4000-8000-000000000031',
+                'ffffffff-7000-4000-8000-000000000021', 500000,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: a session was banked for more than it counted';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 8. A settled recognition schedule reopened. **Found by the mutation sweep**, not by
+    -- reading: I wrote this trigger to close a review finding and gave it no probe, so it was
+    -- droppable in silence -- which is the same shape as the finding it was written for.
+    BEGIN
+        UPDATE plt01.led_recognition_schedules
+           SET status = 'active', closed_at = NULL, closed_by = NULL,
+               close_reason = NULL, close_correlation_id = NULL
+         WHERE schedule_id = 'ffffffff-7000-4000-8000-000000000061';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a settled recognition schedule was reopened';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN probe := probe + 1;
+    END;
+    -- 9. A reconciled settlement taken back to `imported`, which would let the whole file be
+    -- re-reconciled against a ledger that has since moved. Also found by the sweep.
+    BEGIN
+        UPDATE plt01.led_settlements SET status = 'imported'
+         WHERE settlement_id = 'ffffffff-7000-4000-8000-000000000071';
+        RAISE EXCEPTION 'CHECK 84 FAILED: a reconciled settlement was un-reconciled';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 84 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 9 THEN
+        RAISE EXCEPTION
+            'CHECK 84 FAILED: the one-way triggers fired for % of 9 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+\echo 'tenant isolation: 84/84 checks passed'

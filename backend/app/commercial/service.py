@@ -34,6 +34,7 @@ from app.commercial import collections, entitlements, invoicing, lifecycle
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.events import service as events
+from app.ledger import service as ledger
 
 
 def _now() -> datetime:
@@ -1785,7 +1786,7 @@ def issue_invoice(
     lines: list[dict[str, Any]], issued_on: date, due_on: date, jurisdiction: str,
     idempotency_key: str, actor_id: str, correlation_id: str,
     membership_id: str | None = None, schedule_id: str | None = None,
-    credits_invoice_id: str | None = None,
+    credits_invoice_id: str | None = None, unearned_minor: int = 0,
 ) -> dict[str, Any]:
     """IssueInvoice: the document, its lines, its serial and its tax records, atomically.
 
@@ -1812,6 +1813,12 @@ def issue_invoice(
     The amounts on a credit note are positive, like MOD-015's, and read as a reduction by
     `_apply_to_invoice`; a credit for more than the invoice it credits is refused, because a
     credit note is a correction and not a way to pay somebody.
+
+    **`unearned_minor` is the part of the net that has not been delivered yet**, and it is
+    paragraph 1695 in one argument: a year's membership billed in January credits MOD-018's
+    `unearned_revenue` rather than `revenue`, and a recognition schedule moves it across as the
+    service is delivered. Only the caller knows what was sold, which is why it is an argument;
+    zero -- a retail sale, a joining fee -- is the ordinary case.
     """
     if not idempotency_key.strip():
         raise InvalidRequest("an_idempotency_key_cannot_be_blank")
@@ -1967,11 +1974,34 @@ def issue_invoice(
         # one a dunning sweep opens a recovery journey against.
         if credits_invoice_id is not None:
             _apply_to_invoice(conn, tenant_id, credits_invoice_id, at=issued_on)
+        # **MOD-018 posts the receivable in this transaction.** An invoice without its journal
+        # is a balance the ledger does not know about, and a journal without its invoice is
+        # money the ledger invented -- so the posting runs on this connection. A tenant with no
+        # chart of accounts gets the invoice and a reason, because the chart is configuration
+        # and a tenant mid-setup must not find its till has stopped working.
+        if credits_invoice_id is None:
+            ledger_result = ledger.post_invoice(
+                conn, tenant_id, invoice_id=invoice_id,
+                legal_entity_id=legal_entity_id, net_minor=totals.net_minor,
+                tax_minor=totals.tax_minor, currency=currency, issued_on=issued_on,
+                document_number=number, actor_id=actor_id,
+                correlation_id=correlation_id,
+                subject_person_id=_payer_of(conn, billing_account_id),
+                unearned_minor=unearned_minor)
+        else:
+            ledger_result = ledger.post_credit_note(
+                conn, tenant_id, invoice_id=invoice_id,
+                legal_entity_id=legal_entity_id, net_minor=totals.net_minor,
+                tax_minor=totals.tax_minor, currency=currency, issued_on=issued_on,
+                document_number=number, actor_id=actor_id,
+                correlation_id=correlation_id,
+                subject_person_id=_payer_of(conn, billing_account_id))
     return {"invoice_id": invoice_id, "document_number": number, "serial": serial,
             "net_minor": totals.net_minor, "tax_minor": totals.tax_minor,
             "gross_minor": totals.gross_minor, "currency": currency,
             "document_kind": document_kind, "credits_invoice_id": credits_invoice_id,
-            "payment_status": "unpaid", "fiscal_status": "pending", "repeated": False}
+            "payment_status": "unpaid", "fiscal_status": "pending", "repeated": False,
+            **ledger_result}
 
 
 # ------------------------------------------------------------------ payments
@@ -2064,7 +2094,7 @@ def settle_payment_intent(
     pool: Pool, tenant_id: str, intent_id: str, *, outcome: str, actor_id: str,
     correlation_id: str, provider_ref: str | None = None,
     failure_code: str | None = None, failure_detail: str | None = None,
-    received_at: datetime | None = None,
+    received_at: datetime | None = None, cash_account_id: str | None = None,
 ) -> dict[str, Any]:
     """ApplyPayment or RecordPaymentFailure: what the provider says happened.
 
@@ -2131,6 +2161,10 @@ def settle_payment_intent(
         if settled == 0:
             raise Conflict("this_intent_was_settled_by_somebody_else")
         payment_id: str | None = None
+        # **The posting's verdict reaches the caller.** The first version computed it and threw
+        # it away, so a cash payment with no till named -- which the route could not name at
+        # all -- was silently not posted while the response read as an ordinary success.
+        ledger_result: dict[str, Any] = {}
         if outcome == "succeeded":
             try:
                 paid = conn.execute(
@@ -2154,6 +2188,23 @@ def settle_payment_intent(
             payment_id = str(paid[0])
             if intent[1] is not None:
                 _apply_to_invoice(conn, tenant_id, str(intent[1]), at=moment.date())
+            # **MOD-018 posts the money in this transaction.** A payment recorded without its
+            # clearing entry is a receivable the ledger still thinks is owed, and the
+            # settlement import that reconciles the provider has nothing to match against.
+            entity = conn.execute(
+                "SELECT legal_entity_id FROM plt01.fin_billing_accounts"
+                " WHERE billing_account_id = %s",
+                (str(intent[0]),),
+            ).fetchone()
+            if entity is not None:
+                ledger_result = ledger.allocate_payment(
+                    conn, tenant_id, payment_id=payment_id,
+                    legal_entity_id=str(entity[0]), amount_minor=int(intent[3]),
+                    currency=str(intent[4]), method=str(intent[2]),
+                    received_on=moment.date(), actor_id=actor_id,
+                    correlation_id=correlation_id,
+                    subject_person_id=_payer_of(conn, str(intent[0])),
+                    cash_account_id=cash_account_id)
             _append(conn, tenant_id, "payment.succeeded", "payment", payment_id,
                     {"payment_id": payment_id, "intent_id": intent_id,
                      "billing_account_id": str(intent[0]),
@@ -2171,7 +2222,22 @@ def settle_payment_intent(
                     correlation_id=correlation_id, actor_id=actor_id)
     return {"intent_id": intent_id, "status": outcome, "payment_id": payment_id,
             "failure_class": collections.classify_failure(
-                (failure_code or "").strip() or None)}
+                (failure_code or "").strip() or None),
+            **ledger_result}
+
+
+def _payer_of(conn: Connection[Any], billing_account_id: str) -> str | None:
+    """The person a billing account bills, for the subject on a ledger posting.
+
+    A posting about a member should say so: `led_postings.subject_person_id` is what makes
+    "every movement about this person" one predicate rather than a join through three tables.
+    """
+    row = conn.execute(
+        "SELECT payer_person_id FROM plt01.fin_billing_accounts"
+        " WHERE billing_account_id = %s",
+        (billing_account_id,),
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
 
 
 def _apply_to_invoice(
@@ -2484,6 +2550,24 @@ def settle_refund(
         if invoiced is not None and invoiced[0] is not None:
             _apply_to_invoice(conn, tenant_id, str(invoiced[0]), at=moment.date())
         if outcome == "succeeded":
+            # **And MOD-018 posts the money going back, in this transaction.** A refund
+            # recorded without its reversal leaves the clearing account holding money that
+            # has left, which is the figure the settlement import reconciles.
+            account = conn.execute(
+                "SELECT b.legal_entity_id, b.billing_account_id"
+                " FROM plt01.fin_refunds r"
+                " JOIN plt01.fin_billing_accounts b"
+                "   ON b.billing_account_id = r.billing_account_id"
+                " WHERE r.refund_id = %s",
+                (refund_id,),
+            ).fetchone()
+            if account is not None:
+                ledger.post_refund(
+                    conn, tenant_id, refund_id=refund_id,
+                    legal_entity_id=str(account[0]), amount_minor=int(current[2]),
+                    currency=str(current[3]), refunded_on=moment.date(),
+                    actor_id=actor_id, correlation_id=correlation_id,
+                    subject_person_id=_payer_of(conn, str(account[1])))
             _append(conn, tenant_id, "refund.completed", "refund", refund_id,
                     {"refund_id": refund_id, "payment_id": str(current[1]),
                      "amount_minor": int(current[2]), "currency": str(current[3])},

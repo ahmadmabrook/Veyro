@@ -428,6 +428,55 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("refund.completed", 1, "MOD-017", "restricted",
        ("refund_id", "payment_id", "amount_minor", "currency"),
        "A refund left: money went back to the member"),
+
+    # ---------------------------------------------------------------- MOD-018, COM-04
+    #
+    # **No memo, no description and no resolution text anywhere here.** Every one of those is
+    # free text a caller or a provider supplied, and the realistic content of a posting memo is
+    # "Personal training with Jane, Tuesdays" while a reconciliation detail is a provider's own
+    # sentence about a cardholder. The outbox is the one store in this build no erasure reaches,
+    # and MOD-013 shipped exactly this with an SMTP rejection. What travels is the identifier,
+    # the declared value and the figure; a consumer that needs the words reads the row under the
+    # permission that gates it.
+    #
+    # **And the control total travels rather than the postings.** A journal's lines are the
+    # chart of accounts applied to one movement, and an event carrying them would put a
+    # tenant's whole chart into every consumer that subscribed to one event type.
+    _e("ledger.posted", 1, "MOD-018", "restricted",
+       ("journal_id", "legal_entity_id", "purpose", "currency", "control_total_minor",
+        "posted_on", "source_kind"),
+       "A balanced journal was posted; the control total is its debits"),
+    _e("wallet.credited", 1, "MOD-018", "restricted",
+       ("wallet_id", "person_id", "value_kind", "amount_minor", "currency", "journal_id"),
+       "Wallet value was added; the kind says whether it is refundable"),
+    # **No `value_kind` on a debit**, because a debit spends across kinds in `SPEND_ORDER` and
+    # one field could only ever name one of them. A consumer that needs the split reads the
+    # wallet's own entries.
+    _e("wallet.debited", 1, "MOD-018", "restricted",
+       ("wallet_id", "person_id", "amount_minor", "currency", "journal_id"),
+       "Wallet value was spent, across whichever kinds the spend order took"),
+    _e("settlement.imported", 1, "MOD-018", "restricted",
+       ("settlement_id", "provider_key", "legal_entity_id", "currency", "line_count",
+        "computed_total_minor"),
+       "A provider settlement file was imported and matched"),
+    _e("reconciliation.mismatch.detected", 1, "MOD-018", "restricted",
+       ("case_id", "case_kind", "legal_entity_id", "currency", "expected_minor",
+        "observed_minor"),
+       "Two figures disagree and nobody has explained it yet"),
+    # **Declared and deliberately unproduced**, like MOD-010's cross-plane events and MOD-013's
+    # status page. COM-04's event list names `credit.consumed` and `credit.issued`, and the
+    # credits those refer to are MOD-017's entitlement grants -- which already publish
+    # `entitlement.granted` and `entitlement.consumed`. Producing a second pair for the same
+    # act would give a consumer two events for one thing and no way to tell which was
+    # authoritative. The names stay so the gap is visible;
+    # `test_the_credit_events_belong_to_mod_017_and_say_so` fails the day somebody produces one.
+    _e("credit.issued", 1, "MOD-018", "restricted",
+       ("grant_id", "person_id", "policy_id"),
+       "A non-monetary service credit was issued (MOD-017 produces entitlement.granted)"),
+    _e("credit.consumed", 1, "MOD-018", "restricted",
+       ("grant_id", "reservation_id", "quantity"),
+       "A non-monetary service credit was consumed (MOD-017 produces "
+       "entitlement.consumed)"),
 ])
 
 

@@ -33,11 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 78 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 84 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
-MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_` and
-MOD-017's `mem_` and `fin_` -- and **every one has been run against a deliberate mutation of
-the protection it guards and shown to fail**:
+MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
+MOD-017's `mem_` and `fin_` and MOD-018's `led_` -- and **every one has been run against a
+deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
 MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
@@ -155,6 +155,64 @@ weakening is caught only by a net that is *more* than the product. **So the ques
 one-directional case is not "does this row violate the rule" but "which weakening would admit
 this row"** -- and a pair of cases is right only when the two rows fall on opposite sides of the
 equality, not merely when both are invalid.
+
+**A deferred constraint trigger fires at COMMIT, so a case that rolls back never sees it.**
+MOD-018's "a journal balances" rule is the one invariant the whole module rests on, and it
+cannot be a CHECK: the sum is over the postings, which do not all exist until the last one is
+inserted. So it is a `CREATE CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED`, which the
+isolation suite's own pattern -- insert the bad row, catch the exception, `ROLLBACK` -- cannot
+observe at all, because the trigger runs at a commit that never happens. The case has to say
+`SET CONSTRAINTS ALL IMMEDIATE` first, and then the insert raises where a reader expects it to.
+A case written the ordinary way passes with the trigger dropped, which is the same false green
+as every other paragraph here and arrives by a route none of them cover.
+
+**A plpgsql branch is invisible to a generated constraint sweep, so every branch needs its
+own probe and the probe count has to be asserted.** The mutation for a trigger's logic is
+`CREATE OR REPLACE FUNCTION` with one branch deleted, which touches nothing in
+`pg_constraint` and nothing a generated list of `ALTER TABLE` statements can reach.
+MOD-018's balance trigger had five branches and four probes: a reviewer deleted the
+mixed-currency branch, watched the suite report 84/84, and then committed a journal that
+"balanced" by setting dollars against dinars. The structural answer is the one that scales --
+each probe raises `CHECK nn FAILED` when the trigger does *not* refuse, and the block ends
+`IF probe <> N THEN RAISE`, so a branch with no probe fails and a `SET CONSTRAINTS` that
+silently did nothing fails too. A trigger whose existence is proved by its DROP is not a
+trigger whose *logic* is proved.
+
+**A trigger can subsume a CHECK's bound, and then the CHECK has no isolating case.**
+MOD-018's banked-session trigger bounds an amount against what the till counted, and a count
+is itself bounded at 1e12 -- so the hand-written ceiling on the same column became
+unreachable, and its case began proving the trigger. Same judgement as a constraint subsumed
+by a sibling: narrow the CHECK to the part that is still the primitive statement and say in a
+comment where the rest went. **The sweep is the only thing that notices**, because the author
+of the trigger has no reason to re-read a constraint that does not mention it.
+
+**A biconditional between a status and its timestamp breaks the moment a state is re-entered.**
+`(status IN ('closed','reopened')) = (closed_at IS NOT NULL)` reads as exactly right and made
+the one edge out of `reopened` unsatisfiable: a period closed, reopened and closing again
+legitimately keeps its close timestamp, so the UPDATE violated the CHECK, the route answered
+500, and the lock could never be re-applied. The implication is the true half -- a closed
+period has a close time -- and "a close time never disappears" is a different obligation that
+only a trigger can see. Written as a biconditional, the two are one constraint and the
+stronger half is wrong.
+
+**The prefix-free sweep has to carry every control, not three of them.** Check 61b was added
+after MOD-014's `member_contacts` finding and covered ENABLE+FORCE RLS, exactly one permissive
+policy and a tenant-registry foreign key -- so a table satisfying those three with
+`USING (true)`, DELETE, TRUNCATE and a PUBLIC grant read every tenant's rows and deleted them
+with the suite green. The predicate shape, the privilege bans, the tenant-leading primary key
+and the forbidden column names all lived in per-module checks, and a name matching no prefix
+escaped all of them: a reviewer called the table `ledger_running_balances` and it also walked
+past MOD-018's own two absence-sweeps. All of it is prefix-free now. **And compare the
+predicate against the approved text rather than searching it**: the approved expression's own
+second argument to `current_setting` is the literal `true`, so a sweep hunting for "true"
+flags all 130 policies and one hunting for "app.tenant_id" passes anything that mentions it
+beside an `OR true`.
+
+**`SELECT ... FOR UPDATE` needs the UPDATE privilege**, so a row on an insert-only table
+cannot be locked that way -- the statement fails with `permission denied for table`, at
+runtime, on whichever path happens to need the lock. Where the serialisation is still needed,
+`pg_advisory_xact_lock(hashtextextended(key, 0))` needs no table privilege and is what MOD-009
+and MOD-018 both use.
 
 **A unique index is not a constraint, and the mutation differs.** `ALTER TABLE ... DROP
 CONSTRAINT <name>` fails with "constraint does not exist" for an index created by `CREATE UNIQUE

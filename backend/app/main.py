@@ -58,6 +58,7 @@ from app.events import service as events
 from app.identity import policy as identity_policy
 from app.identity import service as identity
 from app.integrations import service as integrations
+from app.ledger import service as ledger
 from app.notifications import service as notifications
 from app.observability import metrics as obs_metrics
 from app.observability import ratelimit
@@ -1493,6 +1494,10 @@ class IssueInvoiceBody(BaseModel):
     #: unusable until this field existed -- and a credit note is the only correction an
     #: insert-only ledger has.
     credits_invoice_id: str | None = None
+    #: The part of the net not yet delivered, which MOD-018's bridge credits to
+    #: `unearned_revenue` instead of `revenue`. Paragraph 1695: a prepaid year is not
+    #: day-one revenue, and only the caller knows what was sold.
+    unearned_minor: int = Field(default=0, ge=0, le=1_000_000_000_000)
     idempotency_key: str = Field(min_length=1, max_length=200)
     correlation_id: str
 
@@ -1536,6 +1541,10 @@ class SettleIntentBody(BaseModel):
     provider_ref: str | None = Field(default=None, min_length=1, max_length=200)
     failure_code: str | None = Field(default=None, min_length=2, max_length=63)
     failure_detail: str | None = Field(default=None, min_length=1, max_length=1000)
+    #: Required for a cash payment and meaningless otherwise: the till's own `cash` account,
+    #: which is per location, so only whatever took the money knows which one. Without it the
+    #: payment is recorded and the ledger posting is skipped with a reason.
+    cash_account_id: str | None = None
     correlation_id: str
 
 
@@ -1608,6 +1617,285 @@ class FiscalizeBody(BaseModel):
 
 
 
+
+class LedgerAccountBody(BaseModel):
+    """One account in the tenant's chart.
+
+    **No balance field and no opening balance.** COM-04-R07: a balance is the sum of the
+    postings, and an opening figure is a journal like any other -- one that debits the account
+    and credits an equity or suspense account, so the ledger still balances.
+    """
+
+    account_code: str = Field(min_length=2, max_length=32)
+    #: One of `app.ledger.accounts.KINDS`. Not free text: the catalogue is the authority on
+    #: what this software posts, and a per-tenant set would let two tenants disagree with the
+    #: code about whether `unearned_revenue` is a liability.
+    account_kind: str = Field(min_length=2, max_length=32)
+    display_name: str = Field(min_length=1, max_length=200)
+    currency: str = Field(min_length=3, max_length=3)
+    brand_id: str | None = None
+    location_id: str | None = None
+    legal_entity_id: str | None = None
+    correlation_id: str
+
+
+class PostingLineBody(BaseModel):
+    """One line of a journal. **One signed amount, because two columns can disagree.**
+
+    Positive is a debit and negative is a credit, so "this journal balances" is exactly
+    `sum(amount_minor) = 0` -- which the database checks with a deferred constraint trigger.
+    """
+
+    account_id: str
+    amount_minor: int = Field(le=10**12, ge=-(10**12))
+    subject_person_id: str | None = None
+    memo: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class PostJournalBody(BaseModel):
+    """PostJournal.
+
+    **No `period_id`.** The period is derived from `posted_on` and opened by the first posting
+    into it, because there is no worker here to open months ahead -- and a caller able to name
+    the period could post January's trade into February's open month and make both wrong.
+    """
+
+    legal_entity_id: str
+    lines: list[PostingLineBody] = Field(min_length=2, max_length=1000)
+    posted_on: date
+    currency: str = Field(min_length=3, max_length=3)
+    #: **`manual` only.** The other source kinds belong to the commands that produce them --
+    #: a journal claiming to come from an invoice, when it came from this route, is a journal
+    #: nobody can trace -- and the idempotency namespace is per source kind, so a caller able
+    #: to send `wallet` here could pre-empt a wallet credit's own journal and be handed the
+    #: decoy back as a repeat.
+    source_kind: Literal["manual"] = "manual"
+    source_ref: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=500)
+    #: **`close` costs a different permission**, which is the only honest way to have this
+    #: field at all: a `closing` period admits the close's own entries and no trade, and with
+    #: `purpose` free the identical journal went in as `close` after being refused as `trade`
+    #: -- COM-04-R06's lock on the month finance is signing off, defeated by a word. The other
+    #: three purposes are produced by the commands that own them and are derived from the
+    #: source kind, never sent.
+    purpose: Literal["trade", "close"] = "trade"
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CorrectJournalBody(BaseModel):
+    """Reverse a posted journal. **The only correction paragraph 1685 admits.**"""
+
+    reason: str = Field(min_length=1, max_length=500)
+    #: Defaults to today, which is the open period. A correction discovered in December for a
+    #: November mistake belongs in December, because that is the period whose figures change.
+    posted_on: date | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class WalletCreditBody(BaseModel):
+    """CreditWallet.
+
+    **`value_kind` chooses which liability**, and the liability account is derived from it
+    rather than named: promotional value and cash value are different accounts and paragraph
+    1686 makes the distinction a Critical Control. The *counterpart* is named, because what the
+    value came from -- a till, a provider, a marketing expense -- is the caller's to say.
+    """
+
+    person_id: str
+    value_kind: Literal["cash", "promotional", "referral", "refund_credit"]
+    amount_minor: int = Field(ge=1, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    legal_entity_id: str
+    counterpart_account_id: str
+    source_kind: Literal["purchase", "refund", "goodwill", "referral", "promotion",
+                         "correction", "migration"]
+    source_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=500)
+    #: **Cash value does not expire**, and the service refuses one that tries: it is money the
+    #: member paid in, so an expiry on it would be the tenant keeping money it owes.
+    expires_on: date | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class WalletDebitBody(BaseModel):
+    """DebitWallet. **There is no `value_kind` field.**
+
+    `wallet.plan_debit` decides, in the member's interest: promotional first because it expires
+    and is worth nothing lapsed, cash last because cash is the only kind they can ask for back.
+    A caller able to name the kind could spend the refundable balance first and leave the member
+    holding value they can never get back.
+    """
+
+    person_id: str
+    amount_minor: int = Field(ge=1, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    legal_entity_id: str
+    counterpart_account_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    source_kind: Literal["spend", "refund", "expiry", "correction"] = "spend"
+    source_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class RecognitionScheduleBody(BaseModel):
+    """Declare how a sale earns. Paragraph 1695.
+
+    The basis decides which fields are present: `straight_line` earns over a period,
+    `on_delivery` over a number of units, `immediate` when sold. A schedule carrying both is
+    one nothing can evaluate.
+    """
+
+    legal_entity_id: str
+    source_kind: Literal["invoice_line", "entitlement_grant", "agreement", "manual"]
+    source_ref: str = Field(min_length=1, max_length=200)
+    basis: Literal["straight_line", "on_delivery", "immediate"]
+    total_minor: int = Field(ge=1, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    unearned_account_id: str
+    revenue_account_id: str
+    subject_person_id: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+    units_total: int | None = Field(default=None, ge=1, le=100_000)
+    correlation_id: str
+
+
+class PostRecognitionBody(BaseModel):
+    """PostRevenueRecognition. **Cumulative, so running it twice posts once.**"""
+
+    #: For an `on_delivery` schedule. Only the module that owns the delivery can say.
+    units_delivered: int | None = Field(default=None, ge=0, le=100_000)
+    as_of: date | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class SettlementLineBody(BaseModel):
+    line_kind: Literal["payment", "refund", "fee", "chargeback", "chargeback_reversal",
+                       "adjustment", "payout"]
+    provider_ref: str = Field(min_length=1, max_length=200)
+    amount_minor: int = Field(le=10**12, ge=-(10**12))
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
+class ImportSettlementBody(BaseModel):
+    """ImportSettlement. COM-04-R04.
+
+    **`claimed_total_minor` is the file's own header figure**, and it is compared against the
+    lines: a file whose header disagrees with its body was truncated or edited in transit, and
+    importing it would post half a day's takings as all of them.
+    """
+
+    legal_entity_id: str
+    provider_key: str = Field(min_length=2, max_length=63)
+    provider_batch_ref: str = Field(min_length=1, max_length=200)
+    settled_on: date
+    currency: str = Field(min_length=3, max_length=3)
+    claimed_total_minor: int = Field(le=10**12, ge=-(10**12))
+    lines: list[SettlementLineBody] = Field(min_length=1, max_length=5000)
+    #: A locator, never the file. This build has no object store, and a column that could hold
+    #: the bytes is a column somebody puts card numbers in.
+    document_ref: str | None = Field(default=None, min_length=1, max_length=500)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class ResolveCaseBody(BaseModel):
+    """**`written_off` is a decision about money and it says so in the status.**"""
+
+    outcome: Literal["investigating", "resolved", "written_off", "abandoned"]
+    resolution: str = Field(min_length=1, max_length=500)
+    resolution_journal_id: str | None = None
+    correlation_id: str
+
+
+class CashSessionBody(BaseModel):
+    """**A float that is not posted is cash the ledger does not know about.**
+
+    So a non-zero float names where it came from -- the safe, another `cash` account -- and
+    the open posts it across. Without that the drawer's account balance is not the money in
+    the drawer, which is the property the close's variance posting exists to keep.
+    """
+
+    location_id: str
+    cash_account_id: str
+    drawer_label: str = Field(min_length=1, max_length=63)
+    currency: str = Field(min_length=3, max_length=3)
+    opening_float_minor: int = Field(ge=0, le=10**12)
+    #: Required when the float is non-zero: the `cash` account it is drawn from.
+    float_source_account_id: str | None = None
+    #: Required with a float, because the posting needs an entity.
+    legal_entity_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CloseCashSessionBody(BaseModel):
+    """**There is no `expected_minor` field.** The ledger says what should be in the drawer;
+    the clerk says what is there. A caller able to send both could make any till balance."""
+
+    counted_minor: int = Field(ge=0, le=10**12)
+    legal_entity_id: str
+    suspense_account_id: str
+    variance_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+class DepositBody(BaseModel):
+    location_id: str
+    cash_account_id: str
+    bank_account_id: str
+    currency: str = Field(min_length=3, max_length=3)
+    declared_minor: int = Field(ge=1, le=10**12)
+    deposited_on: date
+    session_ids: list[str] = Field(min_length=1, max_length=100)
+    legal_entity_id: str
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class ConfirmDepositBody(BaseModel):
+    """What the bank says it received. A different figure makes the deposit `short`."""
+
+    credited_minor: int = Field(ge=0, le=10**12)
+    credited_on: date
+    legal_entity_id: str
+    suspense_account_id: str
+    bank_reference: str | None = Field(default=None, min_length=1, max_length=200)
+    correlation_id: str
+
+
+class PeriodBody(BaseModel):
+    legal_entity_id: str
+    period_key: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
+    target: Literal["closing", "closed", "open"] = "closed"
+    correlation_id: str
+
+
+class ReopenPeriodBody(BaseModel):
+    """**A reopening states why**, because it is the one act that lets a filed figure change."""
+
+    legal_entity_id: str
+    period_key: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ExportPeriodBody(BaseModel):
+    """ReconcileControlTotal, as an export record. **Not the file: this build has no object
+    store, and `target_ref` is the other system's own handle for the batch.**"""
+
+    legal_entity_id: str
+    period_key: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}$")
+    target_system: str = Field(min_length=2, max_length=63)
+    target_ref: str = Field(min_length=1, max_length=200)
+    currency: str = Field(min_length=3, max_length=3)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
 
 class ObjectiveBody(BaseModel):
     """DefineSLI and SetSLO, which are one row.
@@ -5048,6 +5336,7 @@ def create_app(
             schedule_id=optional_uuid(body.schedule_id, "schedule_id"),
             credits_invoice_id=optional_uuid(
                 body.credits_invoice_id, "credits_invoice_id"),
+            unearned_minor=body.unearned_minor,
             idempotency_key=body.idempotency_key,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
@@ -5093,6 +5382,7 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(intent_id, "intent_id"),
             outcome=body.outcome, provider_ref=body.provider_ref,
             failure_code=body.failure_code, failure_detail=body.failure_detail,
+            cash_account_id=optional_uuid(body.cash_account_id, "cash_account_id"),
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
 
@@ -5217,6 +5507,382 @@ def create_app(
         permit(session, "finance.account.read")
         return commercial.refunds_of_payment(
             tenant_pool, tenant_id, require_uuid(payment_id, "payment_id"))
+
+
+    # ------------------------------------------------------------ MOD-018, COM-04
+
+    @app.post("/ledger/accounts", status_code=201)
+    def open_ledger_account(
+        tenant_id: TenantId, session: Session, body: LedgerAccountBody
+    ) -> dict[str, Any]:
+        """One account in the tenant's chart. The kinds are in code; the accounts are rows."""
+        permit(session, "finance.ledger.chart", body.correlation_id)
+        return ledger.open_account(
+            tenant_pool, tenant_id, account_code=body.account_code,
+            account_kind=body.account_kind, display_name=body.display_name,
+            currency=body.currency,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            legal_entity_id=optional_uuid(body.legal_entity_id, "legal_entity_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/accounts/{account_id}/retire")
+    def retire_ledger_account(
+        tenant_id: TenantId, session: Session, account_id: str,
+        body: CommercialActionBody,
+    ) -> dict[str, Any]:
+        """Stop an account being posted to. Its postings stay exactly where they are."""
+        permit(session, "finance.ledger.chart", body.correlation_id)
+        return ledger.retire_account(
+            tenant_pool, tenant_id, require_uuid(account_id, "account_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ledger/accounts/{account_id}/balance")
+    def ledger_account_balance(
+        tenant_id: TenantId, session: Session, account_id: str,
+        as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """One account's balance, summed from the postings. Never a stored total."""
+        permit(session, "finance.ledger.read")
+        return ledger.account_balance(
+            tenant_pool, tenant_id, require_uuid(account_id, "account_id"), as_of=as_of)
+
+    @app.get("/ledger/trial-balance")
+    def ledger_trial_balance(
+        tenant_id: TenantId, session: Session, legal_entity_id: str,
+        currency: Annotated[str, Query(min_length=3, max_length=3)],
+        as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """Every balance, and the proof that the ledger balances. COM-04-R07.
+
+        **Scoped to the entity and the date.** Both predicates once sat in a `LEFT JOIN`'s
+        `ON` clause, where a posting whose journal matched neither survived the join and was
+        summed anyway -- so this read, which is what a close is signed off against, moved
+        whenever a later month was posted.
+        """
+        permit(session, "finance.ledger.read")
+        return ledger.trial_balance(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(legal_entity_id, "legal_entity_id"),
+            currency=currency, as_of=as_of)
+
+    @app.post("/ledger/journals", status_code=201)
+    def post_ledger_journal(
+        tenant_id: TenantId, session: Session, body: PostJournalBody
+    ) -> dict[str, Any]:
+        """PostJournal: a balanced, insert-only movement. Paragraph 1685.
+
+        **A closing entry is charged to the close's own permission.** `purpose: "close"` is
+        what gets a journal into a period that has stopped admitting trade, so it costs
+        `finance.period.close` rather than `finance.ledger.post` -- the same remedy MOD-009
+        applied to `consent_subject` and MOD-013 to a critical notification, for the same
+        reason: a body field that buys an authority is a permission, so charge one.
+        """
+        permit(session,
+               "finance.period.close" if body.purpose == "close"
+               else "finance.ledger.post",
+               body.correlation_id)
+        return ledger.post_journal_in_its_own_transaction(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            lines=[{"account_id": require_uuid(line.account_id, "account_id"),
+                    "amount_minor": line.amount_minor,
+                    "subject_person_id": optional_uuid(
+                        line.subject_person_id, "subject_person_id"),
+                    "memo": line.memo}
+                   for line in body.lines],
+            posted_on=body.posted_on, currency=body.currency, purpose=body.purpose,
+            source_kind=body.source_kind, source_ref=body.source_ref,
+            description=body.description, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ledger/journals/{journal_id}")
+    def get_ledger_journal(
+        tenant_id: TenantId, session: Session, journal_id: str
+    ) -> dict[str, Any]:
+        """One journal with its postings, which is how a balance is explained."""
+        permit(session, "finance.ledger.read")
+        return ledger.get_journal(
+            tenant_pool, tenant_id, require_uuid(journal_id, "journal_id"))
+
+    @app.post("/ledger/journals/{journal_id}/correct", status_code=201)
+    def correct_ledger_journal(
+        tenant_id: TenantId, session: Session, journal_id: str,
+        body: CorrectJournalBody,
+    ) -> dict[str, Any]:
+        """Reverse a posted journal with a compensating entry, dated in the open period."""
+        permit(session, "finance.ledger.correct", body.correlation_id)
+        return ledger.correct_journal(
+            tenant_pool, tenant_id, require_uuid(journal_id, "journal_id"),
+            reason=body.reason, posted_on=body.posted_on,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/wallet-credits", status_code=201)
+    def credit_member_wallet(
+        tenant_id: TenantId, session: Session, body: WalletCreditBody
+    ) -> dict[str, Any]:
+        """CreditWallet. The liability account comes from the value kind, not from the body."""
+        permit(session, "finance.wallet.credit", body.correlation_id)
+        return ledger.credit_wallet(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(body.person_id, "person_id"),
+            value_kind=body.value_kind, amount_minor=body.amount_minor,
+            currency=body.currency,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            counterpart_account_id=require_uuid(
+                body.counterpart_account_id, "counterpart_account_id"),
+            source_kind=body.source_kind, source_ref=body.source_ref,
+            reason=body.reason, expires_on=body.expires_on,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/wallet-debits", status_code=201)
+    def debit_member_wallet(
+        tenant_id: TenantId, session: Session, body: WalletDebitBody
+    ) -> dict[str, Any]:
+        """DebitWallet. The spend order decides which value goes, not the caller."""
+        permit(session, "finance.wallet.debit", body.correlation_id)
+        return ledger.debit_wallet(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(body.person_id, "person_id"),
+            amount_minor=body.amount_minor, currency=body.currency,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            counterpart_account_id=require_uuid(
+                body.counterpart_account_id, "counterpart_account_id"),
+            reason=body.reason, source_kind=body.source_kind,
+            source_ref=body.source_ref, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ledger/wallets/{person_id}")
+    def get_member_wallet(
+        tenant_id: TenantId, session: Session, person_id: str,
+        currency: Annotated[str, Query(min_length=3, max_length=3)],
+        as_of: date | None = None,
+    ) -> dict[str, Any]:
+        """A wallet statement, reconstructed from the entries. COM-04-R07.
+
+        **The lines carry the reason each movement was made**, which is a tenant's own prose,
+        to a routine tenant-wide reader -- the same disclosure MOD-013 records for
+        `privacy.consent.read`, and the place `Decision.mask` would apply if a read path here
+        asked the gate for one. It does not; that is a declared gap rather than an oversight.
+        """
+        permit(session, "finance.wallet.read")
+        return ledger.wallet_statement(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(person_id, "person_id"), currency=currency,
+            at=as_of)
+
+    @app.post("/ledger/recognition-schedules", status_code=201)
+    def open_recognition_schedule(
+        tenant_id: TenantId, session: Session, body: RecognitionScheduleBody
+    ) -> dict[str, Any]:
+        """Declare how a sale earns. Paragraph 1695: prepaid cash is not day-one revenue."""
+        permit(session, "finance.recognition.manage", body.correlation_id)
+        return ledger.open_recognition_schedule(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            source_kind=body.source_kind, source_ref=body.source_ref,
+            basis=body.basis, total_minor=body.total_minor, currency=body.currency,
+            unearned_account_id=require_uuid(
+                body.unearned_account_id, "unearned_account_id"),
+            revenue_account_id=require_uuid(
+                body.revenue_account_id, "revenue_account_id"),
+            subject_person_id=optional_uuid(
+                body.subject_person_id, "subject_person_id"),
+            starts_on=body.starts_on, ends_on=body.ends_on,
+            units_total=body.units_total,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/recognition-schedules/{schedule_id}/post")
+    def post_revenue_recognition(
+        tenant_id: TenantId, session: Session, schedule_id: str,
+        body: PostRecognitionBody,
+    ) -> dict[str, Any]:
+        """PostRevenueRecognition. Cumulative, so running it twice posts once."""
+        permit(session, "finance.recognition.manage", body.correlation_id)
+        return ledger.post_recognition(
+            tenant_pool, tenant_id, require_uuid(schedule_id, "schedule_id"),
+            units_delivered=body.units_delivered, at=body.as_of,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ledger/recognition-due")
+    def recognition_due(
+        tenant_id: TenantId, session: Session, as_of: date | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Which live schedules have something to recognise. For the sweep nothing runs."""
+        permit(session, "finance.ledger.read")
+        return ledger.recognition_due(tenant_pool, tenant_id, at=as_of, limit=limit)
+
+    @app.post("/ledger/settlements", status_code=201)
+    def import_settlement(
+        tenant_id: TenantId, session: Session, body: ImportSettlementBody
+    ) -> dict[str, Any]:
+        """ImportSettlement. COM-04-R04: the file, the verdicts and the cases, together."""
+        permit(session, "finance.settlement.import", body.correlation_id)
+        return ledger.import_settlement(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            provider_key=body.provider_key,
+            provider_batch_ref=body.provider_batch_ref,
+            settled_on=body.settled_on, currency=body.currency,
+            claimed_total_minor=body.claimed_total_minor,
+            lines=[{"line_kind": line.line_kind, "provider_ref": line.provider_ref,
+                    "amount_minor": line.amount_minor,
+                    "currency": line.currency or body.currency}
+                   for line in body.lines],
+            document_ref=body.document_ref, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ledger/reconciliation-cases")
+    def open_reconciliation_cases(
+        tenant_id: TenantId, session: Session, legal_entity_id: str | None = None,
+        as_of: date | None = None, limit: int = 200,
+    ) -> dict[str, Any]:
+        """Every unanswered question, with how long it has been open."""
+        permit(session, "finance.ledger.read")
+        return ledger.open_cases(
+            tenant_pool, tenant_id,
+            legal_entity_id=optional_uuid(legal_entity_id, "legal_entity_id"),
+            at=as_of, limit=limit)
+
+    @app.post("/ledger/reconciliation-cases/{case_id}/resolve")
+    def resolve_reconciliation_case(
+        tenant_id: TenantId, session: Session, case_id: str, body: ResolveCaseBody
+    ) -> dict[str, Any]:
+        """Work a case. `written_off` is a decision about money and says so in the status."""
+        permit(session, "finance.reconciliation.manage", body.correlation_id)
+        return ledger.resolve_case(
+            tenant_pool, tenant_id, require_uuid(case_id, "case_id"),
+            outcome=body.outcome, resolution=body.resolution,
+            resolution_journal_id=optional_uuid(
+                body.resolution_journal_id, "resolution_journal_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/cash-sessions", status_code=201)
+    def open_cash_session(
+        tenant_id: TenantId, session: Session, body: CashSessionBody
+    ) -> dict[str, Any]:
+        """Open a till. One open session per drawer. COM-04-R05."""
+        permit(session, "finance.cash.session", body.correlation_id)
+        return ledger.open_cash_session(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(body.location_id, "location_id"),
+            cash_account_id=require_uuid(body.cash_account_id, "cash_account_id"),
+            drawer_label=body.drawer_label, currency=body.currency,
+            opening_float_minor=body.opening_float_minor,
+            float_source_account_id=optional_uuid(
+                body.float_source_account_id, "float_source_account_id"),
+            legal_entity_id=optional_uuid(body.legal_entity_id, "legal_entity_id"),
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/cash-sessions/{session_id}/close")
+    def close_cash_session(
+        tenant_id: TenantId, session: Session, session_id: str,
+        body: CloseCashSessionBody,
+    ) -> dict[str, Any]:
+        """Count a till and close it. An unexplained variance refuses the close."""
+        permit(session, "finance.cash.session", body.correlation_id)
+        return ledger.close_cash_session(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            counted_minor=body.counted_minor,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            suspense_account_id=require_uuid(
+                body.suspense_account_id, "suspense_account_id"),
+            variance_reason=body.variance_reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/deposits", status_code=201)
+    def create_deposit(
+        tenant_id: TenantId, session: Session, body: DepositBody
+    ) -> dict[str, Any]:
+        """Bank a bag of cash. Posted on the way out, reconciled when the bank answers."""
+        permit(session, "finance.cash.deposit", body.correlation_id)
+        return ledger.create_deposit(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(body.location_id, "location_id"),
+            cash_account_id=require_uuid(body.cash_account_id, "cash_account_id"),
+            bank_account_id=require_uuid(body.bank_account_id, "bank_account_id"),
+            currency=body.currency, declared_minor=body.declared_minor,
+            deposited_on=body.deposited_on,
+            session_ids=[require_uuid(s, "session_id") for s in body.session_ids],
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/deposits/{deposit_id}/confirm")
+    def confirm_deposit(
+        tenant_id: TenantId, session: Session, deposit_id: str,
+        body: ConfirmDepositBody,
+    ) -> dict[str, Any]:
+        """What the bank credited. A different figure makes the deposit `short`."""
+        permit(session, "finance.cash.deposit", body.correlation_id)
+        return ledger.confirm_deposit(
+            tenant_pool, tenant_id, require_uuid(deposit_id, "deposit_id"),
+            credited_minor=body.credited_minor, credited_on=body.credited_on,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            suspense_account_id=require_uuid(
+                body.suspense_account_id, "suspense_account_id"),
+            bank_reference=body.bank_reference,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/periods/close")
+    def close_financial_period(
+        tenant_id: TenantId, session: Session, body: PeriodBody
+    ) -> dict[str, Any]:
+        """Close a period, or begin closing it. COM-04-R06's lock control."""
+        permit(session, "finance.period.close", body.correlation_id)
+        return ledger.close_period(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            period_key=body.period_key, target=body.target,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/periods/reopen")
+    def reopen_financial_period(
+        tenant_id: TenantId, session: Session, body: ReopenPeriodBody
+    ) -> dict[str, Any]:
+        """Reopen a closed period, with a reason that goes on the row."""
+        permit(session, "finance.period.reopen", body.correlation_id)
+        return ledger.reopen_period(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            period_key=body.period_key, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ledger/exports", status_code=201)
+    def export_financial_period(
+        tenant_id: TenantId, session: Session, body: ExportPeriodBody
+    ) -> dict[str, Any]:
+        """Record that a closed period reached an accounting system, and with what totals."""
+        permit(session, "finance.export.run", body.correlation_id)
+        return ledger.export_period(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            period_key=body.period_key, target_system=body.target_system,
+            target_ref=body.target_ref, currency=body.currency,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
 
     return app
 

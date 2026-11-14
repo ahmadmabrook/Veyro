@@ -37,6 +37,10 @@ backend/app/            service code
                         collections.py decide; service.py holds the two locks the module
                         turns on -- the grant a reservation draws from and the serial
                         counter an invoice is numbered by
+  ledger/               MOD-018: accounts.py, wallet.py, periods.py, recognition.py and
+                        settlement.py decide; service.py holds the one thing that is
+                        load-bearing -- post_journal takes a connection, so a posting commits
+                        in the transaction that caused it
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -2033,18 +2037,311 @@ Known gaps, deliberate:
   no invoice. Adding one is a `Projection` with a summary somebody wrote, which is the review
   point MOD-014 names.
 
-**Next.** MOD-018 (Financial Ledger and Wallet Pilot) is what MOD-017 unblocks and is the
-natural next module. MOD-019 (Scheduling Pilot) is unblocked by MOD-014 and independent of
-both -- and it is where MOD-017's entitlement reservation finally gets a caller, since a
-booking is the thing a hold is taken *for*. Nothing in the Foundation wave is left except
-MOD-006, the Compose Multiplatform qualification, which is a client-side proof the server plane
-does not need.
+**MOD-018 (COM-04 financial ledger, member wallet and revenue recognition) -- implemented,
+gated and reviewed.** Fifteen `led_` tables in `plt01` under the same forced RLS,
+`app/ledger/` beside them, and twenty-three HTTP routes. Working: a code-resident chart of
+account kinds with per-tenant accounts; signed double-entry postings whose journals balance by
+a deferred constraint trigger; financial periods with the open/closing/closed/reopened lock;
+corrections as reversing journals; a four-kind member wallet with a fixed spend order and
+derived balances; revenue recognition on three bases with cumulative, idempotent runs;
+provider settlement import with per-line matching, posted fees and payouts, and a
+reconciliation case per unanswered question; cash sessions with a posted opening float and a
+variance that goes to suspense; bank deposits posted on the way out and reconciled when the
+bank answers; a trial balance; and a period export. Five of COM-04's seven events are
+produced. Proven: isolation checks 79-84 plus the cross-row and one-way trigger probes in 84b
+and 84c, mutation-tested in four rounds -- 963 mutations in the last of them with three
+gaps, each repaired and re-verified; 61 domain unit tests with no database; 64 HTTP tests,
+inside a suite of 1,528.
+
+**This module is wired into MOD-017 rather than sitting beside it.** `chart_for`,
+`post_invoice`, `post_credit_note`, `allocate_payment` and `post_refund` are called from
+`app/commercial/service.py` **on its connection**, inside the transaction that writes the
+invoice, the payment or the refund. That is the one thing about the module that is
+load-bearing, and it is MOD-010's `append_event` argument applied to money: a payment in
+`fin_payments` with no journal, or a journal with no payment, is a state nothing can reconcile.
+The pool-taking wrapper is called `post_journal_in_its_own_transaction` and is correct only
+where there is no state change to be atomic with.
+
+Six decisions carry the module:
+
+- **Signs, not sides.** A posting carries a signed `amount_minor`: positive is a debit,
+  negative a credit, and the side is derived. One column cannot disagree with itself, and
+  "the journal balances" is then exactly `sum(amount_minor) = 0` -- a rule the *database*
+  enforces per journal rather than a property the service promises. It cannot be a CHECK,
+  because the sum spans rows that do not all exist until the last insert, so it is a
+  `DEFERRABLE INITIALLY DEFERRED` constraint trigger. **And "balances" needs two more
+  clauses than the sum**: no account twice in one journal, because +N and -N on one account
+  satisfies the sum and moves nothing; and a journal has at least one posting, because the
+  balance trigger is on `led_postings` and an empty journal fires it zero times.
+- **Nothing stores a balance.** COM-04-R07. An account balance is a sum over postings and a
+  wallet balance is a sum over entries, computed where they are needed. The cost is a query
+  per read; the benefit is that a statement and a balance cannot disagree, because they are
+  the same sum read to different depths. No table here has a balance column and the sweep
+  tries to add one.
+- **The wallet is four balances because one would erase the distinction that matters.**
+  Paragraph 1686, a Critical Control: a member holding 50.00 they paid in and 10.00 the tenant
+  gave away holds two different things, and the first is money the tenant owes. `SPEND_ORDER`
+  spends promotional value first and cash last -- **the member's interest, not the tenant's**,
+  because spending cash first quietly converts a refundable balance into an unrefundable one
+  every time the member buys anything. The caller cannot choose the kind, the liability
+  account is derived from it, and the counterpart is checked for what it is.
+- **A closed period refuses a posting, and `closing` exists because closing is work.** So
+  `closing` admits the close's own entries and no trade; `closed` admits nothing; and a closed
+  period never reopens on its own authority, it moves to `reopened`, which has its own
+  permission and a written reason. `open -> closed` is refused outright, which surprises a
+  caller that expected one step. **The lock binds the posting rows, not just the header**: it
+  takes `FOR SHARE` on the period row, so a till inserting a journal and an accountant closing
+  the month cannot walk past each other, and it is re-read at commit.
+- **A posted journal is corrected, never edited.** Paragraph 1685's Critical Control. Six
+  tables carry no UPDATE grant for any runtime role and none carries DELETE, so a correction
+  is a reversing journal that names the original. A correction is not itself reversible,
+  because that is almost always somebody trying to undo an undo.
+- **A lifecycle decision is made once, and a trigger is what says so.** MOD-009's
+  `sec_legal_holds` rule: a CHECK cannot see what a row used to be. Seven triggers hold the
+  status transitions and make a settlement timestamp un-clearable and un-rewindable, because
+  the attribution CHECKs beside them say nothing about the previous row.
+
+**Three reviewers worked this module in parallel -- the schema, the decisions, the request
+path -- and all three returned CHANGES_REQUESTED. Twenty-four blocking defects**, every one
+executed rather than reasoned about, and every one inside a green 103-test suite. The largest
+single cause is the one `CLAUDE.md` already records for every module since MOD-011, and three
+of the request-path findings were three faces of it. Carried forward as rules:
+
+- **A control on the journal header is not a control on the money.** The balance trigger is
+  `AFTER INSERT ON led_postings`, so a journal with *no* postings fired it zero times and
+  nothing about it was ever evaluated -- not the balance, not the control total. A reviewer
+  parked a header claiming a 500.00 control total, then satisfied the mandatory `journal_id`
+  on a wallet entry with it: the member held 500.00 of spendable value with no liability
+  anywhere in the ledger, which is the state this module's own wallet section says cannot
+  exist. It was also how a journal reached a *closed* period -- park the header while the
+  month is open, close the month, insert the postings -- and the race needs no foresight at
+  all, because an FK insert takes `FOR KEY SHARE` and an UPDATE of the non-key `status` takes
+  `FOR NO KEY UPDATE`, which do not conflict.
+- **"Immutable by privilege" says nothing about the columns that *do* carry a grant.** Nine
+  lifecycle columns had a repeatable UPDATE and nothing but an all-or-none attribution CHECK,
+  which cannot see `OLD` -- so a reviewer un-closed a filed month with no reason, re-opened it
+  to trade and re-closed it under a different actor, leaving a row that reads as a month closed
+  once; erased a 400.00 shortfall on a bank deposit; rewrote a till close so the drawer
+  balanced and deleted the written variance; and replaced a write-off and the name of whoever
+  decided it. Six of the nine are declared `write_once` in the privacy registry and all six
+  were service discipline only, in the module whose premise is "this is the half that still
+  holds when the service is wrong".
+- **Beginning the month-end close stopped the product.** `closing` is a state an accountant
+  enters deliberately and the bridge runs inside MOD-017's transaction, so the `Conflict`
+  rolled the business write back: no invoice could be issued, no serial allocated, and a card
+  the provider had already charged could not be recorded -- which is how a member gets dunned
+  for a payment that succeeded. A close begun on the 28th shut the till for four days. A
+  bridged posting now walks forward to the first period that admits it, which is what an
+  accountant means by "it goes in the next open period"; a journal posted by hand still does
+  not walk, because somebody is there to read the refusal.
+- **The cheapest permission in the module was an unrestricted posting route.**
+  `close_cash_session` took `suspense_account_id` and never checked its kind, so
+  `finance.cash.session` -- routine, AAL 1, held by a front desk -- posted any amount up to
+  10^12 between the drawer and *any* account in the chart. A reviewer cleared every member's
+  outstanding receivable with it. The identical movement through `POST /ledger/journals` is
+  refused, because that permission is financial and needs a step-up, and the catalogue's own
+  justification for leaving the session permission routine is the variance going to suspense.
+  Three sibling commands checked the kinds of the accounts they named and three did not.
+- **`purpose` was a word on the body that bought the authority the period state exists to
+  withhold.** The identical journal -- same accounts, same amount, `source_kind: "manual"`,
+  description "ordinary sale" -- was refused as `trade` in a closing period and accepted as
+  `close` or `settlement`. Nothing distinguished the close's own machinery from ordinary trade:
+  no second act, no separate permission, no correspondence check. Everything but `close` is
+  derived from the source kind now, and `close` costs `finance.period.close`.
+- **A predicate in a `LEFT JOIN`'s `ON` clause is not a filter.** The trial balance's entity
+  and as-of date both sat there, where a posting whose journal matched neither survived the
+  join with NULL journal columns and was summed anyway -- so a per-entity trial balance carried
+  the other entity's journals and a period-end one carried journals posted after the date it
+  was asked for. That is the figure a close is signed off against, moving whenever a later
+  month is posted, in the read the close is verified with; and `export_period` computes its own
+  totals correctly, so the filed export and the trial balance disagreed with nothing to say
+  which was right.
+- **An unordered lookup makes the planner the author.** `chart_for` filtered on neither the
+  legal entity nor anything deterministic and filled a dict in row order, so which revenue
+  account an invoice credited changed between runs on identical input, and a two-entity
+  tenant's receivable landed in the *other* entity's account -- which forecloses the per-entity
+  separation COM-03-R07 needs and which `chart_for`'s own docstring claimed.
+- **Lapsing a credit without lapsing what was drawn against it charges the member twice.**
+  `balances` dropped an expired credit and kept every debit, and a debit carries no expiry --
+  so a member who *used* a promo code lost, on the day the promo would have expired, an amount
+  of their own paid-in cash equal to the promo they had already spent. The kind went negative,
+  `spendable` sums across kinds, and it compounded with every expired credit they had used.
+- **One module, two definitions of the same balance.** `_expected_in_drawer` summed a cash
+  account's postings with no date bound while `account_balance` thirty lines down had one, so
+  one journal dated next year moving 100.00 out of the till made today's close balance:
+  nothing posted to suspense, no written reason demanded, no case opened. It also misfired with
+  no adversary at all, on any legitimately back- or future-dated journal touching a till.
+- **A composition check per deposit cannot see the second deposit.** `create_deposit` compared
+  what a bag declared against the sessions it named, per bag -- so one 200.00 session was
+  banked in two deposits under two idempotency keys, which is the ordinary
+  retry-with-a-new-key case: 400.00 in the bank, minus 200.00 in a drawer, no reconciliation
+  case, and the clean route to pocketing 200.00 of notes while the negative drawer reads as a
+  banking error.
+- **A module docstring claimed a posting the module never made.** `settlement.py` said an
+  unmatched line posts to `suspense`; `import_settlement` never called `post_journal` at all.
+  A fee and a payout are the two line kinds that definitionally have no counterpart here and
+  so *must* post, and both were classified `not_expected` and dropped -- so
+  `provider_clearing` was debited by every card payment and relieved by nothing, while
+  `allocate_payment`'s whole argument for landing payments there described a reconciliation
+  that read the account and never settled it.
+- **A `ValueError` is not a `ServiceError`.** `month_bounds` raises `LedgerError`, and
+  `_period_for` was the one of ten call sites that did not wrap it -- so a mistyped year
+  answered 500 on four money routes including `/finance/invoices`, and conditionally in the
+  worst way: a tenant with no chart gets its invoice, so the 500 appeared only once a tenant
+  had set its ledger up.
+- **A state machine's only exit has to be reachable.** `EDGES["reopened"] = ("closing",)` and
+  the UPDATE that takes it there violated `closed_is_closed`, which was a biconditional -- so
+  `/ledger/periods/reopen`, the one act COM-04-R06 provides for correcting a filed month, was a
+  one-way door that answered 500 on the way out, left the period indefinitely postable, and
+  could never be re-locked.
+- **A caller-supplied key interpolated into a `LIKE` is a pattern.** A wallet debit keyed `%`
+  was answered 201 `repeated: True` quoting the previous sale's figure, so a till handed over
+  90.00 of goods for 1.00 of wallet value -- and a legitimate key containing `%` or `_` made
+  the day's second genuine sale free.
+- **An idempotency namespace a caller can write into is not a namespace.** The commands
+  compose their keys into `led_journals.idempotency_key` and `POST /ledger/journals` wrote to
+  the same single unique key, so a decoy journal keyed `wallet-credit-TOPUP-9` was handed back
+  as the repeat of a wallet credit keyed `TOPUP-9`: 1000.00 of refundable member value with no
+  liability recorded, and a trial balance that **cannot see it**, because the decoy balanced.
+- **Recognition believed a future date and an unrelated liability.** A caller-chosen `as_of`
+  five thousand days out turned a whole prepaid year into revenue in one call and marked the
+  schedule `complete`, so the real recognition could never be posted and the journal landed
+  outside every as-of read -- paragraph 1695 inverted by the module written to enforce it, and
+  MOD-011's unbounded `observed_at` finding in a worse place. And nothing related a schedule's
+  `total_minor` to the `unearned_minor` on the invoice behind it, which defaults to zero, so
+  `unearned_revenue` went to **minus** 500.00: a liability with a debit balance, reachable by
+  accident on the ordinary path.
+- **A month that was never opened cannot have been closed.** COM-04-R06's lock is enforced per
+  period *row*, so a tenant whose 2026 books were filed had every earlier month wide open and
+  `posted_on` was unbounded in both directions.
+- **A journal can be filed into a period that is not its entity's.** Nothing related
+  `led_journals.legal_entity_id` to `led_periods.legal_entity_id`, so an entity whose November
+  was closed posted more November trade through a *sibling* entity's open November -- one
+  transaction, no race -- and `led_exports` then carried two legal entities' journals in one
+  filing.
+- **A posting's currency was checked against the journal's and not its account's.** The
+  account's own `currency` is protected from UPDATE precisely so existing postings stay
+  addable; that made the label immutable and said nothing about the values it labels, so a JOD
+  posting sat in a USD account and that account's balance -- the only balance this module has
+  -- became a sum across two currencies.
+- **An export-once control that was two contradictory comments and no mechanism.** One comment
+  said the marker "gets the same trigger" as `fin_tax_records`; another, forty lines down, said
+  it "needs no trigger". There was neither, and no uniqueness on (period, system) either, so
+  5,000.00 of debits reached the accounting system twice under two idempotency keys.
+- Four more with shapes this file already records: a reconciliation case could be written off
+  citing an unrelated journal (MOD-016's `approval_id` finding); `correct_journal` took an
+  idempotency key and ignored it on the repeat path, so a client whose request timed out after
+  the commit was told 409 for work that had succeeded (MOD-017's own blocking finding);
+  `led_wallets` carried a `status` and four freeze columns that nothing in the build could set,
+  with `debit_wallet` reading the status and refusing a frozen wallet -- an unreachable control
+  whose only writer was the grant, which a reviewer used to clear a freeze and its reason in
+  one statement (MOD-012's "a column implying a control nobody implemented"); and three
+  free-text columns were undeclared in `SUBJECT_COLUMNS` while a reviewer wrote an address and
+  a date of birth into one and read it back.
+
+**The last round's three gaps are worth naming**, because two of them are this module's own
+finding recurring in its own evidence: I wrote seven one-way triggers to close the lifecycle
+defect and gave two of them no probe, so they were droppable in silence. The third was an
+ill-formed weakening -- `amount_minor >= 0` on a postings table whose own rows are half
+negative cannot be applied at all, so it tested nothing and read as a gap on every run, which
+is the "a mutation that changes nothing is not evidence" trap from the other side.
+
+**And the evidence had three more holes, each in a shape the rules file names.** A
+plpgsql branch is invisible to a generated constraint sweep, so the balance trigger's
+mixed-currency branch had no probe at all and a reviewer deleted it with the suite reporting
+84/84 -- then committed a journal that "balanced" by setting dollars against dinars. The
+`lines < 2` branch was proved by a sibling and is in fact subsumed by
+`led_postings_amount_not_zero`, so it is deleted rather than tested harder. And check 61b, the
+prefix-free `plt01` sweep, covered only ENABLE+FORCE RLS, one permissive policy and a tenant
+foreign key -- so a table satisfying those three with `USING (true)`, DELETE, TRUNCATE and a
+PUBLIC grant read every tenant's rows with the suite green, and the name
+`ledger_running_balances` escaped MOD-018's own two absence-sweeps as well. The predicate
+shape, the DELETE/TRUNCATE/REFERENCES and PUBLIC bans, the tenant-leading key and the
+forbidden-column-name sweep are prefix-free now.
+
+Things worth knowing before extending it:
+
+- **The chart is tenant configuration, and a tenant without one still gets its invoice.**
+  `post_invoice` returns `ledger_skipped_because` rather than refusing: a tenant mid-setup
+  must not find its till has stopped working. What makes the skip honest rather than silent is
+  that the caller is told.
+- **A payment lands in `provider_clearing`, not in the bank**, and the settlement's payout
+  line is what moves it to the bank. That is the pair the reconciliation rests on.
+- **The opening float is a journal.** A float recorded only on the session row was cash the
+  ledger did not know about: the drawer's own account went negative by exactly the float when
+  the takings were banked, and the expected count was a number the caller sent. Found by
+  writing the HTTP test, which is the argument for writing them.
+- **A till variance posts to suspense *and* opens a case**, and an unexplained one refuses the
+  close.
+- **A fee line opens no case.** A case is an unanswered question; a provider's own fee is its
+  own movement, and a case per fee would bury the lines that need somebody. A chargeback, its
+  reversal and an adjustment do open one, because each reverses or amends a payment this module
+  cannot resolve to one row and posting a guess is worse than asking.
+- **`finance.ledger.read` is routine and everything that writes is financial class.** A trial
+  balance is how somebody finds out that something is wrong, and a read behind a step-up is a
+  read nobody does until the month-end panic. `finance.cash.session` is routine for the same
+  reason -- a front desk opens a drawer every shift -- and what bounds it is the suspense
+  posting and the case, which is now true.
+- **`SELECT ... FOR UPDATE` needs the UPDATE privilege**, so the wallet row -- immutable, with
+  no UPDATE grant -- is serialised by an advisory lock instead. MOD-009's precedent.
+
+Known gaps, deliberate:
+
+- **Nothing posts to a general ledger outside this build.** `led_exports` records that a closed
+  period was handed to a named system with its totals; there is no connector, and a row saying
+  "exported" with nothing having answered would be the fabricated-evidence shape this codebase
+  has been bitten by five times.
+- **No FX.** `fx_gain_loss` is in the chart because paragraph 115 names it, and nothing
+  revalues anything: a journal is single-currency and a cross-currency one is refused.
+- **No COGS posting**, and no cost feed to produce one.
+- **No wallet refund and no wallet freeze.** Paying money out is the owner-reserved half of
+  COM-04-R02; `refundable` tells a member what they could get back and no code acts on it. The
+  freeze was deleted rather than left half-built.
+- **Nothing expires wallet value, recognises revenue, closes a period or sweeps a lapsed
+  deposit on a schedule.** `expiring_before` and `recognition_due` decide and a route calls
+  them; no worker loops. The tenth module to want the worker runtime, and here the absence
+  changes the product twice: lapsed promotional value is still spendable until somebody calls
+  the expiry, and revenue sits unrecognised until somebody asks.
+- **`credit.issued` and `credit.consumed` are declared and deliberately unproduced**: the
+  credits COM-04 means are MOD-017's entitlement grants, which already publish their own pair.
+- **`units_delivered` on a recognition run is the caller's word.** The delivery count for an
+  `entitlement_grant` schedule is MOD-017's `mem_entitlement_ledger` and nothing resolves it,
+  so a caller can report ten classes delivered with nothing booked. The bounds that do hold
+  are the schedule's `units_total` and the unearned liability behind it.
+- **A settlement line matches on the provider reference and the amount, and nothing else.** A
+  provider that re-uses a reference across batches, or sends a partial capture under the
+  original reference, lands as `amount_mismatch` and opens a case for a human.
+- **The trial balance is per entity and per currency, and there is no statement.** A balance
+  sheet and a profit-and-loss need an account-class rollup with a period boundary.
+- **`chart_for` takes the lower account code when a tenant keeps two of one kind with no
+  entity scope.** Stated rather than discovered, and the reason there is no uniqueness
+  constraint: `REV` and `REV-RETAIL` is a legitimate chart.
+- **No `Decision.mask` on any `/ledger` read**, so `wallet_statement` returns each movement's
+  reason -- a tenant's own prose -- to a routine tenant-wide reader. The same disclosure
+  MOD-013 carries for `privacy.consent.read`.
+- **`finance.ledger.read` is a narrow lateral read around `finance.invoice.read`.** A session
+  holding only it gets an invoice's net, tax, gross, document number and the payer's
+  `person_id` out of a journal read, while the same session is refused by
+  `/finance/invoices/{id}` and `/people/{id}`. It stays a gap rather than a defect only
+  because journal ids are not enumerable from any route that permission reaches -- the day a
+  journal-listing route is added, this is MOD-010's `events.event.read` finding.
+- **Nineteen free-text columns are residue an erasure cannot reach**, all declared in
+  `SUBJECT_COLUMNS` by hand because the sweep matches column *names*, and pinned by a named
+  test because a reviewer deleted one declaration and watched every test pass.
+- **The timeline does not know about any of this either.** MOD-014 projects nine event types
+  and none of MOD-018's is among them.
+
+**Next.** MOD-019 (Scheduling Pilot) is the natural next module: it is unblocked by MOD-014,
+and it is where MOD-017's entitlement reservation finally gets a caller, since a booking is the
+thing a hold is taken *for* -- and MOD-018's wallet is where a booking that is paid for with
+stored value draws from. Nothing in the Foundation wave is left except MOD-006, the Compose
+Multiplatform qualification, which is a client-side proof the server plane does not need.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the nine schedules
-that want one, which MOD-017 makes the most pressing because nothing renews a membership and
-nothing applies a cancellation when its notice runs out, and there is no key vault, which is
+scopes a tenant may hand to a third party -- no worker runtime exists for the **ten** schedules
+that want one, which MOD-018 makes more pressing again because nothing expires lapsed wallet
+value and nothing recognises revenue until somebody asks, and there is no key vault, which is
 what MOD-009's crypto-shred, MOD-007's TOTP seeds and MOD-012's inbound webhook signatures are
 all waiting on.
 

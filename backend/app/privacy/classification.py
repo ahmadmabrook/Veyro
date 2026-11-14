@@ -952,6 +952,122 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "fin_dunning_cases", "resolution", "write_once",
                  "how a recovery journey ended, in words. The commonest sentence here is "
                  "about the member's circumstances"),
+    # ---------------------------------------------------------------- MOD-018, COM-04
+    #
+    # **This module is the one place in the build where "cannot be erased" is the *requirement*
+    # rather than the gap.** Paragraph 1685 is a Critical Control: posted financial entries are
+    # never edited or deleted. So every column below is `unreachable` because the grant says so,
+    # and that is the ledger working rather than erasure failing -- which is exactly what
+    # MOD-009's registry exists to be able to say.
+    #
+    # What a subject erasure reaches here is nothing, and the completion report says so. The
+    # closest honest thing an erasure could do is stop *new* postings naming the person, which
+    # is a property of the callers rather than of this schema.
+    Reachability("plt01", "led_accounts", "created_by", "unreachable",
+                 "who opened the account; no UPDATE grant on the identity of a chart entry"),
+    Reachability("plt01", "led_accounts", "retired_by", "write_once",
+                 "who retired it; the service refuses a second retirement, not the grant"),
+    Reachability("plt01", "led_periods", "created_by", "unreachable",
+                 "who opened the period, which is whoever posted into the month first"),
+    Reachability("plt01", "led_periods", "closed_by", "write_once",
+                 "**who made a figure final.** The one act an auditor asks about, with "
+                 "`reopened_by` beside it for the act that un-makes it"),
+    Reachability("plt01", "led_periods", "reopened_by", "write_once",
+                 "who let a filed figure change, with a reason the constraint requires"),
+    Reachability("plt01", "led_journals", "posted_by", "unreachable",
+                 "**who posted the money.** The journal has no UPDATE grant at all, which is "
+                 "paragraph 1685: posted entries are never edited or deleted"),
+    Reachability("plt01", "led_postings", "subject_person_id", "unreachable",
+                 "**who a movement was about.** No UPDATE grant: a posting whose subject "
+                 "could be re-pointed is a balance attributable to the wrong member, and the "
+                 "statement built from it would be somebody else's"),
+    Reachability("plt01", "led_wallets", "person_id", "unreachable",
+                 "**whose wallet it is**, and the only copy of that fact. No UPDATE grant: a "
+                 "wallet re-pointed at another person hands them a balance"),
+    Reachability("plt01", "led_wallets", "created_by", "unreachable",
+                 "who opened it, which is whoever first credited or debited it"),
+    Reachability("plt01", "led_wallet_entries", "actor_id", "unreachable",
+                 "**who moved the value.** The entries have no UPDATE grant at all, because "
+                 "the balance is their sum: an editable entry is an editable balance, and a "
+                 "member whose wallet could be edited cannot argue about last week"),
+    Reachability("plt01", "led_recognition_schedules", "created_by", "unreachable",
+                 "who declared how a sale earns"),
+    Reachability("plt01", "led_recognition_schedules", "subject_person_id", "unreachable",
+                 "whose prepaid service this is. No UPDATE grant on the subject"),
+    Reachability("plt01", "led_recognition_schedules", "closed_by", "write_once",
+                 "who closed the schedule, or `fully recognised` where the service did"),
+    Reachability("plt01", "led_recognition_runs", "posted_by", "unreachable",
+                 "who moved a figure from a liability to revenue. Insert-only in full: the "
+                 "three numbers on the row have to keep agreeing with each other"),
+    Reachability("plt01", "led_settlements", "imported_by", "unreachable",
+                 "who imported the provider's file"),
+    Reachability("plt01", "led_cash_sessions", "opened_by", "unreachable",
+                 "who opened the till"),
+    Reachability("plt01", "led_cash_sessions", "closed_by", "write_once",
+                 "**who counted it.** With `variance_reason` beside it, this is the only "
+                 "record of a till that did not balance and what was said about it"),
+    Reachability("plt01", "led_deposits", "created_by", "unreachable",
+                 "who sealed the bag"),
+    Reachability("plt01", "led_deposits", "confirmed_by", "write_once",
+                 "who recorded what the bank credited"),
+    Reachability("plt01", "led_deposit_sessions", "added_by", "unreachable",
+                 "who said these takings were in that bag"),
+    Reachability("plt01", "led_reconciliation_cases", "opened_by", "unreachable",
+                 "who raised the question, which is usually the import that found it"),
+    Reachability("plt01", "led_reconciliation_cases", "resolved_by", "write_once",
+                 "**who answered it**, including who decided to write money off"),
+    Reachability("plt01", "led_exports", "exported_by", "unreachable",
+                 "who sent a period to the accounts system. Insert-only in full"),
+    # ------------------------------------------ MOD-018's free text, declared by hand
+    #
+    # The sweep matches column *names* and none of these has a name it could recognise. Every
+    # one holds what a caller, a clerk or a provider typed, and the realistic content of a
+    # posting memo is "Personal training with Jane, Tuesdays".
+    Reachability("plt01", "led_postings", "memo", "unreachable",
+                 "**the statement line.** Insert-only in full, and the place a member's name "
+                 "or a service's description lands on a journal"),
+    Reachability("plt01", "led_journals", "description", "unreachable",
+                 "what the journal was for, in words. No UPDATE grant"),
+    Reachability("plt01", "led_journals", "source_ref", "unreachable",
+                 "the handle of whatever caused it; free text for a `manual` journal"),
+    Reachability("plt01", "led_journals", "correction_reason", "unreachable",
+                 "why a figure was reversed, which is the sentence an auditor reads"),
+    Reachability("plt01", "led_wallet_entries", "reason", "unreachable",
+                 "why value moved, in words, on a member's own statement"),
+    Reachability("plt01", "led_wallet_entries", "source_ref", "unreachable",
+                 "what the movement was against; free text"),
+    Reachability("plt01", "led_periods", "reopen_reason", "write_once",
+                 "**why a filed month was reopened**, which is prose an operator types: a "
+                 "reviewer put an address and a date of birth in one and read it back. The "
+                 "trigger beside it makes the reason final once written"),
+    Reachability("plt01", "led_recognition_schedules", "close_reason", "write_once",
+                 "why a schedule was cancelled before it finished earning, in an operator's "
+                 "own words"),
+    Reachability("plt01", "led_recognition_schedules", "source_ref", "unreachable",
+                 "the sale this schedule earns against, which is free text because the "
+                 "module that owns orders does not exist; no UPDATE grant covers it"),
+    Reachability("plt01", "led_cash_sessions", "variance_reason", "write_once",
+                 "**what the clerk said about a till that did not balance.** The sentence "
+                 "the whole control exists to capture"),
+    Reachability("plt01", "led_settlement_lines", "provider_ref", "unreachable",
+                 "the provider's own handle for a movement. Insert-only in full"),
+    Reachability("plt01", "led_settlement_lines", "outcome_reason", "unreachable",
+                 "why the matcher reached its verdict, built from the provider's figures"),
+    Reachability("plt01", "led_reconciliation_cases", "detail", "unreachable",
+                 "what the discrepancy was, often a provider's own sentence"),
+    Reachability("plt01", "led_reconciliation_cases", "resolution", "write_once",
+                 "how it was answered, in the resolver's words"),
+    Reachability("plt01", "led_reconciliation_cases", "subject_ref", "unreachable",
+                 "what the case is about; free text because the subject is in five tables"),
+    Reachability("plt01", "led_settlements", "provider_batch_ref", "unreachable",
+                 "the provider's own batch handle. Insert-only in full"),
+    Reachability("plt01", "led_settlements", "document_ref", "unreachable",
+                 "where the file is held. A URI-shaped locator, and one that names a date "
+                 "and a merchant"),
+    Reachability("plt01", "led_deposits", "bank_reference", "write_once",
+                 "the bank's own reference for the credit"),
+    Reachability("plt01", "led_exports", "target_ref", "unreachable",
+                 "the accounting system's own handle for the batch"),
     Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
                  "written when the job starts; `status = 'requested'` in the service is what "
                  "refuses a second run, not the grant"),

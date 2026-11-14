@@ -378,6 +378,49 @@ class ReachabilityRegistryTests(unittest.TestCase):
             self.assertIn(("plt01", table, "address_digest"), residue,
                           "it has to appear in what a completion report discloses")
 
+    def test_the_free_text_a_subject_can_appear_in_is_declared_by_hand(self):
+        """The largest hand-declared group in the build, and until a reviewer deleted one of
+        these declarations and watched every test pass, it had no pin at all.
+
+        None of these column *names* says "subject", so the completeness sweep cannot find
+        them -- they are prose an operator, a provider or a dispatcher writes, and a reviewer
+        put an address and a date of birth into one of them and read it back out. MOD-010 and
+        MOD-013 each have a named test for their own hand-declared group; this is MOD-018's,
+        and it is a pin rather than a heuristic because no sweep will find the next one either.
+        """
+        declared = {(r.schema, r.table, r.column) for r in SUBJECT_COLUMNS}
+        residue = {(r.schema, r.table, r.column) for r in unreachable_columns()}
+        prose = {
+            ("led_journals", "description"), ("led_journals", "source_ref"),
+            ("led_journals", "correction_reason"), ("led_postings", "memo"),
+            ("led_wallet_entries", "reason"), ("led_wallet_entries", "source_ref"),
+            ("led_settlement_lines", "provider_ref"),
+            ("led_settlement_lines", "outcome_reason"),
+            ("led_reconciliation_cases", "detail"),
+            ("led_reconciliation_cases", "subject_ref"),
+            ("led_settlements", "provider_batch_ref"),
+            ("led_settlements", "document_ref"),
+            ("led_recognition_schedules", "source_ref"),
+            ("led_exports", "target_ref"),
+        }
+        for table, column in sorted(prose):
+            self.assertIn(("plt01", table, column), declared,
+                          f"{table}.{column} is free text nobody declared")
+            self.assertIn(("plt01", table, column), residue,
+                          f"{table}.{column} has to appear in a completion report")
+        # And the ones a service writes once under a predicate, which is the weaker, truer
+        # statement: an erasure does not clear them either.
+        write_once = {
+            ("led_periods", "reopen_reason"),
+            ("led_recognition_schedules", "close_reason"),
+            ("led_cash_sessions", "variance_reason"),
+            ("led_reconciliation_cases", "resolution"),
+            ("led_deposits", "bank_reference"),
+        }
+        for table, column in sorted(write_once):
+            self.assertIn(("plt01", table, column), declared,
+                          f"{table}.{column} is free text nobody declared")
+
     def test_this_build_cannot_fully_erase_a_subject_and_says_so(self):
         """Stated as its own test so the disclosure cannot lapse quietly.
 
