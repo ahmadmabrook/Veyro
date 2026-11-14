@@ -329,6 +329,53 @@ def create_brand(
     return {"brand_id": str(row[0]), "organization_id": str(row[1]), "brand_name": row[2]}
 
 
+def create_legal_entity(
+    pool: Pool, tenant_id: str, organization_id: str, registered_name: str,
+    *, tax_number: str | None = None,
+) -> dict[str, Any]:
+    """The legal entity that invoices. PLT-01-R02's hierarchy, filled in at last.
+
+    **The table has existed since MOD-004 and nothing wrote to it until now.** That was a real
+    gap rather than a deliberate one: MOD-004 built the hierarchy and left this leaf
+    unreachable, and it only surfaced when MOD-017 needed it -- COM-03-R07 requires fiscal
+    series and serial uniqueness *per legal entity*, so an invoice cannot be numbered without
+    one. A table nothing fills is a foreign key nobody can satisfy.
+    """
+    if not registered_name.strip():
+        raise InvalidRequest("bad_registered_name")
+    if tax_number is not None and not tax_number.strip():
+        raise InvalidRequest("bad_tax_number")
+    with tenant_scope(pool, tenant_id) as conn:
+        try:
+            row = conn.execute(
+                """
+                INSERT INTO plt01.legal_entities
+                    (tenant_id, organization_id, registered_name, tax_number)
+                VALUES (%s, %s, %s, %s)
+                RETURNING legal_entity_id, organization_id, registered_name, tax_number
+                """,
+                (tenant_id, organization_id, registered_name.strip(),
+                 tax_number.strip() if tax_number else None),
+            ).fetchone()
+        except errors.ForeignKeyViolation:
+            # The composite key carries tenant_id, so this also fires when the organization
+            # belongs to another tenant -- which is the same answer as "does not exist".
+            raise NotFound("organization_not_found") from None
+        assert row is not None
+    return {"legal_entity_id": str(row[0]), "organization_id": str(row[1]),
+            "registered_name": row[2], "tax_number": row[3]}
+
+
+def list_legal_entities(pool: Pool, tenant_id: str) -> list[dict[str, Any]]:
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            "SELECT legal_entity_id, organization_id, registered_name, tax_number"
+            " FROM plt01.legal_entities ORDER BY registered_name"
+        ).fetchall()
+    return [{"legal_entity_id": str(r[0]), "organization_id": str(r[1]),
+             "registered_name": r[2], "tax_number": r[3]} for r in rows]
+
+
 def create_location(
     pool: Pool,
     tenant_id: str,

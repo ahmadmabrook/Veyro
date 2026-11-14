@@ -104,11 +104,11 @@ CREATE TABLE plt01.ntf_templates (
     CONSTRAINT ntf_templates_channel
         CHECK (channel IN ('email', 'sms', 'whatsapp', 'push', 'in_app')),
     CONSTRAINT ntf_templates_locale_shape CHECK (locale ~ '^[a-z]{2,3}(-[A-Z]{2})?$'),
-    CONSTRAINT ntf_templates_body_not_blank CHECK (length(btrim(body)) > 0),
+    CONSTRAINT ntf_templates_body_not_blank CHECK (body ~ '[^[:space:]]'),
     -- Only email shows a subject. One on an SMS is text that goes nowhere, and its author
     -- expects it to be read.
     CONSTRAINT ntf_templates_subject_matches_channel CHECK (
-        (channel = 'email') = (length(btrim(subject)) > 0)),
+        (channel = 'email') = (subject ~ '[^[:space:]]')),
     CONSTRAINT ntf_templates_status CHECK (status IN ('draft', 'published', 'retired')),
     CONSTRAINT ntf_templates_approval_attributed CHECK (
         (approved_at IS NULL) = (approved_by IS NULL)),
@@ -232,7 +232,7 @@ CREATE TABLE plt01.ntf_preferences (
     CONSTRAINT ntf_preferences_cap_not_negative CHECK (daily_cap IS NULL OR daily_cap >= 0),
     CONSTRAINT ntf_preferences_quiet_hours_complete CHECK (
         (quiet_from IS NULL) = (quiet_until IS NULL)
-        AND (quiet_from IS NULL OR length(btrim(coalesce(quiet_timezone, ''))) > 0)),
+        AND (quiet_from IS NULL OR coalesce(quiet_timezone, '') ~ '[^[:space:]]')),
     -- **Only an optional category may be switched off.** A member who mutes marketing still
     -- gets their invoice: a preference that could suppress a transactional message would mean a
     -- tenant unable to tell somebody their payment failed. This is paragraph 2463's separation
@@ -341,15 +341,15 @@ CREATE TABLE plt01.ntf_notifications (
     CONSTRAINT ntf_notifications_priority CHECK (priority IN ('normal', 'high', 'critical')),
     CONSTRAINT ntf_notifications_status
         CHECK (status IN ('requested', 'deferred', 'digested', 'dispatched', 'suppressed')),
-    CONSTRAINT ntf_notifications_body_not_blank CHECK (length(btrim(rendered_body)) > 0),
+    CONSTRAINT ntf_notifications_body_not_blank CHECK (rendered_body ~ '[^[:space:]]'),
     CONSTRAINT ntf_notifications_subject_matches_channel CHECK (
-        (channel = 'email') = (length(btrim(rendered_subject)) > 0)),
+        (channel = 'email') = (rendered_subject ~ '[^[:space:]]')),
     CONSTRAINT ntf_notifications_digest_shape CHECK (address_digest ~ '^[0-9a-f]{64}$'),
     CONSTRAINT ntf_notifications_idempotency_not_blank
-        CHECK (length(btrim(idempotency_key)) > 0),
-    CONSTRAINT ntf_notifications_reason_not_blank CHECK (length(btrim(decision_reason)) > 0),
+        CHECK (idempotency_key ~ '[^[:space:]]'),
+    CONSTRAINT ntf_notifications_reason_not_blank CHECK (decision_reason ~ '[^[:space:]]'),
     CONSTRAINT ntf_notifications_critical_names_a_policy CHECK (
-        priority <> 'critical' OR length(btrim(coalesce(bypass_policy_ref, ''))) > 0),
+        priority <> 'critical' OR coalesce(bypass_policy_ref, '') ~ '[^[:space:]]'),
     -- A bypass reference on something that is not critical is a field claiming an authority it
     -- does not have.
     CONSTRAINT ntf_notifications_bypass_is_critical_only CHECK (
@@ -404,7 +404,7 @@ CREATE TABLE plt01.ntf_deliveries (
     CONSTRAINT ntf_deliveries_attempts_sane
         CHECK (attempts >= 0 AND max_attempts >= 1 AND attempts <= max_attempts),
     CONSTRAINT ntf_deliveries_failure_explained CHECK (
-        state NOT IN ('failed', 'dead') OR length(btrim(coalesce(last_error, ''))) > 0),
+        state NOT IN ('failed', 'dead') OR coalesce(last_error, '') ~ '[^[:space:]]'),
     CONSTRAINT ntf_deliveries_delivered_at CHECK (
         (state = 'delivered') = (delivered_at IS NOT NULL))
 );
@@ -454,7 +454,7 @@ CREATE TABLE plt01.ntf_suppressions (
          AND release_correlation_id IS NULL)
         OR (released_at IS NOT NULL AND released_by IS NOT NULL
             AND release_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(release_reason, ''))) > 0))
+            AND coalesce(release_reason, '') ~ '[^[:space:]]'))
 );
 -- One live suppression per channel and address. A second would mean a release that cleared one
 -- left the other standing, and the address would read as both suppressed and not.
@@ -550,7 +550,7 @@ CREATE TABLE plt01.ntf_recipient_channels (
     CONSTRAINT ntf_recipient_channels_digest_shape
         CHECK (address_digest ~ '^[0-9a-f]{64}$'),
     -- A rebinding carries who, when, why and under which correlation, or none of them. The
-    -- btrim is load-bearing: a CHECK passes on NULL, so `length(btrim(rebind_reason)) > 0`
+    -- btrim is load-bearing: a CHECK passes on NULL, so `rebind_reason ~ '[^[:space:]]'`
     -- without the coalesce admits the blank reason it exists to refuse -- MOD-009's legal-hold
     -- finding, which this module has now paid for twice.
     CONSTRAINT ntf_recipient_channels_rebind_attributed CHECK (
@@ -558,7 +558,7 @@ CREATE TABLE plt01.ntf_recipient_channels (
          AND rebind_correlation_id IS NULL)
         OR (rebound_at IS NOT NULL AND rebound_by IS NOT NULL
             AND rebind_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(rebind_reason, ''))) > 0))
+            AND coalesce(rebind_reason, '') ~ '[^[:space:]]'))
 );
 -- One digest belongs to one recipient on a channel. Without this the correspondence holds in
 -- one direction only, and the `person_id`-for-`identity_id` case above walks straight past it.

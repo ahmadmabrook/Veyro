@@ -47,15 +47,15 @@ CREATE TABLE plt01_platform.int_definitions (
     PRIMARY KEY (definition_key, version),
     CONSTRAINT int_definitions_key_shape
         CHECK (definition_key ~ '^[a-z0-9]+(_[a-z0-9]+)*(\.[a-z0-9]+(_[a-z0-9]+)*)*$'),
-    CONSTRAINT int_definitions_provider_shape CHECK (length(btrim(provider)) > 0),
+    CONSTRAINT int_definitions_provider_shape CHECK (provider ~ '[^[:space:]]'),
     CONSTRAINT int_definitions_version_positive CHECK (version > 0),
     CONSTRAINT int_definitions_status CHECK (status IN ('draft', 'published', 'retired')),
     CONSTRAINT int_definitions_criticality
         CHECK (criticality IN ('convenience', 'important', 'critical')),
     CONSTRAINT int_definitions_support_owner_not_blank
-        CHECK (length(btrim(support_owner)) > 0),
+        CHECK (support_owner ~ '[^[:space:]]'),
     CONSTRAINT int_definitions_description_not_blank
-        CHECK (length(btrim(description)) > 0),
+        CHECK (description ~ '[^[:space:]]'),
     CONSTRAINT int_definitions_published_at CHECK
         (status = 'draft' OR published_at IS NOT NULL),
     CONSTRAINT int_definitions_retired_at CHECK
@@ -83,7 +83,7 @@ CREATE TABLE plt01_platform.int_definition_versions (
     UNIQUE (definition_key, version, kind, name),
     CONSTRAINT int_definition_versions_kind
         CHECK (kind IN ('capability', 'scope', 'config', 'region')),
-    CONSTRAINT int_definition_versions_name_not_blank CHECK (length(btrim(name)) > 0),
+    CONSTRAINT int_definition_versions_name_not_blank CHECK (name ~ '[^[:space:]]'),
     -- A configuration field declares a type; nothing else does. **There is no `secret` type**,
     -- and its absence is the control: there is no vault in this repository, so a definition
     -- inviting a tenant to paste an API key into a config value would be inviting this build to

@@ -110,9 +110,9 @@ CREATE TABLE plt01.ppl_persons (
     -- Nothing merges into itself; that is a cycle of length one and it strands every reference.
     CONSTRAINT ppl_persons_merge_is_not_self
         CHECK (merged_into_person_id IS NULL OR merged_into_person_id <> person_id),
-    CONSTRAINT ppl_persons_legal_name_not_blank CHECK (length(btrim(legal_name)) > 0),
+    CONSTRAINT ppl_persons_legal_name_not_blank CHECK (legal_name ~ '[^[:space:]]'),
     CONSTRAINT ppl_persons_preferred_name_not_blank
-        CHECK (preferred_name IS NULL OR length(btrim(preferred_name)) > 0),
+        CHECK (preferred_name IS NULL OR preferred_name ~ '[^[:space:]]'),
     -- A birth date in the future is a typo, and this one decides whether somebody is a minor.
     --
     -- `CURRENT_DATE` is **stable, not immutable**, which PostgreSQL permits in a CHECK and which
@@ -203,9 +203,9 @@ CREATE TABLE plt01.ppl_contact_points (
     PRIMARY KEY (tenant_id, contact_point_id),
     FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons (tenant_id, person_id),
     CONSTRAINT ppl_contact_points_kind CHECK (kind IN ('email', 'phone', 'address')),
-    CONSTRAINT ppl_contact_points_raw_not_blank CHECK (length(btrim(value_raw)) > 0),
+    CONSTRAINT ppl_contact_points_raw_not_blank CHECK (value_raw ~ '[^[:space:]]'),
     CONSTRAINT ppl_contact_points_normalized_not_blank
-        CHECK (length(btrim(value_normalized)) > 0),
+        CHECK (value_normalized ~ '[^[:space:]]'),
     CONSTRAINT ppl_contact_points_verification_attributed CHECK (
         (verified_at IS NULL AND verified_by IS NULL AND verify_correlation_id IS NULL)
         OR (verified_at IS NOT NULL AND verified_by IS NOT NULL
@@ -296,9 +296,9 @@ CREATE TABLE plt01.ppl_member_profiles (
     CONSTRAINT ppl_member_profiles_lifecycle CHECK (lifecycle_state IN (
         'lead', 'prospect', 'active', 'paused', 'cancelled', 'former')),
     CONSTRAINT ppl_member_profiles_number_not_blank
-        CHECK (member_number IS NULL OR length(btrim(member_number)) > 0),
+        CHECK (member_number IS NULL OR member_number ~ '[^[:space:]]'),
     CONSTRAINT ppl_member_profiles_reason_not_blank
-        CHECK (state_reason IS NULL OR length(btrim(state_reason)) > 0),
+        CHECK (state_reason IS NULL OR state_reason ~ '[^[:space:]]'),
     CONSTRAINT ppl_member_profiles_version_positive CHECK (version >= 1)
 );
 -- A member number identifies one member, which is the only thing it is for.
@@ -344,7 +344,7 @@ CREATE TABLE plt01.ppl_staff_profiles (
     CONSTRAINT ppl_staff_profiles_dates_ordered
         CHECK (started_on IS NULL OR ended_on IS NULL OR ended_on >= started_on),
     CONSTRAINT ppl_staff_profiles_title_not_blank
-        CHECK (job_title IS NULL OR length(btrim(job_title)) > 0),
+        CHECK (job_title IS NULL OR job_title ~ '[^[:space:]]'),
     CONSTRAINT ppl_staff_profiles_version_positive CHECK (version >= 1)
 );
 ALTER TABLE plt01.ppl_staff_profiles ENABLE ROW LEVEL SECURITY;
@@ -395,12 +395,12 @@ CREATE TABLE plt01.ppl_relationships (
     CONSTRAINT ppl_relationships_reason_needs_an_end
         CHECK (ended_reason IS NULL OR valid_to IS NOT NULL),
     CONSTRAINT ppl_relationships_reason_not_blank
-        CHECK (ended_reason IS NULL OR length(btrim(ended_reason)) > 0),
+        CHECK (ended_reason IS NULL OR ended_reason ~ '[^[:space:]]'),
     CONSTRAINT ppl_relationships_end_attributed CHECK (
         (valid_to IS NULL AND ended_by IS NULL AND end_correlation_id IS NULL)
         OR (valid_to IS NOT NULL AND ended_by IS NOT NULL
             AND end_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(ended_reason, ''))) > 0))
+            AND coalesce(ended_reason, '') ~ '[^[:space:]]'))
 );
 -- One live relationship of a kind between two people. A second is a duplicate edge, and a
 -- guardian counted twice is a guardian whose revocation leaves one behind.
@@ -436,7 +436,7 @@ CREATE TABLE plt01.ppl_tags (
     PRIMARY KEY (tenant_id, tag_id),
     UNIQUE (tenant_id, tag_key),
     CONSTRAINT ppl_tags_key_shape CHECK (tag_key ~ '^[a-z][a-z0-9_.-]{1,62}$'),
-    CONSTRAINT ppl_tags_display_not_blank CHECK (length(btrim(display_name)) > 0)
+    CONSTRAINT ppl_tags_display_not_blank CHECK (display_name ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.ppl_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.ppl_tags FORCE ROW LEVEL SECURITY;
@@ -491,7 +491,7 @@ CREATE TABLE plt01.ppl_custom_field_defs (
     CONSTRAINT ppl_custom_field_defs_key_shape
         CHECK (field_key ~ '^[a-z][a-z0-9_.-]{1,62}$'),
     CONSTRAINT ppl_custom_field_defs_display_not_blank
-        CHECK (length(btrim(display_name)) > 0),
+        CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT ppl_custom_field_defs_type
         CHECK (value_type IN ('text', 'integer', 'decimal', 'boolean', 'date', 'enum')),
     -- The five classes MOD-008's `SENSITIVE_FIELDS` uses, plus `none`. A sixth invented here
@@ -523,9 +523,9 @@ CREATE TABLE plt01.ppl_custom_field_options (
     FOREIGN KEY (tenant_id, field_id)
         REFERENCES plt01.ppl_custom_field_defs (tenant_id, field_id),
     CONSTRAINT ppl_custom_field_options_value_not_blank
-        CHECK (length(btrim(option_value)) > 0),
+        CHECK (option_value ~ '[^[:space:]]'),
     CONSTRAINT ppl_custom_field_options_display_not_blank
-        CHECK (length(btrim(display_name)) > 0)
+        CHECK (display_name ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.ppl_custom_field_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.ppl_custom_field_options FORCE ROW LEVEL SECURITY;
@@ -550,7 +550,7 @@ CREATE TABLE plt01.ppl_custom_field_values (
     FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons (tenant_id, person_id),
     FOREIGN KEY (tenant_id, field_id)
         REFERENCES plt01.ppl_custom_field_defs (tenant_id, field_id),
-    CONSTRAINT ppl_custom_field_values_not_blank CHECK (length(btrim(value_text)) > 0)
+    CONSTRAINT ppl_custom_field_values_not_blank CHECK (value_text ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.ppl_custom_field_values ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.ppl_custom_field_values FORCE ROW LEVEL SECURITY;
@@ -584,15 +584,15 @@ CREATE TABLE plt01.ppl_person_notes (
     FOREIGN KEY (tenant_id, person_id) REFERENCES plt01.ppl_persons (tenant_id, person_id),
     CONSTRAINT ppl_person_notes_class
         CHECK (note_class IN ('general', 'health', 'sensitive')),
-    CONSTRAINT ppl_person_notes_body_not_blank CHECK (length(btrim(body)) > 0),
+    CONSTRAINT ppl_person_notes_body_not_blank CHECK (body ~ '[^[:space:]]'),
     -- Who, when and why together, or none of them. The `coalesce` is load-bearing: a CHECK
-    -- passes on NULL, so `length(btrim(withdraw_reason)) > 0` without it admits the blank
+    -- passes on NULL, so `withdraw_reason ~ '[^[:space:]]'` without it admits the blank
     -- reason it exists to refuse -- MOD-009's legal-hold finding, which this build has now paid
     -- for three times.
     CONSTRAINT ppl_person_notes_withdrawal_attributed CHECK (
         (withdrawn_at IS NULL AND withdrawn_by IS NULL AND withdraw_reason IS NULL)
         OR (withdrawn_at IS NOT NULL AND withdrawn_by IS NOT NULL
-            AND length(btrim(coalesce(withdraw_reason, ''))) > 0))
+            AND coalesce(withdraw_reason, '') ~ '[^[:space:]]'))
 );
 CREATE INDEX ppl_person_notes_by_person
     ON plt01.ppl_person_notes (tenant_id, person_id, recorded_at DESC);
@@ -641,7 +641,7 @@ CREATE TABLE plt01.ppl_duplicate_candidates (
         (status = 'open' AND decided_at IS NULL AND decided_by IS NULL
          AND decision_reason IS NULL)
         OR (status <> 'open' AND decided_at IS NOT NULL AND decided_by IS NOT NULL
-            AND length(btrim(coalesce(decision_reason, ''))) > 0))
+            AND coalesce(decision_reason, '') ~ '[^[:space:]]'))
 );
 -- One open candidate per pair. A second would let two operators decide the same merge twice.
 CREATE UNIQUE INDEX ppl_duplicate_candidates_open
@@ -687,7 +687,7 @@ CREATE TABLE plt01.ppl_merges (
     FOREIGN KEY (tenant_id, target_person_id)
         REFERENCES plt01.ppl_persons (tenant_id, person_id),
     CONSTRAINT ppl_merges_not_self CHECK (source_person_id <> target_person_id),
-    CONSTRAINT ppl_merges_reason_not_blank CHECK (length(btrim(reason)) > 0),
+    CONSTRAINT ppl_merges_reason_not_blank CHECK (reason ~ '[^[:space:]]'),
     CONSTRAINT ppl_merges_counts_non_negative CHECK (
         moved_contact_points >= 0 AND moved_relationships >= 0 AND moved_notes >= 0
         AND moved_tags >= 0 AND moved_custom_fields >= 0),
@@ -696,7 +696,7 @@ CREATE TABLE plt01.ppl_merges (
          AND reverse_correlation_id IS NULL)
         OR (reversed_at IS NOT NULL AND reversed_by IS NOT NULL
             AND reverse_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(reverse_reason, ''))) > 0))
+            AND coalesce(reverse_reason, '') ~ '[^[:space:]]'))
 );
 -- A person is merged away once. A second merge of the same source is either a double-submit or
 -- a chain, and both want the reversal to be unambiguous about which one it undoes.
@@ -745,10 +745,10 @@ CREATE TABLE plt01.ppl_timeline_entries (
     -- One entry per event per person. A rebuild re-runs the projection over the same events, so
     -- without this a second pass doubles every member's history.
     UNIQUE (tenant_id, person_id, event_id),
-    CONSTRAINT ppl_timeline_entries_summary_not_blank CHECK (length(btrim(summary)) > 0),
-    CONSTRAINT ppl_timeline_entries_type_not_blank CHECK (length(btrim(event_type)) > 0),
+    CONSTRAINT ppl_timeline_entries_summary_not_blank CHECK (summary ~ '[^[:space:]]'),
+    CONSTRAINT ppl_timeline_entries_type_not_blank CHECK (event_type ~ '[^[:space:]]'),
     CONSTRAINT ppl_timeline_entries_aggregate_not_blank
-        CHECK (length(btrim(aggregate_type)) > 0),
+        CHECK (aggregate_type ~ '[^[:space:]]'),
     CONSTRAINT ppl_timeline_entries_visibility CHECK (visibility_class IN (
         'none', 'contact', 'identity', 'financial', 'health', 'biometric'))
 );

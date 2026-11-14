@@ -84,7 +84,7 @@ CREATE TABLE plt01.int_installs (
          AND uninstall_correlation_id IS NULL AND uninstall_reason IS NULL)
         OR (uninstalled_at IS NOT NULL AND uninstalled_by IS NOT NULL
             AND uninstall_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(uninstall_reason, ''))) > 0)),
+            AND coalesce(uninstall_reason, '') ~ '[^[:space:]]')),
     CONSTRAINT int_installs_uninstalled_state
         CHECK ((state = 'uninstalled') = (uninstalled_at IS NOT NULL))
 );
@@ -130,7 +130,7 @@ CREATE TABLE plt01.int_connections (
     CONSTRAINT int_connections_state
         CHECK (state IN ('pending', 'authorized', 'validated', 'revoked')),
     CONSTRAINT int_connections_account_not_blank
-        CHECK (length(btrim(external_account_ref)) > 0),
+        CHECK (external_account_ref ~ '[^[:space:]]'),
     CONSTRAINT int_connections_region_shape CHECK (region ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
     -- No wildcard, in the grammar or anywhere else. A scope set widened by a character is one
     -- nobody can review, and the holder is outside the building. `array_to_string` is how a
@@ -146,11 +146,11 @@ CREATE TABLE plt01.int_connections (
     CONSTRAINT int_connections_validation_attributed CHECK (
         (validated_at IS NULL AND validated_by IS NULL AND validation_evidence IS NULL)
         OR (validated_at IS NOT NULL AND validated_by IS NOT NULL
-            AND length(btrim(coalesce(validation_evidence, ''))) > 0)),
+            AND coalesce(validation_evidence, '') ~ '[^[:space:]]')),
     CONSTRAINT int_connections_revocation_attributed CHECK (
         (revoked_at IS NULL AND revoked_by IS NULL AND revoke_reason IS NULL)
         OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL
-            AND length(btrim(coalesce(revoke_reason, ''))) > 0)),
+            AND coalesce(revoke_reason, '') ~ '[^[:space:]]')),
     CONSTRAINT int_connections_revoked_state
         CHECK ((state = 'revoked') = (revoked_at IS NOT NULL))
 );
@@ -255,7 +255,7 @@ CREATE TABLE plt01.int_sync_cursors (
     UNIQUE (tenant_id, connection_id, resource),
     CONSTRAINT int_sync_cursors_resource_shape CHECK (resource ~ '^[a-z0-9]+(_[a-z0-9]+)*$'),
     CONSTRAINT int_sync_cursors_position_not_blank
-        CHECK (position IS NULL OR length(btrim(position)) > 0),
+        CHECK (position IS NULL OR position ~ '[^[:space:]]'),
     -- `manual` by default, which is the conservative one: it refuses to pick a side rather
     -- than silently overwriting whichever copy the tenant cares about.
     CONSTRAINT int_sync_cursors_conflict_policy
@@ -265,7 +265,7 @@ CREATE TABLE plt01.int_sync_cursors (
     CONSTRAINT int_sync_cursors_reset_attributed CHECK (
         (reset_at IS NULL AND reset_by IS NULL AND reset_reason IS NULL)
         OR (reset_at IS NOT NULL AND reset_by IS NOT NULL
-            AND length(btrim(coalesce(reset_reason, ''))) > 0))
+            AND coalesce(reset_reason, '') ~ '[^[:space:]]'))
 );
 ALTER TABLE plt01.int_sync_cursors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.int_sync_cursors FORCE ROW LEVEL SECURITY;
@@ -335,7 +335,7 @@ CREATE TABLE plt01.int_connector_runs (
     -- A failure with no error is a diagnostic nobody can act on, which is the whole of
     -- paragraph 3028's "diagnostics" that a constraint can hold.
     CONSTRAINT int_connector_runs_failure_explained CHECK (
-        status NOT IN ('failed', 'dead') OR length(btrim(coalesce(last_error, ''))) > 0),
+        status NOT IN ('failed', 'dead') OR coalesce(last_error, '') ~ '[^[:space:]]'),
     CONSTRAINT int_connector_runs_finished CHECK (
         (status = 'running') = (finished_at IS NULL)),
     CONSTRAINT int_connector_runs_settlement_attributed CHECK (
@@ -356,7 +356,7 @@ CREATE TABLE plt01.int_connector_runs (
          AND release_correlation_id IS NULL)
         OR (released_at IS NOT NULL AND released_by IS NOT NULL
             AND release_correlation_id IS NOT NULL
-            AND length(btrim(coalesce(release_reason, ''))) > 0))
+            AND coalesce(release_reason, '') ~ '[^[:space:]]'))
 );
 CREATE INDEX int_connector_runs_recent
     ON plt01.int_connector_runs (tenant_id, connection_id, started_at DESC);

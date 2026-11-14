@@ -344,6 +344,90 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("bundle.fulfilled", 1, "MOD-016", "confidential",
        ("bundle_id", "variant_id", "fulfilment_id", "outcome"),
        "A bundle item was recorded as delivered, failed, cancelled or reversed"),
+
+    # ---------------------------------------------------------------- MOD-017, COM-01
+    #
+    # **No name, no contact detail and no health fact.** A membership event carries the
+    # identifiers and the shape of the change; a consumer that needs the member's details reads
+    # them from MOD-014 under the permission that gates them. The `medical_hold` case is the
+    # one worth naming: the *kind* of hold travels and the evidence reference does not, because
+    # the reference locates a doctor's note and the outbox is the one store in this build that
+    # no erasure reaches.
+    _e("contract_version.published", 1, "MOD-017", "confidential",
+       ("contract_version_id", "contract_key", "version"),
+       "A contract version became available to sign against"),
+    _e("membership.created", 1, "MOD-017", "confidential",
+       ("agreement_id", "person_id", "membership_terms_id", "contract_version_id"),
+       "An agreement was drawn up, unsigned"),
+    _e("membership.agreement_signed", 1, "MOD-017", "confidential",
+       ("agreement_id", "person_id", "signature_kind", "signed_at"),
+       "An agreement was signed and is now binding"),
+    _e("membership.activated", 1, "MOD-017", "confidential",
+       ("membership_id", "agreement_id", "person_id"),
+       "A signed agreement became a live membership"),
+    _e("membership.frozen", 1, "MOD-017", "confidential",
+       ("membership_id", "freeze_id", "freeze_kind", "effective_on"),
+       "A membership was frozen, paused or put on medical hold"),
+    _e("membership.resumed", 1, "MOD-017", "confidential",
+       ("membership_id", "effective_on", "frozen_days"),
+       "A frozen membership came back; the term moved by frozen_days"),
+    _e("membership.cancelled", 1, "MOD-017", "confidential",
+       ("membership_id", "effective_on", "change_id"),
+       "A membership was cancelled, effective on the date in the payload"),
+    # **No quantity on a grant event and no balance on any of them.** How much a member has
+    # left is a question the ledger answers under a permission; an event that carried it would
+    # put every member's entitlement history in the one store nothing can erase from.
+    _e("entitlement.granted", 1, "MOD-017", "confidential",
+       ("grant_id", "person_id", "policy_id", "entitlement_type", "is_counted"),
+       "A member was granted an entitlement"),
+    _e("entitlement.reserved", 1, "MOD-017", "confidential",
+       ("grant_id", "reservation_id", "quantity", "purpose_kind", "expires_at"),
+       "Quantity was held against a grant, expiring at the given instant"),
+    _e("entitlement.consumed", 1, "MOD-017", "confidential",
+       ("grant_id", "reservation_id", "quantity"),
+       "A held reservation was consumed: the service was delivered"),
+    _e("entitlement.released", 1, "MOD-017", "confidential",
+       ("grant_id", "reservation_id", "quantity"),
+       "A held reservation was released: the quantity went back"),
+    # **The reason does not travel.** It is prose an operator typed and the outbox is the store
+    # no erasure reaches; a revocation's reason is the sentence most likely to say why somebody
+    # was thrown out, which is a judgement about a person rather than a fact about a row.
+    _e("entitlement.revoked", 1, "MOD-017", "confidential",
+       ("grant_id", "person_id", "policy_id"),
+       "A grant was revoked: what was left of it is no longer usable"),
+
+    # ---------------------------------------------------------------- MOD-017, COM-03
+    #
+    # **A failure code travels and a provider's sentence does not.** `failure_detail` is the
+    # provider's own text and the realistic content of one is `declined for card 4242 held by
+    # JANE SMITH` -- MOD-013 shipped exactly this with an SMTP rejection, and the outbox is the
+    # store no erasure reaches. The code is a declared value a consumer can branch on; the
+    # sentence stays on the intent row.
+    _e("invoice.issued", 1, "MOD-017", "restricted",
+       ("invoice_id", "billing_account_id", "document_number", "currency", "gross_minor",
+        "due_on"),
+       "An invoice was issued with a fiscal serial; the gross is the amount owed"),
+    _e("payment.succeeded", 1, "MOD-017", "restricted",
+       ("payment_id", "intent_id", "billing_account_id", "amount_minor", "currency"),
+       "Money arrived and a payment was recorded"),
+    _e("payment.failed", 1, "MOD-017", "restricted",
+       ("intent_id", "billing_account_id", "amount_minor", "currency", "failure_code"),
+       "A payment attempt failed; the code says whether a retry is worth anything"),
+    _e("dunning.started", 1, "MOD-017", "restricted",
+       ("case_id", "invoice_id", "billing_account_id", "stage"),
+       "A recovery journey opened against an unpaid invoice"),
+    # **The acknowledgement reference does not travel.** It is a tax authority's own handle
+    # and it identifies the filing rather than the invoice; a consumer that needs it reads the
+    # invoice under the permission that gates it.
+    _e("invoice.fiscalized", 1, "MOD-017", "restricted",
+       ("invoice_id", "legal_entity_id", "document_number", "fiscal_status"),
+       "An invoice's fiscal state moved; the status says where it landed"),
+    _e("refund.approved", 1, "MOD-017", "restricted",
+       ("refund_id", "payment_id", "amount_minor", "currency"),
+       "A refund was approved by somebody other than its requester"),
+    _e("refund.completed", 1, "MOD-017", "restricted",
+       ("refund_id", "payment_id", "amount_minor", "currency"),
+       "A refund left: money went back to the member"),
 ])
 
 

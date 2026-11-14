@@ -379,6 +379,80 @@ PERMISSIONS: dict[str, Permission] = dict([
     # financial, because extinguishing a paid-for entitlement is not a routine read.
     _p("catalog.bundle.fulfil", "Record what a bundle sale delivered",
        "configuration", "financial"),
+    # MOD-017, the membership contract a member signs and the money it generates.
+    #
+    # **`finance.*` rather than `billing.*`, which is MOD-015's.** Those permissions govern
+    # Veyro billing the tenant for its subscription; these govern the tenant billing its own
+    # members. One prefix for both would let a role granted "see invoices" see the wrong
+    # party's -- the two are owed by different people in different currencies.
+    #
+    # **The split is by consequence, not by table.** Reading a membership is routine; moving
+    # one is financial, because every lifecycle act either changes what a member may do or
+    # changes what they owe. The two reads a turnstile and a front desk do constantly stay
+    # routine for MOD-016's reason -- a step-up on "may this member train" would mean nobody
+    # trains -- and what bounds them is that neither can change anything.
+    _p("membership.record.read", "See a membership, its history and its terms",
+       "data_access"),
+    # **Drafting a contract version and publishing it are two permissions**, because the
+    # schema makes them two acts by two people and a role holding one permission for both
+    # would satisfy the separation only by accident. This is the prose a member is held to and
+    # the policy numbers every lifecycle decision is measured against, published under the
+    # tenant's name to everybody who signs on these terms -- MOD-013's author-and-approver
+    # split on notification templates, applied to the document with legal effect.
+    _p("membership.contract.write", "Draft a membership contract version",
+       "configuration", "financial"),
+    _p("membership.contract.publish",
+       "Publish a contract version somebody else drafted",
+       "configuration", "financial"),
+    _p("membership.agreement.write", "Create or sign a membership agreement",
+       "configuration", "financial"),
+    # Activation is separate from writing the agreement because it is the act that starts the
+    # money and the access: the same person routinely does both, and an auditor asks which.
+    _p("membership.agreement.activate", "Activate a signed agreement",
+       "configuration", "financial"),
+    # **Freezing, resuming and cancelling are financial**, each for a different reason:
+    # a freeze stops billing and extends a term, a resume restarts both, and a cancellation
+    # ends a contract with a fee the member was quoted.
+    _p("membership.lifecycle.change", "Freeze, resume, transfer or cancel a membership",
+       "configuration", "financial"),
+    _p("membership.entitlement.read", "See what a member is entitled to and what is left",
+       "data_access"),
+    # **Granting is financial and drawing is routine**, which is the division that matters: a
+    # grant creates a right somebody did not buy, and a draw consumes a right they did. A
+    # turnstile and a booking flow hold the second and nothing more.
+    _p("membership.entitlement.grant", "Grant or revoke an entitlement",
+       "configuration", "financial"),
+    _p("membership.entitlement.draw", "Reserve, consume or release an entitlement",
+       "data_access"),
+    _p("finance.account.read", "See a member billing account, its invoices and its schedule",
+       "data_access"),
+    _p("finance.account.write", "Create or change a member billing account or schedule",
+       "configuration", "financial"),
+    # Issuing an invoice allocates a fiscal serial that can never be reused, which is why it
+    # is its own permission rather than part of writing a schedule.
+    _p("finance.invoice.issue", "Issue a member invoice and allocate its fiscal serial",
+       "configuration", "financial"),
+    _p("finance.payment.take", "Create a payment intent and settle it",
+       "configuration", "financial"),
+    # **The refund is two permissions, because paragraph 1598 requires an approval and the
+    # schema compares two derived identities.** Asking changes nothing; approving sends money
+    # back out, which is the one act in this module that moves money away from the tenant.
+    _p("finance.refund.request", "Ask for a member refund", "configuration"),
+    _p("finance.refund.approve", "Approve a member refund somebody else requested",
+       "configuration", "financial"),
+    _p("finance.dunning.manage", "Open and advance a recovery journey",
+       "configuration", "financial"),
+    # **Fiscalization is its own permission.** It is the act that tells a tax authority an
+    # invoice is final, and the person who issues invoices is not necessarily the person who
+    # files them.
+    _p("finance.fiscal.manage",
+       "Move an invoice's fiscal state and record its acknowledgement",
+       "configuration", "financial"),
+    # Reconciling an unknown provider state decides whether money arrived, so it is financial
+    # even though it writes no new charge.
+    _p("finance.payment.reconcile",
+       "Reconcile a payment whose provider state is unknown",
+       "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

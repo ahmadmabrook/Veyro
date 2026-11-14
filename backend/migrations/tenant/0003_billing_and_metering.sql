@@ -182,7 +182,7 @@ CREATE TABLE plt01.bil_usage_records (
     UNIQUE (tenant_id, meter_id, idempotency_key),
     CONSTRAINT bil_usage_records_quantity CHECK
         (quantity >= 0 OR corrects_record_id IS NOT NULL),
-    CONSTRAINT bil_usage_records_key_not_blank CHECK (length(btrim(idempotency_key)) > 0)
+    CONSTRAINT bil_usage_records_key_not_blank CHECK (idempotency_key ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.bil_usage_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.bil_usage_records FORCE ROW LEVEL SECURITY;
@@ -314,7 +314,7 @@ CREATE TABLE plt01.bil_credit_notes (
     -- Stored positive and always read as a reduction. A signed column invites the question of
     -- which sign means which, and the answer would differ between two readers of the same row.
     CONSTRAINT bil_credit_notes_amount_positive CHECK (amount_minor > 0),
-    CONSTRAINT bil_credit_notes_reason_not_blank CHECK (length(btrim(reason)) > 0)
+    CONSTRAINT bil_credit_notes_reason_not_blank CHECK (reason ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.bil_credit_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.bil_credit_notes FORCE ROW LEVEL SECURITY;

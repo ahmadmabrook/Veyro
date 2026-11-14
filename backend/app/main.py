@@ -50,6 +50,7 @@ from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
 from app.catalog import service as catalog
+from app.commercial import service as commercial
 from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
@@ -110,6 +111,15 @@ class OrganizationBody(BaseModel):
 class BrandBody(BaseModel):
     organization_id: str
     brand_name: str
+
+
+class LegalEntityBody(BaseModel):
+    """The entity that invoices. PLT-01-R02's hierarchy leaf, reachable at last."""
+
+    organization_id: str
+    registered_name: str = Field(min_length=1, max_length=200)
+    tax_number: str | None = Field(default=None, min_length=1, max_length=64)
+    correlation_id: str
 
 
 class LocationBody(BaseModel):
@@ -1240,6 +1250,364 @@ class FulfilmentBody(BaseModel):
     external_reference: str | None = Field(default=None, min_length=1, max_length=200)
     detail: str | None = Field(default=None, max_length=2000)
 
+# ---------------------------------------------------------------- MOD-017, COM-01 and COM-03
+
+
+class CommercialActionBody(BaseModel):
+    """A command whose only input is who is asking and under which correlation.
+
+    Publication and revocation both have one: every other figure is on the row already, and a
+    body field beside it would be a second place for the same fact to come from.
+    """
+
+    correlation_id: str
+
+
+class RevokeEntitlementBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ContractVersionBody(BaseModel):
+    """COM-01-R02's contract terms, as a draft somebody else publishes.
+
+    **The policy numbers are here beside the prose**, because the lifecycle arithmetic reads
+    them and the member agreed to both halves. A version whose prose said thirty days' notice
+    while its `notice_days` said seven would be two contracts in one row.
+    """
+
+    contract_key: str = Field(min_length=2, max_length=63)
+    body: str = Field(min_length=1, max_length=100_000)
+    locale: str = Field(default="en", min_length=2, max_length=5)
+    minimum_term_months: int = Field(default=0, ge=0, le=120)
+    notice_days: int = Field(default=0, ge=0, le=365)
+    renewal_mode: Literal["manual", "automatic", "none"] = "manual"
+    cancellation_mode: Literal["immediate", "end_of_notice", "end_of_term"] = "end_of_term"
+    freeze_days_per_year: int = Field(default=0, ge=0, le=365)
+    grace_days: int = Field(default=0, ge=0, le=180)
+    correlation_id: str
+
+
+class MembershipTermsBody(BaseModel):  # noqa: D101
+    product_id: str
+    contract_key: str = Field(min_length=2, max_length=63)
+    membership_kind: Literal[
+        "fixed_term", "recurring", "installment", "prepaid", "off_peak", "family",
+        "student", "corporate", "class_credit", "unlimited"]
+    billing_period: Literal["weekly", "monthly", "quarterly", "annual", "one_off"] = "monthly"
+    installment_count: int | None = Field(default=None, ge=2, le=120)
+    prepaid_days: int | None = Field(default=None, ge=1, le=3650)
+    correlation_id: str
+
+
+class AgreementBody(BaseModel):
+    """CreateMembershipAgreement.
+
+    **There is no `contract_version_id` here.** The terms say which contract key applies and
+    the service pins the latest published version of it. A caller able to name the version
+    could name an older one with a shorter minimum term -- the authority bought with a body
+    field, which is the shape this repository has shipped four times.
+    """
+
+    person_id: str
+    membership_terms_id: str
+    variant_id: str
+    #: Used only when no `price_resolution_id` is cited. A cited resolution is the authority
+    #: on the figure and on the currency, and a resolution for a different variant is refused
+    #: rather than quietly used: an agreement that named MOD-016's receipt for 45.00 and
+    #: recorded 4.50 read as priced and approved.
+    amount_minor: int = Field(ge=0, le=10**12)
+    currency: str = Field(min_length=3, max_length=3)
+    starts_on: date
+    price_resolution_id: str | None = None
+    supersedes_agreement_id: str | None = None
+    correlation_id: str
+
+
+class SignatureBody(BaseModel):
+    """**A signature is recorded, not captured.** Nothing in this build takes one."""
+
+    signature_kind: Literal["wet_ink", "click_through", "drawn", "witnessed", "imported"]
+    signature_evidence_ref: str = Field(min_length=1, max_length=500)
+    signed_by_person_id: str
+    correlation_id: str
+
+
+class ActivationBody(BaseModel):
+    agreement_id: str
+    membership_number: str = Field(min_length=3, max_length=32)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class FreezeBody(BaseModel):
+    """COM-01-R04's freeze, pause and medical hold."""
+
+    freeze_kind: Literal["freeze", "pause", "medical_hold"]
+    starts_on: date
+    days: int = Field(ge=1, le=365)
+    reason: str = Field(min_length=1, max_length=500)
+    #: A locator for the note, never the note: a diagnosis is health data under MOD-008's
+    #: classification and this module has no business holding one.
+    evidence_ref: str | None = Field(default=None, min_length=1, max_length=500)
+    requested_by_person_id: str | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class ResumeBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    expected_version: int | None = Field(default=None, ge=1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CancelMembershipBody(BaseModel):
+    """COM-01-R06's disclosure, confirmed.
+
+    `acknowledged_fee_minor` is the figure the member was shown by the preview. The service
+    recomputes the fee and refuses a mismatch, so the figure quoted and the figure applied are
+    provably the same one -- without it the preview and the command are two independent
+    calculations and a member can be shown one number and charged another.
+    """
+
+    reason: str = Field(min_length=1, max_length=500)
+    acknowledged_fee_minor: int | None = Field(default=None, ge=0, le=10**12)
+    requested_by_person_id: str | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class EntitlementPolicyBody(BaseModel):
+    policy_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=200)
+    entitlement_type: Literal[
+        "location_access", "schedule_access", "zone_access", "class_credit",
+        "facility_access", "service_credit", "guest_pass", "discount", "digital_content"]
+    is_counted: bool = True
+    reservation_ttl_seconds: int = Field(default=900, ge=30, le=86400)
+    carryover_mode: Literal["none", "capped", "unlimited"] = "none"
+    carryover_limit: int | None = Field(default=None, ge=1, le=100_000)
+    correlation_id: str
+
+
+class GrantBody(BaseModel):
+    """GrantEntitlement.
+
+    **No `is_counted` field.** It comes from the policy, because a caller able to send it could
+    make an unlimited grant of something the tenant sells by the ten.
+    """
+
+    person_id: str
+    policy_id: str
+    source_kind: Literal["membership", "bundle_fulfilment", "goodwill", "migration",
+                         "corporate"]
+    valid_from: datetime
+    valid_to: datetime | None = None
+    quantity: int | None = Field(default=None, ge=1, le=100_000)
+    membership_id: str | None = None
+    source_id: str | None = None
+    brand_id: str | None = None
+    location_id: str | None = None
+    usable_from_minute: int | None = Field(default=None, ge=0, le=1439)
+    usable_to_minute: int | None = Field(default=None, ge=1, le=1440)
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ReserveBody(BaseModel):
+    """ReserveEntitlement.
+
+    **No `brand_id` and no `local_minute`.** Both gate the draw -- a brand-scoped grant and an
+    off-peak window -- and both were caller-supplied, so a grant for one brand was drawn on at
+    another by sending the grant's own brand id, and an off-peak grant was drawn on in the
+    evening by sending `600`. The service derives them from the location: its brand, and the
+    time of day in *its* timezone, which is the conversion PostgreSQL has the zone database
+    for. A draw that names no location cannot evaluate a time window and is refused by one.
+    """
+
+    grant_id: str
+    purpose_kind: Literal["booking", "guest_entry", "service_delivery", "manual"]
+    quantity: int = Field(default=1, ge=1, le=1000)
+    purpose_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    location_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class SettleReservationBody(BaseModel):
+    outcome: Literal["consumed", "released"]
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+class BillingAccountBody(BaseModel):
+    payer_person_id: str
+    account_number: str = Field(min_length=3, max_length=32)
+    currency: str = Field(min_length=3, max_length=3)
+    legal_entity_id: str
+    account_kind: Literal["individual", "household", "corporate"] = "individual"
+    payment_terms_days: int = Field(default=0, ge=0, le=180)
+    correlation_id: str
+
+
+class FiscalSeriesBody(BaseModel):
+    legal_entity_id: str
+    series_code: str = Field(min_length=1, max_length=16)
+    document_kind: Literal["invoice", "credit_note", "receipt"] = "invoice"
+    correlation_id: str
+
+
+class InvoiceLineBody(BaseModel):
+    description: str = Field(min_length=1, max_length=500)
+    quantity: int = Field(default=1, ge=1, le=1_000_000)
+    unit_net_minor: int = Field(ge=0, le=10**12)
+    #: The rate applied, per line. COM-03-R07's regional taxation: two lines on one invoice
+    #: routinely carry different rates, and the rate that applied on the day has to survive a
+    #: rate change. The sources state no rates, which is MOD-015's precedent.
+    tax_rate_bp: int = Field(ge=0, le=10_000)
+    variant_id: str | None = None
+    price_resolution_id: str | None = None
+    tax_category_id: str | None = None
+
+
+class IssueInvoiceBody(BaseModel):
+    """IssueInvoice.
+
+    **No `legal_entity_id` and no currency.** Both come from the billing account, so a serial
+    cannot be drawn from another entity's series and an invoice cannot be issued in a currency
+    the account is not billed in.
+    """
+
+    billing_account_id: str
+    series_id: str
+    lines: list[InvoiceLineBody] = Field(min_length=1, max_length=500)
+    issued_on: date
+    due_on: date
+    jurisdiction: str = Field(min_length=2, max_length=11)
+    membership_id: str | None = None
+    schedule_id: str | None = None
+    #: Set to issue a credit note, which needs a series whose `document_kind` is
+    #: `credit_note`. The schema makes those the same fact, so a credit-note series was
+    #: unusable until this field existed -- and a credit note is the only correction an
+    #: insert-only ledger has.
+    credits_invoice_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class PaymentIntentBody(BaseModel):
+    """CreatePaymentIntent.
+
+    **There is no card number, expiry or CVV field and the table has no column for one.**
+    Paragraph 1597: sensitive card data never enters Veyro systems unless explicitly certified.
+    `payment_method_ref` is a token somebody else holds -- MOD-012's `vault_ref` shape, where
+    the control is an absence.
+
+    **No currency either**: it comes from the billing account, so an intent for 4500 USD cannot
+    be raised against an invoice for 4500 JOD.
+    """
+
+    billing_account_id: str
+    amount_minor: int = Field(ge=1, le=10**12)
+    method: Literal["card", "direct_debit", "bank_transfer", "cash", "wallet",
+                    "gift_card", "other"]
+    provider_key: str = Field(min_length=2, max_length=63)
+    invoice_id: str | None = None
+    payment_method_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class SettleIntentBody(BaseModel):
+    """What the provider says happened.
+
+    `unknown` is a real outcome and not a synonym for failed: a provider that answered nothing
+    has told us nothing, and recording that as declined is how a member is dunned for a payment
+    that succeeded. Paragraph 1609.
+
+    `failure_code` is a declared code the retry policy branches on; `failure_detail` is the
+    provider's own sentence and **nothing branches on it**, because a control decided by
+    matching words in prose is one anybody can change by editing a string.
+    """
+
+    outcome: Literal["succeeded", "failed", "cancelled", "unknown"]
+    provider_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    failure_code: str | None = Field(default=None, min_length=2, max_length=63)
+    failure_detail: str | None = Field(default=None, min_length=1, max_length=1000)
+    correlation_id: str
+
+
+class RefundRequestBody(BaseModel):
+    """Ask for a refund. The requester is the caller's own session, never a field."""
+
+    payment_id: str
+    amount_minor: int = Field(ge=1, le=10**12)
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ApproveRefundBody(BaseModel):
+    """Decide a recorded request. Every figure comes from the request row.
+
+    `acknowledged_amount_minor` is the approver saying which figure they are approving. The
+    separation of duties establishes that two people were involved and says nothing about what
+    the second one read.
+    """
+
+    request_id: str
+    approval_reason: str = Field(min_length=1, max_length=500)
+    acknowledged_amount_minor: int | None = Field(default=None, ge=1, le=10**12)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class SettleRefundBody(BaseModel):
+    outcome: Literal["succeeded", "failed", "unknown"]
+    provider_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    failure_code: str | None = Field(default=None, min_length=2, max_length=63)
+    correlation_id: str
+
+
+class DunningBody(BaseModel):
+    invoice_id: str
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class AdvanceDunningBody(BaseModel):
+    notification_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    correlation_id: str
+
+
+class ReconcileBody(BaseModel):
+    """COM-03-R06. `provider_status` of null means the provider did not answer."""
+
+    provider_status: Literal["succeeded", "failed", "pending", "cancelled"] | None = None
+    provider_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    correlation_id: str
+
+
+class FiscalizeBody(BaseModel):
+    """Move the *fiscal* state, which is not the payment state. Paragraph 1607.
+
+    `fiscal_complete` requires `ack_ref`: a server-allocated serial means the document is
+    numbered, and numbering is not filing. Every invoice has a serial, so the serial alone
+    could never be the test.
+    """
+
+    target: Literal["submitted", "acknowledged", "fiscal_complete", "rejected",
+                    "not_required"]
+    ack_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    #: Required for `not_required`, which is terminal, needs no acknowledgement and sidesteps
+    #: the one control this table is proud of -- so it is the transition that most needs a
+    #: written reason on the row.
+    exemption_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+
 
 class ObjectiveBody(BaseModel):
     """DefineSLI and SetSLO, which are one row.
@@ -1621,6 +1989,29 @@ def create_app(
     def add_brand(tenant_id: TenantId, session: Session, body: BrandBody) -> dict[str, Any]:
         permit(session, "tenancy.brand.write")
         return service.create_brand(tenant_pool, tenant_id, body.organization_id, body.brand_name)
+
+    @app.post("/legal-entities", status_code=201)
+    def add_legal_entity(
+        tenant_id: TenantId, session: Session, body: LegalEntityBody
+    ) -> dict[str, Any]:
+        """The legal entity that invoices. MOD-004 built the table and left it unreachable.
+
+        COM-03-R07 requires fiscal series and serial uniqueness per legal entity, so MOD-017
+        cannot number an invoice without one -- which is how a two-module-old gap surfaced.
+        """
+        permit(session, "tenancy.organization.write", body.correlation_id)
+        return service.create_legal_entity(
+            tenant_pool, tenant_id,
+            require_uuid(body.organization_id, "organization_id"),
+            body.registered_name, tax_number=body.tax_number,
+        )
+
+    @app.get("/legal-entities")
+    def get_legal_entities(
+        tenant_id: TenantId, session: Session
+    ) -> list[dict[str, Any]]:
+        permit(session, "tenancy.organization.read")
+        return service.list_legal_entities(tenant_pool, tenant_id)
 
     @app.post("/locations", status_code=201)
     def add_location(tenant_id: TenantId, session: Session, body: LocationBody) -> dict[str, Any]:
@@ -4336,6 +4727,496 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(bundle_id, "bundle_id"),
             order_reference=order_reference,
         )
+
+
+    # ------------------------------------------------------------ MOD-017, COM-01
+
+    @app.post("/memberships/contract-versions", status_code=201)
+    def draft_contract_version(
+        tenant_id: TenantId, session: Session, body: ContractVersionBody
+    ) -> dict[str, Any]:
+        """COM-01-R02's terms, as a draft. Somebody else publishes it.
+
+        Two acts and not one: an agreement resolves only a published version, so a draft is
+        unsignable by construction -- and the one-command version made the author and the
+        publisher the same person by definition, on a document with legal effect.
+        """
+        permit(session, "membership.contract.write", body.correlation_id)
+        return commercial.draft_contract_version(
+            tenant_pool, tenant_id, contract_key=body.contract_key, body=body.body,
+            locale=body.locale, minimum_term_months=body.minimum_term_months,
+            notice_days=body.notice_days, renewal_mode=body.renewal_mode,
+            cancellation_mode=body.cancellation_mode,
+            freeze_days_per_year=body.freeze_days_per_year, grace_days=body.grace_days,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/contract-versions/{contract_version_id}/publish")
+    def publish_contract_version(
+        tenant_id: TenantId, session: Session, contract_version_id: str,
+        body: CommercialActionBody,
+    ) -> dict[str, Any]:
+        """Publish a drafted contract version, by somebody other than its author."""
+        permit(session, "membership.contract.publish", body.correlation_id)
+        return commercial.publish_contract_version(
+            tenant_pool, tenant_id,
+            require_uuid(contract_version_id, "contract_version_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/terms", status_code=201)
+    def define_membership_terms(
+        tenant_id: TenantId, session: Session, body: MembershipTermsBody
+    ) -> dict[str, Any]:
+        """Attach membership terms to a catalogue product. The product must be a membership."""
+        permit(session, "membership.agreement.write", body.correlation_id)
+        return commercial.define_membership_terms(
+            tenant_pool, tenant_id,
+            product_id=require_uuid(body.product_id, "product_id"),
+            contract_key=body.contract_key, membership_kind=body.membership_kind,
+            billing_period=body.billing_period,
+            installment_count=body.installment_count, prepaid_days=body.prepaid_days,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/agreements", status_code=201)
+    def create_agreement(
+        tenant_id: TenantId, session: Session, body: AgreementBody
+    ) -> dict[str, Any]:
+        """CreateMembershipAgreement: the contract, unsigned, with its version pinned."""
+        permit(session, "membership.agreement.write", body.correlation_id)
+        return commercial.create_agreement(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(body.person_id, "person_id"),
+            membership_terms_id=require_uuid(
+                body.membership_terms_id, "membership_terms_id"),
+            variant_id=require_uuid(body.variant_id, "variant_id"),
+            amount_minor=body.amount_minor, currency=body.currency,
+            starts_on=body.starts_on,
+            price_resolution_id=optional_uuid(
+                body.price_resolution_id, "price_resolution_id"),
+            supersedes_agreement_id=optional_uuid(
+                body.supersedes_agreement_id, "supersedes_agreement_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/agreements/{agreement_id}/sign")
+    def sign_agreement(
+        tenant_id: TenantId, session: Session, agreement_id: str, body: SignatureBody
+    ) -> dict[str, Any]:
+        """Record the member's signature. COM-01-R02."""
+        permit(session, "membership.agreement.write", body.correlation_id)
+        return commercial.sign_agreement(
+            tenant_pool, tenant_id, require_uuid(agreement_id, "agreement_id"),
+            signature_kind=body.signature_kind,
+            signature_evidence_ref=body.signature_evidence_ref,
+            signed_by_person_id=require_uuid(
+                body.signed_by_person_id, "signed_by_person_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships", status_code=201)
+    def activate_membership(
+        tenant_id: TenantId, session: Session, body: ActivationBody
+    ) -> dict[str, Any]:
+        """ActivateMembership. A signed agreement, never a draft."""
+        permit(session, "membership.agreement.activate", body.correlation_id)
+        return commercial.activate_membership(
+            tenant_pool, tenant_id,
+            agreement_id=require_uuid(body.agreement_id, "agreement_id"),
+            membership_number=body.membership_number,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/{membership_id}/freeze", status_code=201)
+    def freeze_membership(
+        tenant_id: TenantId, session: Session, membership_id: str, body: FreezeBody
+    ) -> dict[str, Any]:
+        """FreezeMembership, with the contract's annual allowance enforced. COM-01-R04."""
+        permit(session, "membership.lifecycle.change", body.correlation_id)
+        return commercial.freeze_membership(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            freeze_kind=body.freeze_kind, starts_on=body.starts_on, days=body.days,
+            reason=body.reason, evidence_ref=body.evidence_ref,
+            requested_by_person_id=optional_uuid(
+                body.requested_by_person_id, "requested_by_person_id"),
+            expected_version=body.expected_version,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/memberships/{membership_id}/resume")
+    def resume_membership(
+        tenant_id: TenantId, session: Session, membership_id: str, body: ResumeBody
+    ) -> dict[str, Any]:
+        """ResumeMembership, extending the term by the days actually frozen. COM-01-R05."""
+        permit(session, "membership.lifecycle.change", body.correlation_id)
+        return commercial.resume_membership(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            reason=body.reason, expected_version=body.expected_version,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/memberships/{membership_id}/cancellation-preview")
+    def preview_cancellation(
+        tenant_id: TenantId, session: Session, membership_id: str
+    ) -> dict[str, Any]:
+        """COM-01-R06's fee disclosure, as a read with no side effect.
+
+        Gated on the *read* permission, deliberately: showing a member what cancelling would
+        cost changes nothing, and requiring the lifecycle permission to quote a figure would
+        mean a front desk could cancel but not explain.
+        """
+        permit(session, "membership.record.read")
+        return commercial.preview_cancellation(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"))
+
+    @app.post("/memberships/{membership_id}/cancel")
+    def cancel_membership(
+        tenant_id: TenantId, session: Session, membership_id: str,
+        body: CancelMembershipBody
+    ) -> dict[str, Any]:
+        """CancelMembership. The acknowledged fee is compared against the fee that is due."""
+        permit(session, "membership.lifecycle.change", body.correlation_id)
+        return commercial.cancel_membership(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            reason=body.reason, acknowledged_fee_minor=body.acknowledged_fee_minor,
+            requested_by_person_id=optional_uuid(
+                body.requested_by_person_id, "requested_by_person_id"),
+            expected_version=body.expected_version,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/memberships/{membership_id}/as-of")
+    def read_membership_as_of(
+        tenant_id: TenantId, session: Session, membership_id: str, moment: date
+    ) -> dict[str, Any]:
+        """COM-01-R07's as-of reconstruction, replayed from the history."""
+        permit(session, "membership.record.read")
+        return commercial.membership_as_of(
+            tenant_pool, tenant_id, require_uuid(membership_id, "membership_id"),
+            moment=moment)
+
+
+    # ------------------------------------------------------------ MOD-017, entitlements
+    #
+    # **`/member-entitlements`, not `/entitlements`.** That prefix is MOD-015's: a *plan*
+    # entitlement is what a tenant's Veyro subscription allows. These are what a member may
+    # do. The two are different things owed to different parties, and one prefix for both
+    # would read as one surface.
+
+    @app.post("/member-entitlements/policies", status_code=201)
+    def define_entitlement_policy(
+        tenant_id: TenantId, session: Session, body: EntitlementPolicyBody
+    ) -> dict[str, Any]:
+        """Declare what one kind of entitlement means in this tenant. COM-01-R03."""
+        permit(session, "membership.entitlement.grant", body.correlation_id)
+        return commercial.define_entitlement_policy(
+            tenant_pool, tenant_id, policy_key=body.policy_key,
+            display_name=body.display_name, entitlement_type=body.entitlement_type,
+            is_counted=body.is_counted,
+            reservation_ttl_seconds=body.reservation_ttl_seconds,
+            carryover_mode=body.carryover_mode, carryover_limit=body.carryover_limit,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/member-entitlements/grants", status_code=201)
+    def grant_member_entitlement(
+        tenant_id: TenantId, session: Session, body: GrantBody
+    ) -> dict[str, Any]:
+        """GrantEntitlement, with its opening ledger movement in the same transaction."""
+        permit(session, "membership.entitlement.grant", body.correlation_id)
+        return commercial.grant_entitlement(
+            tenant_pool, tenant_id,
+            person_id=require_uuid(body.person_id, "person_id"),
+            policy_id=require_uuid(body.policy_id, "policy_id"),
+            source_kind=body.source_kind, source_id=optional_uuid(
+                body.source_id, "source_id"),
+            membership_id=optional_uuid(body.membership_id, "membership_id"),
+            quantity=body.quantity, valid_from=body.valid_from, valid_to=body.valid_to,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            usable_from_minute=body.usable_from_minute,
+            usable_to_minute=body.usable_to_minute, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/member-entitlements/reservations", status_code=201)
+    def reserve_entitlement(
+        tenant_id: TenantId, session: Session, body: ReserveBody
+    ) -> dict[str, Any]:
+        """ReserveEntitlement: hold quantity atomically, with an expiry. Paragraph 1506."""
+        permit(session, "membership.entitlement.draw", body.correlation_id)
+        return commercial.reserve_entitlement(
+            tenant_pool, tenant_id,
+            grant_id=require_uuid(body.grant_id, "grant_id"),
+            purpose_kind=body.purpose_kind, quantity=body.quantity,
+            purpose_ref=body.purpose_ref,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/member-entitlements/reservations/{reservation_id}/settle")
+    def settle_reservation(
+        tenant_id: TenantId, session: Session, reservation_id: str,
+        body: SettleReservationBody
+    ) -> dict[str, Any]:
+        """ConsumeEntitlement or ReleaseEntitlement. A consumption moves nothing."""
+        permit(session, "membership.entitlement.draw", body.correlation_id)
+        return commercial.settle_reservation(
+            tenant_pool, tenant_id, require_uuid(reservation_id, "reservation_id"),
+            outcome=body.outcome, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/member-entitlements/grants/{grant_id}")
+    def read_entitlement_balance(
+        tenant_id: TenantId, session: Session, grant_id: str,
+        correlation_id: str = Query(min_length=1),
+    ) -> dict[str, Any]:
+        """What is left on a grant, and how much of it is held.
+
+        **This read takes a correlation id because it can write.** Sweeping lapsed holds
+        inserts ledger rows and every row in that ledger names who caused it, so a sweep
+        attributed to nobody would be the "evidence with nobody's name on it" shape reached by
+        the side door of calling it a read.
+        """
+        permit(session, "membership.entitlement.read")
+        return commercial.entitlement_balance(
+            tenant_pool, tenant_id, require_uuid(grant_id, "grant_id"),
+            actor_id=session["identity_id"],
+            correlation_id=require_uuid(correlation_id, "correlation_id"))
+
+    # ------------------------------------------------------------ MOD-017, COM-03
+
+    @app.post("/finance/accounts", status_code=201)
+    def create_billing_account(
+        tenant_id: TenantId, session: Session, body: BillingAccountBody
+    ) -> dict[str, Any]:
+        """CreateBillingAccount. The account is who pays, not always who owes."""
+        permit(session, "finance.account.write", body.correlation_id)
+        return commercial.create_billing_account(
+            tenant_pool, tenant_id,
+            payer_person_id=require_uuid(body.payer_person_id, "payer_person_id"),
+            account_number=body.account_number, currency=body.currency,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            account_kind=body.account_kind,
+            payment_terms_days=body.payment_terms_days,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/fiscal-series", status_code=201)
+    def open_fiscal_series(
+        tenant_id: TenantId, session: Session, body: FiscalSeriesBody
+    ) -> dict[str, Any]:
+        """Open a numbering series for one legal entity. COM-03-R07."""
+        permit(session, "finance.fiscal.manage", body.correlation_id)
+        return commercial.open_fiscal_series(
+            tenant_pool, tenant_id,
+            legal_entity_id=require_uuid(body.legal_entity_id, "legal_entity_id"),
+            series_code=body.series_code, document_kind=body.document_kind,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/invoices", status_code=201)
+    def issue_member_invoice(
+        tenant_id: TenantId, session: Session, body: IssueInvoiceBody
+    ) -> dict[str, Any]:
+        """IssueInvoice: the document, its lines, its serial and its tax, atomically."""
+        permit(session, "finance.invoice.issue", body.correlation_id)
+        return commercial.issue_invoice(
+            tenant_pool, tenant_id,
+            billing_account_id=require_uuid(
+                body.billing_account_id, "billing_account_id"),
+            series_id=require_uuid(body.series_id, "series_id"),
+            lines=[{"description": line.description, "quantity": line.quantity,
+                    "unit_net_minor": line.unit_net_minor,
+                    "tax_rate_bp": line.tax_rate_bp,
+                    "variant_id": optional_uuid(line.variant_id, "variant_id"),
+                    "price_resolution_id": optional_uuid(
+                        line.price_resolution_id, "price_resolution_id"),
+                    "tax_category_id": optional_uuid(
+                        line.tax_category_id, "tax_category_id")}
+                   for line in body.lines],
+            issued_on=body.issued_on, due_on=body.due_on,
+            jurisdiction=body.jurisdiction,
+            membership_id=optional_uuid(body.membership_id, "membership_id"),
+            schedule_id=optional_uuid(body.schedule_id, "schedule_id"),
+            credits_invoice_id=optional_uuid(
+                body.credits_invoice_id, "credits_invoice_id"),
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/finance/invoices/{invoice_id}")
+    def read_invoice(
+        tenant_id: TenantId, session: Session, invoice_id: str
+    ) -> dict[str, Any]:
+        """One invoice with its lines and **both** statuses. Paragraph 1607."""
+        permit(session, "finance.account.read")
+        return commercial.get_invoice(
+            tenant_pool, tenant_id, require_uuid(invoice_id, "invoice_id"))
+
+    @app.post("/finance/payment-intents", status_code=201)
+    def create_payment_intent(
+        tenant_id: TenantId, session: Session, body: PaymentIntentBody
+    ) -> dict[str, Any]:
+        """CreatePaymentIntent: what a provider is about to be asked to do.
+
+        **Nothing here talks to a provider.** Taking money is owner-reserved, so what is built
+        is the half that must be correct whatever the provider turns out to be.
+        """
+        permit(session, "finance.payment.take", body.correlation_id)
+        return commercial.create_payment_intent(
+            tenant_pool, tenant_id,
+            billing_account_id=require_uuid(
+                body.billing_account_id, "billing_account_id"),
+            amount_minor=body.amount_minor, method=body.method,
+            provider_key=body.provider_key,
+            invoice_id=optional_uuid(body.invoice_id, "invoice_id"),
+            payment_method_ref=body.payment_method_ref,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/payment-intents/{intent_id}/settle")
+    def settle_payment_intent(
+        tenant_id: TenantId, session: Session, intent_id: str, body: SettleIntentBody
+    ) -> dict[str, Any]:
+        """ApplyPayment or RecordPaymentFailure. `unknown` settles nothing."""
+        permit(session, "finance.payment.take", body.correlation_id)
+        return commercial.settle_payment_intent(
+            tenant_pool, tenant_id, require_uuid(intent_id, "intent_id"),
+            outcome=body.outcome, provider_ref=body.provider_ref,
+            failure_code=body.failure_code, failure_detail=body.failure_detail,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/payment-intents/{intent_id}/reconcile")
+    def reconcile_intent(
+        tenant_id: TenantId, session: Session, intent_id: str, body: ReconcileBody
+    ) -> dict[str, Any]:
+        """COM-03-R06. A provider answer that contradicts a settled record is escalated."""
+        permit(session, "finance.payment.reconcile", body.correlation_id)
+        return commercial.reconcile_intent(
+            tenant_pool, tenant_id, require_uuid(intent_id, "intent_id"),
+            provider_status=body.provider_status, provider_ref=body.provider_ref,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/refund-requests", status_code=201)
+    def request_refund(
+        tenant_id: TenantId, session: Session, body: RefundRequestBody
+    ) -> dict[str, Any]:
+        """Ask for a refund. The requester is this session, not a field in the body."""
+        permit(session, "finance.refund.request", body.correlation_id)
+        return commercial.request_refund(
+            tenant_pool, tenant_id,
+            payment_id=require_uuid(body.payment_id, "payment_id"),
+            amount_minor=body.amount_minor, reason=body.reason,
+            requester_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/refunds", status_code=201)
+    def approve_refund(
+        tenant_id: TenantId, session: Session, body: ApproveRefundBody
+    ) -> dict[str, Any]:
+        """RefundPayment: decide a recorded request. Paragraph 1598's approval."""
+        permit(session, "finance.refund.approve", body.correlation_id)
+        return commercial.approve_refund(
+            tenant_pool, tenant_id,
+            request_id=require_uuid(body.request_id, "request_id"),
+            approval_reason=body.approval_reason,
+            acknowledged_amount_minor=body.acknowledged_amount_minor,
+            idempotency_key=body.idempotency_key,
+            approver_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/refunds/{refund_id}/settle")
+    def settle_refund(
+        tenant_id: TenantId, session: Session, refund_id: str, body: SettleRefundBody
+    ) -> dict[str, Any]:
+        """What the provider says became of a refund."""
+        # **The refund permission, not the payment one.** `finance.payment.take` is for money
+        # coming in; this settles money going out, and the permission that exists for exactly
+        # that act is the one the refund approval is gated on. A role holding only "take
+        # payments" could mark a refund succeeded, which is the last state anybody checks.
+        permit(session, "finance.refund.approve", body.correlation_id)
+        return commercial.settle_refund(
+            tenant_pool, tenant_id, require_uuid(refund_id, "refund_id"),
+            outcome=body.outcome, provider_ref=body.provider_ref,
+            failure_code=body.failure_code,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/dunning-cases", status_code=201)
+    def start_dunning(
+        tenant_id: TenantId, session: Session, body: DunningBody
+    ) -> dict[str, Any]:
+        """StartDunning. COM-03-R04. The access recommendation is recorded, not applied."""
+        permit(session, "finance.dunning.manage", body.correlation_id)
+        return commercial.start_dunning(
+            tenant_pool, tenant_id,
+            invoice_id=require_uuid(body.invoice_id, "invoice_id"),
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/dunning-cases/{case_id}/advance")
+    def advance_dunning(
+        tenant_id: TenantId, session: Session, case_id: str, body: AdvanceDunningBody
+    ) -> dict[str, Any]:
+        """Move a case on, or close it as recovered when the invoice has been paid."""
+        permit(session, "finance.dunning.manage", body.correlation_id)
+        return commercial.advance_dunning(
+            tenant_pool, tenant_id, require_uuid(case_id, "case_id"),
+            notification_ref=body.notification_ref,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/finance/invoices/{invoice_id}/fiscalize")
+    def fiscalize_invoice(
+        tenant_id: TenantId, session: Session, invoice_id: str, body: FiscalizeBody
+    ) -> dict[str, Any]:
+        """Move the fiscal state. `fiscal_complete` needs the authority's acknowledgement."""
+        permit(session, "finance.fiscal.manage", body.correlation_id)
+        return commercial.fiscalize_invoice(
+            tenant_pool, tenant_id, require_uuid(invoice_id, "invoice_id"),
+            target=body.target, ack_ref=body.ack_ref,
+            exemption_reason=body.exemption_reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/member-entitlements/grants/{grant_id}/revoke")
+    def revoke_member_entitlement(
+        tenant_id: TenantId, session: Session, grant_id: str,
+        body: RevokeEntitlementBody,
+    ) -> dict[str, Any]:
+        """RevokeEntitlement: stop a grant being drawable and write off what was left."""
+        permit(session, "membership.entitlement.grant", body.correlation_id)
+        return commercial.revoke_entitlement(
+            tenant_pool, tenant_id, require_uuid(grant_id, "grant_id"),
+            reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/finance/payments/{payment_id}/refunds")
+    def refunds_of_payment(
+        tenant_id: TenantId, session: Session, payment_id: str
+    ) -> dict[str, Any]:
+        """Every refund request and decision against one payment, and what is refundable.
+
+        **The read the approval needs.** There was no way to read a refund at all: four
+        commands wrote one and nothing returned one, so the second person in the separation
+        of duties approved a figure they could not see.
+        """
+        permit(session, "finance.account.read")
+        return commercial.refunds_of_payment(
+            tenant_pool, tenant_id, require_uuid(payment_id, "payment_id"))
 
     return app
 

@@ -14,6 +14,10 @@
 \set tenant_a '11111111-1111-4111-8111-111111111111'
 \set tenant_b '22222222-2222-4222-8222-222222222222'
 \set actor    '33333333-3333-4333-8333-333333333333'
+-- A second actor, because MOD-017 enforces two separations of duties in the schema: the
+-- author of a contract version does not publish it, and the requester of a refund does not
+-- approve it. A seed that used one id for both halves could not be written at all.
+\set actor2   '44444444-4444-4444-8444-444444444444'
 
 -- ---------------------------------------------------------------- seed (platform plane)
 BEGIN;
@@ -11885,4 +11889,10961 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 72/72 checks passed'
+
+
+-- ================================================================ MOD-017, COM-01 and COM-03
+--
+-- Twenty-two tables in two families. **`mem_` is what a member is entitled to; `fin_` is what
+-- they owe**, and paragraph 1496 keeps them apart: membership state, billing state and access
+-- state are related but never conflated. Three decisions the checks below exist to protect:
+--
+--   * **The entitlement ledger is the only authority on a balance.** No UPDATE grant at all,
+--     and no column on the grant a balance could be cached in -- which is what two concurrent
+--     bookings would race on. Check 76 asserts the absence, because an absence is what a later
+--     migration adds back.
+--   * **`fin_payment_intents` has no column a card number could go in.** Paragraph 1597, as a
+--     positive assertion over the names a later migration would reach for rather than as the
+--     absence of one.
+--   * **A fiscal serial is allocated in order with no gaps, and the counter cannot be
+--     rewound.** COM-03-R07's per-entity uniqueness. A CHECK cannot see `OLD`, so that one is
+--     a trigger -- the only one in the module.
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+
+-- A membership product in the catalogue, which MOD-016 owns, plus the terms MOD-017 adds.
+INSERT INTO plt01.cat_products
+    (tenant_id, product_id, product_key, product_type, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000001', 'gold.membership',
+        'membership', :'actor', :'actor');
+INSERT INTO plt01.cat_variants
+    (tenant_id, variant_id, product_id, variant_key, display_name, term_days, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000002',
+        'dddddddd-1000-4000-8000-000000000001', 'monthly', 'Monthly', 30, :'actor',
+        :'actor');
+
+INSERT INTO plt01.mem_contract_versions
+    (tenant_id, contract_version_id, contract_key, version, body, minimum_term_months,
+     notice_days, freeze_days_per_year, status, published_at, published_by,
+     publish_correlation_id, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000003', 'standard', 1,
+        'Standard terms apply.', 12, 30, 30, 'published', now(), :'actor2', :'actor',
+        :'actor', :'actor');
+INSERT INTO plt01.mem_membership_terms
+    (tenant_id, membership_terms_id, product_id, contract_key, membership_kind,
+     billing_period, status, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000004',
+        'dddddddd-1000-4000-8000-000000000001', 'standard', 'recurring', 'monthly',
+        'active', :'actor', :'actor');
+INSERT INTO plt01.mem_agreements
+    (tenant_id, agreement_id, person_id, membership_terms_id, contract_version_id,
+     variant_id, amount_minor, currency, starts_on, minimum_term_ends_on, signature_kind,
+     signature_evidence_ref, signed_at, signed_by_person_id, signed_by,
+     sign_correlation_id, status, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000005',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000004',
+        'dddddddd-1000-4000-8000-000000000003', 'dddddddd-1000-4000-8000-000000000002',
+        4500, 'JOD', DATE '2026-01-01', DATE '2027-01-01', 'click_through',
+        's3://signatures/seed', now(), 'bbbbbbbb-1000-4000-8000-000000000001', :'actor',
+        :'actor', 'active',
+        :'actor', :'actor');
+INSERT INTO plt01.mem_memberships
+    (tenant_id, membership_id, agreement_id, person_id, membership_number, status,
+     starts_on, status_effective_on, current_period_start, current_period_end, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000006',
+        'dddddddd-1000-4000-8000-000000000005', 'bbbbbbbb-1000-4000-8000-000000000001',
+        'SEED-0001', 'pending', DATE '2026-01-01', DATE '2026-01-01', DATE '2026-01-01',
+        DATE '2026-01-31', :'actor', :'actor');
+INSERT INTO plt01.mem_lifecycle_changes
+    (tenant_id, change_id, membership_id, change_kind, from_status, to_status,
+     effective_on, decided_by, reason, idempotency_key, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000007',
+        'dddddddd-1000-4000-8000-000000000006', 'activation', 'pending', 'active',
+        DATE '2026-01-01', :'actor', 'activated from a signed agreement', 'seed-act-1',
+        :'actor');
+UPDATE plt01.mem_memberships
+   SET status = 'active', status_change_id = 'dddddddd-1000-4000-8000-000000000007'
+ WHERE membership_id = 'dddddddd-1000-4000-8000-000000000006';
+INSERT INTO plt01.mem_freezes
+    (tenant_id, freeze_id, membership_id, freeze_kind, starts_on, ends_on,
+     counts_against_allowance, reason, decided_by, resumed_at, resumed_by,
+     resume_correlation_id, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000008',
+        'dddddddd-1000-4000-8000-000000000006', 'freeze', DATE '2026-02-01',
+        DATE '2026-02-07', true, 'holiday', :'actor', now(), :'actor', :'actor', :'actor');
+
+INSERT INTO plt01.mem_entitlement_policies
+    (tenant_id, policy_id, policy_key, display_name, entitlement_type, is_counted,
+     created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000009', 'classes', 'Classes',
+        'class_credit', true, :'actor', :'actor');
+INSERT INTO plt01.mem_entitlement_grants
+    (tenant_id, grant_id, person_id, policy_id, source_kind, membership_id, is_counted,
+     granted_quantity, valid_from, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000a',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000009',
+        'membership', 'dddddddd-1000-4000-8000-000000000006', true, 10,
+        TIMESTAMPTZ '2026-01-01 00:00:00+00', :'actor', :'actor');
+INSERT INTO plt01.mem_entitlement_reservations
+    (tenant_id, reservation_id, grant_id, person_id, quantity, purpose_kind, expires_at,
+     idempotency_key, held_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000b',
+        'dddddddd-1000-4000-8000-00000000000a', 'bbbbbbbb-1000-4000-8000-000000000001',
+        1, 'booking', now() + interval '15 minutes', 'seed-res-1', :'actor', :'actor');
+INSERT INTO plt01.mem_entitlement_ledger
+    (tenant_id, movement_id, grant_id, reservation_id, movement_kind, delta, actor_id,
+     reason, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000c',
+        'dddddddd-1000-4000-8000-00000000000a', NULL, 'grant', 10, :'actor',
+        'ten class pack', :'actor'),
+       (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000d',
+        'dddddddd-1000-4000-8000-00000000000a', 'dddddddd-1000-4000-8000-00000000000b',
+        'reserve', -1, :'actor', 'held for booking', :'actor');
+
+INSERT INTO plt01.fin_billing_accounts
+    (tenant_id, billing_account_id, payer_person_id, account_number, currency,
+     legal_entity_id, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000e',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'ACC-0001', 'JOD',
+        'aaaaaaaa-0000-4000-8000-000000000003', :'actor', :'actor');
+INSERT INTO plt01.fin_billing_schedules
+    (tenant_id, schedule_id, billing_account_id, membership_id, schedule_kind,
+     amount_minor, currency, period, next_due_on, created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-00000000000f',
+        'dddddddd-1000-4000-8000-00000000000e', 'dddddddd-1000-4000-8000-000000000006',
+        'recurring', 4500, 'JOD', 'monthly', DATE '2026-02-01', :'actor', :'actor');
+INSERT INTO plt01.fin_fiscal_series
+    (tenant_id, series_id, legal_entity_id, series_code, document_kind, last_serial,
+     created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000010',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'SEED', 'invoice', 1, :'actor', :'actor');
+INSERT INTO plt01.fin_invoices
+    (tenant_id, invoice_id, billing_account_id, legal_entity_id, series_id, serial,
+     document_number, schedule_id, membership_id, net_minor, tax_minor, gross_minor,
+     currency, issued_on, due_on, idempotency_key, issued_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000011',
+        'dddddddd-1000-4000-8000-00000000000e', 'aaaaaaaa-0000-4000-8000-000000000003',
+        'dddddddd-1000-4000-8000-000000000010', 1, 'SEED-000001',
+        'dddddddd-1000-4000-8000-00000000000f', 'dddddddd-1000-4000-8000-000000000006',
+        4500, 720, 5220, 'JOD', DATE '2026-01-01', DATE '2026-01-15', 'seed-inv-1',
+        :'actor', :'actor');
+INSERT INTO plt01.fin_invoice_lines
+    (tenant_id, line_id, invoice_id, line_number, description, variant_id, quantity,
+     unit_net_minor, net_minor, tax_rate_bp, tax_minor, gross_minor)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000012',
+        'dddddddd-1000-4000-8000-000000000011', 1, 'Monthly membership',
+        'dddddddd-1000-4000-8000-000000000002', 1, 4500, 4500, 1600, 720, 5220);
+INSERT INTO plt01.fin_tax_records
+    (tenant_id, tax_record_id, invoice_id, legal_entity_id, jurisdiction, tax_rate_bp,
+     taxable_minor, tax_minor, currency, period_start, period_end, recorded_by,
+     correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000013',
+        'dddddddd-1000-4000-8000-000000000011', 'aaaaaaaa-0000-4000-8000-000000000003',
+        'JO', 1600, 4500, 720, 'JOD', DATE '2026-01-01', DATE '2026-01-31', :'actor',
+        :'actor');
+INSERT INTO plt01.fin_payment_intents
+    (tenant_id, intent_id, billing_account_id, invoice_id, method, provider_key,
+     provider_ref, amount_minor, currency, status, settled_at, idempotency_key,
+     created_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000014',
+        'dddddddd-1000-4000-8000-00000000000e', 'dddddddd-1000-4000-8000-000000000011',
+        'card', 'acme.payments', 'ch_seed_1', 5220, 'JOD', 'succeeded', now(),
+        'seed-pi-1', :'actor', :'actor');
+INSERT INTO plt01.fin_payments
+    (tenant_id, payment_id, billing_account_id, intent_id, invoice_id, method,
+     amount_minor, currency, received_at, provider_ref, recorded_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000015',
+        'dddddddd-1000-4000-8000-00000000000e', 'dddddddd-1000-4000-8000-000000000014',
+        'dddddddd-1000-4000-8000-000000000011', 'card', 5220, 'JOD', now(), 'ch_seed_1',
+        :'actor', :'actor');
+UPDATE plt01.fin_invoices SET payment_status = 'paid', paid_at = now()
+ WHERE invoice_id = 'dddddddd-1000-4000-8000-000000000011';
+INSERT INTO plt01.fin_refund_requests
+    (tenant_id, request_id, payment_id, amount_minor, currency, reason, requested_by,
+     correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000016',
+        'dddddddd-1000-4000-8000-000000000015', 1000, 'JOD', 'goodwill',
+        '44444444-4444-4444-8444-444444444444', :'actor');
+INSERT INTO plt01.fin_refunds
+    (tenant_id, refund_id, request_id, payment_id, billing_account_id, amount_minor,
+     currency, approved_by, requested_by, approval_reason, idempotency_key,
+     correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000017',
+        'dddddddd-1000-4000-8000-000000000016', 'dddddddd-1000-4000-8000-000000000015',
+        'dddddddd-1000-4000-8000-00000000000e', 1000, 'JOD', :'actor',
+        '44444444-4444-4444-8444-444444444444', 'agreed at the desk', 'seed-rf-1',
+        :'actor');
+INSERT INTO plt01.fin_disputes
+    (tenant_id, dispute_id, payment_id, billing_account_id, provider_case_ref,
+     dispute_kind, reason_code, amount_minor, currency, opened_on, respond_due_on,
+     idempotency_key, recorded_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000018',
+        'dddddddd-1000-4000-8000-000000000015', 'dddddddd-1000-4000-8000-00000000000e',
+        'case-seed-1', 'chargeback', 'fraud', 5220, 'JOD', DATE '2026-02-01',
+        DATE '2026-02-15', 'seed-dp-1', :'actor', :'actor');
+INSERT INTO plt01.fin_dunning_cases
+    (tenant_id, case_id, billing_account_id, invoice_id, stage, opened_on,
+     next_action_on, idempotency_key, opened_by, correlation_id)
+VALUES (:'tenant_a', 'dddddddd-1000-4000-8000-000000000019',
+        'dddddddd-1000-4000-8000-00000000000e', 'dddddddd-1000-4000-8000-000000000011',
+        1, DATE '2026-01-16', DATE '2026-01-16', 'seed-dn-1', :'actor', :'actor');
+COMMIT;
+
+-- Tenant B holds one contract version of its own, so a leaked predicate shows as a count
+-- above the expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.mem_contract_versions
+    (tenant_id, contract_key, version, body, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'rival.standard', 1, 'Rival terms.',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+
+
+
+
+-- ---------------------------------------------------------------- 73. mem_ and fin_ isolate
+-- MOD-017's twenty-two tables, swept from the catalogue rather than from a list. **A sweep
+-- proves the tables it names**, and a per-table list has to be edited whenever a module adds
+-- a table -- which is the moment an unprotected one slips through. Both runtime roles are
+-- seated, because PostgreSQL ORs permissive policies and a role nobody sits as is a role
+-- nothing is proved about.
+DO $$
+DECLARE
+    wrong text;
+    seen integer;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%');
+    IF seen <> 22 THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: expected 22 MOD-017 tables, found %',
+            seen;
+    END IF;
+    -- Row-level security, forced, on every one. `relkind IN ('r', 'p')` and not just `'r'`:
+    -- a partitioned table holds no storage of its own and is what rows are addressed
+    -- through, and a reviewer used exactly that to walk past a whole sweep once.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%') AND NOT (t.relrowsecurity AND t.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: a MOD-017 table is missing ENABLE or FORCE RLS: %', wrong;
+    END IF;
+    -- **Exactly one permissive policy each.** Comparing a policy's predicate asserts that a
+    -- *matching* policy exists, which an added second policy satisfies trivially while
+    -- reading every tenant.
+    SELECT string_agg(p.tablename || ' (' || p.n || ')', ', ' ORDER BY p.tablename)
+    INTO wrong
+    FROM (SELECT tablename, count(*) AS n FROM pg_policies
+          WHERE schemaname = 'plt01' AND permissive = 'PERMISSIVE'
+            AND (tablename LIKE 'mem\_%' OR tablename LIKE 'fin\_%')
+          GROUP BY tablename) p
+    WHERE p.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: a MOD-017 table has other than one permissive policy: %',
+            wrong;
+    END IF;
+    -- And the predicate is the one shape, on both halves.
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01'
+      AND (p.tablename LIKE 'mem\_%' OR p.tablename LIKE 'fin\_%')
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: a MOD-017 policy predicate is not the approved shape: %', wrong;
+    END IF;
+    -- No table is owned by a runtime role, which FORCE RLS would exempt.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+      AND pg_get_userbyid(t.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 73 FAILED: a MOD-017 table is owned by something else: %',
+            wrong;
+    END IF;
+END $$;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.fin_billing_accounts) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_billing_schedules) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_disputes) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_dunning_cases) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_fiscal_series) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_invoice_lines) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_invoices) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_payment_intents) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_payments) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_refund_requests) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_refunds) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_tax_records) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_agreements) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_grants) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_ledger) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_policies) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_reservations) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_freezes) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_lifecycle_changes) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_membership_terms) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_memberships) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_app read tenant A''s MOD-017 rows from tenant B';
+    END IF;
+    IF (SELECT count(*) FROM plt01.mem_contract_versions) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_app sees % contract versions from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.mem_contract_versions);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.mem_contract_versions
+               WHERE contract_key = 'standard') THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_app read tenant A''s contract version from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.fin_billing_accounts) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_billing_schedules) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_disputes) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_dunning_cases) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_fiscal_series) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_invoice_lines) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_invoices) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_payment_intents) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_payments) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_refund_requests) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_refunds) <> 0 OR 
+       (SELECT count(*) FROM plt01.fin_tax_records) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_agreements) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_grants) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_ledger) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_policies) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_entitlement_reservations) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_freezes) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_lifecycle_changes) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_membership_terms) <> 0 OR 
+       (SELECT count(*) FROM plt01.mem_memberships) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_worker read tenant A''s MOD-017 rows from tenant B';
+    END IF;
+    IF (SELECT count(*) FROM plt01.mem_contract_versions) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_worker sees % contract versions from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.mem_contract_versions);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.mem_contract_versions
+               WHERE contract_key = 'standard') THEN
+        RAISE EXCEPTION
+            'CHECK 73 FAILED: veyro_cp_worker read tenant A''s contract version from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+
+-- ------------------------------------------------------------- 74. fail closed, MOD-017
+-- With no context the predicate is NULL, so a read returns nothing and a write is refused.
+-- **Isolation fails closed, and that is the property to protect.**
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.mem_agreements) <> 0
+       OR (SELECT count(*) FROM plt01.mem_entitlement_ledger) <> 0
+       OR (SELECT count(*) FROM plt01.fin_invoices) <> 0
+       OR (SELECT count(*) FROM plt01.fin_payments) <> 0
+       OR (SELECT count(*) FROM plt01.fin_tax_records) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 74 FAILED: the app role read MOD-017 rows with no context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (tenant_id, contract_key, version, body, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'smuggled', 1, 'terms', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 74 FAILED: a contract version was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.fin_payments) <> 0
+       OR (SELECT count(*) FROM plt01.mem_entitlement_grants) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 74 FAILED: the worker role read MOD-017 rows with no context';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (tenant_id, contract_key, version, body, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'smuggled', 1, 'terms', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 74 FAILED: tenant B wrote a contract version into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------------------- 75. cross-tenant parents, MOD-017
+-- **Every foreign key on this module's tables, compared as a set in both directions.** A
+-- sweep of one kind of reference is not a sweep: MOD-012 swept the tenant-registry key across
+-- every table and *sampled* the intra-module parents, which left two droppable in silence.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.fin_billing_accounts: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_billing_accounts: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.fin_billing_accounts: tenant_id,payer_person_id -> plt01.ppl_persons'),
+        ('plt01.fin_billing_schedules: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_billing_schedules: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_billing_schedules: tenant_id,membership_id -> plt01.mem_memberships'),
+        ('plt01.fin_disputes: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_disputes: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_disputes: tenant_id,payment_id -> plt01.fin_payments'),
+        ('plt01.fin_dunning_cases: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_dunning_cases: tenant_id,invoice_id,billing_account_id -> plt01.fin_invoices'),
+        ('plt01.fin_fiscal_series: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_fiscal_series: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.fin_invoice_lines: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_invoice_lines: tenant_id,invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_invoice_lines: tenant_id,price_resolution_id -> plt01.cat_price_resolutions'),
+        ('plt01.fin_invoice_lines: tenant_id,tax_category_id -> plt01.cat_tax_categories'),
+        ('plt01.fin_invoice_lines: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.fin_invoices: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_invoices: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_invoices: tenant_id,credits_invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_invoices: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.fin_invoices: tenant_id,membership_id -> plt01.mem_memberships'),
+        ('plt01.fin_invoices: tenant_id,schedule_id -> plt01.fin_billing_schedules'),
+        ('plt01.fin_invoices: tenant_id,series_id,legal_entity_id,document_kind -> plt01.fin_fiscal_series'),
+        ('plt01.fin_payment_intents: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_payment_intents: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_payment_intents: tenant_id,invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_payments: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_payments: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_payments: tenant_id,intent_id -> plt01.fin_payment_intents'),
+        ('plt01.fin_payments: tenant_id,invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_refund_requests: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_refund_requests: tenant_id,payment_id -> plt01.fin_payments'),
+        ('plt01.fin_refunds: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_refunds: tenant_id,billing_account_id -> plt01.fin_billing_accounts'),
+        ('plt01.fin_refunds: tenant_id,credit_note_invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_refunds: tenant_id,payment_id -> plt01.fin_payments'),
+        ('plt01.fin_refunds: tenant_id,request_id,requested_by,payment_id,amount_minor,currency -> plt01.fin_refund_requests'),
+        ('plt01.fin_tax_records: tenant_id -> plt01_platform.tenants'),
+        ('plt01.fin_tax_records: tenant_id,invoice_id -> plt01.fin_invoices'),
+        ('plt01.fin_tax_records: tenant_id,legal_entity_id -> plt01.legal_entities'),
+        ('plt01.fin_tax_records: tenant_id,tax_category_id -> plt01.cat_tax_categories'),
+        ('plt01.mem_agreements: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_agreements: tenant_id,contract_version_id -> plt01.mem_contract_versions'),
+        ('plt01.mem_agreements: tenant_id,membership_terms_id -> plt01.mem_membership_terms'),
+        ('plt01.mem_agreements: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.mem_agreements: tenant_id,price_resolution_id -> plt01.cat_price_resolutions'),
+        ('plt01.mem_agreements: tenant_id,signed_by_person_id -> plt01.ppl_persons'),
+        ('plt01.mem_agreements: tenant_id,supersedes_agreement_id -> plt01.mem_agreements'),
+        ('plt01.mem_agreements: tenant_id,variant_id -> plt01.cat_variants'),
+        ('plt01.mem_contract_versions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_entitlement_grants: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_entitlement_grants: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.mem_entitlement_grants: tenant_id,location_id -> plt01.locations'),
+        ('plt01.mem_entitlement_grants: tenant_id,membership_id -> plt01.mem_memberships'),
+        ('plt01.mem_entitlement_grants: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.mem_entitlement_grants: tenant_id,policy_id -> plt01.mem_entitlement_policies'),
+        ('plt01.mem_entitlement_ledger: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_entitlement_ledger: tenant_id,grant_id -> plt01.mem_entitlement_grants'),
+        ('plt01.mem_entitlement_ledger: tenant_id,grant_id,reservation_id -> plt01.mem_entitlement_reservations'),
+        ('plt01.mem_entitlement_policies: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_entitlement_reservations: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_entitlement_reservations: tenant_id,grant_id -> plt01.mem_entitlement_grants'),
+        ('plt01.mem_entitlement_reservations: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.mem_freezes: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_freezes: tenant_id,membership_id -> plt01.mem_memberships'),
+        ('plt01.mem_freezes: tenant_id,requested_by_person_id -> plt01.ppl_persons'),
+        ('plt01.mem_lifecycle_changes: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_lifecycle_changes: tenant_id,invoice_id -> plt01.fin_invoices'),
+        ('plt01.mem_lifecycle_changes: tenant_id,membership_id -> plt01.mem_memberships'),
+        ('plt01.mem_lifecycle_changes: tenant_id,requested_by_person_id -> plt01.ppl_persons'),
+        ('plt01.mem_membership_terms: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_membership_terms: tenant_id,product_id -> plt01.cat_products'),
+        ('plt01.mem_memberships: tenant_id -> plt01_platform.tenants'),
+        ('plt01.mem_memberships: tenant_id,agreement_id -> plt01.mem_agreements'),
+        ('plt01.mem_memberships: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.mem_memberships: tenant_id,membership_id,status_change_id -> plt01.mem_lifecycle_changes')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND (c.relname LIKE 'mem\_%' OR c.relname LIKE 'fin\_%')
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 75 FAILED: MOD-017 foreign keys differ from the expected set: %', wrong;
+    END IF;
+    -- **Every primary key leads with `tenant_id`, asserted with NOT EXISTS first.** A check
+    -- written as an inner join proves nothing about a table that has none: MOD-014 had
+    -- thirteen of sixteen droppable because a keyless table contributed no row.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint c
+                      WHERE c.conrelid = t.oid AND c.contype = 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 75 FAILED: a MOD-017 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    JOIN pg_constraint c ON c.conrelid = t.oid AND c.contype = 'p'
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%') AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 75 FAILED: a MOD-017 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------- 76. MOD-017's columns are pinned
+-- **The column list and the nullability, both as sets, both ways.** Two controls in this
+-- module are an *absence*: `fin_payment_intents` has no column a card number could go in
+-- (paragraph 1597), and the three insert-only ledgers have no column a balance could be
+-- cached in. An absence is exactly what a later migration adds back, and the only thing that
+-- notices is a comparison against the whole list.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.fin_billing_accounts',
+         'account_kind,account_number,billing_account_id,close_reason,'
+         'closed_at,closed_by,correlation_id,created_at,created_by,currency,'
+         'legal_entity_id,payer_person_id,payment_terms_days,status,'
+         'tenant_id,version'),
+        ('plt01.fin_billing_schedules',
+         'amount_minor,billing_account_id,correlation_id,created_at,'
+         'created_by,currency,membership_id,next_due_on,pause_reason,'
+         'paused_at,paused_by,period,remaining_count,schedule_id,'
+         'schedule_kind,status,tenant_id,version'),
+        ('plt01.fin_disputes',
+         'amount_minor,billing_account_id,closed_at,correlation_id,currency,'
+         'dispute_id,dispute_kind,idempotency_key,opened_on,outcome,'
+         'payment_id,provider_case_ref,reason_code,recorded_by,'
+         'respond_due_on,responded_at,responded_by,response_ref,status,'
+         'tenant_id'),
+        ('plt01.fin_dunning_cases',
+         'access_recommendation,attempts,billing_account_id,case_id,'
+         'closed_at,closed_by,correlation_id,idempotency_key,invoice_id,'
+         'last_notification_ref,next_action_on,opened_by,opened_on,'
+         'owner_ref,resolution,stage,status,tenant_id'),
+        ('plt01.fin_fiscal_series',
+         'correlation_id,created_at,created_by,document_kind,last_serial,'
+         'legal_entity_id,series_code,series_id,status,tenant_id'),
+        ('plt01.fin_invoice_lines',
+         'description,gross_minor,invoice_id,line_id,line_number,net_minor,'
+         'price_resolution_id,quantity,tax_category_id,tax_minor,'
+         'tax_rate_bp,tenant_id,unit_net_minor,variant_id'),
+        ('plt01.fin_invoices',
+         'billing_account_id,correlation_id,credits_invoice_id,'
+         'currency,document_kind,document_number,due_on,'
+         'fiscal_ack_ref,fiscal_acked_at,fiscal_exemption_reason,'
+         'fiscal_status,fiscalize_correlation_id,fiscalized_at,'
+         'fiscalized_by,gross_minor,idempotency_key,invoice_id,'
+         'issued_by,issued_on,legal_entity_id,membership_id,net_minor,'
+         'paid_at,payment_status,schedule_id,serial,series_id,'
+         'tax_minor,tenant_id'),
+        ('plt01.fin_payment_intents',
+         'amount_minor,attempts,authenticated_at,billing_account_id,'
+         'correlation_id,created_at,created_by,currency,failure_code,'
+         'failure_detail,idempotency_key,intent_id,invoice_id,method,'
+         'payment_method_ref,provider_key,provider_ref,'
+         'requires_authentication,settled_at,status,tenant_id'),
+        ('plt01.fin_payments',
+         'amount_minor,billing_account_id,correlation_id,currency,intent_id,'
+         'invoice_id,method,payment_id,provider_ref,received_at,recorded_by,'
+         'tenant_id'),
+        ('plt01.fin_refund_requests',
+         'amount_minor,correlation_id,currency,payment_id,reason,request_id,'
+         'requested_at,requested_by,tenant_id'),
+        ('plt01.fin_refunds',
+         'amount_minor,approval_reason,approved_at,approved_by,'
+         'billing_account_id,correlation_id,credit_note_invoice_id,currency,'
+         'failure_code,idempotency_key,payment_id,provider_ref,refund_id,'
+         'request_id,requested_by,settled_at,status,tenant_id'),
+        ('plt01.fin_tax_records',
+         'correlation_id,currency,export_ref,exported_at,exported_by,'
+         'invoice_id,jurisdiction,legal_entity_id,period_end,period_start,'
+         'recorded_at,recorded_by,tax_category_id,tax_minor,tax_rate_bp,'
+         'tax_record_id,taxable_minor,tenant_id'),
+        ('plt01.mem_agreements',
+         'agreement_id,amount_minor,contract_version_id,'
+         'correlation_id,created_at,created_by,currency,ends_on,'
+         'membership_terms_id,minimum_term_ends_on,person_id,'
+         'price_resolution_id,sign_correlation_id,'
+         'signature_evidence_ref,signature_kind,signed_at,signed_by,'
+         'signed_by_person_id,starts_on,status,'
+         'supersedes_agreement_id,tenant_id,variant_id'),
+        ('plt01.mem_contract_versions',
+         'body,cancellation_mode,contract_key,contract_version_id,'
+         'correlation_id,created_at,created_by,freeze_days_per_year,'
+         'grace_days,locale,minimum_term_months,notice_days,'
+         'publish_correlation_id,published_at,published_by,renewal_mode,'
+         'status,tenant_id,version'),
+        ('plt01.mem_entitlement_grants',
+         'brand_id,correlation_id,created_at,created_by,grant_id,'
+         'granted_quantity,is_counted,location_id,membership_id,person_id,'
+         'policy_id,revoke_reason,revoked_at,revoked_by,source_id,'
+         'source_kind,status,tenant_id,usable_from_minute,usable_to_minute,'
+         'valid_from,valid_to,version'),
+        ('plt01.mem_entitlement_ledger',
+         'actor_id,correlation_id,delta,grant_id,movement_id,movement_kind,'
+         'occurred_at,reason,reservation_id,tenant_id'),
+        ('plt01.mem_entitlement_policies',
+         'carryover_limit,carryover_mode,correlation_id,created_at,'
+         'created_by,display_name,entitlement_type,is_counted,policy_id,'
+         'policy_key,reservation_ttl_seconds,status,tenant_id'),
+        ('plt01.mem_entitlement_reservations',
+         'correlation_id,expires_at,grant_id,held_at,held_by,'
+         'idempotency_key,person_id,purpose_kind,purpose_ref,quantity,'
+         'reservation_id,settle_correlation_id,settle_reason,settled_at,'
+         'settled_by,status,tenant_id'),
+        ('plt01.mem_freezes',
+         'correlation_id,counts_against_allowance,decided_at,'
+         'decided_by,ends_on,evidence_ref,extends_term,freeze_id,'
+         'freeze_kind,membership_id,planned_ends_on,reason,'
+         'requested_by_person_id,resume_correlation_id,resumed_at,'
+         'resumed_by,starts_on,tenant_id'),
+        ('plt01.mem_lifecycle_changes',
+         'change_id,change_kind,correlation_id,decided_at,decided_by,'
+         'disclosed_fee_currency,disclosed_fee_minor,effective_on,'
+         'from_status,idempotency_key,invoice_id,membership_id,reason,'
+         'requested_by_person_id,tenant_id,to_status'),
+        ('plt01.mem_membership_terms',
+         'billing_period,contract_key,correlation_id,created_at,created_by,'
+         'installment_count,is_off_peak,membership_kind,membership_terms_id,'
+         'prepaid_days,product_id,status,tenant_id,version'),
+        ('plt01.mem_memberships',
+         'agreement_id,correlation_id,created_at,created_by,'
+         'current_period_end,current_period_start,ends_on,membership_id,'
+         'membership_number,person_id,starts_on,status,status_change_id,'
+         'status_effective_on,tenant_id,version')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 76 FAILED: MOD-017 column lists differ from the pinned set: %', wrong;
+    END IF;
+    -- **Every NOT NULL, because a NOT NULL is what makes a sibling CHECK bite** -- and
+    -- because of MATCH SIMPLE: a NULL in any column of a composite foreign key skips the
+    -- check entirely, so dropping one silently switches off a tenant-carrying parent
+    -- reference that the key-set comparison above cannot see.
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.fin_billing_accounts',
+         'account_kind,account_number,billing_account_id,correlation_id,'
+         'created_at,created_by,currency,legal_entity_id,payer_person_id,'
+         'payment_terms_days,status,tenant_id,version'),
+        ('plt01.fin_billing_schedules',
+         'amount_minor,billing_account_id,correlation_id,created_at,'
+         'created_by,currency,period,schedule_id,schedule_kind,status,'
+         'tenant_id,version'),
+        ('plt01.fin_disputes',
+         'amount_minor,billing_account_id,correlation_id,currency,'
+         'dispute_id,dispute_kind,idempotency_key,opened_on,payment_id,'
+         'provider_case_ref,reason_code,recorded_by,respond_due_on,status,'
+         'tenant_id'),
+        ('plt01.fin_dunning_cases',
+         'access_recommendation,attempts,billing_account_id,case_id,'
+         'correlation_id,idempotency_key,invoice_id,opened_by,opened_on,'
+         'stage,status,tenant_id'),
+        ('plt01.fin_fiscal_series',
+         'correlation_id,created_at,created_by,document_kind,last_serial,'
+         'legal_entity_id,series_code,series_id,status,tenant_id'),
+        ('plt01.fin_invoice_lines',
+         'description,gross_minor,invoice_id,line_id,line_number,net_minor,'
+         'quantity,tax_minor,tax_rate_bp,tenant_id,unit_net_minor'),
+        ('plt01.fin_invoices',
+         'billing_account_id,correlation_id,currency,document_kind,'
+         'document_number,due_on,fiscal_status,gross_minor,idempotency_key,'
+         'invoice_id,issued_by,issued_on,legal_entity_id,net_minor,'
+         'payment_status,serial,series_id,tax_minor,tenant_id'),
+        ('plt01.fin_payment_intents',
+         'amount_minor,attempts,billing_account_id,correlation_id,'
+         'created_at,created_by,currency,idempotency_key,intent_id,method,'
+         'provider_key,requires_authentication,status,tenant_id'),
+        ('plt01.fin_payments',
+         'amount_minor,billing_account_id,correlation_id,currency,intent_id,'
+         'method,payment_id,received_at,recorded_by,tenant_id'),
+        ('plt01.fin_refund_requests',
+         'amount_minor,correlation_id,currency,payment_id,reason,request_id,'
+         'requested_at,requested_by,tenant_id'),
+        ('plt01.fin_refunds',
+         'amount_minor,approval_reason,approved_at,approved_by,'
+         'billing_account_id,correlation_id,currency,idempotency_key,'
+         'payment_id,refund_id,request_id,requested_by,status,tenant_id'),
+        ('plt01.fin_tax_records',
+         'correlation_id,currency,invoice_id,jurisdiction,legal_entity_id,'
+         'period_end,period_start,recorded_at,recorded_by,tax_minor,'
+         'tax_rate_bp,tax_record_id,taxable_minor,tenant_id'),
+        ('plt01.mem_agreements',
+         'agreement_id,amount_minor,contract_version_id,correlation_id,'
+         'created_at,created_by,currency,membership_terms_id,person_id,'
+         'starts_on,status,tenant_id,variant_id'),
+        ('plt01.mem_contract_versions',
+         'body,cancellation_mode,contract_key,contract_version_id,'
+         'correlation_id,created_at,created_by,freeze_days_per_year,'
+         'grace_days,locale,minimum_term_months,notice_days,renewal_mode,'
+         'status,tenant_id,version'),
+        ('plt01.mem_entitlement_grants',
+         'correlation_id,created_at,created_by,grant_id,is_counted,'
+         'person_id,policy_id,source_kind,status,tenant_id,valid_from,'
+         'version'),
+        ('plt01.mem_entitlement_ledger',
+         'actor_id,correlation_id,delta,grant_id,movement_id,movement_kind,'
+         'occurred_at,reason,tenant_id'),
+        ('plt01.mem_entitlement_policies',
+         'carryover_mode,correlation_id,created_at,created_by,display_name,'
+         'entitlement_type,is_counted,policy_id,policy_key,'
+         'reservation_ttl_seconds,status,tenant_id'),
+        ('plt01.mem_entitlement_reservations',
+         'correlation_id,expires_at,grant_id,held_at,held_by,'
+         'idempotency_key,person_id,purpose_kind,quantity,reservation_id,'
+         'status,tenant_id'),
+        ('plt01.mem_freezes',
+         'correlation_id,counts_against_allowance,decided_at,decided_by,'
+         'extends_term,freeze_id,freeze_kind,membership_id,reason,starts_on,'
+         'tenant_id'),
+        ('plt01.mem_lifecycle_changes',
+         'change_id,change_kind,correlation_id,decided_at,decided_by,'
+         'effective_on,from_status,idempotency_key,membership_id,reason,'
+         'tenant_id,to_status'),
+        ('plt01.mem_membership_terms',
+         'billing_period,contract_key,correlation_id,created_at,created_by,'
+         'is_off_peak,membership_kind,membership_terms_id,product_id,status,'
+         'tenant_id,version'),
+        ('plt01.mem_memberships',
+         'agreement_id,correlation_id,created_at,created_by,membership_id,'
+         'membership_number,person_id,starts_on,status,status_effective_on,'
+         'tenant_id,version')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 76 FAILED: MOD-017 nullability differs from the pinned set: %', wrong;
+    END IF;
+    -- **No column that could hold a card number.** Paragraph 1597, as a positive assertion
+    -- rather than as the absence of one: the names a later migration would reach for.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('pan', 'card_number', 'cardholder_name', 'cvv', 'cvc',
+                        'expiry_month', 'expiry_year', 'card_expiry', 'iban',
+                        'account_number_raw', 'sort_code', 'routing_number');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 76 FAILED: a MOD-017 table grew a column for payment instrument data: %',
+            wrong;
+    END IF;
+    -- **And no cached balance.** The entitlement ledger is the only authority on what is
+    -- left, and a column here would be what two concurrent bookings race on.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND t.relname IN ('mem_entitlement_grants', 'mem_entitlement_policies')
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('remaining', 'remaining_quantity', 'balance', 'balance_quantity',
+                        'consumed_quantity', 'times_used');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 76 FAILED: an entitlement table grew a cached balance: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------- 77. MOD-017's privileges
+-- **The UPDATE column grants as a set, per table and per role, compared both ways.** Every
+-- insert-only claim in the migration is a missing grant, and `pg_class.relacl` holds
+-- table-level grants only -- so a column-level widening is invisible to a check that reads
+-- only it. Read through `has_column_privilege` over `pg_attribute`, per role, because
+-- `information_schema` views are filtered to what the current user can see and a check
+-- running as one role proves nothing about the other.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, grantee, cols) AS (VALUES
+        ('fin_billing_accounts', 'veyro_cp_app',
+         'close_reason,closed_at,closed_by,payment_terms_days,status,'
+         'version'),
+        ('fin_billing_accounts', 'veyro_cp_worker',
+         'close_reason,closed_at,closed_by,payment_terms_days,status,'
+         'version'),
+        ('fin_billing_schedules', 'veyro_cp_app',
+         'next_due_on,pause_reason,paused_at,paused_by,remaining_count,'
+         'status,version'),
+        ('fin_billing_schedules', 'veyro_cp_worker',
+         'next_due_on,pause_reason,paused_at,paused_by,remaining_count,'
+         'status,version'),
+        ('fin_disputes', 'veyro_cp_app',
+         'closed_at,outcome,responded_at,responded_by,response_ref,status'),
+        ('fin_disputes', 'veyro_cp_worker',
+         'closed_at,outcome,responded_at,responded_by,response_ref,status'),
+        ('fin_dunning_cases', 'veyro_cp_app',
+         'access_recommendation,attempts,closed_at,closed_by,'
+         'last_notification_ref,next_action_on,owner_ref,resolution,stage,'
+         'status'),
+        ('fin_dunning_cases', 'veyro_cp_worker',
+         'access_recommendation,attempts,closed_at,closed_by,'
+         'last_notification_ref,next_action_on,owner_ref,resolution,stage,'
+         'status'),
+        ('fin_fiscal_series', 'veyro_cp_app',
+         'last_serial,status'),
+        ('fin_fiscal_series', 'veyro_cp_worker',
+         'last_serial,status'),
+        ('fin_invoice_lines', 'veyro_cp_app',
+         '(none)'),
+        ('fin_invoice_lines', 'veyro_cp_worker',
+         '(none)'),
+        ('fin_invoices', 'veyro_cp_app',
+         'fiscal_ack_ref,fiscal_acked_at,fiscal_exemption_reason,'
+         'fiscal_status,fiscalize_correlation_id,fiscalized_at,'
+         'fiscalized_by,paid_at,payment_status'),
+        ('fin_invoices', 'veyro_cp_worker',
+         'fiscal_ack_ref,fiscal_acked_at,fiscal_exemption_reason,'
+         'fiscal_status,fiscalize_correlation_id,fiscalized_at,'
+         'fiscalized_by,paid_at,payment_status'),
+        ('fin_payment_intents', 'veyro_cp_app',
+         'attempts,authenticated_at,failure_code,failure_detail,'
+         'provider_ref,requires_authentication,settled_at,status'),
+        ('fin_payment_intents', 'veyro_cp_worker',
+         'attempts,authenticated_at,failure_code,failure_detail,'
+         'provider_ref,requires_authentication,settled_at,status'),
+        ('fin_payments', 'veyro_cp_app',
+         '(none)'),
+        ('fin_payments', 'veyro_cp_worker',
+         '(none)'),
+        ('fin_refund_requests', 'veyro_cp_app',
+         '(none)'),
+        ('fin_refund_requests', 'veyro_cp_worker',
+         '(none)'),
+        ('fin_refunds', 'veyro_cp_app',
+         'credit_note_invoice_id,failure_code,provider_ref,settled_at,'
+         'status'),
+        ('fin_refunds', 'veyro_cp_worker',
+         'credit_note_invoice_id,failure_code,provider_ref,settled_at,'
+         'status'),
+        ('fin_tax_records', 'veyro_cp_app',
+         'export_ref,exported_at,exported_by'),
+        ('fin_tax_records', 'veyro_cp_worker',
+         'export_ref,exported_at,exported_by'),
+        ('mem_agreements', 'veyro_cp_app',
+         'ends_on,sign_correlation_id,signature_evidence_ref,'
+         'signature_kind,signed_at,signed_by,signed_by_person_id,status'),
+        ('mem_agreements', 'veyro_cp_worker',
+         'ends_on,sign_correlation_id,signature_evidence_ref,'
+         'signature_kind,signed_at,signed_by,signed_by_person_id,status'),
+        ('mem_contract_versions', 'veyro_cp_app',
+         'publish_correlation_id,published_at,published_by,status'),
+        ('mem_contract_versions', 'veyro_cp_worker',
+         'publish_correlation_id,published_at,published_by,status'),
+        ('mem_entitlement_grants', 'veyro_cp_app',
+         'revoke_reason,revoked_at,revoked_by,status,valid_to,version'),
+        ('mem_entitlement_grants', 'veyro_cp_worker',
+         'revoke_reason,revoked_at,revoked_by,status,valid_to,version'),
+        ('mem_entitlement_ledger', 'veyro_cp_app',
+         '(none)'),
+        ('mem_entitlement_ledger', 'veyro_cp_worker',
+         '(none)'),
+        ('mem_entitlement_policies', 'veyro_cp_app',
+         'carryover_limit,carryover_mode,display_name,'
+         'reservation_ttl_seconds,status'),
+        ('mem_entitlement_policies', 'veyro_cp_worker',
+         'carryover_limit,carryover_mode,display_name,'
+         'reservation_ttl_seconds,status'),
+        ('mem_entitlement_reservations', 'veyro_cp_app',
+         'settle_correlation_id,settle_reason,settled_at,settled_by,status'),
+        ('mem_entitlement_reservations', 'veyro_cp_worker',
+         'settle_correlation_id,settle_reason,settled_at,settled_by,status'),
+        ('mem_freezes', 'veyro_cp_app',
+         'ends_on,resume_correlation_id,resumed_at,resumed_by'),
+        ('mem_freezes', 'veyro_cp_worker',
+         'ends_on,resume_correlation_id,resumed_at,resumed_by'),
+        ('mem_lifecycle_changes', 'veyro_cp_app',
+         '(none)'),
+        ('mem_lifecycle_changes', 'veyro_cp_worker',
+         '(none)'),
+        ('mem_membership_terms', 'veyro_cp_app',
+         'billing_period,installment_count,prepaid_days,status,version'),
+        ('mem_membership_terms', 'veyro_cp_worker',
+         'billing_period,installment_count,prepaid_days,status,version'),
+        ('mem_memberships', 'veyro_cp_app',
+         'current_period_end,current_period_start,ends_on,status,'
+         'status_change_id,status_effective_on,version'),
+        ('mem_memberships', 'veyro_cp_worker',
+         'current_period_end,current_period_start,ends_on,status,'
+         'status_change_id,status_effective_on,version')
+    ), actual(tbl, grantee, cols) AS (
+        SELECT t.relname, r.rolname,
+               coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
+        FROM pg_class t
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        LEFT JOIN pg_attribute att
+          ON att.attrelid = t.oid AND att.attnum > 0 AND NOT att.attisdropped
+             AND has_column_privilege(r.rolname, t.oid, att.attname, 'UPDATE')
+        WHERE t.relnamespace = 'plt01'::regnamespace AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+          AND t.relkind IN ('r', 'p')
+        GROUP BY t.relname, r.rolname
+    )
+    SELECT string_agg(tbl || ' / ' || grantee || ': ' || cols, '; '
+                      ORDER BY tbl, grantee)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 77 FAILED: MOD-017 UPDATE column grants differ from the set: %', wrong;
+    END IF;
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES on anything here.
+    SELECT string_agg(t.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class t
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+      AND has_table_privilege(r.grantee, t.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 77 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    -- And nothing is granted to PUBLIC, column-level included.
+    SELECT string_agg(t.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class t
+    JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum > 0
+         AND NOT att.attisdropped
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND (t.relname LIKE 'mem\_%' OR t.relname LIKE 'fin\_%')
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 77 FAILED: a MOD-017 column carries a PUBLIC grant: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants: the three tables that carry no UPDATE at
+-- all are the balance that decides access, the money an accountant reconciles, and the figure
+-- a return was built from.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.mem_entitlement_ledger SET delta = 999;
+        RAISE EXCEPTION 'CHECK 77 FAILED: an entitlement movement was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.fin_payments SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 77 FAILED: a payment was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.fin_tax_records SET tax_minor = 1;
+        RAISE EXCEPTION 'CHECK 77 FAILED: a tax record was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.mem_lifecycle_changes SET reason = 'nothing to see';
+        RAISE EXCEPTION 'CHECK 77 FAILED: a lifecycle change was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.fin_invoices SET gross_minor = 1;
+        RAISE EXCEPTION 'CHECK 77 FAILED: an invoice figure was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.fin_invoices SET serial = 1;
+        RAISE EXCEPTION 'CHECK 77 FAILED: an invoice serial was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.mem_agreements SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 77 FAILED: a signed agreement''s price was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.mem_entitlement_grants SET granted_quantity = 9999;
+        RAISE EXCEPTION 'CHECK 77 FAILED: a granted quantity was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.fin_payments;
+        RAISE EXCEPTION 'CHECK 77 FAILED: a payment was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- **The fiscal serial counter cannot be rewound.** A CHECK cannot see `OLD`, so this is the
+-- one place in the module that needs a trigger: rewinding the counter is how two invoices come
+-- to share a serial, which is a tax offence rather than a bug.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.fin_fiscal_series SET last_serial = 0
+        WHERE series_code = 'SEED';
+        RAISE EXCEPTION 'CHECK 77 FAILED: a fiscal serial counter was rewound';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 77 FAILED%' THEN RAISE; END IF;
+    END;
+    -- **Re-pointing a series is refused by the grant, not by the trigger.** `series_code`,
+    -- `legal_entity_id` and `document_kind` are not in the UPDATE grant at all, so the
+    -- database refuses before the trigger is reached -- which is the stronger of the two
+    -- protections and was not what the first version of this check expected. The trigger's own
+    -- re-point branch is therefore unreachable while the grant stays as it is, and it is kept
+    -- because it is the thing that would still hold if somebody widened the grant.
+    BEGIN
+        UPDATE plt01.fin_fiscal_series SET series_code = 'MOVED'
+        WHERE series_code = 'SEED';
+        RAISE EXCEPTION 'CHECK 77 FAILED: a fiscal series was re-pointed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+
+
+
+-- -------------------------------------------------- 78. MOD-017's constraints, per side
+-- Every CHECK constraint and every unique index on this module's twenty-two tables,
+-- generated from a valid base row per table with exactly one field overridden per case. The
+-- four rules the last four review rounds paid for, all of them the hard way:
+--
+--   * **Each case violates exactly one rule.** A case that passes because a *sibling*
+--     constraint fired first proves nothing about the one it names, and three modules in a row
+--     shipped that shape past a careful read.
+--   * **An equality needs a case per side**, and a disjunction one per conjunct. Dropping a
+--     constraint is caught; *editing* one is a different mutation.
+--   * **A `coalesce(x, '')` needs a NULL case as well as a blank one.** The blank case proves
+--     the `btrim`; only NULL proves the `coalesce`, because a CHECK passes on NULL.
+--   * **Every parent a case names is seeded.** PostgreSQL evaluates a CHECK before the
+--     foreign-key trigger, so a case naming a row that does not exist passes for the wrong
+--     reason -- and keeps passing with its own CHECK dropped, as a `foreign_key_violation` the
+--     handler does not catch.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+
+-- Fixtures this block creates for itself, rolled back with the rest of it. Each exists because
+-- the *seeded* row already occupies the slot a `UNIQUE` would collide with, so every other
+-- case on that table would otherwise prove the unique index instead of the constraint it
+-- names -- MOD-016's finding, designed out here.
+INSERT INTO plt01.cat_products
+    (tenant_id, product_id, product_key, product_type, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000001',
+        'other.membership', 'membership', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.mem_agreements
+    (tenant_id, agreement_id, person_id, membership_terms_id, contract_version_id,
+     variant_id, amount_minor, currency, starts_on, status, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000004',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000004',
+        'dddddddd-1000-4000-8000-000000000003', 'dddddddd-1000-4000-8000-000000000002',
+        4500, 'JOD', DATE '2026-01-01', 'draft',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.fin_refund_requests
+    (tenant_id, request_id, payment_id, amount_minor, currency, reason, requested_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000002',
+        'dddddddd-1000-4000-8000-000000000015', 500, 'JOD', 'undecided',
+        '44444444-4444-4444-8444-444444444444',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.fin_payment_intents
+    (tenant_id, intent_id, billing_account_id, method, provider_key, amount_minor,
+     currency, status, settled_at, idempotency_key, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000006',
+        'dddddddd-1000-4000-8000-00000000000e', 'card', 'acme.payments', 1000, 'JOD',
+        'succeeded', now(), 'fixture-pi-2', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A live hold, because the seeded freeze was resumed and so occupies no slot in the
+-- one-live-hold index -- the case that names that index needs something to collide with.
+INSERT INTO plt01.mem_freezes
+    (tenant_id, membership_id, freeze_kind, starts_on, counts_against_allowance,
+     reason, decided_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111',
+        'dddddddd-1000-4000-8000-000000000006', 'freeze', DATE '2026-09-01', true,
+        'a live hold for the fixture', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A second invoice with no live dunning case, so the dunning cases prove their own
+-- constraints rather than the one-open-case index.
+INSERT INTO plt01.fin_invoices
+    (tenant_id, invoice_id, billing_account_id, legal_entity_id, series_id, serial,
+     document_number, net_minor, tax_minor, gross_minor, currency, issued_on, due_on,
+     idempotency_key, issued_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000005',
+        'dddddddd-1000-4000-8000-00000000000e', 'aaaaaaaa-0000-4000-8000-000000000003',
+        'dddddddd-1000-4000-8000-000000000010', 99, 'SEED-000099', 1000, 160, 1160,
+        'JOD', DATE '2026-02-01', DATE '2026-02-15', 'fixture-inv-2',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+
+-- A second membership with no live freeze, so a freeze case proves its own constraint
+-- rather than the one-live-freeze index -- and a second agreement for it to hang on, because
+-- a membership is one per agreement.
+INSERT INTO plt01.mem_agreements
+    (tenant_id, agreement_id, person_id, membership_terms_id, contract_version_id,
+     variant_id, amount_minor, currency, starts_on, signature_kind,
+     signature_evidence_ref, signed_at, signed_by_person_id, signed_by,
+     sign_correlation_id, status, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-00000000000a',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000004',
+        'dddddddd-1000-4000-8000-000000000003', 'dddddddd-1000-4000-8000-000000000002',
+        4500, 'JOD', DATE '2026-01-01', 'click_through', 's3://signatures/second',
+        now(), 'bbbbbbbb-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333', 'active',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.mem_memberships
+    (tenant_id, membership_id, agreement_id, person_id, membership_number, status,
+     starts_on, status_effective_on, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000009',
+        'dddddddd-2000-4000-8000-00000000000a',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'SEED-0002', 'pending',
+        DATE '2026-01-01', DATE '2026-01-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A credit-note series, because a credit note's `document_kind` has to match its series
+-- through the four-column reference -- so the self-crediting case could not be written
+-- against the seeded invoice series at all.
+INSERT INTO plt01.fin_fiscal_series
+    (tenant_id, series_id, legal_entity_id, series_code, document_kind, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000007',
+        'aaaaaaaa-0000-4000-8000-000000000003', 'CRN', 'credit_note',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A second grant, so a ledger movement can cite a hold taken against a *different* grant --
+-- the mismatched pair the three-column reference exists to refuse.
+INSERT INTO plt01.mem_entitlement_grants
+    (tenant_id, grant_id, person_id, policy_id, source_kind, is_counted,
+     granted_quantity, valid_from, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000008',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'dddddddd-1000-4000-8000-000000000009',
+        'goodwill', true, 5, now(), '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'Standard Terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('   ',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version with blank terms';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'english',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract locale that is not a language tag';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'archived',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'whenever',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract with an unknown renewal mode';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'sometime',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract with an unknown cancellation mode';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                121,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a minimum term past ten years';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                -1,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a negative minimum term';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                366,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a notice period past a year';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                366,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a freeze allowance past a year';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                181,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grace period past six months';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version published by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version naming a publisher but no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract publication with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'published',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version reading published with no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                NULL,
+                NULL,
+                NULL,
+                'manual',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second contract version with the same key and number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'Standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms with a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'subscription',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms with a kind outside COM-01-R01''s ten';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('fortnightly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms with an unknown period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'live',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: membership terms at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                false,
+                'installment',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan of one payment';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                121,
+                false,
+                'installment',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan past ten years of payments';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a recurring membership carrying an installment count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'installment',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan with no count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'prepaid',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a prepaid membership with no prepaid window';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                30,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a recurring membership carrying a prepaid window';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'prepaid',
+                0,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a prepaid membership covering no days';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'off_peak',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an off-peak membership that is not off-peak';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_membership_terms
+            (billing_period, contract_key, correlation_id, created_by,
+             installment_count, is_off_peak, membership_kind,
+             prepaid_days, product_id, status, tenant_id, version)
+        VALUES ('monthly',
+                'standard',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                false,
+                'recurring',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000001',
+                'draft',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second set of membership terms on one product';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (-1,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement with a negative price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (1000000000001,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement past the sane price bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://signatures/other',
+                'click_through',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'cancelled',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                DATE '2025-01-01',
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2025-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement whose minimum term ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://x',
+                'drawn',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement signed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://x',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature with no kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'drawn',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature citing no evidence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                's3://x',
+                'drawn',
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature with no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '4242424242424242 exp 09/29',
+                'drawn',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature whose evidence reference is not a locator';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'signed',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement reading signed with no signature';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://x',
+                'telepathy',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'drawn',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'void',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature citing blank evidence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'ab',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership number too short to read out';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'lower-case-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lowercase membership number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                DATE '2025-01-01',
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2025-12-01',
+                DATE '2026-01-01',
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing period ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                DATE '2026-01-01',
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing period with only one end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                NULL,
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing period with only an end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'active',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership past pending with no recorded change';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-1000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'OTHER-0002',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second membership on one agreement';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_memberships
+            (agreement_id, correlation_id, created_by,
+             current_period_end, current_period_start, ends_on,
+             membership_number, person_id, starts_on, status,
+             status_change_id, status_effective_on, tenant_id, version)
+        VALUES ('dddddddd-2000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                NULL,
+                'SEED-0001',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'pending',
+                NULL,
+                DATE '2026-01-01',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second membership with the same number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('teleport',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'lapsed',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change from an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'lapsed');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change to an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'active');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a freeze that moved nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                '  ',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                '  ',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lifecycle change with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                1000,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a disclosed fee with no currency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a currency with no disclosed fee';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                -1,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a negative disclosed fee';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                1000000000001,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a disclosed fee past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                1000,
+                DATE '2026-03-01',
+                'active',
+                'other-change-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a disclosed fee in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_lifecycle_changes
+            (change_kind, correlation_id, decided_by,
+             disclosed_fee_currency, disclosed_fee_minor, effective_on,
+             from_status, idempotency_key, invoice_id, membership_id,
+             reason, requested_by_person_id, tenant_id, to_status)
+        VALUES ('freeze',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                DATE '2026-03-01',
+                'active',
+                'seed-act-1',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'holiday',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'frozen');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second lifecycle change with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'sabbatical',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2025-01-01',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                '  ',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                '  ',
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold citing blank evidence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'medical_hold',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a medical hold citing no evidence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold resumed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a hold naming a resumer but no resume';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a resume with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a resumed hold left open';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-1000-4000-8000-000000000006',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second live hold on one membership';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'Other Classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an entitlement policy key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an entitlement policy with a blank name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'parking',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an entitlement type outside COM-01-R03''s nine';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'paused',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an entitlement policy with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                29,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation window under thirty seconds';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                86401,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation window over a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'forever',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an unknown carryover mode';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'capped',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a capped carryover with no cap';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (5,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a carryover cap on a mode that ignores it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (0,
+                'capped',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a carryover cap of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (100001,
+                'capped',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a carryover cap past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'unlimited',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                false,
+                'other.classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a carryover on an uncounted entitlement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_policies
+            (carryover_limit, carryover_mode, correlation_id,
+             created_by, display_name, entitlement_type, is_counted,
+             policy_key, reservation_ttl_seconds, status, tenant_id)
+        VALUES (NULL,
+                'none',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Other',
+                'class_credit',
+                true,
+                'classes',
+                900,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second entitlement policy with the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'telepathy',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'paused',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                TIMESTAMPTZ '2025-01-01 00:00:00+00',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant expiring before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                false,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an unlimited grant carrying a quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a counted grant with no quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                100001,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant past the sane quantity bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000006',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a goodwill grant naming a membership';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'membership',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership-sourced grant naming no membership';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                540,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a time window with only one end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                1020,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a time window with only a closing end';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                -1,
+                600,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an off-peak window starting before midnight';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1440,
+                1440,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a time window opening past midnight';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                540,
+                1441,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a time window closing past midnight';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1020,
+                540,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a time window closing before it opens';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                'leaked',
+                now(),
+                NULL,
+                NULL,
+                'goodwill',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant revoked by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'goodwill',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant revoked for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'goodwill',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant revoked with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                'leaked',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a live grant naming a revoker';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'goodwill',
+                'revoked',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant reading revoked with no revocation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_grants
+            (brand_id, correlation_id, created_by, granted_quantity,
+             is_counted, location_id, membership_id, person_id,
+             policy_id, revoke_reason, revoked_at, revoked_by,
+             source_id, source_kind, status, tenant_id,
+             usable_from_minute, usable_to_minute, valid_from, valid_to,
+             version)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10,
+                true,
+                NULL,
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'dddddddd-1000-4000-8000-000000000009',
+                'leaked',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'goodwill',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                NULL,
+                NULL,
+                TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                NULL,
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an active grant carrying a revocation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'lapsed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'telepathy',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation for an unknown purpose';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                '  ',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation with a blank purpose reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                0,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1001,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation past the sane quantity bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() - interval '1 minute',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation expiring before it was taken';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                NULL,
+                'consumed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation settled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'consumed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a settlement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'consumed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation past held with no settlement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a held reservation carrying a settlement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'released',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a release stating no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'released',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a release stating a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'other-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                '  ',
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation with a blank settle reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_reservations
+            (correlation_id, expires_at, grant_id, held_at, held_by,
+             idempotency_key, person_id, purpose_kind, purpose_ref,
+             quantity, settle_correlation_id, settle_reason, settled_at,
+             settled_by, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                now() + interval '15 minutes',
+                'dddddddd-1000-4000-8000-00000000000a',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'seed-res-1',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                'booking',
+                NULL,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'held',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second reservation with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'teleport',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a ledger movement of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                100001,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'adjustment',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a ledger movement past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -100001,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'adjustment',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a ledger movement past the sane negative bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'adjustment',
+                now(),
+                '  ',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a ledger movement with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -5,
+                'dddddddd-2000-4000-8000-000000000008',
+                'grant',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant that took from the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'carryover',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a carryover that took from the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'release',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a release that took from the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'reserve',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation that added to the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'revoke',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a revocation that added to the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'grant_expired',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lapsed grant that added to the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'reservation_expired',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lapsed hold that took from the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'consume',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a consumption that moved the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'adjustment',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an adjustment that moved nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'reserve',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation movement naming no reservation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'adjustment',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a grant movement naming a reservation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('trust',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ab',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account number too short to read out';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'lower-1',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lowercase billing account number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'frozen',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                181,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: payment terms past six months';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                -1,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: negative payment terms';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                'left',
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account closed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account closed for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account closed with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                'left',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a live billing account naming a closer';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'closed',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing account reading closed with no closure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0002',
+                'left',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an active billing account carrying a closure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_accounts
+            (account_kind, account_number, close_reason, closed_at,
+             closed_by, correlation_id, created_by, currency,
+             legal_entity_id, payer_person_id, payment_terms_days,
+             status, tenant_id, version)
+        VALUES ('individual',
+                'ACC-0001',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                0,
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second billing account with the same number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'whenever',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'fortnightly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule with an unknown period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'done',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule for nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (1000000000001,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule past the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a billing schedule at version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                -1,
+                'installment',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan with a negative count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                1001,
+                'installment',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan past the sane count bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                6,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a recurring schedule carrying a count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'installment',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an installment plan with no count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an active schedule with no next due date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'frozen',
+                now(),
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'paused',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a schedule paused by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'monthly',
+                NULL,
+                'recurring',
+                'paused',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a schedule paused for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'monthly',
+                NULL,
+                'recurring',
+                'paused',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a schedule paused with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                'frozen',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a live schedule naming a pauser';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'monthly',
+                NULL,
+                'recurring',
+                'paused',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a schedule reading paused with no pause';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_billing_schedules
+            (amount_minor, billing_account_id, correlation_id,
+             created_by, currency, membership_id, next_due_on,
+             pause_reason, paused_at, paused_by, period,
+             remaining_count, schedule_kind, status, tenant_id, version)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                DATE '2026-03-01',
+                'frozen',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'monthly',
+                NULL,
+                'recurring',
+                'active',
+                '11111111-1111-4111-8111-111111111111',
+                1);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an active schedule carrying a pause';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'invoice',
+                0,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'lower',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal series code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'invoice',
+                0,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'TOOLONGFORASERIESCODE',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal series code that is too long';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'memo',
+                0,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'OTH',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal series for an unknown document kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'invoice',
+                0,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'OTH',
+                'paused',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal series with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'invoice',
+                -1,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'OTH',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal serial counter below zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_fiscal_series
+            (correlation_id, created_by, document_kind, last_serial,
+             legal_entity_id, series_code, status, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'invoice',
+                0,
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                'SEED',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second fiscal series with the same code for one legal entity';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'ab',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice number too short to print';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'lower-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a lowercase invoice number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                0,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with serial zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'jod',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                '  ',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-01-01',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice due before it was issued';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                719,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                -1,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with a negative net';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                4499,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                -1,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with negative tax';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                9999,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice whose parts do not add up';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                1000000000721,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                1000000000001,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice past the sane net bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                1000000004501,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                1000000000001,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice past the sane tax bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'disputed',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with an unknown payment status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'filed',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice with an unknown fiscal status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'paid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice reading paid with no payment time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                now(),
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an unpaid invoice carrying a payment time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'fiscal_complete',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice reading fiscally complete with no acknowledgement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                'JF-1',
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal acknowledgement with no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                now(),
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal acknowledgement time with no reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                '  ',
+                now(),
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a blank fiscal acknowledgement reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-000000000011',
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an ordinary invoice crediting another invoice';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                1,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second invoice with the same serial in one series';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000001',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second invoice with the same number for one legal entity';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'seed-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second invoice with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                0,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('  ',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line describing nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                0,
+                NULL,
+                0,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line for no units';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1000001160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000001000,
+                NULL,
+                1000001,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line past the sane quantity bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                -1,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                -1,
+                NULL,
+                1,
+                NULL,
+                0,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                -1,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line with a negative unit price';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1000000000161,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000000000001,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000000000001,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line past the sane unit bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1000,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                2,
+                NULL,
+                0,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line with a negative net';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                999,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                -1,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line with negative tax';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                10001,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line taxed past one hundred percent';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                -1,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line taxed at a negative rate';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                2,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line whose net is not its unit price times its quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                9999,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line whose parts do not add up';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                1160,
+                'dddddddd-1000-4000-8000-000000000011',
+                1,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second invoice line with the same number on one invoice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'barter',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent by an unknown method';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'Acme Payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent naming a provider key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                '  ',
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent with a blank provider reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                '  ',
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent with a blank method token';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (0,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent for nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (1000000000001,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent past the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'declined',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                -1,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent with a negative attempt count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                101,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent past the sane attempt bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                '  ',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'Card Stolen',
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a failure code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                '  ',
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a blank failure detail';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                now(),
+                'failed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a failed payment intent carrying no failure code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'succeeded',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a settled payment intent with no settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a pending payment intent carrying a settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                now(),
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment intent authenticated without being asked to';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'seed-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                NULL,
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second payment intent with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payment_intents
+            (amount_minor, attempts, authenticated_at,
+             billing_account_id, correlation_id, created_by, currency,
+             failure_code, failure_detail, idempotency_key, invoice_id,
+             method, payment_method_ref, provider_key, provider_ref,
+             requires_authentication, settled_at, status, tenant_id)
+        VALUES (5220,
+                0,
+                NULL,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                'other-pi-1',
+                NULL,
+                'card',
+                NULL,
+                'acme.payments',
+                'ch_seed_1',
+                false,
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second payment intent with the same provider reference';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (1000,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-2000-4000-8000-000000000006',
+                NULL,
+                'barter',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment by an unknown method';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-2000-4000-8000-000000000006',
+                NULL,
+                'card',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment of nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (1000000000001,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-2000-4000-8000-000000000006',
+                NULL,
+                'card',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment past the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (1000,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'dddddddd-2000-4000-8000-000000000006',
+                NULL,
+                'card',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (1000,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-2000-4000-8000-000000000006',
+                NULL,
+                'card',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a payment with a blank provider reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_payments
+            (amount_minor, billing_account_id, correlation_id, currency,
+             intent_id, invoice_id, method, provider_ref, received_at,
+             recorded_by, tenant_id)
+        VALUES (1000,
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-1000-4000-8000-000000000014',
+                NULL,
+                'card',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second payment from one intent';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refund_requests
+            (amount_minor, correlation_id, currency, payment_id, reason,
+             requested_at, requested_by, tenant_id)
+        VALUES (0,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-1000-4000-8000-000000000015',
+                'goodwill',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund request for nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refund_requests
+            (amount_minor, correlation_id, currency, payment_id, reason,
+             requested_at, requested_by, tenant_id)
+        VALUES (1000000000001,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-1000-4000-8000-000000000015',
+                'goodwill',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund request past the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refund_requests
+            (amount_minor, correlation_id, currency, payment_id, reason,
+             requested_at, requested_by, tenant_id)
+        VALUES (500,
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'dddddddd-1000-4000-8000-000000000015',
+                'goodwill',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund request in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refund_requests
+            (amount_minor, correlation_id, currency, payment_id, reason,
+             requested_at, requested_by, tenant_id)
+        VALUES (500,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'dddddddd-1000-4000-8000-000000000015',
+                '  ',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund request with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund approved for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                '  ',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                '  ',
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund with a blank provider reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'Card Stolen',
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund failure code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                now(),
+                'failed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a failed refund carrying no failure code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'succeeded',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a settled refund with no settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                now(),
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a pending refund carrying a settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '44444444-4444-4444-8444-444444444444',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a refund approved by the person who requested it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (1000,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'other-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000016',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second refund deciding one request';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_refunds
+            (amount_minor, approval_reason, approved_at, approved_by,
+             billing_account_id, correlation_id, credit_note_invoice_id,
+             currency, failure_code, idempotency_key, payment_id,
+             provider_ref, request_id, requested_by, settled_at, status,
+             tenant_id)
+        VALUES (500,
+                'agreed',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                NULL,
+                'seed-rf-1',
+                'dddddddd-1000-4000-8000-000000000015',
+                NULL,
+                'dddddddd-2000-4000-8000-000000000002',
+                '44444444-4444-4444-8444-444444444444',
+                NULL,
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second refund with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'complaint',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                '  ',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute with a blank case reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'Fraud Claim',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute reason code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute over nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (1000000000001,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute past the sane amount bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'jod',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute whose deadline precedes it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'appealed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                'appealed',
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute with an unknown outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                '  ',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute with a blank response reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                now(),
+                NULL,
+                's3://r',
+                'responded',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute answered by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://r',
+                'responded',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute response with no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'responded',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute response citing nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'won',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute in a terminal status with no outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                'open',
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an open dispute carrying an outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'won',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a closed dispute with no outcome';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                'won',
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'won',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a decided dispute with no closing time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an undecided dispute carrying a closing time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                'lost',
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'won',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dispute whose outcome contradicts its status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'other-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-seed-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second dispute with the same case reference';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_disputes
+            (amount_minor, billing_account_id, closed_at,
+             correlation_id, currency, dispute_kind, idempotency_key,
+             opened_on, outcome, payment_id, provider_case_ref,
+             reason_code, recorded_by, respond_due_on, responded_at,
+             responded_by, response_ref, status, tenant_id)
+        VALUES (5220,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'chargeback',
+                'seed-dp-1',
+                DATE '2026-03-01',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000015',
+                'case-other-1',
+                'fraud',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-15',
+                NULL,
+                NULL,
+                NULL,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second dispute with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                0,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case at stage zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                11,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case past the last stage';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'closed',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                -1,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case with a negative attempt count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                101,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case past the sane attempt bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('expel',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case recommending an unknown access consequence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                '  ',
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case with a blank notification reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                '  ',
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case with a blank owner';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an open dunning case with no next action';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                'paid',
+                1,
+                'recovered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case closed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                '  ',
+                1,
+                'recovered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case closed with a blank resolution';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'recovered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case closed with a null resolution';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                'paid',
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an open dunning case naming a closer';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'recovered',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a dunning case reading recovered with no closure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                'paid',
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an open dunning case carrying a closure';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'seed-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second dunning case with the same handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-2',
+                'dddddddd-1000-4000-8000-000000000011',
+                NULL,
+                DATE '2026-03-05',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'open',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second open dunning case on one invoice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'jo',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record for a jurisdiction that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                10001,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record past one hundred percent';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                -1,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record at a negative rate';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                -2,
+                500,
+                -1,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record with a negative taxable amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                500,
+                500,
+                1000000000001,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record past the sane taxable bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                -1,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record with negative tax';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                1000000000001,
+                500,
+                1000000000002,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record past the sane tax bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                5000,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record taxing more than the taxable amount';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'jod',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record in a currency that is not an iso code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2025-12-01',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax period ending before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'x1',
+                now(),
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record exported by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record exported under a blank reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record exported under a null reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                'x1',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                500,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax record naming an exporter but no export';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_tax_records
+            (correlation_id, currency, export_ref, exported_at,
+             exported_by, invoice_id, jurisdiction, legal_entity_id,
+             period_end, period_start, recorded_at, recorded_by,
+             tax_category_id, tax_minor, tax_rate_bp, taxable_minor,
+             tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-1000-4000-8000-000000000011',
+                'JO',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                DATE '2026-01-31',
+                DATE '2026-01-01',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                225,
+                1600,
+                4500,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second tax record at the same rate for one invoice and jurisdiction';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (agreement_id, amount_minor, contract_version_id,
+             correlation_id, created_by, currency, ends_on,
+             membership_terms_id, minimum_term_ends_on, person_id,
+             price_resolution_id, sign_correlation_id,
+             signature_evidence_ref, signature_kind, signed_at,
+             signed_by, signed_by_person_id, starts_on, status,
+             supersedes_agreement_id, tenant_id, variant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-01-01',
+                'draft',
+                'dddddddd-3000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement superseding itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, invoice_id,
+             issued_by, issued_on, legal_entity_id, membership_id,
+             net_minor, paid_at, payment_status, schedule_id, serial,
+             series_id, tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-3000-4000-8000-000000000002',
+                'JOD',
+                'credit_note',
+                'CRN-000001',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'self-credit',
+                'dddddddd-3000-4000-8000-000000000002',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                1,
+                'dddddddd-2000-4000-8000-000000000007',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a credit note crediting itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                's3://signatures/other',
+                'click_through',
+                now(),
+                NULL,
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'signed',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature recorded with no actor';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                's3://signatures/other',
+                'click_through',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                DATE '2026-01-01',
+                'signed',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a signature recorded with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_agreements
+            (amount_minor, contract_version_id, correlation_id,
+             created_by, currency, ends_on, membership_terms_id,
+             minimum_term_ends_on, person_id, price_resolution_id,
+             sign_correlation_id, signature_evidence_ref,
+             signature_kind, signed_at, signed_by, signed_by_person_id,
+             starts_on, status, supersedes_agreement_id, tenant_id,
+             variant_id)
+        VALUES (4500,
+                'dddddddd-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'JOD',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                DATE '2027-01-01',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                DATE '2026-01-01',
+                'draft',
+                NULL,
+                '11111111-1111-4111-8111-111111111111',
+                'dddddddd-1000-4000-8000-000000000002');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an agreement naming a signature recorder but no signature';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'submitted',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal transition recorded with no actor';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'submitted',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal transition recorded with no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'submitted',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a fiscal transition recorded with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'submitted',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice whose fiscal state moved with nobody''s name on it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'not_required',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a document declared outside the regime with no reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                '  ',
+                'not_required',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a document declared outside the regime with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                'out of scope',
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5220,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice inside the regime claiming an exemption reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_contract_versions
+            (body, cancellation_mode, contract_key, correlation_id,
+             created_by, freeze_days_per_year, grace_days, locale,
+             minimum_term_months, notice_days, publish_correlation_id,
+             published_at, published_by, renewal_mode, status,
+             tenant_id, version)
+        VALUES ('Other terms.',
+                'end_of_term',
+                'other.terms',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                30,
+                7,
+                'en',
+                12,
+                30,
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'manual',
+                'published',
+                '11111111-1111-4111-8111-111111111111',
+                2);
+        RAISE EXCEPTION 'CHECK 78 FAILED: a contract version published by its own author';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-05-07',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-04-01',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a freeze planned to end before it begins';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_freezes
+            (correlation_id, counts_against_allowance, decided_by,
+             ends_on, evidence_ref, extends_term, freeze_kind,
+             membership_id, planned_ends_on, reason,
+             requested_by_person_id, resume_correlation_id, resumed_at,
+             resumed_by, starts_on, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                true,
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-04-28',
+                NULL,
+                true,
+                'freeze',
+                'dddddddd-2000-4000-8000-000000000009',
+                DATE '2026-05-07',
+                'holiday',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                DATE '2026-05-01',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a freeze that ended before it began';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                5,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'grant',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a second opening movement on one grant';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'reserve',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a reservation movement that holds nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'dddddddd-2000-4000-8000-000000000008',
+                'grant',
+                now(),
+                'a correction',
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an opening movement that grants nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'release',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a release that returns nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'dddddddd-1000-4000-8000-00000000000a',
+                'consume',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a consumption that adds to the balance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.mem_entitlement_ledger
+            (actor_id, correlation_id, delta, grant_id, movement_kind,
+             occurred_at, reason, reservation_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'dddddddd-2000-4000-8000-000000000008',
+                'release',
+                now(),
+                'a correction',
+                'dddddddd-1000-4000-8000-00000000000b',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a movement crediting one grant for another grant''s hold';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                6000,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice charging more than its parts come to';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoices
+            (billing_account_id, correlation_id, credits_invoice_id,
+             currency, document_kind, document_number, due_on,
+             fiscal_ack_ref, fiscal_acked_at, fiscal_exemption_reason,
+             fiscal_status, fiscalize_correlation_id, fiscalized_at,
+             fiscalized_by, gross_minor, idempotency_key, issued_by,
+             issued_on, legal_entity_id, membership_id, net_minor,
+             paid_at, payment_status, schedule_id, serial, series_id,
+             tax_minor, tenant_id)
+        VALUES ('dddddddd-1000-4000-8000-00000000000e',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'JOD',
+                'invoice',
+                'SEED-000002',
+                DATE '2026-02-15',
+                NULL,
+                NULL,
+                NULL,
+                'pending',
+                NULL,
+                NULL,
+                NULL,
+                5000,
+                'other-inv-1',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-02-01',
+                'aaaaaaaa-0000-4000-8000-000000000003',
+                NULL,
+                4500,
+                NULL,
+                'unpaid',
+                NULL,
+                2,
+                'dddddddd-1000-4000-8000-000000000010',
+                720,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice charging less than its parts come to';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                2000,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line charging more than its parts come to';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                500,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                1000,
+                NULL,
+                1,
+                NULL,
+                160,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line charging less than its parts come to';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_invoice_lines
+            (description, gross_minor, invoice_id, line_number,
+             net_minor, price_resolution_id, quantity, tax_category_id,
+             tax_minor, tax_rate_bp, tenant_id, unit_net_minor,
+             variant_id)
+        VALUES ('A second line',
+                2000,
+                'dddddddd-1000-4000-8000-000000000011',
+                2,
+                2000,
+                NULL,
+                1,
+                NULL,
+                0,
+                1600,
+                '11111111-1111-4111-8111-111111111111',
+                1000,
+                NULL);
+        RAISE EXCEPTION 'CHECK 78 FAILED: an invoice line whose net is more than its unit price times its quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.fin_dunning_cases
+            (access_recommendation, attempts, billing_account_id,
+             closed_at, closed_by, correlation_id, idempotency_key,
+             invoice_id, last_notification_ref, next_action_on,
+             opened_by, opened_on, owner_ref, resolution, stage, status,
+             tenant_id)
+        VALUES ('none',
+                0,
+                'dddddddd-1000-4000-8000-00000000000e',
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'other-dn-1',
+                'dddddddd-2000-4000-8000-000000000005',
+                NULL,
+                DATE '2026-03-01',
+                '33333333-3333-4333-8333-333333333333',
+                DATE '2026-03-01',
+                NULL,
+                NULL,
+                1,
+                'paused',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 78 FAILED: a paused dunning case still carrying a next action';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Two rules an INSERT cannot reach, proved by an UPDATE instead.**
+    --
+    -- `mem_memberships_status` is a domain over eight values, and every value but `pending`
+    -- needs a `status_change_id` -- a three-column reference including the membership's own
+    -- id, which does not exist until the row does. So an insert with an unknown status always
+    -- trips `status_has_a_change` first, and the domain had no isolating case. The seeded
+    -- membership already has its change, so moving *it* to an unknown status violates the
+    -- domain and nothing else.
+    BEGIN
+        UPDATE plt01.mem_memberships SET status = 'lapsed'
+        WHERE membership_id = 'dddddddd-1000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 78 FAILED: a membership moved to an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- And a tax record's export marker is final, which is a trigger rather than a CHECK
+    -- because the fact being protected is the value the row *used* to have. Clearing it
+    -- returns the row to the unexported index and the liability is counted twice in two
+    -- returns, with the row afterwards reading as a single clean export.
+    BEGIN
+        UPDATE plt01.fin_tax_records
+        SET exported_at = now(), exported_by = '33333333-3333-4333-8333-333333333333',
+            export_ref = 'first-export'
+        WHERE tax_record_id = 'dddddddd-1000-4000-8000-000000000013';
+        UPDATE plt01.fin_tax_records SET exported_at = NULL, exported_by = NULL,
+            export_ref = NULL
+        WHERE tax_record_id = 'dddddddd-1000-4000-8000-000000000013';
+        RAISE EXCEPTION 'CHECK 78 FAILED: a tax export marker was cleared';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF SQLERRM NOT LIKE 'CHECK 78 FAILED%' THEN NULL; ELSE RAISE; END IF;
+    END;
+END $$;
+ROLLBACK;
+
+
+\echo 'tenant isolation: 78/78 checks passed'

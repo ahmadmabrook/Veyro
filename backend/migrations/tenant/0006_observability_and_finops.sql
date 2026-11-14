@@ -145,11 +145,11 @@ CREATE TABLE plt01.ops_objectives (
     CONSTRAINT ops_objectives_dimensions_is_an_object
         CHECK (jsonb_typeof(dimensions) = 'object'),
     CONSTRAINT ops_objectives_window_sane CHECK (window_hours BETWEEN 1 AND 8760),
-    CONSTRAINT ops_objectives_owner_not_blank CHECK (length(btrim(owner)) > 0),
+    CONSTRAINT ops_objectives_owner_not_blank CHECK (owner ~ '[^[:space:]]'),
     -- Paragraph 3509: "alerts must be actionable, owned and tied to user/business impact". A
     -- runbook reference is the actionable half, and an objective with none produces an alert
     -- whose recipient has nothing to do.
-    CONSTRAINT ops_objectives_runbook_not_blank CHECK (length(btrim(runbook_ref)) > 0),
+    CONSTRAINT ops_objectives_runbook_not_blank CHECK (runbook_ref ~ '[^[:space:]]'),
     CONSTRAINT ops_objectives_retirement_attributed CHECK (
         (retired_at IS NULL AND retired_by IS NULL AND retire_correlation_id IS NULL)
         OR (retired_at IS NOT NULL AND retired_by IS NOT NULL
@@ -192,7 +192,7 @@ CREATE TABLE plt01.ops_synthetic_checks (
     CONSTRAINT ops_synthetic_workflow CHECK (workflow IN (
         'login', 'member_search', 'booking', 'payment', 'pos', 'check_in', 'webhook',
         'messaging')),
-    CONSTRAINT ops_synthetic_description_not_blank CHECK (length(btrim(description)) > 0),
+    CONSTRAINT ops_synthetic_description_not_blank CHECK (description ~ '[^[:space:]]'),
     CONSTRAINT ops_synthetic_interval_sane
         CHECK (interval_seconds BETWEEN 30 AND 86400),
     CONSTRAINT ops_synthetic_enabled_consistent CHECK (enabled = (disabled_at IS NULL)),
@@ -234,10 +234,10 @@ CREATE TABLE plt01.ops_synthetic_results (
     CONSTRAINT ops_synthetic_results_outcome CHECK (outcome IN ('passed', 'failed')),
     CONSTRAINT ops_synthetic_results_duration_sane CHECK (duration_ms >= 0),
     -- A failure with no detail is an alert nobody can act on, which paragraph 3509 forbids.
-    -- `coalesce` is load-bearing: `length(btrim(NULL)) > 0` is NULL and a CHECK passes on NULL,
+    -- `coalesce` is load-bearing: `NULL ~ '[^[:space:]]'` is NULL and a CHECK passes on NULL,
     -- which is how MOD-009's legal-hold constraint admitted the row it existed to refuse.
     CONSTRAINT ops_synthetic_results_failure_explained CHECK (
-        outcome <> 'failed' OR length(btrim(coalesce(detail, ''))) > 0)
+        outcome <> 'failed' OR coalesce(detail, '') ~ '[^[:space:]]')
 );
 CREATE INDEX ops_synthetic_results_recent
     ON plt01.ops_synthetic_results (tenant_id, check_id, observed_at DESC);
@@ -276,7 +276,7 @@ CREATE TABLE plt01.ops_capacity_forecasts (
     CONSTRAINT ops_capacity_values_sane
         CHECK (current_value >= 0 AND projected_value >= 0),
     -- A forecast with no stated basis is a number somebody will treat as a measurement.
-    CONSTRAINT ops_capacity_basis_not_blank CHECK (length(btrim(basis)) > 0),
+    CONSTRAINT ops_capacity_basis_not_blank CHECK (basis ~ '[^[:space:]]'),
     CONSTRAINT ops_capacity_limit_positive CHECK (limit_value IS NULL OR limit_value > 0),
     -- A headroom is derived from the limit, so a projection far past it produces a large
     -- negative number; this bounds it into the column rather than letting the arithmetic
@@ -327,7 +327,7 @@ CREATE TABLE plt01.ops_cost_records (
         'domain', 'environment', 'ai_model', 'messaging', 'storage', 'integration',
         'support', 'compute')),
     CONSTRAINT ops_cost_dimension_value_not_blank
-        CHECK (length(btrim(dimension_value)) > 0),
+        CHECK (dimension_value ~ '[^[:space:]]'),
     CONSTRAINT ops_cost_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT ops_cost_period_ordered CHECK (period_end >= period_start),
     -- The one place a cost may be zero and not a mistake is a correction that cancels itself,
@@ -335,7 +335,7 @@ CREATE TABLE plt01.ops_cost_records (
     CONSTRAINT ops_cost_amount_not_zero CHECK (amount_minor <> 0),
     -- A figure somebody supplied has to say where it came from: there is no cloud bill in this
     -- repository, so provenance is the only thing distinguishing a measurement from a guess.
-    CONSTRAINT ops_cost_source_not_blank CHECK (length(btrim(source)) > 0),
+    CONSTRAINT ops_cost_source_not_blank CHECK (source ~ '[^[:space:]]'),
     CONSTRAINT ops_cost_no_self_correction CHECK (
         corrects_cost_record_id IS NULL OR corrects_cost_record_id <> cost_record_id)
 );
@@ -376,12 +376,12 @@ CREATE TABLE plt01.ops_budgets (
     -- or the budget would match every cost in that dimension and read as a total.
     CONSTRAINT ops_budgets_value_matches_dimension CHECK (
         (dimension = 'total' AND dimension_value IS NULL)
-        OR (dimension <> 'total' AND length(btrim(coalesce(dimension_value, ''))) > 0)),
+        OR (dimension <> 'total' AND coalesce(dimension_value, '') ~ '[^[:space:]]')),
     CONSTRAINT ops_budgets_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT ops_budgets_amount_positive CHECK (amount_minor > 0),
     CONSTRAINT ops_budgets_period CHECK (period IN ('monthly', 'quarterly', 'annual')),
     CONSTRAINT ops_budgets_warn_sane CHECK (warn_at_bp BETWEEN 1 AND 10000),
-    CONSTRAINT ops_budgets_owner_not_blank CHECK (length(btrim(owner)) > 0),
+    CONSTRAINT ops_budgets_owner_not_blank CHECK (owner ~ '[^[:space:]]'),
     CONSTRAINT ops_budgets_retirement_attributed CHECK (
         (retired_at IS NULL AND retired_by IS NULL AND retire_correlation_id IS NULL)
         OR (retired_at IS NOT NULL AND retired_by IS NOT NULL
@@ -417,7 +417,7 @@ CREATE TABLE plt01.ops_budget_alerts (
     CONSTRAINT ops_budget_alerts_amounts_sane
         CHECK (spent_minor >= 0 AND budget_minor > 0),
     CONSTRAINT ops_budget_alerts_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
-    CONSTRAINT ops_budget_alerts_owner_not_blank CHECK (length(btrim(owner)) > 0)
+    CONSTRAINT ops_budget_alerts_owner_not_blank CHECK (owner ~ '[^[:space:]]')
 );
 -- One alert per budget, period and threshold. The second crossing of 80% in a month is not news,
 -- and without this an hourly sweep would raise one every hour -- which is how an alert channel

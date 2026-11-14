@@ -199,7 +199,7 @@ CREATE TABLE plt01.cfg_exposures (
     -- must return the same variant and must not record a second exposure; this constraint is
     -- what makes that idempotence a property of the data rather than of the caller.
     UNIQUE (tenant_id, experiment_id, subject_id),
-    CONSTRAINT cfg_exposures_subject_not_blank CHECK (length(btrim(subject_id)) > 0)
+    CONSTRAINT cfg_exposures_subject_not_blank CHECK (subject_id ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.cfg_exposures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.cfg_exposures FORCE ROW LEVEL SECURITY;

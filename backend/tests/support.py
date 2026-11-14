@@ -177,3 +177,39 @@ class GatedApiTestCase(unittest.TestCase):
             headers=owner)
         self.assertEqual(assigned.status_code, 201, assigned.text)
         return token
+
+    def stepped_grant(self, tenant_id: str, permissions: list[str]) -> str:
+        """A session holding exactly these permissions, **stepped up to AAL 2**.
+
+        `grant` returns an AAL 1 session, which is enough for a routine permission and refused
+        for anything `catalog.action_class` marks `financial`. A separation of duties over a
+        financial act needs two stepped-up identities and there can only be one owner --
+        `authz.bootstrap` refuses once any assignment exists -- so the second one is built
+        here: registered, granted its role by the owner over HTTP, and stepped up against a
+        recovery code of its own.
+
+        Two recovery codes rather than ten, for `make_owner`'s reason: each costs a scrypt.
+        """
+        owner = self.headers(tenant_id, self.owner_token(tenant_id))
+        role_key = f"stepped_{uuid.uuid4().hex[:8]}"
+        created = self.client.post("/authz/roles", json={
+            "role_key": role_key, "display_name": "Stepped", "permissions": permissions,
+            **self.correlation()}, headers=owner)
+        self.assertEqual(created.status_code, 201, created.text)
+        identity_id, token = self.fresh_identity(tenant_id, "Stepped")
+        assigned = self.client.post("/authz/assignments", json={
+            "identity_id": identity_id, "role_key": role_key, **self.correlation()},
+            headers=owner)
+        self.assertEqual(assigned.status_code, 201, assigned.text)
+        correlation = str(uuid.uuid4())
+        codes = identity.issue_recovery_codes(
+            self._identity_pool, tenant_id, identity_id=identity_id,
+            correlation_id=correlation, current_password=self.PASSWORD, count=2,
+        )["codes"]
+        asked = identity.require_assurance(
+            self._identity_pool, tenant_id, token=token, action_class="financial")
+        stepped = identity.complete_step_up(
+            self._identity_pool, tenant_id, token=token,
+            challenge=str(asked["challenge"]), recovery_code=codes[0],
+            correlation_id=correlation)
+        return str(stepped["token"])

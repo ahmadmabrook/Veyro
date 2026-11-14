@@ -29,9 +29,18 @@ class HealthzTests(unittest.TestCase):
         )
         self.assertEqual(c.get("/healthz").json(), first.json())
 
-    def test_no_domain_routes_or_docs_exposed(self):
+    def test_no_root_or_docs_exposed(self):
+        """The schema and the interactive docs are not served, and neither is a root page.
+
+        `/memberships` used to stand in here for "a domain route that does not exist", and
+        MOD-017 made it exist -- a `GET` on a `POST`-only path is then 405 rather than 404, and
+        the test failed for a reason that had nothing to do with what it was checking. A
+        placeholder that names a route somebody will one day write is a test with an expiry
+        date on it, so the path below is one nothing will ever claim.
+        """
         c = self.client()
-        for path in ("/", "/memberships", "/docs", "/openapi.json"):
+        for path in ("/", "/docs", "/openapi.json", "/redoc",
+                     "/not-a-surface-this-build-serves"):
             self.assertEqual(c.get(path).status_code, 404, path)
 
     def test_healthz_rejects_writes(self):

@@ -93,11 +93,11 @@ CREATE TABLE plt01.evt_outbox (
     CONSTRAINT evt_outbox_dispatch_consistent CHECK (
         (status = 'dispatched') = (dispatched_at IS NOT NULL)),
     -- A blank key is not a key, and it would collide with every other blank one under the
-    -- partial unique index below. `coalesce` is load-bearing: `length(btrim(NULL)) > 0` is NULL
+    -- partial unique index below. `coalesce` is load-bearing: `NULL ~ '[^[:space:]]'` is NULL
     -- and a CHECK passes on NULL, which is how the MOD-009 legal-hold constraint admitted the
     -- row it existed to refuse.
     CONSTRAINT evt_outbox_key_not_blank CHECK (
-        idempotency_key IS NULL OR length(btrim(coalesce(idempotency_key, ''))) > 0),
+        idempotency_key IS NULL OR coalesce(idempotency_key, '') ~ '[^[:space:]]'),
     -- A payload is an object. An array or a bare scalar would pass `jsonb` and break every
     -- consumer that reads a field out of it.
     CONSTRAINT evt_outbox_payload_is_an_object CHECK (jsonb_typeof(payload) = 'object')
@@ -224,7 +224,7 @@ CREATE TABLE plt01.evt_replay_jobs (
     -- Allowing side effects on a replay is the decision somebody will be asked about, so it
     -- carries its reason in the row. `coalesce` again: without it the NULL case passes.
     CONSTRAINT evt_replay_allow_reasoned CHECK (
-        side_effects = 'suppress' OR length(btrim(coalesce(side_effects_reason, ''))) > 0),
+        side_effects = 'suppress' OR coalesce(side_effects_reason, '') ~ '[^[:space:]]'),
     CONSTRAINT evt_replay_status
         CHECK (status IN ('requested', 'running', 'completed', 'failed')),
     CONSTRAINT evt_replay_window CHECK (to_time > from_time),
@@ -319,13 +319,13 @@ CREATE TABLE plt01.evt_dead_letters (
     release_correlation_id uuid,
     PRIMARY KEY (tenant_id, dead_letter_id),
     FOREIGN KEY (tenant_id, event_id) REFERENCES plt01.evt_outbox (tenant_id, event_id),
-    CONSTRAINT evt_dead_letters_reason_not_blank CHECK (length(btrim(reason)) > 0),
+    CONSTRAINT evt_dead_letters_reason_not_blank CHECK (reason ~ '[^[:space:]]'),
     CONSTRAINT evt_dead_letters_attempts_sane CHECK (attempts > 0),
     CONSTRAINT evt_dead_letters_release_attributed CHECK (
         (released_at IS NULL AND released_by IS NULL AND release_reason IS NULL
          AND release_correlation_id IS NULL)
         OR (released_at IS NOT NULL AND released_by IS NOT NULL
-            AND length(btrim(coalesce(release_reason, ''))) > 0
+            AND coalesce(release_reason, '') ~ '[^[:space:]]'
             AND release_correlation_id IS NOT NULL))
 );
 CREATE UNIQUE INDEX evt_dead_letters_live

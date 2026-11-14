@@ -288,19 +288,19 @@ CREATE TABLE plt01.sec_legal_holds (
     released_by uuid,
     release_correlation_id uuid,
     PRIMARY KEY (tenant_id, hold_id),
-    CONSTRAINT sec_legal_holds_reason_not_blank CHECK (length(btrim(reason)) > 0),
-    CONSTRAINT sec_legal_holds_reference_not_blank CHECK (length(btrim(reference)) > 0),
+    CONSTRAINT sec_legal_holds_reason_not_blank CHECK (reason ~ '[^[:space:]]'),
+    CONSTRAINT sec_legal_holds_reference_not_blank CHECK (reference ~ '[^[:space:]]'),
     -- A release without a reason is indistinguishable from a mistake, and without an actor it
     -- is unanswerable: releasing a hold is the single act that un-blocks destruction of
     -- preserved evidence, so the four columns move together or not at all.
-    -- `coalesce` is load-bearing, not decoration: `length(btrim(NULL)) > 0` is NULL, and a
+    -- `coalesce` is load-bearing, not decoration: `NULL ~ '[^[:space:]]'` is NULL, and a
     -- CHECK passes when its expression is NULL. Without it this constraint admitted exactly the
     -- row it exists to refuse -- a hold released with no reason -- and read as though it did
     -- not. Check 37 caught it.
     CONSTRAINT sec_legal_holds_release_reasoned CHECK (
         (released_at IS NULL AND release_reason IS NULL AND released_by IS NULL
          AND release_correlation_id IS NULL)
-        OR (released_at IS NOT NULL AND length(btrim(coalesce(release_reason, ''))) > 0
+        OR (released_at IS NOT NULL AND coalesce(release_reason, '') ~ '[^[:space:]]'
             AND released_by IS NOT NULL AND release_correlation_id IS NOT NULL))
 );
 
@@ -367,7 +367,7 @@ CREATE TABLE plt01.sec_dsar_requests (
     -- A refusal is a decision the subject can appeal, so it carries its reason in the row rather
     -- than only in a log somebody has to go and find.
     CONSTRAINT sec_dsar_refusal_reasoned CHECK (
-        status <> 'refused' OR length(btrim(coalesce(refused_reason, ''))) > 0),
+        status <> 'refused' OR coalesce(refused_reason, '') ~ '[^[:space:]]'),
     CONSTRAINT sec_dsar_completed_consistent CHECK (
         (status = 'completed') = (completed_at IS NOT NULL))
 );
@@ -455,7 +455,7 @@ CREATE TABLE plt01.sec_incidents (
     CONSTRAINT sec_incidents_severity CHECK (severity IN ('low', 'medium', 'high', 'critical')),
     CONSTRAINT sec_incidents_personal_data CHECK (
         personal_data_involved IN ('yes', 'no', 'unknown')),
-    CONSTRAINT sec_incidents_summary_not_blank CHECK (length(btrim(summary)) > 0),
+    CONSTRAINT sec_incidents_summary_not_blank CHECK (summary ~ '[^[:space:]]'),
     CONSTRAINT sec_incidents_category_shape CHECK (category ~ '^[a-z0-9]+(_[a-z0-9]+)*$'),
     CONSTRAINT sec_incidents_no_self_supersede CHECK (
         supersedes_incident_id IS NULL OR supersedes_incident_id <> incident_id)

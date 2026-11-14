@@ -33,11 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 72 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 78 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
-MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_` and MOD-016's `cat_` --
-and **every one has been run against a deliberate mutation of the protection it guards and
-shown to fail**:
+MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_` and
+MOD-017's `mem_` and `fin_` -- and **every one has been run against a deliberate mutation of
+the protection it guards and shown to fail**:
 
 ```bash
 MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
@@ -144,6 +144,24 @@ an SMS notification could carry an email subject. Nothing was broken in the ship
 *evidence* was half of what its own preamble claimed. **So the sweep's mutations are
 weakenings as well as drops**, one per conjunct and one per side of an equality.
 
+**A case catches a weakening only if the weakened constraint ADMITS the row.** This is the
+subtlest trap in the file and MOD-017 walked into it twice. `fin_invoice_lines_adds_up` is
+`gross = net + tax`, and its case over-stated the gross -- which the loose `gross <= net + tax`
+refuses just as surely as the equality does, so the suite stayed green and the weakening passed
+with the case sitting right there looking correct. The case that bites is the one charging
+*less* than the parts come to: the equality refuses it today and the weakened constraint lets it
+through, which is what makes the RAISE fire. Same for `net = unit * quantity`, where the `>=`
+weakening is caught only by a net that is *more* than the product. **So the question to ask of a
+one-directional case is not "does this row violate the rule" but "which weakening would admit
+this row"** -- and a pair of cases is right only when the two rows fall on opposite sides of the
+equality, not merely when both are invalid.
+
+**A unique index is not a constraint, and the mutation differs.** `ALTER TABLE ... DROP
+CONSTRAINT <name>` fails with "constraint does not exist" for an index created by `CREATE UNIQUE
+INDEX`, which is how every partial index in this build is written -- the `WHERE` clause is not
+available on a constraint. The mutation is `DROP INDEX`, and a harness that generates only the
+first form reports a protection as tested when the statement never ran.
+
 **Sweep the schema, not the prefix.** Every `plt01` sweep in this file filtered on its own
 module's `ppl_`/`ntf_`/`evt_` prefix, and the `iam` block never did -- check 28 reads the whole
 schema, with the comment that says why. A reviewer created `plt01.member_contacts` holding
@@ -228,6 +246,43 @@ TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table 
 RLS would exempt, and check 11 proves `app.tenant_id` does not survive its transaction onto a
 reused pooled connection.
 
+**`length(btrim(x)) > 0` strips spaces and nothing else.** PostgreSQL's one-argument `btrim`
+removes spaces, so every "states a reason" and "describes what it is for" control in this
+build was satisfied by a single tab or a single newline -- 118 constraints across ten
+migrations, every one of them written to refuse exactly that. The shape in use now is
+`x ~ '[^[:space:]]'`: the value contains at least one character that is not whitespace, which
+is also the clearer statement of intent, since nothing here ever wanted the *trimmed length*.
+Found by a generator bug, not by reading: MOD-017's case generator wrapped a `'  '` literal
+across lines, which turned it into a newline-plus-spaces literal, and that **passed** the
+constraint it was written to violate.
+
+**A status domain whose siblings all fire first is proved by an UPDATE, not an INSERT.**
+`mem_memberships.status` is a domain over eight values, and every value but `pending` needs a
+`status_change_id` -- a three-column reference including the membership's own id, which does
+not exist until the row does. So every insert with an unknown status trips
+`status_has_a_change` before the domain, and the domain has no isolating case available on
+that path. Updating a row the suite already seeded violates the domain and nothing else. Three
+of MOD-017's four status domains *were* isolatable on an insert once the sibling's fields were
+set (a reservation carrying its settlement, an agreement carrying its signature, a dunning case
+carrying neither a next action nor a closure), which is the ordinary repair; this is the one
+where it is not available.
+
+**A unique index a foreign key depends on cannot be dropped, so its mutation never runs.**
+PostgreSQL refuses `DROP INDEX` while a composite foreign key needs that index, and the refusal
+is an error from the mutation statement rather than a failure of any check -- which a naive
+harness records as a catch. That is the `DROP CONSTRAINT <pkey>` trap one level over, where the
+answer was `CASCADE`; here `CASCADE` would take the foreign key with it and test something
+else, so the honest handling is to classify the mutation as not-run and say which index it was.
+A sweep that reports those as caught is reporting the same false green the whole discipline
+exists to prevent.
+
+**A self-referencing constraint needs the row's own id supplied.** `fin_invoices_not_self` and
+`mem_agreements_not_self` had no isolating case for a reason that is obvious once stated and
+invisible otherwise: with the key defaulted to `gen_random_uuid()` there is nothing for the
+case to point at, so every attempt pointed at some other row and passed. The case sets the key
+explicitly and references it; the foreign key resolves against the row being inserted, so the
+only thing left to refuse is the constraint under test.
+
 **A constraint that is subsumed by a sibling should be deleted, not tested harder.** MOD-016
 carried both `cat_eligibility_rules_kind` (a domain over seven kinds) and
 `operand_matches_kind` (a four-branch disjunction that names all seven and the operand each
@@ -236,6 +291,16 @@ had no isolating case and could not have one: the sweep caught its drop as uncau
 repair was to remove it. One constraint that is the stronger statement beats two where the
 weaker is permanently unprovable -- which is the same judgement as splitting MOD-014's compound
 CHECK, arrived at from the other direction.
+
+MOD-017 gave three more of the same kind, all of them arithmetic:
+`fin_invoice_lines_net_not_negative` is implied by `net_minor = unit_net_minor * quantity`
+with a positive quantity and a non-negative unit price; `fin_tax_records_taxable_not_negative`
+is implied by `tax_minor >= 0` and `tax_minor <= taxable_minor`; and
+`fin_tax_records_tax_sane` is implied by that second pair plus `taxable_minor <= 1e12`. Each
+had a case, each case passed with the constraint dropped, and in each the row that violated it
+necessarily violated one of the others. **The tell is worth naming: a bound on a *derived*
+column is usually implied by the bounds on what it is derived from.** Delete it and keep the
+primitive one, which is the constraint a reader can reason about.
 
 ## Scope
 

@@ -733,6 +733,225 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "int_connector_runs", "reconciled_by", "write_once",
                  "written with the reconciliation; `reconciled_at IS NULL` in the service is "
                  "what refuses a second one, not the grant"),
+    # ---------------------------------------------------------------- MOD-017, COM-01
+    #
+    # **This module holds the contract a person signed and the record of what they were
+    # entitled to, and almost none of it can be erased.** That is not an oversight: an
+    # agreement, a lifecycle history and an entitlement ledger are each the thing a dispute is
+    # argued from, and MOD-009's registry exists to say so rather than to pretend otherwise.
+    # The one erasable identifier is on the live membership row, and even there the number
+    # survives because a turnstile reads it.
+    #
+    # **And eleven free-text columns are declared by hand**, because the reachability sweep
+    # matches column *names* and none of these has a name a sweep could recognise. Every one
+    # holds what a caller or a provider sent, and the realistic content of several of them is a
+    # person: a provider's decline message naming the cardholder, a reason an operator typed, a
+    # locator that is an address rather than a reference. MOD-013 shipped exactly this with an
+    # SMTP rejection and MOD-016 with five columns of prose; the sweep found neither. The
+    # declaration is the only thing that will.
+    #
+    # `mem_contract_versions.body` is the same case and is the one this module noticed first:
+    # tenant-authored prose, and a bespoke clause naming the member is the ordinary way a name
+    # gets into it.
+    Reachability("plt01", "mem_contract_versions", "created_by", "unreachable",
+                 "who drafted the terms; the body carries no UPDATE grant and neither does "
+                 "this"),
+    Reachability("plt01", "mem_contract_versions", "published_by", "write_once",
+                 "who published the version; `status = 'draft'` in the service is what "
+                 "refuses a second publication, not the grant"),
+    Reachability("plt01", "mem_contract_versions", "body", "unreachable",
+                 "**the terms themselves**, tenant-authored prose, and the realistic place a "
+                 "member's name appears in a bespoke clause. No UPDATE grant: a contract "
+                 "whose wording could be edited after signing is not a contract"),
+    Reachability("plt01", "mem_membership_terms", "created_by", "unreachable",
+                 "who defined the terms; insert-only authorship"),
+    Reachability("plt01", "mem_agreements", "person_id", "unreachable",
+                 "**the member who signed.** The agreement is the contract; an erasure that "
+                 "unlinked it would leave a signed obligation belonging to nobody, which is "
+                 "worse for the member than the residue"),
+    Reachability("plt01", "mem_agreements", "signed_by", "write_once",
+                 "**who recorded the signature**, which is not the person who signed. The "
+                 "service refuses a second signing on `status = 'draft'`, not the grant"),
+    Reachability("plt01", "mem_agreements", "signed_by_person_id", "write_once",
+                 "who actually signed -- the member, or a guardian, which is why it is a "
+                 "separate column. It is in the signature grant because it moves once, from "
+                 "nothing to signed; `status = 'draft'` in the service is what refuses a "
+                 "second signature, not the grant"),
+    Reachability("plt01", "mem_agreements", "created_by", "unreachable",
+                 "the staff member who drew the agreement up; insert-only"),
+    Reachability("plt01", "mem_memberships", "person_id", "unreachable",
+                 "**not erasable, and the first draft of this entry claimed it was.** The "
+                 "reasoning was that the membership row is a cache of state rather than the "
+                 "contract, so the link could be cleared; the registry's own test refused it, "
+                 "because `person_id` is not in this table's UPDATE grant and so the database "
+                 "will not allow it. Granting UPDATE to make the claim true would be the "
+                 "wrong fix: the agreement beside it keeps the signer anyway, so clearing "
+                 "this would buy nothing an erasure report could honestly count"),
+    Reachability("plt01", "mem_memberships", "created_by", "unreachable",
+                 "who activated it; insert-only"),
+    Reachability("plt01", "mem_lifecycle_changes", "decided_by", "unreachable",
+                 "**COM-01-R07's history.** Insert-only in full, because as-of reconstruction "
+                 "for disputes is only true of a history nobody can rewrite"),
+    Reachability("plt01", "mem_lifecycle_changes", "requested_by_person_id", "unreachable",
+                 "the member who asked for the change, where they did. COM-01-R06's "
+                 "self-service request, and the other half of the pair an auditor compares"),
+    Reachability("plt01", "mem_freezes", "decided_by", "unreachable",
+                 "who approved the hold; insert-only on everything but the close"),
+    Reachability("plt01", "mem_freezes", "requested_by_person_id", "unreachable",
+                 "the member who asked to be frozen"),
+    Reachability("plt01", "mem_freezes", "resumed_by", "write_once",
+                 "who ended the hold; `ends_on IS NULL` in the service is what refuses a "
+                 "second resume, not the grant"),
+    Reachability("plt01", "mem_entitlement_policies", "created_by", "unreachable",
+                 "who declared what this entitlement means; insert-only"),
+    Reachability("plt01", "mem_entitlement_grants", "person_id", "unreachable",
+                 "**who the right belongs to.** The grant is the fulfilment authority and the "
+                 "ledger beside it has no UPDATE grant at all, so clearing this would leave "
+                 "a balance belonging to nobody while the movements still said who drew it"),
+    Reachability("plt01", "mem_entitlement_grants", "created_by", "unreachable",
+                 "who granted it; insert-only"),
+    Reachability("plt01", "mem_entitlement_grants", "revoked_by", "write_once",
+                 "who revoked it; `status` in the service is what refuses a second "
+                 "revocation, not the grant"),
+    Reachability("plt01", "mem_entitlement_reservations", "person_id", "unreachable",
+                 "who held the quantity. The reservation is what the ledger movements point "
+                 "at, and the ledger is insert-only"),
+    Reachability("plt01", "mem_entitlement_reservations", "held_by", "unreachable",
+                 "the till or the booking flow that took the hold; insert-only"),
+    Reachability("plt01", "mem_entitlement_reservations", "settled_by", "write_once",
+                 "who consumed or released it; `status = 'held'` in the service is what "
+                 "refuses a second settlement, not the grant"),
+    Reachability("plt01", "mem_entitlement_ledger", "actor_id", "unreachable",
+                 "**who caused each movement.** The ledger is the balance that decides whether "
+                 "a member gets through a turnstile and the record of every draw-down they "
+                 "have made; it carries no UPDATE and no DELETE grant at all"),
+
+    # ---------------------------------------------------------------- MOD-017, COM-03
+    #
+    # **Restricted data, and the least erasable family in the build.** An invoice is a document
+    # a tax authority reads, a payment is what an accountant reconciles a bank statement
+    # against, and a tax record is a figure a return was built from -- none of the three can be
+    # edited by any runtime role, and all three name the person who paid. COM-03's own
+    # classification in the TSD is `Restricted` for exactly this reason.
+    #
+    # The honest statement is the one MOD-009's registry was built to make: an erasure request
+    # from a member who has ever been invoiced reaches their identity and their contact
+    # details and does not reach their financial history, because the law that compels the
+    # erasure is not the law that compels the retention.
+    Reachability("plt01", "fin_billing_accounts", "payer_person_id", "unreachable",
+                 "**who pays.** The account is the party an invoice is addressed to, and the "
+                 "invoices beside it have no UPDATE grant on anything they say"),
+    Reachability("plt01", "fin_billing_accounts", "created_by", "unreachable",
+                 "who opened the account; insert-only"),
+    Reachability("plt01", "fin_billing_accounts", "closed_by", "write_once",
+                 "who closed it; `status` in the service is what refuses a second closure, "
+                 "not the grant"),
+    Reachability("plt01", "fin_billing_schedules", "created_by", "unreachable",
+                 "who set the schedule; insert-only"),
+    Reachability("plt01", "fin_billing_schedules", "paused_by", "write_once",
+                 "who paused it; `status` in the service is what refuses a second pause"),
+    Reachability("plt01", "fin_fiscal_series", "created_by", "unreachable",
+                 "who opened the numbering series; insert-only, and a trigger stops the "
+                 "counter being rewound"),
+    Reachability("plt01", "fin_invoices", "fiscalized_by", "write_once",
+                 "**who moved the fiscal state**, deliberately not the issuer: the person "
+                 "who issues invoices is not necessarily the person who files them. It moves "
+                 "with each transition, which is why it is not `unreachable`"),
+    Reachability("plt01", "fin_invoices", "issued_by", "unreachable",
+                 "**who issued the document.** Every figure, the serial and the number carry "
+                 "no UPDATE grant: this is what a tax authority reads and a member disputes"),
+    Reachability("plt01", "fin_payment_intents", "created_by", "unreachable",
+                 "who raised the intent; the amount and the account are fixed at creation"),
+    Reachability("plt01", "fin_payments", "recorded_by", "unreachable",
+                 "**who recorded that money arrived.** No UPDATE grant at all -- this is the "
+                 "row an accountant reconciles the bank statement against"),
+    Reachability("plt01", "fin_refund_requests", "requested_by", "unreachable",
+                 "who asked for the refund, derived from their own session. It is one half of "
+                 "the separation of duties the approval compares, so clearing it would make "
+                 "the comparison unverifiable after the fact"),
+    Reachability("plt01", "fin_refunds", "approved_by", "unreachable",
+                 "**paragraph 1598's approval.** The one act in this module that sends money "
+                 "back out; an approver whose name could later be removed would not be an "
+                 "approval at all"),
+    Reachability("plt01", "fin_refunds", "requested_by", "unreachable",
+                 "the other half of that comparison, copied from the request"),
+    Reachability("plt01", "fin_disputes", "recorded_by", "unreachable",
+                 "who recorded the bank's claim; the claim itself is insert-only"),
+    Reachability("plt01", "fin_disputes", "responded_by", "write_once",
+                 "who answered it; the response columns move together, once"),
+    Reachability("plt01", "fin_dunning_cases", "opened_by", "unreachable",
+                 "who opened the recovery journey; insert-only"),
+    Reachability("plt01", "fin_dunning_cases", "closed_by", "write_once",
+                 "who closed it and how; `status` in the service is what refuses a second "
+                 "closure"),
+    Reachability("plt01", "fin_tax_records", "recorded_by", "unreachable",
+                 "**who recorded the liability.** No UPDATE grant on anything the row "
+                 "reports: this is the figure a return was built from"),
+    Reachability("plt01", "fin_tax_records", "exported_by", "write_once",
+                 "who included it in an accounting export; set once, so the same figure is "
+                 "not exported twice without a deliberate act"),
+    # ---------------------------------------------- MOD-017's free text, declared by hand
+    #
+    # Three of these have an UPDATE grant and so could be cleared by an erasure that chose to;
+    # the rest have none at all and are residue, which is the honest statement. Closing it
+    # needs either a provider error vocabulary or an erasure path into `plt01` for prose --
+    # MOD-016 left the same five columns open for the same reason.
+    Reachability("plt01", "mem_freezes", "reason", "unreachable",
+                 "**why a membership was frozen**, prose an operator typed, and for a medical "
+                 "hold the place a condition is described in free text whatever the evidence "
+                 "column is for. No UPDATE grant: a freeze's reason is what an allowance "
+                 "dispute is argued from"),
+    Reachability("plt01", "mem_freezes", "evidence_ref", "unreachable",
+                 "where a medical note lives. Constrained to a URI-shaped locator, so it "
+                 "cannot hold the note -- but a locator can name the patient"),
+    Reachability("plt01", "mem_lifecycle_changes", "reason", "unreachable",
+                 "why a membership moved, prose a caller supplies, in the table COM-01-R07 "
+                 "calls the one a dispute is argued from. No UPDATE grant"),
+    Reachability("plt01", "mem_entitlement_grants", "revoke_reason", "write_once",
+                 "why a grant was written off; the service refuses a second revocation, not "
+                 "the grant"),
+    Reachability("plt01", "mem_entitlement_ledger", "reason", "unreachable",
+                 "why each movement happened. The ledger has no UPDATE and no DELETE grant "
+                 "at all, which is what makes it the authority on a balance"),
+    Reachability("plt01", "mem_agreements", "signature_evidence_ref", "write_once",
+                 "where the signature is held. A URI-shaped locator, and one that routinely "
+                 "names the signer in its path"),
+    Reachability("plt01", "fin_invoice_lines", "description", "unreachable",
+                 "**what was charged for**, in words. Insert-only in full, which is the point: "
+                 "what was charged is what was charged. A line reading 'personal training "
+                 "with Jane, Tuesdays' is the ordinary case"),
+    Reachability("plt01", "fin_payment_intents", "payment_method_ref", "unreachable",
+                 "a token somebody else holds. Constrained to a locator shape so a card "
+                 "number will not fit, which is the control paragraph 1597 needs -- and no "
+                 "UPDATE grant, because what was charged against is what was charged "
+                 "against"),
+    Reachability("plt01", "fin_payment_intents", "failure_detail", "write_once",
+                 "**the provider's own sentence**, and the realistic content of one is "
+                 "`declined for card 4242 held by JANE SMITH`. It is why the failure event "
+                 "carries the code and not this"),
+    Reachability("plt01", "fin_payment_intents", "provider_ref", "write_once",
+                 "the provider's handle for the attempt; opaque, and declared because "
+                 "nothing stops a provider putting a person in it"),
+    Reachability("plt01", "fin_refund_requests", "reason", "unreachable",
+                 "why a refund was asked for. The request table has no UPDATE grant at all: "
+                 "it is the half of the separation of duties the approval compares against"),
+    Reachability("plt01", "fin_refunds", "approval_reason", "unreachable",
+                 "why it was approved, in the approver's words. No UPDATE grant on what was "
+                 "decided"),
+    Reachability("plt01", "fin_disputes", "response_ref", "write_once",
+                 "where the response evidence is held; a locator, and a bank's case file is "
+                 "named after the cardholder"),
+    Reachability("plt01", "fin_disputes", "provider_case_ref", "unreachable",
+                 "the bank's own case reference. No UPDATE grant: the claim is fixed, "
+                 "because the bank made it"),
+    Reachability("plt01", "fin_invoices", "fiscal_ack_ref", "write_once",
+                 "the tax authority's own handle for the filing; set once by the service, "
+                 "not by the grant"),
+    Reachability("plt01", "fin_invoices", "fiscal_exemption_reason", "write_once",
+                 "why a document was declared outside the regime, in words"),
+    Reachability("plt01", "fin_dunning_cases", "resolution", "write_once",
+                 "how a recovery journey ended, in words. The commonest sentence here is "
+                 "about the member's circumstances"),
     Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
                  "written when the job starts; `status = 'requested'` in the service is what "
                  "refuses a second run, not the grant"),

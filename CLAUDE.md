@@ -33,6 +33,10 @@ backend/app/            service code
                         service.py takes the gate's masked-field list as a required argument
   catalog/              MOD-016: pricing.py, promotions.py, products.py and bundles.py
                         decide; service.py redeems a coupon in the resolution's transaction
+  commercial/           MOD-017: lifecycle.py, entitlements.py, invoicing.py and
+                        collections.py decide; service.py holds the two locks the module
+                        turns on -- the grant a reservation draws from and the serial
+                        counter an invoice is numbered by
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -1800,18 +1804,249 @@ Known gaps, deliberate:
   `coupon`, so a `manual` promotion applied automatically to every sale in the tenant -- the
   defect a reviewer found for `staff_discount`, in the one kind no targeting rule could fix.
 
-**Next.** MOD-017 (Commercial Core: orders, carts, payments and refunds) is what MOD-016
-unblocks and is the natural next module -- it is also where `order_reference` stops being free
-text. MOD-019 (Scheduling Pilot) is unblocked by MOD-014 and independent of both. Nothing in the
-Foundation wave is left except MOD-006, the Compose Multiplatform qualification, which is a
-client-side proof the server plane does not need.
+**MOD-017 (COM-01 and COM-03: the membership agreement, the rights it grants and the money it
+generates) -- implemented, gated and reviewed.** Twenty-two tables in `plt01` under the same
+forced RLS, `app/commercial/` beside them, and thirty-three HTTP routes (two of which fill
+`plt01.legal_entities`, a table MOD-004 built and nothing could satisfy until COM-03-R07 needed
+per-entity fiscal uniqueness). Working: contract versions drafted and published as two acts by
+two people; membership terms attached to a MOD-016 product; agreements whose price comes from
+the resolution they cite; recorded signatures; activation with effective dating; freeze, pause
+and medical hold against the contract's annual allowance; resume with term extension;
+cancellation with a disclosed fee the member acknowledged; as-of reconstruction from the
+history; entitlement policies, grants, atomic expiring reservations, an insert-only movement
+ledger and revocation; billing accounts and schedules; fiscal series with gapless serials;
+invoices with lines, tax records and credit notes; payment intents, payments and the `unknown`
+outcome; a two-party refund; disputes; a dunning journey; reconciliation; and fiscalization
+separate from payment. Nineteen events are produced, three of them added by the review.
+Proven: isolation checks 73-78, mutation-tested in three rounds -- 814 mutations with 16 gaps,
+then 811 with 3 after the repairs, then 811 with none, every one caught by the check that
+guards what was broken. 78 domain unit tests with no database and 83 HTTP tests, inside a suite
+of 1,400.
+
+**The three rounds are the finding, not the number.** Round one's 16 gaps were almost all one
+shape: a constraint or an index added during the review made a *sibling's* case insert a row it
+now refuses, so sixteen cases began proving the new rule instead of the one they named. That is
+this repository's own "a schema change means re-running the sweep, not re-reading the cases" for
+the fourth module, and it cost four of MOD-017's own constraints their evidence in the hour
+between one review round and the next. Round two's three were the opposite mistake and the
+newer lesson, written up in the rules file: **a case catches a *weakening* only if the weakened
+constraint admits the row.** An invoice line over-stating its gross is refused by `gross <=
+net + tax` as surely as by the equality, so that case could never see the weakening; the case
+that catches it is the one charging *less*. Every one-directional case in this build needs
+reading with that question rather than "does this row violate the rule".
+
+Four decisions carry the module, and the fourth is the one the review turned on:
+
+- **`mem_` is what a member is entitled to; `fin_` is what they owe.** Paragraph 1496:
+  "membership state, billing state and access state are related but never conflated." A frozen
+  membership is not an unpaid one, an unpaid invoice does not by itself revoke access, and
+  whether somebody may train right now is a question only `mem_entitlement_grants` answers.
+  The prefix is `fin_` rather than `bil_` because `bil_` is MOD-015 billing the *tenant*; the
+  two never join and one name for both would invite the join later.
+- **A grant is the fulfilment authority and a reservation is atomic.** Paragraph 1506. So a
+  reservation is a row with an expiry taken under `SELECT ... FOR UPDATE` on the grant, and the
+  remaining quantity is the sum of an insert-only ledger rather than a column two concurrent
+  bookings race on. MOD-016's coupon ledger learned that the hard way.
+- **A fiscal serial is allocated under a lock and never skips.** Paragraph 1606. A sequence
+  would be faster and would leave gaps on rollback, and a gap in a tax series is something an
+  authority asks about.
+- **A control and the state it bounds commit together.** MOD-010's `append_event` argument,
+  applied here to the tax records written in the invoice's own transaction, the coupon-style
+  usage checks, and the entitlement revocation that happens inside the cancellation. **This is
+  also the rule MOD-016 broke and this module broke differently**, which is the finding below.
+
+**Three reviewers worked this module in parallel -- the schema, the decisions, the request
+path -- and all three returned CHANGES_REQUESTED. Twenty-one blocking defects.** Each is
+carried forward as a rule, because each is a shape that has now recurred:
+
+- **A separation of duties needs two acts, or it is unverifiable in principle** -- MOD-016's
+  finding, and this module shipped it in a worse place. `publish_contract_version` wrote the
+  version and published it in one command, and argued for it: a draft could be signed against
+  with nobody having approved the terms. **That argument was false** -- `create_agreement`
+  resolves only a *published* version, so a draft is unsignable by construction -- and it
+  bought a real cost, because one command makes the author and the publisher the same person
+  by definition. This is the prose a member is held to and the policy numbers every lifecycle
+  decision is measured against. Two acts now, two permissions, and
+  `mem_contract_versions_publisher_is_not_author` is the half the service cannot weaken.
+- **A cited authority is the authority, or it is decoration beside the figure.**
+  `create_agreement` took `amount_minor`, `currency` and `price_resolution_id` from the caller
+  and never compared them, so an agreement could cite MOD-016's receipt for 45.00 JOD and
+  record 4.50 -- with the resolution id on the row making the figure read as priced and
+  approved. The resolution's own figures are what get written now, and a resolution for a
+  different variant is refused rather than quietly used.
+- **Derive, never accept, reaches the fields that gate a draw.** `reserve_entitlement` took
+  `brand_id` and `local_minute` beside the `location_id`, and `entitlements.usable` gates on
+  both: a grant scoped to one brand was drawn on at another by sending the grant's own brand
+  id, and an off-peak grant was drawn on at seven in the evening by sending `600`. The second
+  is the worse of the two, because the whole point of an off-peak membership is that it is
+  cheaper. Both come from the location now -- its brand, and the time of day in *its* timezone,
+  which is why the conversion is `AT TIME ZONE` in SQL rather than arithmetic in Python.
+- **A control consulted once is a control with a window** -- MOD-009's rule, hit twice.
+  `approve_refund` and `request_refund` counted only `pending` and `succeeded` refunds against
+  what a payment could still refund, and `unknown` means the provider did not answer -- so a
+  refund that may well have left was treated as money still held, the same amount was approved
+  again, and settling the first as succeeded afterwards left the member refunded twice. That is
+  the one direction in this module that no later row can correct.
+- **A derived status has to read everything that moves it.** `_apply_to_invoice` summed
+  payments and credit notes and never looked at `fin_refunds`, so an invoice refunded in full
+  went on reading `paid` -- the figure an accountant reconciles a bank statement against, and
+  the one a dunning sweep decides not to chase. MOD-011 found the mirror of this in its margin
+  read, which summed invoices and ignored credit notes.
+- **A correction path that nothing can reach is not a correction path.**
+  `fin_invoices_credit_matches_kind` makes `document_kind = 'credit_note'` and a credited
+  invoice the same fact, and `issue_invoice` never passed the column -- so a credit-note series
+  could be opened, and refused every document anybody tried to number from it. The module's own
+  header calls the credit note "the only correction path" an insert-only ledger has, and it was
+  unreachable.
+- **An idempotent command has to be idempotent to the caller, not just in the table.** Three
+  commands were careful about the row they wrote and answered 409 on a retry: `activate_
+  membership` hit the one-membership-per-agreement index, `approve_refund` hit the
+  one-decision-per-request index, and `publish_contract_version` had no notion of a repeat. A
+  client whose request timed out after the commit was told the work had failed -- and for the
+  refund that means a second approver is asked for a decision that was already made.
+- **A retry must be answered from what was recorded, not from what the retry carries.**
+  `cancel_membership` echoed the caller's `acknowledged_fee_minor` straight back and reported
+  `fee_due_minor` as null, so a second call sending a different figure was told it had been
+  accepted: the disclosure check bypassed by retrying with the number you wanted. The freeze
+  did the same with a hard-coded zero for the allowance and the change's own effective date as
+  the planned end -- two figures a client would believe, neither of them that freeze's.
+- **An idempotency key belongs to one command, not to one aggregate.** `_recorded_change`
+  compared the membership and not the `change_kind`, and three commands consult it -- so a
+  client reusing one key across a freeze and a cancel got the *other* command's change back and
+  was told its own had happened. A cancel answered with a freeze reads as a cancellation that
+  took effect, and nothing cancelled anything.
+- **A cancelled membership whose entitlements still work is access nobody is paying for.**
+  Paragraph 1496 keeps the three states apart, and that is about not *conflating* them rather
+  than leaving them unrelated: the first version cancelled the membership and left every grant
+  `active`, so a member with twenty classes left kept all twenty. The cancellation revokes them
+  in its own transaction now, with a ledger row for what was written off; what is *held* stays
+  held, because a reservation is a booking somebody made.
+- **Evidence with nobody's name on it answers nothing** -- the sixth module. `sign_agreement`
+  and `fiscalize_invoice` each took an `actor_id` and a `correlation_id`, used neither and
+  published nothing. One is the act that makes a contract binding with a minimum term and a
+  cancellation fee behind it; the other declares a document filed with a tax authority, or
+  declares it outside the regime altogether. MOD-008 audits denials rather than allowed
+  actions and `veyro_cp_app` holds nothing in `iam`, so the row was the only record there could
+  be.
+- **A permission's name is a claim about what it is for.** `settle_refund` was gated on
+  `finance.payment.take` -- money coming in -- so a role holding only "take payments" could
+  mark money going out as succeeded, which is the last state anybody checks. And
+  `reconcile_intent` was reachable for a `pending` intent, so a caller could create a payment
+  for a charge no provider had ever been asked about, naming the outcome and the
+  `provider_ref` itself: `finance.payment.take` bought with a different permission.
+- **A read the approval needs has to exist.** Four commands wrote a refund and nothing returned
+  one, so the second person in the separation of duties approved a figure they could not see,
+  and `refundable_minor` -- which both halves refuse against -- was computable only by being
+  refused.
+- **A health fact is a health fact whatever column it is in.** `mem_freezes.evidence_ref` is
+  constrained to a locator so a diagnosis cannot be stored there, and `reason` beside it is
+  unconstrained prose that the ordinary operator will use to say why. `membership.record.read`
+  is routine and AAL 1, which a front desk and a turnstile hold, so the lifecycle history put a
+  staged diagnosis in front of every holder of the cheapest read in the module. A medical
+  hold's reason is masked now, for everybody, the same dead end MOD-014 records for its own
+  health classes -- and the entry stays visible, because a hold a reader cannot see at all is a
+  gap in a dispute record.
+- **A locator column is a control only if it has to look like one.** `payment_method_ref`,
+  `evidence_ref` and `signature_evidence_ref` were non-blank text, and the module's header
+  quoted paragraph 1597 -- "sensitive card data never enters Veyro systems" -- ten lines above a
+  column that accepted a sixteen-digit number with an expiry. That is MOD-012's `vault_ref`
+  finding and MOD-010's "the restricted-field rule checks names, and a value can carry
+  anything", for the third time. All three now have to match a URI shape, which no card number
+  does.
+- Three smaller ones with the same shapes as earlier modules: the first billing period was one
+  day longer than every later one, because `renewal_period` returns the period *after* the date
+  it is given and the caller kept its end while overriding its start (a monthly membership
+  starting on 1 January ran to 1 February and the drift compounded for life); the reservation
+  sweep wrote its expiries inside the transaction that then refused the draw, so `tenant_scope`
+  rolled them back and a member with three lapsed holds was refused for ever; and the settling
+  UPDATE on a payment intent could violate the unique provider reference and answer 500 with
+  the transaction aborted.
+
+**And the future-dated freeze is worth its own paragraph, because the fix was to refuse rather
+than to build.** `freeze_membership` took an unbounded `starts_on`, and the allowance is counted
+in the contract year containing it -- so a member who had spent all thirty days sent a date one
+day before their anniversary and got a second allowance, the whole of COM-01-R04's limit bought
+with a date field. It also wrote `status = 'frozen'` whatever the date said, so a freeze booked
+for August made the membership read as frozen in May while `status_as_of` correctly said no.
+The obvious repair is to leave the cache behind and let something catch it up when the date
+arrives. **There is nothing to catch it up**: this build has no worker runtime, and a booked
+freeze that never takes effect is worse than one that cannot be booked. So a freeze starts
+within the month before today -- a month back because one agreed at the desk on Friday is
+recorded on Monday -- and the cache moves because the change is effective. `planned_ends_on`
+remains a column, because what the member asked for and the day the freeze actually ended are
+two facts and the first version conflated them.
+
+Things worth knowing before extending it:
+
+- **`append_event` takes the connection, and so does every write that must be atomic with it.**
+  The tax records, the credit note's effect on the invoice it credits, the coupon redemption and
+  the entitlement revocation all run in the transaction that caused them.
+- **Money is an integer count of minor units and `app.billing.money` owns the arithmetic**,
+  imported and never reimplemented. MOD-016 shipped a second rounding rule once and a reviewer
+  found it.
+- **A reconciliation can mark a pending intent `unknown` and cannot settle one.** That is how an
+  intent becomes reconcilable, and it creates nothing.
+- **`validated`, `verified` and `delivered` are recorded, not performed.** No provider, no
+  SMTP, no outbound HTTP: `settle_payment_intent`, `settle_refund` and `record_outcome` are
+  written by whatever does the work. A module that wrote "delivered" with nothing having
+  answered would be the fabricated-evidence shape this codebase has been bitten by five times.
+- **A tax record's export marker is final, by trigger.** A CHECK cannot see `OLD`, and clearing
+  the marker returns the row to the unexported index -- the liability counted twice in two
+  returns, with the row afterwards reading as a single clean export. Second trigger in the
+  module, for `sec_legal_holds`' reason.
+- **`length(btrim(x)) > 0` is gone from the whole repository**, and `test_migration_shape.py`
+  is what keeps it gone. PostgreSQL's one-argument `btrim` strips spaces and nothing else, so
+  every "states a reason" control in this build -- 122 constraints across eleven migrations --
+  was satisfied by a single tab. The shape is `x ~ '[^[:space:]]'` now. Nothing in a running
+  database would ever flag the old one, which is why the guard is a static read of the
+  migration files; it caught four survivors of the regex rewrite that did the other 118.
+
+Known gaps, deliberate:
+
+- **No payment provider and no stored payment methods.** Taking a card is real money and the
+  owner reserves that. What is built is the half that must be correct whatever the provider
+  turns out to be.
+- **No tax engine.** `issue_invoice` takes a rate per line -- MOD-015's precedent, which MOD-016
+  followed. What is enforced is that whatever rate was applied is recorded on the line and in
+  the return.
+- **Nothing drives anything on a schedule.** A renewal, a grace-period entry, an expiry, a
+  dunning step, a lapsed-hold sweep and a future-dated cancellation all want the worker runtime
+  this build does not have -- the ninth module to want one. Two of those change the product:
+  nothing renews a membership and nothing applies a cancellation when its notice runs out, so
+  the status cache for a future-dated cancellation stays `active` and `membership_as_of` is the
+  function that tells the truth.
+- **A freeze cannot be booked ahead**, which is the refusal above rather than an omission.
+- **No installment schedule generation.** `fin_billing_schedules` records the plan and its
+  remaining count; nothing walks it.
+- **Nothing reverses a payment inside the module.** A payment has no UPDATE grant at all, so a
+  payment recorded in error is reversed by a refund -- which needs two people, and that is the
+  intended cost.
+- **`order_reference` and MOD-016's fulfilment ledger are still not joined.** MOD-016 left
+  `order_reference` as free text because the module that owns orders did not exist; this module
+  owns the agreement and the invoice, and nothing yet resolves a catalogue fulfilment to one.
+- **Five free-text columns and six locators are residue an erasure cannot reach**, all declared
+  in `SUBJECT_COLUMNS` by hand because the sweep matches column *names*. Closing it needs an
+  erasure path into `plt01` for prose, which is a different problem from MOD-014's per-column
+  tombstones.
+- **The timeline does not know about any of this.** MOD-014 projects nine event types and none
+  of MOD-017's nineteen is among them, so a member's timeline shows no agreement, no freeze and
+  no invoice. Adding one is a `Projection` with a summary somebody wrote, which is the review
+  point MOD-014 names.
+
+**Next.** MOD-018 (Financial Ledger and Wallet Pilot) is what MOD-017 unblocks and is the
+natural next module. MOD-019 (Scheduling Pilot) is unblocked by MOD-014 and independent of
+both -- and it is where MOD-017's entitlement reservation finally gets a caller, since a
+booking is the thing a hold is taken *for*. Nothing in the Foundation wave is left except
+MOD-006, the Compose Multiplatform qualification, which is a client-side proof the server plane
+does not need.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the eight schedules
-that want one, which MOD-011 makes the most pressing because an objective nobody evaluates
-raises no alert, and there is no key vault, which is what MOD-009's crypto-shred, MOD-007's
-TOTP seeds and MOD-012's inbound webhook signatures are all waiting on.
+scopes a tenant may hand to a third party -- no worker runtime exists for the nine schedules
+that want one, which MOD-017 makes the most pressing because nothing renews a membership and
+nothing applies a cancellation when its notice runs out, and there is no key vault, which is
+what MOD-009's crypto-shred, MOD-007's TOTP seeds and MOD-012's inbound webhook signatures are
+all waiting on.
 
 `Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
 -- and note what closing it took: `permit` had to return the gate rather than the session, and
@@ -1825,13 +2060,21 @@ than to a caller-supplied uuid. Nothing wires the two together yet. **MOD-016 is
 module to read MOD-014's tags for a decision of its own** -- the customer segment that chooses a
 price book -- which is the shape the rest of that wiring will take.
 
-**The recurring lesson across the last four reviews, stated once.** Every module since MOD-011
+**The recurring lesson across the last five reviews, stated once.** Every module since MOD-011
 has shipped at least one control keyed on a value the caller supplies, shape-checked and never
 checked for correspondence with anything. MOD-016 shipped four of them and two were worse than
 the earlier ones: a separation of duties that no stricter check could have rescued, because
 there was no second act to compare against, and a usage limit whose counter was never moved by
 the act it bounded. **The question to ask of any control is not "is this field validated" but
 "what did the server derive, and did the thing I am bounding write the state I am reading".**
+
+MOD-017 shipped four more, and one of them is the first in this build where the *argument for*
+the shortcut was written down and was wrong. Publishing a contract version in one command was
+defended in a docstring -- a draft could be signed against with nobody having approved the
+terms -- and `create_agreement` resolves only a published version, so a draft was unsignable by
+construction. **The defence was checkable against the code in the same module and nobody
+checked it.** So the question above has a companion: when a module explains why it collapsed
+two acts into one, read the other act and see whether the danger it names is reachable at all.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

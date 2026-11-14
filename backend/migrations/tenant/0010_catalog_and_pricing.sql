@@ -88,9 +88,9 @@ CREATE TABLE plt01.cat_tax_categories (
     CONSTRAINT cat_tax_categories_key_shape
         CHECK (category_key ~ '^[a-z][a-z0-9_.-]{1,62}$'),
     CONSTRAINT cat_tax_categories_display_not_blank
-        CHECK (length(btrim(display_name)) > 0),
+        CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT cat_tax_categories_note_not_blank
-        CHECK (jurisdiction_note IS NULL OR length(btrim(jurisdiction_note)) > 0)
+        CHECK (jurisdiction_note IS NULL OR jurisdiction_note ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.cat_tax_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.cat_tax_categories FORCE ROW LEVEL SECURITY;
@@ -187,11 +187,11 @@ CREATE TABLE plt01.cat_product_texts (
     PRIMARY KEY (tenant_id, product_id, locale),
     FOREIGN KEY (tenant_id, product_id) REFERENCES plt01.cat_products (tenant_id, product_id),
     CONSTRAINT cat_product_texts_locale CHECK (locale ~ '^[a-z]{2}(-[A-Z]{2})?$'),
-    CONSTRAINT cat_product_texts_name_not_blank CHECK (length(btrim(display_name)) > 0),
+    CONSTRAINT cat_product_texts_name_not_blank CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT cat_product_texts_description_not_blank
-        CHECK (description IS NULL OR length(btrim(description)) > 0),
+        CHECK (description IS NULL OR description ~ '[^[:space:]]'),
     CONSTRAINT cat_product_texts_terms_not_blank
-        CHECK (terms IS NULL OR length(btrim(terms)) > 0)
+        CHECK (terms IS NULL OR terms ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.cat_product_texts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.cat_product_texts FORCE ROW LEVEL SECURITY;
@@ -226,12 +226,12 @@ CREATE TABLE plt01.cat_variants (
     FOREIGN KEY (tenant_id, product_id) REFERENCES plt01.cat_products (tenant_id, product_id),
     UNIQUE (tenant_id, product_id, variant_key),
     CONSTRAINT cat_variants_key_shape CHECK (variant_key ~ '^[a-z0-9][a-z0-9_.-]{0,62}$'),
-    CONSTRAINT cat_variants_name_not_blank CHECK (length(btrim(display_name)) > 0),
+    CONSTRAINT cat_variants_name_not_blank CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT cat_variants_status CHECK (status IN ('active', 'discontinued')),
     CONSTRAINT cat_variants_quantity_positive
         CHECK (entitlement_quantity IS NULL OR entitlement_quantity > 0),
     CONSTRAINT cat_variants_term_positive CHECK (term_days IS NULL OR term_days > 0),
-    CONSTRAINT cat_variants_sku_not_blank CHECK (sku IS NULL OR length(btrim(sku)) > 0),
+    CONSTRAINT cat_variants_sku_not_blank CHECK (sku IS NULL OR sku ~ '[^[:space:]]'),
     CONSTRAINT cat_variants_rank_sane CHECK (merchandising_rank BETWEEN 0 AND 1000000),
     CONSTRAINT cat_variants_version_positive CHECK (version >= 1)
 );
@@ -287,7 +287,7 @@ CREATE TABLE plt01.cat_price_books (
     UNIQUE (tenant_id, price_book_key),
     CONSTRAINT cat_price_books_key_shape
         CHECK (price_book_key ~ '^[a-z][a-z0-9_.-]{1,62}$'),
-    CONSTRAINT cat_price_books_name_not_blank CHECK (length(btrim(display_name)) > 0),
+    CONSTRAINT cat_price_books_name_not_blank CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT cat_price_books_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT cat_price_books_channel CHECK (channel IN (
         'any', 'pos', 'member_app', 'admin_web', 'crm', 'kiosk', 'web')),
@@ -417,7 +417,7 @@ CREATE TABLE plt01.cat_promotions (
     UNIQUE (tenant_id, promotion_key),
     CONSTRAINT cat_promotions_key_shape
         CHECK (promotion_key ~ '^[a-z][a-z0-9_.-]{1,62}$'),
-    CONSTRAINT cat_promotions_name_not_blank CHECK (length(btrim(display_name)) > 0),
+    CONSTRAINT cat_promotions_name_not_blank CHECK (display_name ~ '[^[:space:]]'),
     CONSTRAINT cat_promotions_kind CHECK (promotion_kind IN (
         'automatic', 'coupon', 'corporate_rate', 'member_tier', 'staff_discount', 'manual')),
     -- A percentage or an amount, never both and never neither.
@@ -490,7 +490,7 @@ CREATE TABLE plt01.cat_eligibility_rules (
     CONSTRAINT cat_eligibility_rules_quantity_positive
         CHECK (quantity IS NULL OR (quantity > 0 AND quantity <= 1000000)),
     CONSTRAINT cat_eligibility_rules_text_not_blank
-        CHECK (text_value IS NULL OR length(btrim(text_value)) > 0),
+        CHECK (text_value IS NULL OR text_value ~ '[^[:space:]]'),
     CONSTRAINT cat_eligibility_rules_dates_ordered
         CHECK (date_from IS NULL OR date_to IS NULL OR date_to >= date_from),
     -- **Each kind carries the operand it needs and no other.** A rule with the wrong operand is
@@ -545,7 +545,7 @@ CREATE TABLE plt01.cat_coupons (
     CONSTRAINT cat_coupons_revocation_attributed CHECK (
         (revoked_at IS NULL AND revoked_by IS NULL AND revoke_reason IS NULL)
         OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL
-            AND length(btrim(coalesce(revoke_reason, ''))) > 0)),
+            AND coalesce(revoke_reason, '') ~ '[^[:space:]]')),
     CONSTRAINT cat_coupons_revoked_is_attributed
         CHECK ((status = 'revoked') = (revoked_at IS NOT NULL))
 );
@@ -604,9 +604,9 @@ CREATE TABLE plt01.cat_coupon_redemptions (
         CHECK (discount_minor > 0 AND discount_minor <= 1000000000000),
     CONSTRAINT cat_coupon_redemptions_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
     CONSTRAINT cat_coupon_redemptions_key_not_blank
-        CHECK (length(btrim(idempotency_key)) > 0),
+        CHECK (idempotency_key ~ '[^[:space:]]'),
     CONSTRAINT cat_coupon_redemptions_reference_not_blank
-        CHECK (order_reference IS NULL OR length(btrim(order_reference)) > 0)
+        CHECK (order_reference IS NULL OR order_reference ~ '[^[:space:]]')
 );
 CREATE INDEX cat_coupon_redemptions_by_coupon
     ON plt01.cat_coupon_redemptions (tenant_id, coupon_id, redeemed_at DESC);
@@ -728,12 +728,12 @@ CREATE TABLE plt01.cat_bundle_fulfilments (
     CONSTRAINT cat_bundle_fulfilments_outcome
         CHECK (outcome IN ('delivered', 'failed', 'cancelled', 'reversed')),
     CONSTRAINT cat_bundle_fulfilments_reference_not_blank
-        CHECK (length(btrim(order_reference)) > 0),
+        CHECK (order_reference ~ '[^[:space:]]'),
     CONSTRAINT cat_bundle_fulfilments_external_not_blank
-        CHECK (external_reference IS NULL OR length(btrim(external_reference)) > 0),
+        CHECK (external_reference IS NULL OR external_reference ~ '[^[:space:]]'),
     -- A failure says why. The `coalesce` is load-bearing: a CHECK passes on NULL.
     CONSTRAINT cat_bundle_fulfilments_failure_explained
-        CHECK (outcome = 'delivered' OR length(btrim(coalesce(detail, ''))) > 0)
+        CHECK (outcome = 'delivered' OR coalesce(detail, '') ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.cat_bundle_fulfilments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.cat_bundle_fulfilments FORCE ROW LEVEL SECURITY;
@@ -872,7 +872,7 @@ CREATE TABLE plt01.cat_discount_requests (
         list_amount_minor > 0 AND list_amount_minor <= 1000000000000
         AND override_amount_minor >= 0 AND override_amount_minor <= list_amount_minor),
     CONSTRAINT cat_discount_requests_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
-    CONSTRAINT cat_discount_requests_reason_not_blank CHECK (length(btrim(reason)) > 0)
+    CONSTRAINT cat_discount_requests_reason_not_blank CHECK (reason ~ '[^[:space:]]')
 );
 ALTER TABLE plt01.cat_discount_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plt01.cat_discount_requests FORCE ROW LEVEL SECURITY;
@@ -915,7 +915,7 @@ CREATE TABLE plt01.cat_discount_approvals (
         AND override_amount_minor >= 0 AND override_amount_minor <= list_amount_minor),
     CONSTRAINT cat_discount_approvals_bp_range CHECK (discount_bp BETWEEN 1 AND 10000),
     CONSTRAINT cat_discount_approvals_currency_shape CHECK (currency ~ '^[A-Z]{3}$'),
-    CONSTRAINT cat_discount_approvals_reason_not_blank CHECK (length(btrim(reason)) > 0),
+    CONSTRAINT cat_discount_approvals_reason_not_blank CHECK (reason ~ '[^[:space:]]'),
     -- **An approver cannot approve their own request.** MOD-008's separation of duties, applied
     -- to the one act in this module that lets somebody choose the price.
     CONSTRAINT cat_discount_approvals_approver_is_not_requester

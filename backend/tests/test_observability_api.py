@@ -208,12 +208,25 @@ class RateLimitRegressionTests(GatedApiTestCase):
         """Computing a backoff and not sending it makes choosing 429 over 403 decorative."""
         tenant_id = self.tenant()
         head = {"X-Veyro-Tenant": tenant_id}
-        for _ in range(ratelimit.BUDGETS["auth.login"] + 1):
-            last = self.client.post("/auth/login", headers=head,
-                                    json=self.body("ghost@acme.test"))
-        self.assertEqual(last.status_code, 429)
-        self.assertIn("retry-after", {k.lower() for k in last.headers})
-        self.assertGreaterEqual(int(last.headers["retry-after"]), 1)
+        # **The burst stops at the first refusal, and is long enough to survive a window
+        # boundary.** The first version sent exactly `budget + 1` requests and asserted the
+        # last one was refused; each costs a scrypt, so in the full suite the burst sometimes
+        # crossed a minute, the count reset, and neither half spent the budget. Twice the
+        # budget plus two is long enough that *some* window inside the loop is over it
+        # whatever the split, and the loop stops as soon as one is -- so the slow case is
+        # paid for only when it happens.
+        budget = ratelimit.BUDGETS["auth.login"]
+        refused = None
+        for _ in range(2 * budget + 2):
+            answer = self.client.post("/auth/login", headers=head,
+                                      json=self.body("ghost@acme.test"))
+            if answer.status_code == 429:
+                refused = answer
+                break
+        self.assertIsNotNone(refused, "the budget was never spent")
+        assert refused is not None
+        self.assertIn("retry-after", {k.lower() for k in refused.headers})
+        self.assertGreaterEqual(int(refused.headers["retry-after"]), 1)
 
     def test_an_unparseable_identifier_still_gets_a_stable_key(self):
         """A limiter that refused to count what it could not parse is one an attacker turns off
