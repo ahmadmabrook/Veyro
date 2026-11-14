@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import unittest
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.commercial import service as commercial
 from app.errors import Conflict
@@ -30,7 +30,14 @@ FROM = "2026-01-01T00:00:00+00:00"
 #: allowance reaching back into last year's -- so a suite with hard-coded 2026 dates would
 #: start failing on a date nobody chose. Every membership here starts ninety days ago, which
 #: puts today comfortably inside its first contract year whenever the suite is run.
-TODAY = date.today()
+#: **UTC, not the local clock.** Every service in this build takes its "today" from
+#: `datetime.now(UTC)`, and a fixture using `date.today()` disagrees with it in any timezone
+#: east of UTC for as long as the two dates differ -- three hours a night here. A journal
+#: posted on the local date was then outside a trial balance read as of the UTC date, and
+#: sixteen tests across MOD-017 and MOD-018 failed for a reason that had nothing to do with
+#: either module. CI never saw it because CI runs in UTC, where the two agree. Found while
+#: running the full suite at 02:00.
+TODAY = datetime.now(UTC).date()
 MEMBERSHIP_START = TODAY - timedelta(days=90)
 
 

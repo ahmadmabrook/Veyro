@@ -34538,4 +34538,4994 @@ BEGIN
 END $$;
 
 
-\echo 'tenant isolation: 91/91 checks passed'
+-- MOD-020's own seed, committed so checks 92-97 have a subject on both sides. **It builds on
+-- MOD-019's**, because a booking cites a MOD-019 session and hold: the session at
+-- `eeeeeeee-...005` has ten thousand places, which is what lets these fixtures take holds
+-- freely without the fit trigger refusing one and proving itself instead of the rule named.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+-- Four members of its own, so MOD-019's one-live-hold-per-person index does not collide with
+-- the holds its own seed already took for the shared people.
+INSERT INTO plt01.ppl_persons
+    (tenant_id, person_id, legal_name, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000001',
+        'Booking One', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000002',
+        'Booking Two', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000003',
+        'Booking Three', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000004',
+        'Booking Four', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- Two more, for the bookings a cancellation case and a no-show case insert against.
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000005',
+        'Booking Five', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000006',
+        'Booking Six', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A place each, on MOD-019's live session.
+INSERT INTO plt01.sch_capacity_holds
+    (tenant_id, hold_id, session_id, person_id, places, source_kind, source_ref,
+     taken_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000001',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000001',
+        1, 'booking', 'bkg-seed-1', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-1', '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000002',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000002',
+        1, 'booking', 'bkg-seed-2', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-2', '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000003',
+        1, 'booking', 'bkg-seed-3', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-3', '33333333-3333-4333-8333-333333333333'),
+       -- The fourth is left for the `bkg_bookings` base row, so every case on that table
+       -- tests its own rule rather than the one-booking-per-hold index.
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000004',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000004',
+        1, 'booking', 'bkg-seed-4', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-4', '33333333-3333-4333-8333-333333333333'),
+       -- **Two places for bookings that are already settled with no record yet.** The
+       -- correspondence triggers added after review relate a cancellation and a no-show to
+       -- the booking they cite -- its member, its session, its state and the thresholds it
+       -- was made under -- so a case can no longer insert either against the base `booked`
+       -- booking. That is the rules file's own trap: adding a constraint is a change to every
+       -- case that inserts a row it can see.
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000005',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000005',
+        1, 'booking', 'bkg-seed-5', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-5', '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000006',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000006',
+        1, 'booking', 'bkg-seed-6', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-6', '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.bkg_policies
+    (tenant_id, policy_id, policy_key, version, display_name, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-2000-4000-8000-000000000001',
+        'STANDARD', 1, 'Standard booking policy',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.bkg_bookings
+    (tenant_id, booking_id, session_id, person_id, hold_id, policy_id, source_kind,
+     booked_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000001',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000001',
+        'dddddddd-1000-4000-8000-000000000001',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-1',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000002',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000002',
+        'dddddddd-1000-4000-8000-000000000002',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-2',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000003',
+        'dddddddd-1000-4000-8000-000000000003',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-3',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000005',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000005',
+        'dddddddd-1000-4000-8000-000000000005',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-5',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000006',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000006',
+        'dddddddd-1000-4000-8000-000000000006',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-6',
+        '33333333-3333-4333-8333-333333333333');
+-- The fifth is cancelled and the sixth is a no-show, both with **no record of their own**, so
+-- a case on `bkg_cancellations` or `bkg_no_shows` has a booking to cite that the new
+-- correspondence triggers accept.
+UPDATE plt01.bkg_bookings
+   SET state = 'cancelled', cancelled_at = now(),
+       cancelled_by = '33333333-3333-4333-8333-333333333333',
+       cancellation_reason = 'the seed cancelled it, and recorded nothing',
+       cancel_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE booking_id = 'dddddddd-3000-4000-8000-000000000005';
+UPDATE plt01.bkg_bookings
+   SET state = 'no_show', settled_at = now()
+ WHERE booking_id = 'dddddddd-3000-4000-8000-000000000006';
+-- And a seventh the *gym* released, because `occasion = 'session_cancelled'` now has to agree
+-- with `bkg_bookings.state` -- which is what makes `gym_cancellation_is_free` a constraint
+-- about what the gym did rather than about a word the caller typed.
+INSERT INTO plt01.ppl_persons
+    (tenant_id, person_id, legal_name, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-0000-4000-8000-000000000007',
+        'Booking Seven', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_capacity_holds
+    (tenant_id, hold_id, session_id, person_id, places, source_kind, source_ref,
+     taken_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-1000-4000-8000-000000000007',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000007',
+        1, 'booking', 'bkg-seed-7', '33333333-3333-4333-8333-333333333333',
+        'bkg-seed-hold-7', '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.bkg_bookings
+    (tenant_id, booking_id, session_id, person_id, hold_id, policy_id, source_kind,
+     booked_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-3000-4000-8000-000000000007',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000007',
+        'dddddddd-1000-4000-8000-000000000007',
+        'dddddddd-2000-4000-8000-000000000001', 'member',
+        '33333333-3333-4333-8333-333333333333', 'seed-booking-7',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.bkg_bookings
+   SET state = 'released', cancelled_at = now(),
+       cancelled_by = '33333333-3333-4333-8333-333333333333',
+       cancellation_reason = 'the seed gym cancelled the class',
+       cancel_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE booking_id = 'dddddddd-3000-4000-8000-000000000007';
+-- The second booking is cancelled and the third is a no-show, so the cancellation and no-show
+-- tables each have a seeded row for their unique cases to collide with -- and the base rows go
+-- on the *first* booking, which has neither.
+UPDATE plt01.bkg_bookings
+   SET state = 'cancelled', cancelled_at = now(),
+       cancelled_by = '33333333-3333-4333-8333-333333333333',
+       cancellation_reason = 'the seed cancelled it',
+       cancel_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE booking_id = 'dddddddd-3000-4000-8000-000000000002';
+INSERT INTO plt01.bkg_cancellations
+    (tenant_id, cancellation_id, booking_id, person_id, occasion, policy_hours,
+     hours_given, fee_due, credit_forfeit, reason, cancelled_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-4000-4000-8000-000000000001',
+        'dddddddd-3000-4000-8000-000000000002', 'dddddddd-0000-4000-8000-000000000002',
+        'cancelled_late', 12, 2, true, false, 'the seed cancelled it',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.bkg_bookings
+   SET state = 'no_show', settled_at = now()
+ WHERE booking_id = 'dddddddd-3000-4000-8000-000000000003';
+INSERT INTO plt01.bkg_no_shows
+    (tenant_id, no_show_id, booking_id, person_id, session_id, fee_due,
+     credit_forfeit, sanction, no_show_count, policy_warn_after,
+     policy_strike_after, recorded_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-5000-4000-8000-000000000001',
+        'dddddddd-3000-4000-8000-000000000003', 'dddddddd-0000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000005', true, false, 'none', 1, 2, 3,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- A waitlist entry for the third member, so the one-live-entry index has something to collide
+-- with and the base row uses the first member instead.
+INSERT INTO plt01.bkg_waitlist_entries
+    (tenant_id, entry_id, session_id, person_id, policy_id, joined_by,
+     idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-6000-4000-8000-000000000001',
+        'eeeeeeee-2000-4000-8000-000000000005', 'dddddddd-0000-4000-8000-000000000003',
+        'dddddddd-2000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333', 'seed-entry-1',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.bkg_appeals
+    (tenant_id, appeal_id, subject_person_id, no_show_id, against, grounds,
+     raised_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-7000-4000-8000-000000000001',
+        'dddddddd-0000-4000-8000-000000000003',
+        'dddddddd-5000-4000-8000-000000000001', 'strike', 'the seed disputes it',
+        '33333333-3333-4333-8333-333333333333', 'seed-appeal-1',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.bkg_attendance_intents
+    (tenant_id, intent_id, booking_id, person_id, intent, source, declared_by,
+     idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'dddddddd-8000-4000-8000-000000000001',
+        'dddddddd-3000-4000-8000-000000000001', 'dddddddd-0000-4000-8000-000000000001',
+        'attending', 'app', '33333333-3333-4333-8333-333333333333', 'seed-intent-1',
+        '33333333-3333-4333-8333-333333333333');
+-- Tenant B holds one booking policy of its own, so a leaked predicate shows as a count above
+-- the expected one rather than as the zero an empty table would give anyway.
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.bkg_policies
+    (tenant_id, policy_key, version, display_name, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'RIVAL', 1, 'Rival policy',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ---------------------------------------------------------------- 92. bkg_ isolates
+-- MOD-020's seven tables, swept from the catalogue rather than from a list. **A sweep
+-- proves the tables it names**, and a per-table list has to be edited whenever a module adds
+-- a table -- which is the moment an unprotected one slips through. Both runtime roles are
+-- seated, because PostgreSQL ORs permissive policies and a role nobody sits as is a role
+-- nothing is proved about.
+DO $$
+DECLARE
+    wrong text;
+    seen integer;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%';
+    IF seen <> 7 THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: expected 7 MOD-020 tables, found %',
+            seen;
+    END IF;
+    -- Row-level security, forced, on every one. `relkind IN ('r', 'p')` and not just `'r'`:
+    -- a partitioned table holds no storage of its own and is what rows are addressed
+    -- through, and a reviewer used exactly that to walk past a whole sweep once.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%' AND NOT (t.relrowsecurity AND t.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: a MOD-020 table is missing ENABLE or FORCE RLS: %', wrong;
+    END IF;
+    -- **Exactly one permissive policy each.** Comparing a policy's predicate asserts that a
+    -- *matching* policy exists, which an added second policy satisfies trivially while
+    -- reading every tenant.
+    SELECT string_agg(p.tablename || ' (' || p.n || ')', ', ' ORDER BY p.tablename)
+    INTO wrong
+    FROM (SELECT tablename, count(*) AS n FROM pg_policies
+          WHERE schemaname = 'plt01' AND permissive = 'PERMISSIVE'
+            AND tablename LIKE 'bkg\_%'
+          GROUP BY tablename) p
+    WHERE p.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: a MOD-020 table has other than one permissive policy: %',
+            wrong;
+    END IF;
+    -- And the predicate is the one shape, on both halves.
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01'
+      AND p.tablename LIKE 'bkg\_%'
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: a MOD-020 policy predicate is not the approved shape: %', wrong;
+    END IF;
+    -- No table is owned by a runtime role, which FORCE RLS would exempt.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%'
+      AND pg_get_userbyid(t.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 92 FAILED: a MOD-020 table is owned by something else: %',
+            wrong;
+    END IF;
+END $$;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.bkg_appeals) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_attendance_intents) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_bookings) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_cancellations) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_no_shows) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_waitlist_entries) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_app read tenant A''s MOD-020 rows from tenant B';
+    END IF;
+    -- Tenant B holds one booking policy of its own, so a leaked predicate shows as a
+    -- count above the expected one rather than as the zero an empty table would give.
+    IF (SELECT count(*) FROM plt01.bkg_policies) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_app sees % policies from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.bkg_policies);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.bkg_policies
+               WHERE policy_key = 'STANDARD') THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_app read tenant A''s booking policy from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.bkg_appeals) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_attendance_intents) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_bookings) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_cancellations) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_no_shows) <> 0 OR 
+       (SELECT count(*) FROM plt01.bkg_waitlist_entries) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_worker read tenant A''s MOD-020 rows from tenant B';
+    END IF;
+    IF (SELECT count(*) FROM plt01.bkg_policies) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_worker sees % policies from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.bkg_policies);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.bkg_policies
+               WHERE policy_key = 'STANDARD') THEN
+        RAISE EXCEPTION
+            'CHECK 92 FAILED: veyro_cp_worker read tenant A''s booking policy from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+
+-- ------------------------------------------------------------- 93. fail closed, MOD-020
+-- With no context the predicate is NULL, so a read returns nothing and a write is refused.
+-- **Isolation fails closed, and that is the property to protect.**
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.bkg_policies) <> 0
+       OR (SELECT count(*) FROM plt01.bkg_bookings) <> 0
+       OR (SELECT count(*) FROM plt01.bkg_waitlist_entries) <> 0
+       OR (SELECT count(*) FROM plt01.bkg_no_shows) <> 0
+       OR (SELECT count(*) FROM plt01.bkg_appeals) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 93 FAILED: the app role read MOD-020 rows with no context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (tenant_id, policy_key, version, display_name, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 1,
+                'Smuggled', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 93 FAILED: a booking policy was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.bkg_bookings) <> 0
+       OR (SELECT count(*) FROM plt01.bkg_cancellations) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 93 FAILED: the worker role read MOD-020 rows with no context';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (tenant_id, policy_key, version, display_name, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 1,
+                'Smuggled', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 93 FAILED: tenant B wrote a booking policy into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------------------- 94. cross-tenant parents, MOD-020
+-- **Every foreign key on this module's tables, compared as a set in both directions.** A
+-- sweep of one kind of reference is not a sweep: MOD-012 swept the tenant-registry key across
+-- every table and *sampled* the intra-module parents, which left two droppable in silence.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.bkg_appeals: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_appeals: tenant_id,cancellation_id -> plt01.bkg_cancellations'),
+        ('plt01.bkg_appeals: tenant_id,decided_by_person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_appeals: tenant_id,no_show_id -> plt01.bkg_no_shows'),
+        ('plt01.bkg_appeals: tenant_id,subject_person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_attendance_intents: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_attendance_intents: tenant_id,booking_id -> plt01.bkg_bookings'),
+        ('plt01.bkg_attendance_intents: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_bookings: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_bookings: tenant_id,entitlement_grant_id -> plt01.mem_entitlement_grants'),
+        ('plt01.bkg_bookings: tenant_id,hold_id -> plt01.sch_capacity_holds'),
+        ('plt01.bkg_bookings: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_bookings: tenant_id,policy_id -> plt01.bkg_policies'),
+        ('plt01.bkg_bookings: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.bkg_cancellations: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_cancellations: tenant_id,booking_id -> plt01.bkg_bookings'),
+        ('plt01.bkg_cancellations: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_no_shows: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_no_shows: tenant_id,booking_id -> plt01.bkg_bookings'),
+        ('plt01.bkg_no_shows: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_no_shows: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.bkg_policies: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_waitlist_entries: tenant_id -> plt01_platform.tenants'),
+        ('plt01.bkg_waitlist_entries: tenant_id,booking_id -> plt01.bkg_bookings'),
+        ('plt01.bkg_waitlist_entries: tenant_id,hold_id -> plt01.sch_capacity_holds'),
+        ('plt01.bkg_waitlist_entries: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.bkg_waitlist_entries: tenant_id,policy_id -> plt01.bkg_policies'),
+        ('plt01.bkg_waitlist_entries: tenant_id,session_id -> plt01.sch_sessions')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'bkg\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 94 FAILED: MOD-020 foreign keys differ from the expected set: %', wrong;
+    END IF;
+    -- **Every primary key leads with `tenant_id`, asserted with NOT EXISTS first.** A check
+    -- written as an inner join proves nothing about a table that has none: MOD-014 had
+    -- thirteen of sixteen droppable because a keyless table contributed no row.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint c
+                      WHERE c.conrelid = t.oid AND c.contype = 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 94 FAILED: a MOD-020 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    JOIN pg_constraint c ON c.conrelid = t.oid AND c.contype = 'p'
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%' AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 94 FAILED: a MOD-020 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------- 95. MOD-020's columns are pinned
+-- **The column list and the nullability, both as sets, both ways.** The defining control in
+-- this module is an *absence*: it owns no capacity, no count of a member's no-shows and no
+-- predictive risk score, because the first two are sums over somebody else's rows and the
+-- third is a number `app/booking/consequence.py` refuses to compute. An absence is exactly
+-- what a later migration adds back, and the only thing that notices is a comparison against
+-- the whole list -- which is why the forbidden-name sweep below is there as well as this pin.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.bkg_appeals',
+         'against,appeal_id,cancellation_id,correlation_id,'
+         'decide_correlation_id,decided_at,decided_by,'
+         'decided_by_person_id,decision_note,grounds,idempotency_key,'
+         'no_show_id,raised_at,raised_by,state,subject_person_id,'
+         'tenant_id'),
+        ('plt01.bkg_attendance_intents',
+         'booking_id,correlation_id,declared_at,declared_by,'
+         'idempotency_key,intent,intent_id,person_id,source,tenant_id'),
+        ('plt01.bkg_bookings',
+         'booked_at,booked_by,booking_id,cancel_correlation_id,'
+         'cancellation_reason,cancelled_at,cancelled_by,checked_in_at,'
+         'checked_in_by,checkin_correlation_id,checkin_source,'
+         'correlation_id,entitlement_grant_id,hold_id,idempotency_key,'
+         'person_id,policy_id,session_id,settled_at,source_kind,state,'
+         'tenant_id'),
+        ('plt01.bkg_cancellations',
+         'booking_id,cancellation_id,cancelled_at,cancelled_by,'
+         'correlation_id,credit_forfeit,fee_due,hours_given,occasion,'
+         'person_id,policy_hours,reason,tenant_id'),
+        ('plt01.bkg_no_shows',
+         'booking_id,correlation_id,credit_forfeit,fee_due,'
+         'no_show_count,no_show_id,overturn_appeal_id,overturned_at,'
+         'overturned_by,person_id,policy_strike_after,'
+         'policy_warn_after,recorded_at,recorded_by,sanction,'
+         'session_id,tenant_id'),
+        ('plt01.bkg_policies',
+         'cancellation_hours,checkin_grace_minutes,correlation_id,'
+         'created_at,created_by,display_name,forfeits_entitlement,'
+         'max_concurrent,offer_minutes,policy_id,policy_key,'
+         'priority_rule,quota,quota_period,retire_correlation_id,'
+         'retire_reason,retired_at,retired_by,status,'
+         'strike_after_no_shows,tenant_id,version,warn_after_no_shows'),
+        ('plt01.bkg_waitlist_entries',
+         'booking_id,correlation_id,entry_id,hold_id,idempotency_key,'
+         'joined_at,joined_by,offer_correlation_id,offer_expires_at,'
+         'offered_at,offers_made,person_id,policy_id,session_id,'
+         'settle_correlation_id,settle_reason,settled_at,settled_by,'
+         'state,tenant_id,tier')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 95 FAILED: MOD-020 column lists differ from the pinned set: %', wrong;
+    END IF;
+    -- **Every NOT NULL, because a NOT NULL is what makes a sibling CHECK bite** -- and
+    -- because of MATCH SIMPLE: a NULL in any column of a composite foreign key skips the
+    -- check entirely, so dropping one silently switches off a tenant-carrying parent
+    -- reference that the key-set comparison above cannot see.
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.bkg_appeals',
+         'against,appeal_id,correlation_id,grounds,idempotency_key,'
+         'raised_at,raised_by,state,subject_person_id,tenant_id'),
+        ('plt01.bkg_attendance_intents',
+         'booking_id,correlation_id,declared_at,declared_by,'
+         'idempotency_key,intent,intent_id,person_id,source,tenant_id'),
+        ('plt01.bkg_bookings',
+         'booked_at,booked_by,booking_id,correlation_id,hold_id,'
+         'idempotency_key,person_id,policy_id,session_id,source_kind,'
+         'state,tenant_id'),
+        ('plt01.bkg_cancellations',
+         'booking_id,cancellation_id,cancelled_at,cancelled_by,'
+         'correlation_id,credit_forfeit,fee_due,hours_given,occasion,'
+         'person_id,policy_hours,reason,tenant_id'),
+        ('plt01.bkg_no_shows',
+         'booking_id,correlation_id,credit_forfeit,fee_due,'
+         'no_show_count,no_show_id,person_id,policy_strike_after,'
+         'policy_warn_after,recorded_at,recorded_by,sanction,'
+         'session_id,tenant_id'),
+        ('plt01.bkg_policies',
+         'cancellation_hours,checkin_grace_minutes,correlation_id,'
+         'created_at,created_by,display_name,forfeits_entitlement,'
+         'max_concurrent,offer_minutes,policy_id,policy_key,'
+         'priority_rule,quota_period,status,strike_after_no_shows,'
+         'tenant_id,version,warn_after_no_shows'),
+        ('plt01.bkg_waitlist_entries',
+         'correlation_id,entry_id,idempotency_key,joined_at,joined_by,'
+         'offers_made,person_id,policy_id,session_id,state,tenant_id,'
+         'tier')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 95 FAILED: MOD-020 nullability differs from the pinned set: %', wrong;
+    END IF;
+    -- **And no seat count, no no-show count and no risk score.** This module's defining
+    -- control is that it owns no capacity: paragraph 4141 gives that to MOD-019, and every
+    -- "is there room" question is answered by MOD-019 refusing the hold under a row lock. A
+    -- counter here would be a second authority that can disagree with the first, and the
+    -- disagreement surfaces as a member refused a place the roster says is free.
+    --
+    -- A `no_show_count` on a member is the same argument about a sanction: the count is a sum
+    -- over insert-only records, and an upheld appeal takes one out of it without unsaying it.
+    -- And `risk_score` is paragraph 1884's predictive no-show score, which
+    -- `app/booking/consequence.py` refuses to compute at all -- so a column for one is the
+    -- shape in which that refusal gets quietly reversed.
+    --
+    -- **Swept over the whole of `plt01`**, not over `bkg_` names: a reviewer created
+    -- `plt01.class_rosters` against MOD-019 and watched every check pass, which is the third
+    -- time a control has escaped on a name in this repository.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('seats_taken', 'seats_left', 'bookings_count',
+                        'booked_count', 'no_show_count_total', 'no_shows',
+                        'strike_count', 'warning_count', 'risk_score',
+                        'no_show_risk', 'predicted_no_show', 'waitlist_length');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 95 FAILED: a plt01 table grew a cached booking count or a risk score: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------- 96. MOD-020's privileges
+-- **The UPDATE column grants as a set, per table and per role, compared both ways.** Every
+-- insert-only claim in the migration is a missing grant, and `pg_class.relacl` holds
+-- table-level grants only -- so a column-level widening is invisible to a check that reads
+-- only it. Read through `has_column_privilege` over `pg_attribute`, per role, because
+-- `information_schema` views are filtered to what the current user can see and a check
+-- running as one role proves nothing about the other.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, grantee, cols) AS (VALUES
+        ('bkg_appeals', 'veyro_cp_app',
+         'decide_correlation_id,decided_at,decided_by,'
+         'decided_by_person_id,decision_note,state'),
+        ('bkg_appeals', 'veyro_cp_worker',
+         'decide_correlation_id,decided_at,decided_by,'
+         'decided_by_person_id,decision_note,state'),
+        ('bkg_attendance_intents', 'veyro_cp_app',
+         '(none)'),
+        ('bkg_attendance_intents', 'veyro_cp_worker',
+         '(none)'),
+        ('bkg_bookings', 'veyro_cp_app',
+         'cancel_correlation_id,cancellation_reason,cancelled_at,'
+         'cancelled_by,checked_in_at,checked_in_by,'
+         'checkin_correlation_id,checkin_source,settled_at,state'),
+        ('bkg_bookings', 'veyro_cp_worker',
+         'cancel_correlation_id,cancellation_reason,cancelled_at,'
+         'cancelled_by,checked_in_at,checked_in_by,'
+         'checkin_correlation_id,checkin_source,settled_at,state'),
+        ('bkg_cancellations', 'veyro_cp_app',
+         '(none)'),
+        ('bkg_cancellations', 'veyro_cp_worker',
+         '(none)'),
+        ('bkg_no_shows', 'veyro_cp_app',
+         'overturn_appeal_id,overturned_at,overturned_by'),
+        ('bkg_no_shows', 'veyro_cp_worker',
+         'overturn_appeal_id,overturned_at,overturned_by'),
+        ('bkg_policies', 'veyro_cp_app',
+         'display_name,retire_correlation_id,retire_reason,retired_at,'
+         'retired_by,status'),
+        ('bkg_policies', 'veyro_cp_worker',
+         'display_name,retire_correlation_id,retire_reason,retired_at,'
+         'retired_by,status'),
+        ('bkg_waitlist_entries', 'veyro_cp_app',
+         'booking_id,hold_id,offer_correlation_id,offer_expires_at,'
+         'offered_at,offers_made,settle_correlation_id,settle_reason,'
+         'settled_at,settled_by,state'),
+        ('bkg_waitlist_entries', 'veyro_cp_worker',
+         'booking_id,hold_id,offer_correlation_id,offer_expires_at,'
+         'offered_at,offers_made,settle_correlation_id,settle_reason,'
+         'settled_at,settled_by,state')
+    ), actual(tbl, grantee, cols) AS (
+        SELECT t.relname, r.rolname,
+               coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
+        FROM pg_class t
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        LEFT JOIN pg_attribute att
+          ON att.attrelid = t.oid AND att.attnum > 0 AND NOT att.attisdropped
+             AND has_column_privilege(r.rolname, t.oid, att.attname, 'UPDATE')
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+          AND t.relkind IN ('r', 'p')
+        GROUP BY t.relname, r.rolname
+    )
+    SELECT string_agg(tbl || ' / ' || grantee || ': ' || cols, '; '
+                      ORDER BY tbl, grantee)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 96 FAILED: MOD-020 UPDATE column grants differ from the set: %', wrong;
+    END IF;
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES on anything here.
+    SELECT string_agg(t.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class t
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%'
+      AND has_table_privilege(r.grantee, t.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 96 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    -- And nothing is granted to PUBLIC, column-level included.
+    SELECT string_agg(t.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class t
+    JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum > 0
+         AND NOT att.attisdropped
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'bkg\_%'
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 96 FAILED: a MOD-020 column carries a PUBLIC grant: %', wrong;
+    END IF;
+    -- **The trigger functions' own properties, which nothing in this file had ever read.**
+    -- `grep -n "prosecdef\|proconfig\|tgenabled"` over the whole suite returned nothing, in
+    -- 39,000 lines -- so two properties the migration asserts in as many words were verified
+    -- by nothing, and a reviewer removed both with the suite reporting every check passing:
+    --
+    --   * `ALTER FUNCTION ... RESET search_path`, against "their `search_path` is pinned".
+    --     `md5(prosrc)` cannot see `proconfig`, so the definition pin is blind to it.
+    --   * `GRANT EXECUTE ON FUNCTION ... TO PUBLIC`, against the migration's own closing
+    --     `REVOKE ALL ON FUNCTION ... FROM PUBLIC` and rule 5 of the isolation rule, which
+    --     forbids a PUBLIC privilege on a function outright.
+    --
+    -- Exploitability here is low -- every reference in these bodies is schema-qualified and
+    -- trigger invocation does not check EXECUTE -- but an asserted control with no evidence
+    -- is the one thing this file exists to prevent. Swept over the catalogue rather than
+    -- named, so the next trigger this module adds is covered without an edit.
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'bkg\_%'
+      AND NOT ('search_path=pg_catalog, public' = ANY (coalesce(p.proconfig, '{}')));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 96 FAILED: a MOD-020 trigger function has no pinned search_path: %',
+            wrong;
+    END IF;
+    SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO wrong
+    FROM pg_proc p
+    WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'bkg\_%'
+      AND (p.prosecdef
+           OR has_function_privilege('public', p.oid, 'EXECUTE'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 96 FAILED: a MOD-020 trigger function is SECURITY DEFINER or executable '
+            'by PUBLIC: %', wrong;
+    END IF;
+    -- And every trigger is enabled: `ALTER TABLE ... DISABLE TRIGGER` leaves the catalogue
+    -- row in place, so the definition pin sees nothing.
+    SELECT string_agg(t.relname || '.' || g.tgname, ', ' ORDER BY g.tgname) INTO wrong
+    FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+      AND NOT g.tgisinternal AND g.tgenabled <> 'O';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 96 FAILED: a MOD-020 trigger is disabled: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants. **Four of the seven tables carry no
+-- UPDATE at all**, and each is a record of something a member was told:
+--
+--   * `bkg_cancellations` -- what the policy said they owe. A row that could be relabelled
+--     in-time is a fee nobody can dispute, and a late one that could be erased is a policy
+--     nobody can enforce.
+--   * `bkg_no_shows` -- apart from the overturn an upheld appeal writes. The record stays:
+--     the member did miss the class, and what the appeal changes is whether it counts.
+--   * `bkg_attendance_intents` -- every declaration, because a change of mind is a new row
+--     and overwriting would lose that the gym was told twice.
+--   * and the rule columns of `bkg_policies`, which a booking snapshots by reference: editing
+--     a live version in place would change the terms of every booking already made under it.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.bkg_cancellations SET fee_due = false;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a cancellation''s fee was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_cancellations SET occasion = 'cancelled_in_time';
+        RAISE EXCEPTION 'CHECK 96 FAILED: a late cancellation was relabelled';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_no_shows SET sanction = 'none';
+        RAISE EXCEPTION 'CHECK 96 FAILED: a sanction was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_no_shows SET no_show_count = 1;
+        RAISE EXCEPTION 'CHECK 96 FAILED: the count behind a sanction was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_attendance_intents SET intent = 'attending';
+        RAISE EXCEPTION 'CHECK 96 FAILED: an attendance intent was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- **A policy's rules do not move**, which is what makes a booking's snapshot by reference
+    -- a snapshot at all.
+    BEGIN
+        UPDATE plt01.bkg_policies SET cancellation_hours = 0;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a live policy''s cancellation window was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_policies SET strike_after_no_shows = 1;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a live policy''s strike threshold was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_policies SET version = 99;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a policy version was renumbered';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- And no runtime role can delete any of it.
+    BEGIN
+        DELETE FROM plt01.bkg_bookings;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a booking was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.bkg_no_shows;
+        RAISE EXCEPTION 'CHECK 96 FAILED: a no-show record was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- **A booking's identity does not move.** The place it holds, the member it is for and the
+    -- policy it was made under are what every later decision reads; the trigger beside the
+    -- table refuses a change to them as well, for a writer that holds the lifecycle grant.
+    BEGIN
+        UPDATE plt01.bkg_bookings SET hold_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 96 FAILED: a booking was re-pointed at another place';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_bookings SET person_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 96 FAILED: a booking was moved to another member';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_bookings SET policy_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 96 FAILED: a booking''s policy snapshot was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- **A member's place in the queue is when they joined.** Moving it re-orders the queue
+    -- after the fact, which is the one thing a waiting member can check for themselves.
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries SET joined_at = now();
+        RAISE EXCEPTION 'CHECK 96 FAILED: a place in the queue was moved';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- An appeal's grounds are the member's own words and its subject is who it is about.
+    BEGIN
+        UPDATE plt01.bkg_appeals SET grounds = 'rewritten';
+        RAISE EXCEPTION 'CHECK 96 FAILED: an appeal''s grounds were rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_appeals SET subject_person_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 96 FAILED: an appeal was re-pointed at another member';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- -------------------------------------------------- 97. MOD-020's constraints, per side
+-- Every CHECK constraint and every unique index on this module's seven tables, generated from
+-- a valid base row per table with exactly one field overridden per case. Then the seven
+-- triggers, one probe per branch with the count asserted.
+--
+-- The rules, all of them in `.claude/rules/backend/mod004-rls.md` and three of them learned
+-- again in MOD-019:
+--
+--   * **Each case violates exactly one rule.** A case that passes because a *sibling* fired
+--     first proves nothing about the one it names.
+--   * **A case catches a weakening only if the weakened constraint ADMITS the row**, so a
+--     biconditional gets a case per side.
+--   * **A blank case uses a tab.** `btrim` strips spaces and nothing else, so a case made of
+--     spaces cannot tell `x ~ '[^[:space:]]'` from the `length(btrim(x)) > 0` form this
+--     repository banned across 118 constraints.
+--   * **Every parent a case names is seeded**, because PostgreSQL evaluates a CHECK before the
+--     foreign-key trigger -- and the seed above is where they are, committed.
+--   * **A BEFORE INSERT trigger fires before every CHECK on the same table**, so each case on
+--     `bkg_bookings`, `bkg_appeals` and `bkg_attendance_intents` has to be a row the *trigger*
+--     accepts, or it proves the trigger instead.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'lower case',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy whose name is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                0,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy version numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (-1,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a negative cancellation window';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (169,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation window past a week';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                0,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy that lets a member hold no bookings';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                101,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy past the sane concurrent bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                0,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a quota of zero rather than no quota';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                10001,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a quota past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'fortnight',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a quota over an unknown period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                -1,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a negative check-in grace period';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                241,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in grace period past four hours';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a warning after no no-shows';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                0,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a strike after no no-shows';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                2,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                3);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy that strikes before it warns';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'lottery',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an unknown waitlist priority rule';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                0,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer held open for no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                1441,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer held open longer than a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'paused',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'retired',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy reading retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                '33333333-3333-4333-8333-333333333333',
+                'done',
+                now(),
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy retired for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy whose retirement reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                'done',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'OTHER',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                '33333333-3333-4333-8333-333333333333',
+                'done',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a policy naming a retirer but no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_policies
+            (cancellation_hours, checkin_grace_minutes, correlation_id,
+             created_by, display_name, forfeits_entitlement, max_concurrent,
+             offer_minutes, policy_key, priority_rule, quota, quota_period,
+             retire_correlation_id, retire_reason, retired_at, retired_by,
+             status, strike_after_no_shows, tenant_id, version,
+             warn_after_no_shows)
+        VALUES (12,
+                15,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another policy',
+                true,
+                10,
+                60,
+                'STANDARD',
+                'first_come',
+                NULL,
+                'rolling_7_days',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                3,
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                2);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second policy with one key and version';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'api',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'pending',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking with an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                E'\t',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'front_desk',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in through no channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'front_desk',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'front_desk',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking naming a check-in that did not happen';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'telepathy',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in through an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                now(),
+                'member',
+                'attended',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking attended by somebody who never arrived';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'front_desk',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                now(),
+                'member',
+                'no_show',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show who was checked in';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'front_desk',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'attended',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a settled booking with no settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                now(),
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an open booking carrying a settlement time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'changed my mind',
+                now(),
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking cancelled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking cancelled for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking whose cancellation reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                'changed my mind',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'changed my mind',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking naming a canceller but no cancellation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'base-booking',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'cancelled',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking reading cancelled with no cancellation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (booked_by, cancel_correlation_id, cancellation_reason,
+             cancelled_at, cancelled_by, checked_in_at, checked_in_by,
+             checkin_correlation_id, checkin_source, correlation_id,
+             entitlement_grant_id, hold_id, idempotency_key, person_id,
+             policy_id, session_id, settled_at, source_kind, state, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'dddddddd-1000-4000-8000-000000000004',
+                'seed-booking-1',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'member',
+                'booked',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second booking with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'queued',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a waitlist entry with an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                -1);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a negative waitlist tier';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                1001);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a waitlist tier past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                -1,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a negative count of offers made';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                101,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: more offers than anybody would make';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer with no expiry';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an expiry with no offer';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now() + interval '1 hour',
+                now(),
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now() - interval '1 hour',
+                now(),
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer that expired before it was made';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'offered',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer that reserves no place';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                'took it',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'confirmed',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a confirmed entry that became no booking';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry citing a booking without being confirmed';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                'gone',
+                now(),
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry settled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry settled for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry whose settlement reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                'gone',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry settlement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                'gone',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry naming a settler but no settlement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'withdrawn',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: an entry reading withdrawn with no settlement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'seed-entry-1',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second entry with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (booking_id, correlation_id, hold_id, idempotency_key, joined_at,
+             joined_by, offer_correlation_id, offer_expires_at, offered_at,
+             offers_made, person_id, policy_id, session_id,
+             settle_correlation_id, settle_reason, settled_at, settled_by,
+             state, tenant_id, tier)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'base-entry',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                0,
+                'dddddddd-0000-4000-8000-000000000003',
+                'dddddddd-2000-4000-8000-000000000001',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'waiting',
+                '11111111-1111-4111-8111-111111111111',
+                0);
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second live entry for one member on one session';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                2,
+                'forgot',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation for an unknown occasion';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                -8761,
+                'cancelled_late',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation from before anybody was booked';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                8761,
+                'cancelled_late',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation from a year in advance';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                2,
+                'cancelled_late',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                E'\t',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a cancellation whose reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000007',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                2,
+                'session_cancelled',
+                'dddddddd-0000-4000-8000-000000000007',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a fee for a session the gym cancelled';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000007',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                true,
+                false,
+                2,
+                'session_cancelled',
+                'dddddddd-0000-4000-8000-000000000007',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a forfeited credit for a session the gym cancelled';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                2,
+                'cancelled_in_time',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a fee for cancelling inside the window';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000005',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                true,
+                false,
+                2,
+                'cancelled_in_time',
+                'dddddddd-0000-4000-8000-000000000005',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a forfeited credit for cancelling inside the window';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (booking_id, cancelled_at, cancelled_by, correlation_id,
+             credit_forfeit, fee_due, hours_given, occasion, person_id,
+             policy_hours, reason, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000002',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                2,
+                'cancelled_late',
+                'dddddddd-0000-4000-8000-000000000002',
+                12,
+                'something came up',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second cancellation of one booking';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'ban',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show with an unknown sanction';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                0,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show that is not the first';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                10001,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show count past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+
+
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'strike',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a strike on a first no-show under a policy that strikes after three';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'warning',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a warning below the policy''s own threshold';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                3,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: no sanction at a count the policy strikes for';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                'dddddddd-7000-4000-8000-000000000001',
+                now(),
+                NULL,
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show overturned by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show overturned by no appeal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                'dddddddd-7000-4000-8000-000000000001',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-0000-4000-8000-000000000006',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a no-show naming an overturn that did not happen';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (booking_id, correlation_id, credit_forfeit, fee_due, no_show_count,
+             overturn_appeal_id, overturned_at, overturned_by, person_id,
+             policy_strike_after, policy_warn_after, recorded_at, recorded_by,
+             sanction, session_id, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                true,
+                1,
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000003',
+                3,
+                2,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'none',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second no-show record for one booking';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **Cases a review found missing or answered by a sibling.** Each row below is set so the
+    -- constraint it names is the only thing left to refuse it; where that is not possible the
+    -- migration says so and the definition pin is the evidence.
+
+    -- `bkg_bookings` UNIQUE (tenant_id, hold_id): two bookings on one place. Hold ...005 is
+    -- person ...005's, whose booking is cancelled -- so the partial one-live index does not
+    -- cover them and this rule is the only one in the way. The migration header calls this
+    -- "paragraph 4144 at the place", and it had no case.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000005',
+                'dddddddd-1000-4000-8000-000000000005',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                '33333333-3333-4333-8333-333333333333', 'case-two-on-one-place',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: two bookings on one place';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- `bkg_waitlist_entries_offered_has_an_offer`: an offer with no time. All three offer
+    -- columns NULL keeps `offer_complete` satisfied and `hold_id` set keeps
+    -- `offered_holds_a_place` satisfied, so this is the only rule left. It had no case at all.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, hold_id,
+             joined_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'offered',
+                'dddddddd-1000-4000-8000-000000000004',
+                '33333333-3333-4333-8333-333333333333', 'case-offer-no-time',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer with no time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- `bkg_waitlist_entries_offered_holds_a_place`: the mirror. All three offer columns set
+    -- and `hold_id` NULL, so `offered_has_an_offer` and `offer_complete` both pass. The
+    -- single case this had overrode only `state` on a base row whose offer columns were all
+    -- NULL, so one row violated both and each passed on the other.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, offered_at,
+             offer_expires_at, offer_correlation_id, joined_by, idempotency_key,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'offered', now(),
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-offer-no-place',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer that reserves nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- `bkg_waitlist_entries_offer_ordered`, the `>=` side: an offer that expires the instant
+    -- it is made. The existing case put the expiry *before* the offer, which a loosened
+    -- `>=` refuses just as surely -- so the weakening passed with the case sitting there
+    -- looking correct. A member promoted into this is swept immediately and never answers.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, hold_id, offered_at,
+             offer_expires_at, offer_correlation_id, joined_by, idempotency_key,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'offered',
+                'dddddddd-1000-4000-8000-000000000004',
+                TIMESTAMPTZ '2026-12-01 09:00+00', TIMESTAMPTZ '2026-12-01 09:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-offer-instant',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an offer that expires when it is made';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- `bkg_waitlist_entries_booking_is_confirmed`, the widened side: a *declined* entry
+    -- naming a booking. The existing case used `waiting`, which a version widened to
+    -- `IN ('confirmed','declined')` still refuses.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, booking_id,
+             settled_at, settled_by, settle_reason, settle_correlation_id,
+             joined_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-2000-4000-8000-000000000001', 'declined',
+                'dddddddd-3000-4000-8000-000000000001', now(),
+                '33333333-3333-4333-8333-333333333333', 'no thanks',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-declined-booking',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a declined entry that became a booking';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- `bkg_waitlist_entries_one_live_per_person`, the narrowed side: a live `offered` entry
+    -- beside a `waiting` one for one member. The existing case used two `waiting` rows, which
+    -- an index narrowed to `WHERE state = 'waiting'` still refuses.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, hold_id, offered_at,
+             offer_expires_at, offer_correlation_id, joined_by, idempotency_key,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000003',
+                'dddddddd-2000-4000-8000-000000000001', 'offered',
+                'dddddddd-1000-4000-8000-000000000003', now(),
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'case-offer-beside-waiting',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an offered entry beside a waiting one for one member';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- `bkg_no_shows_sanction_follows_the_count`, the warning's upper bound: a warning at a
+    -- count the policy *strikes* for. Dropping `no_show_count < policy_strike_after` admits
+    -- it, and the three existing cases all remain refused by the rest of the disjunction --
+    -- so none of them could see the weakening. The product cost is the strike threshold
+    -- quietly ceasing to bite.
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (tenant_id, booking_id, person_id, session_id, fee_due, credit_forfeit,
+             sanction, no_show_count, policy_warn_after, policy_strike_after,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000006',
+                'dddddddd-0000-4000-8000-000000000006',
+                'eeeeeeee-2000-4000-8000-000000000005', true, false, 'warning', 3, 2, 3,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a warning at a count the policy strikes for';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('the weather',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal against something undeclared';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'pending',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal with an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                E'\t',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal whose grounds are whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                E'\t',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal about no record at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                'dddddddd-4000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal about two records';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                NULL,
+                'no',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'rejected',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal decided by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'rejected',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal decided with no note';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                E'\t',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'rejected',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal whose decision note is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'no',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'rejected',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal decision with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'no',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal naming a decider but no decision';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'upheld',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal reading upheld with no decision';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'no',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an open appeal carrying a decision';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'dddddddd-0000-4000-8000-000000000003',
+                'no',
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'rejected',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal the member decided themselves';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                'dddddddd-0000-4000-8000-000000000001',
+                NULL,
+                'I was in hospital',
+                'base-appeal',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an appeal naming a decider''s person with no decision';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (against, cancellation_id, correlation_id, decide_correlation_id,
+             decided_at, decided_by, decided_by_person_id, decision_note,
+             grounds, idempotency_key, no_show_id, raised_at, raised_by, state,
+             subject_person_id, tenant_id)
+        VALUES ('strike',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'I was in hospital',
+                'seed-appeal-1',
+                'dddddddd-5000-4000-8000-000000000001',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'open',
+                'dddddddd-0000-4000-8000-000000000003',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second appeal with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (booking_id, correlation_id, declared_at, declared_by,
+             idempotency_key, intent, person_id, source, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'base-intent',
+                'maybe',
+                'dddddddd-0000-4000-8000-000000000001',
+                'app',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an attendance intent that is not one of the three';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (booking_id, correlation_id, declared_at, declared_by,
+             idempotency_key, intent, person_id, source, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'base-intent',
+                'attending',
+                'dddddddd-0000-4000-8000-000000000001',
+                'carrier pigeon',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an intent declared through an unknown channel';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (booking_id, correlation_id, declared_at, declared_by,
+             idempotency_key, intent, person_id, source, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                'attending',
+                'dddddddd-0000-4000-8000-000000000001',
+                'app',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: an intent whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (booking_id, correlation_id, declared_at, declared_by,
+             idempotency_key, intent, person_id, source, tenant_id)
+        VALUES ('dddddddd-3000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'seed-intent-1',
+                'attending',
+                'dddddddd-0000-4000-8000-000000000001',
+                'app',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a second intent with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------- 97b. the triggers, one probe per branch
+-- Seven triggers, seventeen of their twenty branches. The other three -- a booking's place,
+-- a member's position in the queue and what an appeal is about -- are columns no runtime role
+-- can UPDATE at all, so a probe as `veyro_cp_app` is refused by the grant before it reaches
+-- the trigger. They run as the owner in 97c, which is MOD-019's arrangement and for the same
+-- reason: the grant is the stronger control and the trigger is what holds for a writer that
+-- is not this service.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1 to 4. `bkg_booking_hold_matches`: a booking *is* the place it cites, so the hold has
+    -- to exist, be for this session, be for this member, and be live. Nothing else relates the
+    -- hold to the session or the person on the row -- MOD-013's finding, two keys that nothing
+    -- relates are two halves of a control.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-1000-4000-8000-0000000000ff',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                '33333333-3333-4333-8333-333333333333', 'probe-1',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking cited a hold that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: a booking citing a missing hold was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000006',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-1000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                '33333333-3333-4333-8333-333333333333', 'probe-2',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a booking cited a hold for another session';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        -- **A member with no *live* booking on this session**, because person ...001 holds a
+        -- seeded one there: the BEFORE trigger answered first, so the probe passed, and with
+        -- the branch deleted the one-live index answered instead -- a `unique_violation` this
+        -- block does not catch, which killed probes 4 to 17 and the count assertion with
+        -- them. Person ...002's booking is cancelled, which the partial index does not cover.
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000002',
+                'dddddddd-1000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                '33333333-3333-4333-8333-333333333333', 'probe-3',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a booking cited another member''s place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN unique_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: a booking on another member''s place was refused by a '
+                'unique index, not the person branch';
+    END;
+    -- **MOD-019's own released hold**, which is settled and which no booking cites -- so the
+    -- status branch is the only thing in the way. Using one of this module's holds would have
+    -- been refused by the one-booking-per-hold index instead, which the suite caught on its
+    -- first run: a probe proved the index rather than the trigger.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             booked_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'bbbbbbbb-1000-4000-8000-000000000011',
+                'eeeeeeee-2000-4000-8000-000000000009',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                '33333333-3333-4333-8333-333333333333', 'probe-4',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 97 FAILED: a booking cited a place nobody holds';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN unique_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: a booking on a settled hold was refused by the '
+                'one-booking-per-hold index, not the trigger';
+    END;
+    -- 5 to 7. `bkg_booking_is_one_way`: a settled booking is final, a check-in is recorded
+    -- once, and what the booking *is* does not move.
+    -- **Move it where every other rule is satisfied, so only the trigger can refuse.** The
+    -- first version marked this no-show `attended`, which `attended_was_present` refuses on
+    -- its own -- so with the trigger dropped the probe died on that CHECK instead of
+    -- succeeding, and because a `check_violation` is not caught by `WHEN raise_exception`
+    -- the whole block aborted and every probe after it never ran. Cancelling a settled
+    -- booking with a full attribution satisfies the state domain, both presence rules, the
+    -- settlement biconditional and the cancellation attribution; branch 1 is the only thing
+    -- left to say no. Found by the mutation sweep.
+    BEGIN
+        UPDATE plt01.bkg_bookings
+           SET state = 'cancelled', settled_at = NULL, cancelled_at = now(),
+               cancelled_by = '33333333-3333-4333-8333-333333333333',
+               cancellation_reason = 'rewriting a settled booking',
+               cancel_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE booking_id = 'dddddddd-3000-4000-8000-000000000003';
+        RAISE EXCEPTION 'CHECK 97 FAILED: a settled booking was reopened';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: reopening a settled booking was refused by %, not the '
+                'one-way trigger', sqlerrm;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_bookings
+           SET checked_in_at = now(),
+               checked_in_by = '33333333-3333-4333-8333-333333333333',
+               checkin_source = 'front_desk',
+               checkin_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE booking_id = 'dddddddd-3000-4000-8000-000000000001';
+        -- The first check-in is legitimate; the second is what the branch refuses.
+        UPDATE plt01.bkg_bookings
+           SET checked_in_by = '44444444-4444-4444-8444-444444444444'
+         WHERE booking_id = 'dddddddd-3000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 97 FAILED: a check-in was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 8 and 9. `bkg_entry_hold_matches`: an offer reserves the place it cites, for the member
+    -- and session on its own row.
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries
+           SET hold_id = 'dddddddd-1000-4000-8000-0000000000ff'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a waitlist offer cited a hold that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: an offer citing a missing hold was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries
+           SET hold_id = 'dddddddd-1000-4000-8000-000000000004'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a waitlist offer reserved another member''s place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 10 to 12. `bkg_entry_is_one_way`: the states move where `waitlist.EDGES` allows, a
+    -- settlement is recorded once, and the place in the queue does not move.
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries SET state = 'confirmed'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a waiting entry was confirmed without being offered';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN check_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: a bad waitlist transition was refused by a CHECK, not the '
+                'trigger -- so this branch is unproved';
+    END;
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries
+           SET state = 'withdrawn', settled_at = now(),
+               settled_by = '33333333-3333-4333-8333-333333333333',
+               settle_reason = 'the member left',
+               settle_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        UPDATE plt01.bkg_waitlist_entries
+           SET settled_by = '44444444-4444-4444-8444-444444444444'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a waitlist settlement was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 13 to 15. `bkg_appeal_is_decided_once`: a decision is final, an open appeal goes to one
+    -- of three states, and what it is about does not move.
+    BEGIN
+        -- **The decider is named**, which `bkg_appeals_decider_is_named` now requires: the
+        -- constraint beside it compares nothing against a NULL person, so a decision without
+        -- one was the separation of duties made optional to whoever wrote the row.
+        UPDATE plt01.bkg_appeals
+           SET state = 'rejected', decided_at = now(),
+               decided_by = '33333333-3333-4333-8333-333333333333',
+               decided_by_person_id = 'dddddddd-0000-4000-8000-000000000001',
+               decision_note = 'no', decide_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE appeal_id = 'dddddddd-7000-4000-8000-000000000001';
+        UPDATE plt01.bkg_appeals SET state = 'upheld'
+         WHERE appeal_id = 'dddddddd-7000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 97 FAILED: a decided appeal was decided again';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.bkg_appeals SET state = 'open'
+         WHERE appeal_id = 'dddddddd-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an open appeal was moved to a state that is not a decision';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 16 and 17. `bkg_appeal_subject_matches`: an appeal is about a record concerning its own
+    -- subject. Without it one member could appeal another's strike, and an upheld appeal would
+    -- overturn it.
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (tenant_id, subject_person_id, no_show_id, against, grounds, raised_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000003',
+                'dddddddd-5000-4000-8000-0000000000ff', 'strike', 'about nothing',
+                '33333333-3333-4333-8333-333333333333', 'probe-16',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an appeal cited a record that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: an appeal citing a missing record was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_appeals
+            (tenant_id, subject_person_id, no_show_id, against, grounds, raised_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-0000-4000-8000-000000000001',
+                'dddddddd-5000-4000-8000-000000000001', 'strike', 'not my strike',
+                '33333333-3333-4333-8333-333333333333', 'probe-17',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: one member appealed another member''s sanction';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 18 to 20. `bkg_intent_booking_matches`: an intent is the member's own, about their own
+    -- booking, while that booking is still open.
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (tenant_id, booking_id, person_id, intent, source, declared_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-0000000000ff',
+                'dddddddd-0000-4000-8000-000000000001', 'attending', 'app',
+                '33333333-3333-4333-8333-333333333333', 'probe-18',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an intent cited a booking that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 97 FAILED: an intent citing a missing booking was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (tenant_id, booking_id, person_id, intent, source, declared_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000001',
+                'dddddddd-0000-4000-8000-000000000002', 'not_attending', 'app',
+                '33333333-3333-4333-8333-333333333333', 'probe-19',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: one member declared another member''s attendance';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_attendance_intents
+            (tenant_id, booking_id, person_id, intent, source, declared_by,
+             idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000003',
+                'dddddddd-0000-4000-8000-000000000003', 'attending', 'app',
+                '33333333-3333-4333-8333-333333333333', 'probe-20',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an intent was declared on a settled booking';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 18. `bkg_booking_hold_matches`' entitlement branch: a booking spends its own pass.
+    -- The foreign key proves the grant exists and says nothing about whose it is, so a
+    -- booking could cite another member's paid-for class -- and `credit_forfeit` then
+    -- forfeits *their* class when this member does not turn up. Grant ...00a belongs to
+    -- person `bbbbbbbb-1000-...-001`, and this booking is person ...004's.
+    BEGIN
+        INSERT INTO plt01.bkg_bookings
+            (tenant_id, session_id, person_id, hold_id, policy_id, source_kind,
+             entitlement_grant_id, booked_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-1000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'member',
+                'dddddddd-1000-4000-8000-00000000000a',
+                '33333333-3333-4333-8333-333333333333', 'probe-18',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a booking spent another member''s entitlement';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 19. `bkg_entry_hold_matches`' status branch, which its sibling had and it did not: an
+    -- `offered` entry citing a *released* hold is a member told they have a place that is
+    -- not reserved, which is paragraph 5031 inverted. Hold ...009 is MOD-019's own released
+    -- one, and person `bbbbbbbb-...-011` is who it was taken for.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, hold_id, offered_at,
+             offer_expires_at, offer_correlation_id, joined_by, idempotency_key,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'bbbbbbbb-1000-4000-8000-000000000011',
+                'dddddddd-2000-4000-8000-000000000001', 'offered',
+                'eeeeeeee-2000-4000-8000-000000000009', now(),
+                now() + interval '1 hour', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'probe-19',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a waitlist offer reserved a released place';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 20 to 23. The two correspondence triggers these tables had none of. A reviewer wrote a
+    -- strike on a member who had no booking, from a booking they had *attended*, naming a
+    -- different session, under thresholds unrelated to the policy the booking snapshotted --
+    -- and a late fee on the wrong member for a booking never cancelled. Both tables are
+    -- insert-only with no UPDATE grant on any figure and no DELETE, so the row is permanent.
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (tenant_id, booking_id, person_id, session_id, fee_due, credit_forfeit,
+             sanction, no_show_count, policy_warn_after, policy_strike_after,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000006',
+                'dddddddd-0000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000005', true, false, 'none', 1, 2, 3,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a strike landed on a member whose booking it was not';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_no_shows
+            (tenant_id, booking_id, person_id, session_id, fee_due, credit_forfeit,
+             sanction, no_show_count, policy_warn_after, policy_strike_after,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000006',
+                'dddddddd-0000-4000-8000-000000000006',
+                'eeeeeeee-2000-4000-8000-000000000005', true, false, 'strike', 1, 1, 1,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a no-show recorded thresholds the policy does not have';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (tenant_id, booking_id, person_id, occasion, policy_hours, hours_given,
+             fee_due, credit_forfeit, reason, cancelled_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000001',
+                'dddddddd-0000-4000-8000-000000000001', 'cancelled_late', 12, 2,
+                true, false, 'a booking nobody cancelled',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a fee for a booking nobody cancelled';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- **A booking the gym released, charged as the member's own late cancellation.**
+    -- `gym_cancellation_is_free` binds only the declared word, so declaring the other
+    -- occasion walked past it -- which is what relating `occasion` to `bkg_bookings.state`
+    -- closes, and the reason that constraint now means what its comment says.
+    BEGIN
+        INSERT INTO plt01.bkg_cancellations
+            (tenant_id, booking_id, person_id, occasion, policy_hours, hours_given,
+             fee_due, credit_forfeit, reason, cancelled_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'dddddddd-3000-4000-8000-000000000007',
+                'dddddddd-0000-4000-8000-000000000007', 'cancelled_late', 12, 1,
+                true, true, 'the gym cancelled the class',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a class the gym called off was charged to the member';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 24. `bkg_entry_hold_matches`' booking branch: a confirmed entry became its own
+    -- booking, not another member's. The foreign key proves the booking exists.
+    BEGIN
+        INSERT INTO plt01.bkg_waitlist_entries
+            (tenant_id, session_id, person_id, policy_id, state, booking_id,
+             settled_at, settled_by, settle_reason, settle_correlation_id,
+             joined_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'dddddddd-0000-4000-8000-000000000004',
+                'dddddddd-2000-4000-8000-000000000001', 'confirmed',
+                'dddddddd-3000-4000-8000-000000000001', now(),
+                '33333333-3333-4333-8333-333333333333', 'it was taken',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', 'probe-24',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an entry claimed another member''s booking';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 24 THEN
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: the MOD-020 triggers fired for % of 24 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ------------------------------------- 97c. the identity the grant already refuses
+-- **Three branches a runtime role cannot reach.** `bkg_bookings.hold_id`,
+-- `bkg_waitlist_entries.joined_at` and `bkg_appeals.against` carry no UPDATE grant for any
+-- runtime role, so check 96 already proves this service cannot move them and a probe as
+-- `veyro_cp_app` fails with `insufficient_privilege` before the trigger is consulted. These
+-- run as the owner instead, because the trigger is what holds for a writer that is not the
+-- service -- the DDL role, a migration, a repair script -- and a branch with no probe is a
+-- branch a reviewer deletes with the suite reporting every check passing.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. A booking re-pointed at another place, which is a member holding a seat that is not
+    -- the one their booking says.
+    -- **The entitlement, not the hold**, because `bkg_booking_hold_matches` fires first
+    -- (alphabetically on the trigger name) and refuses a hold belonging to another member --
+    -- so a probe that moved `hold_id` proved *that* branch, which probe 3 of 97b already
+    -- covers, and the identity branch was droppable with only the definition pin objecting.
+    -- `entitlement_grant_id` is in the same disjunction, carries no runtime UPDATE grant, and
+    -- nothing else in the schema refuses the move: the grant exists and belongs to this
+    -- booking's own member. Found by review.
+    BEGIN
+        UPDATE plt01.bkg_bookings
+           SET entitlement_grant_id = 'dddddddd-1000-4000-8000-00000000000a'
+         WHERE booking_id = 'dddddddd-3000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: a booking was re-pointed at another entitlement';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 2. A position in the queue moved, which re-orders the waitlist after the fact -- the one
+    -- thing a waiting member can check for themselves.
+    BEGIN
+        UPDATE plt01.bkg_waitlist_entries SET joined_at = now() + interval '1 day'
+         WHERE entry_id = 'dddddddd-6000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 97 FAILED: a place in the queue was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. And an appeal re-pointed at another sanction, which is a decision about one thing
+    -- recorded against another.
+    -- **It has to move to a decision as well.** The branch before it refuses any update that
+    -- does not take an open appeal to one of its three decided states, so a probe that only
+    -- changed `against` was answered by *that* branch -- which probe 14 of 97b already
+    -- covers -- and the identity branch was droppable in silence. Found by review.
+    BEGIN
+        UPDATE plt01.bkg_appeals
+           SET against = 'fee', state = 'withdrawn'
+         WHERE appeal_id = 'dddddddd-7000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: an appeal was re-pointed at another sanction';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 97 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 3 THEN
+        RAISE EXCEPTION
+            'CHECK 97 FAILED: the identity branches fired for % of 3 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+
+
+-- --------------------------------- 98. MOD-020's rules are pinned, bodies included
+-- **The text of every CHECK, index, trigger and trigger function body on this module's
+-- tables, compared against the pinned set in both directions.** Check 90 proves that each rule
+-- refuses the row it should; this proves the rule is still there, and still says the same
+-- thing, on every CI run rather than when somebody next runs the mutation sweep.
+--
+-- It closes the three holes that have each cost a review round. A constraint nobody wrote a
+-- case for was droppable in silence (MOD-011: 38 of 74 mutations uncaught). A constraint
+-- *weakened* rather than dropped was caught only by a case the weakened version admits
+-- (MOD-017, twice). And **a plpgsql branch is invisible to any constraint sweep**: the mutation
+-- is `CREATE OR REPLACE FUNCTION` with one branch deleted, which touches nothing in
+-- `pg_constraint`, so MOD-018's balance trigger lost a branch with the suite reporting 84/84.
+-- A drop, a weakening and a deleted branch all change the text, and the body digest is what
+-- sees the third.
+--
+-- It does not replace check 90: a pin says the rule is written down, and only a case says it
+-- bites. One without the other is how vacuous evidence happens, which is this file's whole
+-- argument. The cost is deliberate -- a legitimate schema change fails here until somebody
+-- regenerates the pin, which is the moment a human reads the diff.
+--
+-- Unlike MOD-019, this module has no constraint without an isolating behavioural case: every
+-- one of them is reachable with the others satisfied, which is what the case list in check 97
+-- asserts. The pin is the second line of evidence rather than the only line.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('bkg_appeals_against CHECK ((against = ANY (ARRAY[''fee''::text, ''credit_forfeit''::text, ''warning''::text, ''strike''::text])))'),
+        ('bkg_appeals_decided_is_decided CHECK (((state = ANY (ARRAY[''upheld''::text, ''rejected''::text])) = (decided_at IS NOT NULL)))'),
+        ('bkg_appeals_decider_is_named CHECK (((decided_at IS NULL) = (decided_by_person_id IS NULL)))'),
+        ('bkg_appeals_decider_is_not_the_subject CHECK (((decided_by_person_id IS NULL) OR (decided_by_person_id <> subject_person_id)))'),
+        ('bkg_appeals_decider_person_needs_a_decision CHECK (((decided_by_person_id IS NULL) OR (decided_at IS NOT NULL)))'),
+        ('bkg_appeals_decision_attributed CHECK ((((decided_at IS NULL) AND (decided_by IS NULL) AND (decision_note IS NULL) AND (decide_correlation_id IS NULL)) OR ((decided_at IS NOT NULL) AND (decided_by IS NOT NULL) AND (COALESCE(decision_note, ''''::text) ~ ''[^[:space:]]''::text) AND (decide_correlation_id IS NOT NULL))))'),
+        ('bkg_appeals_grounds_not_blank CHECK ((grounds ~ ''[^[:space:]]''::text))'),
+        ('bkg_appeals_is_about_one_thing CHECK (((no_show_id IS NULL) <> (cancellation_id IS NULL)))'),
+        ('bkg_appeals_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('bkg_appeals_state CHECK ((state = ANY (ARRAY[''open''::text, ''upheld''::text, ''rejected''::text, ''withdrawn''::text])))'),
+        ('bkg_attendance_intents_intent CHECK ((intent = ANY (ARRAY[''attending''::text, ''not_attending''::text, ''unsure''::text])))'),
+        ('bkg_attendance_intents_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('bkg_attendance_intents_source CHECK ((source = ANY (ARRAY[''app''::text, ''reminder_reply''::text, ''front_desk''::text, ''migration''::text])))'),
+        ('bkg_bookings_attended_was_present CHECK (((state <> ''attended''::text) OR (checked_in_at IS NOT NULL)))'),
+        ('bkg_bookings_cancellation_attributed CHECK ((((cancelled_at IS NULL) AND (cancelled_by IS NULL) AND (cancellation_reason IS NULL) AND (cancel_correlation_id IS NULL)) OR ((cancelled_at IS NOT NULL) AND (cancelled_by IS NOT NULL) AND (COALESCE(cancellation_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (cancel_correlation_id IS NOT NULL))))'),
+        ('bkg_bookings_cancelled_is_cancelled CHECK (((state <> ALL (ARRAY[''cancelled''::text, ''released''::text])) OR (cancelled_at IS NOT NULL)))'),
+        ('bkg_bookings_checkin_attributed CHECK ((((checked_in_at IS NULL) AND (checked_in_by IS NULL) AND (checkin_source IS NULL) AND (checkin_correlation_id IS NULL)) OR ((checked_in_at IS NOT NULL) AND (checked_in_by IS NOT NULL) AND (checkin_source IS NOT NULL) AND (checkin_correlation_id IS NOT NULL))))'),
+        ('bkg_bookings_checkin_source CHECK (((checkin_source IS NULL) OR (checkin_source = ANY (ARRAY[''front_desk''::text, ''self_service''::text, ''device''::text, ''migration''::text]))))'),
+        ('bkg_bookings_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('bkg_bookings_no_show_was_absent CHECK (((state <> ''no_show''::text) OR (checked_in_at IS NULL)))'),
+        ('bkg_bookings_settled_is_settled CHECK (((state = ANY (ARRAY[''attended''::text, ''no_show''::text])) = (settled_at IS NOT NULL)))'),
+        ('bkg_bookings_source_kind CHECK ((source_kind = ANY (ARRAY[''member''::text, ''waitlist''::text, ''front_desk''::text, ''migration''::text])))'),
+        ('bkg_bookings_state CHECK ((state = ANY (ARRAY[''booked''::text, ''attended''::text, ''no_show''::text, ''cancelled''::text, ''released''::text])))'),
+        ('bkg_cancellations_gym_cancellation_is_free CHECK (((occasion <> ''session_cancelled''::text) OR ((fee_due = false) AND (credit_forfeit = false))))'),
+        ('bkg_cancellations_hours_given_sane CHECK (((hours_given >= ''-8760''::integer) AND (hours_given <= 8760)))'),
+        ('bkg_cancellations_in_time_is_free CHECK (((occasion <> ''cancelled_in_time''::text) OR ((fee_due = false) AND (credit_forfeit = false))))'),
+        ('bkg_cancellations_occasion CHECK ((occasion = ANY (ARRAY[''cancelled_in_time''::text, ''cancelled_late''::text, ''session_cancelled''::text])))'),
+        ('bkg_cancellations_reason_not_blank CHECK ((reason ~ ''[^[:space:]]''::text))'),
+        ('bkg_no_shows_count_positive CHECK (((no_show_count >= 1) AND (no_show_count <= 10000)))'),
+        ('bkg_no_shows_overturn_attributed CHECK ((((overturned_at IS NULL) AND (overturned_by IS NULL) AND (overturn_appeal_id IS NULL)) OR ((overturned_at IS NOT NULL) AND (overturned_by IS NOT NULL) AND (overturn_appeal_id IS NOT NULL))))'),
+        ('bkg_no_shows_sanction_follows_the_count CHECK ((((sanction = ''strike''::text) AND (no_show_count >= policy_strike_after)) OR ((sanction = ''warning''::text) AND (no_show_count >= policy_warn_after) AND (no_show_count < policy_strike_after)) OR ((sanction = ''none''::text) AND (no_show_count < policy_warn_after))))'),
+        ('bkg_policies_cancellation_sane CHECK (((cancellation_hours >= 0) AND (cancellation_hours <= 168)))'),
+        ('bkg_policies_concurrent_sane CHECK (((max_concurrent >= 1) AND (max_concurrent <= 100)))'),
+        ('bkg_policies_grace_sane CHECK (((checkin_grace_minutes >= 0) AND (checkin_grace_minutes <= 240)))'),
+        ('bkg_policies_key_shape CHECK ((policy_key ~ ''^[A-Z0-9][A-Z0-9._-]{1,47}$''::text))'),
+        ('bkg_policies_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('bkg_policies_offer_sane CHECK (((offer_minutes >= 1) AND (offer_minutes <= 1440)))'),
+        ('bkg_policies_priority CHECK ((priority_rule = ANY (ARRAY[''first_come''::text, ''membership_tier''::text])))'),
+        ('bkg_policies_quota_period CHECK ((quota_period = ANY (ARRAY[''day''::text, ''week''::text, ''rolling_7_days''::text, ''rolling_30_days''::text])))'),
+        ('bkg_policies_quota_sane CHECK (((quota IS NULL) OR ((quota >= 1) AND (quota <= 10000))))'),
+        ('bkg_policies_retired_is_retired CHECK (((status <> ''retired''::text) OR (retired_at IS NOT NULL)))'),
+        ('bkg_policies_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('bkg_policies_status CHECK ((status = ANY (ARRAY[''active''::text, ''retired''::text])))'),
+        ('bkg_policies_strike_follows_warning CHECK ((strike_after_no_shows >= warn_after_no_shows))'),
+        ('bkg_policies_strike_positive CHECK ((strike_after_no_shows >= 1))'),
+        ('bkg_policies_version_positive CHECK ((version >= 1))'),
+        ('bkg_policies_warn_positive CHECK ((warn_after_no_shows >= 1))'),
+        ('bkg_waitlist_entries_booking_is_confirmed CHECK (((booking_id IS NULL) OR (state = ''confirmed''::text)))'),
+        ('bkg_waitlist_entries_confirmed_became_a_booking CHECK (((state <> ''confirmed''::text) OR (booking_id IS NOT NULL)))'),
+        ('bkg_waitlist_entries_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('bkg_waitlist_entries_offer_complete CHECK ((((offered_at IS NULL) AND (offer_expires_at IS NULL) AND (offer_correlation_id IS NULL)) OR ((offered_at IS NOT NULL) AND (offer_expires_at IS NOT NULL) AND (offer_correlation_id IS NOT NULL))))'),
+        ('bkg_waitlist_entries_offer_ordered CHECK (((offer_expires_at IS NULL) OR (offer_expires_at > offered_at)))'),
+        ('bkg_waitlist_entries_offered_has_an_offer CHECK (((state <> ''offered''::text) OR (offered_at IS NOT NULL)))'),
+        ('bkg_waitlist_entries_offered_holds_a_place CHECK (((state <> ''offered''::text) OR (hold_id IS NOT NULL)))'),
+        ('bkg_waitlist_entries_offers_sane CHECK (((offers_made >= 0) AND (offers_made <= 100)))'),
+        ('bkg_waitlist_entries_settled_is_settled CHECK (((state <> ALL (ARRAY[''withdrawn''::text, ''declined''::text])) OR (settled_at IS NOT NULL)))'),
+        ('bkg_waitlist_entries_settlement_attributed CHECK ((((settled_at IS NULL) AND (settled_by IS NULL) AND (settle_reason IS NULL) AND (settle_correlation_id IS NULL)) OR ((settled_at IS NOT NULL) AND (settled_by IS NOT NULL) AND (COALESCE(settle_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (settle_correlation_id IS NOT NULL))))'),
+        ('bkg_waitlist_entries_state CHECK ((state = ANY (ARRAY[''waiting''::text, ''offered''::text, ''confirmed''::text, ''declined''::text, ''expired''::text, ''withdrawn''::text, ''lapsed''::text])))'),
+        ('bkg_waitlist_entries_tier_sane CHECK (((tier >= 0) AND (tier <= 1000)))')
+    ), actual(rule) AS (
+        SELECT c.conname || ' ' || pg_get_constraintdef(c.oid)
+        FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+          AND c.contype = 'c'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 98 FAILED: MOD-020 CHECK constraints differ from the pinned set: %', wrong;
+    END IF;
+    -- Every index, unique and otherwise: a unique index is not a constraint, so a `DROP INDEX`
+    -- leaves `pg_constraint` untouched -- and a partial index losing its `WHERE` clause is a
+    -- weakening that admits rows the full one refuses.
+    WITH expected(rule) AS (VALUES
+        ('bkg_appeals_by_subject CREATE INDEX bkg_appeals_by_subject ON plt01.bkg_appeals USING btree (tenant_id, subject_person_id, raised_at DESC)'),
+        ('bkg_appeals_open CREATE INDEX bkg_appeals_open ON plt01.bkg_appeals USING btree (tenant_id, raised_at) WHERE (state = ''open''::text)'),
+        ('bkg_appeals_pkey CREATE UNIQUE INDEX bkg_appeals_pkey ON plt01.bkg_appeals USING btree (tenant_id, appeal_id)'),
+        ('bkg_appeals_tenant_id_idempotency_key_key CREATE UNIQUE INDEX bkg_appeals_tenant_id_idempotency_key_key ON plt01.bkg_appeals USING btree (tenant_id, idempotency_key)'),
+        ('bkg_attendance_intents_latest CREATE INDEX bkg_attendance_intents_latest ON plt01.bkg_attendance_intents USING btree (tenant_id, booking_id, declared_at DESC)'),
+        ('bkg_attendance_intents_pkey CREATE UNIQUE INDEX bkg_attendance_intents_pkey ON plt01.bkg_attendance_intents USING btree (tenant_id, intent_id)'),
+        ('bkg_attendance_intents_tenant_id_idempotency_key_key CREATE UNIQUE INDEX bkg_attendance_intents_tenant_id_idempotency_key_key ON plt01.bkg_attendance_intents USING btree (tenant_id, idempotency_key)'),
+        ('bkg_bookings_by_person CREATE INDEX bkg_bookings_by_person ON plt01.bkg_bookings USING btree (tenant_id, person_id, booked_at DESC)'),
+        ('bkg_bookings_by_session CREATE INDEX bkg_bookings_by_session ON plt01.bkg_bookings USING btree (tenant_id, session_id, state)'),
+        ('bkg_bookings_one_live_per_person CREATE UNIQUE INDEX bkg_bookings_one_live_per_person ON plt01.bkg_bookings USING btree (tenant_id, session_id, person_id) WHERE (state = ANY (ARRAY[''booked''::text, ''attended''::text]))'),
+        ('bkg_bookings_pkey CREATE UNIQUE INDEX bkg_bookings_pkey ON plt01.bkg_bookings USING btree (tenant_id, booking_id)'),
+        ('bkg_bookings_tenant_id_hold_id_key CREATE UNIQUE INDEX bkg_bookings_tenant_id_hold_id_key ON plt01.bkg_bookings USING btree (tenant_id, hold_id)'),
+        ('bkg_bookings_tenant_id_idempotency_key_key CREATE UNIQUE INDEX bkg_bookings_tenant_id_idempotency_key_key ON plt01.bkg_bookings USING btree (tenant_id, idempotency_key)'),
+        ('bkg_bookings_unsettled CREATE INDEX bkg_bookings_unsettled ON plt01.bkg_bookings USING btree (tenant_id, session_id) WHERE (state = ''booked''::text)'),
+        ('bkg_cancellations_by_person CREATE INDEX bkg_cancellations_by_person ON plt01.bkg_cancellations USING btree (tenant_id, person_id, cancelled_at DESC)'),
+        ('bkg_cancellations_pkey CREATE UNIQUE INDEX bkg_cancellations_pkey ON plt01.bkg_cancellations USING btree (tenant_id, cancellation_id)'),
+        ('bkg_cancellations_tenant_id_booking_id_key CREATE UNIQUE INDEX bkg_cancellations_tenant_id_booking_id_key ON plt01.bkg_cancellations USING btree (tenant_id, booking_id)'),
+        ('bkg_no_shows_by_person CREATE INDEX bkg_no_shows_by_person ON plt01.bkg_no_shows USING btree (tenant_id, person_id, recorded_at DESC) WHERE (overturned_at IS NULL)'),
+        ('bkg_no_shows_pkey CREATE UNIQUE INDEX bkg_no_shows_pkey ON plt01.bkg_no_shows USING btree (tenant_id, no_show_id)'),
+        ('bkg_no_shows_tenant_id_booking_id_key CREATE UNIQUE INDEX bkg_no_shows_tenant_id_booking_id_key ON plt01.bkg_no_shows USING btree (tenant_id, booking_id)'),
+        ('bkg_policies_live CREATE INDEX bkg_policies_live ON plt01.bkg_policies USING btree (tenant_id, policy_key, version DESC) WHERE (status = ''active''::text)'),
+        ('bkg_policies_pkey CREATE UNIQUE INDEX bkg_policies_pkey ON plt01.bkg_policies USING btree (tenant_id, policy_id)'),
+        ('bkg_policies_tenant_id_policy_key_version_key CREATE UNIQUE INDEX bkg_policies_tenant_id_policy_key_version_key ON plt01.bkg_policies USING btree (tenant_id, policy_key, version)'),
+        ('bkg_waitlist_entries_expiring CREATE INDEX bkg_waitlist_entries_expiring ON plt01.bkg_waitlist_entries USING btree (tenant_id, offer_expires_at) WHERE (state = ''offered''::text)'),
+        ('bkg_waitlist_entries_one_live_per_person CREATE UNIQUE INDEX bkg_waitlist_entries_one_live_per_person ON plt01.bkg_waitlist_entries USING btree (tenant_id, session_id, person_id) WHERE (state = ANY (ARRAY[''waiting''::text, ''offered''::text, ''expired''::text]))'),
+        ('bkg_waitlist_entries_one_per_booking CREATE UNIQUE INDEX bkg_waitlist_entries_one_per_booking ON plt01.bkg_waitlist_entries USING btree (tenant_id, booking_id) WHERE (booking_id IS NOT NULL)'),
+        ('bkg_waitlist_entries_pkey CREATE UNIQUE INDEX bkg_waitlist_entries_pkey ON plt01.bkg_waitlist_entries USING btree (tenant_id, entry_id)'),
+        ('bkg_waitlist_entries_queue CREATE INDEX bkg_waitlist_entries_queue ON plt01.bkg_waitlist_entries USING btree (tenant_id, session_id, tier, joined_at, entry_id) WHERE (state = ANY (ARRAY[''waiting''::text, ''offered''::text]))'),
+        ('bkg_waitlist_entries_tenant_id_idempotency_key_key CREATE UNIQUE INDEX bkg_waitlist_entries_tenant_id_idempotency_key_key ON plt01.bkg_waitlist_entries USING btree (tenant_id, idempotency_key)')
+    ), actual(rule) AS (
+        SELECT indexname || ' ' || indexdef FROM pg_indexes
+        WHERE schemaname = 'plt01' AND tablename LIKE 'bkg\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 98 FAILED: MOD-020 indexes differ from the pinned set: %', wrong;
+    END IF;
+    -- The trigger definitions: which table, which events, which function.
+    WITH expected(rule) AS (VALUES
+        ('CREATE TRIGGER bkg_appeals_one_way BEFORE UPDATE ON plt01.bkg_appeals FOR EACH ROW EXECUTE FUNCTION plt01.bkg_appeal_is_decided_once()'),
+        ('CREATE TRIGGER bkg_appeals_subject_matches BEFORE INSERT OR UPDATE ON plt01.bkg_appeals FOR EACH ROW EXECUTE FUNCTION plt01.bkg_appeal_subject_matches()'),
+        ('CREATE TRIGGER bkg_attendance_intents_booking_matches BEFORE INSERT ON plt01.bkg_attendance_intents FOR EACH ROW EXECUTE FUNCTION plt01.bkg_intent_booking_matches()'),
+        ('CREATE TRIGGER bkg_bookings_hold_matches BEFORE INSERT OR UPDATE ON plt01.bkg_bookings FOR EACH ROW EXECUTE FUNCTION plt01.bkg_booking_hold_matches()'),
+        ('CREATE TRIGGER bkg_bookings_one_way BEFORE UPDATE ON plt01.bkg_bookings FOR EACH ROW EXECUTE FUNCTION plt01.bkg_booking_is_one_way()'),
+        ('CREATE TRIGGER bkg_cancellations_matches_its_booking BEFORE INSERT ON plt01.bkg_cancellations FOR EACH ROW EXECUTE FUNCTION plt01.bkg_cancellation_matches_its_booking()'),
+        ('CREATE TRIGGER bkg_no_shows_matches_its_booking BEFORE INSERT ON plt01.bkg_no_shows FOR EACH ROW EXECUTE FUNCTION plt01.bkg_no_show_matches_its_booking()'),
+        ('CREATE TRIGGER bkg_waitlist_entries_hold_matches BEFORE INSERT OR UPDATE ON plt01.bkg_waitlist_entries FOR EACH ROW EXECUTE FUNCTION plt01.bkg_entry_hold_matches()'),
+        ('CREATE TRIGGER bkg_waitlist_entries_one_way BEFORE UPDATE ON plt01.bkg_waitlist_entries FOR EACH ROW EXECUTE FUNCTION plt01.bkg_entry_is_one_way()')
+    ), actual(rule) AS (
+        SELECT pg_get_triggerdef(g.oid)
+        FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'bkg\_%'
+          AND NOT g.tgisinternal
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 98 FAILED: MOD-020 triggers differ from the pinned set: %', wrong;
+    END IF;
+    -- **And the bodies, as digests.** This is the half no other check in this file has ever
+    -- had: a branch deleted from a trigger function changes nothing a catalogue sweep reads.
+    WITH expected(rule) AS (VALUES
+        ('bkg_appeal_is_decided_once e1c7251c1760b1e5a55d9efc6170d30e'),
+        ('bkg_appeal_subject_matches f553553d79bde6ba1cda18b2282591d0'),
+        ('bkg_booking_hold_matches 2e9ecd83bcbed4d9fa7ac3dfbcc3fe4f'),
+        ('bkg_booking_is_one_way e6b5a59eee353111b275d76c83673dc5'),
+        ('bkg_cancellation_matches_its_booking 996b6ca717d3a3278fd027ff4dabf00b'),
+        ('bkg_entry_hold_matches bbfd7c6846ff06943e6c5258204b22f8'),
+        ('bkg_entry_is_one_way 463cf4f85da2da8f63641805da5872e2'),
+        ('bkg_intent_booking_matches 7fe050953c8ad9df9ce8bebd6e275d96'),
+        ('bkg_no_show_matches_its_booking 38062bdb464f4ab67ee8eb8e8ab22845')
+    ), actual(rule) AS (
+        SELECT p.proname || ' ' || md5(p.prosrc)
+        FROM pg_proc p
+        WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'bkg\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 98 FAILED: a MOD-020 trigger body differs from the pinned digest: %', wrong;
+    END IF;
+END $$;
+
+
+\echo 'tenant isolation: 98/98 checks passed'

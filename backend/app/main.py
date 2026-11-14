@@ -49,6 +49,7 @@ from app.authorization import catalog as authz_catalog
 from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
+from app.booking import service as booking
 from app.catalog import service as catalog
 from app.commercial import service as commercial
 from app.config import Settings, load_settings
@@ -2228,6 +2229,138 @@ class SettleHoldBody(BaseModel):
 
 class RetireBody(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+# ------------------------------------------------------------------ MOD-020 booking
+#
+# **No `age_years`, no `entitlement_grant_id` and no `no_show_count` on any body.** Each is a
+# fact about the member that this build can read: the age is `ppl_persons.date_of_birth`, the
+# grant is MOD-017's and is found by key, and the count is a sum over insert-only records.
+# MOD-019 shipped the first of those as a body field with a written defence that turned out to
+# be false, and a reviewer used it to put a fourteen-year-old in an 18+ class.
+
+
+class BookingPolicyBody(BaseModel):
+    """A version of the booking policy. **Rules only: a version is never edited.**"""
+
+    policy_key: str = Field(min_length=2, max_length=48)
+    display_name: str = Field(min_length=1, max_length=200)
+    cancellation_hours: int = Field(default=12, ge=0, le=168)
+    max_concurrent: int = Field(default=10, ge=1, le=100)
+    quota: int | None = Field(default=None, ge=1, le=10000)
+    quota_period: Literal["day", "week", "rolling_7_days", "rolling_30_days"] = (
+        "rolling_7_days")
+    checkin_grace_minutes: int = Field(default=15, ge=0, le=240)
+    warn_after_no_shows: int = Field(default=2, ge=1, le=1000)
+    strike_after_no_shows: int = Field(default=3, ge=1, le=1000)
+    priority_rule: Literal["first_come", "membership_tier"] = "first_come"
+    offer_minutes: int = Field(default=60, ge=1, le=1440)
+    forfeits_entitlement: bool = True
+    correlation_id: str
+
+
+class CreateBookingBody(BaseModel):
+    """**`entitlement_key` is a kind, not a grant.** Which grant a member holds is read from
+    MOD-017; naming one would be naming somebody else's entitlement, which is the shape four
+    modules have now shipped."""
+
+    person_id: str
+    policy_key: str = Field(min_length=2, max_length=48)
+    source_kind: Literal["member", "waitlist", "front_desk", "migration"] = "member"
+    entitlement_key: str | None = Field(default=None, min_length=1, max_length=63)
+    #: Nothing in this build stores a skill, so a skill restriction on the session is only as
+    #: good as whoever answers it. MOD-019's gap, inherited and named rather than hidden.
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CancelBookingBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class JoinWaitlistBody(BaseModel):
+    """**No `tier`.** It was a field here, bounded `0..1000` and compared with nothing, so a
+    basic member sent a zero and took the place a premium member had paid priority for. The
+    tier is read from the member's own MOD-014 tags by `_tier_for`, which is where MOD-016
+    reads the customer segment that chooses a price book."""
+
+    person_id: str
+    policy_key: str = Field(min_length=2, max_length=48)
+    entitlement_key: str | None = Field(default=None, min_length=1, max_length=64)
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class RetirePolicyBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class LeaveWaitlistBody(BaseModel):
+    """A member's own exit. From `waiting` it is a withdrawal; from `offered` it is a decline,
+    which releases the place as well."""
+
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class SettleOfferBody(BaseModel):
+    """**`declined` is the member's choice and the default is the clock.** An expiry returns
+    the entry to the queue keeping its place; a decline ends it."""
+
+    declined: bool = False
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ConfirmOfferBody(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class CheckInBody(BaseModel):
+    source: Literal["front_desk", "self_service", "device", "migration"] = "front_desk"
+    correlation_id: str
+
+
+class AttendanceIntentBody(BaseModel):
+    intent: Literal["attending", "not_attending", "unsure"]
+    source: Literal["app", "reminder_reply", "front_desk", "migration"] = "app"
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class RaiseAppealBody(BaseModel):
+    """**One record, and the subject is the member the record is about.** The service and a
+    trigger both check that, because nothing else relates the two."""
+
+    subject_person_id: str
+    against: Literal["fee", "credit_forfeit", "warning", "strike"]
+    grounds: str = Field(min_length=1, max_length=2000)
+    no_show_id: str | None = None
+    cancellation_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+
+
+class DecideAppealBody(BaseModel):
+    """**No `decided_by`.** The decider is the authenticated identity and the person it is,
+    both derived -- MOD-016's finding was a separation of duties compared against a field the
+    caller supplied."""
+
+    uphold: bool
+    note: str = Field(min_length=1, max_length=2000)
+    correlation_id: str
+
+
+class SweepBody(BaseModel):
+    """A sweep nothing drives. The limit is the caller's, bounded here."""
+
+    limit: int = Field(default=200, ge=1, le=1000)
     correlation_id: str
 
 
@@ -6382,6 +6515,368 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(hold_id, "hold_id"),
             attended=body.attended, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    # ------------------------------------------------------------- MOD-020 booking
+    #
+    # **Every route asks the gate, and the member's own facts are never on a body.** The
+    # booking permission is routine because a member books on their phone and a front desk
+    # books a walk-in, and what bounds it is that MOD-019 counts the capacity under a row lock
+    # and refuses the hold -- the same argument `scheduling.place.hold` rests on, and true for
+    # the same reason rather than by assertion.
+
+    def _acting_for(
+        tenant_id: str, session: dict[str, Any], subject_person_id: str,
+        *, correlation_id: str,
+    ) -> str | None:
+        """Refuse a member acting for somebody else, and return who the caller is.
+
+        **`booking.booking.write` is held by every member's own app**, so a route that took a
+        `person_id` and asked for nothing more let any member act for any other: a reviewer
+        cancelled another member's class, which releases their seat and records a late fee and
+        a forfeited credit against them in an insert-only table, booked classes in their name
+        against their quota, and declared their attendance. Raising an appeal was the same,
+        with `subject_person_id` on the body.
+
+        So acting for another member needs `booking.booking.act_for_another` as well, which a
+        member's app is not granted. One function rather than a copy per route, for
+        `_require_guardianship`'s reason: the next route somebody adds calls this one too.
+
+        **An unlinked identity cannot act for anybody, including itself.** `person_of_identity`
+        answers None when no `ppl_identity_links` row exists, and treating that as "this is
+        them" would make the whole check vacuous for exactly the caller it is about -- so it
+        falls through to the staff permission, which is the fail-closed direction.
+        """
+        caller = actor_person_id(tenant_id, session)
+        if caller is not None and caller == subject_person_id:
+            return caller
+        permit(session, "booking.booking.act_for_another", correlation_id)
+        return caller
+
+    @app.post("/booking/policies", status_code=201)
+    def publish_booking_policy(
+        tenant_id: TenantId, session: Session, body: BookingPolicyBody
+    ) -> dict[str, Any]:
+        """A version of the booking policy. OPS-02-R02.
+
+        **Financial class**, because it decides what a member owes for cancelling late and how
+        many no-shows cost them a strike -- paragraph 1020's change control applied to a rule
+        members are held to.
+        """
+        permit(session, "booking.policy.write", body.correlation_id)
+        return booking.set_policy(
+            tenant_pool, tenant_id, policy_key=body.policy_key,
+            display_name=body.display_name,
+            rules=body.model_dump(exclude={"policy_key", "display_name",
+                                           "correlation_id"}),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/policies/{policy_key}/retire")
+    def retire_booking_policy(
+        tenant_id: TenantId, session: Session, policy_key: str,
+        body: RetirePolicyBody,
+    ) -> dict[str, Any]:
+        """Withdraw a policy version, so nothing new is sold on it.
+
+        **Financial class, like publishing one**, for the same reason: it decides which terms
+        the next booking is made under. It is also the writer the grant was waiting for --
+        nothing retired a policy, so `create_booking`'s own "this policy is retired" refusal
+        could never fire.
+        """
+        permit(session, "booking.policy.write", body.correlation_id)
+        return booking.retire_policy(
+            tenant_pool, tenant_id, policy_key, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/sessions/{session_id}/bookings", status_code=201)
+    def create_booking(
+        tenant_id: TenantId, session: Session, session_id: str, body: CreateBookingBody
+    ) -> dict[str, Any]:
+        """CreateBooking. OPS-02-R01.
+
+        **The place and the booking commit together**, which is paragraph 4142's atomic
+        reservation: the service takes MOD-019's hold on its own connection.
+        """
+        permit(session, "booking.booking.write", body.correlation_id)
+        person_id = require_uuid(body.person_id, "person_id")
+        _acting_for(tenant_id, session, person_id,
+                    correlation_id=body.correlation_id)
+        return booking.create_booking(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            person_id=person_id,
+            policy_key=body.policy_key, source_kind=body.source_kind,
+            entitlement_key=body.entitlement_key, skills=body.skills,
+            idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/booking/sessions/{session_id}/eligibility")
+    def read_booking_eligibility(
+        tenant_id: TenantId, session: Session, session_id: str, person_id: str,
+        policy_key: str, entitlement_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Whether this member could book, and why not. OPS-02's first Critical Control.
+
+        **The same evaluation the command runs**, returned rather than raised. A read that
+        computed its own answer from a different rule set is MOD-019's eligibility read
+        disagreeing with its own write path -- which is what this was: `_evaluate` left the
+        session's restrictions to `take_hold_on` and the entitlement to its own lookup, both
+        of which run after it, so a reviewer was told `may_book: true` for a fourteen-year-old
+        on an 18+ class and for a member with no pass. It takes `entitlement_key` for the same
+        reason the command does: the answer depends on which pass the member means to spend.
+        """
+        permit(session, "booking.booking.read")
+        return booking.may_book(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            person_id=require_uuid(person_id, "person_id"), policy_key=policy_key,
+            entitlement_key=entitlement_key)
+
+    @app.post("/booking/bookings/{booking_id}/cancel")
+    def cancel_booking(
+        tenant_id: TenantId, session: Session, booking_id: str, body: CancelBookingBody
+    ) -> dict[str, Any]:
+        """CancelBooking, with the consequence the booking's own policy declares."""
+        permit(session, "booking.booking.write", body.correlation_id)
+        return booking.cancel_booking(
+            tenant_pool, tenant_id, require_uuid(booking_id, "booking_id"),
+            acting_person_id=actor_person_id(tenant_id, session),
+            may_act_for_another=(
+                "booking.booking.act_for_another" in held_permissions(session)),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/booking/bookings/{booking_id}")
+    def read_booking(
+        tenant_id: TenantId, session: Session, booking_id: str
+    ) -> dict[str, Any]:
+        """One booking with its session, its consequence and what the member said.
+
+        **A cancellation's reason is masked unless the caller is staff, or is the member.** It
+        is prose a member typed about why they could not come, which is where a medical reason
+        goes in practice -- MOD-019's finding, one module over.
+
+        **Not keyed on `booking.booking.write`**, which was the first version and was the
+        cheapest and most widely held permission in the module: cancelling your own booking
+        needs it, so every member in the tenant held the key to every other member's
+        cancellation prose -- in a build where `member.health.read` is unreachable by anybody
+        and `/people/{id}` refuses the same caller. A reviewer read "I am having chemotherapy
+        on Tuesdays" with it. The quantifier was the defect: anybody who could write *a*
+        reason read *every* reason.
+        """
+        permit(session, "booking.booking.read")
+        held = held_permissions(session)
+        caller = actor_person_id(tenant_id, session)
+        return booking.booking_detail(
+            tenant_pool, tenant_id, require_uuid(booking_id, "booking_id"),
+            may_read_reasons=("booking.booking.act_for_another" in held
+                              or "booking.appeal.decide" in held),
+            reader_person_id=caller)
+
+    @app.get("/booking/sessions/{session_id}/roster")
+    def read_session_roster(
+        tenant_id: TenantId, session: Session, session_id: str,
+        include_settled: bool = False,
+    ) -> dict[str, Any]:
+        """Who is booked and who is waiting. For a coach and a front desk."""
+        permit(session, "booking.booking.read")
+        return booking.session_roster(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            include_settled=include_settled)
+
+    @app.get("/booking/members/{person_id}/bookings")
+    def read_member_bookings(
+        tenant_id: TenantId, session: Session, person_id: str,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, Any]:
+        """A member's own bookings, newest session first. No prose, whatever the caller
+        holds."""
+        permit(session, "booking.booking.read")
+        return booking.member_bookings(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"), limit=limit)
+
+    @app.post("/booking/sessions/{session_id}/waitlist", status_code=201)
+    def join_waitlist(
+        tenant_id: TenantId, session: Session, session_id: str, body: JoinWaitlistBody
+    ) -> dict[str, Any]:
+        """JoinWaitlist. OPS-02-R03. **Only a full session has one.**"""
+        permit(session, "booking.booking.write", body.correlation_id)
+        _acting_for(tenant_id, session, require_uuid(body.person_id, "person_id"),
+                    correlation_id=body.correlation_id)
+        return booking.join_waitlist(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            person_id=require_uuid(body.person_id, "person_id"),
+            policy_key=body.policy_key, entitlement_key=body.entitlement_key,
+            skills=body.skills, idempotency_key=body.idempotency_key,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/sessions/{session_id}/waitlist/promote")
+    def promote_waitlist(
+        tenant_id: TenantId, session: Session, session_id: str, body: SweepBody
+    ) -> dict[str, Any]:
+        """PromoteWaitlist. **Reserves, then does not notify.**
+
+        Paragraph 5031's order: the place is held here and MOD-013's message goes out
+        afterwards, reading the row. The response says `notified: false` rather than leaving a
+        caller to assume.
+        """
+        permit(session, "booking.waitlist.manage", body.correlation_id)
+        return booking.promote_waitlist(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/waitlist/{entry_id}/leave")
+    def leave_waitlist(
+        tenant_id: TenantId, session: Session, entry_id: str, body: LeaveWaitlistBody
+    ) -> dict[str, Any]:
+        """A member takes themselves off a waitlist, or declines the offer they hold.
+
+        **The act that makes `withdrawn` reachable.** It and `lapsed` were declared states
+        nothing wrote, so a member could not leave a queue: a reviewer watched one
+        auto-promoted into a seat they no longer wanted while somebody who did want it was
+        told the class was full.
+
+        On `booking.booking.write` rather than `booking.waitlist.manage`, because declining is
+        the member's own choice -- the first version let a member accept an offer and not
+        decline it.
+        """
+        permit(session, "booking.booking.write", body.correlation_id)
+        return booking.leave_waitlist(
+            tenant_pool, tenant_id, require_uuid(entry_id, "entry_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            acting_person_id=actor_person_id(tenant_id, session),
+            may_act_for_another=(
+                "booking.booking.act_for_another" in held_permissions(session)),
+            correlation_id=body.correlation_id)
+
+    @app.post("/booking/waitlist/{entry_id}/confirm", status_code=201)
+    def confirm_waitlist_offer(
+        tenant_id: TenantId, session: Session, entry_id: str, body: ConfirmOfferBody
+    ) -> dict[str, Any]:
+        """A member takes the place they were offered. The place is already theirs."""
+        permit(session, "booking.booking.write", body.correlation_id)
+        return booking.confirm_offer(
+            tenant_pool, tenant_id, require_uuid(entry_id, "entry_id"),
+            acting_person_id=actor_person_id(tenant_id, session),
+            may_act_for_another=(
+                "booking.booking.act_for_another" in held_permissions(session)),
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/booking/waitlist/{entry_id}/settle")
+    def settle_waitlist_offer(
+        tenant_id: TenantId, session: Session, entry_id: str, body: SettleOfferBody
+    ) -> dict[str, Any]:
+        """An offer declined, or expired. **A decline ends the entry; an expiry keeps its
+        place.**"""
+        permit(session, "booking.waitlist.manage", body.correlation_id)
+        return booking.settle_offer(
+            tenant_pool, tenant_id, require_uuid(entry_id, "entry_id"),
+            declined=body.declined, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/waitlist/expire")
+    def expire_waitlist_offers(
+        tenant_id: TenantId, session: Session, body: SweepBody
+    ) -> dict[str, Any]:
+        """ReleaseCapacity: release the places held by offers nobody answered.
+
+        **Nothing drives this.** The twelfth sweep in this build waiting on a worker runtime.
+        """
+        permit(session, "booking.waitlist.manage", body.correlation_id)
+        return booking.expire_offers(
+            tenant_pool, tenant_id, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id, limit=body.limit)
+
+    @app.post("/booking/bookings/{booking_id}/check-in")
+    def check_in_booking(
+        tenant_id: TenantId, session: Session, booking_id: str, body: CheckInBody
+    ) -> dict[str, Any]:
+        """CheckInBooking. **Recorded, not performed**: nothing here reads a turnstile."""
+        permit(session, "booking.attendance.write", body.correlation_id)
+        return booking.check_in_booking(
+            tenant_pool, tenant_id, require_uuid(booking_id, "booking_id"),
+            source=body.source, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/booking/bookings/{booking_id}/intent", status_code=201)
+    def declare_attendance_intent(
+        tenant_id: TenantId, session: Session, booking_id: str,
+        body: AttendanceIntentBody,
+    ) -> dict[str, Any]:
+        """The AttendanceIntent entity: a member says whether they are coming.
+
+        **Insert-only**, so a change of mind is a new row -- which is what makes the history of
+        who answers a reminder readable at all.
+        """
+        permit(session, "booking.booking.write", body.correlation_id)
+        return booking.declare_intent(
+            tenant_pool, tenant_id, require_uuid(booking_id, "booking_id"),
+            acting_person_id=actor_person_id(tenant_id, session),
+            may_act_for_another=(
+                "booking.booking.act_for_another" in held_permissions(session)),
+            intent=body.intent, source=body.source,
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/booking/sessions/{session_id}/settle")
+    def settle_session_bookings(
+        tenant_id: TenantId, session: Session, session_id: str, body: SweepBody
+    ) -> dict[str, Any]:
+        """RecordNoShow, for every booking on a finished session. OPS-02-R04.
+
+        **Derived from three facts and settable by nobody**, because it carries a sanction.
+        """
+        permit(session, "booking.attendance.settle", body.correlation_id)
+        return booking.settle_session_bookings(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/booking/appeals", status_code=201)
+    def raise_booking_appeal(
+        tenant_id: TenantId, session: Session, body: RaiseAppealBody
+    ) -> dict[str, Any]:
+        """A member disputes a sanction. The first of two acts."""
+        permit(session, "booking.booking.write", body.correlation_id)
+        _acting_for(tenant_id, session,
+                    require_uuid(body.subject_person_id, "subject_person_id"),
+                    correlation_id=body.correlation_id)
+        return booking.raise_appeal(
+            tenant_pool, tenant_id,
+            subject_person_id=require_uuid(body.subject_person_id,
+                                           "subject_person_id"),
+            against=body.against, grounds=body.grounds,
+            no_show_id=optional_uuid(body.no_show_id, "no_show_id"),
+            cancellation_id=optional_uuid(body.cancellation_id, "cancellation_id"),
+            idempotency_key=body.idempotency_key, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.get("/booking/appeals")
+    def read_open_appeals(
+        tenant_id: TenantId, session: Session,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, Any]:
+        """The appeals waiting for a decision.
+
+        **Behind the deciding permission, not the routine read**, because the grounds are the
+        member's own words about why a sanction is wrong -- which is where a medical reason
+        goes.
+        """
+        permit(session, "booking.appeal.decide")
+        return booking.open_appeals(tenant_pool, tenant_id, limit=limit)
+
+    @app.post("/booking/appeals/{appeal_id}/decide")
+    def decide_booking_appeal(
+        tenant_id: TenantId, session: Session, appeal_id: str, body: DecideAppealBody
+    ) -> dict[str, Any]:
+        """The second act: somebody who is not the member decides.
+
+        **The decider is derived from the session**, both the identity and the person it is --
+        MOD-016's finding was a separation of duties compared against a body field.
+        """
+        permit(session, "booking.appeal.decide", body.correlation_id)
+        return booking.decide_appeal(
+            tenant_pool, tenant_id, require_uuid(appeal_id, "appeal_id"),
+            uphold=body.uphold, note=body.note, actor_id=session["identity_id"],
+            decider_person_id=actor_person_id(tenant_id, session),
+            correlation_id=body.correlation_id)
 
     return app
 

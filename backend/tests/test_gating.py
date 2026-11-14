@@ -95,6 +95,12 @@ READ_ROUTES = [
     ("get", f"/scheduling/sessions/{_ID}", None),
     ("get", f"/scheduling/sessions/{_ID}/conflicts", None),
     ("get", f"/scheduling/sessions/{_ID}/eligibility?person_id={_ID}", None),
+    # ------------------------------------------------------------- MOD-020 booking
+    ("get", f"/booking/sessions/{_ID}/eligibility?person_id={_ID}&policy_key=STD", None),
+    ("get", f"/booking/bookings/{_ID}", None),
+    ("get", f"/booking/sessions/{_ID}/roster", None),
+    ("get", f"/booking/members/{_ID}/bookings", None),
+    ("get", "/booking/appeals", None),
 ]
 
 WRITE_ROUTES = [
@@ -468,6 +474,30 @@ WRITE_ROUTES = [
      {"person_id": _ID, "source_kind": "walk_in", "source_ref": "sweep",
       "idempotency_key": "sweep-h1", **_CORR}),
     ("post", f"/scheduling/holds/{_ID}/settle", {"reason": "sweep", **_CORR}),
+    # ------------------------------------------------------------- MOD-020 booking
+    ("post", "/booking/policies",
+     {"policy_key": "SWEEP", "display_name": "Swept", **_CORR}),
+    ("post", f"/booking/sessions/{_ID}/bookings",
+     {"person_id": _ID, "policy_key": "STD", "idempotency_key": "sweep", **_CORR}),
+    ("post", f"/booking/bookings/{_ID}/cancel", {"reason": "sweep", **_CORR}),
+    ("post", f"/booking/sessions/{_ID}/waitlist",
+     {"person_id": _ID, "policy_key": "STD", "idempotency_key": "sweep", **_CORR}),
+    ("post", f"/booking/sessions/{_ID}/waitlist/promote", {**_CORR}),
+    ("post", f"/booking/waitlist/{_ID}/confirm",
+     {"idempotency_key": "sweep", **_CORR}),
+    ("post", f"/booking/policies/{_ID}/retire", {"reason": "sweep", **_CORR}),
+    ("post", f"/booking/waitlist/{_ID}/leave", {"reason": "sweep", **_CORR}),
+    ("post", f"/booking/waitlist/{_ID}/settle", {"reason": "sweep", **_CORR}),
+    ("post", "/booking/waitlist/expire", {**_CORR}),
+    ("post", f"/booking/bookings/{_ID}/check-in", {**_CORR}),
+    ("post", f"/booking/bookings/{_ID}/intent",
+     {"intent": "attending", "idempotency_key": "sweep", **_CORR}),
+    ("post", f"/booking/sessions/{_ID}/settle", {**_CORR}),
+    ("post", "/booking/appeals",
+     {"subject_person_id": _ID, "against": "strike", "grounds": "sweep",
+      "no_show_id": _ID, "idempotency_key": "sweep", **_CORR}),
+    ("post", f"/booking/appeals/{_ID}/decide",
+     {"uphold": False, "note": "sweep", **_CORR}),
 ]
 
 
@@ -813,7 +843,7 @@ class GateCoverageTests(unittest.TestCase):
                             # worse, read as one surface.
                             "/memberships", "/member-entitlements", "/finance",
                             "/notifications", "/people", "/catalog", "/ledger",
-                            "/scheduling")
+                            "/scheduling", "/booking")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

@@ -507,6 +507,45 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("instructor.substituted", 1, "MOD-019", "internal",
        ("session_id", "template_id", "from_resource_id", "to_resource_id", "overridden"),
        "Somebody else is teaching a published session"),
+
+    # ---------------------------------------------------------------- MOD-020, OPS-02
+    #
+    # **No free text in any of these.** A cancellation's reason and an appeal's grounds are
+    # prose a member wrote -- "I cannot come, I am having treatment on Tuesdays" is the
+    # ordinary content of one -- and `evt_outbox.payload` is the single store no erasure in
+    # this build can reach. MOD-013 shipped an SMTP rejection carrying an email address into
+    # it and MOD-016 an order reference; the rule is that the payload carries identifiers and
+    # declared values, and the owning module discloses the words.
+    _e("booking.created", 1, "MOD-020", "internal",
+       ("booking_id", "session_id", "person_id", "source_kind", "starts_at"),
+       "A member holds a place on a session"),
+    # The *occasion* rather than the reason: `cancelled_late` is what the arithmetic reads and
+    # what a consumer acts on, and it is a declared value rather than somebody's sentence.
+    _e("booking.cancelled", 1, "MOD-020", "internal",
+       ("booking_id", "session_id", "person_id", "occasion", "fee_due",
+        "credit_forfeit"),
+       "A booking was cancelled, with what the policy says it costs"),
+    _e("waitlist.joined", 1, "MOD-020", "internal",
+       ("entry_id", "session_id", "person_id", "position"),
+       "A member joined the waitlist for a full session"),
+    # The expiry is in the payload because it is what a notification has to say: an offer with
+    # no deadline in the message is one a member answers too late.
+    _e("waitlist.promoted", 1, "MOD-020", "internal",
+       ("entry_id", "session_id", "person_id", "offer_expires_at"),
+       "A place is held for a waiting member until their offer expires"),
+    _e("no_show.recorded", 1, "MOD-020", "internal",
+       ("booking_id", "session_id", "person_id", "sanction", "no_show_count"),
+       "A member did not turn up, and what the policy says follows"),
+    _e("booking.checked_in", 1, "MOD-020", "internal",
+       ("booking_id", "session_id", "person_id", "source"),
+       "A member was marked present on a booking"),
+    # **`against` and `overturned` both, because the two no longer move together.** An appeal
+    # about money is upheld and reverses nothing here; one about a sanction stops the record
+    # counting. A consumer telling the member what happened needs to know which, and the
+    # grounds and the note stay off the payload because they are prose a member wrote.
+    _e("appeal.decided", 1, "MOD-020", "internal",
+       ("appeal_id", "subject_person_id", "against", "state", "overturned"),
+       "An appeal against a booking sanction was upheld, rejected or withdrawn"),
 ])
 
 

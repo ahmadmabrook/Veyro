@@ -33,10 +33,10 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 91 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 98 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
-MOD-017's `mem_` and `fin_`, MOD-018's `led_` and MOD-019's `sch_` -- and **every one has been
+MOD-017's `mem_` and `fin_`, MOD-018's `led_`, MOD-019's `sch_` and MOD-020's `bkg_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -463,3 +463,54 @@ primitive one, which is the constraint a reader can reason about.
 Applies to `backend/migrations/`, `backend/app/db.py` and any service that reaches `plt01` or
 `iam`. It does
 not govern governance, workflow, runner, catalog or registry paths.
+
+
+**A constraint subsumed by a *trigger* loses its case the same way one subsumed by a sibling
+CHECK does, and a trigger added for correspondence subsumes a whole family at once.**
+MOD-020's review asked for two triggers relating a sanction and a fee to the booking they
+cite -- member, session, state and the thresholds the booking snapshotted. Adding them made
+six constraints unprovable in one change: every bound on a copied policy figure
+(`policy_hours`, `policy_warn_after`, `policy_strike_after`, and the ordering between the last
+two) is now implied by "it equals the policy's, which is itself bounded", so no row can reach
+them. All four were deleted with a comment saying where the rest went -- which is the same
+judgement as MOD-016's `cat_eligibility_rules_kind` and MOD-018's banked-session ceiling,
+arrived at from a third direction. **The tell: a correspondence trigger makes every bound on
+the column it relates derived, and a bound on a derived column is usually implied by the
+bounds on what it is derived from.**
+
+**And it invalidates every case that inserts a row the trigger can see, which for a
+correspondence trigger is every case on the table.** Twelve cancellation and fourteen no-show
+cases inserted against a booking that was still `booked`; the trigger now refuses that
+outright, so all twenty-six began proving the trigger rather than the rule they named. The
+repair is a seed row per *state* the trigger admits -- MOD-020 seeds a cancelled booking, a
+no-show booking and a gym-released booking, each with no record of its own -- and the sweep is
+the only thing that tells you how many cases moved.
+
+**Nothing in this file had ever read `proconfig`, `prosecdef` or `tgenabled`, in 39,000
+lines.** So two properties a migration asserts in as many words were verified by nothing: a
+reviewer ran `ALTER FUNCTION ... RESET search_path` against "their `search_path` is pinned" and
+`GRANT EXECUTE ON FUNCTION ... TO PUBLIC` against the migration's own closing `REVOKE ALL ...
+FROM PUBLIC`, and the suite reported every check passing both times. `md5(prosrc)` cannot see
+`proconfig`, so a definition pin is blind to it, and `ALTER TABLE ... DISABLE TRIGGER` leaves
+the catalogue row in place so the pin is blind to that too. Each module's privilege check now
+sweeps all three over its own functions and triggers -- and it caught the author's own two new
+functions the moment they were added, which is the argument for sweeping rather than naming.
+
+**A probe answered by a sibling branch *in the same function* is the hardest version of the
+"two controls refuse the same row" trap.** MOD-020's appeal trigger refuses any update that
+does not take an open appeal to a decided state, so a probe for the identity branch -- which
+only changed what the appeal is about -- was answered by the branch above it, and the identity
+branch was droppable with only the definition pin objecting. The probe has to satisfy every
+*earlier* branch of the same function, not just every other constraint on the table. The same
+module's booking trigger had the sibling-*trigger* version: `bkg_bookings_hold_matches` sorts
+before `bkg_bookings_one_way`, so a probe that moved `hold_id` proved the wrong trigger
+entirely.
+
+**A test fixture that takes its own `today` from the local clock disagrees with a service that
+takes it from UTC, for as long as the two dates differ.** Four of this repository's HTTP suites
+used `date.today()` while every service uses `datetime.now(UTC)`, so east of UTC the fixtures
+were a day ahead for the first hours of each night: a journal posted on the local date fell
+outside a trial balance read as of the UTC date, and sixteen tests across two modules failed
+for a reason that had nothing to do with either. **CI never saw it, because CI runs in UTC** --
+which is the worst property a flake can have, since the green run is the one that proves
+nothing. A fixture takes its clock from the same place the code under test does.

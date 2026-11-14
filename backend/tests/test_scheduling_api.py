@@ -16,12 +16,19 @@ from __future__ import annotations
 
 import unittest
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from tests.support import DSN, GatedApiTestCase
 
-TODAY = date.today()
+#: **UTC, not the local clock.** Every service in this build takes its "today" from
+#: `datetime.now(UTC)`, and a fixture using `date.today()` disagrees with it in any timezone
+#: east of UTC for as long as the two dates differ -- three hours a night here. A journal
+#: posted on the local date was then outside a trial balance read as of the UTC date, and
+#: sixteen tests across MOD-017 and MOD-018 failed for a reason that had nothing to do with
+#: either module. CI never saw it because CI runs in UTC, where the two agree. Found while
+#: running the full suite at 02:00.
+TODAY = datetime.now(UTC).date()
 
 
 def day(offset: int) -> str:

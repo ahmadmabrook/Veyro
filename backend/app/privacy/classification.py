@@ -1087,6 +1087,89 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "sch_conflict_overrides", "overridden_by", "unreachable",
                  "**who published over a resource conflict.** Paragraph 1842's Critical "
                  "Control is 'permission and reason', and this is the only record of either"),
+    # ---------------------------------------------------------------- MOD-020, OPS-02
+    #
+    # **Booking holds the member's own history of attending**, which is a record of where
+    # somebody was on a given evening -- so every column naming them is here, and the two the
+    # module can erase are named rather than claimed.
+    Reachability("plt01", "bkg_bookings", "person_id", "unreachable",
+                 "**who held this place.** No UPDATE on the column and no DELETE for any "
+                 "role: whether a member was in a class is the answer to a dispute about a "
+                 "sanction, and the trigger beside the table refuses a change to it as well"),
+    Reachability("plt01", "bkg_bookings", "booked_by", "unreachable",
+                 "who made the booking -- the member themself, or a front desk"),
+    Reachability("plt01", "bkg_bookings", "checked_in_by", "write_once",
+                 "**who marked them present.** The one-way trigger refuses a second "
+                 "check-in, so the attribution is final once written"),
+    Reachability("plt01", "bkg_bookings", "cancelled_by", "write_once",
+                 "who cancelled the place, which decides whether the member owes anything"),
+    Reachability("plt01", "bkg_bookings", "idempotency_key", "unreachable",
+                 "the caller's own handle, free text and so able to carry a subject. No "
+                 "UPDATE and no DELETE"),
+    Reachability("plt01", "bkg_bookings", "cancellation_reason", "write_once",
+                 "**why a member could not come, in their own words** -- which is where a "
+                 "medical reason goes in practice, and the reason the booking read masks it "
+                 "unless the caller could have written one"),
+    Reachability("plt01", "bkg_waitlist_entries", "person_id", "unreachable",
+                 "who is waiting for a place"),
+    Reachability("plt01", "bkg_waitlist_entries", "joined_by", "unreachable",
+                 "who put them on the waitlist"),
+    Reachability("plt01", "bkg_waitlist_entries", "settled_by", "write_once",
+                 "who closed the entry; the one-way trigger makes it final"),
+    Reachability("plt01", "bkg_waitlist_entries", "settle_reason", "write_once",
+                 "why the entry closed, in prose"),
+    Reachability("plt01", "bkg_waitlist_entries", "idempotency_key", "unreachable",
+                 "the caller's own handle, free text. No UPDATE and no DELETE"),
+    Reachability("plt01", "bkg_cancellations", "person_id", "unreachable",
+                 "**whose cancellation this was.** Insert-only in full: what a member was "
+                 "told they owe is what they were told"),
+    Reachability("plt01", "bkg_cancellations", "cancelled_by", "unreachable",
+                 "who cancelled it"),
+    Reachability("plt01", "bkg_cancellations", "reason", "unreachable",
+                 "why, in the member's own words, on a row with no UPDATE and no DELETE -- "
+                 "so this is residue no erasure in this build can reach"),
+    Reachability("plt01", "bkg_no_shows", "person_id", "unreachable",
+                 "**who missed a class**, which is the basis of a sanction and so the answer "
+                 "to an appeal about one. Insert-only apart from the overturn"),
+    Reachability("plt01", "bkg_no_shows", "recorded_by", "unreachable",
+                 "who recorded it -- a settlement, which nobody sets by hand"),
+    Reachability("plt01", "bkg_no_shows", "overturned_by", "write_once",
+                 "**who upheld the appeal that stopped this counting.** The attribution "
+                 "constraint is all-or-none and the service writes it once"),
+    Reachability("plt01", "bkg_appeals", "subject_person_id", "unreachable",
+                 "**whose sanction is disputed.** No UPDATE, and the one-way trigger refuses "
+                 "a change to it: an appeal that could be re-pointed is one member's "
+                 "grounds deciding another's record"),
+    Reachability("plt01", "bkg_appeals", "raised_by", "unreachable",
+                 "who raised it"),
+    Reachability("plt01", "bkg_appeals", "decided_by", "write_once",
+                 "**who decided it**, which is the separation of duties this table exists "
+                 "for; the one-way trigger makes the decision final"),
+    Reachability("plt01", "bkg_appeals", "decided_by_person_id", "write_once",
+                 "the person that decider is, where they have a record -- the half the "
+                 "constraint compares against the subject, because an identity id would let "
+                 "one member decide their own appeal from a second login"),
+    Reachability("plt01", "bkg_appeals", "grounds", "unreachable",
+                 "**why the member says the sanction is wrong, in their own words** -- where "
+                 "a medical reason goes, on a row with no UPDATE. Residue no erasure reaches, "
+                 "and the reason the appeal list is behind the deciding permission"),
+    Reachability("plt01", "bkg_appeals", "decision_note", "write_once",
+                 "why the decision went the way it did"),
+    Reachability("plt01", "bkg_appeals", "idempotency_key", "unreachable",
+                 "the caller's own handle, free text. No UPDATE and no DELETE"),
+    Reachability("plt01", "bkg_attendance_intents", "person_id", "unreachable",
+                 "**who said whether they were coming.** Insert-only, because a change of "
+                 "mind is a new row and overwriting would lose that the gym was told twice"),
+    Reachability("plt01", "bkg_attendance_intents", "declared_by", "unreachable",
+                 "who declared it -- the member, or a front desk taking a telephone call"),
+    Reachability("plt01", "bkg_attendance_intents", "idempotency_key", "unreachable",
+                 "the caller's own handle, free text. No UPDATE and no DELETE"),
+    Reachability("plt01", "bkg_policies", "created_by", "unreachable",
+                 "who published this version of the booking policy"),
+    Reachability("plt01", "bkg_policies", "retired_by", "write_once",
+                 "who withdrew it"),
+    Reachability("plt01", "bkg_policies", "retire_reason", "write_once",
+                 "why it was withdrawn"),
     # Free text a subject can appear in. Declared by hand, because the sweep matches column
     # *names* and none of these says 'subject' -- the same group MOD-018 has, for the same
     # reason, and pinned by a named test for the same reason again.

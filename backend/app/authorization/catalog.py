@@ -565,6 +565,56 @@ PERMISSIONS: dict[str, Permission] = dict([
     # counted under a lock and the trigger beside the table refuses an overbooking.
     _p("scheduling.place.hold", "Take or settle a place on a session", "data_access"),
 
+    # ---------------------------------------------------------------- MOD-020, OPS-02
+    #
+    # **Booking is routine and the policy that governs it is not.** A member books a class on
+    # their phone and a front desk books a walk-in; a read behind a step-up is a read nobody
+    # does. What bounds the booking permission is that MOD-019 counts the capacity under a row
+    # lock and refuses the hold -- so the cheapest permission here cannot overfill a class,
+    # which is the same argument `scheduling.place.hold` rests on and is true for the same
+    # reason.
+    _p("booking.booking.read",
+       "See bookings, waitlists and a session's roster", "data_access"),
+    _p("booking.booking.write", "Book a class, cancel a booking or join a waitlist",
+       "data_access"),
+    # **And acting for somebody else is a different permission from acting for yourself.**
+    # `booking.booking.write` is held by every member's own app, so with nothing relating the
+    # request to the caller a reviewer cancelled another member's class -- releasing their
+    # seat and recording a late-cancellation fee and a forfeited credit against them in an
+    # insert-only table -- booked classes in their name against their quota, and told the gym
+    # they were not coming. Each of those has a consequence attributed to a person who did not
+    # ask for it.
+    #
+    # **Routine, not financial**, because a front desk does exactly this for a member who
+    # phoned in and a step-up on a shift worker's session would stop the ordinary job. What
+    # makes it safe is that it is a *separate* permission: a member's app is not granted it,
+    # so the act is bounded by who holds it rather than by how hard it was to get.
+    _p("booking.booking.act_for_another",
+       "Book, cancel, declare attendance or appeal on behalf of another member",
+       "data_access"),
+    # **Check-in is its own permission**, because it is the act that decides whether somebody
+    # attended -- and the absence of it is what makes them a no-show with a sanction attached.
+    # A front desk holds it; a member's own app does not.
+    _p("booking.attendance.write", "Mark a member present on a booking", "data_access"),
+    # Promoting the waitlist hands out a place, and settling a session's bookings records
+    # no-shows and the sanctions that follow. Both are operational acts rather than a member's,
+    # and both are routine because they are what a worker runtime would do on a schedule.
+    _p("booking.waitlist.manage",
+       "Promote a waitlist, settle an offer or release an expired one", "data_access"),
+    _p("booking.attendance.settle",
+       "Settle a finished session's bookings and record its no-shows", "configuration"),
+    # **The policy is financial class.** It decides what a member owes for cancelling late and
+    # how many no-shows cost them a strike, which is paragraph 1020's change control applied to
+    # a rule members are held to -- and MOD-008's `config.flag.write` is the precedent for
+    # getting that class wrong being a real defect.
+    _p("booking.policy.write", "Publish a version of the booking policy",
+       "configuration", "financial"),
+    # **Deciding an appeal is its own permission, and it reads the member's own words.** The
+    # grounds are prose somebody wrote about why a sanction is wrong, which is where a medical
+    # reason goes in practice -- so the list is behind this rather than behind the routine read.
+    _p("booking.appeal.decide", "Read and decide a member's appeal against a sanction",
+       "configuration", "financial"),
+
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

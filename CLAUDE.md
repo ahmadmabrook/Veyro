@@ -43,6 +43,12 @@ backend/app/            service code
                         service.py holds the one thing that is load-bearing -- take_hold
                         counts under FOR UPDATE on the session, in the transaction that
                         writes the hold
+  booking/              MOD-020: policy.py decides the member's side (a quota no booking
+                        order can defeat, a calendar bucket in the session's own zone),
+                        waitlist.py the queue, attendance.py what a booking becomes,
+                        consequence.py what it costs, appeals.py who may decide and against
+                        what; service.py owns no capacity at all -- it takes MOD-019's hold
+                        on its own connection, so a booking and its seat commit together
   ledger/               MOD-018: accounts.py, wallet.py, periods.py, recognition.py and
                         settlement.py decide; service.py holds the one thing that is
                         load-bearing -- post_journal takes a connection, so a posting commits
@@ -2548,18 +2554,222 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this.** MOD-014 projects nine event types and none
   of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
 
-**Next.** MOD-020 (Booking & Waitlist Pilot, OPS-02) is unblocked by MOD-019 and MOD-017 and is
-what MOD-019 was built to feed: `sch_capacity_holds` is the authority a booking cites, and
-MOD-017's entitlement reservation finally gets a caller, since a booking is the thing a hold is
-taken *for* -- and MOD-018's wallet is where a booking paid for with stored value draws from.
-Its two stated invariants (paragraph 4697) are that capacity never falls below zero and that a
-duplicate waitlist promotion cannot consume two seats; the first is MOD-019's lock and trigger,
-and the second is new. Nothing in the Foundation wave is left except MOD-006, the Compose
-Multiplatform qualification, which is a client-side proof the server plane does not need.
+**MOD-020 (OPS-02 booking, waitlist, attendance and appeals) -- implemented, gated and
+reviewed.** Seven `bkg_` tables in `plt01` under the same forced RLS, nine trigger functions,
+`app/booking/` beside them, and twenty-one HTTP routes. Working: versioned booking policies a
+booking snapshots and that can be retired; bookings that take MOD-019's capacity hold in the
+transaction that writes them; a stable, explainable denial over ten declared reasons;
+order-independent quotas and concurrent limits; cancellations with the consequence the
+booking's own policy declares; the gym's own cancellation releasing bookings rather than
+blaming anybody; a waitlist with a derived tier, an enforced cap, offers that reserve before
+notifying, a member's own exit, and expiry that keeps a place; check-in with attribution;
+no-shows derived from three facts with warnings and strikes; attendance intents; and a
+two-party appeal whose remedy follows what it is against. Seven events are produced. Proven:
+isolation checks 92-98, mutation-tested in two rounds -- 564 mutations before the reviews and
+580 after the remediation, of which 577 were caught by the check that guards what was broken,
+none were uncaught, and three were ill-formed (a generated body mutation that deletes the
+*lookup* a later branch reads, so every row fails and the seed catches it -- the property, but
+not a check). 36 trigger branches across nine functions are probed behaviourally and pinned by
+digest. 71 domain unit tests with no database; 54 HTTP tests, inside a suite of 1,785.
+
+**The module owns no capacity, and that is its premise.** Paragraph 4145 draws the line --
+"Schedule owns published occurrences/resources/capacity. Booking owns member
+reservation/waitlist/cancel/attendance intent" -- so paragraph 4697's two invariants are
+MOD-019's: capacity never falls below zero, and a duplicate waitlist promotion cannot consume
+two seats. There is no seat count in any `bkg_` table and check 95 sweeps the whole of `plt01`
+for one. What makes the borrowing real is that `take_hold_on` and `release_hold_on` are
+connection-taking: a booking and its hold commit together, which is MOD-010's `append_event`
+argument applied to a seat. A hold with no booking is a place nobody can book.
+
+Six decisions carry the module:
+
+- **The hold is the authority and the booking cites it.** `hold_id` is `NOT NULL` with
+  `UNIQUE (tenant_id, hold_id)` and a five-branch trigger relating the hold to the row's own
+  session, member and status, and the member's entitlement grant to the member. A reviewer
+  could not write a booking with no real place, two bookings on one place, or a booking whose
+  hold belongs to somebody else.
+- **A denial is from a closed set and is stable.** Paragraph 1892 and 5032: `DENIAL_REASONS` is
+  ten values, `_evaluate` asks every question the command asks in a fixed order, and
+  `denial.is_stable` is a function a test asserts rather than a promise in prose. The
+  eligibility read runs the *same* function, so a surface cannot be told yes and then refused.
+- **A booking snapshots the policy it was made under.** What a member owes for cancelling late
+  is decided months later and must be decided on the terms they agreed to, so retiring a policy
+  stops the next sale and changes nothing about the last.
+- **A sanction is derived from three facts and nobody can declare one.** The booking is still
+  open, nobody checked in, and *both* the check-in window and the session have passed. Two
+  tenants cannot disagree about what a no-show is.
+- **An appeal is two acts by two parties, and its remedy follows what it is against.** The
+  subject is on the row, the decider is derived from the authenticated identity and needs a
+  person record, and `against` is checked against what the record actually carries. A warning
+  or a strike is overturned here; a fee is MOD-017's and the response says so.
+- **There is no predictive no-show score.** Paragraph 1884 asks for one and
+  `consequence.predicted_no_show_risk` raises, annotated `NoReturn`. The durable reason is that
+  paragraph 1889's "must not discriminate unlawfully" is a property of a population under a
+  model rather than of an expression, so no function can promise it -- MOD-011's percentile
+  refusal, with a person as the subject. Both sanctioned uses, reminders and controlled
+  overbooking, are reachable without one.
+
+**Three reviewers worked this module in parallel -- the schema, the decision modules, the
+request path -- and all three returned CHANGES_REQUESTED. Twenty-one blocking defects.** Each
+is carried forward as a rule, because each is a shape that has now recurred:
+
+- **A declared state nothing writes is a feature that silently harms somebody.** `released`
+  and `session_cancelled` were both declared and both documented as existing so that "somebody
+  does not get a strike for a class the gym called off", and nothing in the build wrote either
+  -- so settling a cancelled session ran the ordinary no-show path and recorded **every member
+  of it** as absent, with a fee, a forfeited credit and a warning or a strike. The state is
+  one-way by trigger and `bkg_no_shows` has no DELETE grant, so it was permanent and the only
+  remedy was an appeal per member by hand. The module's own code named the failure in two
+  places. **The worst defect this module shipped, and a tenant reached it by doing nothing but
+  cancelling a class.**
+- **A guard whose two reasons are joined by `and` refuses in neither case alone.** `settle`
+  required *both* that the check-in window was open and that the session was still running, so
+  a settlement went ahead as soon as the session ended -- and a grace period longer than the
+  class is inside the policy's own bounds, which a thirty-minute slot with forty-five minutes
+  of grace reaches without trying. A member who walked in ten minutes late was written to
+  `no_show` the moment the class finished: no way back, the fee charged, the strike counted,
+  and the front desk's later check-in refused because the state had moved. Both reviewers found
+  it independently, and the refusal's own message said "this session is not over" while not
+  refusing.
+- **A control keyed on a value the caller supplies, for the sixth module running.** Four here:
+  `tier` on the waitlist body decided the queue order a premium member had paid for, so a basic
+  member sent a zero and took their place; `person_id` and `subject_person_id` let any member
+  cancel another member's class -- releasing their seat and recording a late fee against them
+  in an insert-only table -- book in their name against their quota, declare their attendance
+  and appeal as them; and `against` was stored beside an appeal's decision and never read.
+- **A window that looks one way is defeated by the order of the requests.** The quota ran
+  backwards from the session being booked, so a member on three a week booked the last class of
+  the week first and every earlier booking saw an empty window: **seven classes under a quota
+  of three**, with nothing adversarial. Two sessions at the same instant were worse, because
+  the anchor sat on its own window's excluded edge: five classes at six o'clock each saw
+  nobody. The rule now is that no window of that length may hold more than the quota, which is
+  the same answer in any order.
+- **A calendar bucket computed in whatever zone the instant carries is the wrong day.**
+  `sch_sessions` stores a UTC instant *and* the zone it came from precisely because neither is
+  derivable from the other, and the service passed neither -- so a "two a day" policy in Sydney
+  reset at eleven in the morning and a member took two before it and two after. MOD-017's
+  `AT TIME ZONE` lesson one module later, with the correct value already in the caller's hand.
+- **An idempotency key compared against nothing, three times.** The appeal's was the worst: a
+  member with two strikes reusing a per-shift counter was handed the *first* appeal back with
+  201 and `repeated: true`, so their second strike had no appeal, nobody saw one in the queue,
+  they were told theirs had been heard and rejected, and the thirty-day window ran out. It
+  landed on the one remedy a sanction has. The intent's returned 201 for a write that never
+  happened, against the wrong booking and reporting the wrong intent. And `confirm_offer`
+  wrote into `create_booking`'s key namespace -- MOD-018's "an idempotency namespace a caller
+  can write into is not a namespace" -- so a till reusing one counter had its confirmation
+  refused as "already confirmed", which was the opposite of true: the offer was never
+  confirmed, the member could not confirm it, and the seat stayed held.
+- **A read that computes its own answer disagrees with the write path it explains.**
+  `_evaluate` left the session's restrictions to `take_hold_on` and the entitlement to a lookup
+  that ran after it, so the eligibility read answered `may_book: true` for a fourteen-year-old
+  on an 18+ class and for a member with no pass -- the two refusals that matter most, on the
+  surface that exists to explain them. `ineligible` and `no_entitlement` were declared and
+  never produced; the refusal arrived as free prose outside the closed set.
+- **A mask keyed on the cheapest permission in the module masks nothing.** The cancellation
+  reason was readable by any holder of `booking.booking.write`, which cancelling your own
+  booking needs -- so **every member in the tenant held the key to every other member's
+  cancellation prose**, in a build where `member.health.read` is unreachable by anybody and
+  `/people/{id}` refuses the same caller. A reviewer read "I am having chemotherapy on
+  Tuesdays" with it. The quantifier was the defect: anybody who could write *a* reason read
+  *every* reason.
+- **An edge the writer takes has to be in the state machine, and leaving it out was worse than
+  the defect it was meant to prevent.** Making an expired offer live again (so a member asleep
+  at six keeps their place rather than being removed from the queue) left the trigger refusing
+  `expired -> offered` -- so from the moment one member failed to answer, every promotion on
+  that session picked their entry, took a hold, was refused and rolled back, and **nobody was
+  promoted again while places sat free**. Both encodings agreed with each other and neither
+  agreed with the service. Introduced while fixing a review finding and found by the next
+  reviewer, which is the "a remedy is new capability, so review it as such" rule from MOD-007.
+- **A constraint that permits NULL is opt-in to the writer it exists to stop.**
+  `decider_is_not_the_subject` compared nothing when `decided_by_person_id` was NULL, so a
+  writer decided an appeal with the subject's own login by leaving the person id out, and the
+  no-show was overturned. The Python layer was hardened first, which left the schema the
+  weaker of two layers that were supposed to fail independently.
+- **Two tables had no correspondence trigger at all**, and they were the two where a wrong row
+  is permanent. A reviewer wrote a strike on a member who had no booking, from a booking they
+  had *attended*, naming a different and cancelled session, under thresholds unrelated to the
+  policy the booking snapshotted -- and `_no_show_count` counts by person, so it moved the
+  victim's threshold immediately. And a late fee on the wrong member for a booking never
+  cancelled. The free-cancellation constraints were reachable past by declaring the other
+  occasion: a booking the *gym* released, written up as the member's own late cancellation, was
+  charged.
+- Three smaller ones with shapes this file records: `next_to_offer` refused to look past a
+  single outstanding offer, so five cancellations two hours before a class filled two seats;
+  `waitlist_capacity` was declared on MOD-019's policy and read by nothing, which made
+  `waitlist_full` an outcome nothing could produce; and `withdrawn` was a declared state no
+  route wrote, so a member could not leave a queue and was auto-promoted into a seat they no
+  longer wanted while somebody who did want it was told the class was full.
+
+**And the evidence had nine holes, in shapes the rules file names.** Two trigger branches had
+no isolating probe -- each was answered by a *different* control, one by a sibling trigger and
+one by a sibling branch in the same function, so the probe-count assertions could not see them.
+Six constraints and two unique rules had no isolating case: three were subsumed by siblings
+(deleted rather than tested harder, MOD-016's judgement), two had no case at all, and
+`UNIQUE (tenant_id, hold_id)` -- which the header calls paragraph 4144 at the place -- was one
+of them. Five weakenings were caught by nothing. And two properties the migration asserts in
+as many words were verified by nothing in 39,000 lines: nothing in this suite had ever read
+`proconfig`, `prosecdef` or `tgenabled`, so a reviewer reset a pinned `search_path` and granted
+PUBLIC execute on a trigger function with every check passing. Check 96 reads all three now,
+swept from the catalogue, and it caught my own two new functions the moment I added them.
+
+Things worth knowing before extending it:
+
+- **`take_hold_on` takes the connection, and `_evaluate` reads the capacity without locking.**
+  The count it reads decides whether to *offer the waitlist*, which may be stale without harm;
+  the hold is what settles it, under MOD-019's row lock. A second lock here would be a
+  different lock ordering on the same row.
+- **A no-show is settled by the sweep, and the sweep is not reachable with a caller-supplied
+  instant.** No route takes one, because a settlement time a caller chooses decides whether
+  somebody is recorded absent -- MOD-011's unbounded `observed_at` in a worse place. The HTTP
+  tests that need a finished session therefore settle through the service, and say so.
+- **A suppressed request is still authored.** A denial leaves no booking, but it is structured:
+  a surface decides what to offer from `reason`, and `offer_waitlist` is why `full` and
+  `waitlist_full` are different values.
+- **A member acting for themselves and a front desk acting for them are different
+  permissions.** `booking.booking.act_for_another` is routine, because a shift worker does it
+  all day and a step-up would stop the ordinary job; what makes it safe is that a member's app
+  is not granted it.
+- **The derived keys are hashed, not truncated.** Two 200-character keys differing in their
+  last four characters produced one hold key, so one member's booking refused another's as a
+  duplicate in a class with nine free places.
+
+Known gaps, deliberate:
+
+- **Nothing drives anything on a schedule.** An offer expires when somebody calls
+  `/booking/waitlist/expire`, a session settles when somebody calls its settle route, and a
+  `lapsed` entry is never swept. The twelfth module to want the worker runtime this build does
+  not have, and here the absence is visible twice: a seat held by an unanswered offer stays
+  held, and a session nobody settles leaves every member's place reading as held for ever.
+- **Nothing charges or credits anything.** `fee_due` and `credit_forfeit` are decisions for
+  MOD-017 to act on, and an upheld appeal about money is recorded rather than executed. Real
+  financial expenditure is owner-reserved.
+- **No notification.** `promote_waitlist` reserves the place and returns `notified: false`,
+  because MOD-013 sends the message from the row and a module claiming to have sent one is the
+  fabricated-evidence shape this codebase has been bitten by five times.
+- **A cancellation appeal has no executor.** `bkg_cancellations` carries no UPDATE grant, so
+  upholding one is recorded with both nulls disclosed in the response. Half of `APPEALABLE` is
+  therefore evidence rather than action for a cancellation.
+- **`skills` is still the caller's word**, as in MOD-019: nothing in this build stores a skill.
+- **A check-in is recorded, not performed.** Nothing reads a turnstile, so the row carries a
+  claim by a named actor at a time -- MOD-012's `validated` shape.
+- **A member's no-show count never decays.** A member struck in 2026 is struck by the same
+  three misses in 2029; the policy has no window field. A product decision rather than a
+  defect, and worth stating beside `warn_after_no_shows`.
+- **The timeline does not know about any of this.** MOD-014 projects nine event types and none
+  of MOD-020's seven is among them, so a member's timeline shows no class they booked.
+- **Nine free-text columns are residue an erasure cannot reach**, all declared by hand.
+
+**Next.** Nothing in the Foundation wave is left except MOD-006, the Compose Multiplatform
+qualification, which is a client-side proof the server plane does not need. The eligible
+product modules are MOD-021 (Hardware & Edge Bridge, which needs MOD-010's events and
+MOD-012's adapter core, both built), MOD-022 (Check-in & Access, which needs MOD-021 and
+MOD-017) and MOD-023 (Coach Workspace, which needs MOD-014 and MOD-008). MOD-021 is the one
+unblocked by what exists: a turnstile is the thing MOD-020's check-in records a claim *from*,
+and `CHECKIN_SOURCES` already names `device` for it.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the **eleven** schedules
+scopes a tenant may hand to a third party -- no worker runtime exists for the **twelve** schedules
 that want one, which MOD-018 makes more pressing again because nothing expires lapsed wallet
 value and nothing recognises revenue until somebody asks, and there is no key vault, which is
 what MOD-009's crypto-shred, MOD-007's TOTP seeds and MOD-012's inbound webhook signatures are
@@ -2592,6 +2802,19 @@ terms -- and `create_agreement` resolves only a published version, so a draft wa
 construction. **The defence was checkable against the code in the same module and nobody
 checked it.** So the question above has a companion: when a module explains why it collapsed
 two acts into one, read the other act and see whether the danger it names is reachable at all.
+
+MOD-020 shipped four more, and added a second kind of defect that is worth naming beside them:
+**a declared state, reason or occasion that nothing in the build ever writes.** `released` and
+`session_cancelled` were both declared and both documented as existing so that a member does
+not get a strike for a class the gym called off, and the code path that should have written
+them ran the ordinary no-show path instead -- so every member of every cancelled class was
+recorded absent, with a fee and a strike, permanently. `withdrawn` was the same shape with a
+smaller cost, `waitlist_full` and `ineligible` and `no_entitlement` were declared denial
+reasons nothing produced, and `expired -> waiting` was a declared edge nothing took. **An
+enumeration is a claim about what the software does**, so the question to ask of every declared
+value is not "is this reachable in principle" but "grep the writers: which line puts this
+value in the column". A value with no writer is either a gap to disclose or a defect wearing a
+design decision's clothes, and in MOD-020 it was four of each.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

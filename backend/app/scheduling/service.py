@@ -1501,12 +1501,26 @@ def hand_off_attendance(
 
 # ------------------------------------------------------------------ capacity holds
 
-def take_hold(
-    pool: Pool, tenant_id: str, session_id: str, *, person_id: str, source_kind: str,
-    source_ref: str, idempotency_key: str, actor_id: str, correlation_id: str,
-    places: int = 1, at: datetime | None = None, skills: list[str] | None = None,
+def take_hold_on(
+    conn: Connection[Any], tenant_id: str, session_id: str, *, person_id: str,
+    source_kind: str, source_ref: str, idempotency_key: str, actor_id: str,
+    correlation_id: str, places: int = 1, at: datetime | None = None,
+    skills: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Take places on a session. The atomic reservation paragraph 4146 asks for.
+    """Take places on a session, **in the caller's transaction**.
+
+    This is the form MOD-020 needs and the reason it exists: paragraph 4142 requires a
+    reservation to be atomic against the scheduled instance, and the only way to mean that is
+    to take the hold on the connection that writes the booking. A booking written in one
+    transaction and its place taken in another is a member with a confirmed booking and no
+    place, or a place nobody holds -- and no later reconciliation can tell which happened.
+    MOD-010's `append_event` makes the same argument about an event and the state that caused
+    it, and MOD-018's `post_journal` about a journal and the payment it records.
+
+    `take_hold` is the pool-taking wrapper, correct where there is no state change to be atomic
+    with -- a front desk walking somebody in.
+
+    Take places on a session. The atomic reservation paragraph 4146 asks for.
 
     **Counted under a row lock on the session, inside the transaction that writes the hold.** A
     count read outside the lock is a count two bookings both read before either writes, which
@@ -1539,93 +1553,112 @@ def take_hold(
     moment = at or _now()
     if not idempotency_key.strip():
         raise InvalidRequest("an_idempotency_key_cannot_be_blank")
-    with tenant_scope(pool, tenant_id) as conn:
-        prior = conn.execute(
-            "SELECT hold_id, session_id, places, status, person_id, source_kind,"
-            " source_ref FROM plt01.sch_capacity_holds WHERE idempotency_key = %s",
-            (idempotency_key.strip(),),
+    prior = conn.execute(
+        "SELECT hold_id, session_id, places, status, person_id, source_kind,"
+        " source_ref FROM plt01.sch_capacity_holds WHERE idempotency_key = %s",
+        (idempotency_key.strip(),),
+    ).fetchone()
+    if prior is not None:
+        # **Every field of the request is compared, not just the session.** The first
+        # version checked `session_id` alone and answered 201 with the *previous* caller's
+        # hold id for a request naming a different person, a different count and a
+        # different source -- and the repeated branch omitted `person_id`, so the caller
+        # could not even tell whose hold it had been given. Bob got Alice's booking and
+        # nothing said so. The realistic input is a till or a booking client reusing a
+        # counter or a per-shift key across members, which is how a key gets reused in the
+        # field. MOD-017's rule: a retry is answered from what was recorded, and a key
+        # reused with different content is a conflict.
+        if (str(prior[1]) != session_id or str(prior[4]) != person_id
+                or int(prior[2]) != places or str(prior[5]) != source_kind
+                or str(prior[6]) != source_ref.strip()):
+            raise Conflict("this_idempotency_key_was_used_for_a_different_request")
+        return {"hold_id": str(prior[0]), "session_id": session_id,
+                "person_id": str(prior[4]), "places": int(prior[2]),
+                "status": str(prior[3]), "repeated": True}
+    session = _session(conn, session_id)
+    if session["status"] != "scheduled":
+        raise Conflict(f"this_session_is_{session['status']}")
+    policy = conn.execute(
+        "SELECT opens_hours_before, closes_minutes_before"
+        " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
+        (session["policy_id"],),
+    ).fetchone()
+    place = availability.Placement(
+        starts_at=session["starts_at"], ends_at=session["ends_at"],
+        location_id=session["location_id"])
+    if policy is not None:
+        shut = capacity.booking_window_open(
+            place, at=moment, opens_hours_before=int(policy[0]),
+            closes_minutes_before=int(policy[1]))
+        if shut is not None:
+            raise Conflict(shut)
+    taken = conn.execute(
+        "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
+        " WHERE session_id = %s AND status IN ('held', 'attended')",
+        (session_id,),
+    ).fetchone()
+    policy_object = capacity.Policy(
+        capacity=session["capacity"], overbook_places=session["overbook_places"])
+    try:
+        capacity.check_hold(
+            policy_object, held=int(taken[0]) if taken else 0, wanted=places)
+    except recurrence.ScheduleError as e:
+        raise Conflict(str(e)) from None
+    restriction_rows = conn.execute(
+        "SELECT restriction_kind, restriction_value FROM plt01.sch_restrictions"
+        " WHERE policy_id = %s ORDER BY restriction_kind",
+        (session["policy_id"],),
+    ).fetchall()
+    if restriction_rows:
+        ineligible = capacity.eligibility(
+            [capacity.Restriction(str(r[0]), str(r[1])) for r in restriction_rows],
+            _candidate(conn, person_id, at=session["starts_at"], skills=skills))
+        if ineligible is not None:
+            raise Conflict(ineligible)
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO plt01.sch_capacity_holds
+                (tenant_id, session_id, person_id, places, source_kind, source_ref,
+                 taken_by, idempotency_key, correlation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING hold_id
+            """,
+            (tenant_id, session_id, person_id, places, source_kind,
+             source_ref.strip(), actor_id, idempotency_key.strip(),
+             correlation_id),
         ).fetchone()
-        if prior is not None:
-            # **Every field of the request is compared, not just the session.** The first
-            # version checked `session_id` alone and answered 201 with the *previous* caller's
-            # hold id for a request naming a different person, a different count and a
-            # different source -- and the repeated branch omitted `person_id`, so the caller
-            # could not even tell whose hold it had been given. Bob got Alice's booking and
-            # nothing said so. The realistic input is a till or a booking client reusing a
-            # counter or a per-shift key across members, which is how a key gets reused in the
-            # field. MOD-017's rule: a retry is answered from what was recorded, and a key
-            # reused with different content is a conflict.
-            if (str(prior[1]) != session_id or str(prior[4]) != person_id
-                    or int(prior[2]) != places or str(prior[5]) != source_kind
-                    or str(prior[6]) != source_ref.strip()):
-                raise Conflict("this_idempotency_key_was_used_for_a_different_request")
-            return {"hold_id": str(prior[0]), "session_id": session_id,
-                    "person_id": str(prior[4]), "places": int(prior[2]),
-                    "status": str(prior[3]), "repeated": True}
-        session = _session(conn, session_id)
-        if session["status"] != "scheduled":
-            raise Conflict(f"this_session_is_{session['status']}")
-        policy = conn.execute(
-            "SELECT opens_hours_before, closes_minutes_before"
-            " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
-            (session["policy_id"],),
-        ).fetchone()
-        place = availability.Placement(
-            starts_at=session["starts_at"], ends_at=session["ends_at"],
-            location_id=session["location_id"])
-        if policy is not None:
-            shut = capacity.booking_window_open(
-                place, at=moment, opens_hours_before=int(policy[0]),
-                closes_minutes_before=int(policy[1]))
-            if shut is not None:
-                raise Conflict(shut)
-        taken = conn.execute(
-            "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
-            " WHERE session_id = %s AND status IN ('held', 'attended')",
-            (session_id,),
-        ).fetchone()
-        policy_object = capacity.Policy(
-            capacity=session["capacity"], overbook_places=session["overbook_places"])
-        try:
-            capacity.check_hold(
-                policy_object, held=int(taken[0]) if taken else 0, wanted=places)
-        except recurrence.ScheduleError as e:
-            raise Conflict(str(e)) from None
-        restriction_rows = conn.execute(
-            "SELECT restriction_kind, restriction_value FROM plt01.sch_restrictions"
-            " WHERE policy_id = %s ORDER BY restriction_kind",
-            (session["policy_id"],),
-        ).fetchall()
-        if restriction_rows:
-            ineligible = capacity.eligibility(
-                [capacity.Restriction(str(r[0]), str(r[1])) for r in restriction_rows],
-                _candidate(conn, person_id, at=session["starts_at"], skills=skills))
-            if ineligible is not None:
-                raise Conflict(ineligible)
-        try:
-            row = conn.execute(
-                """
-                INSERT INTO plt01.sch_capacity_holds
-                    (tenant_id, session_id, person_id, places, source_kind, source_ref,
-                     taken_by, idempotency_key, correlation_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING hold_id
-                """,
-                (tenant_id, session_id, person_id, places, source_kind,
-                 source_ref.strip(), actor_id, idempotency_key.strip(),
-                 correlation_id),
-            ).fetchone()
-        except errors.UniqueViolation:
-            raise Conflict("this_person_already_holds_a_place_on_this_session") from None
-        except errors.ForeignKeyViolation as e:
-            raise NotFound(_fk_subject(e)) from None
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        except errors.RaiseException as e:
-            raise Conflict(str(e).strip().splitlines()[0]) from None
-        assert row is not None
+    except errors.UniqueViolation:
+        raise Conflict("this_person_already_holds_a_place_on_this_session") from None
+    except errors.ForeignKeyViolation as e:
+        raise NotFound(_fk_subject(e)) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    assert row is not None
     return {"hold_id": str(row[0]), "session_id": session_id, "person_id": person_id,
             "places": places, "status": "held", "repeated": False}
+
+
+def take_hold(
+    pool: Pool, tenant_id: str, session_id: str, *, person_id: str, source_kind: str,
+    source_ref: str, idempotency_key: str, actor_id: str, correlation_id: str,
+    places: int = 1, at: datetime | None = None, skills: list[str] | None = None,
+) -> dict[str, Any]:
+    """`take_hold_on` in a transaction of its own.
+
+    **Correct only where there is no state change to be atomic with.** A front desk walking
+    somebody into a class is that case: the hold is the whole act. A caller that also writes a
+    row -- a booking, a waitlist confirmation -- has to use `take_hold_on` on its own
+    connection, or the two commits can fail independently. MOD-010 calls the pool-taking
+    wrapper around `append_event` the bug for the same reason, and names it accordingly.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        return take_hold_on(
+            conn, tenant_id, session_id, person_id=person_id, source_kind=source_kind,
+            source_ref=source_ref, idempotency_key=idempotency_key, actor_id=actor_id,
+            correlation_id=correlation_id, places=places, at=at, skills=skills)
 
 
 def _candidate(
@@ -1673,8 +1706,8 @@ def _candidate(
         entitlements=frozenset(str(r[0]) for r in granted))
 
 
-def check_eligibility(
-    pool: Pool, tenant_id: str, session_id: str, *, person_id: str,
+def check_eligibility_on(
+    conn: Connection[Any], session_id: str, *, person_id: str,
     skills: list[str] | None = None, at: datetime | None = None,
 ) -> dict[str, Any]:
     """Whether somebody with these facts could take a place, and why not. OPS-01-R04.
@@ -1683,31 +1716,36 @@ def check_eligibility(
     understandable denial a Critical Control, and a surface that can only find out by trying
     gives a member a refusal with no reason attached.
 
+    **In the caller's transaction**, so MOD-020's booking command can ask the same question
+    its own eligibility read answers. The pool-taking `check_eligibility` below is MOD-019's
+    own route; a booking that evaluated its own rule set was the shape a reviewer found --
+    `may_book` answered `true` for a fourteen-year-old on an 18+ class and the command then
+    refused it, which is the opposite of what an understandable denial means.
+
     **It answers about a named person, derived the same way `take_hold` derives them**, so the
     read and the write cannot disagree. An earlier version took the facts from the caller, and
     a surface could then be told a member was eligible on figures nobody held -- while the hold
     path, which is what actually matters, was taking the caller's word as well.
     """
     moment = at or _now()
-    with tenant_scope(pool, tenant_id) as conn:
-        session = _session(conn, session_id, for_update=False)
-        rows = conn.execute(
-            "SELECT restriction_kind, restriction_value FROM plt01.sch_restrictions"
-            " WHERE policy_id = %s ORDER BY restriction_kind",
-            (session["policy_id"],),
-        ).fetchall()
-        policy = conn.execute(
-            "SELECT opens_hours_before, closes_minutes_before"
-            " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
-            (session["policy_id"],),
-        ).fetchone()
-        taken = conn.execute(
-            "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
-            " WHERE session_id = %s AND status IN ('held', 'attended')",
-            (session_id,),
-        ).fetchone()
-        candidate = _candidate(
-            conn, person_id, at=session["starts_at"], skills=skills)
+    session = _session(conn, session_id, for_update=False)
+    rows = conn.execute(
+        "SELECT restriction_kind, restriction_value FROM plt01.sch_restrictions"
+        " WHERE policy_id = %s ORDER BY restriction_kind",
+        (session["policy_id"],),
+    ).fetchall()
+    policy = conn.execute(
+        "SELECT opens_hours_before, closes_minutes_before"
+        " FROM plt01.sch_capacity_policies WHERE policy_id = %s",
+        (session["policy_id"],),
+    ).fetchone()
+    taken = conn.execute(
+        "SELECT coalesce(sum(places), 0) FROM plt01.sch_capacity_holds"
+        " WHERE session_id = %s AND status IN ('held', 'attended')",
+        (session_id,),
+    ).fetchone()
+    candidate = _candidate(
+        conn, person_id, at=session["starts_at"], skills=skills)
     restrictions = [capacity.Restriction(str(r[0]), str(r[1])) for r in rows]
     reasons: list[str] = []
     if session["status"] != "scheduled":
@@ -1728,15 +1766,36 @@ def check_eligibility(
     if held >= room:
         reasons.append(f"this session has {room} places and {held} are held")
     return {"session_id": session_id, "eligible": not reasons, "reasons": reasons,
+            # **The restriction answer on its own key, not just folded into the prose.** A
+            # caller that needs to know whether the *member* is eligible -- as against the
+            # window being shut or the room being full -- was left matching the start of a
+            # sentence, which is the control-by-string-matching shape MOD-016 was bitten by.
+            "ineligible": ineligible,
             "places": room, "held": held, "free": max(0, room - held),
             "as_of": moment.isoformat()}
 
 
-def release_hold(
-    pool: Pool, tenant_id: str, hold_id: str, *, reason: str, actor_id: str,
+def check_eligibility(
+    pool: Pool, tenant_id: str, session_id: str, *, person_id: str,
+    skills: list[str] | None = None, at: datetime | None = None,
+) -> dict[str, Any]:
+    """`check_eligibility_on` in its own transaction, for a route that reads nothing else."""
+    with tenant_scope(pool, tenant_id) as conn:
+        return check_eligibility_on(
+            conn, session_id, person_id=person_id, skills=skills, at=at)
+
+
+def release_hold_on(
+    conn: Connection[Any], tenant_id: str, hold_id: str, *, reason: str, actor_id: str,
     correlation_id: str, attended: bool = False,
 ) -> dict[str, Any]:
-    """Settle a held place: released, or attended.
+    """Settle a held place **in the caller's transaction**, for `take_hold_on`'s reason.
+
+    A cancellation that released the place in a second transaction could release it and then
+    fail to record the cancellation, which is a member still booked on a class whose seat has
+    been given away.
+
+    Settle a held place: released, or attended.
 
     **Settled once.** Releasing a released place or re-marking an attended one would rewrite
     who was in the room, and the release carries the only attribution there is -- MOD-008
@@ -1746,31 +1805,41 @@ def release_hold(
         raise InvalidRequest("settling_a_place_states_why")
     moment = _now()
     target = "attended" if attended else "released"
-    with tenant_scope(pool, tenant_id) as conn:
-        row = conn.execute(
-            "SELECT session_id, status, places FROM plt01.sch_capacity_holds"
-            " WHERE hold_id = %s FOR UPDATE",
-            (hold_id,),
-        ).fetchone()
-        if row is None:
-            raise NotFound("capacity_hold_not_found")
-        if str(row[1]) == target:
-            return {"hold_id": hold_id, "status": target, "repeated": True}
-        try:
-            settled = conn.execute(
-                "UPDATE plt01.sch_capacity_holds SET status = %s, released_at = %s,"
-                " released_by = %s, release_reason = %s, release_correlation_id = %s"
-                " WHERE hold_id = %s AND status = 'held'",
-                (target, moment, actor_id, reason.strip(), correlation_id, hold_id),
-            ).rowcount
-        except errors.RaiseException as e:
-            raise Conflict(str(e).strip().splitlines()[0]) from None
-        except errors.CheckViolation as e:
-            raise InvalidRequest(_check_name(e)) from None
-        if settled == 0:
-            raise Conflict("this_place_was_settled_by_somebody_else")
+    row = conn.execute(
+        "SELECT session_id, status, places FROM plt01.sch_capacity_holds"
+        " WHERE hold_id = %s FOR UPDATE",
+        (hold_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("capacity_hold_not_found")
+    if str(row[1]) == target:
+        return {"hold_id": hold_id, "status": target, "repeated": True}
+    try:
+        settled = conn.execute(
+            "UPDATE plt01.sch_capacity_holds SET status = %s, released_at = %s,"
+            " released_by = %s, release_reason = %s, release_correlation_id = %s"
+            " WHERE hold_id = %s AND status = 'held'",
+            (target, moment, actor_id, reason.strip(), correlation_id, hold_id),
+        ).rowcount
+    except errors.RaiseException as e:
+        raise Conflict(str(e).strip().splitlines()[0]) from None
+    except errors.CheckViolation as e:
+        raise InvalidRequest(_check_name(e)) from None
+    if settled == 0:
+        raise Conflict("this_place_was_settled_by_somebody_else")
     return {"hold_id": hold_id, "session_id": str(row[0]), "status": target,
             "places": int(row[2]), "repeated": False}
+
+
+def release_hold(
+    pool: Pool, tenant_id: str, hold_id: str, *, reason: str, actor_id: str,
+    correlation_id: str, attended: bool = False,
+) -> dict[str, Any]:
+    """`release_hold_on` in a transaction of its own, for `take_hold`'s reason."""
+    with tenant_scope(pool, tenant_id) as conn:
+        return release_hold_on(
+            conn, tenant_id, hold_id, reason=reason, actor_id=actor_id,
+            correlation_id=correlation_id, attended=attended)
 
 
 # ------------------------------------------------------------------ reads
