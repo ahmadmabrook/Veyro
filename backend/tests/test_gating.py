@@ -88,6 +88,13 @@ READ_ROUTES = [
     ("get", f"/catalog/bundles/{_ID}/status?order_reference=sweep", None),
     ("get", "/people/duplicates/all", None),
     ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
+    ("get", "/scheduling/resources", None),
+
+    ("get", f"/scheduling/calendar?location_id={_ID}&from_date=2026-11-01"
+            "&to_date=2026-11-30", None),
+    ("get", f"/scheduling/sessions/{_ID}", None),
+    ("get", f"/scheduling/sessions/{_ID}/conflicts", None),
+    ("get", f"/scheduling/sessions/{_ID}/eligibility?person_id={_ID}", None),
 ]
 
 WRITE_ROUTES = [
@@ -419,6 +426,48 @@ WRITE_ROUTES = [
       **_CORR}),
     ("post", f"/finance/invoices/{_ID}/fiscalize",
      {"target": "submitted", **_CORR}),
+    ("post", "/scheduling/resources",
+     {"resource_code": "SWEEP-1", "resource_kind": "room", "display_name": "Sweep",
+      **_CORR}),
+    ("post", f"/scheduling/resources/{_ID}/retire", {**_CORR}),
+    ("post", "/scheduling/availability",
+     {"resource_id": _ID, "window_kind": "working", "starts_at": "09:00",
+      "ends_at": "17:00", "weekday": 0, **_CORR}),
+    ("post", "/scheduling/templates",
+     {"template_code": "SWEEP-T", "display_name": "Sweep", "service_resource_id": _ID,
+      "location_id": _ID,
+      "rule": {"frequency": "weekly", "local_time": "18:00", "duration_minutes": 60,
+               "starts_on": "2026-11-01", "until": "2026-11-30", "weekdays": [0]},
+      "policy": {"capacity": 12},
+      "requirements": [{"kind": "room"}], **_CORR}),
+    # **Both branches of every conditional permission in this module.** The sweep sent neither
+    # `override_reason` nor `acknowledged_impact`, so the branch that charges
+    # `scheduling.conflict.override` was never exercised by it at all and the one that charges
+    # `scheduling.schedule.publish_disruptive` did not exist -- a reviewer found the second as
+    # a Critical Control bought with a free bool.
+    ("post", f"/scheduling/templates/{_ID}/preview", {}),
+    ("post", f"/scheduling/templates/{_ID}/publish", {**_CORR}),
+    ("post", f"/scheduling/templates/{_ID}/publish",
+     {"acknowledged_impact": True, **_CORR}),
+    ("post", f"/scheduling/templates/{_ID}/sessions",
+     {"override_reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/substitute",
+     {"replacement_resource_id": _ID, "reason": "sweep",
+      "override_reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/templates/{_ID}/retire", {"reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/templates/{_ID}/sessions", {**_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/substitute",
+     {"replacement_resource_id": _ID, "reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/cancel",
+     {"cancellation_reason": "weather", "reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/relocate",
+     {"to_location_id": _ID, "reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/handoff",
+     {"to_resource_id": _ID, "reason": "sweep", **_CORR}),
+    ("post", f"/scheduling/sessions/{_ID}/holds",
+     {"person_id": _ID, "source_kind": "walk_in", "source_ref": "sweep",
+      "idempotency_key": "sweep-h1", **_CORR}),
+    ("post", f"/scheduling/holds/{_ID}/settle", {"reason": "sweep", **_CORR}),
 ]
 
 
@@ -763,7 +812,8 @@ class GateCoverageTests(unittest.TestCase):
                             # prefix for both would sweep two unrelated modules together and,
                             # worse, read as one surface.
                             "/memberships", "/member-entitlements", "/finance",
-                            "/notifications", "/people", "/catalog", "/ledger")
+                            "/notifications", "/people", "/catalog", "/ledger",
+                            "/scheduling")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

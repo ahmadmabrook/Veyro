@@ -1023,6 +1023,110 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     # The sweep matches column *names* and none of these has a name it could recognise. Every
     # one holds what a caller, a clerk or a provider typed, and the realistic content of a
     # posting memo is "Personal training with Jane, Tuesdays".
+    # ---------------------------------------------------------------- MOD-019, OPS-01
+    #
+    # **The scheduling plane's only member identifiers are the two below**: who holds a place,
+    # and which person a `staff` resource is. Everything else naming somebody is an actor id --
+    # who published a schedule, who cancelled a class -- which is the evidence the module
+    # exists to keep.
+    Reachability("plt01", "sch_capacity_holds", "person_id", "unreachable",
+                 "**who was in the room.** The holds have no UPDATE on this column and no "
+                 "DELETE for any role, because 'who attended' is the answer to a dispute "
+                 "about a session that has happened"),
+    Reachability("plt01", "sch_resources", "person_id", "unreachable",
+                 "which person a staff resource is. No UPDATE covers it: re-pointing a "
+                 "resource at another person would rewrite who taught every past session"),
+    Reachability("plt01", "sch_resources", "created_by", "unreachable",
+                 "who added a schedulable resource"),
+    Reachability("plt01", "sch_resources", "retired_by", "write_once",
+                 "**who withdrew it**, which takes every class holding it off the schedule; "
+                 "the trigger beside the table makes the retirement final"),
+    Reachability("plt01", "sch_availability_windows", "created_by", "unreachable",
+                 "who set this rota window, which is what a schedule is generated against"),
+    Reachability("plt01", "sch_templates", "created_by", "unreachable",
+                 "who drafted a schedule"),
+    Reachability("plt01", "sch_templates", "published_by", "write_once",
+                 "**who published it**, which is the act paragraph 1841 governs: a draft "
+                 "affects nobody and a publication is what members plan their week around"),
+    Reachability("plt01", "sch_templates", "retired_by", "write_once",
+                 "who stopped a recurring class"),
+    Reachability("plt01", "sch_session_resources", "assignment_id", "unreachable",
+                 "the assignment's own key, which names nobody -- declared because the sweep "
+                 "reads column names and this one ends in a word it watches for"),
+    Reachability("plt01", "sch_recurrence_rules", "created_by", "unreachable",
+                 "who wrote this version of the recurrence. The table has no UPDATE grant at "
+                 "all, because a rule a session cites describes what that session is"),
+    Reachability("plt01", "sch_capacity_policies", "created_by", "unreachable",
+                 "who set the capacity a session was published with"),
+    Reachability("plt01", "sch_restrictions", "created_by", "unreachable",
+                 "who added an eligibility rule, which is what refuses a member a place"),
+    Reachability("plt01", "sch_template_requirements", "created_by", "unreachable",
+                 "who decided what a session needs"),
+    Reachability("plt01", "sch_sessions", "created_by", "unreachable",
+                 "who generated this session"),
+    Reachability("plt01", "sch_sessions", "cancelled_by", "write_once",
+                 "**who cancelled a class members had booked.** The one-way trigger makes it "
+                 "final, because the cancellation is what they were told"),
+    Reachability("plt01", "sch_session_resources", "assigned_by", "unreachable",
+                 "who assigned a resource to a session. No UPDATE grant: what a session held "
+                 "is what the conflict detector decided against"),
+    Reachability("plt01", "sch_session_resources", "superseded_by", "write_once",
+                 "**who took a resource off a session** -- the coach who was substituted out, "
+                 "the studio a class was moved from. The `sch_session_resources_one_way` "
+                 "trigger refuses a second supersession, so re-assigning the same resource is "
+                 "a new assignment row rather than a cleared marker: an earlier version "
+                 "cleared it, which made this the one attribution in the module a later write "
+                 "could erase"),
+    Reachability("plt01", "sch_session_changes", "recorded_by", "unreachable",
+                 "who substituted, relocated or handed off a session. Insert-only, because "
+                 "each is a thing a member was told"),
+    Reachability("plt01", "sch_capacity_holds", "taken_by", "unreachable",
+                 "who put this person in the class"),
+    Reachability("plt01", "sch_capacity_holds", "released_by", "write_once",
+                 "**who took them out of it**, which is the act a member notices most"),
+    Reachability("plt01", "sch_conflict_overrides", "overridden_by", "unreachable",
+                 "**who published over a resource conflict.** Paragraph 1842's Critical "
+                 "Control is 'permission and reason', and this is the only record of either"),
+    # Free text a subject can appear in. Declared by hand, because the sweep matches column
+    # *names* and none of these says 'subject' -- the same group MOD-018 has, for the same
+    # reason, and pinned by a named test for the same reason again.
+    Reachability("plt01", "sch_availability_windows", "reason", "write_once",
+                 "why somebody is absent, in an operator's own words -- which is where a "
+                 "health fact goes in practice, and the reason this is declared"),
+    Reachability("plt01", "sch_templates", "retire_reason", "write_once",
+                 "why a recurring class was stopped"),
+    Reachability("plt01", "sch_session_changes", "reason", "unreachable",
+                 "why a class changed, in prose. Insert-only and no erasure path clears it"),
+    Reachability("plt01", "sch_conflict_overrides", "reason", "unreachable",
+                 "why a conflict was overridden; the evidence for paragraph 1842"),
+    Reachability("plt01", "sch_conflict_overrides", "conflict_summary", "unreachable",
+                 "what the detector found, as it was found: recomputing it later would read "
+                 "a schedule that has since moved"),
+    # Four more a reviewer wrote a name, a date of birth, a phone number and an address into,
+    # through the ordinary routes, and read back out of the tables. None of them is *for* a
+    # subject and all four hold whatever a caller types, which is the whole reason this group
+    # is declared by hand -- the sweep matches column names.
+    Reachability("plt01", "sch_capacity_holds", "source_ref", "unreachable",
+                 "**what took the place**, in the caller's own words: an order number, a till "
+                 "reference, or -- as a reviewer demonstrated -- a member's name, date of "
+                 "birth and allergies. No UPDATE and no DELETE, so no erasure reaches it"),
+    Reachability("plt01", "sch_capacity_holds", "idempotency_key", "unreachable",
+                 "the caller's handle for its own retry, which is free text and so can carry "
+                 "a subject. No UPDATE and no DELETE"),
+    Reachability("plt01", "sch_resources", "display_name", "anonymize",
+                 "**a staff resource's display name is a person's own name.** It carries an "
+                 "UPDATE grant and the row names the person it is, so an erasure reaches it "
+                 "through `person_id` -- the one column in this group that is genuinely "
+                 "clearable",
+                 clears=("display_name",), locate_by="person_id"),
+    Reachability("plt01", "sch_templates", "display_name", "write_once",
+                 "what a class is called, which is a person's name whenever it is a personal "
+                 "training slot -- 'PT with Jane, Tuesdays'. UPDATE is granted, so this is not "
+                 "`unreachable`; what no erasure can do is *find* it, because nothing relates "
+                 "a template to a person. Renaming it is a tenant's own act"),
+    Reachability("plt01", "sch_capacity_holds", "release_reason", "write_once",
+                 "why a place was given up or taken away"),
+
     Reachability("plt01", "led_postings", "memo", "unreachable",
                  "**the statement line.** Insert-only in full, and the place a member's name "
                  "or a service's description lands on a journal"),

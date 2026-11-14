@@ -33,11 +33,11 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 84 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+CI. It carries 91 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
 MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
 MOD-011's `ops_`, MOD-012's `int_`, MOD-013's `ntf_`, MOD-014's `ppl_`, MOD-016's `cat_`,
-MOD-017's `mem_` and `fin_` and MOD-018's `led_` -- and **every one has been run against a
-deliberate mutation of the protection it guards and shown to fail**:
+MOD-017's `mem_` and `fin_`, MOD-018's `led_` and MOD-019's `sch_` -- and **every one has been
+run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
 MUTATE="ALTER TABLE plt01.organizations NO FORCE ROW LEVEL SECURITY;" backend/scripts/verify_db.sh
@@ -333,6 +333,104 @@ answer was `CASCADE`; here `CASCADE` would take the foreign key with it and test
 else, so the honest handling is to classify the mutation as not-run and say which index it was.
 A sweep that reports those as caught is reporting the same false green the whole discipline
 exists to prevent.
+
+**`FOR SHARE` does not conflict with `FOR SHARE`.** A trigger that reads a parent row to
+decide whether a child may be inserted has to take `FOR UPDATE`, not a share lock: two
+inserters hold a share lock at once, neither sees the other's uncommitted row at READ
+COMMITTED, and both commit. MOD-019's capacity trigger -- the whole of paragraph 4146's
+Critical Control -- took `FOR SHARE`, and a reviewer put four places in a two-place class with
+two ordinary transactions and no adversary. The service happened to be safe because it takes
+`FOR UPDATE` on the session before counting; the trigger exists for the writer that is *not*
+the service, which is the half that failed. **And no probe in this file could ever have seen
+it**, because a single psql session cannot race itself: a lock needs a test on two
+connections, which means a Python test, not an isolation check.
+
+**When two controls refuse the same row, a probe proves whichever one answers -- so it has to
+assert which.** Two of MOD-019's triggers open by refusing a row whose parent session does not
+exist, which reads like the control and is not: the composite foreign key is, and the branch
+merely fires first (a BEFORE INSERT trigger runs before the reference is checked) to answer in
+a sentence instead of a constraint name. The probes inserted exactly that row, so dropping
+either trigger was "caught" by the key and the sweep reported an error naming a constraint
+rather than a named failure. The probe now handles `foreign_key_violation` separately and
+raises its own `CHECK nn FAILED` naming the confusion, which is the only way the count
+assertion can see the branch disappear.
+
+**A probe whose own statement is refused by a sibling CHECK aborts the whole DO block, so one
+bad probe hides every probe after it.** MOD-019's owner-role block moved a session's start
+*past* its end, which `sch_sessions_ordered` refuses -- and `check_violation` is not caught by
+`WHEN raise_exception`, so with the trigger branch deleted the block died on an unnamed error,
+the three probes after it never ran, and the `IF probe <> N` assertion never evaluated. One
+case gated the rest. Move the value in the direction that keeps every *other* rule satisfied.
+
+**A conjunct that makes a sibling evaluable is load-bearing in a way nothing reads as.**
+`restriction_kind NOT IN ('min_age','max_age') OR (value ~ '^[0-9]{1,3}$' AND value::integer
+<= 120)` looks like a regex for shape plus a cast for the bound. Weakening it by removing the
+regex showed otherwise: `'sixteen'::integer` *raises*, so the constraint was correct only
+because PostgreSQL evaluated the left conjunct first -- which it does not promise. On the day
+it did not, a typo at the front desk would answer 500 with `invalid input syntax for type
+integer` instead of a clean refusal. The repair is to remove the dependency rather than
+document it: a regex encoding 0 to 120 needs no cast and no evaluation order. **Any CHECK whose
+right operand would raise on input its left operand excludes has this shape**, and only a
+weakening mutation finds it.
+
+**A blank case uses a tab, not spaces.** Every "states a reason" case in this file sent `'  '`,
+which `btrim` strips -- so a reviewer restored `length(btrim(x)) > 0` on all eight of MOD-019's
+not-blank constraints and only the definition pin objected. The whole point of the
+`~ '[^[:space:]]'` rewrite was that spaces are not the only whitespace, and a case made of
+spaces cannot tell the two forms apart.
+
+**A harness that misclassifies a catch hides the one real gap among the noise.** MOD-019's
+first sweep reported 749 of 757 mutations as MUTERR, because the worker looked for any `^ERROR`
+in the three lines after the mutation and found the *check's own refusal* there. The opposite
+misclassification -- reporting caught when the mutation never ran -- is the dangerous one and
+this file already records it; this one is merely noisy, and it would have buried a genuine
+MUTERR in 749 false ones. A classifier has to exclude `CHECK nn FAILED` before calling a
+mutation failed. **And a fix script that aborts on an assertion leaves the fixes after it
+unapplied**: four of MOD-019's own evidence repairs were lost that way and the same seven
+mutations came back on the next pass, which is how it was noticed.
+
+**Pin the rules themselves, not only the tables they sit on.** Every paragraph above is
+about a behavioural case that turned out to prove nothing, and each was found by a mutation
+sweep -- which is a thing a person runs, not a thing CI does. MOD-019 adds a second line of
+evidence that runs on every build: check 91 compares the *text* of every CHECK, every index
+and every trigger against a pinned set in both directions, plus an `md5` of each trigger
+function's body. A drop, a weakening and a deleted plpgsql branch all change the text, so all
+three fail in CI rather than at the next sweep. It does not replace the cases -- a pin says
+the rule is still written down and only a case says it still bites, and one without the other
+is how vacuous evidence happens -- but it closes the window between a regression landing and
+somebody next running 750 mutations. The cost is deliberate: a legitimate schema change fails
+the pin until it is regenerated, which is the moment a human reads the diff. It caught two of
+MOD-019's own changes while they were being made.
+
+**It also gives an unprovable constraint somewhere to live.** `sch_templates_status` is a
+domain over three values, and every value outside them also violates `published_has_a_rule` on
+an insert while the one-way trigger admits only two transitions on an update -- so no path
+reaches an unknown status with that CHECK as the only thing in the way. Previously the choice
+was to delete it (the rule two paragraphs down) or to let a case pass on a sibling. With a
+definition pin there is a third option that is better than both: keep the primitive statement,
+say in the migration that it has no behavioural case and why, and let the pin be its evidence.
+
+**A trigger branch that a foreign key would also refuse is a message, not a control -- and its
+probe has to know the difference.** Two of MOD-019's triggers open by refusing a row whose
+parent session does not exist, which reads like the control and is not: the composite foreign
+key is, and the branch merely fires first (a BEFORE INSERT trigger runs before the reference
+is checked) to answer in a sentence rather than a constraint name. The probes inserted a row
+naming a missing session, so dropping either trigger was "caught" by the key, and the sweep
+reported the drop as an error with a misleading message rather than as a failure. The probe now
+handles `foreign_key_violation` separately and names it, which is the only way the count
+assertion can see the branch disappear. **The general form: when two controls refuse the same
+row, a probe proves whichever one answers -- so it has to assert which.**
+
+**A conjunct that makes a sibling evaluable is load-bearing in a way nothing reads as.**
+`restriction_kind NOT IN ('min_age','max_age') OR (value ~ '^[0-9]{1,3}$' AND value::integer
+<= 120)` looks like a regex for shape plus a cast for the bound. Weakening it by removing the
+regex showed otherwise: `'sixteen'::integer` *raises*, so the constraint was correct only
+because PostgreSQL evaluated the left conjunct first -- which it does not promise. On the day
+it did not, a typo at the front desk would answer 500 with `invalid input syntax for type
+integer` instead of a clean refusal. The repair is to remove the dependency rather than to
+document it: a regex that encodes 0 to 120 needs no cast and no evaluation order. **Any CHECK
+whose right operand would raise on input its left operand excludes has this shape**, and a
+weakening mutation is what finds it.
 
 **A self-referencing constraint needs the row's own id supplied.** `fin_invoices_not_self` and
 `mem_agreements_not_self` had no isolating case for a reason that is obvious once stated and

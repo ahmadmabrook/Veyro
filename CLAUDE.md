@@ -37,6 +37,12 @@ backend/app/            service code
                         collections.py decide; service.py holds the two locks the module
                         turns on -- the grant a reservation draws from and the serial
                         counter an invoice is numbered by
+  scheduling/           MOD-019: recurrence.py converts each occurrence on its own,
+                        availability.py reads each rota window in its own zone, resources.py,
+                        conflicts.py, capacity.py, publishing.py and substitution.py decide;
+                        service.py holds the one thing that is load-bearing -- take_hold
+                        counts under FOR UPDATE on the session, in the transaction that
+                        writes the hold
   ledger/               MOD-018: accounts.py, wallet.py, periods.py, recognition.py and
                         settlement.py decide; service.py holds the one thing that is
                         load-bearing -- post_journal takes a connection, so a posting commits
@@ -2331,15 +2337,229 @@ Known gaps, deliberate:
 - **The timeline does not know about any of this either.** MOD-014 projects nine event types
   and none of MOD-018's is among them.
 
-**Next.** MOD-019 (Scheduling Pilot) is the natural next module: it is unblocked by MOD-014,
-and it is where MOD-017's entitlement reservation finally gets a caller, since a booking is the
-thing a hold is taken *for* -- and MOD-018's wallet is where a booking that is paid for with
-stored value draws from. Nothing in the Foundation wave is left except MOD-006, the Compose
+**MOD-019 (OPS-01 scheduling, resources and capacity) -- implemented, gated and reviewed.**
+Twelve `sch_` tables in `plt01` under the same forced RLS, nine trigger functions,
+`app/scheduling/` beside them, and nineteen HTTP routes. Working: one resource model over
+OPS-01-R01's seven kinds; a rota of working hours, breaks and dated absences; schedule
+templates whose recurrence is a *version* and whose sessions cite the exact version they came
+from; per-occurrence local-to-UTC conversion with the spring-forward gap stepped and recorded;
+capacity policies with setup and cleanup margins, a waitlist, declared overbooking and a
+booking window; eligibility restrictions with an explainable denial; deterministic conflict
+detection over double-booking, over-capacity, availability and site; an impact assessment a
+publish is refused without; places held as rows and counted under a lock; and the four acts
+paragraph 1839 names -- substitution, cancellation, relocation and attendance handoff. Five
+events are produced. Proven: isolation checks 85-91, mutation-tested in four rounds -- 770 in
+the last, every one caught by the check that guards what was broken; 78 domain unit tests with
+no database; 54 HTTP tests.
+
+Six decisions carry the module:
+
+- **The rule and the session are different rows, and the rule is immutable.** Paragraph 4149:
+  "recurring schedule definition is separate from generated occurrences so historical instances
+  remain stable after template edits." So `sch_recurrence_rules` is one row per version with no
+  UPDATE grant at all, a session cites the exact rule it came from by foreign key rather than
+  joining through the template, and editing next month's class leaves last month's sessions as
+  they were. A design that recomputed occurrences from the current rule would rewrite history
+  on every typo fix.
+- **A session stores a UTC instant and the local facts it came from.** Paragraph 4150, and the
+  conversion is per occurrence: a rule carries a local time plus the location's zone, and each
+  date is converted separately. Across a clock change neither fact is derivable from the other.
+- **Capacity is held, not counted.** Paragraph 4146 asks for "atomic reservation counters", and
+  there is no `held_count` anywhere: one row per place, summed under a row lock on the session.
+  The forbidden-name sweep is how that absence is kept, because an absence is what a later
+  migration restores.
+- **A location is part of every decision.** A resource, a placement and a rota window all carry
+  one, and all three are compared: a class at one site cannot hold a studio at another, and a
+  coach's rota is read in *their* zone rather than the session's.
+- **An impact assessment is what a disruptive publish costs.** Paragraph 1841. The preview is a
+  separate read that takes the proposed rule, and a publish that would move or cancel a session
+  somebody has booked needs `scheduling.schedule.publish_disruptive` -- a different permission,
+  not a flag.
+- **A conflict override is a permission plus a written reason.** Paragraph 1842's Critical
+  Control. Sending `override_reason` routes the request to `scheduling.conflict.override`, the
+  overridden occurrence is created, and the row records that occurrence's own conflicts.
+
+**Three reviewers worked this module in parallel -- the schema, the decision modules, the
+request path -- and all three returned CHANGES_REQUESTED. Fifteen blocking defects**, and the
+dominant cause was the one `CLAUDE.md` already records: a control keyed on a value the caller
+supplies, defended in writing by a claim that was false. Carried forward as rules:
+
+- **`FOR SHARE` does not conflict with `FOR SHARE`.** The capacity trigger -- the whole of
+  paragraph 4146's Critical Control -- read the session row with a share lock, so two inserters
+  held it at once, neither saw the other's uncommitted hold, and both committed: four places in
+  a two-place class, with two ordinary transactions and no adversary. The service happened to be
+  safe because it takes `FOR UPDATE` before counting; this trigger exists for the writer that is
+  *not* the service, which is the half the paragraph is actually about. **And nothing in the
+  isolation suite could ever have seen it**, because a single psql session cannot race itself --
+  so the evidence is a two-connection Python test, and it fails with `FOR SHARE`.
+- **When a module explains why it accepted something, check whether the danger it names is
+  reachable.** `take_hold` took `age_years` from the body, defended by "the member's age belongs
+  to MOD-014 and this module reads neither" -- and `ppl_persons` is in the same schema, under
+  the same role, behind a composite foreign key the hold row already carries. A reviewer put a
+  fourteen-year-old in an 18+ class on `scheduling.place.hold`, the routine AAL-1 permission a
+  front desk and a turnstile hold, and the hold row has no UPDATE on `person_id` and no DELETE
+  anywhere -- so the record that the child attended is permanent. The age and the entitlements
+  are derived now; `skills` stays the caller's word because nothing in this build stores one,
+  and that is said in the body rather than implied. **This is MOD-017's lesson, which this
+  module had read and shipped anyway.**
+- **A field stored beside a decision and never read is not a parameter, it is a comment.**
+  `Window.timezone` was declared, written from the resource's own location and read by nothing:
+  the rota was evaluated in the *session's* zone, so a London coach rostered 09:00-17:00 was
+  available for an 09:00 class in Amman, which is 06:00 their time. With a *dated* absence it
+  was worse than mis-timed -- the window is selected by comparing its date against a local date
+  computed in the wrong zone, so a day off three hours away was never consulted at all.
+- **A guard that compares nothing is not a guard.** `Resource.location_id` and
+  `Placement.location_id` had both been carried from the start and neither was compared, so a
+  class could be published at one site holding a room and an instructor at another -- and the
+  room was *genuinely held*, so the real class at the owning site was correctly refused it. Two
+  harms from one missing comparison. `_assign` drew from the whole chart for the same reason.
+- **A feature whose success path is unreachable reports success.** An occurrence with a conflict
+  was skipped, and *then*, if a reason had been given, an override row was written for each
+  session in `created` -- which held only the occurrences that had no conflict. So
+  `override_reason` bought nothing at all: 201, nothing created, no override recorded, and
+  paragraph 1842 reading as satisfied. The same shape one route over: `relocate_session`
+  recorded the change and left `sch_sessions.location_id` alone, with a `note` in the response
+  explaining that a published session's identity does not move -- so the destination's calendar
+  stayed empty and the origin's showed a class that was not there. **A response field explaining
+  why the module did not do what it was asked is the defect, written down.**
+- **A pure function that answers differently depending on the order of a list it does not
+  control is wrong whatever builds the list.** `publishing.assess` keyed a dict on `starts_at`,
+  so a tenant running two classes at six o'clock in two studios had one silently dropped, and
+  *which* one depended on row order. With the empty studio last, a publish that cancelled both
+  reported zero places affected, needed no acknowledgement under paragraph 1841 and raised no
+  notification under 1838. Three rooms over five days reported five cancellations out of
+  fifteen and a third of the held places.
+- **A Critical Control bought with a free bool is not a control.** `acknowledged_impact` cost
+  the same permission as a publish that disturbed nobody, which is MOD-013's `priority:
+  "critical"` finding exactly. And the preview that was supposed to inform it **could not assess
+  the change**: `preview_publish` had taken a `rule` parameter from the start and nothing passed
+  it, so it compared the live rule with itself and answered "nothing changes" -- then the publish
+  moved eight classes and cancelled one a member had booked. An operator who did the right thing
+  was misled by doing it.
+- **A health fact is a health fact whatever column it is in** -- MOD-017's rule, hit again.
+  `sch_session_changes.reason` is prose an operator writes about why a class changed, and a
+  reviewer read "she is having chemotherapy on Tuesdays" out of `GET /scheduling/sessions/{id}`
+  holding only the routine schedule read, while `/people/{id}` refused them 403. The sibling
+  declaration in `classification.py` already said in as many words that a reason column is where
+  a health fact goes in practice. It is masked unless the caller holds
+  `scheduling.session.change` -- whoever can record a substitution can read why one happened.
+- **A validation that runs after the commit is not validation.** `occurrence_count` was called
+  after the `with tenant_scope` block, and only the rule's *span* was bounded, not its epoch --
+  so a thirty-day rule in year 9999 passed `check_rule`, walked `day += timedelta(days=1)` off
+  the end of `date`, and answered 500 with the draft, its rule, its policy and its requirements
+  all committed. `sch_templates` has a unique index on the code, no DELETE grant and no path
+  that retires a draft, so one mistyped year took that template code for ever and every later
+  publish of the row was another 500.
+- **An idempotency key compared on one field is a hold handed to the wrong person.**
+  `take_hold` checked the session and ignored the person, the count, the source and the
+  reference -- so a request naming a different member got 201, the previous caller's `hold_id`,
+  and (because the repeated branch omitted the field) no `person_id` at all. Bob received
+  Alice's booking and nothing said so. The realistic input is a till reusing a per-shift
+  counter, which is how a key gets reused in the field.
+- **`str.isdigit()` is not `int()`.** It is true for Unicode superscripts that `int` refuses, so
+  an age restriction of `'\u00b2'` passed the guard and raised a bare `ValueError` two lines
+  later -- which nothing in the request path catches, so the route answered 500 rather than 422.
+  `isdecimal` is the predicate that matches.
+- Four more with shapes this file records: a resource hold had none of the state guards a *place*
+  hold has, so a room could be held for a cancelled session and a retired resource assigned to a
+  live one; the session identity guard covered `capacity` and not `overbook_places`, which is
+  half a guard because the ceiling is their sum; `retire_template` took a correlation id and
+  dropped it, with no column to put it in, while `sch_resources` had carried one from the start;
+  and `superseded_by` -- added during this very review to fix the substituted-instructor hold --
+  was itself an attribution a later write could erase, which is why an assignment now has a key
+  of its own and a supersession is final by trigger.
+
+**And the evidence claimed more than it proved, in three shapes this repository has a rule for
+each of.** Both of the module's defining absence sweeps were prefix-scoped, so a reviewer created
+`plt01.class_rosters` with a `held_count` and a naive `timestamp`, satisfied the prefix-free RLS
+sweep, and watched all 91 checks pass -- the third time a control has escaped on a name. Seven
+cases were proved by a *sibling* rather than by the constraint they named. And eight "not blank"
+cases used spaces, which `btrim` strips, so none of them could tell the `~ '[^[:space:]]'` form
+this repository standardised on from the one it banned across 118 constraints.
+
+**Check 91 is new and is the answer to the first of those.** It pins the *text* of every CHECK,
+every index and every trigger on the module's tables, plus an `md5` of each trigger function's
+body, compared as a set in both directions. A drop, a weakening and a deleted plpgsql branch all
+change the text, so all three fail in CI rather than at the next sweep -- which closes the hole
+MOD-018 paid for, where a reviewer deleted an unprobed branch and the suite reported 84/84. It
+does not replace the behavioural cases: a pin says the rule is still written down and only a case
+says it still bites. It caught two of this module's own changes while they were being made, and
+it gives an unprovable constraint somewhere honest to live: `sch_templates_status` has no
+isolating case and cannot have one -- a reviewer tried six routes to an unknown status and every
+one was refused by a sibling -- so the pin is its whole evidence, and the migration says so.
+
+Things worth knowing before extending it:
+
+- **A resource with no working hours is unconstrained; one with a weekly rota is bound every
+  day.** A room, a court and a bike have no rota in any meaningful sense and on the day a gym
+  opens nobody has one, so an empty window list cannot mean "never available" -- the first
+  version read it that way and nothing could be scheduled in a tenant at all. But a coach
+  rostered Monday and Wednesday is refused on Friday, because a weekly rota is a statement about
+  the week; and a *dated* working window binds only its own date, because "open specially this
+  Sunday" must not close the rest of the week. Three cases, and the first two were each a bug.
+- **A substitution supersedes the outgoing hold rather than leaving it.** Leaving it made a coach
+  sent home ill unschedulable everywhere else at that hour, for ever. The row stays, so the
+  window a past conflict was decided against is still readable; what moves is whether the hold
+  still applies. A re-assignment is a new assignment row, which is what keeps the attribution.
+- **A relocation moves the session and the holds that belong to a building.** A studio, a zone, a
+  court and the bikes in it are the site; a coach and the class format travel. Keyed on the
+  *kind* rather than on whether the resource has a location, because a coach has one too.
+- **The impact assessment is keyed on the slot, which is the instant and the span.** So a class
+  republished at fifteen minutes instead of sixty is not "unchanged" -- `Instance.ends_at` is
+  carried for no other purpose -- and scope is compared against the *local* date, because
+  `effective_from` is a date an operator typed.
+- **`conflicts.detect` checks a requirement's shape and not the whole authoring rule.** "A named
+  requirement is for one resource" is true of a template, which a person writes; it is false of a
+  requirement rebuilt from what a session already holds, where twenty bikes are one named row
+  with a quantity of twenty.
+- **A spring-forward gap is stepped until the hour exists, and the local date is re-derived.**
+  One hour is enough for every zone that shifts by one and Antarctica/Troll moves by two; and
+  America/Nuuk's gap is 23:00 to 23:59, so an adjustment crosses midnight and the two facts the
+  row keeps separately would otherwise contradict each other.
+
+Known gaps, deliberate:
+
+- **Nothing books anything.** This is the schedule and the capacity; the member's reservation,
+  the waitlist, the no-show policy and the appeal are MOD-020's. `sch_capacity_holds` is the
+  authority a booking will cite, which is why it lives here and not there -- "no cross-domain
+  write-table access", the same shape as MOD-017's entitlement reservation.
+- **Nothing drives anything on a schedule.** A session is generated when somebody asks, and
+  nothing completes a session whose time has passed, sweeps a lapsed hold or expires a booking
+  window. The eleventh module to want the worker runtime this build does not have.
+- **No travel buffer is enforced.** `availability.check_travel` decides and nothing calls it:
+  the buffer is a per-tenant figure the sources do not state, and paragraph 1835's
+  cross-location case needs a resource scheduled at two sites in one day, which the location
+  guard now makes rarer rather than impossible.
+- **A cancelled session cannot be replaced at the same rule and instant.** The one-way
+  cancellation is deliberate -- members have been told -- and `UNIQUE (tenant_id, rule_id,
+  starts_at)` is the generation idempotency, so a class cancelled for an ill instructor can
+  never be re-filled in that slot from that rule even once a substitute is found. Found by a
+  reviewer; the interaction was not designed, and the remedy is a new rule version.
+- **No waitlist.** `waitlist_capacity` is recorded on the policy and nothing reads it, because
+  the waitlist is OPS-02's: position, timed promotion and the offer expiry are its decisions.
+- **A session is not completed by anything.** `completed_at` and the `completed` status exist and
+  only a caller can set them; attendance is settled per hold.
+- **`skills` is the caller's word.** Nothing in this build stores a skill, so a skill restriction
+  is only as good as whoever answers it -- the one eligibility fact that is not derived, said out
+  loud in the body rather than left to be found.
+- **Seven free-text columns are residue an erasure cannot reach**, all declared by hand because
+  the sweep matches column names. The one exception is a `staff` resource's display name, which
+  is a person's own name and *is* cleared, because the row says which person it is.
+- **The timeline does not know about any of this.** MOD-014 projects nine event types and none
+  of MOD-019's five is among them, so a member's timeline shows no class they were booked into.
+
+**Next.** MOD-020 (Booking & Waitlist Pilot, OPS-02) is unblocked by MOD-019 and MOD-017 and is
+what MOD-019 was built to feed: `sch_capacity_holds` is the authority a booking cites, and
+MOD-017's entitlement reservation finally gets a caller, since a booking is the thing a hold is
+taken *for* -- and MOD-018's wallet is where a booking paid for with stored value draws from.
+Its two stated invariants (paragraph 4697) are that capacity never falls below zero and that a
+duplicate waitlist promotion cannot consume two seats; the first is MOD-019's lock and trigger,
+and the second is new. Nothing in the Foundation wave is left except MOD-006, the Compose
 Multiplatform qualification, which is a client-side proof the server plane does not need.
 
 Three things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party -- no worker runtime exists for the **ten** schedules
+scopes a tenant may hand to a third party -- no worker runtime exists for the **eleven** schedules
 that want one, which MOD-018 makes more pressing again because nothing expires lapsed wallet
 value and nothing recognises revenue until somebody asks, and there is no key vault, which is
 what MOD-009's crypto-shred, MOD-007's TOTP seeds and MOD-012's inbound webhook signatures are

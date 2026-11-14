@@ -29646,4 +29646,4896 @@ END $$;
 ROLLBACK;
 
 
-\echo 'tenant isolation: 84/84 checks passed'
+-- MOD-019's own seed, committed so checks 85-90 have a subject on both sides. **Tenant A holds
+-- a real schedule and tenant B holds one resource of its own**, which is what makes a leaked
+-- predicate visible: an empty table answers zero either way, so the absence of a row proves
+-- nothing. Every id is explicit, because check 90's cases point at them.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.locations (tenant_id, location_id, brand_id, location_name, timezone)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Schedule Street', 'Asia/Amman');
+INSERT INTO plt01.sch_resources
+    (tenant_id, resource_id, resource_code, resource_kind, display_name, brand_id,
+     location_id, quantity, person_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-00000000000a',
+        'STUDIO-A', 'room', 'Studio A', 'aaaaaaaa-0000-4000-8000-000000000002',
+        'eeeeeeee-1000-4000-8000-000000000001', 1, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-00000000000b',
+        'COACH-1', 'staff', 'Ahmad', 'aaaaaaaa-0000-4000-8000-000000000002',
+        'eeeeeeee-1000-4000-8000-000000000001', 1,
+        'bbbbbbbb-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-00000000000c',
+        'SPIN-SERVICE', 'service', 'Spin', NULL, NULL, 1, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-00000000000d',
+        'BIKES', 'equipment', 'Spin bikes', NULL, NULL, 20, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-00000000000e',
+        'COURT-1', 'court', 'Court one', NULL, NULL, 1, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A retired resource, for the one-way trigger's two branches.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-000000000010',
+        'OLD-ROOM', 'room', 'The old studio', NULL, NULL, 1, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second coach, assigned to the live session and then substituted out, so there is a
+       -- superseded assignment for the supersede-once probe to attack. Without one its UPDATE
+       -- matched nothing, succeeded trivially and the probe proved nothing -- which is the
+       -- shape the reviews kept finding.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-1000-4000-8000-000000000011',
+        'COACH-2', 'staff', 'Laila', 'aaaaaaaa-0000-4000-8000-000000000002',
+        'eeeeeeee-1000-4000-8000-000000000001', 1, NULL,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.sch_resources
+   SET status = 'retired', retired_at = now(),
+       retired_by = '33333333-3333-4333-8333-333333333333',
+       retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE resource_id = 'eeeeeeee-1000-4000-8000-000000000010';
+-- **The template goes in as a draft and is published afterwards**, because the reference is
+-- circular: a rule names its template and the template names the rule it publishes.
+INSERT INTO plt01.sch_templates
+    (tenant_id, template_id, template_code, display_name, service_resource_id,
+     location_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000001',
+        'SPIN', 'Spin class', 'eeeeeeee-1000-4000-8000-00000000000c',
+        'eeeeeeee-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second template, retired, for the one-way trigger's third branch.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-00000000000a',
+        'OLD-CLASS', 'The old class', 'eeeeeeee-1000-4000-8000-00000000000c',
+        'eeeeeeee-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_recurrence_rules
+    (tenant_id, rule_id, template_id, version, frequency, local_time, timezone,
+     duration_minutes, starts_on, until_date, weekdays, effective_from, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000001', 1, 'weekly', TIME '18:00', 'Asia/Amman',
+        60, DATE '2026-12-01', DATE '2027-01-31', ARRAY[1, 3]::smallint[],
+        DATE '2026-12-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-00000000000b',
+        'eeeeeeee-2000-4000-8000-00000000000a', 1, 'weekly', TIME '07:00', 'Asia/Amman',
+        45, DATE '2026-01-01', DATE '2026-06-30', ARRAY[2]::smallint[],
+        DATE '2026-01-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.sch_templates
+   SET status = 'published', live_rule_id = 'eeeeeeee-2000-4000-8000-000000000003',
+       published_at = now(), published_by = '33333333-3333-4333-8333-333333333333',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+UPDATE plt01.sch_templates
+   SET status = 'published', live_rule_id = 'eeeeeeee-2000-4000-8000-00000000000b',
+       published_at = now(), published_by = '33333333-3333-4333-8333-333333333333',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE template_id = 'eeeeeeee-2000-4000-8000-00000000000a';
+UPDATE plt01.sch_templates
+   SET status = 'retired', retired_at = now(),
+       retired_by = '33333333-3333-4333-8333-333333333333',
+       retire_reason = 'nobody came',
+       retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE template_id = 'eeeeeeee-2000-4000-8000-00000000000a';
+-- Two more templates, for the lifecycle constraints that only an UPDATE can reach: one
+-- published with a rule of its own, and one still a draft that already has a rule version --
+-- which is the ordinary state of a template somebody is about to publish.
+INSERT INTO plt01.sch_templates
+    (tenant_id, template_id, template_code, display_name, service_resource_id,
+     location_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-0000000000c1',
+        'LIVE-CLASS', 'A published class', 'eeeeeeee-1000-4000-8000-00000000000c',
+        'eeeeeeee-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-0000000000c3',
+        'DRAFT-CLASS', 'A draft class', 'eeeeeeee-1000-4000-8000-00000000000c',
+        'eeeeeeee-1000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_recurrence_rules
+    (tenant_id, rule_id, template_id, version, frequency, local_time, timezone,
+     duration_minutes, starts_on, until_date, weekdays, effective_from, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-0000000000c2',
+        'eeeeeeee-2000-4000-8000-0000000000c1', 1, 'weekly', TIME '12:00', 'Asia/Amman',
+        30, DATE '2026-12-01', DATE '2027-01-31', ARRAY[4]::smallint[],
+        DATE '2026-12-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-0000000000c4',
+        'eeeeeeee-2000-4000-8000-0000000000c3', 1, 'weekly', TIME '13:00', 'Asia/Amman',
+        30, DATE '2026-12-01', DATE '2027-01-31', ARRAY[5]::smallint[],
+        DATE '2026-12-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.sch_templates
+   SET status = 'published', live_rule_id = 'eeeeeeee-2000-4000-8000-0000000000c2',
+       published_at = now(), published_by = '33333333-3333-4333-8333-333333333333',
+       publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+INSERT INTO plt01.sch_capacity_policies
+    (tenant_id, policy_id, template_id, version, capacity, setup_minutes,
+     cleanup_minutes, waitlist_capacity, overbook_places, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000004',
+        'eeeeeeee-2000-4000-8000-000000000001', 1, 12, 10, 10, 4, 2,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_restrictions
+    (tenant_id, policy_id, restriction_kind, restriction_value, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000004',
+        'min_age', '16', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- Both forms of requirement, so both partial unique indexes have something to collide with.
+INSERT INTO plt01.sch_template_requirements
+    (tenant_id, template_id, requirement_kind, quantity, resource_id, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000001',
+        'room', 1, NULL, '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000001',
+        'staff', 1, 'eeeeeeee-1000-4000-8000-00000000000b',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **Ten thousand places on the live session.** Every `sch_capacity_holds` case has to be a row
+-- the fit trigger accepts, or it proves the trigger instead of the constraint it names -- and
+-- one of them holds a hundred and one places.
+INSERT INTO plt01.sch_sessions
+    (tenant_id, session_id, template_id, rule_id, policy_id, location_id, starts_at,
+     ends_at, local_date, timezone, capacity, overbook_places, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000005',
+        'eeeeeeee-2000-4000-8000-000000000001', 'eeeeeeee-2000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000004', 'eeeeeeee-1000-4000-8000-000000000001',
+        TIMESTAMPTZ '2026-12-01 15:00+00', TIMESTAMPTZ '2026-12-01 16:00+00',
+        DATE '2026-12-01', 'Asia/Amman', 10000, 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000006',
+        'eeeeeeee-2000-4000-8000-000000000001', 'eeeeeeee-2000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000004', 'eeeeeeee-1000-4000-8000-000000000001',
+        TIMESTAMPTZ '2026-12-02 15:00+00', TIMESTAMPTZ '2026-12-02 16:00+00',
+        DATE '2026-12-02', 'Asia/Amman', 12, 2,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A one-place session, for the fit trigger's capacity branch.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000007',
+        'eeeeeeee-2000-4000-8000-000000000001', 'eeeeeeee-2000-4000-8000-000000000003',
+        'eeeeeeee-2000-4000-8000-000000000004', 'eeeeeeee-1000-4000-8000-000000000001',
+        TIMESTAMPTZ '2026-12-03 15:00+00', TIMESTAMPTZ '2026-12-03 16:00+00',
+        DATE '2026-12-03', 'Asia/Amman', 1, 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- **The second session is cancelled**, which three probes across three triggers need: a
+-- place cannot be held in it, it cannot change again, and a substitution cannot be recorded
+-- against it. Cancelled by UPDATE rather than inserted cancelled, because that is the only
+-- path the one-way trigger admits and the seed should be a state the service can reach.
+UPDATE plt01.sch_sessions
+   SET status = 'cancelled', cancelled_at = now(),
+       cancelled_by = '33333333-3333-4333-8333-333333333333',
+       cancellation_reason = 'weather',
+       cancel_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE session_id = 'eeeeeeee-2000-4000-8000-000000000006';
+INSERT INTO plt01.sch_session_resources
+    (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+     holds_until, assigned_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000005',
+        'eeeeeeee-1000-4000-8000-00000000000a', 'room', 1,
+        TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000005',
+        'eeeeeeee-1000-4000-8000-00000000000b', 'staff', 1,
+        TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+-- The second coach's assignment, superseded: a substitution in the seed, so the trigger that
+-- makes a supersession final has a row to refuse a second one on.
+INSERT INTO plt01.sch_session_resources
+    (tenant_id, assignment_id, session_id, resource_id, resource_kind, quantity,
+     holds_from, holds_until, assigned_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-3000-4000-8000-000000000001',
+        'eeeeeeee-2000-4000-8000-000000000005',
+        'eeeeeeee-1000-4000-8000-000000000011', 'staff', 1,
+        TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.sch_session_resources
+   SET superseded_at = now(), superseded_by = '33333333-3333-4333-8333-333333333333',
+       supersede_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE assignment_id = 'eeeeeeee-3000-4000-8000-000000000001';
+INSERT INTO plt01.sch_capacity_holds
+    (tenant_id, hold_id, session_id, person_id, places, source_kind, source_ref,
+     taken_by, idempotency_key, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000008',
+        'eeeeeeee-2000-4000-8000-000000000005', 'bbbbbbbb-1000-4000-8000-000000000001',
+        1, 'booking', 'bk-001', '33333333-3333-4333-8333-333333333333',
+        'seed-hold-1', '33333333-3333-4333-8333-333333333333'),
+       -- A second, released afterwards: the one-live-per-person index is partial, so a
+       -- released hold does not block the base row's own live one for the same person.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-000000000009',
+        'eeeeeeee-2000-4000-8000-000000000005', 'bbbbbbbb-1000-4000-8000-000000000011',
+        1, 'walk_in', 'wi-001', '33333333-3333-4333-8333-333333333333',
+        'seed-hold-2', '33333333-3333-4333-8333-333333333333'),
+       -- And the single place on the one-place session.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-2000-4000-8000-00000000000f',
+        'eeeeeeee-2000-4000-8000-000000000007', 'bbbbbbbb-1000-4000-8000-000000000001',
+        1, 'booking', 'bk-full', '33333333-3333-4333-8333-333333333333',
+        'seed-hold-3', '33333333-3333-4333-8333-333333333333');
+UPDATE plt01.sch_capacity_holds
+   SET status = 'released', released_at = now(),
+       released_by = '33333333-3333-4333-8333-333333333333',
+       release_reason = 'the member cancelled',
+       release_correlation_id = '33333333-3333-4333-8333-333333333333'
+ WHERE hold_id = 'eeeeeeee-2000-4000-8000-000000000009';
+COMMIT;
+
+
+-- Tenant B holds one scheduling resource of its own, so a leaked predicate shows as a
+-- count above the expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.sch_resources
+    (tenant_id, resource_code, resource_kind, display_name, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'RIVAL-STUDIO', 'room', 'Rival studio',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ---------------------------------------------------------------- 85. sch_ isolates
+-- MOD-019's twelve tables, swept from the catalogue rather than from a list. **A sweep
+-- proves the tables it names**, and a per-table list has to be edited whenever a module adds
+-- a table -- which is the moment an unprotected one slips through. Both runtime roles are
+-- seated, because PostgreSQL ORs permissive policies and a role nobody sits as is a role
+-- nothing is proved about.
+DO $$
+DECLARE
+    wrong text;
+    seen integer;
+BEGIN
+    SELECT count(*) INTO seen FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%';
+    IF seen <> 12 THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: expected 12 MOD-019 tables, found %',
+            seen;
+    END IF;
+    -- Row-level security, forced, on every one. `relkind IN ('r', 'p')` and not just `'r'`:
+    -- a partitioned table holds no storage of its own and is what rows are addressed
+    -- through, and a reviewer used exactly that to walk past a whole sweep once.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%' AND NOT (t.relrowsecurity AND t.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: a MOD-019 table is missing ENABLE or FORCE RLS: %', wrong;
+    END IF;
+    -- **Exactly one permissive policy each.** Comparing a policy's predicate asserts that a
+    -- *matching* policy exists, which an added second policy satisfies trivially while
+    -- reading every tenant.
+    SELECT string_agg(p.tablename || ' (' || p.n || ')', ', ' ORDER BY p.tablename)
+    INTO wrong
+    FROM (SELECT tablename, count(*) AS n FROM pg_policies
+          WHERE schemaname = 'plt01' AND permissive = 'PERMISSIVE'
+            AND tablename LIKE 'sch\_%'
+          GROUP BY tablename) p
+    WHERE p.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: a MOD-019 table has other than one permissive policy: %',
+            wrong;
+    END IF;
+    -- And the predicate is the one shape, on both halves.
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01'
+      AND p.tablename LIKE 'sch\_%'
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true),'
+             || ' ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: a MOD-019 policy predicate is not the approved shape: %', wrong;
+    END IF;
+    -- No table is owned by a runtime role, which FORCE RLS would exempt.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%'
+      AND pg_get_userbyid(t.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 85 FAILED: a MOD-019 table is owned by something else: %',
+            wrong;
+    END IF;
+END $$;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.sch_availability_windows) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_capacity_holds) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_capacity_policies) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_conflict_overrides) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_recurrence_rules) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_restrictions) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_session_changes) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_session_resources) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_template_requirements) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_templates) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_app read tenant A''s MOD-019 rows from tenant B';
+    END IF;
+    -- Tenant B holds one resource of its own, so a leaked predicate shows as a count
+    -- above the expected one rather than as the zero an empty table would give anyway.
+    IF (SELECT count(*) FROM plt01.sch_resources) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_app sees % resources from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.sch_resources);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.sch_resources
+               WHERE resource_code = 'STUDIO-A') THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_app read tenant A''s resource from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF
+       (SELECT count(*) FROM plt01.sch_availability_windows) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_capacity_holds) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_capacity_policies) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_conflict_overrides) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_recurrence_rules) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_restrictions) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_session_changes) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_session_resources) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_sessions) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_template_requirements) <> 0 OR 
+       (SELECT count(*) FROM plt01.sch_templates) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_worker read tenant A''s MOD-019 rows from tenant B';
+    END IF;
+    IF (SELECT count(*) FROM plt01.sch_resources) <> 1 THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_worker sees % resources from tenant B, expected its own 1',
+            (SELECT count(*) FROM plt01.sch_resources);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.sch_resources
+               WHERE resource_code = 'STUDIO-A') THEN
+        RAISE EXCEPTION
+            'CHECK 85 FAILED: veyro_cp_worker read tenant A''s resource from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+
+-- ------------------------------------------------------------- 86. fail closed, MOD-019
+-- With no context the predicate is NULL, so a read returns nothing and a write is refused.
+-- **Isolation fails closed, and that is the property to protect.**
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.sch_resources) <> 0
+       OR (SELECT count(*) FROM plt01.sch_templates) <> 0
+       OR (SELECT count(*) FROM plt01.sch_sessions) <> 0
+       OR (SELECT count(*) FROM plt01.sch_capacity_holds) <> 0
+       OR (SELECT count(*) FROM plt01.sch_session_changes) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 86 FAILED: the app role read MOD-019 rows with no context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 'room',
+                'Smuggled', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 86 FAILED: a resource was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.sch_sessions) <> 0
+       OR (SELECT count(*) FROM plt01.sch_capacity_holds) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 86 FAILED: the worker role read MOD-019 rows with no context';
+    END IF;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (tenant_id, resource_code, resource_kind, display_name,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'SMUGGLED', 'room',
+                'Smuggled', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 86 FAILED: tenant B wrote a resource into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------------------- 87. cross-tenant parents, MOD-019
+-- **Every foreign key on this module's tables, compared as a set in both directions.** A
+-- sweep of one kind of reference is not a sweep: MOD-012 swept the tenant-registry key across
+-- every table and *sampled* the intra-module parents, which left two droppable in silence.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.sch_availability_windows: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_availability_windows: tenant_id,resource_id -> plt01.sch_resources'),
+        ('plt01.sch_capacity_holds: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_capacity_holds: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.sch_capacity_holds: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.sch_capacity_policies: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_capacity_policies: tenant_id,template_id -> plt01.sch_templates'),
+        ('plt01.sch_conflict_overrides: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_conflict_overrides: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.sch_recurrence_rules: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_recurrence_rules: tenant_id,template_id -> plt01.sch_templates'),
+        ('plt01.sch_resources: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_resources: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.sch_resources: tenant_id,location_id -> plt01.locations'),
+        ('plt01.sch_resources: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.sch_restrictions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_restrictions: tenant_id,policy_id -> plt01.sch_capacity_policies'),
+        ('plt01.sch_session_changes: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_session_changes: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.sch_session_resources: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_session_resources: tenant_id,resource_id -> plt01.sch_resources'),
+        ('plt01.sch_session_resources: tenant_id,session_id -> plt01.sch_sessions'),
+        ('plt01.sch_sessions: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_sessions: tenant_id,location_id -> plt01.locations'),
+        ('plt01.sch_sessions: tenant_id,policy_id -> plt01.sch_capacity_policies'),
+        ('plt01.sch_sessions: tenant_id,rule_id -> plt01.sch_recurrence_rules'),
+        ('plt01.sch_sessions: tenant_id,template_id -> plt01.sch_templates'),
+        ('plt01.sch_template_requirements: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_template_requirements: tenant_id,resource_id -> plt01.sch_resources'),
+        ('plt01.sch_template_requirements: tenant_id,template_id -> plt01.sch_templates'),
+        ('plt01.sch_templates: tenant_id -> plt01_platform.tenants'),
+        ('plt01.sch_templates: tenant_id,location_id -> plt01.locations'),
+        ('plt01.sch_templates: tenant_id,service_resource_id -> plt01.sch_resources')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'sch\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 87 FAILED: MOD-019 foreign keys differ from the expected set: %', wrong;
+    END IF;
+    -- **Every primary key leads with `tenant_id`, asserted with NOT EXISTS first.** A check
+    -- written as an inner join proves nothing about a table that has none: MOD-014 had
+    -- thirteen of sixteen droppable because a keyless table contributed no row.
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint c
+                      WHERE c.conrelid = t.oid AND c.contype = 'p');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 87 FAILED: a MOD-019 table has no primary key: %', wrong;
+    END IF;
+    SELECT string_agg(t.relname, ', ' ORDER BY t.relname) INTO wrong
+    FROM pg_class t
+    JOIN pg_constraint c ON c.conrelid = t.oid AND c.contype = 'p'
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = c.conkey[1]
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%' AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 87 FAILED: a MOD-019 primary key does not lead with tenant_id: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------- 88. MOD-019's columns are pinned
+-- **The column list and the nullability, both as sets, both ways.** The defining control in
+-- this module is an *absence*: paragraph 4146's overbooking guarantee rests on there being no
+-- cached place count anywhere, so `sch_capacity_holds` is the only authority on how full a
+-- session is. An absence is exactly what a later migration adds back, and the only thing that
+-- notices is a comparison against the whole list -- which is why the forbidden-name sweeps
+-- below are there as well as this pin.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.sch_availability_windows',
+         'correlation_id,created_at,created_by,ends_at,on_date,reason,'
+         'resource_id,starts_at,tenant_id,timezone,weekday,window_id,'
+         'window_kind'),
+        ('plt01.sch_capacity_holds',
+         'correlation_id,hold_id,idempotency_key,person_id,places,'
+         'release_correlation_id,release_reason,released_at,'
+         'released_by,session_id,source_kind,source_ref,status,'
+         'taken_at,taken_by,tenant_id'),
+        ('plt01.sch_capacity_policies',
+         'capacity,cleanup_minutes,closes_minutes_before,'
+         'correlation_id,created_at,created_by,opens_hours_before,'
+         'overbook_places,policy_id,setup_minutes,template_id,'
+         'tenant_id,version,waitlist_capacity'),
+        ('plt01.sch_conflict_overrides',
+         'conflict_count,conflict_summary,correlation_id,'
+         'overridden_at,overridden_by,override_id,reason,session_id,'
+         'tenant_id'),
+        ('plt01.sch_recurrence_rules',
+         'correlation_id,created_at,created_by,duration_minutes,'
+         'effective_from,excluded_dates,frequency,local_time,rule_id,'
+         'starts_on,template_id,tenant_id,timezone,until_date,version,'
+         'week_of_month,weekdays'),
+        ('plt01.sch_resources',
+         'brand_id,correlation_id,created_at,created_by,display_name,'
+         'location_id,person_id,quantity,resource_code,resource_id,'
+         'resource_kind,retire_correlation_id,retired_at,retired_by,'
+         'status,tenant_id'),
+        ('plt01.sch_restrictions',
+         'correlation_id,created_at,created_by,policy_id,'
+         'restriction_id,restriction_kind,restriction_value,tenant_id'),
+        ('plt01.sch_session_changes',
+         'change_id,change_kind,correlation_id,reason,recorded_at,'
+         'recorded_by,replaced_id,replacement_id,session_id,tenant_id'),
+        ('plt01.sch_session_resources',
+         'assigned_at,assigned_by,assignment_id,correlation_id,'
+         'holds_from,holds_until,quantity,resource_id,resource_kind,'
+         'session_id,supersede_correlation_id,superseded_at,'
+         'superseded_by,tenant_id'),
+        ('plt01.sch_sessions',
+         'cancel_correlation_id,cancellation_reason,cancelled_at,'
+         'cancelled_by,capacity,completed_at,correlation_id,'
+         'created_at,created_by,dst_adjusted,ends_at,local_date,'
+         'location_id,overbook_places,policy_id,rule_id,session_id,'
+         'starts_at,status,template_id,tenant_id,timezone'),
+        ('plt01.sch_template_requirements',
+         'correlation_id,created_at,created_by,quantity,'
+         'requirement_id,requirement_kind,resource_id,template_id,'
+         'tenant_id'),
+        ('plt01.sch_templates',
+         'correlation_id,created_at,created_by,display_name,'
+         'live_rule_id,location_id,publish_correlation_id,'
+         'published_at,published_by,retire_correlation_id,'
+         'retire_reason,retired_at,retired_by,service_resource_id,'
+         'status,template_code,template_id,tenant_id')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 88 FAILED: MOD-019 column lists differ from the pinned set: %', wrong;
+    END IF;
+    -- **Every NOT NULL, because a NOT NULL is what makes a sibling CHECK bite** -- and
+    -- because of MATCH SIMPLE: a NULL in any column of a composite foreign key skips the
+    -- check entirely, so dropping one silently switches off a tenant-carrying parent
+    -- reference that the key-set comparison above cannot see.
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.sch_availability_windows',
+         'correlation_id,created_at,created_by,ends_at,resource_id,'
+         'starts_at,tenant_id,timezone,window_id,window_kind'),
+        ('plt01.sch_capacity_holds',
+         'correlation_id,hold_id,idempotency_key,person_id,places,'
+         'session_id,source_kind,source_ref,status,taken_at,taken_by,'
+         'tenant_id'),
+        ('plt01.sch_capacity_policies',
+         'capacity,cleanup_minutes,closes_minutes_before,'
+         'correlation_id,created_at,created_by,opens_hours_before,'
+         'overbook_places,policy_id,setup_minutes,template_id,'
+         'tenant_id,version,waitlist_capacity'),
+        ('plt01.sch_conflict_overrides',
+         'conflict_count,conflict_summary,correlation_id,'
+         'overridden_at,overridden_by,override_id,reason,session_id,'
+         'tenant_id'),
+        ('plt01.sch_recurrence_rules',
+         'correlation_id,created_at,created_by,duration_minutes,'
+         'effective_from,excluded_dates,frequency,local_time,rule_id,'
+         'starts_on,template_id,tenant_id,timezone,until_date,version,'
+         'weekdays'),
+        ('plt01.sch_resources',
+         'correlation_id,created_at,created_by,display_name,quantity,'
+         'resource_code,resource_id,resource_kind,status,tenant_id'),
+        ('plt01.sch_restrictions',
+         'correlation_id,created_at,created_by,policy_id,'
+         'restriction_id,restriction_kind,restriction_value,tenant_id'),
+        ('plt01.sch_session_changes',
+         'change_id,change_kind,correlation_id,reason,recorded_at,'
+         'recorded_by,session_id,tenant_id'),
+        ('plt01.sch_session_resources',
+         'assigned_at,assigned_by,assignment_id,correlation_id,'
+         'holds_from,holds_until,quantity,resource_id,resource_kind,'
+         'session_id,tenant_id'),
+        ('plt01.sch_sessions',
+         'capacity,correlation_id,created_at,created_by,dst_adjusted,'
+         'ends_at,local_date,location_id,overbook_places,policy_id,'
+         'rule_id,session_id,starts_at,status,template_id,tenant_id,'
+         'timezone'),
+        ('plt01.sch_template_requirements',
+         'correlation_id,created_at,created_by,quantity,'
+         'requirement_id,requirement_kind,template_id,tenant_id'),
+        ('plt01.sch_templates',
+         'correlation_id,created_at,created_by,display_name,'
+         'location_id,service_resource_id,status,template_code,'
+         'template_id,tenant_id')
+    ), actual(tbl, cols) AS (
+        SELECT 'plt01.' || t.relname, string_agg(a.attname, ',' ORDER BY a.attname)
+        FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+          AND t.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+          AND a.attnotnull
+        GROUP BY t.relname
+    )
+    SELECT string_agg(tbl || ': ' || cols, '; ' ORDER BY tbl) INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 88 FAILED: MOD-019 nullability differs from the pinned set: %', wrong;
+    END IF;
+    -- **And capacity is never cached.** Paragraph 4146 asks for "optimistic concurrency or
+    -- atomic reservation counters to prevent overbooking", and this module answers it with one
+    -- row per place: `sch_capacity_holds` is the authority and the count is its sum, taken
+    -- under a row lock on the session. A counter column beside it would be a second authority
+    -- that can disagree with the first, and the disagreement surfaces as a member who is
+    -- refused a place the roster says is free -- or admitted to one that is not.
+    --
+    -- **Swept over the whole of `plt01`, not over `sch_` names.** Both of this module's
+    -- defining absences were prefix-scoped, so a reviewer created `plt01.class_rosters` with a
+    -- `held_count` column and a naive `local_start` -- satisfying the prefix-free RLS sweep,
+    -- so all 91 checks passed. That is this repository's `member_contacts` and
+    -- `ledger_running_balances` finding for the third time, and this time on the two controls
+    -- that are new in the module. A control that escapes on a name is not a control.
+    --
+    -- MOD-018 spent four review rounds on exactly this and the lesson is in the migration by
+    -- *omission*, which is the kind of control a later migration restores without anybody
+    -- noticing. `capacity` and `overbook_places` are deliberately not in this list: they are
+    -- the policy's declared *limits*, which is what the holds are counted against.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname IN ('held_count', 'holds_count', 'booked_count', 'places_taken',
+                        'places_held', 'places_remaining', 'remaining_places',
+                        'attendee_count', 'waitlist_count', 'booking_count',
+                        'reserved_count', 'occupancy');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 88 FAILED: a plt01 table grew a cached capacity count: %', wrong;
+    END IF;
+    -- **And a local wall-clock instant never stands alone.** Paragraph 4150: "store UTC
+    -- instants and source local timezone/recurrence rule for correct DST behavior." A
+    -- `timestamp` without a time zone is the column that makes a schedule wrong twice a year,
+    -- and it reads identically to the right one.
+    SELECT string_agg(t.relname || '.' || a.attname, ', ') INTO wrong
+    FROM pg_attribute a JOIN pg_class t ON t.oid = a.attrelid
+    WHERE t.relnamespace = 'plt01'::regnamespace
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.atttypid = 'timestamp without time zone'::regtype;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 88 FAILED: a plt01 column stores a naive timestamp: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------- 89. MOD-019's privileges
+-- **The UPDATE column grants as a set, per table and per role, compared both ways.** Every
+-- insert-only claim in the migration is a missing grant, and `pg_class.relacl` holds
+-- table-level grants only -- so a column-level widening is invisible to a check that reads
+-- only it. Read through `has_column_privilege` over `pg_attribute`, per role, because
+-- `information_schema` views are filtered to what the current user can see and a check
+-- running as one role proves nothing about the other.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, grantee, cols) AS (VALUES
+        ('sch_availability_windows', 'veyro_cp_app',
+         'ends_at,reason,starts_at'),
+        ('sch_availability_windows', 'veyro_cp_worker',
+         'ends_at,reason,starts_at'),
+        ('sch_capacity_holds', 'veyro_cp_app',
+         'release_correlation_id,release_reason,released_at,'
+         'released_by,status'),
+        ('sch_capacity_holds', 'veyro_cp_worker',
+         'release_correlation_id,release_reason,released_at,'
+         'released_by,status'),
+        ('sch_capacity_policies', 'veyro_cp_app',
+         '(none)'),
+        ('sch_capacity_policies', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_conflict_overrides', 'veyro_cp_app',
+         '(none)'),
+        ('sch_conflict_overrides', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_recurrence_rules', 'veyro_cp_app',
+         '(none)'),
+        ('sch_recurrence_rules', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_resources', 'veyro_cp_app',
+         'display_name,retire_correlation_id,retired_at,retired_by,'
+         'status'),
+        ('sch_resources', 'veyro_cp_worker',
+         'display_name,retire_correlation_id,retired_at,retired_by,'
+         'status'),
+        ('sch_restrictions', 'veyro_cp_app',
+         '(none)'),
+        ('sch_restrictions', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_session_changes', 'veyro_cp_app',
+         '(none)'),
+        ('sch_session_changes', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_session_resources', 'veyro_cp_app',
+         'supersede_correlation_id,superseded_at,superseded_by'),
+        ('sch_session_resources', 'veyro_cp_worker',
+         'supersede_correlation_id,superseded_at,superseded_by'),
+        ('sch_sessions', 'veyro_cp_app',
+         'cancel_correlation_id,cancellation_reason,cancelled_at,'
+         'cancelled_by,completed_at,location_id,status'),
+        ('sch_sessions', 'veyro_cp_worker',
+         'cancel_correlation_id,cancellation_reason,cancelled_at,'
+         'cancelled_by,completed_at,location_id,status'),
+        ('sch_template_requirements', 'veyro_cp_app',
+         '(none)'),
+        ('sch_template_requirements', 'veyro_cp_worker',
+         '(none)'),
+        ('sch_templates', 'veyro_cp_app',
+         'display_name,live_rule_id,publish_correlation_id,'
+         'published_at,published_by,retire_correlation_id,'
+         'retire_reason,retired_at,retired_by,status'),
+        ('sch_templates', 'veyro_cp_worker',
+         'display_name,live_rule_id,publish_correlation_id,'
+         'published_at,published_by,retire_correlation_id,'
+         'retire_reason,retired_at,retired_by,status')
+    ), actual(tbl, grantee, cols) AS (
+        SELECT t.relname, r.rolname,
+               coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)')
+        FROM pg_class t
+        CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(rolname)
+        LEFT JOIN pg_attribute att
+          ON att.attrelid = t.oid AND att.attnum > 0 AND NOT att.attisdropped
+             AND has_column_privilege(r.rolname, t.oid, att.attname, 'UPDATE')
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+          AND t.relkind IN ('r', 'p')
+        GROUP BY t.relname, r.rolname
+    )
+    SELECT string_agg(tbl || ' / ' || grantee || ': ' || cols, '; '
+                      ORDER BY tbl, grantee)
+    INTO wrong
+    FROM ((SELECT * FROM expected EXCEPT SELECT * FROM actual)
+          UNION ALL
+          (SELECT * FROM actual EXCEPT SELECT * FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 89 FAILED: MOD-019 UPDATE column grants differ from the set: %', wrong;
+    END IF;
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES on anything here.
+    SELECT string_agg(t.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class t
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%'
+      AND has_table_privilege(r.grantee, t.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 89 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    -- And nothing is granted to PUBLIC, column-level included.
+    SELECT string_agg(t.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class t
+    JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum > 0
+         AND NOT att.attisdropped
+    WHERE t.relnamespace = 'plt01'::regnamespace AND t.relkind IN ('r', 'p')
+      AND t.relname LIKE 'sch\_%'
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 89 FAILED: a MOD-019 column carries a PUBLIC grant: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants. **Seven of the twelve tables carry no
+-- UPDATE at all**, and each of the seven is a statement about what something *was*:
+--
+--   * `sch_recurrence_rules` -- paragraph 4149's whole point. A session cites the rule it came
+--     from, so editing the rule would rewrite what last month's classes were scheduled as.
+--   * `sch_template_requirements` and `sch_capacity_policies` -- the same, one version down:
+--     they belong to a template version, and a published version does not move.
+--   * `sch_restrictions` -- who was eligible, as it stood when somebody was refused.
+--   * `sch_session_resources` -- which room a class was actually in. Re-pointing it is how a
+--     double-booking disappears from the record after the fact.
+--   * `sch_session_changes` -- the history. A cancellation that could be relabelled a
+--     reschedule is a cancellation nobody can account for.
+--   * `sch_conflict_overrides` -- paragraph 1842's Critical Control. The reason somebody gave
+--     for booking over a conflict is the evidence, and an editable reason is no evidence.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.sch_recurrence_rules SET frequency = 'daily';
+        RAISE EXCEPTION 'CHECK 89 FAILED: a published recurrence rule was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_template_requirements SET quantity = 2;
+        RAISE EXCEPTION 'CHECK 89 FAILED: a template requirement was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_capacity_policies SET capacity = 1;
+        RAISE EXCEPTION 'CHECK 89 FAILED: a capacity policy was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_restrictions SET restriction_kind = 'members_only';
+        RAISE EXCEPTION 'CHECK 89 FAILED: a restriction was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_session_resources SET resource_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session''s resource was re-pointed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_session_changes SET change_kind = 'rescheduled';
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session change was relabelled';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_conflict_overrides SET reason = 'rewritten';
+        RAISE EXCEPTION 'CHECK 89 FAILED: an override reason was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- And no runtime role can delete any of it. A deleted hold is a place that silently comes
+    -- back; a deleted change is a schedule with no history.
+    BEGIN
+        DELETE FROM plt01.sch_capacity_holds;
+        RAISE EXCEPTION 'CHECK 89 FAILED: a capacity hold was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.sch_sessions;
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.sch_session_changes;
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session change was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- **A session's own identity does not move.** Its instant is what orders every roster and
+    -- what every hold was taken against; its timezone is the only thing that makes the local
+    -- date derivable; and the rule it cites is paragraph 4149's stability guarantee.
+    BEGIN
+        UPDATE plt01.sch_sessions SET starts_at = now();
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session''s instant was moved';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_sessions SET timezone = 'UTC';
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session''s timezone was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_sessions SET rule_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 89 FAILED: a session was re-pointed at another rule';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A resource's kind and its site are what every requirement and conflict was matched on.
+    BEGIN
+        UPDATE plt01.sch_resources SET resource_kind = 'equipment';
+        RAISE EXCEPTION 'CHECK 89 FAILED: a resource kind was changed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_resources SET location_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 89 FAILED: a resource was moved to another site';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- A hold's place is what the member holds; only its settlement moves.
+    BEGIN
+        UPDATE plt01.sch_capacity_holds SET person_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 89 FAILED: a hold was moved to another person';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- -------------------------------------------------- 90. MOD-019's constraints, per side
+-- Every CHECK constraint and every unique index on this module's twelve tables, generated from
+-- a valid base row per table with exactly one field overridden per case. Then the seven
+-- triggers, which no CHECK could express, in two blocks: the ones a runtime role can reach and
+-- the ones only the DDL owner can.
+--
+-- The rules the last six review rounds paid for, all of them in
+-- `.claude/rules/backend/mod004-rls.md`:
+--
+--   * **Each case violates exactly one rule.** A case that passes because a *sibling*
+--     constraint fired first proves nothing about the one it names.
+--   * **A case catches a weakening only if the weakened constraint ADMITS the row.** So a
+--     biconditional gets a case per side -- a weekly rule naming no days *and* a daily rule
+--     naming days -- because an implication in either direction admits only one of the two.
+--   * **A `coalesce(x, \'\')` needs a NULL case as well as a blank one.** The blank case proves
+--     the regex; only NULL proves the `coalesce`, because a CHECK passes on NULL.
+--   * **Every parent a case names is seeded**, because PostgreSQL evaluates a CHECK before the
+--     foreign-key trigger -- and the seed above is where they are, committed, so the unique
+--     cases collide with a row that is really there.
+--   * **A BEFORE INSERT trigger fires before every CHECK on the same table**, so each case on
+--     `sch_capacity_holds` and `sch_session_changes` has to be a row the *trigger* accepts --
+--     which is why the seeded session carries ten thousand places rather than twelve.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'lower case',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'Room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource kind that is not a kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource with a blank name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                0,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource with no units of itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                10001,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource past the sane quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a location-scoped resource naming no brand';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'dormant',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource reading retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'retired',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource naming a retirer but no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another studio',
+                NULL,
+                NULL,
+                1,
+                'STUDIO-A',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second resource with one code';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'holiday');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an availability window of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                '/Amman',
+                1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window in something that is not a timezone name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '09:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window that ends when it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '08:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window that ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                DATE '2026-12-01',
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window that is both weekly and dated';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                NULL,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window that is neither weekly nor dated';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                -1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window on a weekday before Monday';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                7,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window on an eighth day of the week';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                '  ',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'working');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a window with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'time_off');
+        RAISE EXCEPTION 'CHECK 90 FAILED: time off that states no reason at all';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_availability_windows
+            (correlation_id, created_by, ends_at, on_date, reason, resource_id,
+             starts_at, tenant_id, timezone, weekday, window_kind)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIME '17:00',
+                NULL,
+                '	',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                TIME '09:00',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                1,
+                'time_off');
+        RAISE EXCEPTION 'CHECK 90 FAILED: time off whose reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another class',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'lower case',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template code that is not a code';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'OTHER-CLASS',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template with a blank name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another class',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'published',
+                'OTHER-CLASS',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published template with no live rule';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another class',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'OTHER-CLASS',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template naming a publisher but no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another class',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                'done with it',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'OTHER-CLASS',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template naming a retirer but no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'Another class',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'SPIN',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second template with one code';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                0,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule version numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'fortnightly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                '{}');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule with an unknown frequency';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Amman Time',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule in something that is not a timezone name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session of no length';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1441,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session longer than a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2026-11-30',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule that ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2028-06-01',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule past the generation horizon';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'once',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2026-12-02',
+                2,
+                NULL,
+                '{}');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a one-off rule that runs for two days';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                '{}');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a weekly rule that names no days';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'daily',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a daily rule that names days anyway';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1, 9]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule naming a tenth weekday';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'monthly_by_weekday',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a monthly rule that names no week';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                2,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a weekly rule that names a week of the month';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'monthly_by_weekday',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                5,
+                ARRAY[1]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a monthly rule on a fifth week';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                (SELECT array_agg(DATE '2026-12-01' + n) FROM generate_series(0, 200) AS g(n)),
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                2,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a rule with more exclusions than it has days';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_recurrence_rules
+            (correlation_id, created_by, duration_minutes, effective_from,
+             excluded_dates, frequency, local_time, starts_on, template_id,
+             tenant_id, timezone, until_date, version, week_of_month, weekdays)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                60,
+                DATE '2026-12-01',
+                '{}',
+                'weekly',
+                TIME '18:00',
+                DATE '2026-12-01',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman',
+                DATE '2027-01-31',
+                1,
+                NULL,
+                ARRAY[1, 3]::smallint[]);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second rule with one version number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'Room',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a requirement kind that is not a kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                0,
+                'court',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a requirement for none of something';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                10001,
+                'court',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a requirement past the sane quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                2,
+                'court',
+                'eeeeeeee-1000-4000-8000-00000000000e',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a requirement for two of one named resource';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'service',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a service requirement that names no service';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'composite',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a composite requirement that names nothing';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'room',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second anonymous requirement for one kind';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_template_requirements
+            (correlation_id, created_by, quantity, requirement_kind,
+             resource_id, template_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                1,
+                'staff',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second requirement for one named resource';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                0,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a policy version numbered zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (0,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                0,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a class with no places';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (10001,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a class past the sane capacity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                -1,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a negative setup margin';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                121,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a setup margin past two hours';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                -1,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a negative cleanup margin';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                121,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a cleanup margin past two hours';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                -1);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a negative waitlist';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                10001);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a waitlist past the sane bound';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                -1,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: overbooking by a negative number of places';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                13,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: overbooking by more places than the class has';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                -1,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a booking window that opens a negative time before';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                8761,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a booking window opening more than a year ahead';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                -1,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a booking window that closes after it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                525601,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                2,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a booking window closing more than a year before';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_policies
+            (capacity, cleanup_minutes, closes_minutes_before, correlation_id,
+             created_by, opens_hours_before, overbook_places, setup_minutes,
+             template_id, tenant_id, version, waitlist_capacity)
+        VALUES (12,
+                10,
+                0,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                168,
+                2,
+                10,
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                1,
+                4);
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second policy with one version number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'gender',
+                '70',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a restriction of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'skill',
+                '  ',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a restriction with a blank value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'min_age',
+                'sixteen',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an age restriction that is not a number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'min_age',
+                '130',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an age restriction past any plausible age';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'min_age',
+                '16',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second identical restriction on one policy';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session that ends when it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 14:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session that ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-09 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session longer than a day';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Amman Time');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session in something that is not a timezone name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                0,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                0,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session with no places';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                10001,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session past the sane capacity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                -1,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session overbooked by a negative number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                13,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session overbooked past its own capacity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'postponed',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'cancelled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session reading cancelled with no cancellation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'completed',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session reading completed with no completion';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'weather',
+                now(),
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'cancelled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session cancelled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'cancelled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session cancelled under no declared reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                'weather',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'cancelled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session cancellation with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'weather',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session naming a canceller but no cancellation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'the coach overslept',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-08 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-08 15:00+00',
+                'cancelled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session cancelled for a reason nothing can act on';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_sessions
+            (cancel_correlation_id, cancellation_reason, cancelled_at,
+             cancelled_by, capacity, completed_at, correlation_id, created_by,
+             dst_adjusted, ends_at, local_date, location_id, overbook_places,
+             policy_id, rule_id, starts_at, status, template_id, tenant_id,
+             timezone)
+        VALUES (NULL,
+                NULL,
+                NULL,
+                NULL,
+                12,
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                false,
+                TIMESTAMPTZ '2026-12-01 16:00+00',
+                DATE '2026-12-08',
+                'eeeeeeee-1000-4000-8000-000000000001',
+                2,
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'eeeeeeee-2000-4000-8000-000000000003',
+                TIMESTAMPTZ '2026-12-01 15:00+00',
+                'scheduled',
+                'eeeeeeee-2000-4000-8000-000000000001',
+                '11111111-1111-4111-8111-111111111111',
+                'Asia/Amman');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second session from one rule at one instant';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'Equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session holding a kind that is not a kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                0,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session holding none of a resource';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                10001,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session holding past the sane quantity';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                2,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'room',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session holding one room twice';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource hold that ends when it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 14:00+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource hold that ends before it starts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000a',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second live hold on one resource by one session';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, supersede_correlation_id,
+             superseded_at, superseded_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                now(),
+                NULL,
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an assignment superseded by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, supersede_correlation_id,
+             superseded_at, superseded_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an assignment supersession with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (assigned_by, correlation_id, holds_from, holds_until, quantity,
+             resource_id, resource_kind, session_id, supersede_correlation_id,
+             superseded_at, superseded_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                TIMESTAMPTZ '2026-12-01 14:50+00',
+                TIMESTAMPTZ '2026-12-01 16:10+00',
+                20,
+                'eeeeeeee-1000-4000-8000-00000000000d',
+                'equipment',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an assignment naming a superseder but no supersession';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                0,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold on no places';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                101,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold past the sane number of places';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'waitlisted',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold with an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'api',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold from an unknown source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                '  ',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold citing a blank source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '  ',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold with a blank handle';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'released',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold reading released with no release';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                'the member cancelled',
+                now(),
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'released',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place released by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'released',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place released for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'released',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place whose release reason is blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                'the member cancelled',
+                now(),
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'released',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place release with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                '33333333-3333-4333-8333-333333333333',
+                'the member cancelled',
+                NULL,
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold naming a releaser but no release';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'seed-hold-1',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second hold with one handle';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000001',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a second live place for one person in one session';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('postponement',
+                '33333333-3333-4333-8333-333333333333',
+                'the coach is ill',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session change of an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('substitution',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session change with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('substitution',
+                '33333333-3333-4333-8333-333333333333',
+                'the coach is ill',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a substitution that names no replacement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('cancellation',
+                '33333333-3333-4333-8333-333333333333',
+                'the coach is ill',
+                '33333333-3333-4333-8333-333333333333',
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a cancellation that names a replacement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('cancellation',
+                '33333333-3333-4333-8333-333333333333',
+                'the coach is ill',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a cancellation that says what it replaced';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (1,
+                '  ',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'the other class moved next door',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override of a blank conflict summary';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (0,
+                'the studio is double-booked',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'the other class moved next door',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override of no conflicts';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (1001,
+                'the studio is double-booked',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'the other class moved next door',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override past the sane conflict count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (1,
+                'the studio is double-booked',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '  ',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override with a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_resources
+            (brand_id, correlation_id, created_by, display_name, location_id,
+             person_id, quantity, resource_code, resource_kind,
+             retire_correlation_id, retired_at, retired_by, status, tenant_id)
+        VALUES (NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                NULL,
+                NULL,
+                1,
+                'OTHER-ROOM',
+                'room',
+                NULL,
+                NULL,
+                NULL,
+                'active',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource whose name is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_templates
+            (correlation_id, created_by, display_name, live_rule_id,
+             location_id, publish_correlation_id, published_at, published_by,
+             retire_reason, retired_at, retired_by, service_resource_id, status,
+             template_code, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                NULL,
+                'eeeeeeee-1000-4000-8000-000000000001',
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-1000-4000-8000-00000000000c',
+                'draft',
+                'OTHER-CLASS',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template whose name is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (change_kind, correlation_id, reason, recorded_by, replaced_id,
+             replacement_id, session_id, tenant_id)
+        VALUES ('substitution',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session change whose reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (1,
+                'the studio is double-booked',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                E'\t',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override whose reason is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_conflict_overrides
+            (conflict_count, conflict_summary, correlation_id, overridden_by,
+             reason, session_id, tenant_id)
+        VALUES (1,
+                E'\t',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'the other class moved next door',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: an override whose summary is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                'base-hold',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                E'\t',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold whose source is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (correlation_id, idempotency_key, person_id, places,
+             release_correlation_id, release_reason, released_at, released_by,
+             session_id, source_kind, source_ref, status, taken_by, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                E'\t',
+                'bbbbbbbb-1000-4000-8000-000000000002',
+                1,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'booking',
+                'bk-002',
+                'held',
+                '33333333-3333-4333-8333-333333333333',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a hold whose handle is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    BEGIN
+        INSERT INTO plt01.sch_restrictions
+            (correlation_id, created_by, policy_id, restriction_kind,
+             restriction_value, tenant_id)
+        VALUES ('33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                'eeeeeeee-2000-4000-8000-000000000004',
+                'skill',
+                E'\t',
+                '11111111-1111-4111-8111-111111111111');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a restriction whose value is whitespace';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The template lifecycle, by UPDATE.** A non-draft row needs a live rule and
+    -- `sch_template_rule_belongs_to_it` refuses a fresh row naming one, so these seven are
+    -- unreachable as inserts. Each sub-block rolls back on its own, so the next case sees the
+    -- seeded row unchanged.
+    --
+    -- The draft template already has a rule version of its own, which is the ordinary state of
+    -- something about to be published -- so publishing it is one UPDATE and the only thing
+    -- missing is whatever the case leaves out.
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET status = 'published',
+               live_rule_id = 'eeeeeeee-2000-4000-8000-0000000000c4'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c3';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published template with no publication';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET status = 'published',
+               live_rule_id = 'eeeeeeee-2000-4000-8000-0000000000c4',
+               published_at = now(), published_by = NULL,
+               publish_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c3';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template published by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET status = 'published',
+               live_rule_id = 'eeeeeeee-2000-4000-8000-0000000000c4',
+               published_at = now(),
+               published_by = '33333333-3333-4333-8333-333333333333',
+               publish_correlation_id = NULL
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c3';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template publication with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- And the retirement, against the published one. The status stays `published` for the
+    -- three attribution cases, so the one-way trigger sees no transition at all and the only
+    -- thing in the way is the constraint each case names.
+    BEGIN
+        UPDATE plt01.sch_templates SET status = 'retired'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template reading retired with no retirement';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET retired_at = now(), retired_by = NULL,
+               retire_reason = 'done with it',
+               retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET retired_at = now(),
+               retired_by = '33333333-3333-4333-8333-333333333333',
+               retire_reason = NULL,
+               retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template retired for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- **The blank case and the NULL case both.** The one above proves the `coalesce`; this one
+    -- proves the regex, because `length(btrim(NULL)) > 0` is NULL and a CHECK passes on NULL.
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET retired_at = now(),
+               retired_by = '33333333-3333-4333-8333-333333333333',
+               retire_reason = '  ',
+               retire_correlation_id = '33333333-3333-4333-8333-333333333333'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template whose retirement reason is blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- The correlation, which the column did not have until a reviewer pointed out that
+    -- stopping a recurring class left no handle anybody could follow back.
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET retired_at = now(),
+               retired_by = '33333333-3333-4333-8333-333333333333',
+               retire_reason = 'done with it', retire_correlation_id = NULL
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-0000000000c1';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template retirement with no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------- 90b. the triggers a runtime role can reach
+-- Six of the seven, one probe per branch, against the committed seed above. The seventh -- a
+-- session's instant, rule and capacity -- needs a role holding an UPDATE on those columns,
+-- which no runtime role does, so it has its own block below.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. A retired resource revived. Retiring the only studio takes every class in it off the
+    -- schedule; reviving it would put them back with nobody having decided to.
+    BEGIN
+        UPDATE plt01.sch_resources SET status = 'active'
+         WHERE resource_id = 'eeeeeeee-1000-4000-8000-000000000010';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a retired resource was revived';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 2. And its retirement re-attributed. The attribution CHECK cannot see what the row used
+    -- to be, which is MOD-009's `sec_legal_holds` finding.
+    BEGIN
+        UPDATE plt01.sch_resources
+           SET retired_by = '44444444-4444-4444-8444-444444444444'
+         WHERE resource_id = 'eeeeeeee-1000-4000-8000-000000000010';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource retirement was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. A published template demoted to draft, which is MOD-013's two-step content rewrite:
+    -- demote, change what the class is, publish again under the original approver's name.
+    BEGIN
+        UPDATE plt01.sch_templates SET status = 'draft'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published template was taken back to draft';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 4. Its publication re-recorded.
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET published_by = '44444444-4444-4444-8444-444444444444'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a template publication was re-attributed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5. And a retired template touched at all.
+    BEGIN
+        UPDATE plt01.sch_templates SET display_name = 'Back again'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-00000000000a';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a retired template was edited';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 6. A template pointed at another template's rule. There is no foreign key here --
+    -- the reference is circular -- so without the trigger generation reads the wrong days
+    -- and times under the right name.
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET live_rule_id = 'eeeeeeee-2000-4000-8000-00000000000b'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: a template was pointed at another template''s rule';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 7. A hold naming a session that does not exist. A BEFORE INSERT trigger fires before
+    -- the foreign key, so this is the trigger's refusal rather than the reference's.
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (tenant_id, session_id, person_id, places, source_kind, source_ref,
+             taken_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-5000-4000-8000-0000000000ff',
+                'bbbbbbbb-1000-4000-8000-000000000001', 1, 'booking', 'tbk-x',
+                '33333333-3333-4333-8333-333333333333', 'trigger-hold-x',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place was held in a session that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            -- Refused by the reference, which means this probe was proving the foreign key.
+            -- The trigger fires first because it is BEFORE INSERT, so a
+            -- `foreign_key_violation` arriving here says the branch is gone.
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a place in a missing session was refused by the foreign '
+                'key, not the trigger';
+    END;
+    -- 8. A place held in a cancelled class, which is the worst failure available here: the
+    -- member is told they have a place in something nobody is running.
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (tenant_id, session_id, person_id, places, source_kind, source_ref,
+             taken_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000006',
+                'bbbbbbbb-1000-4000-8000-000000000001', 1, 'booking', 'tbk-y',
+                '33333333-3333-4333-8333-333333333333', 'trigger-hold-y',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a place was held in a cancelled session';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 9. And one more place than the class has. Paragraph 4146's whole point, enforced for a
+    -- writer that is not this service.
+    BEGIN
+        INSERT INTO plt01.sch_capacity_holds
+            (tenant_id, session_id, person_id, places, source_kind, source_ref,
+             taken_by, idempotency_key, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000007',
+                'bbbbbbbb-1000-4000-8000-000000000002', 1, 'booking', 'tbk-z',
+                '33333333-3333-4333-8333-333333333333', 'trigger-hold-z',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session was overbooked past its own places';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 10. A released place released again, which would replace the only attribution there is.
+    BEGIN
+        UPDATE plt01.sch_capacity_holds
+           SET released_by = '44444444-4444-4444-8444-444444444444'
+         WHERE hold_id = 'eeeeeeee-2000-4000-8000-000000000009';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a settled place was settled again';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 11. And a held place taken to a status that is neither.
+    BEGIN
+        UPDATE plt01.sch_capacity_holds SET status = 'held'
+         WHERE hold_id = 'eeeeeeee-2000-4000-8000-000000000008';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a held place was settled as held';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 12. A cancelled session changed again. Members have been told.
+    BEGIN
+        UPDATE plt01.sch_sessions SET status = 'completed', completed_at = now()
+         WHERE session_id = 'eeeeeeee-2000-4000-8000-000000000006';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a cancelled session was completed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- **There is no probe for an unknown target status**, because the branch that refused one
+    -- is gone: guarded by `NEW.status <> OLD.status` it was unreachable, and unguarded it
+    -- refused every update that did not move the status -- which is what a relocation is. The
+    -- migration says so where the branch used to be.
+    --
+    -- 13. A change recorded against a session that does not exist, again before the key.
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (tenant_id, session_id, change_kind, replacement_id, reason, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-5000-4000-8000-0000000000ff', 'substitution',
+                'eeeeeeee-1000-4000-8000-00000000000b', 'somebody covered',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: a change was recorded against a session that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            -- Refused by the reference, which means this probe was proving the foreign key.
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a change against a missing session was refused by the '
+                'foreign key, not the trigger';
+    END;
+    -- 14. And a substitution on a cancelled class, which reads as somebody having covered a
+    -- session nobody ran. A cancellation itself is admitted, because it is recorded in the
+    -- same transaction as the status change.
+    BEGIN
+        INSERT INTO plt01.sch_session_changes
+            (tenant_id, session_id, change_kind, replacement_id, replaced_id, reason,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000006', 'substitution',
+                'eeeeeeee-1000-4000-8000-00000000000b',
+                'eeeeeeee-1000-4000-8000-00000000000b', 'somebody covered',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: a substitution was recorded on a cancelled session';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 15. The *date* a resource was retired, as well as who did it. Probe 2 changed only
+    -- `retired_by`, so deleting the `retired_at` disjunct was caught by nothing but the
+    -- body digest -- and the date is what a dispute about when a class stopped turns on.
+    BEGIN
+        UPDATE plt01.sch_resources SET retired_at = now() + interval '1 day'
+         WHERE resource_id = 'eeeeeeee-1000-4000-8000-000000000010';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a retirement date was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 16. And its correlation, which is in the UPDATE grant and which the attribution CHECK
+    -- beside the table cannot see the previous value of.
+    BEGIN
+        UPDATE plt01.sch_resources
+           SET retire_correlation_id = '44444444-4444-4444-8444-444444444444'
+         WHERE resource_id = 'eeeeeeee-1000-4000-8000-000000000010';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a retirement correlation was replaced';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 17 and 18. The same pair for a template's publication, which is the act members plan
+    -- their week around.
+    BEGIN
+        UPDATE plt01.sch_templates SET published_at = now() + interval '1 day'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a publication date was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.sch_templates
+           SET publish_correlation_id = '44444444-4444-4444-8444-444444444444'
+         WHERE template_id = 'eeeeeeee-2000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a publication correlation was replaced';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 19. A superseded assignment superseded again, which would replace the name of whoever
+    -- took the coach off the class. Re-assigning is a new row, which is what the assignment
+    -- key is for.
+    BEGIN
+        UPDATE plt01.sch_session_resources
+           SET superseded_at = now(),
+               superseded_by = '44444444-4444-4444-8444-444444444444',
+               supersede_correlation_id = '44444444-4444-4444-8444-444444444444'
+         WHERE assignment_id = 'eeeeeeee-3000-4000-8000-000000000001';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a supersession was recorded twice';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 20 to 24. A resource hold needs the guards a place hold has, and had none of them.
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+             holds_until, assigned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-5000-4000-8000-0000000000ff',
+                'eeeeeeee-1000-4000-8000-00000000000a', 'room', 1,
+                TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: a resource was held by a session that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a resource held by a missing session was refused by the '
+                'foreign key, not the trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+             holds_until, assigned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000006',
+                'eeeeeeee-1000-4000-8000-00000000000e', 'court', 1,
+                TIMESTAMPTZ '2026-12-02 14:50+00', TIMESTAMPTZ '2026-12-02 16:10+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a cancelled session held a resource';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+             holds_until, assigned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'eeeeeeee-5000-4000-8000-0000000000ff', 'room', 1,
+                TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session held a resource that does not exist';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+        WHEN foreign_key_violation THEN
+            RAISE EXCEPTION
+                'CHECK 90 FAILED: a missing resource was refused by the foreign key, not the '
+                'trigger';
+    END;
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+             holds_until, assigned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'eeeeeeee-1000-4000-8000-000000000010', 'room', 1,
+                TIMESTAMPTZ '2026-12-01 14:50+00', TIMESTAMPTZ '2026-12-01 16:10+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a retired resource was assigned to a session';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- And a hold far wider than the session it is for. Nothing bounded it, so a one-hour class
+    -- could hold a studio for four years -- and the window columns carry no UPDATE grant, so
+    -- the only remedy afterwards was the supersede marker.
+    BEGIN
+        INSERT INTO plt01.sch_session_resources
+            (tenant_id, session_id, resource_id, resource_kind, quantity, holds_from,
+             holds_until, assigned_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                'eeeeeeee-2000-4000-8000-000000000005',
+                'eeeeeeee-1000-4000-8000-00000000000e', 'court', 1,
+                TIMESTAMPTZ '2026-01-01 00:00+00', TIMESTAMPTZ '2030-01-01 00:00+00',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 90 FAILED: a resource was held for four years';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 24 THEN
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: the runtime-reachable triggers fired for % of 24 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------- 90c. the session identity the grant already refuses
+-- **A session's instant, its rule and its capacity carry no UPDATE grant for any runtime
+-- role**, so check 89 already proves that this service cannot move them and these four probes
+-- would fail with `insufficient_privilege` rather than reach the trigger. They run as the
+-- owner instead, because the trigger is what holds for a writer that is not the service -- the
+-- DDL role, a migration, a repair script -- and a branch with no probe is a branch a reviewer
+-- deletes with the suite reporting every check passing.
+--
+-- Four probes for one branch, one per disjunct: a weakening that drops `NEW.capacity <>
+-- OLD.capacity` is caught only by the capacity probe.
+BEGIN;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.locations (tenant_id, location_id, brand_id, location_name, timezone)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000002', 'Owner Street', 'Asia/Amman');
+INSERT INTO plt01.sch_resources
+    (tenant_id, resource_id, resource_code, resource_kind, display_name, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-00000000000a',
+        'O-SERVICE', 'service', 'Owner service',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_templates
+    (tenant_id, template_id, template_code, display_name, service_resource_id,
+     location_id, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000011',
+        'O-CLASS', 'Owner class', 'eeeeeeee-6000-4000-8000-00000000000a',
+        'eeeeeeee-6000-4000-8000-000000000001',
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_recurrence_rules
+    (tenant_id, rule_id, template_id, version, frequency, local_time, timezone,
+     duration_minutes, starts_on, until_date, weekdays, effective_from, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000013',
+        'eeeeeeee-6000-4000-8000-000000000011', 1, 'weekly', TIME '18:00', 'Asia/Amman',
+        60, DATE '2026-12-01', DATE '2027-01-31', ARRAY[1]::smallint[],
+        DATE '2026-12-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000014',
+        'eeeeeeee-6000-4000-8000-000000000011', 2, 'weekly', TIME '19:00', 'Asia/Amman',
+        60, DATE '2026-12-01', DATE '2027-01-31', ARRAY[1]::smallint[],
+        DATE '2026-12-01', '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_capacity_policies
+    (tenant_id, policy_id, template_id, version, capacity, created_by, correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000015',
+        'eeeeeeee-6000-4000-8000-000000000011', 1, 12,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333'),
+       -- A second version, so the re-point probe has somewhere to point.
+       ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000016',
+        'eeeeeeee-6000-4000-8000-000000000011', 2, 20,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+INSERT INTO plt01.sch_sessions
+    (tenant_id, session_id, template_id, rule_id, policy_id, location_id, starts_at,
+     ends_at, local_date, timezone, capacity, overbook_places, created_by,
+     correlation_id)
+VALUES ('11111111-1111-4111-8111-111111111111', 'eeeeeeee-6000-4000-8000-000000000021',
+        'eeeeeeee-6000-4000-8000-000000000011', 'eeeeeeee-6000-4000-8000-000000000013',
+        'eeeeeeee-6000-4000-8000-000000000015', 'eeeeeeee-6000-4000-8000-000000000001',
+        TIMESTAMPTZ '2026-12-28 15:00+00', TIMESTAMPTZ '2026-12-28 16:00+00',
+        DATE '2026-12-28', 'Asia/Amman', 12, 0,
+        '33333333-3333-4333-8333-333333333333',
+        '33333333-3333-4333-8333-333333333333');
+DO $$
+DECLARE
+    probe integer := 0;
+BEGIN
+    -- 1. The instant moved. A member who was told six o'clock turns up at six.
+    -- **Backwards, not forwards.** Moving the start past the end violated
+    -- `sch_sessions_ordered`, and `check_violation` is not caught by `WHEN raise_exception` --
+    -- so with the identity branch deleted the DO block aborted on an unnamed error, the probes
+    -- after it never ran and the count was never asserted. One case gated the rest. A reviewer
+    -- then moved a published session's start six hours earlier as the owner and it succeeded,
+    -- on a session with places held against it.
+    BEGIN
+        UPDATE plt01.sch_sessions
+           SET starts_at = TIMESTAMPTZ '2026-12-28 09:00+00'
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published session''s start was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 2. Its end moved, which is the same promise at the other edge.
+    BEGIN
+        UPDATE plt01.sch_sessions
+           SET ends_at = TIMESTAMPTZ '2026-12-28 18:00+00'
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published session''s end was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 3. Re-pointed at another rule version, which is paragraph 4149 inverted: the session
+    -- stays and what it says it is changes.
+    BEGIN
+        UPDATE plt01.sch_sessions
+           SET rule_id = 'eeeeeeee-6000-4000-8000-000000000014'
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session was re-pointed at another rule version';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 4. And its capacity changed after publication, which retroactively decides whether a
+    -- class that already ran was over capacity.
+    BEGIN
+        UPDATE plt01.sch_sessions SET capacity = 20
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published session''s capacity was changed';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    -- 5 to 7. The three disjuncts the guard grew, each because the one beside it was not
+    -- enough: the fit trigger's ceiling is `capacity + overbook_places`, so guarding the
+    -- capacity and leaving the overbooking was half a guard; `local_date` is the date the
+    -- member knows; and `policy_id` is the snapshot every published figure came from.
+    BEGIN
+        UPDATE plt01.sch_sessions SET overbook_places = 5
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a published session was overbooked after the fact';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.sch_sessions SET local_date = DATE '2026-12-29'
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session''s local date was moved';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    BEGIN
+        UPDATE plt01.sch_sessions
+           SET policy_id = 'eeeeeeee-6000-4000-8000-000000000016'
+         WHERE session_id = 'eeeeeeee-6000-4000-8000-000000000021';
+        RAISE EXCEPTION 'CHECK 90 FAILED: a session was re-pointed at another policy';
+    EXCEPTION
+        WHEN raise_exception THEN
+            IF sqlerrm LIKE 'CHECK 90 FAILED%' THEN RAISE; END IF;
+            probe := probe + 1;
+    END;
+    IF probe <> 7 THEN
+        RAISE EXCEPTION
+            'CHECK 90 FAILED: the session-identity branch fired for % of 7 probes', probe;
+    END IF;
+END $$;
+ROLLBACK;
+
+
+-- --------------------------------- 91. MOD-019's rules are pinned, bodies included
+-- **The text of every CHECK, index, trigger and trigger function body on this module's
+-- tables, compared against the pinned set in both directions.** Check 90 proves that each rule
+-- refuses the row it should; this proves the rule is still there, and still says the same
+-- thing, on every CI run rather than when somebody next runs the mutation sweep.
+--
+-- It closes the three holes that have each cost a review round. A constraint nobody wrote a
+-- case for was droppable in silence (MOD-011: 38 of 74 mutations uncaught). A constraint
+-- *weakened* rather than dropped was caught only by a case the weakened version admits
+-- (MOD-017, twice). And **a plpgsql branch is invisible to any constraint sweep**: the mutation
+-- is `CREATE OR REPLACE FUNCTION` with one branch deleted, which touches nothing in
+-- `pg_constraint`, so MOD-018's balance trigger lost a branch with the suite reporting 84/84.
+-- A drop, a weakening and a deleted branch all change the text, and the body digest is what
+-- sees the third.
+--
+-- It does not replace check 90: a pin says the rule is written down, and only a case says it
+-- bites. One without the other is how vacuous evidence happens, which is this file's whole
+-- argument. The cost is deliberate -- a legitimate schema change fails here until somebody
+-- regenerates the pin, which is the moment a human reads the diff.
+--
+-- `sch_templates_status` is the one constraint in this module with no behavioural case and
+-- cannot have one: every status outside the three also violates `published_has_a_rule` on an
+-- insert, and on an update the one-way trigger admits only `draft -> published` and
+-- `published -> retired`, so nothing reaches an unknown value with that CHECK as the only
+-- thing in the way. This check is its whole evidence.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(rule) AS (VALUES
+        ('sch_availability_windows_absence_reasoned CHECK (((window_kind <> ''time_off''::text) OR (COALESCE(reason, ''''::text) ~ ''[^[:space:]]''::text)))'),
+        ('sch_availability_windows_kind CHECK ((window_kind = ANY (ARRAY[''working''::text, ''break''::text, ''time_off''::text])))'),
+        ('sch_availability_windows_ordered CHECK ((ends_at > starts_at))'),
+        ('sch_availability_windows_reason_not_blank CHECK (((reason IS NULL) OR (reason ~ ''[^[:space:]]''::text)))'),
+        ('sch_availability_windows_weekday_shape CHECK (((weekday IS NULL) OR ((weekday >= 0) AND (weekday <= 6))))'),
+        ('sch_availability_windows_weekly_or_dated CHECK (((weekday IS NULL) <> (on_date IS NULL)))'),
+        ('sch_availability_windows_zone_shape CHECK ((timezone ~ ''^[A-Za-z][A-Za-z0-9+_/-]{1,63}$''::text))'),
+        ('sch_capacity_holds_key_not_blank CHECK ((idempotency_key ~ ''[^[:space:]]''::text))'),
+        ('sch_capacity_holds_places_sane CHECK (((places >= 1) AND (places <= 100)))'),
+        ('sch_capacity_holds_release_attributed CHECK ((((released_at IS NULL) AND (released_by IS NULL) AND (release_reason IS NULL) AND (release_correlation_id IS NULL)) OR ((released_at IS NOT NULL) AND (released_by IS NOT NULL) AND (COALESCE(release_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (release_correlation_id IS NOT NULL))))'),
+        ('sch_capacity_holds_released_is_released CHECK (((status <> ''released''::text) OR (released_at IS NOT NULL)))'),
+        ('sch_capacity_holds_source_kind CHECK ((source_kind = ANY (ARRAY[''booking''::text, ''walk_in''::text, ''migration''::text])))'),
+        ('sch_capacity_holds_source_ref_not_blank CHECK ((source_ref ~ ''[^[:space:]]''::text))'),
+        ('sch_capacity_holds_status CHECK ((status = ANY (ARRAY[''held''::text, ''released''::text, ''attended''::text])))'),
+        ('sch_capacity_policies_capacity_sane CHECK (((capacity >= 1) AND (capacity <= 10000)))'),
+        ('sch_capacity_policies_cleanup_sane CHECK (((cleanup_minutes >= 0) AND (cleanup_minutes <= 120)))'),
+        ('sch_capacity_policies_overbook_sane CHECK (((overbook_places >= 0) AND (overbook_places <= capacity)))'),
+        ('sch_capacity_policies_setup_sane CHECK (((setup_minutes >= 0) AND (setup_minutes <= 120)))'),
+        ('sch_capacity_policies_version_positive CHECK ((version >= 1))'),
+        ('sch_capacity_policies_waitlist_sane CHECK (((waitlist_capacity >= 0) AND (waitlist_capacity <= 10000)))'),
+        ('sch_capacity_policies_window_sane CHECK (((opens_hours_before >= 0) AND (opens_hours_before <= 8760) AND (closes_minutes_before >= 0) AND (closes_minutes_before <= 525600)))'),
+        ('sch_conflict_overrides_count_positive CHECK (((conflict_count >= 1) AND (conflict_count <= 1000)))'),
+        ('sch_conflict_overrides_reason_not_blank CHECK ((reason ~ ''[^[:space:]]''::text))'),
+        ('sch_conflict_overrides_summary_not_blank CHECK ((conflict_summary ~ ''[^[:space:]]''::text))'),
+        ('sch_recurrence_rules_dates_ordered CHECK ((until_date >= starts_on))'),
+        ('sch_recurrence_rules_duration_sane CHECK (((duration_minutes >= 1) AND (duration_minutes <= 1440)))'),
+        ('sch_recurrence_rules_exclusions_bounded CHECK ((cardinality(excluded_dates) <= 200))'),
+        ('sch_recurrence_rules_frequency CHECK ((frequency = ANY (ARRAY[''once''::text, ''daily''::text, ''weekly''::text, ''monthly_by_weekday''::text])))'),
+        ('sch_recurrence_rules_horizon CHECK (((until_date - starts_on) <= 400))'),
+        ('sch_recurrence_rules_once_is_one_day CHECK (((frequency <> ''once''::text) OR (until_date = starts_on)))'),
+        ('sch_recurrence_rules_version_positive CHECK ((version >= 1))'),
+        ('sch_recurrence_rules_week_matches_frequency CHECK (((frequency = ''monthly_by_weekday''::text) = (week_of_month IS NOT NULL)))'),
+        ('sch_recurrence_rules_week_shape CHECK (((week_of_month IS NULL) OR (week_of_month = ANY (ARRAY[1, 2, 3, 4, ''-1''::integer]))))'),
+        ('sch_recurrence_rules_weekdays_match_frequency CHECK (((frequency = ANY (ARRAY[''weekly''::text, ''monthly_by_weekday''::text])) = (cardinality(weekdays) > 0)))'),
+        ('sch_recurrence_rules_weekdays_shape CHECK ((weekdays <@ ARRAY[(0)::smallint, (1)::smallint, (2)::smallint, (3)::smallint, (4)::smallint, (5)::smallint, (6)::smallint]))'),
+        ('sch_recurrence_rules_zone_shape CHECK ((timezone ~ ''^[A-Za-z][A-Za-z0-9+_/-]{1,63}$''::text))'),
+        ('sch_resources_code_shape CHECK ((resource_code ~ ''^[A-Z0-9][A-Z0-9._-]{1,47}$''::text))'),
+        ('sch_resources_kind_shape CHECK ((resource_kind ~ ''^[a-z][a-z0-9_]{1,31}$''::text))'),
+        ('sch_resources_location_names_a_brand CHECK (((location_id IS NULL) OR (brand_id IS NOT NULL)))'),
+        ('sch_resources_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('sch_resources_quantity_sane CHECK (((quantity >= 1) AND (quantity <= 10000)))'),
+        ('sch_resources_retired_is_retired CHECK (((status <> ''retired''::text) OR (retired_at IS NOT NULL)))'),
+        ('sch_resources_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (retire_correlation_id IS NOT NULL))))'),
+        ('sch_resources_status CHECK ((status = ANY (ARRAY[''active''::text, ''retired''::text])))'),
+        ('sch_restrictions_age_is_a_number CHECK (((restriction_kind <> ALL (ARRAY[''min_age''::text, ''max_age''::text])) OR (restriction_value ~ ''^([0-9]|[1-9][0-9]|1[01][0-9]|120)$''::text)))'),
+        ('sch_restrictions_kind CHECK ((restriction_kind = ANY (ARRAY[''min_age''::text, ''max_age''::text, ''skill''::text, ''entitlement''::text])))'),
+        ('sch_restrictions_value_not_blank CHECK ((restriction_value ~ ''[^[:space:]]''::text))'),
+        ('sch_session_changes_kind CHECK ((change_kind = ANY (ARRAY[''substitution''::text, ''relocation''::text, ''cancellation''::text, ''handoff''::text])))'),
+        ('sch_session_changes_reason_not_blank CHECK ((reason ~ ''[^[:space:]]''::text))'),
+        ('sch_session_changes_replaced_matches_kind CHECK (((change_kind <> ''cancellation''::text) OR (replaced_id IS NULL)))'),
+        ('sch_session_changes_replacement_matches_kind CHECK (((change_kind <> ''cancellation''::text) = (replacement_id IS NOT NULL)))'),
+        ('sch_session_resources_exclusive_is_one CHECK (((resource_kind <> ALL (ARRAY[''staff''::text, ''room''::text, ''zone''::text, ''court''::text])) OR (quantity = 1)))'),
+        ('sch_session_resources_kind_shape CHECK ((resource_kind ~ ''^[a-z][a-z0-9_]{1,31}$''::text))'),
+        ('sch_session_resources_quantity_sane CHECK (((quantity >= 1) AND (quantity <= 10000)))'),
+        ('sch_session_resources_supersede_attributed CHECK ((((superseded_at IS NULL) AND (superseded_by IS NULL) AND (supersede_correlation_id IS NULL)) OR ((superseded_at IS NOT NULL) AND (superseded_by IS NOT NULL) AND (supersede_correlation_id IS NOT NULL))))'),
+        ('sch_session_resources_window_ordered CHECK ((holds_until > holds_from))'),
+        ('sch_sessions_bounded CHECK (((ends_at - starts_at) <= ''1 day''::interval))'),
+        ('sch_sessions_cancellation_attributed CHECK ((((cancelled_at IS NULL) AND (cancelled_by IS NULL) AND (cancellation_reason IS NULL) AND (cancel_correlation_id IS NULL)) OR ((cancelled_at IS NOT NULL) AND (cancelled_by IS NOT NULL) AND (cancellation_reason IS NOT NULL) AND (cancel_correlation_id IS NOT NULL))))'),
+        ('sch_sessions_cancellation_reason CHECK (((cancellation_reason IS NULL) OR (cancellation_reason = ANY (ARRAY[''instructor_unavailable''::text, ''resource_unavailable''::text, ''insufficient_bookings''::text, ''facility_closed''::text, ''weather''::text, ''other''::text]))))'),
+        ('sch_sessions_cancelled_is_cancelled CHECK (((status <> ''cancelled''::text) OR (cancelled_at IS NOT NULL)))'),
+        ('sch_sessions_capacity_sane CHECK (((capacity >= 1) AND (capacity <= 10000)))'),
+        ('sch_sessions_completed_is_completed CHECK (((status <> ''completed''::text) OR (completed_at IS NOT NULL)))'),
+        ('sch_sessions_ordered CHECK ((ends_at > starts_at))'),
+        ('sch_sessions_overbook_sane CHECK (((overbook_places >= 0) AND (overbook_places <= capacity)))'),
+        ('sch_sessions_status CHECK ((status = ANY (ARRAY[''scheduled''::text, ''cancelled''::text, ''completed''::text])))'),
+        ('sch_sessions_zone_shape CHECK ((timezone ~ ''^[A-Za-z][A-Za-z0-9+_/-]{1,63}$''::text))'),
+        ('sch_template_requirements_kind_shape CHECK ((requirement_kind ~ ''^[a-z][a-z0-9_]{1,31}$''::text))'),
+        ('sch_template_requirements_named_is_one CHECK (((resource_id IS NULL) OR (quantity = 1)))'),
+        ('sch_template_requirements_offering_is_named CHECK (((requirement_kind <> ALL (ARRAY[''service''::text, ''composite''::text])) OR (resource_id IS NOT NULL)))'),
+        ('sch_template_requirements_quantity_sane CHECK (((quantity >= 1) AND (quantity <= 10000)))'),
+        ('sch_templates_code_shape CHECK ((template_code ~ ''^[A-Z0-9][A-Z0-9._-]{1,47}$''::text))'),
+        ('sch_templates_name_not_blank CHECK ((display_name ~ ''[^[:space:]]''::text))'),
+        ('sch_templates_publication_attributed CHECK ((((published_at IS NULL) AND (published_by IS NULL) AND (publish_correlation_id IS NULL)) OR ((published_at IS NOT NULL) AND (published_by IS NOT NULL) AND (publish_correlation_id IS NOT NULL))))'),
+        ('sch_templates_published_has_a_rule CHECK (((status = ''draft''::text) OR (live_rule_id IS NOT NULL)))'),
+        ('sch_templates_published_is_published CHECK (((status = ''draft''::text) OR (published_at IS NOT NULL)))'),
+        ('sch_templates_retired_is_retired CHECK (((status <> ''retired''::text) OR (retired_at IS NOT NULL)))'),
+        ('sch_templates_retirement_attributed CHECK ((((retired_at IS NULL) AND (retired_by IS NULL) AND (retire_reason IS NULL) AND (retire_correlation_id IS NULL)) OR ((retired_at IS NOT NULL) AND (retired_by IS NOT NULL) AND (COALESCE(retire_reason, ''''::text) ~ ''[^[:space:]]''::text) AND (retire_correlation_id IS NOT NULL))))'),
+        ('sch_templates_status CHECK ((status = ANY (ARRAY[''draft''::text, ''published''::text, ''retired''::text])))')
+    ), actual(rule) AS (
+        SELECT c.conname || ' ' || pg_get_constraintdef(c.oid)
+        FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+          AND c.contype = 'c'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 91 FAILED: MOD-019 CHECK constraints differ from the pinned set: %', wrong;
+    END IF;
+    -- Every index, unique and otherwise: a unique index is not a constraint, so a `DROP INDEX`
+    -- leaves `pg_constraint` untouched -- and a partial index losing its `WHERE` clause is a
+    -- weakening that admits rows the full one refuses.
+    WITH expected(rule) AS (VALUES
+        ('sch_availability_windows_by_date CREATE INDEX sch_availability_windows_by_date ON plt01.sch_availability_windows USING btree (tenant_id, on_date) WHERE (on_date IS NOT NULL)'),
+        ('sch_availability_windows_by_resource CREATE INDEX sch_availability_windows_by_resource ON plt01.sch_availability_windows USING btree (tenant_id, resource_id, window_kind)'),
+        ('sch_availability_windows_pkey CREATE UNIQUE INDEX sch_availability_windows_pkey ON plt01.sch_availability_windows USING btree (tenant_id, window_id)'),
+        ('sch_capacity_holds_by_session CREATE INDEX sch_capacity_holds_by_session ON plt01.sch_capacity_holds USING btree (tenant_id, session_id, status)'),
+        ('sch_capacity_holds_one_live_per_person CREATE UNIQUE INDEX sch_capacity_holds_one_live_per_person ON plt01.sch_capacity_holds USING btree (tenant_id, session_id, person_id) WHERE (status = ANY (ARRAY[''held''::text, ''attended''::text]))'),
+        ('sch_capacity_holds_pkey CREATE UNIQUE INDEX sch_capacity_holds_pkey ON plt01.sch_capacity_holds USING btree (tenant_id, hold_id)'),
+        ('sch_capacity_holds_tenant_id_idempotency_key_key CREATE UNIQUE INDEX sch_capacity_holds_tenant_id_idempotency_key_key ON plt01.sch_capacity_holds USING btree (tenant_id, idempotency_key)'),
+        ('sch_capacity_policies_pkey CREATE UNIQUE INDEX sch_capacity_policies_pkey ON plt01.sch_capacity_policies USING btree (tenant_id, policy_id)'),
+        ('sch_capacity_policies_tenant_id_template_id_version_key CREATE UNIQUE INDEX sch_capacity_policies_tenant_id_template_id_version_key ON plt01.sch_capacity_policies USING btree (tenant_id, template_id, version)'),
+        ('sch_conflict_overrides_by_session CREATE INDEX sch_conflict_overrides_by_session ON plt01.sch_conflict_overrides USING btree (tenant_id, session_id)'),
+        ('sch_conflict_overrides_pkey CREATE UNIQUE INDEX sch_conflict_overrides_pkey ON plt01.sch_conflict_overrides USING btree (tenant_id, override_id)'),
+        ('sch_recurrence_rules_by_template CREATE INDEX sch_recurrence_rules_by_template ON plt01.sch_recurrence_rules USING btree (tenant_id, template_id, version DESC)'),
+        ('sch_recurrence_rules_pkey CREATE UNIQUE INDEX sch_recurrence_rules_pkey ON plt01.sch_recurrence_rules USING btree (tenant_id, rule_id)'),
+        ('sch_recurrence_rules_tenant_id_template_id_version_key CREATE UNIQUE INDEX sch_recurrence_rules_tenant_id_template_id_version_key ON plt01.sch_recurrence_rules USING btree (tenant_id, template_id, version)'),
+        ('sch_resources_by_kind CREATE INDEX sch_resources_by_kind ON plt01.sch_resources USING btree (tenant_id, resource_kind, status)'),
+        ('sch_resources_by_location CREATE INDEX sch_resources_by_location ON plt01.sch_resources USING btree (tenant_id, location_id) WHERE (location_id IS NOT NULL)'),
+        ('sch_resources_by_person CREATE INDEX sch_resources_by_person ON plt01.sch_resources USING btree (tenant_id, person_id) WHERE (person_id IS NOT NULL)'),
+        ('sch_resources_pkey CREATE UNIQUE INDEX sch_resources_pkey ON plt01.sch_resources USING btree (tenant_id, resource_id)'),
+        ('sch_resources_tenant_id_resource_code_key CREATE UNIQUE INDEX sch_resources_tenant_id_resource_code_key ON plt01.sch_resources USING btree (tenant_id, resource_code)'),
+        ('sch_restrictions_by_policy CREATE INDEX sch_restrictions_by_policy ON plt01.sch_restrictions USING btree (tenant_id, policy_id)'),
+        ('sch_restrictions_pkey CREATE UNIQUE INDEX sch_restrictions_pkey ON plt01.sch_restrictions USING btree (tenant_id, restriction_id)'),
+        ('sch_restrictions_tenant_id_policy_id_restriction_kind_restr_key CREATE UNIQUE INDEX sch_restrictions_tenant_id_policy_id_restriction_kind_restr_key ON plt01.sch_restrictions USING btree (tenant_id, policy_id, restriction_kind, restriction_value)'),
+        ('sch_session_changes_by_session CREATE INDEX sch_session_changes_by_session ON plt01.sch_session_changes USING btree (tenant_id, session_id, recorded_at)'),
+        ('sch_session_changes_pkey CREATE UNIQUE INDEX sch_session_changes_pkey ON plt01.sch_session_changes USING btree (tenant_id, change_id)'),
+        ('sch_session_resources_by_resource CREATE INDEX sch_session_resources_by_resource ON plt01.sch_session_resources USING btree (tenant_id, resource_id, holds_from, holds_until) WHERE (superseded_at IS NULL)'),
+        ('sch_session_resources_by_session CREATE INDEX sch_session_resources_by_session ON plt01.sch_session_resources USING btree (tenant_id, session_id)'),
+        ('sch_session_resources_one_live CREATE UNIQUE INDEX sch_session_resources_one_live ON plt01.sch_session_resources USING btree (tenant_id, session_id, resource_id) WHERE (superseded_at IS NULL)'),
+        ('sch_session_resources_pkey CREATE UNIQUE INDEX sch_session_resources_pkey ON plt01.sch_session_resources USING btree (tenant_id, assignment_id)'),
+        ('sch_sessions_by_template CREATE INDEX sch_sessions_by_template ON plt01.sch_sessions USING btree (tenant_id, template_id, starts_at)'),
+        ('sch_sessions_by_window CREATE INDEX sch_sessions_by_window ON plt01.sch_sessions USING btree (tenant_id, location_id, starts_at)'),
+        ('sch_sessions_live CREATE INDEX sch_sessions_live ON plt01.sch_sessions USING btree (tenant_id, starts_at) WHERE (status = ''scheduled''::text)'),
+        ('sch_sessions_pkey CREATE UNIQUE INDEX sch_sessions_pkey ON plt01.sch_sessions USING btree (tenant_id, session_id)'),
+        ('sch_sessions_tenant_id_rule_id_starts_at_key CREATE UNIQUE INDEX sch_sessions_tenant_id_rule_id_starts_at_key ON plt01.sch_sessions USING btree (tenant_id, rule_id, starts_at)'),
+        ('sch_template_requirements_one_per_kind CREATE UNIQUE INDEX sch_template_requirements_one_per_kind ON plt01.sch_template_requirements USING btree (tenant_id, template_id, requirement_kind) WHERE (resource_id IS NULL)'),
+        ('sch_template_requirements_one_per_resource CREATE UNIQUE INDEX sch_template_requirements_one_per_resource ON plt01.sch_template_requirements USING btree (tenant_id, template_id, resource_id) WHERE (resource_id IS NOT NULL)'),
+        ('sch_template_requirements_pkey CREATE UNIQUE INDEX sch_template_requirements_pkey ON plt01.sch_template_requirements USING btree (tenant_id, requirement_id)'),
+        ('sch_templates_by_location CREATE INDEX sch_templates_by_location ON plt01.sch_templates USING btree (tenant_id, location_id, status)'),
+        ('sch_templates_pkey CREATE UNIQUE INDEX sch_templates_pkey ON plt01.sch_templates USING btree (tenant_id, template_id)'),
+        ('sch_templates_tenant_id_template_code_key CREATE UNIQUE INDEX sch_templates_tenant_id_template_code_key ON plt01.sch_templates USING btree (tenant_id, template_code)')
+    ), actual(rule) AS (
+        SELECT indexname || ' ' || indexdef FROM pg_indexes
+        WHERE schemaname = 'plt01' AND tablename LIKE 'sch\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 91 FAILED: MOD-019 indexes differ from the pinned set: %', wrong;
+    END IF;
+    -- The trigger definitions: which table, which events, which function.
+    WITH expected(rule) AS (VALUES
+        ('CREATE TRIGGER sch_capacity_holds_fit BEFORE INSERT ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_fits_the_session()'),
+        ('CREATE TRIGGER sch_capacity_holds_one_way BEFORE UPDATE ON plt01.sch_capacity_holds FOR EACH ROW EXECUTE FUNCTION plt01.sch_hold_is_settled_once()'),
+        ('CREATE TRIGGER sch_resources_one_way BEFORE UPDATE ON plt01.sch_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_resource_retirement_is_final()'),
+        ('CREATE TRIGGER sch_session_changes_live BEFORE INSERT ON plt01.sch_session_changes FOR EACH ROW EXECUTE FUNCTION plt01.sch_change_needs_a_live_session()'),
+        ('CREATE TRIGGER sch_session_resources_fit BEFORE INSERT ON plt01.sch_session_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_assignment_fits_the_session()'),
+        ('CREATE TRIGGER sch_session_resources_one_way BEFORE UPDATE ON plt01.sch_session_resources FOR EACH ROW EXECUTE FUNCTION plt01.sch_assignment_supersede_is_final()'),
+        ('CREATE TRIGGER sch_sessions_one_way BEFORE UPDATE ON plt01.sch_sessions FOR EACH ROW EXECUTE FUNCTION plt01.sch_session_is_one_way()'),
+        ('CREATE TRIGGER sch_templates_live_rule BEFORE INSERT OR UPDATE ON plt01.sch_templates FOR EACH ROW EXECUTE FUNCTION plt01.sch_template_rule_belongs_to_it()'),
+        ('CREATE TRIGGER sch_templates_one_way BEFORE UPDATE ON plt01.sch_templates FOR EACH ROW EXECUTE FUNCTION plt01.sch_template_is_one_way()')
+    ), actual(rule) AS (
+        SELECT pg_get_triggerdef(g.oid)
+        FROM pg_trigger g JOIN pg_class t ON t.oid = g.tgrelid
+        WHERE t.relnamespace = 'plt01'::regnamespace AND t.relname LIKE 'sch\_%'
+          AND NOT g.tgisinternal
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 91 FAILED: MOD-019 triggers differ from the pinned set: %', wrong;
+    END IF;
+    -- **And the bodies, as digests.** This is the half no other check in this file has ever
+    -- had: a branch deleted from a trigger function changes nothing a catalogue sweep reads.
+    WITH expected(rule) AS (VALUES
+        ('sch_assignment_fits_the_session 8e53b6a8e382fdd64d20303ac5570d83'),
+        ('sch_assignment_supersede_is_final 157d15ce62761de3b153c80095ddd64f'),
+        ('sch_change_needs_a_live_session a59bd3d77507b575db2eb409a3eb20c7'),
+        ('sch_hold_fits_the_session 789654600bff285bd0ada996f575267c'),
+        ('sch_hold_is_settled_once fc1c498c9669d2f160eda858c88c620f'),
+        ('sch_resource_retirement_is_final 442e00065517541ccab65802f4710657'),
+        ('sch_session_is_one_way 2c88394606e3cdf3cccbbfbf8a962f37'),
+        ('sch_template_is_one_way b514dfd290873212fc001084eccc5196'),
+        ('sch_template_rule_belongs_to_it 0486f305ff08ccfcf9d4585029a05e6d')
+    ), actual(rule) AS (
+        SELECT p.proname || ' ' || md5(p.prosrc)
+        FROM pg_proc p
+        WHERE p.pronamespace = 'plt01'::regnamespace AND p.proname LIKE 'sch\_%'
+    )
+    SELECT string_agg(rule, '; ' ORDER BY rule) INTO wrong
+    FROM ((SELECT rule FROM expected EXCEPT SELECT rule FROM actual)
+          UNION ALL
+          (SELECT rule FROM actual EXCEPT SELECT rule FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 91 FAILED: a MOD-019 trigger body differs from the pinned digest: %', wrong;
+    END IF;
+END $$;
+
+
+\echo 'tenant isolation: 91/91 checks passed'

@@ -510,6 +510,61 @@ PERMISSIONS: dict[str, Permission] = dict([
        "configuration", "financial"),
     _p("finance.export.run", "Export a closed period to an accounting system",
        "configuration", "financial"),
+
+    # ---------------------------------------------------------------- MOD-019, OPS-01
+    #
+    # **Reading a schedule is routine and publishing one is not.** A coach checks their day on
+    # a phone and a member checks a class list; a read behind a step-up is a read nobody does.
+    # What changes the schedule is a different matter: paragraph 1841 makes every change
+    # effective-dated and impact-assessed, which is a deliberate act by somebody who holds the
+    # permission for it.
+    _p("scheduling.schedule.read",
+       "See the calendar, resources, availability and a session's detail", "data_access"),
+    # A resource is the chart of what can be booked. Adding one is configuration; retiring one
+    # takes every class that holds it off the schedule, which is why it is the same permission
+    # at the same class rather than a routine edit.
+    _p("scheduling.resource.write", "Add, change or retire a schedulable resource",
+       "configuration", "financial"),
+    # A rota is edited by the people who run the floor, and refusing them a step-up every time
+    # somebody books a day off would make the rota wrong instead -- which is worse, because
+    # the schedule is generated against it. What bounds it is that a session already generated
+    # does not move: the rota change shows up as a conflict on the next generation.
+    _p("scheduling.availability.write", "Set working hours, breaks and time off",
+       "configuration"),
+    _p("scheduling.template.write", "Draft or change a schedule template",
+       "configuration", "financial"),
+    # **Publishing is its own permission**, because it is the act paragraph 1841 governs: a
+    # draft affects nobody and a publication is what members plan their week around.
+    _p("scheduling.schedule.publish",
+       "Publish a schedule and generate its sessions", "configuration", "financial"),
+    # **Publishing a change that disturbs a booked session is its own permission.** Paragraph
+    # 1841's Critical Control is that every change is impact-assessed, and `acknowledged_impact`
+    # was a bool on the body: the same permission that published a schedule nobody had booked
+    # moved eight classes and cancelled one a member held a place in. A body field that buys an
+    # authority is a permission, which is MOD-013's finding and MOD-009's before it.
+    #
+    # The holder of the ordinary publish permission is not refused anything they could do
+    # before -- a change with no held places still costs the cheaper one, because the
+    # assessment is what decides which is charged.
+    _p("scheduling.schedule.publish_disruptive",
+       "Publish a schedule change that moves or cancels a session somebody has booked",
+       "configuration", "financial"),
+    # **And overriding a conflict is its own permission again.** Paragraph 1842: "Resource
+    # conflicts cannot be overridden without permission and reason." A body field would make
+    # the override free, which is the shape every review in this build has found.
+    _p("scheduling.conflict.override",
+       "Publish a schedule over a detected resource conflict, with a reason",
+       "configuration", "financial"),
+    # Cancelling, substituting, relocating and handing off are the acts a member notices, and
+    # they are one permission because they are one job: whoever runs the day does all four.
+    _p("scheduling.session.change",
+       "Cancel, relocate, substitute or hand off a published session",
+       "configuration", "financial"),
+    # **Taking a place is routine**, because a front desk does it for a walk-in and MOD-020
+    # will do it for every booking. What bounds it is that the session's own capacity is
+    # counted under a lock and the trigger beside the table refuses an overbooking.
+    _p("scheduling.place.hold", "Take or settle a place on a session", "data_access"),
+
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

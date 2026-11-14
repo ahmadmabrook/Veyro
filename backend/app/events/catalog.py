@@ -477,6 +477,36 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
        ("grant_id", "reservation_id", "quantity"),
        "A non-monetary service credit was consumed (MOD-017 produces "
        "entitlement.consumed)"),
+
+    # ---------------------------------------------------------------- MOD-019, OPS-01
+    #
+    # **Five, and every one is produced.** The schedule is what members plan their week
+    # around, so each of these is a thing somebody needs to be told: the schedule changed, a
+    # session exists, something about a session changed, a resource clashed, an instructor was
+    # swapped. None carries free text -- `cancellation_reason` is one of six declared values
+    # and everything else is an identifier, a count or a date, because the outbox is the one
+    # store no erasure reaches and MOD-013 paid for putting a provider's sentence in one.
+    _e("schedule.published", 1, "MOD-019", "internal",
+       ("template_id", "rule_id", "effective_from", "sessions_moved",
+        "sessions_cancelled", "sessions_added", "places_affected"),
+       "A schedule template was published, with what it does to the sessions already "
+       "generated"),
+    _e("session.created", 1, "MOD-019", "internal",
+       ("session_id", "template_id", "starts_at", "location_id", "capacity"),
+       "A session was generated from a published rule"),
+    # **Three fields for all three change kinds**, deliberately uniform: a consumer that
+    # needs the cancellation reason or the new location reads the session. MOD-010's "carry the
+    # identifier, not the value", and a payload that varied by kind would need a consumer per
+    # kind while the catalogue's rule is that a payload carries exactly its declared fields.
+    _e("session.changed", 1, "MOD-019", "internal",
+       ("session_id", "template_id", "change_kind"),
+       "A published session was cancelled, relocated or handed off"),
+    _e("resource.conflict.detected", 1, "MOD-019", "internal",
+       ("template_id", "rule_id", "conflict_count", "first_conflict_kind"),
+       "A generation found resource conflicts and refused rather than overriding them"),
+    _e("instructor.substituted", 1, "MOD-019", "internal",
+       ("session_id", "template_id", "from_resource_id", "to_resource_id", "overridden"),
+       "Somebody else is teaching a published session"),
 ])
 
 

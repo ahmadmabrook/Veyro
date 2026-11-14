@@ -989,6 +989,9 @@ _CLEAR_SQL: dict[tuple[str, str], str] = {
     ("credentials", "status"): "'revoked'",
     ("credentials", "revoked_at"): "coalesce(revoked_at, now())",
     ("credentials", "consumed_at"): "NULL",
+    # A `staff` resource's display name is the coach's own name, and the row names which
+    # person it is -- so an erasure reaches it, unlike the rest of MOD-019's prose.
+    ("sch_resources", "display_name"): "'erased'",
     ("devices", "fingerprint"): "'erased:' || device_id::text",
     ("devices", "label"): "NULL",
     ("devices", "platform"): "NULL",

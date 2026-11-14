@@ -65,6 +65,7 @@ from app.observability import ratelimit
 from app.observability import service as observability
 from app.people import service as people
 from app.privacy import service as privacy
+from app.scheduling import service as scheduling
 from app.tenancy import service
 
 _UUID = re.compile(
@@ -2051,6 +2052,198 @@ def owned(session: dict[str, Any], identity_id: str) -> str:
     if session["identity_id"] != identity_id:
         raise NotFound("identity_not_found")
     return identity_id
+
+
+
+# ------------------------------------------------------------------ MOD-019 scheduling
+#
+# **No `timezone` on any body.** Paragraph 4150 makes it location-specific and the service
+# reads it from the location: a caller able to send one could schedule an 18:00 class in a zone
+# the site is not in, which reads correctly in an admin screen and is an hour wrong on every
+# member's phone.
+
+
+class RecurrenceBody(BaseModel):
+    """A recurrence, as a caller states it. **The timezone is absent on purpose.**"""
+
+    frequency: Literal["once", "daily", "weekly", "monthly_by_weekday"]
+    #: Local to the location, as HH:MM or HH:MM:SS.
+    local_time: str = Field(min_length=4, max_length=8)
+    duration_minutes: int = Field(ge=1, le=1440)
+    starts_on: date
+    until: date
+    weekdays: list[int] = Field(default_factory=list, max_length=7)
+    week_of_month: int | None = Field(default=None, ge=-1, le=4)
+    excluded_dates: list[date] = Field(default_factory=list, max_length=200)
+
+
+class CapacityPolicyBody(BaseModel):
+    capacity: int = Field(ge=1, le=10000)
+    setup_minutes: int = Field(default=0, ge=0, le=120)
+    cleanup_minutes: int = Field(default=0, ge=0, le=120)
+    waitlist_capacity: int = Field(default=0, ge=0, le=10000)
+    overbook_places: int = Field(default=0, ge=0, le=10000)
+
+
+class RequirementBody(BaseModel):
+    """What a session needs: a kind and a count, or a particular resource."""
+
+    kind: Literal["staff", "room", "zone", "court", "equipment", "service", "composite"]
+    quantity: int = Field(default=1, ge=1, le=10000)
+    resource_id: str | None = None
+
+
+class RestrictionBody(BaseModel):
+    kind: Literal["min_age", "max_age", "skill", "entitlement"]
+    value: str = Field(min_length=1, max_length=63)
+
+
+class SchedulingResourceBody(BaseModel):
+    """**No `brand_id`.** It is derived from the location, which is MOD-008's "derive a scope,
+    never accept one": a caller sending both could put a location-scoped resource under a brand
+    that does not own it."""
+
+    resource_code: str = Field(min_length=2, max_length=48)
+    resource_kind: Literal[
+        "staff", "room", "zone", "court", "equipment", "service", "composite"]
+    display_name: str = Field(min_length=1, max_length=200)
+    quantity: int = Field(default=1, ge=1, le=10000)
+    location_id: str | None = None
+    person_id: str | None = None
+    correlation_id: str
+
+
+class AvailabilityBody(BaseModel):
+    """A rota window. Weekly or dated, never both -- "every Tuesday" and "this Tuesday" are
+    different rows."""
+
+    resource_id: str
+    window_kind: Literal["working", "break", "time_off"]
+    starts_at: str = Field(min_length=4, max_length=8)
+    ends_at: str = Field(min_length=4, max_length=8)
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    on_date: date | None = None
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+class ScheduleTemplateBody(BaseModel):
+    template_code: str = Field(min_length=2, max_length=48)
+    display_name: str = Field(min_length=1, max_length=200)
+    service_resource_id: str
+    location_id: str
+    rule: RecurrenceBody
+    policy: CapacityPolicyBody
+    requirements: list[RequirementBody] = Field(min_length=1, max_length=20)
+    restrictions: list[RestrictionBody] = Field(default_factory=list, max_length=20)
+    correlation_id: str
+
+
+class PreviewScheduleBody(BaseModel):
+    """What a publish would do, before it does it. The same fields the publish takes, so the
+    two cannot be asked different questions."""
+
+    rule: RecurrenceBody | None = None
+    effective_from: date | None = None
+
+
+class PublishScheduleBody(BaseModel):
+    """**`acknowledged_impact` is what paragraph 1841's Critical Control costs.** A publish
+    that moves or cancels a session somebody has booked is refused until it is acknowledged,
+    and the preview is a separate read so the acknowledgement is informed."""
+
+    rule: RecurrenceBody | None = None
+    effective_from: date | None = None
+    acknowledged_impact: bool = False
+    correlation_id: str
+
+
+class GenerateSessionsBody(BaseModel):
+    """**`override_reason` is a permission, not a flag.** Sending one routes the request to
+    `scheduling.conflict.override`, which is paragraph 1842's "permission and reason"."""
+
+    from_date: date | None = None
+    override_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+class SubstituteBody(BaseModel):
+    replacement_resource_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    override_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    correlation_id: str
+
+
+class CancelSessionBody(BaseModel):
+    """**The cancellation reason is a declared value**, because what a member is owed depends
+    on it: an instructor's illness and a weather closure are different conversations."""
+
+    cancellation_reason: Literal[
+        "instructor_unavailable", "resource_unavailable", "insufficient_bookings",
+        "facility_closed", "weather", "other"]
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class RelocateSessionBody(BaseModel):
+    to_location_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class HandoffBody(BaseModel):
+    to_resource_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class TakeHoldBody(BaseModel):
+    """Take places on a session. MOD-020 will be the main caller; a front desk is the other.
+
+    **No `age_years` and no `entitlements`.** The session's restrictions are evaluated here and
+    the facts are derived from the person this hold names: their birth date is in
+    `ppl_persons`, on this plane, behind the foreign key the hold already carries, and their
+    entitlement grants are one join further. An earlier version took both from the body with a
+    written defence that this module could not reach them, and a reviewer used it to put a
+    fourteen-year-old in an 18+ class on the cheapest permission in the module.
+
+    `skills` stays, because nothing in this build stores a skill -- so the caller's word is the
+    only source there is, which is the one case where accepting it is honest.
+    """
+
+    person_id: str
+    places: int = Field(default=1, ge=1, le=100)
+    source_kind: Literal["booking", "walk_in", "migration"]
+    source_ref: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    correlation_id: str
+
+
+class SettleHoldBody(BaseModel):
+    attended: bool = False
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class RetireBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+def _recurrence(rule: RecurrenceBody) -> dict[str, Any]:
+    """A recurrence body as the service takes it.
+
+    **No timezone**: the service reads it from the location, and leaving it out of this
+    conversion is what makes that impossible to bypass from a route.
+    """
+    return {
+        "frequency": rule.frequency, "local_time": rule.local_time,
+        "duration_minutes": rule.duration_minutes,
+        "starts_on": rule.starts_on.isoformat(), "until": rule.until.isoformat(),
+        "weekdays": rule.weekdays, "week_of_month": rule.week_of_month,
+        "excluded_dates": [d.isoformat() for d in rule.excluded_dates],
+    }
 
 
 def create_app(
@@ -5883,6 +6076,312 @@ def create_app(
             idempotency_key=body.idempotency_key,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
+
+    # ------------------------------------------------------------- MOD-019 scheduling
+    #
+    # **Every route asks the gate, and four of them charge a different permission depending on
+    # what the body says.** `override_reason` on a generation or a substitution buys the right
+    # to publish over a conflict, which paragraph 1842 makes a Critical Control; and
+    # `acknowledged_impact` on a publish buys the right to move or cancel a session somebody has
+    # booked, which is paragraph 1841's. Neither is free. That is the remedy MOD-009 applied to
+    # `consent_subject` and MOD-013 to a critical notification: a body field that buys an
+    # authority is a permission, so charge one.
+    #
+    # The count in this comment was three and two routes did it -- which is the kind of claim
+    # `CLAUDE.md` records as a finding in its own right, so it is checked by
+    # `test_gating.py` rather than asserted here.
+
+    @app.post("/scheduling/resources", status_code=201)
+    def create_scheduling_resource(
+        tenant_id: TenantId, session: Session, body: SchedulingResourceBody
+    ) -> dict[str, Any]:
+        """CreateResource. OPS-01-R01."""
+        permit(session, "scheduling.resource.write", body.correlation_id)
+        return scheduling.create_resource(
+            tenant_pool, tenant_id, resource_code=body.resource_code,
+            resource_kind=body.resource_kind, display_name=body.display_name,
+            quantity=body.quantity,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            person_id=optional_uuid(body.person_id, "person_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/scheduling/resources")
+    def list_scheduling_resources(
+        tenant_id: TenantId, session: Session, kind: str | None = None,
+        location_id: str | None = None, include_retired: bool = False,
+        limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    ) -> dict[str, Any]:
+        """The resource list."""
+        permit(session, "scheduling.schedule.read")
+        return scheduling.list_resources(
+            tenant_pool, tenant_id, kind=kind,
+            location_id=optional_uuid(location_id, "location_id"),
+            include_retired=include_retired, limit=limit)
+
+    @app.post("/scheduling/resources/{resource_id}/retire")
+    def retire_scheduling_resource(
+        tenant_id: TenantId, session: Session, resource_id: str, body: CommercialActionBody
+    ) -> dict[str, Any]:
+        """Withdraw a resource. The sessions that hold it are listed, not cancelled."""
+        permit(session, "scheduling.resource.write", body.correlation_id)
+        return scheduling.retire_resource(
+            tenant_pool, tenant_id, require_uuid(resource_id, "resource_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/availability", status_code=201)
+    def set_scheduling_availability(
+        tenant_id: TenantId, session: Session, body: AvailabilityBody
+    ) -> dict[str, Any]:
+        """SetAvailability. OPS-01-R03."""
+        permit(session, "scheduling.availability.write", body.correlation_id)
+        try:
+            starts = clock_time.fromisoformat(body.starts_at)
+            ends = clock_time.fromisoformat(body.ends_at)
+        except ValueError:
+            raise InvalidRequest("a_window_time_is_hh_mm") from None
+        return scheduling.set_availability(
+            tenant_pool, tenant_id,
+            resource_id=require_uuid(body.resource_id, "resource_id"),
+            window_kind=body.window_kind, starts_at=starts, ends_at=ends,
+            weekday=body.weekday, on_date=body.on_date, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/templates", status_code=201)
+    def draft_schedule_template(
+        tenant_id: TenantId, session: Session, body: ScheduleTemplateBody
+    ) -> dict[str, Any]:
+        """Draft a schedule template. **Drafting and publishing are two acts.**"""
+        permit(session, "scheduling.template.write", body.correlation_id)
+        return scheduling.draft_template(
+            tenant_pool, tenant_id, template_code=body.template_code,
+            display_name=body.display_name,
+            service_resource_id=require_uuid(
+                body.service_resource_id, "service_resource_id"),
+            location_id=require_uuid(body.location_id, "location_id"),
+            rule=_recurrence(body.rule), policy=body.policy.model_dump(),
+            requirements=[
+                {"kind": r.kind, "quantity": r.quantity,
+                 "resource_id": optional_uuid(r.resource_id, "resource_id")}
+                for r in body.requirements],
+            restrictions=[{"kind": r.kind, "value": r.value} for r in body.restrictions],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/templates/{template_id}/preview")
+    def preview_schedule_publish(
+        tenant_id: TenantId, session: Session, template_id: str,
+        body: PreviewScheduleBody,
+    ) -> dict[str, Any]:
+        """The impact preview paragraph 1841 requires *before* publication.
+
+        **It takes the rule somebody is about to publish.** `preview_publish` has had a `rule`
+        parameter from the start and nothing passed it, so the preview re-derived the live rule
+        and compared it with itself: an operator who did the right thing -- read the preview,
+        then publish -- was told "nothing changes" and then moved eight classes and cancelled
+        one a member had booked. A read that cannot answer about the proposed change is not the
+        informed half of an acknowledgement.
+
+        **A POST that writes nothing**, because the rule is a structured body and a GET cannot
+        carry one honestly. It is gated on the read permission, and the gating sweep knows it
+        is a read.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.preview_publish(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            rule=_recurrence(body.rule) if body.rule is not None else None,
+            effective_from=body.effective_from)
+
+    @app.post("/scheduling/templates/{template_id}/publish")
+    def publish_schedule_template(
+        tenant_id: TenantId, session: Session, template_id: str,
+        body: PublishScheduleBody,
+    ) -> dict[str, Any]:
+        """PublishSchedule. OPS-01-R06."""
+        # **Acknowledging impact is a different permission.** Paragraph 1841 makes the
+        # assessment a Critical Control, and a bool on the body bought the authority to move
+        # eight classes and cancel one somebody had booked for the price of an ordinary
+        # publish. That is MOD-013's `priority: "critical"` finding, and the remedy there was
+        # the same: a body field that buys an authority is a permission, so charge one.
+        permit(session,
+               "scheduling.schedule.publish_disruptive" if body.acknowledged_impact
+               else "scheduling.schedule.publish",
+               body.correlation_id)
+        return scheduling.publish_template(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            rule=_recurrence(body.rule) if body.rule is not None else None,
+            effective_from=body.effective_from,
+            acknowledged_impact=body.acknowledged_impact,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/templates/{template_id}/retire")
+    def retire_schedule_template(
+        tenant_id: TenantId, session: Session, template_id: str, body: RetireBody
+    ) -> dict[str, Any]:
+        """Stop a recurring schedule. Generated sessions are left standing."""
+        permit(session, "scheduling.template.write", body.correlation_id)
+        return scheduling.retire_template(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/templates/{template_id}/sessions", status_code=201)
+    def generate_schedule_sessions(
+        tenant_id: TenantId, session: Session, template_id: str,
+        body: GenerateSessionsBody,
+    ) -> dict[str, Any]:
+        """CreateSession, in bulk from the live rule. OPS-01-R02.
+
+        **An override costs the override permission.** Paragraph 1842: "Resource conflicts
+        cannot be overridden without permission and reason", so sending a reason routes this
+        to `scheduling.conflict.override` instead of the publish permission.
+        """
+        permit(session,
+               "scheduling.conflict.override" if body.override_reason
+               else "scheduling.schedule.publish",
+               body.correlation_id)
+        return scheduling.generate_sessions(
+            tenant_pool, tenant_id, require_uuid(template_id, "template_id"),
+            override_reason=body.override_reason, from_date=body.from_date,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.get("/scheduling/calendar")
+    def read_schedule_calendar(
+        tenant_id: TenantId, session: Session, location_id: str, from_date: date,
+        to_date: date, include_cancelled: bool = False,
+    ) -> dict[str, Any]:
+        """The calendar. Paragraph 1844's "one calendar", bounded to 62 days."""
+        permit(session, "scheduling.schedule.read")
+        return scheduling.schedule_for(
+            tenant_pool, tenant_id,
+            location_id=require_uuid(location_id, "location_id"),
+            from_date=from_date, to_date=to_date,
+            include_cancelled=include_cancelled)
+
+    @app.get("/scheduling/sessions/{session_id}")
+    def read_schedule_session(
+        tenant_id: TenantId, session: Session, session_id: str
+    ) -> dict[str, Any]:
+        """One session with its resources, its changes and how full it is.
+
+        **A change's reason is masked unless the caller could have written one.** It is prose
+        an operator typed about why a class changed, which is where a health fact goes in
+        practice -- a reviewer read "she is having chemotherapy on Tuesdays" out of this route
+        holding only the routine schedule read, while `/people/{id}` refused them. So the
+        reason needs `scheduling.session.change`, and the masking is the gate's own permission
+        set rather than a second reading of the assignment rows.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.session_detail(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            may_read_reasons=(
+                "scheduling.session.change" in held_permissions(session)))
+
+    @app.get("/scheduling/sessions/{session_id}/conflicts")
+    def read_session_conflicts(
+        tenant_id: TenantId, session: Session, session_id: str
+    ) -> dict[str, Any]:
+        """DetectConflict for a published session. OPS-01-R05.
+
+        A read, because a schedule that was clean when it was generated stops being clean when
+        somebody else books the room.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.detect_session_conflicts(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"))
+
+    @app.get("/scheduling/sessions/{session_id}/eligibility")
+    def read_session_eligibility(
+        tenant_id: TenantId, session: Session, session_id: str, person_id: str,
+        skills: Annotated[list[str] | None, Query(max_length=20)] = None,
+    ) -> dict[str, Any]:
+        """Whether this person could take a place, and why not.
+
+        **It names a person and the facts are derived from them**, so this read and the hold it
+        precedes cannot disagree. Paragraph 1892 makes an understandable denial a Critical
+        Control, and a denial computed from figures the caller sent is not one.
+
+        `skills` is the exception and the reason is in `TakeHoldBody`.
+        """
+        permit(session, "scheduling.schedule.read")
+        return scheduling.check_eligibility(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            person_id=require_uuid(person_id, "person_id"), skills=skills)
+
+    @app.post("/scheduling/sessions/{session_id}/substitute")
+    def substitute_session_instructor(
+        tenant_id: TenantId, session: Session, session_id: str, body: SubstituteBody
+    ) -> dict[str, Any]:
+        """SubstituteInstructor. OPS-01-R07."""
+        permit(session,
+               "scheduling.conflict.override" if body.override_reason
+               else "scheduling.session.change",
+               body.correlation_id)
+        return scheduling.substitute_instructor(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            replacement_resource_id=require_uuid(
+                body.replacement_resource_id, "replacement_resource_id"),
+            reason=body.reason, override_reason=body.override_reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/sessions/{session_id}/cancel")
+    def cancel_schedule_session(
+        tenant_id: TenantId, session: Session, session_id: str, body: CancelSessionBody
+    ) -> dict[str, Any]:
+        """Cancel a session and release its held places. OPS-01-R07."""
+        permit(session, "scheduling.session.change", body.correlation_id)
+        return scheduling.cancel_session(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            cancellation_reason=body.cancellation_reason, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/sessions/{session_id}/relocate")
+    def relocate_schedule_session(
+        tenant_id: TenantId, session: Session, session_id: str,
+        body: RelocateSessionBody,
+    ) -> dict[str, Any]:
+        """Move a session to another location. Refused within an hour of the start."""
+        permit(session, "scheduling.session.change", body.correlation_id)
+        return scheduling.relocate_session(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            to_location_id=require_uuid(body.to_location_id, "to_location_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/sessions/{session_id}/handoff")
+    def hand_off_session_attendance(
+        tenant_id: TenantId, session: Session, session_id: str, body: HandoffBody
+    ) -> dict[str, Any]:
+        """Who takes the attendance. OPS-01-R07's handoff."""
+        permit(session, "scheduling.session.change", body.correlation_id)
+        return scheduling.hand_off_attendance(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            to_resource_id=require_uuid(body.to_resource_id, "to_resource_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/sessions/{session_id}/holds", status_code=201)
+    def take_session_hold(
+        tenant_id: TenantId, session: Session, session_id: str, body: TakeHoldBody
+    ) -> dict[str, Any]:
+        """Take places on a session. The atomic reservation paragraph 4146 asks for."""
+        permit(session, "scheduling.place.hold", body.correlation_id)
+        return scheduling.take_hold(
+            tenant_pool, tenant_id, require_uuid(session_id, "session_id"),
+            person_id=require_uuid(body.person_id, "person_id"), places=body.places,
+            source_kind=body.source_kind, source_ref=body.source_ref,
+            idempotency_key=body.idempotency_key, skills=body.skills,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
+
+    @app.post("/scheduling/holds/{hold_id}/settle")
+    def settle_session_hold(
+        tenant_id: TenantId, session: Session, hold_id: str, body: SettleHoldBody
+    ) -> dict[str, Any]:
+        """Settle a held place: released, or attended. Settled once."""
+        permit(session, "scheduling.place.hold", body.correlation_id)
+        return scheduling.release_hold(
+            tenant_pool, tenant_id, require_uuid(hold_id, "hold_id"),
+            attended=body.attended, reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id)
 
     return app
 
