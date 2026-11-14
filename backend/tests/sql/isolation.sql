@@ -4083,4 +4083,1576 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 48/48 checks passed'
+
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-012)
+-- An install authorizes a third party to reach a tenant's data, so a leak here is not a read of
+-- another tenant's row -- it is one tenant able to see, and in the worst case to widen, which
+-- provider accounts another tenant is connected to and with which scopes.
+BEGIN;
+SET LOCAL ROLE veyro_cp_platform;
+-- Registered as a draft and published afterwards, which is the only order the catalogue
+-- admits: `int_definition_versions_draft_only` refuses a write once the parent is published,
+-- so a seed that published first could not declare its own scopes.
+INSERT INTO plt01_platform.int_definitions
+    (definition_key, version, provider, display_name, criticality, support_owner, description)
+VALUES ('acme.payments', 1, 'Acme', 'Acme Payments', 'critical', 'platform-ops',
+        'Takes card payments');
+INSERT INTO plt01_platform.int_definition_versions
+    (definition_key, version, kind, name, required, field_type, enum_values)
+VALUES ('acme.payments', 1, 'capability', 'payments', false, NULL, NULL),
+       ('acme.payments', 1, 'scope', 'payments.charge', true, NULL, NULL),
+       ('acme.payments', 1, 'scope', 'payments.refund', false, NULL, NULL),
+       ('acme.payments', 1, 'region', 'eu-west', false, NULL, NULL),
+       ('acme.payments', 1, 'config', 'merchant_id', true, 'reference', NULL);
+UPDATE plt01_platform.int_definitions SET status = 'published', published_at = now()
+WHERE definition_key = 'acme.payments' AND version = 1;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.int_installs
+    (tenant_id, install_id, definition_key, definition_version, definition_snapshot,
+     criticality, config, state, fallback_plan, reconciliation_plan, exit_plan, installed_by,
+     correlation_id)
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000001', 'acme.payments', 1,
+        '{"definition_key": "acme.payments", "version": 1}'::jsonb, 'critical',
+        '{"merchant_id": "m-1"}'::jsonb, 'active', 'manual terminal', 'daily settlement file',
+        'export and switch provider', :'actor', :'actor');
+INSERT INTO plt01.int_connections
+    (tenant_id, connection_id, install_id, external_account_ref, region, granted_scopes,
+     state, authorized_at, authorized_by, validated_at, validated_by, validation_evidence,
+     correlation_id)
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000002',
+        '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west',
+        ARRAY['payments.charge'], 'validated', now(), :'actor', now(), :'actor',
+        'test charge accepted', :'actor');
+INSERT INTO plt01.int_credential_refs
+    (tenant_id, credential_ref_id, connection_id, vault_ref, scopes, issued_at, expires_at,
+     recorded_by, correlation_id)
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000003',
+        '99999999-1000-4000-8000-000000000002', 'vault://acme/live-1',
+        ARRAY['payments.charge'], now(), now() + INTERVAL '90 days', :'actor', :'actor');
+INSERT INTO plt01.int_sync_cursors
+    (tenant_id, cursor_id, connection_id, resource, position, observed_at)
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000004',
+        '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-1', now());
+INSERT INTO plt01.int_connector_runs
+    (tenant_id, run_id, connection_id, resource, status, started_by, correlation_id)
+VALUES (:'tenant_a', '99999999-1000-4000-8000-000000000005',
+        '99999999-1000-4000-8000-000000000002', 'settlements', 'running', :'actor', :'actor');
+COMMIT;
+
+-- Tenant B holds one install of its own, so a leaked predicate shows up as a count above the
+-- expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.int_installs
+    (tenant_id, definition_key, definition_version, definition_snapshot, criticality, config,
+     installed_by, correlation_id)
+VALUES (:'tenant_b', 'acme.payments', 1,
+        '{"definition_key": "acme.payments", "version": 1}'::jsonb, 'critical',
+        '{"merchant_id": "m-2"}'::jsonb, :'actor', :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 49. int tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['int_connections', 'int_credential_refs', 'int_sync_cursors',
+                               'int_connector_runs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 49 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.int_installs) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: tenant B sees % installs, expected its own 1',
+            (SELECT count(*) FROM plt01.int_installs);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.int_installs WHERE config ->> 'merchant_id' = 'm-1') THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: tenant B read tenant A''s merchant configuration';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.int_installs) <> 1
+       OR (SELECT count(*) FROM plt01.int_connections) <> 1
+       OR (SELECT count(*) FROM plt01.int_credential_refs) <> 1
+       OR (SELECT count(*) FROM plt01.int_sync_cursors) <> 1
+       OR (SELECT count(*) FROM plt01.int_connector_runs) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: tenant A cannot see its own integration rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- The catalogue sweep, with both halves of the policy, the owner check, the count guard, the
+-- one-permissive-policy rule and the tenant-leading primary key -- the full set checks 44 ended
+-- up with after MOD-011's review, written in from the start here rather than added afterwards.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    bad text;
+BEGIN
+    SELECT string_agg(relname, ', ') INTO bad
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'int\_%'
+      AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without ENABLE and FORCE RLS: %', bad;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+          AND relname LIKE 'int\_%') < 5 THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: fewer than 5 int_ tables, so the sweep proved nothing';
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'int\_%'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: an int_ table is not owned by the migrator';
+    END IF;
+    SELECT string_agg(c.relname, ', ') INTO bad
+    FROM pg_class c
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'plt01' AND p.tablename = c.relname
+     AND p.qual = '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
+     AND p.with_check = p.qual
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'int\_%' AND p.policyname IS NULL;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without the exact tenant predicate in '
+            'both USING and WITH CHECK: %', bad;
+    END IF;
+    SELECT string_agg(c.relname || ' (' || n::text || ')', ', ') INTO bad
+    FROM pg_class c
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS n FROM pg_policies p
+        WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
+    ) counted
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'int\_%' AND counted.n <> 1;
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables without exactly one permissive policy: %',
+            bad;
+    END IF;
+    SELECT string_agg(c.relname, ', ') INTO bad
+    FROM pg_class c
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'int\_%'
+      AND (SELECT attname FROM pg_attribute
+           WHERE attrelid = c.oid AND attnum = i.indkey[0]) <> 'tenant_id';
+    IF bad IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: int_ tables whose primary key does not lead with '
+            'tenant_id: %', bad;
+    END IF;
+END $$;
+COMMIT;
+
+-- The owner, and then the worker. Both seats, because a role nobody sits as is a role nothing
+-- is proved about -- the lesson MOD-010 learned for `evt_` and MOD-011 inherited by scoping the
+-- fix to one module's prefix.
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['int_installs', 'int_connections', 'int_credential_refs',
+                               'int_sync_cursors', 'int_connector_runs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 49 FAILED: the table owner read % rows of %, so FORCE RLS is off',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['int_connections', 'int_credential_refs', 'int_sync_cursors',
+                               'int_connector_runs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 49 FAILED: the worker read % rows of tenant A in % from '
+                'tenant B''s context', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.int_installs) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 49 FAILED: the worker sees % installs in tenant B, expected 1',
+            (SELECT count(*) FROM plt01.int_installs);
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['int_installs', 'int_connections', 'int_credential_refs',
+                               'int_sync_cursors', 'int_connector_runs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 49 FAILED: the worker read % rows of % with no tenant context',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 50. fail closed, int tables
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['int_installs', 'int_connections', 'int_credential_refs',
+                               'int_sync_cursors', 'int_connector_runs']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 50 FAILED: % returned % rows with no tenant context',
+                tbl, seen;
+        END IF;
+    END LOOP;
+    -- A connection written with no context is a third party authorized against nobody, which
+    -- would read as authorized for whichever tenant's query found it.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region, granted_scopes,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-1000-4000-8000-000000000001', 'acct_x', 'eu-west',
+                ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 50 FAILED: a connection was authorized with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-1000-4000-8000-000000000002', 'vault://x',
+                ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 50 FAILED: a credential reference was written with no context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot, criticality,
+             installed_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222', 'acme.payments', 1, '{}'::jsonb,
+                'convenience', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 50 FAILED: an install was written into another tenant';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 51. cross-tenant parents
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region, granted_scopes,
+             correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-1000-4000-8000-000000000001', 'acct_borrowed', 'eu-west',
+                ARRAY['payments.charge'], '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 51 FAILED: a connection was hung off another tenant''s install';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, connection_id, vault_ref, scopes, issued_at, recorded_by,
+             correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-1000-4000-8000-000000000002', 'vault://borrowed',
+                ARRAY['payments.charge'], now(), '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 51 FAILED: a credential was attached to another tenant''s '
+            'connection';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, started_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-1000-4000-8000-000000000002', 'settlements',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 51 FAILED: a run was started on another tenant''s connection';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-1000-4000-8000-000000000002', 'settlements', 'cur-x', now());
+        RAISE EXCEPTION 'CHECK 51 FAILED: a cursor was set on another tenant''s connection';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The registry reference, swept from the catalogue and sampled behaviourally -- the shape
+-- check 46 ended up with after a reviewer dropped seven of eight foreign keys in silence.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    missing text;
+BEGIN
+    SELECT string_agg(c.relname, ', ') INTO missing
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'int\_%'
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint fk
+          WHERE fk.conrelid = c.oid AND fk.contype = 'f'
+            AND fk.confrelid = 'plt01_platform.tenants'::regclass
+            AND fk.conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                                   WHERE attrelid = c.oid AND attname = 'tenant_id')]);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 51 FAILED: int_ tables with no tenant registry foreign key: %',
+            missing;
+    END IF;
+
+    -- **And every other parent reference, compared in full against the catalogue.** The first
+    -- version swept the registry reference and *sampled* four intra-module parents
+    -- behaviourally, which left two droppable in silence: the rotation chain's self-reference,
+    -- which is the only thing keeping a credential's predecessor inside its own tenant, and
+    -- the entries table's reference to the definition it belongs to, without which scopes can
+    -- be written for a version nobody registered. That is MOD-011's shape one level in -- one
+    -- case written and the rest asserted -- so this compares the set rather than listing the
+    -- ones somebody remembered.
+    WITH live AS (
+        SELECT c.conrelid::regclass::text || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum)
+               || ' -> ' || c.confrelid::regclass::text AS fk
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE c.contype = 'f' AND t.relname LIKE 'int\_%'
+          AND t.relnamespace IN ('plt01'::regnamespace, 'plt01_platform'::regnamespace)
+    ), expected(fk) AS (VALUES
+        ('plt01.int_installs: tenant_id -> plt01_platform.tenants'),
+        ('plt01.int_connections: tenant_id -> plt01_platform.tenants'),
+        ('plt01.int_connections: tenant_id,install_id -> plt01.int_installs'),
+        ('plt01.int_credential_refs: tenant_id -> plt01_platform.tenants'),
+        ('plt01.int_credential_refs: tenant_id,connection_id -> plt01.int_connections'),
+        ('plt01.int_credential_refs: tenant_id,supersedes_credential_ref_id -> plt01.int_credential_refs'),
+        ('plt01.int_sync_cursors: tenant_id -> plt01_platform.tenants'),
+        ('plt01.int_sync_cursors: tenant_id,connection_id -> plt01.int_connections'),
+        ('plt01.int_connector_runs: tenant_id -> plt01_platform.tenants'),
+        ('plt01.int_connector_runs: tenant_id,connection_id -> plt01.int_connections'),
+        ('plt01_platform.int_definition_versions: definition_key,version -> plt01_platform.int_definitions'))
+    SELECT string_agg(fk, '; ') INTO missing FROM (
+        (SELECT fk FROM expected EXCEPT SELECT fk FROM live)
+        UNION ALL
+        (SELECT fk FROM live EXCEPT SELECT fk FROM expected)
+    ) differences;
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 51 FAILED: foreign keys differ from the expected set: %',
+            missing;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE c.contype = 'f' AND t.relname = 'int_definition_versions'
+          AND c.confrelid = 'plt01_platform.int_definitions'::regclass) THEN
+        RAISE EXCEPTION 'CHECK 51 FAILED: a definition version''s entries may belong to a '
+            'definition nobody registered';
+    END IF;
+END $$;
+COMMIT;
+
+-- Behaviourally, for the two the first version did not reach.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, connection_id, vault_ref, scopes, issued_at,
+             supersedes_credential_ref_id, recorded_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '99999999-1000-4000-8000-000000000002', 'vault://x',
+                ARRAY['payments.charge'], now(), '99999999-1000-4000-8000-000000000003',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 51 FAILED: a rotation chain reached into another tenant';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_platform;
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name)
+        VALUES ('acme.never_registered', 7, 'scope', 'payments.charge');
+        RAISE EXCEPTION 'CHECK 51 FAILED: scopes were declared for a version nobody registered';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '44444444-4444-4444-8444-444444444444';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot, criticality,
+             installed_by, correlation_id)
+        VALUES ('44444444-4444-4444-8444-444444444444', 'acme.payments', 1, '{}'::jsonb,
+                'convenience', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 51 FAILED: an install was made for an unregistered tenant';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ------------------------------------------------- 52. a credential reference holds no secret
+-- **The control in this module is the absence of a column**, and an absence is exactly what a
+-- later migration adds back without anybody noticing. There is no vault in this repository, so
+-- `int_credential_refs` names where a secret lives and holds metadata about it; a column that
+-- could carry the value itself would turn every list route into one that returns credentials.
+--
+-- The column list is compared in full rather than checked for a denylist of suspicious names,
+-- because a denylist is what MOD-010's review showed a hand-written list of names is worth:
+-- `token`, `secret` and `api_key` are the names somebody would not use.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    -- **Every table's column list, not just the one the control is named after.** The first
+    -- version pinned `int_credential_refs` alone, which is where the "no column a secret could
+    -- go in" claim lives -- and a reviewer then added `access_token` to `int_connections`,
+    -- `api_key` to `int_installs` and `shared_secret` to `int_definitions`, each leaving the
+    -- suite at 54/54. The header's own reasoning is that an absence is what a later migration
+    -- adds back without anybody noticing, and the next migration's secret will not be on the
+    -- table that happens to be pinned.
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.int_connections',
+             'authorized_at,authorized_by,connection_id,correlation_id,created_at,external_account_ref,granted_scopes,install_id,region,revoke_reason,revoked_at,revoked_by,state,tenant_id,validated_at,validated_by,validation_evidence'),
+        ('plt01.int_connector_runs',
+             'attempts,claimed_until,conflicts,connection_id,correlation_id,finished_at,last_error,max_attempts,next_attempt_at,reconcile_correlation_id,reconciled_at,reconciled_by,reconciled_local,reconciled_matched,reconciled_provider,records_read,records_written,release_correlation_id,release_reason,released_at,released_by,resource,run_id,settle_correlation_id,settled_by,started_at,started_by,status,tenant_id'),
+        ('plt01.int_credential_refs',
+             'connection_id,correlation_id,credential_ref_id,expires_at,issued_at,recorded_at,recorded_by,retired_at,scopes,supersedes_credential_ref_id,tenant_id,vault_ref'),
+        ('plt01.int_installs',
+             'activated_at,config,correlation_id,criticality,definition_key,definition_snapshot,definition_version,disabled_at,exit_plan,fallback_plan,install_id,installed_at,installed_by,reconciliation_plan,state,tenant_id,uninstall_correlation_id,uninstall_reason,uninstalled_at,uninstalled_by'),
+        ('plt01.int_sync_cursors',
+             'conflict_policy,connection_id,cursor_id,observed_at,position,reset_at,reset_by,reset_reason,resource,tenant_id,updated_at'),
+        ('plt01_platform.int_definition_versions',
+             'definition_key,description,entry_id,enum_values,field_type,kind,name,required,version'),
+        ('plt01_platform.int_definitions',
+             'created_at,criticality,definition_key,description,display_name,provider,published_at,retired_at,status,support_owner,version'))
+    SELECT string_agg(e.tbl || ': ' || coalesce(a.actual, '(none)'), '; ') INTO wrong
+    FROM expected e
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = e.tbl::regclass AND att.attnum > 0 AND NOT att.attisdropped
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 52 FAILED: int_ columns are not the expected set, so a secret '
+            'may now have somewhere to live: %', wrong;
+    END IF;
+END $$;
+COMMIT;
+
+-- And the same for the definition catalogue's field types: there is no `secret` type, so a
+-- definition cannot ask a tenant to paste a credential into a configuration value either. On
+-- the platform seat, because the tenant-facing role cannot read that schema at all -- which
+-- check 53 asserts in its own right.
+BEGIN;
+SET LOCAL ROLE veyro_cp_platform;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM plt01_platform.int_definition_versions
+        WHERE field_type IS NOT NULL
+          AND field_type NOT IN ('string', 'integer', 'boolean', 'reference', 'enum')) THEN
+        RAISE EXCEPTION 'CHECK 52 FAILED: a definition declares a configuration field type '
+            'outside the closed set';
+    END IF;
+    -- On a *draft* parent, because a published one is refused by the trigger before the field
+    -- type is ever looked at -- and a case that passes because a different control fired is
+    -- the vacuity this suite has now been bitten by twice.
+    INSERT INTO plt01_platform.int_definitions
+        (definition_key, version, provider, display_name, criticality, support_owner,
+         description)
+    VALUES ('acme.draft', 1, 'Acme', 'Draft', 'convenience', 'ops', 'd');
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, field_type)
+        VALUES ('acme.draft', 1, 'config', 'api_key', 'secret');
+        RAISE EXCEPTION 'CHECK 52 FAILED: a definition declared a secret configuration field, '
+            'which is a credential in a column every list route reads';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 53. integration privileges
+-- Two things this module needs the privilege layer for, both of which are the whole mechanism
+-- behind a sentence somebody will later rely on.
+--
+--   * **`granted_scopes` carries no UPDATE.** Widening what a third party may reach is a new
+--     authorization with its own decision, not an edit to the old row -- which is the only way
+--     "what did this connection hold on the fourteenth" stays answerable.
+--   * **A credential reference is written once and retired.** The vault reference, the scopes
+--     and the expiry are what a breach review reads, and a rotation is a new row.
+--
+-- Swept per column and per role against the catalogue, with the table list required to cover
+-- every `int_` table, because a hand-written list of either is what the last two reviews broke.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('int_installs',
+         'activated_at,config,disabled_at,exit_plan,fallback_plan,reconciliation_plan,state,'
+         'uninstall_correlation_id,uninstall_reason,uninstalled_at,uninstalled_by'),
+        ('int_connections',
+         'authorized_at,authorized_by,revoke_reason,revoked_at,revoked_by,state,'
+         'validated_at,validated_by,validation_evidence'),
+        ('int_credential_refs', 'retired_at'),
+        ('int_sync_cursors',
+         'conflict_policy,observed_at,position,reset_at,reset_by,reset_reason,updated_at'),
+        ('int_connector_runs',
+         'attempts,claimed_until,conflicts,finished_at,last_error,next_attempt_at,'
+         'reconcile_correlation_id,reconciled_at,reconciled_by,reconciled_local,'
+         'reconciled_matched,reconciled_provider,records_read,records_written,'
+         'release_correlation_id,release_reason,released_at,released_by,'
+         'settle_correlation_id,settled_by,status'))
+    SELECT string_agg(
+               e.tbl || ' / ' || g.grantee || ': ' || coalesce(a.actual, '(none)'), '; ')
+    INTO wrong
+    FROM expected e
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS g(grantee)
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = ('plt01.' || e.tbl)::regclass
+          AND att.attnum > 0 AND NOT att.attisdropped
+          AND has_column_privilege(g.grantee, att.attrelid, att.attname, 'UPDATE')
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: UPDATE column grants differ from the expected set: %',
+            wrong;
+    END IF;
+
+    SELECT string_agg(c.relname, ', ') INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'int\_%'
+      AND c.relname NOT IN ('int_installs', 'int_connections', 'int_credential_refs',
+                            'int_sync_cursors', 'int_connector_runs');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: int_ tables with no stated UPDATE expectation: %',
+            wrong;
+    END IF;
+
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'int\_%'
+          AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
+          AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'int\_%' AND acl.grantee <> 0
+          AND pg_get_userbyid(acl.grantee)
+              NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: an int_ table is granted to somebody unexpected';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'int\_%' AND acl.grantee = 0) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: an int_ table carries a PUBLIC grant';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c
+        JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0
+                             AND NOT att.attisdropped AND att.attacl IS NOT NULL,
+        LATERAL aclexplode(att.attacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'int\_%'
+          AND (acl.grantee = 0
+               OR acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')
+               OR pg_get_userbyid(acl.grantee)
+                  NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator'))) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: a column-level grant is PUBLIC, is REFERENCES, or '
+            'names a role outside the three expected ones';
+    END IF;
+
+    -- Behaviourally, because a catalogue row is a claim about behaviour. Each of these is the
+    -- rewrite somebody with a motive would reach for.
+    BEGIN
+        UPDATE plt01.int_connections SET granted_scopes = ARRAY['payments.charge',
+                                                                'payments.refund'];
+        RAISE EXCEPTION 'CHECK 53 FAILED: a connection''s granted scopes were widened in place';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.int_credential_refs SET vault_ref = 'vault://somewhere-else';
+        RAISE EXCEPTION 'CHECK 53 FAILED: a credential reference was repointed';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.int_credential_refs SET scopes = ARRAY['payments.refund'];
+        RAISE EXCEPTION 'CHECK 53 FAILED: a credential reference''s scopes were rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.int_credential_refs SET expires_at = now() + INTERVAL '10 years';
+        RAISE EXCEPTION 'CHECK 53 FAILED: a credential reference''s expiry was extended';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.int_installs SET definition_snapshot = '{"version": 99}'::jsonb;
+        RAISE EXCEPTION 'CHECK 53 FAILED: an install''s definition snapshot was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.int_connector_runs SET connection_id = gen_random_uuid();
+        RAISE EXCEPTION 'CHECK 53 FAILED: a run was moved to another connection';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.int_connections;
+        RAISE EXCEPTION 'CHECK 53 FAILED: a connection was deleted rather than revoked';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The platform-plane catalogue is unreachable from either runtime role, in both directions:
+-- no grant on the tables and no USAGE on the schema. The plan catalogue gets the same check,
+-- and this one matters for a reason that one does not have -- a definition declares the scopes
+-- an install may grant a third party, so a tenant-facing role able to write one would be a
+-- tenant-facing role that chooses what it is allowed to hand out.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01_platform'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'int\_%'
+          AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: a runtime role is granted the definition catalogue';
+    END IF;
+    -- Not USAGE on the schema: both runtime roles hold that deliberately, because the D6.3
+    -- allowlist functions live there and EXECUTE needs it. `0001_roles_and_schemas.sql` says
+    -- so: "object privileges are granted per table by the migration that creates it, so a new
+    -- table is unreachable until its own migration says who may read it." The property is
+    -- therefore the absence of a *table* privilege, which the assertion above covers and this
+    -- one proves by attempting the read.
+    IF has_table_privilege('veyro_cp_app', 'plt01_platform.int_definitions', 'SELECT')
+       OR has_table_privilege('veyro_cp_worker', 'plt01_platform.int_definitions', 'SELECT')
+       OR has_table_privilege('veyro_cp_app', 'plt01_platform.int_definition_versions',
+                              'SELECT') THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: a runtime role may select the definition catalogue';
+    END IF;
+    BEGIN
+        PERFORM count(*) FROM plt01_platform.int_definitions;
+        RAISE EXCEPTION 'CHECK 53 FAILED: the app role read the definition catalogue';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- A published definition version is immutable, which is what makes an install answerable: the
+-- scopes on the version are the permissions a third party was granted, and a version that
+-- could be edited afterwards means nobody can say what an install actually authorized.
+BEGIN;
+SET LOCAL ROLE veyro_cp_platform;
+DO $$
+DECLARE
+    actual text;
+BEGIN
+    SELECT coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)') INTO actual
+    FROM pg_attribute att
+    WHERE att.attrelid = 'plt01_platform.int_definitions'::regclass
+      AND att.attnum > 0 AND NOT att.attisdropped
+      AND has_column_privilege('veyro_cp_platform', att.attrelid, att.attname, 'UPDATE');
+    IF actual <> 'published_at,retired_at,status' THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: the platform role may update % on int_definitions',
+            actual;
+    END IF;
+    SELECT coalesce(string_agg(att.attname, ',' ORDER BY att.attname), '(none)') INTO actual
+    FROM pg_attribute att
+    WHERE att.attrelid = 'plt01_platform.int_definition_versions'::regclass
+      AND att.attnum > 0 AND NOT att.attisdropped
+      AND has_column_privilege('veyro_cp_platform', att.attrelid, att.attname, 'UPDATE');
+    IF actual <> '(none)' THEN
+        RAISE EXCEPTION 'CHECK 53 FAILED: a definition version''s entries are editable: %',
+            actual;
+    END IF;
+    BEGIN
+        UPDATE plt01_platform.int_definition_versions SET required = false
+        WHERE definition_key = 'acme.payments';
+        RAISE EXCEPTION 'CHECK 53 FAILED: a published version''s scopes were edited';
+    EXCEPTION
+        WHEN insufficient_privilege OR restrict_violation THEN NULL;
+    END;
+    -- **The INSERT, which the grant cannot see.** `GRANT SELECT, INSERT` plus a unique index
+    -- stops re-declaring a name that already exists and stops nothing else, so a published
+    -- version's scope set was additive-mutable -- and a *required* scope could be added to it.
+    -- Installs keep their snapshot, so the blast radius is new installs against "version 1"
+    -- authorizing a wider scope set than the one that was published and reviewed, which is the
+    -- control paragraph 3032 names. Found by review; the header rested it on "the wrong
+    -- UPDATE" and the wrong INSERT was unguarded.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required)
+        VALUES ('acme.payments', 1, 'scope', 'members.read_all', true);
+        RAISE EXCEPTION 'CHECK 53 FAILED: a scope was added to a published definition version';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01_platform.int_definition_versions
+        WHERE definition_key = 'acme.payments' AND kind = 'scope';
+        RAISE EXCEPTION 'CHECK 53 FAILED: a published version''s scopes were deleted';
+    EXCEPTION
+        WHEN insufficient_privilege OR restrict_violation THEN NULL;
+    END;
+    -- A publication date answers "when did installs against this version become possible", and
+    -- a retirement that can be undone is not one. A CHECK sees only the new row, so this needs
+    -- the trigger -- MOD-009's rule about `OLD`, one module later.
+    BEGIN
+        UPDATE plt01_platform.int_definitions SET published_at = now() - INTERVAL '1 year'
+        WHERE definition_key = 'acme.payments' AND version = 1;
+        RAISE EXCEPTION 'CHECK 53 FAILED: a publication date was moved';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01_platform.int_definitions SET status = 'retired', retired_at = now()
+        WHERE definition_key = 'acme.payments' AND version = 1;
+        UPDATE plt01_platform.int_definitions SET status = 'published', retired_at = NULL
+        WHERE definition_key = 'acme.payments' AND version = 1;
+        RAISE EXCEPTION 'CHECK 53 FAILED: a retired definition was un-retired';
+    EXCEPTION
+        WHEN restrict_violation THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01_platform.int_definitions WHERE definition_key = 'acme.payments';
+        RAISE EXCEPTION 'CHECK 53 FAILED: a published definition was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 54. the int_ constraints
+-- Every CHECK constraint and every unique index on this module's tables, on both planes. Not a
+-- sample: the rule in `.claude/rules/backend/mod004-rls.md` is that a constraint nobody has
+-- broken on purpose is a constraint nobody has tested, and that it has to mean the table rather
+-- than the ones somebody thought to write down. MOD-011's check 48 proved fifteen of its
+-- module's constraints and said in its own preamble that it proved them all; a reviewer dropped
+-- 24 of the rest in silence. This one is written from the catalogue of constraints that exist.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- A definition key that is not a key names a catalogue entry nothing can resolve.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Acme Payments', 1, '{}'::jsonb, 'convenience', '{}'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a malformed definition key was installed';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero is not a version anybody published.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 0, '{}'::jsonb, 'convenience', '{}'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an install named version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The snapshot is what makes an install answerable without the other plane; an array there is a snapshot no reader can use.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '[]'::jsonb, 'convenience', '{}'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition snapshot was written as an array';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Configuration is an object for the same reason.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '{}'::jsonb, 'convenience', '[]'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an install config was written as an array';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Criticality decides whether the activation gate demands a fallback and an exit plan, so a value outside the set is an install that gate cannot classify.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '{}'::jsonb, 'vibes', '{}'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an install took an unknown criticality';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A state outside the machine is one no transition can leave.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '{}'::jsonb, 'convenience', '{}'::jsonb, 'paused', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an install took a state the lifecycle does not have';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An uninstall is the act that ends a third party's reach, so it carries who and why.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '{}'::jsonb, 'convenience', '{}'::jsonb, 'uninstalled', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 54 FAILED: an integration was uninstalled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the flag and the timestamp cannot disagree: one says the install is gone and the other says it is live, and whichever a query reads is the answer it gets.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'other.thing', 1, '{}'::jsonb, 'convenience', '{}'::jsonb, 'uninstalled', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an install reads uninstalled with no uninstall recorded';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One live install per definition. Two means two sets of scopes nobody can reconcile and a sync that writes through whichever the query found first.
+    BEGIN
+        INSERT INTO plt01.int_installs
+            (tenant_id, definition_key, definition_version, definition_snapshot,
+             criticality, config, state, installed_by, correlation_id,
+             uninstalled_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'acme.payments', 1, '{}'::jsonb, 'convenience', '{}'::jsonb, 'installed', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a second live install took the same definition';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A connection state outside the machine.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'half_open', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection took an unknown state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank provider account is a connection to nothing, which still holds scopes.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', '  ', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection named a blank provider account';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The region decides residency, so a malformed one is a promise nobody can check.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'EU West', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection took a malformed region';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **No wildcard.** A scope set that can be widened by a character is one nobody can review, and the holder is outside the building.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.*'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was granted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An authorization with a timestamp and no actor is access granted by nobody.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'authorized', now(), NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection was authorized by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A validation with no evidence is a state change anybody can assert for free, and activation depends on this state.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'validated', now(), '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection was validated with no evidence';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A revocation states a reason, because the question afterwards is why access ended.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection was revoked for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the flag and the timestamp cannot disagree.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_new', 'eu-west', ARRAY['payments.charge'], 'revoked', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a connection reads revoked with no revocation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One live connection per provider account per install. Two would each hold their own scopes against one account, and revoking one would read as revoking access.
+    BEGIN
+        INSERT INTO plt01.int_connections
+            (tenant_id, install_id, external_account_ref, region,
+             granted_scopes, state, authorized_at, authorized_by, validated_at,
+             validated_by, validation_evidence, revoked_at, revoked_by,
+             revoke_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000001', 'acct_live_1', 'eu-west', ARRAY['payments.charge'], 'pending', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a second live connection took the same account';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A reference that is not a locator. This is the case that matters: a blank value was
+    -- always refused, and a credential pasted into the column was not -- which made the
+    -- absence of a secret column a naming convention rather than the control the header
+    -- claims it is.
+    --
+    -- The literal is deliberately *not* shaped like any real provider's key. The first version
+    -- used a realistic `sk_live_...` and GitHub's push protection refused the commit, which is
+    -- the control working: a test fixture that matches a live-key pattern is one somebody will
+    -- eventually have to whitelist, and whitelisting a secret-scanning hit is a habit worth
+    -- not starting. What the constraint refuses is anything without a scheme, so the shape of
+    -- the string is irrelevant to what is being proved.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes, issued_at,
+             expires_at, supersedes_credential_ref_id, retired_at, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(),
+                '99999999-1000-4000-8000-000000000002',
+                'raw-credential-material-not-a-locator', ARRAY['payments.charge'], now(), NULL,
+                NULL, now(), '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a raw secret was accepted as a vault reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A credential reference with no reference names nothing.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
+             issued_at, expires_at, supersedes_credential_ref_id, retired_at,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', '  ', ARRAY['payments.charge'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference named no vault location';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An expiry before issue is a credential that was never valid, and the rotation reminder would fire on it for ever.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
+             issued_at, expires_at, supersedes_credential_ref_id, retired_at,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), now() - INTERVAL '1 day', NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a credential expired before it was issued';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A reference superseding itself is a rotation chain that loops.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
+             issued_at, expires_at, supersedes_credential_ref_id, retired_at,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-0000000000aa', '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, '99999999-1000-4000-8000-0000000000aa', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a credential reference superseded itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Scopes carry the same no-wildcard rule as the connection's.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
+             issued_at, expires_at, supersedes_credential_ref_id, retired_at,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.*'], now(), NULL, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a wildcard scope was recorded on a credential reference';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One live reference per connection. Two means two secrets are current, and a rotation that retired one would leave the other reachable with scopes nobody re-reviewed.
+    BEGIN
+        INSERT INTO plt01.int_credential_refs
+            (tenant_id, credential_ref_id, connection_id, vault_ref, scopes,
+             issued_at, expires_at, supersedes_credential_ref_id, retired_at,
+             recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', gen_random_uuid(), '99999999-1000-4000-8000-000000000002', 'vault://new', ARRAY['payments.charge'], now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a second live credential reference was written';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A resource that is not a resource name is a cursor nothing will look up.
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at,
+             conflict_policy, reset_at, reset_by, reset_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Invoices!', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took a malformed resource';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank position is a cursor that cannot say where the sync got to.
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at,
+             conflict_policy, reset_at, reset_by, reset_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', '  ', now(), 'manual', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was written with a blank position';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A conflict policy outside the three is one `conflict_resolution` cannot apply.
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at,
+             conflict_policy, reset_at, reset_by, reset_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'newest_wins', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a cursor took an unknown conflict policy';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Moving a cursor backwards re-reads a window the provider may bill for, so the reset carries who did it and why.
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at,
+             conflict_policy, reset_at, reset_by, reset_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'c-1', now(), 'manual', now(), NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a cursor was reset by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One cursor per connection and resource. Two would advance independently and the next sync would read from whichever the query found.
+    BEGIN
+        INSERT INTO plt01.int_sync_cursors
+            (tenant_id, connection_id, resource, position, observed_at,
+             conflict_policy, reset_at, reset_by, reset_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'settlements', 'c-1', now(), 'manual', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a second cursor took the same resource';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A run status outside the set is one no retry decision covers. `finished_at` is set so
+    -- that `..._finished` is satisfied and this case tests the status constraint rather than
+    -- passing because a sibling fired first -- which is what it did until the mutation sweep
+    -- dropped the status constraint and watched the suite stay green.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'wedged', 1, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A malformed resource, as above.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'Settlements!', 'running', 1, 5, 0, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run named a malformed resource';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Attempts past the budget is a run that has outlived its own retry policy.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 6, 5, 0, 0, 0, 'boom', now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run exceeded its own attempt budget';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Negative counts are a report nobody can reproduce.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, -1, 0, 0, NULL, NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run recorded a negative record count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A failure with no error is a diagnostic nobody can act on, which is the whole of paragraph 3028's diagnostics that a constraint can hold.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'failed', 1, 5, 0, 0, 0, NULL, now(), '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run failed with nothing recorded about why';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One running run per connection and resource: a lock rather than a lease, because two
+    -- concurrent syncs of one resource read the same window and both advance the same cursor,
+    -- so one of them ends up having skipped records it never saw. The seed holds a running
+    -- run on `settlements`.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-1000-4000-8000-000000000002', 'settlements', 'running',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a second run started on a resource already syncing';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    -- A settled run names who settled it, so that a fabricated "synced four million records"
+    -- does not carry only the name of the party that did not make the claim.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, last_error, finished_at,
+             started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', NULL, now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run was settled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A settlement actor with no correlation id is half a record.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, finished_at, settled_by,
+             started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '99999999-1000-4000-8000-000000000002', 'invoices', 'succeeded', now(),
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a settlement carried no correlation id';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- Releasing a quarantined run puts a connector that burned its whole budget back in front
+    -- of a provider, so it carries who and why.
+    BEGIN
+        UPDATE plt01.int_connector_runs SET released_at = now()
+        WHERE run_id = '99999999-1000-4000-8000-000000000005';
+        RAISE EXCEPTION 'CHECK 54 FAILED: a quarantined run was released by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A reconciliation is a claim about two sides, made by somebody, with the totals behind it.
+    BEGIN
+        UPDATE plt01.int_connector_runs SET reconciled_at = now(), reconciled_local = 5,
+            reconciled_provider = 5, reconciled_matched = 5
+        WHERE run_id = '99999999-1000-4000-8000-000000000005';
+        RAISE EXCEPTION 'CHECK 54 FAILED: a reconciliation was recorded by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- And its arithmetic has to describe two sets, in the database as well as in Python.
+    BEGIN
+        UPDATE plt01.int_connector_runs SET reconciled_at = now(),
+            reconciled_by = '33333333-3333-4333-8333-333333333333',
+            reconcile_correlation_id = '33333333-3333-4333-8333-333333333333',
+            reconciled_local = 3, reconciled_provider = 3, reconciled_matched = 5
+        WHERE run_id = '99999999-1000-4000-8000-000000000005';
+        RAISE EXCEPTION 'CHECK 54 FAILED: a reconciliation matched more than exists';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A finished timestamp and a running status cannot both be true.
+    BEGIN
+        INSERT INTO plt01.int_connector_runs
+            (tenant_id, connection_id, resource, status, attempts, max_attempts,
+             records_read, records_written, conflicts, last_error, finished_at,
+             settled_by, settle_correlation_id, started_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '99999999-1000-4000-8000-000000000002', 'invoices', 'running', 1, 5, 0, 0, 0, NULL, now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 54 FAILED: a run reads running and finished at once';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_platform;
+DO $$
+BEGIN
+    -- The entry cases need a **draft** parent: `int_definition_versions_draft_only` refuses a
+    -- write to a published version before the column constraints are ever looked at, so
+    -- pointing them at the seeded (published) `acme.payments` would make every one of them
+    -- pass because a different control fired. This block rolls back.
+    INSERT INTO plt01_platform.int_definitions
+        (definition_key, version, provider, display_name, criticality, support_owner,
+         description)
+    VALUES ('acme.case', 1, 'Acme', 'Case', 'convenience', 'ops', 'd');
+    INSERT INTO plt01_platform.int_definition_versions
+        (definition_key, version, kind, name, required)
+    VALUES ('acme.case', 1, 'scope', 'payments.charge', true);
+    -- A definition key that is not a key.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('Acme Payments', 1, 'P', 'D', 'draft', 'convenience', 'ops', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a malformed definition key was registered';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank provider names nobody to call when it breaks.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, '  ', 'D', 'draft', 'convenience', 'ops', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition named a blank provider';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 0, 'P', 'D', 'draft', 'convenience', 'ops', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three the install path reads. `published_at` is set for the same
+    -- reason as the run case above: without it `..._published_at` fires first and this case
+    -- proves nothing about the status constraint.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'beta', 'convenience', 'ops', 'd', now(), NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Criticality decides the activation obligations.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'draft', 'vibes', 'ops', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition took an unknown criticality';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Paragraph 3024 asks for a support owner, and a blank one is an integration whose failures have no recipient.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'draft', 'convenience', '  ', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition named no support owner';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank description is a catalogue entry nobody can choose from.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'draft', 'convenience', 'ops', '  ', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition carried no description';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A published version with no publication date cannot say when installs became possible against it.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'published', 'convenience', 'ops', 'd', NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition was published with no date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a retired one likewise.
+    BEGIN
+        INSERT INTO plt01_platform.int_definitions
+            (definition_key, version, provider, display_name, status, criticality,
+             support_owner, description, published_at, retired_at)
+        VALUES ('other.thing', 1, 'P', 'D', 'retired', 'convenience', 'ops', 'd', now(), NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition was retired with no date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An entry kind outside the four the reader branches on.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'pricing', 'messaging', false, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition entry took an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank name is an entry nothing can match.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'capability', '  ', false, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition entry was named blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A configuration field declares a type; nothing else does.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'config', 'merchant', false, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a configuration field was declared with no type';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a capability must not.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'capability', 'storage', false, 'string', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a capability was declared with a field type';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An enum with no values is a field with no legal value.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'config', 'mode', false, 'enum', NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: an enum configuration field declared no values';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And values on something that is not an enum are values nothing reads.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'config', 'mode', false, 'string', ARRAY['a']);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a non-enum field declared enum values';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Only a scope or a configuration field can be required: a required capability is a capability, and a required region is a contradiction.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'region', 'us-east', true, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a region was declared required';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One entry per kind and name per version.
+    BEGIN
+        INSERT INTO plt01_platform.int_definition_versions
+            (definition_key, version, kind, name, required, field_type, enum_values)
+        VALUES ('acme.case', 1, 'scope', 'payments.charge', true, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 54 FAILED: a definition declared one entry twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 54/54 checks passed'

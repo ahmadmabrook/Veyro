@@ -33,9 +33,9 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 48 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
-MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_` and
-MOD-011's `ops_` -- and **every one has been
+CI. It carries 54 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_`,
+MOD-011's `ops_` and MOD-012's `int_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -84,6 +84,20 @@ fifteen, false of the module: a reviewer dropped 24 of the remaining ones indivi
 suite reported 48/48 every time, including four of the five on a table with no constraint
 evidence at all. The same for parent references: seven of eight tenant-registry foreign keys
 were droppable in silence because one table's case had been written and the rest asserted.
+
+**A schema change means re-running the mutation sweep, not re-reading the cases.** MOD-012 added
+one constraint to close a review finding, and it fired on every row three existing cases insert
+-- so three constraints became droppable in silence between one review round and the next, in a
+module whose own sweep had been clean an hour earlier. The sweep is the only thing that sees
+this; a reader of the new constraint has no reason to look at cases that do not mention it.
+
+**And a case that passes because a *sibling* constraint fired first proves nothing about the one
+it names.** Three of MOD-012's constraint cases did exactly that -- a run with an unknown status
+also tripped the "a finished run is not running" check, a definition with an unknown status also
+tripped "a published version has a publication date", and a third collided with a seeded row on a
+unique index before reaching the constraint under test. All three looked correct and all three
+passed with their own constraint dropped. The mutation sweep is the only thing that finds this:
+set every *other* column so that the row violates exactly one rule.
 
 Two obligations named in the original rule are covered: check 10 asserts the runtime roles hold no
 TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE

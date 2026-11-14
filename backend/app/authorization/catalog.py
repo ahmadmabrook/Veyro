@@ -216,6 +216,35 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("ops.budget.read", "See budgets and burn alerts", "finance"),
     _p("ops.budget.write", "Set or retire a budget, or evaluate its burn",
        "finance", "financial"),
+    # MOD-012, integration adapters. Authorizing a connection hands a third party access to a
+    # tenant's data, so every write here is `financial`-class and needs a stepped-up session --
+    # the same bar as a billing write, which is the right comparison: both give something away.
+    _p("integrations.install.read", "See installed integrations and their configuration",
+       "data_access"),
+    _p("integrations.install.write", "Install, configure, activate or disable an integration",
+       "configuration", "financial"),
+    _p("integrations.install.uninstall", "Remove an integration and revoke its connections",
+       "configuration", "financial"),
+    _p("integrations.connection.read", "See connections, their scopes and their state",
+       "data_access"),
+    # The one that actually grants a third party reach. Separate from `install.write` so a role
+    # can configure an integration without being able to widen who it talks to.
+    _p("integrations.connection.authorize", "Authorize or revoke a connection to a provider",
+       "access", "financial"),
+    _p("integrations.credential.read",
+       "See credential references, their scopes and their expiry", "access"),
+    _p("integrations.credential.rotate", "Record a credential rotation", "access", "financial"),
+    _p("integrations.sync.read", "See connector runs, cursors and diagnostics", "data_access"),
+    # Routine, and the fifth of its kind: a connector runs on a loop, and a step-up requirement
+    # would mean nothing ever syncs. Its reach is bounded by what it can do -- a run may settle
+    # itself and move a cursor, and may not change what it is connected to or with which scopes.
+    _p("integrations.sync.run", "Start, settle or retry a connector run", "data_access"),
+    _p("integrations.sync.reset", "Move a cursor backwards, or reconcile",
+       "configuration", "financial"),
+    # The platform-plane catalogue. No tenant holds this: the surface it guards is the one that
+    # publishes definitions, and it is unauthenticated today like the rest of that plane.
+    _p("integrations.definition.publish", "Publish or retire an integration definition",
+       "configuration", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

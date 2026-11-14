@@ -52,6 +52,7 @@ from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import service as identity
+from app.integrations import service as integrations
 from app.observability import metrics as obs_metrics
 from app.observability import ratelimit
 from app.observability import service as observability
@@ -594,6 +595,148 @@ class IncidentBody(BaseModel):
     notification_assessment: str | None = None
     detail: dict[str, Any] = Field(default_factory=dict)
     supersedes_incident_id: str | None = None
+
+
+class IntegrationDefinitionBody(BaseModel):
+    """A draft integration definition version, registered on the platform plane.
+
+    `config_fields` declares a type per field and **there is no secret type**: a credential
+    goes through a credential reference, which names where a secret lives rather than holding
+    one. See `app/integrations/contract.py`.
+    """
+
+    definition_key: str
+    version: int = Field(ge=1, le=2_000_000_000)
+    provider: str
+    display_name: str
+    criticality: str
+    support_owner: str
+    description: str
+    capabilities: list[str]
+    scopes: list[str] = Field(default_factory=list)
+    required_scopes: list[str] = Field(default_factory=list)
+    config_fields: list[dict[str, Any]] = Field(default_factory=list)
+    regions: list[str] = Field(default_factory=list)
+
+
+class InstallBody(BaseModel):
+    definition_key: str
+    correlation_id: str
+    version: int | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConfigureInstallBody(BaseModel):
+    correlation_id: str
+    config: dict[str, Any] | None = None
+    fallback_plan: str | None = None
+    reconciliation_plan: str | None = None
+    exit_plan: str | None = None
+
+
+class UninstallBody(BaseModel):
+    reason: str
+    correlation_id: str
+
+
+class ConnectionBody(BaseModel):
+    """`vault_ref` names a secret kept somewhere this build cannot read, and never holds one."""
+
+    install_id: str
+    external_account_ref: str
+    region: str
+    granted_scopes: list[str]
+    vault_ref: str
+    correlation_id: str
+    issued_at: datetime | None = None
+    expires_at: datetime | None = None
+
+
+class ValidateConnectionBody(BaseModel):
+    evidence: str
+    correlation_id: str
+
+
+class RevokeConnectionBody(BaseModel):
+    reason: str
+    correlation_id: str
+
+
+class RotateCredentialBody(BaseModel):
+    vault_ref: str
+    correlation_id: str
+    issued_at: datetime | None = None
+    expires_at: datetime | None = None
+    scopes: list[str] | None = None
+
+
+class CursorBody(BaseModel):
+    """No `conflict_policy`. It has its own route and its own permission.
+
+    Carrying it here handed the routine, AAL-1 `integrations.sync.run` permission the decision
+    that `/integrations/cursors/policy` charges a financial, stepped-up
+    `integrations.sync.reset` for -- and since the default is `manual`, the machine permission
+    was the one actually choosing whether a provider's copy may overwrite a tenant's records.
+    """
+
+    connection_id: str
+    resource: str
+    position: str
+    observed_at: datetime
+    correlation_id: str
+
+
+class CursorResetBody(BaseModel):
+    connection_id: str
+    resource: str
+    position: str
+    observed_at: datetime
+    reason: str
+    correlation_id: str
+
+
+class ConflictPolicyBody(BaseModel):
+    connection_id: str
+    resource: str
+    policy: str
+    correlation_id: str
+
+
+class StartRunBody(BaseModel):
+    connection_id: str
+    resource: str
+    correlation_id: str
+    # Bounded like MOD-010's `SubscriptionBody.max_attempts`, which is the same field with the
+    # same meaning 230 lines up this file. Unbounded, it overflowed `integer` into a
+    # `NumericValueOutOfRange` -- a `DataError`, not the `CheckViolation` the handler caught.
+    max_attempts: int = Field(default=5, ge=1, le=100)
+
+
+class FinishRunBody(BaseModel):
+    #: Bounded at the boundary. These are reachable at AAL-1 with the routine
+    #: `integrations.sync.run` permission, and a negative or oversized count reached psycopg as
+    #: a 500 rather than a 422.
+    records_read: int = Field(ge=0, le=10**12)
+    records_written: int = Field(ge=0, le=10**12)
+    correlation_id: str
+    conflicts: int = Field(default=0, ge=0, le=2_000_000_000)
+
+
+class FailRunBody(BaseModel):
+    error: str
+    correlation_id: str
+
+
+class ReleaseRunBody(BaseModel):
+    reason: str
+    correlation_id: str
+
+
+class ReconciliationBody(BaseModel):
+    local_count: int = Field(ge=0, le=10**12)
+    provider_count: int = Field(ge=0, le=10**12)
+    matched: int = Field(ge=0, le=10**12)
+    correlation_id: str
 
 
 class ObjectiveBody(BaseModel):
@@ -2355,6 +2498,336 @@ def create_app(
     ) -> list[dict[str, Any]]:
         permit(session, "ops.budget.read")
         return observability.list_budget_alerts(tenant_pool, tenant_id, limit=limit)
+
+    # --------------------------------------- MOD-012 integration adapters (platform plane)
+
+    @app.post("/platform/integrations", status_code=201)
+    def register_integration_definition(body: IntegrationDefinitionBody) -> dict[str, Any]:
+        """Register a draft definition version.
+
+        On the platform plane, which is unauthenticated in this build like the rest of it --
+        the largest open gap here and recorded as such in CLAUDE.md.
+        """
+        return integrations.register_definition(
+            platform_pool, definition_key=body.definition_key, version=body.version,
+            provider=body.provider, display_name=body.display_name,
+            criticality=body.criticality, support_owner=body.support_owner,
+            description=body.description, capabilities=body.capabilities,
+            scopes=body.scopes, required_scopes=body.required_scopes,
+            config_fields=body.config_fields, regions=body.regions,
+        )
+
+    @app.get("/platform/integrations")
+    def list_integration_definitions(status: str | None = None) -> list[dict[str, Any]]:
+        return integrations.list_definitions(platform_pool, status=status)
+
+    @app.get("/platform/integrations/{definition_key}")
+    def read_integration_definition(
+        definition_key: str, version: int | None = None
+    ) -> dict[str, Any]:
+        found = integrations.get_definition(platform_pool, definition_key=definition_key,
+                                            version=version)
+        found.pop("_declared", None)
+        return found
+
+    @app.post("/platform/integrations/{definition_key}/{version}/{action}")
+    def move_integration_definition(
+        definition_key: str, version: int, action: str
+    ) -> dict[str, Any]:
+        if action == "publish":
+            return integrations.publish_definition(
+                platform_pool, definition_key=definition_key, version=version)
+        if action == "retire":
+            return integrations.retire_definition(
+                platform_pool, definition_key=definition_key, version=version)
+        raise InvalidRequest("unknown_definition_action")
+
+    # ----------------------------------------- MOD-012 integration adapters (tenant plane)
+
+    @app.get("/integrations")
+    def read_installs(
+        tenant_id: TenantId, session: Session, include_uninstalled: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "integrations.install.read")
+        return integrations.list_installs(tenant_pool, tenant_id,
+                                          include_uninstalled=include_uninstalled)
+
+    @app.post("/integrations", status_code=201)
+    def install_integration(
+        tenant_id: TenantId, session: Session, body: InstallBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.install.write", body.correlation_id)
+        return integrations.install_integration(
+            tenant_pool, platform_pool, tenant_id, definition_key=body.definition_key,
+            version=body.version, config=body.config, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/{install_id}/configure")
+    def configure_integration(
+        tenant_id: TenantId, session: Session, install_id: str, body: ConfigureInstallBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.install.write", body.correlation_id)
+        return integrations.configure_install(
+            tenant_pool, tenant_id, require_uuid(install_id, "install_id"), config=body.config,
+            fallback_plan=body.fallback_plan, reconciliation_plan=body.reconciliation_plan,
+            exit_plan=body.exit_plan, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/{install_id}/activate")
+    def activate_integration(
+        tenant_id: TenantId, session: Session, install_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """A critical integration needs a fallback, a reconciliation procedure and an exit plan
+        in writing before it may carry traffic."""
+        permit(session, "integrations.install.write", body.correlation_id)
+        return integrations.activate_install(
+            tenant_pool, tenant_id, require_uuid(install_id, "install_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/{install_id}/disable")
+    def disable_integration(
+        tenant_id: TenantId, session: Session, install_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.install.write", body.correlation_id)
+        return integrations.disable_install(
+            tenant_pool, tenant_id, require_uuid(install_id, "install_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/{install_id}/uninstall")
+    def uninstall_integration(
+        tenant_id: TenantId, session: Session, install_id: str, body: UninstallBody
+    ) -> dict[str, Any]:
+        """Revokes every live connection in the same transaction: an uninstall that left one
+        authorized would be a tenant believing a third party no longer has access while it
+        does."""
+        permit(session, "integrations.install.uninstall", body.correlation_id)
+        return integrations.uninstall_integration(
+            tenant_pool, tenant_id, require_uuid(install_id, "install_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/integrations/connections")
+    def read_connections(
+        tenant_id: TenantId, session: Session, install_id: str | None = None,
+        include_revoked: bool = False,
+    ) -> list[dict[str, Any]]:
+        permit(session, "integrations.connection.read")
+        return integrations.list_connections(
+            tenant_pool, tenant_id, install_id=optional_uuid(install_id, "install_id"),
+            include_revoked=include_revoked,
+        )
+
+    @app.post("/integrations/connections", status_code=201)
+    def authorize_connection(
+        tenant_id: TenantId, session: Session, body: ConnectionBody
+    ) -> dict[str, Any]:
+        """The one command that hands a third party reach into a tenant's data."""
+        permit(session, "integrations.connection.authorize", body.correlation_id)
+        return integrations.authorize_connection(
+            tenant_pool, tenant_id, install_id=require_uuid(body.install_id, "install_id"),
+            external_account_ref=body.external_account_ref, region=body.region,
+            granted_scopes=body.granted_scopes, vault_ref=body.vault_ref,
+            issued_at=body.issued_at, expires_at=body.expires_at,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/connections/{connection_id}/validate")
+    def validate_connection(
+        tenant_id: TenantId, session: Session, connection_id: str,
+        body: ValidateConnectionBody,
+    ) -> dict[str, Any]:
+        """Records that somebody validated it, with what they saw. This build validates
+        nothing: there is no provider here to answer."""
+        permit(session, "integrations.connection.authorize", body.correlation_id)
+        return integrations.validate_connection(
+            tenant_pool, tenant_id, require_uuid(connection_id, "connection_id"),
+            evidence=body.evidence, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/connections/{connection_id}/revoke")
+    def revoke_connection(
+        tenant_id: TenantId, session: Session, connection_id: str, body: RevokeConnectionBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.connection.authorize", body.correlation_id)
+        return integrations.revoke_connection(
+            tenant_pool, tenant_id, require_uuid(connection_id, "connection_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/integrations/credentials")
+    def read_credentials(
+        tenant_id: TenantId, session: Session, connection_id: str | None = None,
+        include_retired: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Metadata only. There is no secret in this module to read."""
+        permit(session, "integrations.credential.read")
+        return integrations.list_credentials(
+            tenant_pool, tenant_id,
+            connection_id=optional_uuid(connection_id, "connection_id"),
+            include_retired=include_retired,
+        )
+
+    @app.post("/integrations/connections/{connection_id}/rotate", status_code=201)
+    def rotate_credential(
+        tenant_id: TenantId, session: Session, connection_id: str, body: RotateCredentialBody
+    ) -> dict[str, Any]:
+        """Records that a rotation happened. Nothing here can mint or install a secret."""
+        permit(session, "integrations.credential.rotate", body.correlation_id)
+        return integrations.rotate_credential(
+            tenant_pool, tenant_id, require_uuid(connection_id, "connection_id"),
+            vault_ref=body.vault_ref, issued_at=body.issued_at, expires_at=body.expires_at,
+            scopes=body.scopes, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/credentials/due")
+    def announce_expiring_credentials(
+        tenant_id: TenantId, session: Session, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Publishes `credential.expiring` for each live reference inside its window. A POST
+        because it publishes, and not idempotent across calls -- nothing loops on it."""
+        permit(session, "integrations.credential.rotate", body.correlation_id)
+        return integrations.credentials_due(
+            tenant_pool, tenant_id, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/integrations/cursors")
+    def read_cursors(
+        tenant_id: TenantId, session: Session, connection_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        permit(session, "integrations.sync.read")
+        return integrations.list_cursors(
+            tenant_pool, tenant_id,
+            connection_id=optional_uuid(connection_id, "connection_id"),
+        )
+
+    @app.post("/integrations/cursors")
+    def advance_cursor(
+        tenant_id: TenantId, session: Session, body: CursorBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.run", body.correlation_id)
+        return integrations.advance_cursor(
+            tenant_pool, tenant_id,
+            connection_id=require_uuid(body.connection_id, "connection_id"),
+            resource=body.resource, position=body.position, observed_at=body.observed_at,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/cursors/reset")
+    def reset_cursor(
+        tenant_id: TenantId, session: Session, body: CursorResetBody
+    ) -> dict[str, Any]:
+        """Moving a cursor backwards re-reads a window, which for a provider that bills per
+        call is money -- so it is a different permission from advancing one, and it carries a
+        reason."""
+        permit(session, "integrations.sync.reset", body.correlation_id)
+        return integrations.reset_cursor(
+            tenant_pool, tenant_id,
+            connection_id=require_uuid(body.connection_id, "connection_id"),
+            resource=body.resource, position=body.position, observed_at=body.observed_at,
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/cursors/policy")
+    def set_conflict_policy(
+        tenant_id: TenantId, session: Session, body: ConflictPolicyBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.reset", body.correlation_id)
+        return integrations.set_conflict_policy(
+            tenant_pool, tenant_id,
+            connection_id=require_uuid(body.connection_id, "connection_id"),
+            resource=body.resource, policy=body.policy, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/integrations/runs")
+    def read_runs(
+        tenant_id: TenantId, session: Session, connection_id: str | None = None,
+        status: str | None = None, limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        permit(session, "integrations.sync.read")
+        return integrations.list_runs(
+            tenant_pool, tenant_id,
+            connection_id=optional_uuid(connection_id, "connection_id"), status=status,
+            limit=limit,
+        )
+
+    @app.post("/integrations/runs", status_code=201)
+    def start_run(
+        tenant_id: TenantId, session: Session, body: StartRunBody
+    ) -> dict[str, Any]:
+        """Opens a run. Nothing in this build calls a provider."""
+        permit(session, "integrations.sync.run", body.correlation_id)
+        return integrations.start_run(
+            tenant_pool, tenant_id,
+            connection_id=require_uuid(body.connection_id, "connection_id"),
+            resource=body.resource, max_attempts=body.max_attempts,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/runs/{run_id}/finish")
+    def finish_run(
+        tenant_id: TenantId, session: Session, run_id: str, body: FinishRunBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.run", body.correlation_id)
+        return integrations.finish_run(
+            tenant_pool, tenant_id, require_uuid(run_id, "run_id"),
+            records_read=body.records_read, records_written=body.records_written,
+            conflicts=body.conflicts, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/runs/{run_id}/fail")
+    def fail_run(
+        tenant_id: TenantId, session: Session, run_id: str, body: FailRunBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.run", body.correlation_id)
+        return integrations.fail_run(
+            tenant_pool, tenant_id, require_uuid(run_id, "run_id"), error=body.error,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/runs/{run_id}/retry")
+    def retry_run(
+        tenant_id: TenantId, session: Session, run_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.run", body.correlation_id)
+        return integrations.retry_run(
+            tenant_pool, tenant_id, require_uuid(run_id, "run_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/runs/{run_id}/release")
+    def release_run(
+        tenant_id: TenantId, session: Session, run_id: str, body: ReleaseRunBody
+    ) -> dict[str, Any]:
+        """Taking a quarantined run out of the dead letter is a decision about a connector that
+        has failed its whole budget, so it carries a name and a reason."""
+        permit(session, "integrations.sync.reset", body.correlation_id)
+        return integrations.release_run(
+            tenant_pool, tenant_id, require_uuid(run_id, "run_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/integrations/runs/{run_id}/reconciliation")
+    def record_reconciliation(
+        tenant_id: TenantId, session: Session, run_id: str, body: ReconciliationBody
+    ) -> dict[str, Any]:
+        permit(session, "integrations.sync.reset", body.correlation_id)
+        return integrations.record_reconciliation(
+            tenant_pool, tenant_id, require_uuid(run_id, "run_id"),
+            local_count=body.local_count, provider_count=body.provider_count,
+            matched=body.matched, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
 
     return app
 

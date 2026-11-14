@@ -221,6 +221,26 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
        ("budget_id", "budget_key", "period_start", "threshold_bp", "consumed_bp",
         "spent_minor", "budget_minor", "currency", "owner"),
        "Spend against a budget crossed a notification threshold"),
+    # ---------------------------------------------------------------- MOD-012, ECO-02
+    # Paragraph 3042's list, less `marketplace.listing.approved`, which belongs to the V2
+    # marketplace slice this module does not build. **No payload carries a vault reference**:
+    # a credential reference is the one field in this module that names where a secret lives,
+    # and an event is fanned out, archived and replayed into more places than any other row.
+    _e("integration.installed", 1, "MOD-012", "internal",
+       ("install_id", "definition_key", "definition_version", "criticality"),
+       "A tenant installed an integration definition"),
+    _e("integration.connected", 1, "MOD-012", "internal",
+       ("install_id", "connection_id", "definition_key", "region", "granted_scopes"),
+       "A connection to a provider account was authorized"),
+    _e("integration.sync.failed", 1, "MOD-012", "internal",
+       ("run_id", "connection_id", "resource", "attempts", "status", "reason"),
+       "A connector run failed, and whether it will be retried or was quarantined"),
+    _e("credential.expiring", 1, "MOD-012", "confidential",
+       ("credential_ref_id", "connection_id", "install_id", "days_remaining", "expired"),
+       "A credential reference is inside its rotation window or has expired"),
+    _e("integration.uninstalled", 1, "MOD-012", "internal",
+       ("install_id", "definition_key", "reason", "connections_revoked"),
+       "A tenant removed an integration, revoking every connection it held"),
 ])
 
 

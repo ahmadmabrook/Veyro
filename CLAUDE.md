@@ -25,6 +25,8 @@ backend/app/            service code
   events/               MOD-010: catalog and dispatch decide; service.py is the outbox and relay
   observability/        MOD-011: catalog, objectives and ratelimit decide; metrics.py records,
                         service.py does the rest of the I/O
+  integrations/         MOD-012: contract, lifecycle and sync decide; service.py spans both
+                        planes and snapshots the definition into the install
   errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
@@ -526,6 +528,52 @@ foreign key); `data_classes` admitted unknown elements; `received_at` was unboun
 caller set the regulator-facing deadline; free-text `resource_type` defeated the live-policy
 unique index. Every one has a named regression test.
 
+**Three reviewers worked this module -- the schema, the Python, the request path -- and all
+three returned CHANGES_REQUESTED. Ten blocking defects**, and three of them were the same
+mistake: a value returned to the caller and never recorded. Carried forward as rules:
+
+- **A docstring is not an attribution.** `release_run` validated its reason, returned it,
+  discarded it, took an `actor_id` it never used, and published nothing -- while both its own
+  docstring and the route's said it was recorded. There was nowhere else it could land: MOD-008
+  audits denials and not allowed actions, and `veyro_cp_app` holds nothing in `iam`. This is the
+  act that puts a connector which burned its entire retry budget back in front of a third-party
+  provider, and it resets the attempt count, so the row afterwards read as a fresh run with a
+  stale error and no trace of a decision. `finish_run` and `record_reconciliation` were the same
+  shape: the two routes that write a run's *results* recorded nobody, so the only name on a
+  fabricated "synced four million records" was the name of the party that did **not** make the
+  claim -- `integrations.sync.run` is routine and tenant-wide, so any holder can settle any
+  running run. `int_connector_runs` now carries `settled_by`, `released_by` and `reconciled_by`
+  with their correlation ids, and the reconciliation's own totals.
+- **A guard widened past its sibling's is a guard removed.** `finish_run` settles only a
+  `running` run and its docstring explains why; `fail_run` accepted `running` **or** `failed`.
+  Since `fail_run` does not increment the attempt count -- `retry_run` does -- a caller
+  reporting the same failure twice froze `attempts` at one for ever: every report produced the
+  same verdict, pushed the backoff out again, and the run **could never reach `dead`**. An
+  operator reading the dead-letter board saw it clean while a connector failed continuously,
+  which is MOD-010's `outbox_health` finding in this module's clothes.
+- **A field on the wrong body is an escalation.** `advance_cursor` took a `conflict_policy`,
+  which handed the routine, AAL-1 `integrations.sync.run` permission the decision that
+  `/integrations/cursors/policy` charges a financial, stepped-up `integrations.sync.reset` for.
+  Since the default is `manual` -- chosen precisely because it refuses to pick a side -- the
+  machine permission was the one actually *choosing* whether a provider's copy may overwrite a
+  tenant's member records. The field is gone; `set_conflict_policy` now creates the cursor so
+  the policy is settable before any sync, which is what made the shortcut tempting.
+- **`coalesce` replaces NULL, not the empty string.** Three blank strings erased the fallback,
+  the reconciliation procedure and the exit plan from a **live critical** install -- the three
+  things paragraph 3033 requires in writing before it may carry traffic -- with the same
+  permission that wrote them and no refusal anywhere. "A control consulted once is a control
+  with a window", which is MOD-009's legal-hold finding again.
+- **Bound an integer at the boundary, or psycopg does it with a 500.** `max_attempts`,
+  `records_read`, `records_written`, `conflicts` and the reconciliation counts were unbounded --
+  and `NumericValueOutOfRange` is a `DataError`, not the `CheckViolation` the handlers caught.
+  MOD-010's `SubscriptionBody.max_attempts`, 230 lines up the same file, is
+  `Field(ge=1, le=100)`.
+- **An in-flight lock applies to every writer of that status.** `start_run` caught the unique
+  violation from `int_connector_runs_one_in_flight`; `retry_run` and `release_run` set the same
+  status and did not. Reachable with no concurrency at all, because `start_run` looks at the
+  connection and the install and never at other runs: start, fail, start again, retry the first
+  -- a 500, and the first run permanently unretryable while the caller is told "try again".
+
 Things worth knowing before extending it:
 
 - **Tombstones are per-column, not a generic NULL.** `identities_has_an_identifier` forbids
@@ -944,11 +992,146 @@ Known gaps, deliberate:
   consumer. A metric-wide objective would want an aggregate over series, which is a different
   evaluation than the one this store supports.
 
-**Next.** MOD-012 (Integration Adapter Core) and MOD-014 (People, Profiles & Member 360) are both
-unblocked. Three things named rather than done remain open across the build: the platform plane is
-unauthenticated, `Decision.mask` is computed on every allowed read while no read path applies it,
-and no worker runtime exists for the four schedules that want one -- which MOD-011 makes the most
-pressing of the three, because an objective nobody evaluates raises no alert.
+**MOD-012 (ECO-02 integration adapter core) -- implemented, gated and reviewed.** Two
+tables in `plt01_platform` holding the definition catalogue, five `int_` tables in `plt01` under
+the same forced RLS, `app/integrations/` beside them, and twenty-four HTTP routes. Working: a
+versioned adapter contract with capabilities, scopes, a configuration schema and regions;
+immutable published versions; installs that snapshot the version they were made against; the
+connector lifecycle from install through authorize, validate, activate, disable and uninstall;
+connections with least-privilege scope grants; credential *references*; sync cursors with a
+conflict policy; and connector runs with retry, quarantine, release and reconciliation. All five
+of ECO-02's Foundation events are produced. Proven: isolation checks 49-54, mutation-tested in
+two rounds -- 83 before the review and 99 after it showed three checks had been silently
+disabled by a constraint added to close an earlier finding; 98 of the 99 caught by a check that
+guards what was broken and one by the seed failing closed; 30 domain unit tests with no
+database; 43 service integration tests; 10 API tests.
+
+**This is ECO-02's Foundation slice only.** The marketplace, partner accounts, listings,
+certification and revenue share are its V2 slice and are not built; so is ECO-01's developer
+platform, which is where public APIs, OAuth applications and outbound webhooks live.
+
+Four decisions carry the module:
+
+- **A credential reference holds a reference, and there is no column it could hold a secret in.**
+  `vault_ref` names a secret kept somewhere this build cannot read. There is no vault here --
+  MOD-007 says so about TOTP seeds and MOD-009 says so about crypto-shred -- so the honest shape
+  is a table that *cannot* store one rather than one that stores one carefully. The definition
+  catalogue carries the same rule from the other side: a configuration field declares a type and
+  **there is no `secret` type**, so a definition cannot invite a tenant to paste an API key into
+  a value every list route reads. Check 52 asserts the column list in full and tries to declare
+  a secret field, because in both places the control is an *absence* and an absence is exactly
+  what a later migration adds back.
+- **Definitions are rows, not code -- the opposite call from the last four modules.** Permissions
+  (MOD-008), event types (MOD-010) and metrics (MOD-011) are code because they are facts about
+  what this software does, and two tenants disagreeing would be unresolvable. An integration
+  definition is not: ECO-02's own model has partners publishing their own, so the set is open by
+  design and the authority is whoever published the version. It lives in `plt01_platform` where
+  `saas_plans` lives, published versions are immutable by privilege, and an install
+  **snapshots** the version -- which is what lets somebody answer "what did this tenant actually
+  authorize" a year later without a cross-plane join the role separation forbids anyway.
+- **Widening what a third party may reach is a new authorization, not an edit.**
+  `int_connections.granted_scopes` carries no UPDATE grant for any runtime role, and neither
+  does a credential reference's `vault_ref`, `scopes` or `expires_at`; a rotation is a new row
+  that supersedes the old one. That is the only way "what did this connection hold on the
+  fourteenth" stays answerable, and check 53 proves it per column and per role.
+- **An uninstall revokes every connection in the same transaction.** An uninstall that left one
+  authorized would be a tenant believing a third party no longer has access while it does, which
+  is the worst failure available to this module. The rows stay, revoked and attributed: the
+  question afterwards is always what the provider could reach and until when.
+
+And three from the schema review, each defeating a protection the module's own prose called
+load-bearing:
+
+- **Adding a constraint invalidates every case that inserts a row it touches.** The
+  `settled_has_an_actor` constraint added to close the attribution finding fires on every row
+  three existing check-54 cases insert, so those three began passing because a *sibling* fired
+  -- the status, attempt-budget and failure-explained constraints could all be dropped with the
+  suite reporting 54/54. I had written that exact rule into the RLS doc an hour earlier, from
+  this module's own first sweep. **A schema change means re-running the sweep, not re-reading
+  the cases.**
+- **"Immutable" has to name the operation.** A published definition version's entries carried
+  `GRANT SELECT, INSERT` and a unique index on the entry name, which stops re-declaring a name
+  that exists and stops nothing else -- so the scope set was additive-mutable, and a *required*
+  scope could be added to a published version. Installs keep their snapshot, so the blast
+  radius is new installs against "version 1" authorizing a wider scope set than the one
+  reviewed, which is precisely paragraph 3032's control. The header rested the whole claim on
+  "nobody having run the wrong UPDATE". A trigger now refuses any write to a non-draft version,
+  and a second one makes `published_at` and `retired_at` final, since a CHECK cannot see `OLD`.
+- **A sweep of one kind of reference is not a sweep.** Check 51 swept the tenant-registry
+  foreign key across every table and *sampled* the intra-module parents, which left two
+  droppable in silence: the rotation chain's self-reference, the only thing keeping a
+  credential's predecessor inside its own tenant, and the entries table's reference to the
+  definition it belongs to. Every foreign key in the module is now compared as a set.
+
+Also fixed from the advisories: the column-list pin covered only `int_credential_refs`, so
+`access_token` on `int_connections` or `shared_secret` on `int_definitions` passed -- all seven
+tables are pinned now; `vault_ref` was non-blank text, which made a live API key a valid "vault
+reference" and the absence of a secret column a naming convention rather than a control, so it
+now has to look like a locator; and three cases were detected only by an exception from a
+different object, which turns a red suite into a misleading one.
+
+Things worth knowing before extending it:
+
+- **`validated` means somebody recorded a validation, not that this build performed one.** There
+  is no provider to call, so the state carries an actor and a written piece of evidence and the
+  row says what it is -- a claim made by a named party at a time. A state reading as "verified"
+  while nothing verified anything is the shape MOD-011's synthetic results were built to avoid.
+- **A cursor's position is opaque and is never ordered.** A provider's cursor may be a
+  timestamp, a token or a sequence number; what `check_advance` compares is when each was
+  *observed*, so a late or replayed run cannot settle over a newer result. Moving one backwards
+  is `reset_cursor`, a different permission, and it records who and why -- re-reading a window
+  costs whatever the provider charges for it.
+- **The backoff is MOD-010's, imported rather than copied.** Two retry curves in one repository
+  drift, and the day they disagree nobody can say which one is the policy.
+- **Succession is checked when a version is registered, not when it is published.** A later
+  version may not drop a capability, newly require a configuration field, or newly require a
+  scope -- each breaks an install that already exists, and the last one silently, since the
+  install reads as active while being under-privileged. Catching it where somebody is writing
+  the change is worth more than catching it at a deploy.
+
+Known gaps, deliberate:
+
+- **Nothing syncs.** There is no provider, no outbound HTTP and no adapter code. `start_run`,
+  `finish_run` and `fail_run` are written by whatever does the work, and a module that wrote
+  "synced 40 records" with nothing having answered would be the fabricated-evidence shape this
+  codebase has been bitten by three times.
+- **No inbound webhook receiver**, which is the one piece of the EIP's own summary line not
+  built. Receiving a provider callback means verifying its signature, which means holding the
+  provider's signing secret -- the vault again. An endpoint accepting unverified callbacks is a
+  forgery primitive, strictly worse than not having one.
+- **No rotation on a schedule.** `credentials_due` decides and publishes when somebody calls it;
+  nothing loops, and it is **not idempotent across calls** by design -- making it so needs a
+  record of what has already been announced, and a table of announcements nobody consumes is
+  the shape this codebase refuses elsewhere. The fifth module now waiting on a worker runtime.
+- **No vendor dependency register** (paragraph 3030's SLA, outage fallback, cost and exit plan
+  as a catalogue). The per-install obligations are built and enforced at activation; the
+  platform-wide register is not.
+- **The definition catalogue is on the unauthenticated platform plane**, and it is worse there
+  than the plan catalogue: a definition declares the scopes an install may grant a third party,
+  so whoever can publish one chooses what a tenant is able to hand out.
+- **A value can still carry a secret, and only the names are checked.** `int_installs.config`
+  is `jsonb` a tenant supplies, and `contract.check_config` validates field names and types and
+  never values -- so a definition declaring a `string` field named `api_key` accepts one. That
+  is MOD-010's `cfg_exposures.subject_id` finding recurring: the restricted-field rule checks
+  names, and a value can carry anything. The column has an UPDATE grant, so unlike the event
+  outbox it is at least erasable.
+- **Nothing creates a `pending` connection.** The state exists and the machine admits it,
+  because a provider flow that redirects for consent would create the row before the grant
+  comes back; in this build authorization and creation are one command.
+- **A standalone revocation publishes no event.** ECO-02's event list has no
+  `integration.disconnected`, and inventing one is inventing product; an uninstall publishes
+  `integration.uninstalled` with the count it revoked.
+- **`conflict_resolution` is decided and never applied.** Nothing reads a provider record to
+  compare against a local one, so the policy is recorded per cursor and consulted by nobody --
+  the same shape as `Decision.mask` in MOD-008.
+
+**Next.** MOD-014 (People, Profiles & Member 360) is unblocked, and MOD-013 (Notification
+Platform) becomes unblocked now that MOD-012 exists. Three things named rather than done remain open across the build: the platform plane is
+unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
+scopes a tenant may hand to a third party; `Decision.mask` is computed on every allowed read
+while no read path applies it; and no worker runtime exists for the five schedules that want
+one -- which MOD-011 makes the most pressing, because an objective nobody evaluates raises no
+alert.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

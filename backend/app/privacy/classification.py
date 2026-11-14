@@ -345,6 +345,41 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     # the one whose own module docstring names a fabricated `passed` as the risk.
     Reachability("plt01", "ops_synthetic_results", "recorded_by", "unreachable",
                  "insert-only measurement or evidence; no UPDATE grant on this column"),
+    # MOD-012. An install, a connection and a credential reference each record the actor who
+    # made the decision, because the question after an incident is always who gave a third
+    # party access and when. `write_once` where a lifecycle column carries the grant that
+    # writes it once; `unreachable` where there is no UPDATE grant at all.
+    Reachability("plt01", "int_installs", "installed_by", "unreachable",
+                 "insert-only decision; no UPDATE grant on this column"),
+    Reachability("plt01", "int_installs", "uninstalled_by", "write_once",
+                 "written with the uninstall; `state = 'uninstalled'` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "int_connections", "authorized_by", "write_once",
+                 "written when the connection is authorized; the lifecycle machine is what "
+                 "refuses a second authorization, not the grant"),
+    Reachability("plt01", "int_connections", "validated_by", "write_once",
+                 "written on each validation, which is deliberately repeatable: a connection "
+                 "validated this morning and one validated a year ago are different facts"),
+    Reachability("plt01", "int_connections", "revoked_by", "write_once",
+                 "written with the revocation; `revoked_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "int_credential_refs", "recorded_by", "unreachable",
+                 "insert-only evidence; a rotation is a new row and no UPDATE grant reaches "
+                 "this column"),
+    Reachability("plt01", "int_sync_cursors", "reset_by", "write_once",
+                 "written with each reset, which is repeatable by design: re-reading a window "
+                 "twice is two decisions somebody made"),
+    Reachability("plt01", "int_connector_runs", "started_by", "unreachable",
+                 "insert-only evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "int_connector_runs", "settled_by", "write_once",
+                 "written when the run is settled; `status = 'running'` in the service is what "
+                 "refuses a second settlement, not the grant"),
+    Reachability("plt01", "int_connector_runs", "released_by", "write_once",
+                 "written with the release; `status = 'dead'` in the service is what refuses a "
+                 "second one, not the grant"),
+    Reachability("plt01", "int_connector_runs", "reconciled_by", "write_once",
+                 "written with the reconciliation; `reconciled_at IS NULL` in the service is "
+                 "what refuses a second one, not the grant"),
     Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
                  "written when the job starts; `status = 'requested'` in the service is what "
                  "refuses a second run, not the grant"),

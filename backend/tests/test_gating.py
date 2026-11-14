@@ -63,6 +63,11 @@ READ_ROUTES = [
     ("get", "/ops/margin?period_start=2026-11-01&period_end=2026-11-30", None),
     ("get", "/ops/budgets", None),
     ("get", "/ops/budget-alerts", None),
+    ("get", "/integrations", None),
+    ("get", "/integrations/connections", None),
+    ("get", "/integrations/credentials", None),
+    ("get", "/integrations/cursors", None),
+    ("get", "/integrations/runs", None),
 ]
 
 WRITE_ROUTES = [
@@ -132,6 +137,34 @@ WRITE_ROUTES = [
                               "owner": "platform-ops", **_CORR}),
     ("post", f"/ops/budgets/{_ID}/retire", _CORR),
     ("post", f"/ops/budgets/{_ID}/burn", {"period_start": "2026-11-01", **_CORR}),
+    ("post", "/integrations", {"definition_key": "acme.payments", **_CORR}),
+    ("post", f"/integrations/{_ID}/configure", _CORR),
+    ("post", f"/integrations/{_ID}/activate", _CORR),
+    ("post", f"/integrations/{_ID}/disable", _CORR),
+    ("post", f"/integrations/{_ID}/uninstall", {"reason": "done", **_CORR}),
+    ("post", "/integrations/connections", {"install_id": _ID, "external_account_ref": "acct",
+                                           "region": "eu-west", "granted_scopes": [],
+                                           "vault_ref": "vault://x", **_CORR}),
+    ("post", f"/integrations/connections/{_ID}/validate", {"evidence": "probe ok", **_CORR}),
+    ("post", f"/integrations/connections/{_ID}/revoke", {"reason": "rotated", **_CORR}),
+    ("post", f"/integrations/connections/{_ID}/rotate", {"vault_ref": "vault://y", **_CORR}),
+    ("post", "/integrations/credentials/due", _CORR),
+    ("post", "/integrations/cursors", {"connection_id": _ID, "resource": "members",
+                                       "position": "1", "observed_at": _WHEN, **_CORR}),
+    ("post", "/integrations/cursors/reset", {"connection_id": _ID, "resource": "members",
+                                             "position": "1", "observed_at": _WHEN,
+                                             "reason": "backfill", **_CORR}),
+    ("post", "/integrations/cursors/policy", {"connection_id": _ID, "resource": "members",
+                                              "policy": "manual", **_CORR}),
+    ("post", "/integrations/runs", {"connection_id": _ID, "resource": "members", **_CORR}),
+    ("post", f"/integrations/runs/{_ID}/finish", {"records_read": 1, "records_written": 1,
+                                                  **_CORR}),
+    ("post", f"/integrations/runs/{_ID}/fail", {"error": "provider refused", **_CORR}),
+    ("post", f"/integrations/runs/{_ID}/retry", _CORR),
+    ("post", f"/integrations/runs/{_ID}/release", {"reason": "fixed", **_CORR}),
+    ("post", f"/integrations/runs/{_ID}/reconciliation", {"local_count": 1,
+                                                          "provider_count": 1, "matched": 1,
+                                                          **_CORR}),
 ]
 
 
@@ -367,6 +400,15 @@ class GateCoverageTests(unittest.TestCase):
         ("GET", "/platform/plans/{plan_code}"): "the platform plane is not authenticated",
         ("POST", "/platform/plans/{plan_code}/{plan_version}/status"):
             "the platform plane is not authenticated",
+        # The integration definition catalogue. Worse than the plan catalogue if it is ever
+        # reachable: a definition declares the scopes an install may grant a third party, so
+        # somebody able to publish one chooses what a tenant is able to hand out.
+        ("POST", "/platform/integrations"): "the platform plane is not authenticated",
+        ("GET", "/platform/integrations"): "the platform plane is not authenticated",
+        ("GET", "/platform/integrations/{definition_key}"):
+            "the platform plane is not authenticated",
+        ("POST", "/platform/integrations/{definition_key}/{version}/{action}"):
+            "the platform plane is not authenticated",
         # How a caller gets a session in the first place. A gate in front of these would mean
         # needing a session to get a session.
         ("POST", "/auth/login"): "authentication",
@@ -460,7 +502,7 @@ class GateCoverageTests(unittest.TestCase):
 
     #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
     #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
-    FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops")
+    FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops", "/integrations")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.
@@ -487,7 +529,7 @@ class GateCoverageTests(unittest.TestCase):
                 continue
             for name in ("purpose_id", "hold_id", "request_id", "event_id", "job_id",
                          "subscription_id", "dead_letter_id", "objective_id", "check_id",
-                         "budget_id"):
+                         "budget_id", "install_id", "connection_id", "run_id"):
                 path = path.replace("{" + name + "}", "{id}")
             live.add((method, path))
         self.assertEqual(sorted(live - swept), [],
