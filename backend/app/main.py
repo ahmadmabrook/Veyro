@@ -46,18 +46,21 @@ from pydantic import BaseModel, Field
 
 from app import db
 from app.authorization import catalog as authz_catalog
+from app.authorization import gate as authz_gate
 from app.authorization import service as authz
 from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
 from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
+from app.identity import policy as identity_policy
 from app.identity import service as identity
 from app.integrations import service as integrations
 from app.notifications import service as notifications
 from app.observability import metrics as obs_metrics
 from app.observability import ratelimit
 from app.observability import service as observability
+from app.people import service as people
 from app.privacy import service as privacy
 from app.tenancy import service
 
@@ -850,6 +853,150 @@ class ReleaseSuppressionBody(BaseModel):
     correlation_id: str
 
 
+class PersonContactBody(BaseModel):
+    """A contact point inside a CreatePerson command, which carries its own correlation id."""
+
+    kind: str
+    value: str = Field(min_length=1, max_length=320)
+    is_primary: bool = False
+
+
+class ContactPointBody(PersonContactBody):
+    """The same, as a command of its own."""
+
+    correlation_id: str
+
+
+class PersonBody(BaseModel):
+    """CreatePerson, with the contact points in the same command.
+
+    A person with no way to reach them is a record nobody can use, and two commands would leave
+    a window where the duplicate detector sees somebody with no signals at all.
+    """
+
+    legal_name: str = Field(min_length=1, max_length=200)
+    correlation_id: str
+    preferred_name: str | None = Field(default=None, max_length=200)
+    date_of_birth: date | None = None
+    contacts: list[PersonContactBody] = Field(default_factory=list, max_length=12)
+
+
+class PersonUpdateBody(BaseModel):
+    """UpdateProfile's person half. `expected_version` is required, not optional.
+
+    Paragraph 1331 asks for optimistic concurrency and two front-desk staff editing one profile
+    is the ordinary case; a caller that could omit the version would be a caller whose write
+    silently discards somebody else's.
+    """
+
+    expected_version: int = Field(ge=1, le=10**9)
+    correlation_id: str
+    legal_name: str | None = Field(default=None, max_length=200)
+    preferred_name: str | None = Field(default=None, max_length=200)
+    date_of_birth: date | None = None
+
+
+class IdentityLinkBody(BaseModel):
+    identity_id: str
+    correlation_id: str
+
+
+class TenantProfileBody(BaseModel):
+    correlation_id: str
+    expected_version: int | None = Field(default=None, ge=1, le=10**9)
+    brand_id: str | None = None
+    location_id: str | None = None
+    acquisition_source: str | None = Field(default=None, max_length=200)
+    preferred_language: str | None = Field(default=None, max_length=10)
+    notes_internal: str | None = Field(default=None, max_length=2000)
+
+
+class MemberProfileBody(BaseModel):
+    correlation_id: str
+    lifecycle_state: str = "lead"
+    member_number: str | None = Field(default=None, max_length=60)
+    joined_on: date | None = None
+
+
+class LifecycleBody(BaseModel):
+    to_state: str
+    expected_version: int = Field(ge=1, le=10**9)
+    correlation_id: str
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class StaffProfileBody(BaseModel):
+    correlation_id: str
+    job_title: str | None = Field(default=None, max_length=120)
+    location_id: str | None = None
+    started_on: date | None = None
+
+
+class StaffEndBody(BaseModel):
+    expected_version: int = Field(ge=1, le=10**9)
+    ended_on: date
+    correlation_id: str
+
+
+class RelationshipBody(BaseModel):
+    kind: str
+    from_person_id: str
+    to_person_id: str
+    correlation_id: str
+
+
+class ReasonBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+
+
+class NoteBody(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+    correlation_id: str
+    note_class: str = "general"
+
+
+class TagBody(BaseModel):
+    tag_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=120)
+    correlation_id: str
+    is_internal: bool = False
+
+
+class ApplyTagBody(BaseModel):
+    tag_id: str
+    correlation_id: str
+
+
+class CustomFieldOptionBody(BaseModel):
+    value: str = Field(min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
+class CustomFieldBody(BaseModel):
+    field_key: str = Field(min_length=2, max_length=63)
+    display_name: str = Field(min_length=1, max_length=120)
+    value_type: str
+    correlation_id: str
+    sensitivity: str = "none"
+    is_required: bool = False
+    options: list[CustomFieldOptionBody] = Field(default_factory=list, max_length=100)
+
+
+class CustomFieldValueBody(BaseModel):
+    field_key: str = Field(min_length=2, max_length=63)
+    value: str = Field(min_length=1, max_length=1000)
+    correlation_id: str
+
+
+class MergeBody(BaseModel):
+    source_person_id: str
+    target_person_id: str
+    reason: str = Field(min_length=1, max_length=500)
+    correlation_id: str
+    candidate_id: str | None = None
+
+
 class ObjectiveBody(BaseModel):
     """DefineSLI and SetSLO, which are one row.
 
@@ -1070,8 +1217,14 @@ def create_app(
                             headers=headers)
 
     def permit(session: dict[str, Any], action: str, correlation_id: str | None = None,
-               **context: Any) -> dict[str, Any]:
+               **context: Any) -> authz_gate.Gate:
         """The one way a route asks whether its caller may act.
+
+        **It returns the gate, not the session, because the gate carries the mask.** MOD-008
+        computes `masked_fields` on every allowed decision and from MOD-008 to MOD-013 nothing
+        read it -- "computed, not applied" was a standing gap in CLAUDE.md for five modules.
+        MOD-014 is the first module with a read path that has fields worth masking, and it takes
+        the list from here. A route that ignores the return value is unchanged.
 
         Every gated route in this file goes through here, and `authz.require` writes the denial
         to the audit log itself, so a surface cannot ask the question and forget to record the
@@ -1090,14 +1243,14 @@ def create_app(
         rate_limit(limit_key="api.request", tenant_id=session["tenant_id"],
                    subject=str(session["identity_id"]))
         try:
-            authz.require(identity_pool, session["tenant_id"],
-                          identity_id=session["identity_id"], session_aal=session["aal"],
-                          action=action, correlation_id=correlation_id or str(uuid4()),
-                          **context)
+            gate = authz.require(identity_pool, session["tenant_id"],
+                                 identity_id=session["identity_id"],
+                                 session_aal=session["aal"], action=action,
+                                 correlation_id=correlation_id or str(uuid4()), **context)
         except ServiceError:
             _count_denial(session["tenant_id"], action)
             raise
-        return session
+        return gate
 
     def _count_denial(tenant_id: str, action: str) -> None:
         """Roll a refusal into `authz.denials`, and never let the bookkeeping outrank the answer.
@@ -3169,6 +3322,48 @@ def create_app(
             tenant_pool, tenant_id, require_uuid(recipient_id, "recipient_id")
         )
 
+    def held_permissions(session: dict[str, Any]) -> set[str]:
+        """Which permissions this caller can **exercise**, for the field masking to read.
+
+        One extra query per masked read, and the honest way to answer "which sensitivity classes
+        may this caller see". The gate answers one action at a time; the mask is about five
+        classes at once, so asking the evaluator for the set is cheaper and more truthful than
+        five more gate calls -- and it goes through `effective_permissions`, which is the
+        evaluator's own rules rather than a second reading of the assignment rows.
+
+        **Filtered by the session's assurance, which is the half that was missing.**
+        `effective_permissions` answers from role assignments alone; nothing on that path looks
+        at `session["aal"]`, and `permit` assurance-checks only the *route's* action -- which for
+        every masked read is routine. So every permission the masking consulted was effectively
+        routine-class however the catalogue declared it: a password-only session holding
+        `member.health.read` read medical notes, and `member.identity.read` and
+        `member.finance.read` opened their classes with no second factor. All three are declared
+        for AAL 2 or 3, and the catalogue, `visibility` and CLAUDE.md all said so; the claim was
+        false until this filter existed. Found by review.
+
+        `member.health.read` is `biometric_sensitive`, so it needs AAL 3, which needs a hardware
+        authenticator MOD-007 cannot verify -- which means this filter removes it from every
+        session in this build. That is the deliberate dead end `visibility.UNREACHABLE_CLASSES`
+        names, and it is now enforced rather than asserted.
+        """
+        answer = authz.effective_permissions(
+            identity_pool, session["tenant_id"], identity_id=session["identity_id"])
+        aal = int(session["aal"])
+        return {
+            name for name in answer["permissions"]
+            if identity_policy.ACTION_ASSURANCE[authz_catalog.action_class(name)] <= aal
+        }
+
+    def actor_person_id(tenant_id: str, session: dict[str, Any]) -> str | None:
+        """Which person this caller *is*, where one is linked.
+
+        It decides whether a guardian may read their own dependent's record without holding
+        staff permissions, so it is derived from the link table rather than taken from the
+        request -- MOD-008's rule, and the one its review found four separate violations of.
+        """
+        return people.person_of_identity(
+            tenant_pool, tenant_id, identity_id=session["identity_id"])
+
     @app.put("/notifications/recipients/{recipient_id}/channels")
     def rebind_recipient_channel(
         tenant_id: TenantId, session: Session, recipient_id: str, body: RebindBody
@@ -3185,6 +3380,386 @@ def create_app(
             recipient_id=require_uuid(recipient_id, "recipient_id"),
             channel=body.channel, address_digest=body.address_digest, reason=body.reason,
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    # ------------------------------------------------------------ MOD-014, people
+
+    @app.post("/people", status_code=201)
+    def create_person(
+        tenant_id: TenantId, session: Session, body: PersonBody
+    ) -> dict[str, Any]:
+        """CreatePerson, with its contact points, publishing `person.created`."""
+        permit(session, "people.person.write", body.correlation_id)
+        return people.create_person(
+            tenant_pool, tenant_id, legal_name=body.legal_name,
+            preferred_name=body.preferred_name, date_of_birth=body.date_of_birth,
+            contacts=[c.model_dump() for c in body.contacts],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/people/{person_id}")
+    def read_person(
+        tenant_id: TenantId, session: Session, person_id: str
+    ) -> dict[str, Any]:
+        """One person, **masked**.
+
+        This is the first read path in the build that applies `Decision.mask`: the gate's
+        `masked_fields` and the caller's permission set both go into the service, and a field
+        the caller may not see comes back as `***` rather than being omitted -- because "you may
+        not see this" and "there is none" lead a front desk to different next actions.
+        """
+        gate = permit(session, "people.person.read")
+        return people.get_person(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            actor_person_id=actor_person_id(tenant_id, session),
+        )
+
+    @app.patch("/people/{person_id}")
+    def update_person(
+        tenant_id: TenantId, session: Session, person_id: str, body: PersonUpdateBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.update_person(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            expected_version=body.expected_version, legal_name=body.legal_name,
+            preferred_name=body.preferred_name, date_of_birth=body.date_of_birth,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/identity-links", status_code=201)
+    def link_identity(
+        tenant_id: TenantId, session: Session, person_id: str, body: IdentityLinkBody
+    ) -> dict[str, Any]:
+        """LinkIdentity. Unverifiable from this plane, which is the isolation working."""
+        permit(session, "people.person.write", body.correlation_id)
+        return people.link_identity(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            identity_id=require_uuid(body.identity_id, "identity_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.put("/people/{person_id}/profile")
+    def set_tenant_profile(
+        tenant_id: TenantId, session: Session, person_id: str, body: TenantProfileBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.upsert_tenant_profile(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            expected_version=body.expected_version,
+            brand_id=optional_uuid(body.brand_id, "brand_id"),
+            location_id=optional_uuid(body.location_id, "location_id"),
+            acquisition_source=body.acquisition_source,
+            preferred_language=body.preferred_language, notes_internal=body.notes_internal,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/member-profile", status_code=201)
+    def create_member_profile(
+        tenant_id: TenantId, session: Session, person_id: str, body: MemberProfileBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.create_member_profile(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            lifecycle_state=body.lifecycle_state, member_number=body.member_number,
+            joined_on=body.joined_on, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/lifecycle")
+    def change_lifecycle(
+        tenant_id: TenantId, session: Session, person_id: str, body: LifecycleBody
+    ) -> dict[str, Any]:
+        """Move a member through the lifecycle. The moves that take something away say why."""
+        permit(session, "people.person.write", body.correlation_id)
+        return people.change_member_lifecycle(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            to_state=body.to_state, expected_version=body.expected_version,
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/staff-profile", status_code=201)
+    def create_staff_profile(
+        tenant_id: TenantId, session: Session, person_id: str, body: StaffProfileBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.upsert_staff_profile(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            job_title=body.job_title,
+            location_id=optional_uuid(body.location_id, "location_id"),
+            started_on=body.started_on, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/staff-profile/end")
+    def end_staff_employment(
+        tenant_id: TenantId, session: Session, person_id: str, body: StaffEndBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.end_staff_employment(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            expected_version=body.expected_version, ended_on=body.ended_on,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/contacts", status_code=201)
+    def add_contact_point(
+        tenant_id: TenantId, session: Session, person_id: str, body: ContactPointBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.add_contact_point(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"), kind=body.kind,
+            value=body.value, is_primary=body.is_primary, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/contacts/{contact_point_id}/verify")
+    def verify_contact_point(
+        tenant_id: TenantId, session: Session, contact_point_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Records that a named actor asserted a verification. Nothing here verifies."""
+        permit(session, "people.person.write", body.correlation_id)
+        return people.verify_contact_point(
+            tenant_pool, tenant_id, require_uuid(contact_point_id, "contact_point_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/relationships", status_code=201)
+    def add_relationship(
+        tenant_id: TenantId, session: Session, body: RelationshipBody
+    ) -> dict[str, Any]:
+        permit(session, "people.relationship.write", body.correlation_id)
+        return people.add_relationship(
+            tenant_pool, tenant_id, kind=body.kind,
+            from_person_id=require_uuid(body.from_person_id, "from_person_id"),
+            to_person_id=require_uuid(body.to_person_id, "to_person_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/relationships/{relationship_id}/end")
+    def end_relationship(
+        tenant_id: TenantId, session: Session, relationship_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        permit(session, "people.relationship.write", body.correlation_id)
+        return people.end_relationship(
+            tenant_pool, tenant_id, require_uuid(relationship_id, "relationship_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/notes", status_code=201)
+    def record_note(
+        tenant_id: TenantId, session: Session, person_id: str, body: NoteBody
+    ) -> dict[str, Any]:
+        """RecordMemberNote. Insert-only: a correction is a new note."""
+        permit(session, "people.note.write", body.correlation_id)
+        return people.record_note(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"), body=body.body,
+            note_class=body.note_class, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/people/{person_id}/notes")
+    def read_notes(
+        tenant_id: TenantId, session: Session, person_id: str,
+        include_withdrawn: bool = False, limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        """A person's notes, with the body of each class the caller may not read replaced.
+
+        The record survives and only its content goes: telling a coach that a member has no
+        health notes when they have three is worse than telling them there are three they
+        cannot read.
+        """
+        gate = permit(session, "people.person.read")
+        return people.list_notes(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            masked_fields=gate.masked_fields,
+            held_permissions=held_permissions(session),
+            actor_person_id=actor_person_id(tenant_id, session),
+            include_withdrawn=include_withdrawn, limit=limit,
+        )
+
+    @app.post("/people/notes/{note_id}/withdraw")
+    def withdraw_note(
+        tenant_id: TenantId, session: Session, note_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        permit(session, "people.note.write", body.correlation_id)
+        return people.withdraw_note(
+            tenant_pool, tenant_id, require_uuid(note_id, "note_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/tags", status_code=201)
+    def create_tag(
+        tenant_id: TenantId, session: Session, body: TagBody
+    ) -> dict[str, Any]:
+        permit(session, "people.schema.write", body.correlation_id)
+        return people.create_tag(
+            tenant_pool, tenant_id, tag_key=body.tag_key, display_name=body.display_name,
+            is_internal=body.is_internal, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/tags", status_code=201)
+    def apply_tag(
+        tenant_id: TenantId, session: Session, person_id: str, body: ApplyTagBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.apply_tag(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            tag_id=require_uuid(body.tag_id, "tag_id"), actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/tags/remove")
+    def remove_tag(
+        tenant_id: TenantId, session: Session, person_id: str, body: ApplyTagBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.remove_tag(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            tag_id=require_uuid(body.tag_id, "tag_id"), actor_id=session["identity_id"],
+        )
+
+    @app.post("/people/custom-fields", status_code=201)
+    def define_custom_field(
+        tenant_id: TenantId, session: Session, body: CustomFieldBody
+    ) -> dict[str, Any]:
+        """Declare a custom field. Its type and sensitivity are final once written."""
+        permit(session, "people.schema.write", body.correlation_id)
+        return people.define_custom_field(
+            tenant_pool, tenant_id, field_key=body.field_key,
+            display_name=body.display_name, value_type=body.value_type,
+            sensitivity=body.sensitivity, is_required=body.is_required,
+            options=[{"value": o.value, "display_name": o.display_name or o.value}
+                     for o in body.options],
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.put("/people/{person_id}/custom-fields")
+    def set_custom_field_value(
+        tenant_id: TenantId, session: Session, person_id: str, body: CustomFieldValueBody
+    ) -> dict[str, Any]:
+        permit(session, "people.person.write", body.correlation_id)
+        return people.set_custom_field_value(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            field_key=body.field_key, value=body.value, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/{person_id}/duplicates")
+    def find_duplicates(
+        tenant_id: TenantId, session: Session, person_id: str, body: CorrelationBody
+    ) -> list[dict[str, Any]]:
+        """Score this person against everybody who shares an exact signal, and queue the pairs.
+
+        Every signal is named and the weights are in `dedup.WEIGHTS`: an operator asked to merge
+        two records is being asked to destroy one of them, and a score with no reasons behind it
+        is not something to do that on.
+        """
+        permit(session, "people.duplicate.review", body.correlation_id)
+        return people.find_duplicates(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/people/duplicates/all")
+    def read_duplicate_candidates(
+        tenant_id: TenantId, session: Session, status: str = "open",
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        permit(session, "people.duplicate.review")
+        return people.list_duplicate_candidates(
+            tenant_pool, tenant_id, status=status, limit=limit
+        )
+
+    @app.post("/people/duplicates/{candidate_id}/dismiss")
+    def dismiss_duplicate(
+        tenant_id: TenantId, session: Session, candidate_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        permit(session, "people.duplicate.review", body.correlation_id)
+        return people.dismiss_duplicate_candidate(
+            tenant_pool, tenant_id, require_uuid(candidate_id, "candidate_id"),
+            reason=body.reason, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/people/merges/plan")
+    def plan_merge(
+        tenant_id: TenantId, session: Session, source_person_id: str, target_person_id: str
+    ) -> dict[str, Any]:
+        """What a merge would move, and what it would leave behind, before anybody agrees."""
+        permit(session, "people.merge.decide")
+        return people.plan_merge(
+            tenant_pool, tenant_id,
+            source_person_id=require_uuid(source_person_id, "source_person_id"),
+            target_person_id=require_uuid(target_person_id, "target_person_id"),
+        )
+
+    @app.post("/people/merges", status_code=201)
+    def merge_persons(
+        tenant_id: TenantId, session: Session, body: MergeBody
+    ) -> dict[str, Any]:
+        """MergePerson. Nothing is deleted; the losing record points at the survivor."""
+        permit(session, "people.merge.decide", body.correlation_id)
+        return people.merge_persons(
+            tenant_pool, tenant_id,
+            source_person_id=require_uuid(body.source_person_id, "source_person_id"),
+            target_person_id=require_uuid(body.target_person_id, "target_person_id"),
+            reason=body.reason, candidate_id=optional_uuid(body.candidate_id, "candidate_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/merges/{merge_id}/reverse")
+    def reverse_merge(
+        tenant_id: TenantId, session: Session, merge_id: str, body: ReasonBody
+    ) -> dict[str, Any]:
+        """Undo a merge as far as this module can, and say what does not come back."""
+        permit(session, "people.merge.decide", body.correlation_id)
+        return people.reverse_merge(
+            tenant_pool, tenant_id, require_uuid(merge_id, "merge_id"), reason=body.reason,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/people/timeline/project")
+    def project_timeline(
+        tenant_id: TenantId, session: Session, body: CorrelationBody,
+        limit: int = Query(default=500, ge=1, le=5000),
+    ) -> dict[str, Any]:
+        """Build timeline entries from events in the outbox. Idempotent, and nothing loops."""
+        permit(session, "people.timeline.read", body.correlation_id)
+        return people.project_timeline(tenant_pool, tenant_id, limit=limit)
+
+    @app.get("/people/{person_id}/timeline")
+    def read_timeline(
+        tenant_id: TenantId, session: Session, person_id: str,
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[dict[str, Any]]:
+        """Paragraph 4224: masking is applied **at read time**, which is why it is here."""
+        gate = permit(session, "people.timeline.read")
+        return people.read_timeline(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            masked_fields=gate.masked_fields,
+            held_permissions=held_permissions(session),
+            actor_person_id=actor_person_id(tenant_id, session), limit=limit,
+        )
+
+    @app.get("/people/{person_id}/360")
+    def member_360(
+        tenant_id: TenantId, session: Session, person_id: str
+    ) -> dict[str, Any]:
+        """PPL-01-R02, composed rather than stored -- and every section names its source.
+
+        The sections whose owning module does not exist in this build say so. Returning an empty
+        list for them would read as "none", which is the difference between "this member has no
+        outstanding balance" and "nothing here knows".
+        """
+        gate = permit(session, "people.person.read")
+        return people.member_360(
+            tenant_pool, tenant_id, require_uuid(person_id, "person_id"),
+            masked_fields=gate.masked_fields, held_permissions=held_permissions(session),
+            actor_person_id=actor_person_id(tenant_id, session),
         )
 
     return app

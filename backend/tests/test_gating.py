@@ -77,6 +77,12 @@ READ_ROUTES = [
     ("get", "/notifications/suppressions/all", None),
     ("get", "/notifications/digests/all", None),
     ("get", f"/notifications/recipients/{_SUBJECT}/channels", None),
+    ("get", f"/people/{_ID}", None),
+    ("get", f"/people/{_ID}/notes", None),
+    ("get", f"/people/{_ID}/timeline", None),
+    ("get", f"/people/{_ID}/360", None),
+    ("get", "/people/duplicates/all", None),
+    ("get", f"/people/merges/plan?source_person_id={_ID}&target_person_id={_SUBJECT}", None),
 ]
 
 WRITE_ROUTES = [
@@ -197,6 +203,38 @@ WRITE_ROUTES = [
                                                             **_CORR}),
     ("put", f"/notifications/recipients/{_SUBJECT}/channels",
      {"channel": "email", "address_digest": "0" * 64, "reason": "they moved house", **_CORR}),
+    ("post", "/people", {"legal_name": "Sweep Person", **_CORR}),
+    ("patch", f"/people/{_ID}", {"expected_version": 1, **_CORR}),
+    ("post", f"/people/{_ID}/identity-links", {"identity_id": _SUBJECT, **_CORR}),
+    ("put", f"/people/{_ID}/profile", _CORR),
+    ("post", f"/people/{_ID}/member-profile", _CORR),
+    ("post", f"/people/{_ID}/lifecycle",
+     {"to_state": "active", "expected_version": 1, **_CORR}),
+    ("post", f"/people/{_ID}/staff-profile", _CORR),
+    ("post", f"/people/{_ID}/staff-profile/end",
+     {"expected_version": 1, "ended_on": "2026-11-14", **_CORR}),
+    ("post", f"/people/{_ID}/contacts",
+     {"kind": "email", "value": "sweep@acme.test", **_CORR}),
+    ("post", f"/people/contacts/{_ID}/verify", _CORR),
+    ("post", "/people/relationships",
+     {"kind": "coach_client", "from_person_id": _ID, "to_person_id": _SUBJECT, **_CORR}),
+    ("post", f"/people/relationships/{_ID}/end", {"reason": "ended", **_CORR}),
+    ("post", f"/people/{_ID}/notes", {"body": "a note", **_CORR}),
+    ("post", f"/people/notes/{_ID}/withdraw", {"reason": "wrong person", **_CORR}),
+    ("post", "/people/tags", {"tag_key": "vip", "display_name": "VIP", **_CORR}),
+    ("post", f"/people/{_ID}/tags", {"tag_id": _ID, **_CORR}),
+    ("post", f"/people/{_ID}/tags/remove", {"tag_id": _ID, **_CORR}),
+    ("post", "/people/custom-fields",
+     {"field_key": "locker", "display_name": "Locker", "value_type": "text", **_CORR}),
+    ("put", f"/people/{_ID}/custom-fields",
+     {"field_key": "locker", "value": "12", **_CORR}),
+    ("post", f"/people/{_ID}/duplicates", _CORR),
+    ("post", f"/people/duplicates/{_ID}/dismiss", {"reason": "two people", **_CORR}),
+    ("post", "/people/merges",
+     {"source_person_id": _ID, "target_person_id": _SUBJECT, "reason": "same person",
+      **_CORR}),
+    ("post", f"/people/merges/{_ID}/reverse", {"reason": "wrong call", **_CORR}),
+    ("post", "/people/timeline/project", _CORR),
 ]
 
 
@@ -535,7 +573,7 @@ class GateCoverageTests(unittest.TestCase):
     #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
     #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
     FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops", "/integrations",
-                            "/notifications")
+                            "/notifications", "/people")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.

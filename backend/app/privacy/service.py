@@ -1002,6 +1002,21 @@ _CLEAR_SQL: dict[tuple[str, str], str] = {
     ("passkeys", "aaguid"): "NULL",
     ("passkeys", "label"): "NULL",
     ("challenges", "nonce_hash"): "sha256(challenge_id::text::bytea)",
+    # MOD-014, in `plt01` rather than `iam`. **The first entries in this table outside the
+    # identity plane**, reached through `ppl_identity_links` because a DSAR names an identity
+    # and these tables are keyed on a person.
+    #
+    # `legal_name` has a non-blank CHECK, so it is replaced rather than emptied; the two names
+    # beside it are nullable. The contact values get a per-row tombstone because the unique
+    # index on (person, kind, value_normalized) would refuse a second `'erased'`, which is
+    # MOD-007's `identities_has_an_identifier` lesson in another table.
+    ("ppl_persons", "legal_name"): "'erased'",
+    ("ppl_persons", "preferred_name"): "NULL",
+    ("ppl_persons", "date_of_birth"): "NULL",
+    ("ppl_contact_points", "value_raw"): "'erased:' || contact_point_id::text",
+    ("ppl_contact_points", "value_normalized"): "'erased:' || contact_point_id::text",
+    ("ppl_tenant_profiles", "notes_internal"): "NULL",
+    ("ppl_custom_field_values", "value_text"): "'erased'",
 }
 
 
@@ -1030,21 +1045,38 @@ def _perform(
             detail={"reason": entry.reason, "subject_id": subject_id, **actor},
         ))
 
+    # **Which person this identity is, where the link has been recorded.** MOD-014 keys its
+    # tables on a `person_id` and a DSAR names an `identity_id`, so the person plane is
+    # reachable only through `ppl_identity_links` -- and a subject with no link reaches none of
+    # it. That is recorded per target rather than glossed: an erasure that reported `done / 0`
+    # against seven tables because the locator matched nothing is MOD-009's own review finding,
+    # one plane over.
+    person_ids = _person_cluster_for_subject(pool, tenant_id, subject_id=subject_id)
+
     for entry in classification.reachable_columns():
         target = f"{entry.schema}.{entry.table}.{entry.column}"
-        if entry.schema != "iam":
-            # Nothing outside the identity plane is reachable today. If that changes, whoever
-            # adds the entry adds the executor for it here rather than finding this silently
-            # reporting success.
+        if entry.schema not in ("iam", "plt01"):
+            # No executor for this schema. Whoever adds an entry adds the executor for it here
+            # rather than finding this silently reporting success.
             performed.append(_record_action(
                 pool, tenant_id, request_id=request_id, store="postgresql", target=target,
                 mechanism=entry.mechanism, outcome="failed", rows=0,
                 detail={"reason": "no_executor_for_this_schema", **actor},
             ))
             continue
+        if entry.schema == "plt01" and not person_ids:
+            performed.append(_record_action(
+                pool, tenant_id, request_id=request_id, store="postgresql", target=target,
+                mechanism=entry.mechanism, outcome="blocked", rows=0,
+                detail={"reason": "this_subject_has_no_recorded_person_link", **actor},
+            ))
+            continue
         assert identity_pool is not None  # fulfil_dsar refuses before reaching here
+        target_pool = pool if entry.schema == "plt01" else identity_pool
+        locators = [subject_id] if entry.schema == "iam" else person_ids
         try:
-            affected = _anonymize(identity_pool, tenant_id, entry=entry, subject_id=subject_id)
+            affected = _anonymize(target_pool, tenant_id, entry=entry,
+                                  subject_ids=locators)
         except Exception as e:  # noqa: BLE001 -- recorded as failed, then the run continues
             # Continuing rather than re-raising is deliberate: the targets after this one are
             # independent, and stopping would leave them neither done nor recorded. `settle`
@@ -1058,9 +1090,59 @@ def _perform(
         performed.append(_record_action(
             pool, tenant_id, request_id=request_id, store="postgresql", target=target,
             mechanism=entry.mechanism, outcome="done", rows=affected,
-            detail={"cleared": list(entry.clears), **actor},
+            detail={"cleared": list(entry.clears), "locators": locators, **actor},
         ))
     return performed
+
+
+def _person_cluster_for_subject(
+    pool: Pool, tenant_id: str, *, subject_id: str
+) -> list[str]:
+    """**Every** MOD-014 person id this identity's data lives under, or `[]` when nothing links.
+
+    Read on the tenant plane, where `ppl_identity_links` lives, because the planes hold nothing
+    in each other's schemas. The link is recorded by `people.link_identity` and is unverifiable
+    from either side -- so a subject with no link is a subject whose person-plane rows this
+    erasure cannot find, and every `plt01` target is recorded `blocked` with that reason rather
+    than `done / 0`.
+
+    **Why a cluster rather than one id, which is the finding.** MOD-014's merge *copies* the
+    losing record's contact points, notes, tags and custom values onto the survivor and deletes
+    nothing -- it cannot, because `person_id` carries no UPDATE grant and no `ppl_` table carries
+    DELETE. So after a merge a person's address exists under two ids, and a single-id erasure
+    cleared one of them and recorded `done / 1`. Whichever side held the sign-in identity, the
+    other kept the name, the birth date, the address and the health note -- in the module whose
+    registry entry calls `ppl_contact_points.value_raw` "the only copy of a member's address in
+    this build". A reviewer reproduced it in both directions.
+
+    The cluster is the transitive closure over `merged_into_person_id` in **both** directions
+    from the linked person: upward to the survivor, and downward to everything merged into
+    anything in the set. Recursive in SQL rather than looped in Python, so it is one round trip
+    and the walk cannot be interrupted half-done.
+    """
+    with tenant_scope(pool, tenant_id) as conn:
+        rows = conn.execute(
+            """
+            WITH RECURSIVE linked AS (
+                SELECT person_id FROM plt01.ppl_identity_links WHERE identity_id = %s
+            ), cluster AS (
+                SELECT person_id FROM linked
+                UNION
+                SELECT p.person_id
+                FROM plt01.ppl_persons p
+                JOIN cluster c
+                  ON p.person_id = c.person_id
+                  -- upward: the survivor this record was merged into
+                  OR p.person_id = (SELECT merged_into_person_id FROM plt01.ppl_persons
+                                    WHERE person_id = c.person_id)
+                  -- downward: everything merged into this record
+                  OR p.merged_into_person_id = c.person_id
+            )
+            SELECT person_id FROM cluster
+            """,
+            (subject_id,),
+        ).fetchall()
+    return sorted(str(r[0]) for r in rows)
 
 
 def _subject_exists(identity_pool: Pool, tenant_id: str, *, subject_id: str) -> bool:
@@ -1080,13 +1162,19 @@ def _subject_exists(identity_pool: Pool, tenant_id: str, *, subject_id: str) -> 
 
 
 def _anonymize(
-    identity_pool: Pool, tenant_id: str, *, entry: classification.Reachability, subject_id: str
+    identity_pool: Pool, tenant_id: str, *,
+    entry: classification.Reachability, subject_ids: list[str],
 ) -> int:
-    """Overwrite one table's identifying columns for one subject, and return the row count.
+    """Overwrite one table's identifying columns for a subject, and return the row count.
+
+    **A list of locators, not one.** On the identity plane it is one id; on the person plane it
+    is every id in the merge cluster, because a merge copies rather than moves and a single-id
+    clear left a second copy of everything under the other id while recording `done`. See
+    `_person_cluster_for_subject`.
 
     The SQL is assembled from `_CLEAR_SQL`, which is a fixed table in this module -- the column
-    names and the expressions are literals written here, never anything from a request. The only
-    value that crosses the boundary is `subject_id`, which is bound as a parameter.
+    names, the schema and the expressions are literals written here, never anything from a
+    request. The only values that cross the boundary are the locators, bound as one parameter.
     """
     if not entry.clears:
         return 0
@@ -1096,11 +1184,15 @@ def _anonymize(
         if expression is None:
             raise InvalidRequest(f"no_clear_rule_for_{entry.table}.{column}")
         assignments.append(f"{column} = {expression}")
+    # The schema comes from the entry, which is a literal in `classification`; the table and
+    # the column names are literals in `_CLEAR_SQL`. The only value crossing the boundary is the
+    # locator, bound as a parameter.
     statement = (
-        f"UPDATE iam.{entry.table} SET {', '.join(assignments)} WHERE {entry.locator()} = %s"
+        f"UPDATE {entry.schema}.{entry.table} SET {', '.join(assignments)} "
+        f"WHERE {entry.locator()} = ANY(%s)"
     )
     with tenant_scope(identity_pool, tenant_id) as conn:
-        cursor = conn.execute(statement, (subject_id,))
+        cursor = conn.execute(statement, (subject_ids,))
         return int(cursor.rowcount)
 
 

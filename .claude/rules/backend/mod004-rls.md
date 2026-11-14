@@ -125,6 +125,54 @@ an SMS notification could carry an email subject. Nothing was broken in the ship
 *evidence* was half of what its own preamble claimed. **So the sweep's mutations are
 weakenings as well as drops**, one per conjunct and one per side of an equality.
 
+**Sweep the schema, not the prefix.** Every `plt01` sweep in this file filtered on its own
+module's `ppl_`/`ntf_`/`evt_` prefix, and the `iam` block never did -- check 28 reads the whole
+schema, with the comment that says why. A reviewer created `plt01.member_contacts` holding
+plaintext addresses, with no RLS, no policy, no tenant foreign key and DELETE held by both
+runtime roles, and the suite reported all sixty-six checks passing. That is the same finding as
+the partitioned table one paragraph down, escaping on the *name* instead of the `relkind`. There
+is now one prefix-free sweep over all of `plt01` requiring ENABLE and FORCE RLS, exactly one
+permissive policy and a tenant-registry foreign key, so a table nobody prefixed is caught by the
+schema rather than by whoever remembers to add a sweep.
+
+**A primary-key check written as an inner join proves nothing about a table that has none.**
+Checking that the first key column is `tenant_id` by joining `pg_index ... indisprimary` means a
+table with no primary key contributes no row and is never flagged: thirteen of MOD-014's sixteen
+were droppable with the suite reporting 66/66, and the three that resisted were saved by a
+dependent foreign key rather than by a check -- which is this file's own MOD-004 trap verbatim.
+Assert existence with a `NOT EXISTS`, then assert the shape.
+
+**Nothing in this file had ever read `attnotnull`, in any module.** A `NOT NULL` is a constraint
+like any other and it carries load the CHECKs beside it are written to assume: MOD-014's
+`ppl_contact_points_normalized_not_blank` correctly has no `coalesce` *because* the column is
+NOT NULL, so dropping the NOT NULL admitted a NULL dedup key that passed the not-blank check and
+was distinct in the unique index -- unlimited duplicate addresses per person, and the detector
+blind to all of them. Each module now pins the nullability of the columns whose absence would
+change another constraint's meaning.
+
+**A `coalesce` case has to use NULL, not a blank string.** Every attributed-decision case in
+this file tested `'  '`, which the constraint refuses either way -- so the `coalesce` the
+comments call load-bearing was removable from three MOD-014 constraints with the suite green.
+`length(btrim(NULL)) > 0` is NULL, the AND-branch is NULL, `false OR NULL` is NULL, and a CHECK
+passes on NULL. The blank case proves the `btrim`; only the NULL case proves the `coalesce`.
+
+**A compound CHECK that names a status domain cannot be tested, and neither can its
+siblings.** MOD-014 wrote one constraint as `(status = 'active' AND a IS NULL AND b IS NULL) OR
+(status = 'merged' AND a IS NOT NULL AND b IS NOT NULL)`, which is correct and means every
+status value outside the two fails *it* as well as the domain CHECK beside it -- so the domain
+CHECK and a third constraint on the same columns were both droppable with the suite reporting
+66/66, their cases passing on this one's refusal. Split into `(a IS NULL) = (b IS NULL)` and
+`(status = 'merged') = (b IS NOT NULL)`, each of the four is isolatable and each has a case per
+side. The sweep is the only thing that finds this; a reader of the compound constraint has no
+reason to suspect it.
+
+**PostgreSQL evaluates a CHECK before the foreign-key trigger, so a case naming a parent that
+does not exist proves the CHECK for the wrong reason.** Three MOD-014 cases referenced a person
+that was never seeded: the CHECK under test fired first and the case passed, and it would have
+kept passing with that CHECK dropped -- as a `foreign_key_violation` the handler does not catch,
+which is a red suite with an unhelpful message rather than a named failure. Seed every parent a
+case names.
+
 **A new trigger invalidates existing cases the same way a new constraint does, and in the
 other direction too.** MOD-013 added a BEFORE INSERT trigger pinning one category per template
 key, which then fired first on an existing case that tested the unique index with a row

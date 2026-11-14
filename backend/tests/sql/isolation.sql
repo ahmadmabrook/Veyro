@@ -7368,4 +7368,1946 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 60/60 checks passed'
+
+-- ================================================================ MOD-014, PPL-01
+--
+-- Nine subject-bearing tables and five more beside them. The sweeps are the shape the last four
+-- review rounds arrived at: the catalogue rather than a per-table list, both runtime roles
+-- seated, every foreign key compared as a set, every UPDATE column grant compared per role, the
+-- column lists pinned, and a constraint case per *side* of every equality -- which checks 55-60
+-- gained only after a reviewer weakened eight of MOD-013's to one-way implications and watched
+-- the suite report 60/60 every time.
+--
+-- Two things are specific to this module and are what checks 64 and 65 exist for:
+--
+--   * **The column list is pinned because two controls key on names.** MOD-008's field masking
+--     and MOD-009's reachability registry both match column names, so a column added here is
+--     either declared or invisible to both. Check 64 fails until somebody declares it.
+--   * **A note's body and a timeline entry carry no UPDATE grant at all**, which is what makes
+--     one reliable in a dispute and the other a view of history rather than a second copy of
+--     it. Check 65 proves it per column and per role, and then attempts the write.
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.ppl_persons
+    (tenant_id, person_id, legal_name, preferred_name, date_of_birth, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001', 'Ahmad Mabrouk', 'Ahmad',
+        DATE '1990-05-01', :'actor', :'actor'),
+       (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000002', 'Laila Mabrouk', NULL,
+        DATE '2012-03-04', :'actor', :'actor'),
+       -- A third, so check 66's duplicate-candidate cases have a pair that is not already
+       -- queued. Every one of them collided with `ppl_duplicate_candidates_open` on the
+       -- seeded pair at first, and so proved that index rather than the constraint it named.
+       -- They then passed for a second wrong reason: PostgreSQL evaluates a CHECK before the
+       -- foreign-key trigger, so a row naming a person who did not exist tripped the CHECK
+       -- under test and never reached the reference. Both found by the mutation sweep.
+       (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000011', 'Omar Khalil', NULL,
+        DATE '1985-09-09', :'actor', :'actor');
+INSERT INTO plt01.ppl_identity_links
+    (tenant_id, person_id, identity_id, linked_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-00000000000a', :'actor', :'actor');
+INSERT INTO plt01.ppl_contact_points
+    (tenant_id, contact_point_id, person_id, kind, value_raw, value_normalized, is_primary,
+     verified_at, verified_by, verify_correlation_id, recorded_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000003',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'email', 'Ahmad@Acme.test',
+        'ahmad@acme.test', true, now(), :'actor', :'actor', :'actor', :'actor');
+INSERT INTO plt01.ppl_tenant_profiles
+    (tenant_id, profile_id, person_id, acquisition_source, preferred_language,
+     notes_internal, updated_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000004',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'walk_in', 'en-GB', 'prefers mornings',
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_member_profiles
+    (tenant_id, member_profile_id, person_id, lifecycle_state, member_number, joined_on,
+     updated_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000005',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'active', 'M-0001', DATE '2026-01-05',
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_staff_profiles
+    (tenant_id, staff_profile_id, person_id, job_title, started_on, updated_by,
+     correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000006',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'Head Coach', DATE '2025-06-01',
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_relationships
+    (tenant_id, relationship_id, kind, from_person_id, to_person_id, created_by,
+     correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000007', 'guardian_dependent',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002',
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_tags
+    (tenant_id, tag_id, tag_key, display_name, is_internal, created_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000008', 'vip', 'VIP', false,
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_person_tags
+    (tenant_id, person_id, tag_id, applied_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-000000000008', :'actor', :'actor');
+INSERT INTO plt01.ppl_custom_field_defs
+    (tenant_id, field_id, field_key, display_name, value_type, sensitivity, is_required,
+     created_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000009', 'locker', 'Locker', 'enum',
+        'none', false, :'actor', :'actor');
+INSERT INTO plt01.ppl_custom_field_options (tenant_id, field_id, option_value, display_name)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000009', '12', 'Locker 12');
+INSERT INTO plt01.ppl_custom_field_values
+    (tenant_id, person_id, field_id, value_text, updated_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-000000000009', '12', :'actor', :'actor');
+INSERT INTO plt01.ppl_person_notes
+    (tenant_id, note_id, person_id, note_class, body, recorded_by, correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-00000000000b',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'general', 'Asked about a locker.',
+        :'actor', :'actor');
+INSERT INTO plt01.ppl_duplicate_candidates
+    (tenant_id, candidate_id, lower_person_id, higher_person_id, score, signals,
+     correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-00000000000c',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002',
+        45, ARRAY['legal_name_match'], :'actor');
+-- The third person merged away, so check 66 has a live merge to collide with and the split
+-- merge constraints have a real `merged` row in the table. Written as an UPDATE because that
+-- is the order the service does it in.
+UPDATE plt01.ppl_persons
+   SET merge_status = 'merged',
+       merged_into_person_id = 'bbbbbbbb-1000-4000-8000-000000000001',
+       merged_at = now(), version = version + 1
+ WHERE person_id = 'bbbbbbbb-1000-4000-8000-000000000011';
+INSERT INTO plt01.ppl_merges
+    (tenant_id, merge_id, source_person_id, target_person_id, reason, merged_by,
+     correlation_id)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-000000000012',
+        'bbbbbbbb-1000-4000-8000-000000000011', 'bbbbbbbb-1000-4000-8000-000000000001',
+        'the same person, entered twice', :'actor', :'actor');
+INSERT INTO plt01.ppl_timeline_entries
+    (tenant_id, entry_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+     aggregate_id, summary, visibility_class)
+VALUES (:'tenant_a', 'bbbbbbbb-1000-4000-8000-00000000000d',
+        'bbbbbbbb-1000-4000-8000-000000000001',
+        'bbbbbbbb-1000-4000-8000-00000000000e', 'person.created', now(), 'person',
+        'bbbbbbbb-1000-4000-8000-000000000001', 'Person record created', 'none');
+COMMIT;
+
+-- Tenant B holds one person of its own, so a leaked predicate shows up as a count above the
+-- expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.ppl_persons (tenant_id, legal_name, created_by, correlation_id)
+VALUES ('22222222-2222-4222-8222-222222222222', 'Rival Member',
+        '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+COMMIT;
+
+
+-- ---------------------------------------------------------------- 61. ppl tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ppl_identity_links', 'ppl_contact_points',
+                               'ppl_tenant_profiles', 'ppl_member_profiles',
+                               'ppl_staff_profiles', 'ppl_relationships', 'ppl_tags',
+                               'ppl_person_tags', 'ppl_custom_field_defs',
+                               'ppl_custom_field_options', 'ppl_custom_field_values',
+                               'ppl_person_notes', 'ppl_duplicate_candidates',
+                               'ppl_merges', 'ppl_timeline_entries']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 61 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.ppl_persons) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: tenant B sees % people, expected its own 1',
+            (SELECT count(*) FROM plt01.ppl_persons);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.ppl_persons WHERE legal_name = 'Ahmad Mabrouk') THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: tenant B read tenant A''s person';
+    END IF;
+END $$;
+COMMIT;
+
+-- **The worker role gets a seat too.** PostgreSQL ORs permissive policies, so a role nobody
+-- sits as is a role nothing is proved about: MOD-010's review found that for `veyro_cp_worker`
+-- on `evt_` tables, the fix was scoped to `evt_` tables, and MOD-011 then granted the worker
+-- identical access to eight more and inherited the blind spot -- a reviewer opened all eight
+-- with the suite still reporting 48/48.
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.ppl_persons) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_contact_points) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_person_notes) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_merges) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_timeline_entries) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: the worker role crossed a tenant boundary';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.ppl_persons) <> 3
+       OR (SELECT count(*) FROM plt01.ppl_identity_links) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_contact_points) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_tenant_profiles) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_member_profiles) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_staff_profiles) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_relationships) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_tags) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_person_tags) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_custom_field_defs) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_custom_field_options) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_custom_field_values) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_person_notes) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_duplicate_candidates) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_merges) <> 1
+       OR (SELECT count(*) FROM plt01.ppl_timeline_entries) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: tenant A cannot see its own people rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- The catalogue sweep: RLS on both halves of the policy, exactly one permissive policy per
+-- table, the migrator as owner, a count guard so the sweep cannot pass vacuously, and a
+-- tenant-leading primary key.
+DO $$
+DECLARE
+    unprotected text;
+    wrong text;
+BEGIN
+    SELECT string_agg(relname, ', ' ORDER BY relname) INTO unprotected
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+      AND relname LIKE 'ppl\_%' AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF unprotected IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: ppl_ tables without ENABLE and FORCE RLS: %',
+            unprotected;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+          AND relname LIKE 'ppl\_%') < 16 THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: expected at least 16 ppl_ tables, found %',
+            (SELECT count(*) FROM pg_class
+             WHERE relnamespace = 'plt01'::regnamespace AND relkind IN ('r', 'p')
+               AND relname LIKE 'ppl\_%');
+    END IF;
+    -- Exactly one permissive policy per table. Comparing a predicate asserts that a *matching*
+    -- policy exists, which an added second policy satisfies trivially while reading every
+    -- tenant.
+    SELECT string_agg(c.relname || ' (' || n || ')', ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN LATERAL (
+        SELECT count(*) AS n FROM pg_policies p
+        WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
+    ) counted ON true
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%' AND counted.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: ppl_ tables without exactly one permissive policy: %', wrong;
+    END IF;
+    SELECT string_agg(p.tablename, ', ' ORDER BY p.tablename) INTO wrong
+    FROM pg_policies p
+    WHERE p.schemaname = 'plt01' AND p.tablename LIKE 'ppl\_%'
+      AND (p.qual IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
+           OR p.with_check IS DISTINCT FROM
+             '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: ppl_ policies with a different predicate: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%' AND pg_get_userbyid(c.relowner) <> 'veyro_cp_migrator';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a ppl_ table is owned by something else: %', wrong;
+    END IF;
+    -- **Every table has a primary key.** This join was inner, so a table with *no* primary key
+    -- contributed no row and was never flagged -- thirteen of sixteen were droppable with the
+    -- suite reporting 66/66, and the three that resisted were saved by a dependent foreign key
+    -- rather than by a check, which is the exact trap this file records from MOD-004 ("an early
+    -- 'the app role cannot DELETE' test passed only because a foreign key refused the delete
+    -- first"). Dropping `ppl_person_notes_pkey` lets two notes share a `note_id`, so a
+    -- withdrawal addressed by id withdraws both; dropping `ppl_contact_points_pkey` breaks the
+    -- uniqueness MOD-009's `'erased:' || contact_point_id` tombstone depends on. Found by
+    -- review.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%'
+      AND NOT EXISTS (SELECT 1 FROM pg_index i
+                      WHERE i.indrelid = c.oid AND i.indisprimary);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a ppl_ table has no primary key: %', wrong;
+    END IF;
+    -- Tenant-leading primary key, which is what makes every index on these tables start with
+    -- the discriminator rather than ending with it.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = i.indkey[0]
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%' AND a.attname <> 'tenant_id';
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a ppl_ primary key does not lead with tenant_id: %',
+            wrong;
+    END IF;
+    -- **And the NOT NULLs, which nothing in this file had ever read.** `attnotnull` appears
+    -- nowhere in the other nine modules' checks either, so dropping NOT NULL from
+    -- `ppl_contact_points.value_normalized` -- the dedup key, whose not-blank CHECK correctly
+    -- has no `coalesce` *because* the column is NOT NULL -- admitted unlimited NULL duplicates
+    -- per person and blinded the detector to all of them, with the suite reporting 66/66. The
+    -- same for `ppl_person_notes.recorded_by` and `ppl_merges.merged_by`: a note and a merge
+    -- with nobody's name on them, in the two tables this module says must always carry one.
+    SELECT string_agg(c.relname || '.' || a.attname, ', '
+                      ORDER BY c.relname, a.attname) INTO wrong
+    FROM pg_class c
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%' AND NOT a.attnotnull
+      AND (c.relname, a.attname) IN (
+          ('ppl_persons', 'tenant_id'), ('ppl_persons', 'person_id'),
+          ('ppl_persons', 'legal_name'), ('ppl_persons', 'merge_status'),
+          ('ppl_persons', 'version'), ('ppl_persons', 'created_by'),
+          ('ppl_persons', 'correlation_id'),
+          ('ppl_identity_links', 'identity_id'), ('ppl_identity_links', 'person_id'),
+          ('ppl_identity_links', 'linked_by'),
+          ('ppl_contact_points', 'person_id'), ('ppl_contact_points', 'kind'),
+          ('ppl_contact_points', 'value_raw'),
+          ('ppl_contact_points', 'value_normalized'),
+          ('ppl_contact_points', 'is_primary'), ('ppl_contact_points', 'recorded_by'),
+          ('ppl_tenant_profiles', 'person_id'), ('ppl_tenant_profiles', 'version'),
+          ('ppl_tenant_profiles', 'updated_by'),
+          ('ppl_member_profiles', 'person_id'),
+          ('ppl_member_profiles', 'lifecycle_state'),
+          ('ppl_member_profiles', 'version'), ('ppl_member_profiles', 'updated_by'),
+          ('ppl_staff_profiles', 'person_id'),
+          ('ppl_staff_profiles', 'employment_state'),
+          ('ppl_staff_profiles', 'version'), ('ppl_staff_profiles', 'updated_by'),
+          ('ppl_relationships', 'kind'), ('ppl_relationships', 'from_person_id'),
+          ('ppl_relationships', 'to_person_id'), ('ppl_relationships', 'valid_from'),
+          ('ppl_relationships', 'created_by'),
+          ('ppl_tags', 'tag_key'), ('ppl_tags', 'display_name'),
+          ('ppl_tags', 'is_internal'), ('ppl_tags', 'created_by'),
+          ('ppl_person_tags', 'person_id'), ('ppl_person_tags', 'tag_id'),
+          ('ppl_person_tags', 'applied_at'), ('ppl_person_tags', 'applied_by'),
+          ('ppl_custom_field_defs', 'field_key'),
+          ('ppl_custom_field_defs', 'display_name'),
+          ('ppl_custom_field_defs', 'value_type'),
+          ('ppl_custom_field_defs', 'sensitivity'),
+          ('ppl_custom_field_defs', 'is_required'),
+          ('ppl_custom_field_defs', 'created_by'),
+          ('ppl_custom_field_options', 'field_id'),
+          ('ppl_custom_field_options', 'option_value'),
+          ('ppl_custom_field_options', 'display_name'),
+          ('ppl_custom_field_values', 'person_id'),
+          ('ppl_custom_field_values', 'field_id'),
+          ('ppl_custom_field_values', 'value_text'),
+          ('ppl_custom_field_values', 'updated_by'),
+          ('ppl_person_notes', 'person_id'), ('ppl_person_notes', 'note_class'),
+          ('ppl_person_notes', 'body'), ('ppl_person_notes', 'recorded_at'),
+          ('ppl_person_notes', 'recorded_by'),
+          ('ppl_duplicate_candidates', 'lower_person_id'),
+          ('ppl_duplicate_candidates', 'higher_person_id'),
+          ('ppl_duplicate_candidates', 'score'),
+          ('ppl_duplicate_candidates', 'signals'),
+          ('ppl_duplicate_candidates', 'status'),
+          ('ppl_merges', 'source_person_id'), ('ppl_merges', 'target_person_id'),
+          ('ppl_merges', 'reason'), ('ppl_merges', 'merged_at'),
+          ('ppl_merges', 'merged_by'),
+          ('ppl_timeline_entries', 'person_id'), ('ppl_timeline_entries', 'event_id'),
+          ('ppl_timeline_entries', 'event_type'),
+          ('ppl_timeline_entries', 'occurred_at'),
+          ('ppl_timeline_entries', 'aggregate_type'),
+          ('ppl_timeline_entries', 'aggregate_id'),
+          ('ppl_timeline_entries', 'summary'),
+          ('ppl_timeline_entries', 'visibility_class'));
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 61 FAILED: a ppl_ column lost its NOT NULL: %', wrong;
+    END IF;
+END $$;
+
+-- ------------------------------------------- 61b. every plt01 table, whatever it is called
+-- **A `plt01` table whose name matches no module prefix is invisible to all sixty-six checks.**
+-- Every sweep in this file filters on its own module's prefix, and the `iam` block does not --
+-- check 28 reads the whole schema, with the comment that says why: "a fixed expected count has
+-- to be edited whenever a module adds a table, and the edit is exactly the moment an
+-- unprotected one would slip through."
+--
+-- A reviewer created `plt01.member_contacts` holding plaintext addresses, with no RLS, no
+-- policy, no tenant foreign key and DELETE held by both runtime roles, and the suite reported
+-- every check passing. That is the `ntf_contacts` finding this file already records one level
+-- out: that one escaped on `relkind`, this one escapes on the name. Prefix-free, so a table
+-- nobody prefixed is caught by the schema rather than by whoever remembers to add a sweep.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND NOT (c.relrowsecurity AND c.relforcerowsecurity);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 table has no ENABLE and FORCE row level security: %',
+            wrong;
+    END IF;
+    SELECT string_agg(c.relname || ' (' || n || ')', ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    JOIN LATERAL (
+        SELECT count(*) AS n FROM pg_policies p
+        WHERE p.schemaname = 'plt01' AND p.tablename = c.relname
+          AND p.permissive = 'PERMISSIVE'
+    ) counted ON true
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND counted.n <> 1;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 table has no single permissive policy: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint con
+          JOIN pg_class parent ON parent.oid = con.confrelid
+          WHERE con.conrelid = c.oid AND con.contype = 'f'
+            AND parent.relname = 'tenants');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 61 FAILED: a plt01 table carries no tenant registry foreign key: %', wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------- 62. fail closed, ppl tables
+-- With no context the predicate is NULL, so reads return nothing and writes are refused. This
+-- is the property the whole plane rests on and it is asserted as both roles, because a role
+-- nobody sits as is a role nothing is proved about.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.ppl_persons) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_contact_points) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_person_notes) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_timeline_entries) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 62 FAILED: the app role read people rows with no tenant context';
+    END IF;
+    BEGIN
+        INSERT INTO plt01.ppl_persons (tenant_id, legal_name, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Nobody',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 62 FAILED: a person was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM plt01.ppl_persons) <> 0
+       OR (SELECT count(*) FROM plt01.ppl_person_notes) <> 0 THEN
+        RAISE EXCEPTION
+            'CHECK 62 FAILED: the worker role read people rows with no tenant context';
+    END IF;
+END $$;
+ROLLBACK;
+
+-- And a write that names another tenant inside a context is refused by WITH CHECK, which is
+-- the half a USING-only policy leaves open.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ppl_persons (tenant_id, legal_name, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Smuggled',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 62 FAILED: tenant B wrote a person into tenant A';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ---------------------------------------------------------------- 63. cross-tenant parents
+-- Every foreign key on this module's tables, compared **as a set**. A sample proves the sample:
+-- MOD-012's review found two intra-module parents droppable in silence because one table's case
+-- had been written and the rest asserted.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(fk) AS (VALUES
+        ('plt01.ppl_persons: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_persons: tenant_id,merged_into_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_identity_links: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_identity_links: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_contact_points: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_contact_points: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_tenant_profiles: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_tenant_profiles: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_tenant_profiles: tenant_id,brand_id -> plt01.brands'),
+        ('plt01.ppl_tenant_profiles: tenant_id,location_id -> plt01.locations'),
+        ('plt01.ppl_member_profiles: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_member_profiles: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_staff_profiles: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_staff_profiles: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_staff_profiles: tenant_id,location_id -> plt01.locations'),
+        ('plt01.ppl_relationships: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_relationships: tenant_id,from_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_relationships: tenant_id,to_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_tags: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_person_tags: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_person_tags: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_person_tags: tenant_id,tag_id -> plt01.ppl_tags'),
+        ('plt01.ppl_custom_field_defs: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_custom_field_options: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_custom_field_options: tenant_id,field_id -> plt01.ppl_custom_field_defs'),
+        ('plt01.ppl_custom_field_values: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_custom_field_values: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_custom_field_values: tenant_id,field_id -> plt01.ppl_custom_field_defs'),
+        ('plt01.ppl_person_notes: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_person_notes: tenant_id,person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_duplicate_candidates: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_duplicate_candidates: tenant_id,lower_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_duplicate_candidates: tenant_id,higher_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_merges: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_merges: tenant_id,source_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_merges: tenant_id,target_person_id -> plt01.ppl_persons'),
+        ('plt01.ppl_timeline_entries: tenant_id -> plt01_platform.tenants'),
+        ('plt01.ppl_timeline_entries: tenant_id,person_id -> plt01.ppl_persons')
+    ), actual(fk) AS (
+        SELECT 'plt01.' || c.relname || ': '
+               || (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                   FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum)
+               || ' -> ' || pn.nspname || '.' || p.relname
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_class p ON p.oid = con.confrelid
+        JOIN pg_namespace pn ON pn.oid = p.relnamespace
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relname LIKE 'ppl\_%'
+          AND con.contype = 'f'
+    )
+    SELECT string_agg(fk, '; ' ORDER BY fk) INTO wrong
+    FROM ((SELECT fk FROM expected EXCEPT SELECT fk FROM actual)
+          UNION ALL
+          (SELECT fk FROM actual EXCEPT SELECT fk FROM expected)) AS differing;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 63 FAILED: foreign keys differ from the expected set: %', wrong;
+    END IF;
+END $$;
+
+-- And a composite parent reference actually refuses another tenant's row, which is what
+-- carrying `tenant_id` into the reference is for.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, recorded_by,
+             correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                'bbbbbbbb-1000-4000-8000-000000000001', 'email', 'x@y.z', 'x@y.z',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION
+            'CHECK 63 FAILED: a contact point was attached to another tenant''s person';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+-- ------------------------------------------- 64. the person plane's columns are pinned
+-- **Two controls key on column names, so a new column is either declared or invisible to
+-- both.** MOD-008's field masking matches `SENSITIVE_FIELDS` by name and MOD-009's reachability
+-- registry matches subject columns by name -- which is how `evt_outbox.payload` came to need a
+-- hand-written declaration and how MOD-013's three free-text columns were found holding contact
+-- addresses nobody had declared. This fails until somebody adds the column to both.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('plt01.ppl_persons',
+         'correlation_id,created_at,created_by,date_of_birth,legal_name,merge_status,'
+         'merged_at,merged_into_person_id,person_id,preferred_name,tenant_id,updated_at,'
+         'version'),
+        ('plt01.ppl_identity_links',
+         'correlation_id,identity_id,linked_at,linked_by,person_id,tenant_id'),
+        ('plt01.ppl_contact_points',
+         'contact_point_id,correlation_id,created_at,is_primary,kind,person_id,recorded_by,'
+         'tenant_id,updated_at,value_normalized,value_raw,verified_at,verified_by,'
+         'verify_correlation_id'),
+        ('plt01.ppl_tenant_profiles',
+         'acquisition_source,brand_id,correlation_id,created_at,location_id,notes_internal,'
+         'person_id,preferred_language,profile_id,tenant_id,updated_at,updated_by,version'),
+        ('plt01.ppl_member_profiles',
+         'correlation_id,created_at,joined_on,lifecycle_state,member_number,'
+         'member_profile_id,person_id,state_changed_at,state_reason,tenant_id,updated_at,'
+         'updated_by,version'),
+        ('plt01.ppl_staff_profiles',
+         'correlation_id,created_at,employment_state,ended_on,job_title,location_id,'
+         'person_id,staff_profile_id,started_on,tenant_id,updated_at,updated_by,version'),
+        ('plt01.ppl_relationships',
+         'correlation_id,created_at,created_by,end_correlation_id,ended_by,ended_reason,'
+         'from_person_id,kind,relationship_id,tenant_id,to_person_id,valid_from,valid_to'),
+        ('plt01.ppl_tags',
+         'correlation_id,created_at,created_by,display_name,is_internal,retired_at,tag_id,'
+         'tag_key,tenant_id'),
+        ('plt01.ppl_person_tags',
+         'applied_at,applied_by,correlation_id,person_id,removed_at,removed_by,tag_id,'
+         'tenant_id'),
+        ('plt01.ppl_custom_field_defs',
+         'correlation_id,created_at,created_by,display_name,field_id,field_key,is_required,'
+         'retired_at,sensitivity,tenant_id,value_type'),
+        ('plt01.ppl_custom_field_options',
+         'display_name,field_id,option_value,tenant_id'),
+        ('plt01.ppl_custom_field_values',
+         'correlation_id,field_id,person_id,tenant_id,updated_at,updated_by,value_text'),
+        ('plt01.ppl_person_notes',
+         'body,correlation_id,note_class,note_id,person_id,recorded_at,recorded_by,'
+         'tenant_id,withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('plt01.ppl_duplicate_candidates',
+         'candidate_id,correlation_id,decided_at,decided_by,decision_reason,detected_at,'
+         'higher_person_id,lower_person_id,score,signals,status,tenant_id'),
+        ('plt01.ppl_merges',
+         'correlation_id,merge_id,merged_at,merged_by,moved_contact_points,'
+         'moved_custom_fields,moved_notes,moved_relationships,moved_tags,reason,'
+         'reverse_correlation_id,reverse_reason,reversed_at,reversed_by,source_person_id,'
+         'target_person_id,tenant_id'),
+        ('plt01.ppl_timeline_entries',
+         'aggregate_id,aggregate_type,entry_id,event_id,event_type,occurred_at,person_id,'
+         'projected_at,summary,tenant_id,visibility_class')
+    )
+    SELECT string_agg(e.tbl || ': ' || coalesce(a.actual, '(none)'), '; ' ORDER BY e.tbl)
+    INTO wrong
+    FROM expected e
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = e.tbl::regclass AND att.attnum > 0 AND NOT att.attisdropped
+    ) a ON true
+    WHERE a.actual IS DISTINCT FROM e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 64 FAILED: ppl_ columns are not the expected set, so a column the masking '
+            'and the erasure registry both key on by name may be undeclared: %', wrong;
+    END IF;
+    -- And the catalogue cover: a table outside the list above escapes the comparison entirely,
+    -- which is MOD-009's finding -- seven of nine tables had no evidence behind them.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%'
+      AND ('plt01.' || c.relname) NOT IN (
+          'plt01.ppl_persons', 'plt01.ppl_identity_links', 'plt01.ppl_contact_points',
+          'plt01.ppl_tenant_profiles', 'plt01.ppl_member_profiles',
+          'plt01.ppl_staff_profiles', 'plt01.ppl_relationships', 'plt01.ppl_tags',
+          'plt01.ppl_person_tags', 'plt01.ppl_custom_field_defs',
+          'plt01.ppl_custom_field_options', 'plt01.ppl_custom_field_values',
+          'plt01.ppl_person_notes', 'plt01.ppl_duplicate_candidates', 'plt01.ppl_merges',
+          'plt01.ppl_timeline_entries');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 64 FAILED: a ppl_ table is outside the pinned column lists: %',
+            wrong;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------- 65. people privileges
+-- The UPDATE column grants compared as a set **per table and per role**, read through
+-- `has_column_privilege` over `pg_attribute`. MOD-010's review widened ten grants against a
+-- hand-written list of names with the suite reporting every check passing, and
+-- `information_schema.column_privileges` is filtered to what the connecting user can see -- so
+-- a check running as one role proves nothing about the other.
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('ppl_persons',
+         'date_of_birth,legal_name,merge_status,merged_at,merged_into_person_id,'
+         'preferred_name,updated_at,version'),
+        ('ppl_identity_links', '(none)'),
+        ('ppl_contact_points',
+         'is_primary,updated_at,value_normalized,value_raw,verified_at,verified_by,'
+         'verify_correlation_id'),
+        ('ppl_tenant_profiles',
+         'acquisition_source,brand_id,correlation_id,location_id,notes_internal,'
+         'preferred_language,updated_at,updated_by,version'),
+        ('ppl_member_profiles',
+         'correlation_id,joined_on,lifecycle_state,member_number,state_changed_at,'
+         'state_reason,updated_at,updated_by,version'),
+        ('ppl_staff_profiles',
+         'correlation_id,employment_state,ended_on,job_title,location_id,started_on,'
+         'updated_at,updated_by,version'),
+        ('ppl_relationships', 'end_correlation_id,ended_by,ended_reason,valid_to'),
+        ('ppl_tags', 'display_name,is_internal,retired_at'),
+        ('ppl_person_tags',
+         'applied_at,applied_by,correlation_id,removed_at,removed_by'),
+        ('ppl_custom_field_defs', 'display_name,is_required,retired_at'),
+        ('ppl_custom_field_options', 'display_name'),
+        ('ppl_custom_field_values', 'correlation_id,updated_at,updated_by,value_text'),
+        ('ppl_person_notes', 'withdraw_reason,withdrawn_at,withdrawn_by'),
+        ('ppl_duplicate_candidates', 'decided_at,decided_by,decision_reason,status'),
+        ('ppl_merges',
+         'reverse_correlation_id,reverse_reason,reversed_at,reversed_by'),
+        ('ppl_timeline_entries', '(none)')
+    ), roles(grantee) AS (VALUES ('veyro_cp_app'), ('veyro_cp_worker'))
+    SELECT string_agg(
+               e.tbl || ' / ' || r.grantee || ': ' || coalesce(a.actual, '(none)'),
+               '; ' ORDER BY e.tbl, r.grantee)
+    INTO wrong
+    FROM expected e
+    CROSS JOIN roles r
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = ('plt01.' || e.tbl)::regclass AND att.attnum > 0
+          AND NOT att.attisdropped
+          AND has_column_privilege(r.grantee, att.attrelid, att.attnum, 'UPDATE')
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') IS DISTINCT FROM e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 65 FAILED: UPDATE column grants differ from the expected set: %', wrong;
+    END IF;
+    -- No runtime role holds DELETE, TRUNCATE or REFERENCES anywhere in this module. Nothing
+    -- here is deleted: a merged person keeps its row, a relationship ends, a note is withdrawn
+    -- and a timeline entry is rebuilt rather than edited.
+    SELECT string_agg(c.relname || ' / ' || r.grantee || ' / ' || p.priv, '; ') INTO wrong
+    FROM pg_class c
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS r(grantee)
+    CROSS JOIN (VALUES ('DELETE'), ('TRUNCATE'), ('REFERENCES')) AS p(priv)
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%'
+      AND has_table_privilege(r.grantee, c.oid, p.priv);
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION
+            'CHECK 65 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES: %', wrong;
+    END IF;
+    -- And no PUBLIC grant, at table level or column level. `pg_class.relacl` holds table-level
+    -- grants only, so the column-level half needs `has_column_privilege` -- MOD-011's finding.
+    SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%'
+      AND (array_to_string(c.relacl, ',') LIKE '%=%'
+           AND array_to_string(c.relacl, ',') ~ '(^|,)=')
+    ;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 65 FAILED: a ppl_ table carries a PUBLIC table grant: %', wrong;
+    END IF;
+    SELECT string_agg(c.relname || '.' || att.attname, ', ') INTO wrong
+    FROM pg_class c
+    JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0 AND NOT att.attisdropped
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind IN ('r', 'p')
+      AND c.relname LIKE 'ppl\_%'
+      AND has_column_privilege('public', att.attrelid, att.attnum, 'SELECT');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 65 FAILED: a ppl_ column carries a PUBLIC grant: %', wrong;
+    END IF;
+END $$;
+
+-- Behaviourally, as the role that holds the grants: the note body and the timeline entry
+-- cannot be rewritten, and neither can the merge record of what happened.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        UPDATE plt01.ppl_person_notes SET body = 'something else'
+        WHERE note_id = 'bbbbbbbb-1000-4000-8000-00000000000b';
+        RAISE EXCEPTION 'CHECK 65 FAILED: a note body was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ppl_timeline_entries SET summary = 'a different history'
+        WHERE entry_id = 'bbbbbbbb-1000-4000-8000-00000000000d';
+        RAISE EXCEPTION 'CHECK 65 FAILED: a timeline entry was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ppl_relationships
+        SET from_person_id = 'bbbbbbbb-1000-4000-8000-000000000002'
+        WHERE relationship_id = 'bbbbbbbb-1000-4000-8000-000000000007';
+        RAISE EXCEPTION 'CHECK 65 FAILED: a relationship was re-pointed at another person';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ppl_custom_field_defs SET sensitivity = 'none'
+        WHERE field_id = 'bbbbbbbb-1000-4000-8000-000000000009';
+        RAISE EXCEPTION
+            'CHECK 65 FAILED: a custom field was reclassified, unmasking every stored value';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ppl_duplicate_candidates SET signals = ARRAY['verified_email_match']
+        WHERE candidate_id = 'bbbbbbbb-1000-4000-8000-00000000000c';
+        RAISE EXCEPTION
+            'CHECK 65 FAILED: the evidence behind a merge decision was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.ppl_persons
+        WHERE person_id = 'bbbbbbbb-1000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 65 FAILED: a person was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+
+
+-- ---------------------------------------------------------------- 66. the ppl_ constraints
+-- Every CHECK constraint and every unique index on this module's tables, generated from the
+-- catalogue of constraints that exist rather than from the ones somebody thought to write
+-- down. Two rules the last three review rounds paid for:
+--
+--   * **Each case sets every other column so the row violates exactly one rule.** A case that
+--     passes because a *sibling* constraint fired first proves nothing about the one it names,
+--     and MOD-011, MOD-012 and MOD-013 each shipped that shape past a careful read.
+--   * **An equality needs a case per side.** A reviewer weakened eight of MOD-013's to one-way
+--     implications and the suite reported 60/60 every time -- so a constraint written as
+--     `(A) = (B)`, or as a disjunction over several columns, gets one case per direction and
+--     one per conjunct.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- A blank legal name is a person nobody can file.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', '   ', NULL, NULL, 'active', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a blank legal name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A preferred name is absent or it is a name; a blank one is neither, and every surface
+    -- shows it in place of the real one.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', '  ', NULL, 'active', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a blank preferred name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A birth date in the future is a typo, and this column decides whether somebody is a
+    -- minor.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, CURRENT_DATE + 1, 'active', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was born in the future';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A merge status outside the two is a row no reader can resolve. The survivor columns are
+    -- left null so the two constraints beside this one are satisfied and only the domain fires
+    -- -- with them set, this case passed on a sibling's refusal and the domain CHECK was
+    -- droppable in silence.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, NULL, 'archived', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took an unknown merge status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Nothing merges into itself**; that is a cycle of length one and it strands every
+    -- reference that follows the pointer.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000022', 'X', NULL, NULL, 'merged', 'bbbbbbbb-1000-4000-8000-000000000022', now(), 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was merged into themselves';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A merged person names its survivor and when.** Half of it is a row that reads as merged
+    -- into nothing -- the pairing constraint, one side.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, NULL, 'merged', NULL, now(), 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merged person named no survivor';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: an active person names neither, or something points past a record
+    -- that reads as live. One case proves one direction of a disjunction.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, NULL, 'active', 'bbbbbbbb-1000-4000-8000-000000000001', now(), 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an active person named a survivor';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A merged timestamp with no survivor is the third face of the same constraint.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, NULL, 'merged', 'bbbbbbbb-1000-4000-8000-000000000001', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merged person recorded no merge time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero would make the first optimistic-concurrency check compare against nothing.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth,
+             merge_status, merged_into_person_id, merged_at, version,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000021', 'X', NULL, NULL, 'active', NULL, NULL, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One identity signs in as one person.** Two would mean a login resolving to two member
+    -- records, and every permission decision afterwards would be about an arbitrary one.
+    BEGIN
+        INSERT INTO plt01.ppl_identity_links
+            (tenant_id, person_id, identity_id, linked_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-00000000000a', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: one identity was linked to two people';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A channel nothing sends over routes a member nowhere.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'pigeon', 'x', 'x', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a contact point took an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank raw value is an address somebody typed nothing into.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'email', '  ', 'x@y.z', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a contact point took a blank raw value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blank normalized value is the half everything matches on, so a duplicate would be
+    -- invisible to the detector.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'email', 'x@y.z', '  ', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a contact point took a blank normalized value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One primary per kind per person.** A second primary email means every surface picks a
+    -- different one and a member gets told different things on each.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'email', 'other@acme.test', 'other@acme.test', true, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a second primary email';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- And the same value twice on one person is a data-entry duplicate, not two ways to reach
+    -- them.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, recorded_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'email', 'Ahmad@Acme.test', 'ahmad@acme.test', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took the same contact value twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A language tag that is not one makes a localized message unroutable.
+    BEGIN
+        INSERT INTO plt01.ppl_tenant_profiles
+            (tenant_id, person_id, acquisition_source, preferred_language, notes_internal,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'walk_in', 'english', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a profile took a language that is not a tag';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero, as on the person.
+    BEGIN
+        INSERT INTO plt01.ppl_tenant_profiles
+            (tenant_id, person_id, acquisition_source, preferred_language, notes_internal,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'walk_in', 'en', NULL, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tenant profile took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One tenant profile per person.** Two would be the duplicate record this module exists
+    -- to prevent, inside the table that is supposed to be the single view.
+    BEGIN
+        INSERT INTO plt01.ppl_tenant_profiles
+            (tenant_id, person_id, acquisition_source, preferred_language, notes_internal,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'referral', 'en', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a second tenant profile';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A lifecycle state outside the six is a member nothing can move.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'vip', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a member profile took an unknown lifecycle state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank member number is not a number, and it is what a card and a turnstile carry.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'lead', NULL, '  ', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a member profile took a blank member number';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank state reason is the explanation a member asks for, absent.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'lead', '  ', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a member profile took a blank state reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'lead', NULL, NULL, NULL, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a member profile took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One member profile per person.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'lead', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a second member profile';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **A member number identifies one member**, which is the only thing it is for: agreements,
+    -- cards and turnstiles may all carry it.
+    BEGIN
+        INSERT INTO plt01.ppl_member_profiles
+            (tenant_id, person_id, lifecycle_state, state_reason, member_number, joined_on,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'lead', NULL, 'M-0001', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: two members took the same member number';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- An employment state outside the three.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'retired', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a staff profile took an unknown employment state';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank job title.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'active', '  ', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a staff profile took a blank job title';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Employment that ended has an end date.** A row reading `ended` with no date makes "who
+    -- was working on the fourteenth" unanswerable.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'ended', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: employment ended with no end date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: employment that has not ended carries no end date, or a live coach
+    -- reads as gone. An equality needs a case per side.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'active', NULL, NULL, DATE '2026-01-01', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: live employment carried an end date';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An end before the start is a period that ran backwards.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'ended', NULL, DATE '2026-06-01', DATE '2026-01-01', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an employment period ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Version zero.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'active', NULL, NULL, NULL, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a staff profile took version zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One staff profile per person.
+    BEGIN
+        INSERT INTO plt01.ppl_staff_profiles
+            (tenant_id, person_id, employment_state, job_title, started_on, ended_on, version,
+             updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'active', NULL, NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person took a second staff profile';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A relationship kind outside the five named in paragraph 1319.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'rival', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a relationship took an unknown kind';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **Nobody is their own guardian, coach or referrer.** Allowing it would make `is_assigned`
+    -- true for everybody about themselves, which is an authorization bypass dressed as a
+    -- data-entry mistake.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000001', now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was related to themselves';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A window that closes before it opens.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', now(), now() - INTERVAL '1 day', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a relationship window ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A reason with no end reads as an explanation of something that has not happened.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', now(), NULL, 'they moved away', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a live relationship carried an ended reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blank reason on one that did end.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', now() - INTERVAL '1 day', now(), '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a relationship ended for a blank reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One live relationship of a kind between two people.** A guardian counted twice is a
+    -- guardian whose revocation leaves one behind.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'guardian_dependent', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', now(), NULL, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a second live relationship of one kind was recorded';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A tag key that is not a key appears in exports and integrations as nonsense.
+    BEGIN
+        INSERT INTO plt01.ppl_tags
+            (tenant_id, tag_key, display_name, is_internal, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'VIP Member', 'VIP', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tag took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name is a tag nobody can read in a list.
+    BEGIN
+        INSERT INTO plt01.ppl_tags
+            (tenant_id, tag_key, display_name, is_internal, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'gold', '  ', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tag took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One tag per key.
+    BEGIN
+        INSERT INTO plt01.ppl_tags
+            (tenant_id, tag_key, display_name, is_internal, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'vip', 'VIP Again', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a second tag took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- **A removal names who did it.** Who tagged somebody and who untagged them is what a
+    -- member asks about.
+    BEGIN
+        INSERT INTO plt01.ppl_person_tags
+            (tenant_id, person_id, tag_id, applied_by, correlation_id, removed_at, removed_by)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000008', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tag was removed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of the equality: a remover with no removal time.
+    BEGIN
+        INSERT INTO plt01.ppl_person_tags
+            (tenant_id, person_id, tag_id, applied_by, correlation_id, removed_at, removed_by)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000008', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tag recorded a remover but no removal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A field key that is not a key.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Locker Number', 'Locker', 'text', 'none', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field took a key that is not a key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank display name.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'shoe', '  ', 'text', 'none', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **There is no `secret` type**, and the constraint is what makes that a control rather
+    -- than a convention -- MOD-012's definition catalogue makes the same refusal.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'api_key', 'API key', 'secret', 'none', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field took a type outside the six';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A sensitivity outside MOD-008's five classes plus `none` would be a class the masking has
+    -- never heard of, which reads as unmasked.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'shoe', 'Shoe', 'text', 'secret', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field took a sensitivity the masking does not know';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- One definition per key.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'locker', 'Locker Again', 'text', 'none', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a second custom field took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A blank option value is a choice nothing can select.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_options
+            (tenant_id, field_id, option_value, display_name)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000009', '  ', 'Blank');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an enum option took a blank value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blank display name is one nobody can read.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_options
+            (tenant_id, field_id, option_value, display_name)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000009', '13', '  ');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an enum option took a blank display name';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank value is not a value; absence is the absence of the row.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_values
+            (tenant_id, person_id, field_id, value_text, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000009', '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field value was blank';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A note class outside the three the masking maps.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'secret', 'x', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a note took an unknown class';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank body is a note that says nothing and cannot be withdrawn meaningfully.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'general', '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a note took a blank body';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A withdrawal names who.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'general', 'x', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), NULL, 'wrong person');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a note was withdrawn by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **And why, which is the half a blank string walks past when the `coalesce` is missing**
+    -- -- MOD-009's legal-hold finding, which this build has now paid for three times.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'general', 'x', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', '  ');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a note was withdrawn for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: a withdrawal reason with no withdrawal.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'general', 'x', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, 'wrong person');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a live note carried a withdrawal reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A status outside the three. The decision columns are filled so `decision_attributed` is
+    -- satisfied and only the domain fires: with them null this case passed on that sibling and
+    -- the domain CHECK was droppable in silence.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY['legal_name_match'], 'maybe', now(), now(), '33333333-3333-4333-8333-333333333333', 'unsure', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate took an unknown status';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The pair is ordered**, which is what makes the uniqueness below mean "this pair" rather
+    -- than "this direction" -- two operators could otherwise each merge one into the other.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000011', 'bbbbbbbb-1000-4000-8000-000000000002', 50, ARRAY['legal_name_match'], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate pair was stored out of order';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A score above the range is a scoring bug reaching the table rather than the caller, and
+    -- the bound also stops `integer` overflow becoming a 500.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 101, ARRAY['legal_name_match'], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate scored above the range';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And below it.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', -1, ARRAY['legal_name_match'], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate scored below the range';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A candidate with no signals is a score with no reasons**, which is not something to
+    -- destroy a member record on.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY[]::text[], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate carried no signals';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A decided candidate names who and when.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY['legal_name_match'], 'dismissed', now(), now(), NULL, 'two people', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate was decided by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And why, for the fourth time in this schema.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY['legal_name_match'], 'dismissed', now(), now(), '33333333-3333-4333-8333-333333333333', '  ', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate was decided for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: an open candidate carries no decision.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY['legal_name_match'], 'open', now(), now(), '33333333-3333-4333-8333-333333333333', 'two people', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an open candidate carried a decision';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One open candidate per pair.** A second would let two operators decide the same merge
+    -- twice.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000002', 50, ARRAY['legal_name_match'], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a second open candidate took the same pair';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- Nothing merges into itself; that is a cycle of length one and it strands every reference.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was merged into themselves';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A merge states a reason, because it is the one operation here that makes a record stop
+    -- being usable.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', '  ', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge was recorded for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A negative moved count is a ledger running backwards.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', -1, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge recorded a negative contact-point count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other three conjuncts are the same constraint; this one proves a second of them.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, -1, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge recorded a negative note count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A NULL reason, which is the half the `coalesce` exists for and the half no case tested.** Every attributed-decision case here used a *blank* string; without the coalesce, `length(btrim(NULL)) > 0` is NULL, the AND-branch is NULL, `false OR NULL` is NULL, and a CHECK passes on NULL -- so all three constraints were droppable in that one respect with the suite reporting 66/66. Found by review, in a schema whose own comment says the build has paid for this three times.
+    BEGIN
+        INSERT INTO plt01.ppl_person_notes
+            (tenant_id, person_id, note_class, body, recorded_by, correlation_id, withdrawn_at,
+             withdrawn_by, withdraw_reason)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'general', 'x', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a note was withdrawn with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The same NULL, on the duplicate decision.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', 50, ARRAY['legal_name_match'], 'dismissed', now(), now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a candidate was decided with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And on the merge reversal.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, moved_custom_fields,
+             merged_by, correlation_id, reversed_at, reversed_by, reverse_reason,
+             reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge was reversed with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The two attributions added after review arrive with evidence rather than acquiring it later: a verification names who asserted it.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, verified_at,
+             verified_by, verify_correlation_id, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'email', 'v@acme.test', 'v@acme.test', false, now(), NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a contact point was verified by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side of that equality.
+    BEGIN
+        INSERT INTO plt01.ppl_contact_points
+            (tenant_id, person_id, kind, value_raw, value_normalized, is_primary, verified_at,
+             verified_by, verify_correlation_id, recorded_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'email', 'w@acme.test', 'w@acme.test', false, NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an unverified contact point named a verifier';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- Ending a guardian edge is what removes a guardian's access, so it names who.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             ended_by, end_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', now() - INTERVAL '1 day', now(), 'they moved away', NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a relationship was ended by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And with a null reason, the coalesce half again.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             ended_by, end_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', now() - INTERVAL '1 day', now(), NULL, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a relationship was ended with a null reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **The two sides of the split merge constraints that had no case.** The case calling itself the third face of the same constraint set ('merged', NOT NULL, NULL), which violates *both* and so isolates neither -- a one-way weakening of each passed with the suite reporting 66/66. These are the two rows that isolate them.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth, merge_status,
+             merged_into_person_id, merged_at, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000031', 'X', NULL, NULL, 'active', 'bbbbbbbb-1000-4000-8000-000000000001', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: an active person pointed at a survivor with no merge time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other.
+    BEGIN
+        INSERT INTO plt01.ppl_persons
+            (tenant_id, person_id, legal_name, preferred_name, date_of_birth, merge_status,
+             merged_into_person_id, merged_at, version, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000032', 'X', NULL, NULL, 'merged', NULL, NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merged person named neither a survivor nor a time';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A zero-length relationship, which a `>=` window would admit.
+    BEGIN
+        INSERT INTO plt01.ppl_relationships
+            (tenant_id, kind, from_person_id, to_person_id, valid_from, valid_to, ended_reason,
+             ended_by, end_correlation_id, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'coach_client', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000011', TIMESTAMPTZ '2026-11-14 12:00:00+00', TIMESTAMPTZ '2026-11-14 12:00:00+00', 'ended', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a zero-length relationship was recorded';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a candidate pair of one person with themselves, which a `<=` ordering would admit.
+    BEGIN
+        INSERT INTO plt01.ppl_duplicate_candidates
+            (tenant_id, lower_person_id, higher_person_id, score, signals, status, detected_at,
+             decided_at, decided_by, decision_reason, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000002', 50, ARRAY['legal_name_match'], 'open', now(), NULL, NULL, NULL, '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was queued as their own duplicate';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A key shape that admits uppercase makes the unique index case-sensitive, so `vip` and `VIP` coexist as two tags nobody meant to have.
+    BEGIN
+        INSERT INTO plt01.ppl_tags
+            (tenant_id, tag_key, display_name, is_internal, created_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'VIP', 'VIP', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a tag key admitted uppercase';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The same for a custom field key.
+    BEGIN
+        INSERT INTO plt01.ppl_custom_field_defs
+            (tenant_id, field_key, display_name, value_type, sensitivity, is_required, created_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Locker', 'Locker', 'text', 'none', false, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a custom field key admitted uppercase';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A language tag's region is uppercase, or a locale lookup matches nothing.
+    BEGIN
+        INSERT INTO plt01.ppl_tenant_profiles
+            (tenant_id, person_id, acquisition_source, preferred_language, notes_internal,
+             version, updated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'walk_in', 'en-gb', NULL, 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a language tag admitted a lowercase region';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The remaining conjuncts of the merge counts, so the preamble's claim to a case per conjunct is true rather than nearly true.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, moved_custom_fields,
+             merged_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, -1, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge recorded a negative relationship count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- The third.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, moved_custom_fields,
+             merged_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, -1, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge recorded a negative tag count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the fifth count, which arrives with this review.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, moved_custom_fields,
+             merged_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, -1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge recorded a negative custom field count';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A reversal names who.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), NULL, 'wrong call', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge was reversed by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And why.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', '  ', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge was reversed for no stated reason';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And under which correlation, so the reversal is traceable to the decision that ordered
+    -- it.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now(), '33333333-3333-4333-8333-333333333333', 'wrong call', NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a merge reversal carried no correlation';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And the other side: an un-reversed merge carries none of them.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000002', 'bbbbbbbb-1000-4000-8000-000000000001', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, '33333333-3333-4333-8333-333333333333', 'wrong call', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a live merge carried a reversal';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **A person is merged away once.** A second live merge of the same source is either a
+    -- double-submit or a chain, and both make the reversal ambiguous about which one it undoes.
+    -- The seed holds one merge of the third person, which this collides with.
+    BEGIN
+        INSERT INTO plt01.ppl_merges
+            (tenant_id, source_person_id, target_person_id, reason, moved_contact_points,
+             moved_relationships, moved_notes, moved_tags, merged_by, correlation_id,
+             reversed_at, reversed_by, reverse_reason, reverse_correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000011', 'bbbbbbbb-1000-4000-8000-000000000002', 'same person', 0, 0, 0, 0, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', NULL, NULL, NULL, NULL);
+        RAISE EXCEPTION 'CHECK 66 FAILED: a person was merged away twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- A blank summary is an entry that says nothing, in the one table that exists to say
+    -- something.
+    BEGIN
+        INSERT INTO plt01.ppl_timeline_entries
+            (tenant_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+             aggregate_id, summary, visibility_class)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-00000000001a', 'person.created', now(), 'person', 'bbbbbbbb-1000-4000-8000-000000000001', '  ', 'none');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a timeline entry took a blank summary';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A blank event type leaves nothing to trace the entry back to.
+    BEGIN
+        INSERT INTO plt01.ppl_timeline_entries
+            (tenant_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+             aggregate_id, summary, visibility_class)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-00000000001a', '  ', now(), 'person', 'bbbbbbbb-1000-4000-8000-000000000001', 'Something happened', 'none');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a timeline entry took a blank event type';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- And a blank aggregate type leaves no authoritative record to go and read, which is what
+    -- paragraph 4224 requires the entry to reference.
+    BEGIN
+        INSERT INTO plt01.ppl_timeline_entries
+            (tenant_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+             aggregate_id, summary, visibility_class)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-00000000001a', 'person.created', now(), '  ', 'bbbbbbbb-1000-4000-8000-000000000001', 'Something happened', 'none');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a timeline entry named no aggregate type';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A visibility class outside MOD-008's six would read as unmasked.
+    BEGIN
+        INSERT INTO plt01.ppl_timeline_entries
+            (tenant_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+             aggregate_id, summary, visibility_class)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-00000000001a', 'person.created', now(), 'person', 'bbbbbbbb-1000-4000-8000-000000000001', 'Something happened', 'secret');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a timeline entry took a visibility class the masking does not know';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- **One entry per event per person.** A rebuild re-runs the projection over the same
+    -- events, so without this a second pass doubles every member's history.
+    BEGIN
+        INSERT INTO plt01.ppl_timeline_entries
+            (tenant_id, person_id, event_id, event_type, occurred_at, aggregate_type,
+             aggregate_id, summary, visibility_class)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bbbbbbbb-1000-4000-8000-000000000001', 'bbbbbbbb-1000-4000-8000-00000000000e', 'person.created', now(), 'person', 'bbbbbbbb-1000-4000-8000-000000000001', 'Something happened', 'none');
+        RAISE EXCEPTION 'CHECK 66 FAILED: a second timeline entry took the same event';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+END $$;
+ROLLBACK;
+
+
+\echo 'tenant isolation: 66/66 checks passed'

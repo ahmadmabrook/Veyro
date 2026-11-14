@@ -443,6 +443,164 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
                  "why an address was suppressed, free text that for a bounce quotes the "
                  "address; the table carries no UPDATE on it and no DELETE, deliberately, so "
                  "this is residue an erasure cannot reach"),
+    # ---------------------------------------------------------------- MOD-014, PPL-01
+    #
+    # **This is the module that makes an erasure mean something, and the one that shows what it
+    # still cannot reach.** `ppl_contact_points` holds the only copy of a member's email and
+    # phone in the build -- MOD-007 holds the authentication identifier and MOD-013 deliberately
+    # holds a digest -- so the four `anonymize` entries below are the first in `plt01` with an
+    # executor behind them, reached through `ppl_identity_links` because a DSAR names an
+    # identity and these tables are keyed on a person.
+    #
+    # Everything else here is insert-only by grant, which is correct on its own terms and is
+    # residue all the same: a relationship, a merge record, a note and a timeline entry each
+    # exist so that something stays answerable afterwards, and "afterwards" includes after an
+    # erasure. Declared, not glossed.
+    # The declared column of an `anonymize` entry has to be one the database can write, so
+    # these four are declared on the *value* column with `locate_by="person_id"`, and the
+    # subject column beside each one is `unreachable` because a primary or foreign key is not
+    # something an erasure clears. The test that insists on this is the one a reviewer added
+    # after two MOD-010 entries claimed the database refused a write it permitted.
+    Reachability("plt01", "ppl_persons", "person_id", "unreachable",
+                 "the primary key, which every other ppl_ table and every other module "
+                 "references; the identifying values beside it are cleared -- see "
+                 "ppl_persons.legal_name"),
+    Reachability("plt01", "ppl_persons", "legal_name", "anonymize",
+                 "the canonical person row is emptied rather than removed: the name and the "
+                 "birth date are what identify somebody, and the birth date also decides "
+                 "whether they are a minor",
+                 clears=("legal_name", "preferred_name", "date_of_birth"),
+                 locate_by="person_id"),
+    Reachability("plt01", "ppl_persons", "created_by", "unreachable",
+                 "who created the record; no UPDATE grant on this column, so it survives the "
+                 "erasure of what they created"),
+    Reachability("plt01", "ppl_persons", "merged_into_person_id", "write_once",
+                 "written by a merge and cleared by its reversal, so the grant exists; no "
+                 "erasure path touches it"),
+    Reachability("plt01", "ppl_contact_points", "person_id", "unreachable",
+                 "the row stays attached to the person; what it holds is cleared -- see "
+                 "ppl_contact_points.value_raw"),
+    Reachability("plt01", "ppl_contact_points", "value_raw", "anonymize",
+                 "**the only copy of a member's address in this build.** Both value columns "
+                 "are replaced with a per-row tombstone rather than emptied, because the "
+                 "unique index on (person, kind, value) would otherwise refuse the second one",
+                 clears=("value_raw", "value_normalized"), locate_by="person_id"),
+    Reachability("plt01", "ppl_contact_points", "recorded_by", "unreachable",
+                 "who entered the address; no UPDATE grant, so it survives the erasure of the "
+                 "address itself"),
+    Reachability("plt01", "ppl_contact_points", "verified_by", "write_once",
+                 "who asserted the verification -- the signal the duplicate detector weights "
+                 "most heavily, so the evidence an operator destroys a record on; in the "
+                 "UPDATE grant, and no erasure path clears it"),
+    Reachability("plt01", "ppl_tenant_profiles", "person_id", "unreachable",
+                 "the profile stays attached to the person; its free text is cleared -- see "
+                 "ppl_tenant_profiles.notes_internal"),
+    Reachability("plt01", "ppl_tenant_profiles", "notes_internal", "anonymize",
+                 "the tenant's own notes about this person are free text somebody typed and "
+                 "are cleared; the brand, location and acquisition source are the tenant's "
+                 "commercial record and are not",
+                 clears=("notes_internal",), locate_by="person_id"),
+    Reachability("plt01", "ppl_tenant_profiles", "updated_by", "write_once",
+                 "rewritten on each change, because updating a profile is a fresh act by "
+                 "whoever did it"),
+    Reachability("plt01", "ppl_custom_field_values", "person_id", "unreachable",
+                 "the value row stays attached to the person; the value is cleared -- see "
+                 "ppl_custom_field_values.value_text"),
+    Reachability("plt01", "ppl_custom_field_values", "value_text", "anonymize",
+                 "a tenant can collect anything here, so every value is cleared regardless of "
+                 "the field's declared sensitivity -- the classification decides who may read "
+                 "it, not whether it is personal",
+                 clears=("value_text",), locate_by="person_id"),
+    Reachability("plt01", "ppl_custom_field_values", "updated_by", "write_once",
+                 "rewritten on each change, as the profile's is"),
+    Reachability("plt01", "ppl_identity_links", "person_id", "unreachable",
+                 "insert-only: an identity that signed in as this person did so, and a link "
+                 "that could be removed would make a past authorization unexplainable"),
+    Reachability("plt01", "ppl_identity_links", "identity_id", "unreachable",
+                 "the same row, from the other side; no UPDATE grant on either column"),
+    Reachability("plt01", "ppl_identity_links", "linked_by", "unreachable",
+                 "insert-only attribution"),
+    Reachability("plt01", "ppl_member_profiles", "person_id", "unreachable",
+                 "the member lifecycle is the tenant's own record of a commercial "
+                 "relationship; no UPDATE grant on this column"),
+    Reachability("plt01", "ppl_member_profiles", "updated_by", "write_once",
+                 "rewritten on each lifecycle change"),
+    Reachability("plt01", "ppl_staff_profiles", "person_id", "unreachable",
+                 "an employment history is an employment record; no UPDATE grant on this "
+                 "column"),
+    Reachability("plt01", "ppl_staff_profiles", "updated_by", "write_once",
+                 "rewritten on each change"),
+    Reachability("plt01", "ppl_relationships", "from_person_id", "unreachable",
+                 "a relationship ends rather than being re-pointed, so who it was between "
+                 "carries no UPDATE grant -- which is what keeps \"who was this member's coach "
+                 "in March\" answerable, and is also why an erasure cannot reach it"),
+    Reachability("plt01", "ppl_relationships", "to_person_id", "unreachable",
+                 "the other side of the same row, with the same grant and the same "
+                 "consequence"),
+    Reachability("plt01", "ppl_relationships", "created_by", "unreachable",
+                 "insert-only attribution"),
+    Reachability("plt01", "ppl_relationships", "ended_by", "write_once",
+                 "who ended the relationship, which for a guardian edge is who removed a "
+                 "guardian's access to a minor's record; in the UPDATE grant and never "
+                 "cleared"),
+    Reachability("plt01", "ppl_tags", "created_by", "unreachable",
+                 "insert-only authorship of the tag definition"),
+    Reachability("plt01", "ppl_person_tags", "person_id", "unreachable",
+                 "who was tagged and when is what a member asks about; insert-only"),
+    Reachability("plt01", "ppl_person_tags", "applied_by", "write_once",
+                 "who applied it. In the UPDATE grant since re-applying a removed tag had to "
+                 "become possible -- the row is keyed on (person, tag) for ever, so a "
+                 "re-application rewrites the attribution rather than adding a second row, "
+                 "which is the lesser of two losses and is stated in the migration"),
+    Reachability("plt01", "ppl_person_tags", "removed_by", "write_once",
+                 "written when the tag is removed; `removed_at IS NULL` in the service is what "
+                 "refuses a second removal, not the grant"),
+    Reachability("plt01", "ppl_custom_field_defs", "created_by", "unreachable",
+                 "insert-only authorship of the field definition"),
+    Reachability("plt01", "ppl_person_notes", "person_id", "unreachable",
+                 "a note is insert-only because one that could be edited is one nobody can "
+                 "rely on in the dispute it exists for; the body therefore survives an "
+                 "erasure, which is the sharpest residue in this module"),
+    Reachability("plt01", "ppl_person_notes", "recorded_by", "unreachable",
+                 "who wrote it; insert-only"),
+    Reachability("plt01", "ppl_person_notes", "withdrawn_by", "write_once",
+                 "written with the withdrawal; `withdrawn_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "ppl_duplicate_candidates", "lower_person_id", "unreachable",
+                 "the pair an operator decided on carries no UPDATE grant, so the evidence "
+                 "they acted on cannot be rewritten afterwards"),
+    Reachability("plt01", "ppl_duplicate_candidates", "higher_person_id", "unreachable",
+                 "the other half of the same pair"),
+    Reachability("plt01", "ppl_duplicate_candidates", "decided_by", "write_once",
+                 "written with the decision; `status = 'open'` in the service is what refuses "
+                 "a second one, not the grant"),
+    Reachability("plt01", "ppl_merges", "source_person_id", "unreachable",
+                 "paragraph 10200 requires a merge to be fully audited, so what was merged "
+                 "into what carries no UPDATE grant and no DELETE at all"),
+    Reachability("plt01", "ppl_merges", "target_person_id", "unreachable",
+                 "the other side of the same record"),
+    Reachability("plt01", "ppl_merges", "merged_by", "unreachable",
+                 "who merged them; insert-only, for the same reason"),
+    Reachability("plt01", "ppl_merges", "reversed_by", "write_once",
+                 "written with the reversal; `reversed_at IS NULL` in the service is what "
+                 "refuses a second one, not the grant"),
+    Reachability("plt01", "ppl_timeline_entries", "person_id", "unreachable",
+                 "the projection is insert-only in full, because one that could be edited in "
+                 "place would be a second divergent copy of history rather than a view of it"),
+    # **Hand-declared, because the sweep matches column names and these are values.** Three
+    # columns hold text about a person under names that say nothing about one, and all three
+    # are in tables with no UPDATE grant on them -- so they are residue an erasure cannot
+    # reach, exactly like MOD-013's `ntf_suppressions.detail`.
+    Reachability("plt01", "ppl_person_notes", "body", "unreachable",
+                 "what a coach or a front desk wrote about this person, in their words; the "
+                 "note is insert-only by design and this is the text that survives"),
+    Reachability("plt01", "ppl_timeline_entries", "summary", "unreachable",
+                 "one sentence per projected event, naming states and relationship kinds "
+                 "rather than values -- `timeline.check_summary_fields` refuses a renderer "
+                 "that reads a classified field -- and insert-only, so it survives"),
+    Reachability("plt01", "ppl_member_profiles", "member_number", "write_once",
+                 "the tenant's own member number, which agreements, cards and turnstiles may "
+                 "carry; in the UPDATE grant, and no erasure path clears it"),
     Reachability("plt01", "int_connector_runs", "settled_by", "write_once",
                  "written when the run is settled; `status = 'running'` in the service is what "
                  "refuses a second settlement, not the grant"),

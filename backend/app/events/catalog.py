@@ -278,6 +278,34 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("status_update.published", 1, "MOD-013", "internal",
        ("update_id", "severity", "summary"),
        "An operational status update was published"),
+
+    # ---------------------------------------------------------------- MOD-014, PPL-01
+    #
+    # **These carry identifiers and the shape of a change, never a value.** The restricted-field
+    # rule below reads declared names, and every field here is an id, a state name or a list of
+    # field *names* -- `profile.updated` says `changed_fields: ["legal_name"]`, not what the
+    # name became. An event naming the new value would put a person's legal name and date of
+    # birth into `evt_outbox.payload`, which is the store MOD-009's registry declares
+    # unreachable, from the module that owns the only erasable copy.
+    #
+    # `person.created` says only that a name was present rather than carrying it, which looks
+    # pedantic and is the same rule applied to the one field somebody would otherwise think was
+    # harmless.
+    _e("person.created", 1, "MOD-014", "restricted",
+       ("person_id", "legal_name_present"),
+       "A canonical person record was created"),
+    _e("profile.updated", 1, "MOD-014", "restricted",
+       ("person_id", "changed_fields"),
+       "A person's profile changed; the field names say what, not the values"),
+    _e("member.lifecycle.changed", 1, "MOD-014", "restricted",
+       ("person_id", "from_state", "to_state"),
+       "A member moved through the lifecycle"),
+    _e("person.merged", 1, "MOD-014", "restricted",
+       ("source_person_id", "target_person_id"),
+       "A duplicate person record was merged into another"),
+    _e("relationship.created", 1, "MOD-014", "restricted",
+       ("from_person_id", "to_person_id", "kind"),
+       "A relationship between two people was recorded"),
 ])
 
 

@@ -126,6 +126,43 @@ PERMISSIONS: dict[str, Permission] = dict([
     _p("member.profile.write", "Change a member's profile", "data_access", "financial"),
     _p("member.health.read", "See a member's health information",
        "data_access", "biometric_sensitive"),
+    # **A class per permission, because one permission for all of them is one class.** MOD-014's
+    # field masking maps each of MOD-008's five sensitivity classes to the permission that opens
+    # it, and the first version pointed `identity` and `contact` at the same one -- which made a
+    # national id exactly as protected as an email address -- and `financial` at a *write*
+    # permission, which is not a read control at all. Both are financial class, so reading
+    # either needs a stepped-up session as well as the grant.
+    _p("member.identity.read", "See a member's identity documents and date of birth",
+       "data_access", "financial"),
+    _p("member.finance.read", "See a member's financial identifiers",
+       "data_access", "financial"),
+    # MOD-014, people, profiles and Member 360.
+    #
+    # The read permissions are routine: a front desk looks somebody up a hundred times a day and
+    # a step-up requirement on that would mean nobody is ever looked up. What they open is
+    # bounded by the masking -- a routine read returns the record with every class the caller
+    # does not separately hold replaced, which is the control `member.identity.read` and
+    # `member.finance.read` above are the keys to.
+    _p("people.person.read", "See a person and their profiles", "data_access"),
+    _p("people.person.write", "Create or change a person", "data_access", "financial"),
+    _p("people.relationship.write", "Record or end a relationship between two people",
+       "data_access", "financial"),
+    # **A note is what somebody wrote about a person and it cannot be edited**, so writing one
+    # is financial class: the record it creates is permanent and will be read in a dispute.
+    _p("people.note.write", "Record or withdraw a note about a person",
+       "data_access", "financial"),
+    _p("people.timeline.read", "Read a person's timeline", "data_access"),
+    # **Merging is the one operation here that makes a record stop being usable**, and
+    # paragraph 10200 requires it to be reviewable. Financial class, so an AAL-1 session cannot
+    # reach it at all, and the reversal is charged the same because undoing a merge is as
+    # consequential as making one.
+    _p("people.merge.decide", "Merge two people, or reverse a merge",
+       "data_access", "financial"),
+    _p("people.duplicate.review", "See and dismiss duplicate candidates", "data_access"),
+    # The schema a tenant's custom fields and tags live under. Configuration rather than data
+    # access, because declaring a field is changing what the product collects about everybody.
+    _p("people.schema.write", "Declare a tag or a custom field",
+       "configuration", "financial"),
     # MOD-009, privacy, consent and data subject requests.
     #
     # The categories are IAM-03-R06's closed set. There is no `privacy` audit category and this

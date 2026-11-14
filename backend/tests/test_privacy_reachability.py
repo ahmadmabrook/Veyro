@@ -45,6 +45,16 @@ SUBJECT_NAMES = frozenset({
     # `evt_outbox.payload` came to need a hand-written declaration.
     "recipient_id",
 })
+
+#: **Any column whose name ends in `_person_id` as well**, matched by pattern rather than by
+#: enumeration. MOD-014 names a person in nine columns the set above misses --
+#: `from_person_id`, `to_person_id`, `source_person_id`, `target_person_id`,
+#: `lower_person_id`, `higher_person_id`, `merged_into_person_id` -- and each one is a subject
+#: identifier an erasure has to account for. Enumerating them would mean the next module's
+#: tenth name is invisible again, which is the recurring shape this whole file exists to catch:
+#: a per-item list has to be edited when a module adds an item, and that edit is the moment one
+#: slips through.
+SUBJECT_SUFFIX = r"%\_person\_id"
 RUNTIME_ROLES = ("veyro_cp_app", "veyro_cp_worker", "veyro_iam_app")
 
 
@@ -68,9 +78,10 @@ class ReachabilityRegistryTests(unittest.TestCase):
                   ON t.table_schema = c.table_schema AND t.table_name = c.table_name
                 WHERE c.table_schema IN ('plt01', 'iam')
                   AND t.table_type = 'BASE TABLE'
-                  AND (c.column_name = ANY(%s) OR c.column_name LIKE %s)
+                  AND (c.column_name = ANY(%s) OR c.column_name LIKE %s
+                       OR c.column_name LIKE %s)
                 """,
-                (list(SUBJECT_NAMES), r"%\_by"),
+                (list(SUBJECT_NAMES), r"%\_by", SUBJECT_SUFFIX),
             ).fetchall()
         }
         # UPDATE and DELETE held by any runtime role, per table. The table owner is excluded on
@@ -178,16 +189,28 @@ class ReachabilityRegistryTests(unittest.TestCase):
     # ------------------------------------------------------------------ the registry cannot lie
 
     def test_an_anonymize_declaration_has_the_update_grant_behind_it(self):
-        """Claiming a row can be emptied is a claim some role can write to it."""
+        """Claiming a row can be emptied is a claim some role can write **each column it names**.
+
+        **Per column, not per table.** This asserted `information_schema.role_table_grants`,
+        which reports table-level grants only -- so for a module whose UPDATE is column-scoped,
+        which is most of them here, it passed on the strength of the *table* being writable and
+        said nothing about the columns the erasure actually overwrites. MOD-007's grants are
+        table-level and passed; MOD-014's are column-scoped and the first entry exposed it. That
+        is the same blind spot the `column_updates` sweep above was built for, left in place one
+        test further along.
+        """
         for r in SUBJECT_COLUMNS:
             if r.mechanism != "anonymize":
                 continue
-            held = self.grants.get((r.schema, r.table), set())
-            self.assertIn(
-                "UPDATE", held,
-                f"{r.schema}.{r.table}.{r.column} is declared anonymize, but no runtime role "
-                f"holds UPDATE on it, so the erasure this promises would fail at run time",
-            )
+            table_level = "UPDATE" in self.grants.get((r.schema, r.table), set())
+            for column in r.clears:
+                writable = table_level or (r.schema, r.table, column) in self.column_updates
+                self.assertTrue(
+                    writable,
+                    f"{r.schema}.{r.table}.{r.column} is declared anonymize and clears "
+                    f"{column!r}, but no runtime role holds UPDATE on that column, so the "
+                    f"erasure this promises would fail at run time",
+                )
 
     def test_an_anonymize_declaration_names_columns_that_exist_and_can_be_cleared(self):
         """`clears` is the operative half of the declaration: it says what is destroyed.

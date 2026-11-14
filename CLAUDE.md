@@ -1347,17 +1347,253 @@ Known gaps, deliberate:
   second one, which is inside the at-least-once contract; the `state = <what we read>` guard on
   the settling write is what stops the late writer corrupting the row.
 
-**Next.** MOD-014 (People, Profiles & Member 360) is unblocked and is the module where
-`Decision.mask` finally has a read path to apply to. It is also where MOD-013's binding table
-finds its counterpart: a notification's `recipient_id` is whatever the caller says it is, and
-MOD-014 owns the record that would make it checkable.
+**MOD-014 (PPL-01 people, profiles, relationships and Member 360) -- implemented, gated and
+reviewed.** Sixteen `ppl_` tables in `plt01` under the same forced RLS, `app/people/`
+beside them, and twenty-six HTTP routes. Working: the canonical person with tenant-scoped
+profiles for the tenant, the member and the staff role; contact points as the only copy of a
+member's address in the build; a directed, time-bounded relationship graph over the five kinds
+paragraph 1319 names; tags, schema-governed custom fields and insert-only notes; explainable
+duplicate detection with a review queue; a reviewable, reversible, audited merge; a timeline
+projected from MOD-010's outbox; and the composed Member 360. All five of PPL-01's events are
+produced. Proven: isolation checks 61-66, mutation-tested in two rounds -- 236 before the
+review and 25 after it, every one caught. Round one: 137 table-level
+(RLS, both policy halves, a second permissive policy, DELETE, TRUNCATE, an added column and a
+PUBLIC grant on all sixteen tables, plus eight targeted grant-widenings and the partitioned
+table that walks past a `relkind = 'r'` sweep), and 99 over every CHECK, unique and foreign-key
+constraint dropped one at a time. **Four were missed on the first pass and the repair was to
+the schema, not the test**: one compound CHECK naming a status domain subsumed two siblings, so
+it was split into three single-purpose constraints. All four are caught now, and 7 of the 99
+could not run because a unique constraint owns its index and the constraint drop covers it. 54
+domain unit tests with no database; 55 service integration tests; 16 HTTP tests.
 
-Three things named rather than done remain open across the build: the platform plane is
+Round two is the reviewers' own mutations, all of which passed before and fail now: thirteen of
+sixteen **primary keys** were droppable (the sweep's join was inner, so a table with no primary
+key contributed no row and was never flagged -- and the three that resisted were saved by a
+dependent foreign key rather than by a check, which is this file's MOD-004 trap verbatim); the
+`coalesce` in all three attributed-decision constraints could be removed, because every case
+tested a *blank* reason and none a NULL one; **nothing in the 9,000-line suite had ever read
+`attnotnull`**, in any module, so dropping NOT NULL from the dedup key admitted unlimited NULL
+duplicates per person and blinded the detector to all of them; one side of each split merge
+constraint had no case; and a `plt01` table whose name matches no module prefix was invisible to
+all sixty-six checks -- a reviewer created `plt01.member_contacts` holding plaintext addresses
+with no RLS and no policy and watched the suite report every check passing. That last sweep is
+prefix-free now and covers the whole schema, as the `iam` block always did.
+
+**This is the module where `Decision.mask` finally has a read path** -- and the review showed
+how much of that was still a claim. MOD-008 computed `masked_fields` on every allowed decision
+and from MOD-008 to MOD-013 nothing read it; "computed, not applied" was a standing gap here for
+five modules. `permit` returns the gate rather than the session, every read in
+`app/people/service.py` takes the list **and** the caller's permission set as required
+arguments, and `visibility.apply` walks the record to every depth. What the review had to add
+before any of that was true: the permission set is filtered by the session's assurance, the
+person's own classified columns are masked by class and not only its custom fields, and the two
+read routes that silently dropped the gate's list now take it -- which mypy enforces, because
+the argument is required.
+
+**Three reviewers worked this module in parallel -- the schema, the Python, the request path --
+and all three returned CHANGES_REQUESTED.** Twenty blocking defects. Five are worth carrying
+forward as rules, because each is a shape that has now recurred:
+
+- **A grant is not a session.** `held_permissions` asked `effective_permissions`, which answers
+  from role assignments alone, and `permit` assurance-checks only the *route's* action -- routine
+  for every masked read. So every permission the masking consulted was effectively routine-class
+  however the catalogue declared it: a password-only session holding `member.health.read` read
+  medical notes in full, in the build whose own code says health is unreachable because AAL 3
+  needs a hardware factor MOD-007 cannot verify. The catalogue, `visibility.py` and this file all
+  stated the opposite. **An action class is decorative on any path that reads the permission
+  rather than gating on it.**
+- **A control consulted on one path and not its sibling** -- the fourth module. Guardianship was
+  on `GET /people/{id}` and the 360; `/notes` and `/timeline` served a minor's data to the same
+  credential the record read had just refused. Hoisted into `_require_guardianship`, which all
+  four reads call, because a copy in three places does not guarantee the fourth.
+- **A masking claim is only as wide as the columns it names.** The class mask reached custom
+  fields and notes and not the person's own columns, so a routine AAL-1 read returned
+  `date_of_birth` -- the canonical `identity` field in MOD-008's own table -- and every contact
+  value in the clear, beside a `contact`-classified custom field holding the same phone number
+  rendered as `***`. `visibility.COLUMN_CLASSES` is the map that was missing.
+- **A merge copies, so an erasure has to reach every copy.** `person_id` carries no UPDATE grant
+  and no `ppl_` table carries DELETE, so a merge inserts on the survivor and the source keeps its
+  rows -- a person's address exists under two ids. The erasure resolved one through
+  `ppl_identity_links` and recorded `done / 1`, and whichever side held the sign-in identity, the
+  other kept the name, the birth date, the address and the health note. In the module whose
+  registry entry calls `ppl_contact_points.value_raw` "the only copy of a member's address in
+  this build". `_person_cluster_for_subject` walks the merge closure in both directions now, and
+  two tests prove both directions fail without it.
+- **No test ever called a `/people` route successfully**, which is why the four findings above
+  all passed a green suite. The service tests reached past the request path and asserted the
+  decisions, so the three pieces this change adds to that path -- the gate return, the permission
+  resolution, the actor lookup -- were exercised by nothing. `tests/test_people_api.py` is the
+  answer: 16 HTTP tests, nine of which failed on their first run.
+
+Five more were features that silently stopped working while reporting success, which is the
+other half of the round: `project_timeline` had no "not yet projected" predicate, so a tenant's
+timeline stopped at the first batch and every later run reported `projected: 0`; no reader
+followed the merge pointer, so a merged member's own app read the dead record for ever and a
+guardian whose duplicate was merged was refused their own dependent; `apply_tag` returned
+`applied: True` for a write it had not made and a removed tag could never be re-applied;
+`find_duplicates` re-queued the pair an operator had just dismissed, and re-raised the pair it
+had just merged -- which `check_merge` then refuses for ever; and two timeline projections
+declared fields their events do not carry, so one stored `Consent granted for None` into a table
+with no UPDATE grant. `reverse_merge` also discarded the row count of its guarded UPDATE, so two
+concurrent callers were both told the person was restored.
+
+Four acts took an actor and recorded nobody -- `verify_contact_point` (which returned
+`asserted_by` to the caller as though it had), `end_relationship`, and the merge's own
+relationship moves. All now carry the actor and the correlation, under constraints, because
+MOD-008 audits denials and `veyro_cp_app` holds nothing in `iam`: there was no second record to
+fall back on. Third module running for that shape.
+
+Six decisions carry the module:
+
+- **Member 360 is a projection, not a table, and every section names its source.** Paragraph
+  816 is explicit: "the canonical model follows aggregate ownership rather than a single shared
+  member schema". So there is no `ppl_member_360` row; `member_360` composes this module's own
+  tables with the timeline, and the `sections` block says where each part came from -- including
+  the seven that belong to modules this repository does not have. Returning `"invoices": []` for
+  a member with twelve invoices would be a confident wrong answer in the place a staff member
+  looks before talking to somebody.
+- **The timeline stores a summary and references the event; it never copies a payload.**
+  Paragraph 4021 and paragraph 4224. `ppl_timeline_entries` has no `jsonb` column at all,
+  `timeline.PROJECTED` is nine entries with a renderer each, and a renderer sees **only the
+  fields its projection declares** -- so an event that grows a field does not grow the timeline.
+  `check_summary_fields` runs at import and refuses a renderer that reads anything MOD-008
+  classifies as sensitive, which matters more here than in MOD-010: the entries table has no
+  UPDATE grant at all, so a summary quoting a health note would be the least erasable copy of it
+  in the build.
+- **This module owns contact data, and that makes the erasure obligation its own.**
+  `ppl_contact_points` holds the real address -- MOD-007 holds the authentication identifier and
+  MOD-013 deliberately holds a digest -- so MOD-009's executor was extended to reach `plt01`,
+  through `ppl_identity_links`, and four columns now have a clear rule behind them. A subject
+  with no recorded identity link reaches none of it and every `plt01` target is recorded
+  `blocked` with that reason rather than `done / 0`, which is MOD-009's own review finding one
+  plane over.
+- **Nothing is deleted, and a merge is reversible because of it.** Paragraph 1300 forbids
+  cross-domain write-table access, so a merge cannot find the losing person's rows in other
+  modules: it points the record at the survivor and leaves every reference intact. The merge
+  record itself carries no UPDATE on what happened and no DELETE at all, so "was this person
+  ever merged, by whom, on what evidence" survives the reversal. What the reversal cannot
+  restore is stated in its own response rather than implied.
+- **The duplicate score is explainable or it is useless, and nothing is fuzzy.** An operator
+  asked to merge two records is being asked to destroy one of them, so every signal is named,
+  `dedup.WEIGHTS` is the whole table, and `AUTO_MERGE_THRESHOLD` is `None` because paragraph
+  10200 requires a human. There is no edit distance and no phonetic match: every one of those
+  produces a confident wrong answer on two siblings at one address with one family email. The
+  under-detection is the stated cost, and it fails toward leaving two records alone.
+- **Optimistic concurrency, because two front-desk staff editing one profile is the ordinary
+  case.** Paragraph 1331 asks for it; every mutable aggregate carries `version`, every update
+  takes the version the caller read and guards the UPDATE with it, and the row count is checked.
+  Last-write-wins discards whichever finished first, which is nobody's intent and leaves no
+  trace.
+
+Things worth knowing before extending it:
+
+- **A person id is tenant-scoped, deliberately.** A person known to two tenants is two rows,
+  because a tenant must not be able to learn that its member trains somewhere else. The
+  cross-tenant link, where one exists, is MOD-007's bare `person_id`, and `ppl_identity_links`
+  is the only place the two planes meet -- with **no foreign key**, because `iam` is under a
+  separate role that holds nothing here. A stale link is possible and is the gap.
+- **An unknown birth date is not a minor**, which is the uncomfortable direction and the right
+  one: treating every undated person as a minor would make a guardian relationship mandatory
+  before anybody could read the record of a member who never gave a birthday, which is most
+  leads. The threshold is eighteen, stated in `visibility.is_minor` rather than configured,
+  because the sources name minors four times and give no age.
+- **`health` and `biometric` are unreadable in this build, by anybody.**
+  `member.health.read` is `biometric_sensitive`, which maps to AAL 3, which needs a hardware
+  authenticator MOD-007 cannot verify. So a health-classified note or custom field is stored,
+  counted and masked for every caller -- the same deliberate dead end MOD-008 records for
+  break-glass support access. `visibility.UNREACHABLE_CLASSES` names it rather than leaving it
+  to be discovered.
+- **A redacted record still exists.** Telling a coach that a member has no health notes when
+  they have three is worse than telling them there are three they cannot read; paragraph 10280's
+  "minimum necessary" is not zero knowledge that the context exists.
+- **A note is insert-only and so is a timeline entry.** A note that could be edited is a note
+  nobody can rely on in the dispute it exists for, so a correction is a new note and a
+  retraction is a withdrawal that leaves the original visible. The consequence is that both
+  survive an erasure, which is declared.
+- **A relationship ends rather than being re-pointed.** `from_person_id`, `to_person_id` and
+  `kind` carry no UPDATE grant, so "who was this member's coach in March" stays answerable --
+  and a merge moves a relationship by ending it and inserting the replacement, which leaves both
+  halves visible.
+- **A custom field's type and sensitivity are final.** Re-typing one leaves unparseable values
+  readable and re-marking one `none` unmasks in bulk what was collected as health data, so
+  neither carries an UPDATE grant; retiring it and declaring a new one is the path. There is no
+  `secret` type and no free-form object type, for MOD-012's reason.
+- **Two member profiles do not combine in a merge**, and `plan_merge` says so before anybody
+  agrees. Combining them would mean silently choosing which lifecycle state and which member
+  number survive, and a member number may be on a card and a turnstile.
+
+Known gaps, deliberate:
+
+- **A post-gate refusal is recorded nowhere.** The guardianship check runs after the gate has
+  already allowed, and MOD-008 audits denials -- so a refused attempt on a minor's record
+  reaches no audit log. Both reviewers raised it. Closing it needs either an audit entry MOD-008
+  does not currently write or the check moved into the gate as a request attribute, which is the
+  next bullet.
+- **No request attributes reach the gate from this module.** Every `permit` call is action-only,
+  so IAM-03-R02's attribute policies cannot be targeted here: a `deny` naming `is_minor` fires
+  on every person read (fail-closed, and it will surprise the tenant that writes one) and an
+  `allow` naming `assigned_to` can never fire. The migration header says the service "can supply
+  `is_minor` and `is_assigned` -- which it must"; it supplies neither.
+- **A brand- or location-scoped role cannot use this module at all.** Both `permit` and
+  `held_permissions` resolve against the tenant-wide default scope, and a narrower assignment
+  covers nothing, so a single-brand front desk is refused every read. The direction is safe -- a
+  narrower role unmasks less, never more -- and the product consequence is real.
+- **An erased minor stops being a minor.** The erasure clears `date_of_birth`, so
+  `guardianship_satisfied` then opens the residual record -- the member number and the
+  non-health notes -- to any `people.person.read` holder. Fail-open, and the smallest honest fix
+  needs an erased marker the guardianship check can read.
+- **A merge copies and nothing cleans up.** The source keeps its contact points, notes, tags and
+  custom values and the survivor gets its own; `reverse_merge` says so in `not_restored.why`
+  rather than implying a move. Making it a true move needs DELETE grants this module
+  deliberately lacks.
+- **No search.** Paragraph 4218's permission-aware search index with a mandatory query
+  pre-filter is ENG-01's, and a `LIKE` scan presented as search would be a read path with no
+  freshness contract and no pre-filter. The duplicate detector draws its candidates through the
+  indexes instead, which is the one place this module needs to find people by a value.
+- **Nothing drives the timeline projection.** `project_timeline` is called by a route and by
+  tests; no worker loops on it -- the same missing runtime as MOD-007's challenge sweep,
+  MOD-009's retention sweep, MOD-010's relay, MOD-011's objectives, MOD-012's rotations and
+  MOD-013's digests. The seventh module to want it, and the third where the absence changes the
+  product: a timeline nobody projects stays empty.
+- **A verification is recorded, not performed.** Nothing here sends a code or reads a reply, so
+  `verify_contact_point` records that a named actor asserted it at a time -- the same shape as
+  MOD-012's `validated` install state, and for the same reason.
+- **No segments.** PPL-01-R05 names them beside tags and custom fields; a segment is a saved
+  query and this module has no query language. Tags are the static half and are built.
+- **No progress media.** Paragraph 1320 lists it among the privacy controls; it needs an object
+  store and a residency decision, both unmade, which is the same wall MOD-009's data export
+  hits.
+- **The timeline is nine event types.** Everything from MOD-005, MOD-011, MOD-012 and MOD-013 is
+  deliberately absent: a notification being sent is a delivery record rather than a life event,
+  and one entry per notification would bury the five that matter. A module that wants its events
+  there adds a `Projection` with a summary somebody wrote, which is the review point.
+- **A relationship has no scope.** PPL-01-R06's kinds are tenant-wide, so a coach-client link
+  does not say which location it applies at. MOD-008's `is_assigned` attribute can be derived
+  from it, and nothing does that yet because no read path asks for it.
+- **A merge does not reach another module's rows, and cannot.** The pointer is the mechanism and
+  every reader has to follow it; `merge.survivor_of` is the walk, and no other module calls it
+  because no other module exists yet.
+
+**Next.** MOD-016 (Catalog & Pricing Pilot) and MOD-019 (Scheduling Pilot) are the first Pilot
+modules MOD-014 unblocks; MOD-017 (Commercial Core) needs MOD-016 first. Nothing in the
+Foundation wave is left except MOD-006, the Compose Multiplatform qualification, which is a
+client-side proof the server plane does not need.
+
+Two things named rather than done remain open across the build: the platform plane is
 unauthenticated -- and MOD-012 makes that worse, since the definition catalogue decides which
-scopes a tenant may hand to a third party; `Decision.mask` is computed on every allowed read
-while no read path applies it; and no worker runtime exists for the six schedules that want
-one -- which MOD-011 makes the most pressing, because an objective nobody evaluates raises no
-alert.
+scopes a tenant may hand to a third party -- and no worker runtime exists for the seven
+schedules that want one, which MOD-011 makes the most pressing because an objective nobody
+evaluates raises no alert.
+
+`Decision.mask` is no longer on that list. MOD-014 applies it, which closes the five-module gap
+-- and note what closing it took: `permit` had to return the gate rather than the session, and
+every read had to take the masked-field list as a **required** argument. A read path that could
+be called without it is a read path somebody calls without it, which is how the gap survived
+five modules in the first place.
+
+MOD-014 also left a counterpart for MOD-013's unverifiable `recipient_id`: `ppl_identity_links`
+now relates an identity to a person, so a notification could be bound to a person record rather
+than to a caller-supplied uuid. Nothing wires the two together yet.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a
