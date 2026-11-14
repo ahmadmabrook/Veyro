@@ -30,6 +30,7 @@ protocol the transport will implement. The gap is recorded in CLAUDE.md.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from time import monotonic
 from typing import Any, Protocol
 
 from psycopg import Connection, errors
@@ -38,6 +39,7 @@ from psycopg.types.json import Jsonb
 from app.db import Pool, tenant_scope
 from app.errors import Conflict, InvalidRequest, NotFound
 from app.events import catalog, dispatch
+from app.observability import metrics as obs
 
 
 #: What a consumer is, from this module's point of view. The transport implements it; the tests
@@ -270,6 +272,13 @@ def deliver_pending(
     failed = 0
     dead = 0
     skipped = 0
+    # Durations are accumulated across the batch and written once at the end rather than per
+    # delivery. The metric store buckets by the hour, so a hundred deliveries in one pass would
+    # otherwise be a hundred upserts contending on the same row for the same answer -- and the
+    # (observations, total) shape exists precisely so a batch can be one point.
+    attempted = 0
+    succeeded = 0
+    duration_ms_total = 0.0
     handler = handlers.get(consumer)
     if handler is None:
         raise InvalidRequest("no_handler_registered_for_this_consumer")
@@ -277,9 +286,12 @@ def deliver_pending(
     for event_id, claimed_attempts in _claim_deliveries(pool, tenant_id, consumer=consumer,
                                                         limit=limit):
         event = _event(pool, tenant_id, event_id=event_id)
+        attempted += 1
+        started = monotonic()
         try:
             handler(event)
         except Exception as e:  # noqa: BLE001 -- recorded against this delivery, then on to the next
+            duration_ms_total += (monotonic() - started) * 1000
             verdict = _record_failure(pool, tenant_id, consumer=consumer, event_id=event_id,
                                       error=f"{type(e).__name__}: {e}"[:500])
             if verdict == "dead":
@@ -289,6 +301,8 @@ def deliver_pending(
             else:
                 failed += 1
             continue
+        duration_ms_total += (monotonic() - started) * 1000
+        succeeded += 1
         with tenant_scope(pool, tenant_id) as conn:
             # `AND status = 'pending'` and an explicit attempt count, not `attempts + 1`.
             # The claim is a lease rather than a lock, so a handler slower than its lease can
@@ -308,6 +322,22 @@ def deliver_pending(
                 skipped += 1
                 continue
         handled += 1
+    if attempted:
+        # Recorded after the loop, in its own transaction, and **its failure is swallowed**.
+        # The deliveries have already committed and the handlers have already run; losing these
+        # two points is a gap in a chart, while letting the write propagate would discard the
+        # summary the caller needs to know what the relay did. Narrow and deliberate, the same
+        # argument `main.py`'s `_count_denial` makes: the work that happened outranks its own
+        # bookkeeping.
+        try:
+            obs.observe(pool, tenant_id, metric_key="events.delivery_duration",
+                        total=duration_ms_total, observations=attempted,
+                        dimensions={"consumer": consumer})
+            obs.observe(pool, tenant_id, metric_key="events.delivery_success",
+                        total=float(succeeded), observations=attempted,
+                        dimensions={"consumer": consumer})
+        except Exception:  # noqa: BLE001 -- see above; the delivery summary is what must return
+            pass
     return {"consumer": consumer, "handled": handled, "retrying": failed,
             "dead_lettered": dead, "skipped": skipped}
 

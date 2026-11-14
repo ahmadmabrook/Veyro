@@ -320,6 +320,31 @@ SUBJECT_COLUMNS: tuple[Reachability, ...] = (
     Reachability("plt01", "evt_replay_jobs", "requested_by", "unreachable",
                  "a replay job's terms are fixed when it is requested; no UPDATE grant on this "
                  "column"),
+    # MOD-011. Measurements and evidence carry the actor who recorded them; the two
+    # registries carry the actor who retired or disabled an entry. None is an erasure
+    # target, and the sweep found every one of them by the `_by` suffix rule -- which is
+    # the rule doing its job on a module still being written.
+    Reachability("plt01", "ops_budgets", "retired_by", "write_once",
+                 "written with the retirement or disable; the service moves the live row only"),
+    Reachability("plt01", "ops_budgets", "set_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "ops_capacity_forecasts", "forecast_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "ops_cost_records", "allocated_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "ops_objectives", "retired_by", "write_once",
+                 "written with the retirement or disable; the service moves the live row only"),
+    Reachability("plt01", "ops_objectives", "set_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
+    Reachability("plt01", "ops_synthetic_checks", "disabled_by", "write_once",
+                 "written with the retirement or disable; the service moves the live row only"),
+    Reachability("plt01", "ops_synthetic_checks", "registered_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
+    # Added after review, with the column it declares. The comment above said measurements
+    # carry the actor who recorded them, and this was the one table where that was untrue --
+    # the one whose own module docstring names a fabricated `passed` as the risk.
+    Reachability("plt01", "ops_synthetic_results", "recorded_by", "unreachable",
+                 "insert-only measurement or evidence; no UPDATE grant on this column"),
     Reachability("plt01", "evt_replay_jobs", "ran_by", "write_once",
                  "written when the job starts; `status = 'requested'` in the service is what "
                  "refuses a second run, not the grant"),

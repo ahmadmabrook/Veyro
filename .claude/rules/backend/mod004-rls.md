@@ -33,9 +33,9 @@ through an ADR so the lint, the migrations and the pool configuration keep agree
 ## Verification evidence
 
 `backend/tests/sql/isolation.sql` is the live half, run by `backend/scripts/verify_db.sh` and by
-CI. It carries 43 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
-MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_` and MOD-010's `evt_` -- and
-**every one has been
+CI. It carries 48 checks covering every track's tables -- MOD-004's hierarchy, MOD-005's `cfg_`,
+MOD-015's `bil_`, MOD-007's and MOD-008's `iam`, MOD-009's `sec_`, MOD-010's `evt_` and
+MOD-011's `ops_` -- and **every one has been
 run against a deliberate mutation of the protection it guards and shown to fail**:
 
 ```bash
@@ -50,10 +50,40 @@ cannot DELETE" test passed only because a foreign key refused the delete first.
 and nothing else. MOD-009's first version probed FORCE RLS on two of its nine tables and ran
 sixteen mutations against them, all caught -- and an independent reviewer then removed FORCE from
 a third table and watched the suite report every check passing while the migrator read every
-tenant's legal holds. Seven of nine tables had no evidence behind them. Checks 17, 22, 28 and 33
-assert over `pg_class` and `pg_policies` for exactly this reason, each with a minimum-count guard
-so the sweep cannot pass vacuously: a per-table list has to be edited whenever a module adds a
-table, and that edit is the moment an unprotected one slips through.
+tenant's legal holds. Seven of nine tables had no evidence behind them. Checks 17, 22, 28, 33, 39
+and 44 assert over `pg_class` and `pg_policies` for exactly this reason, each with a
+minimum-count guard so the sweep cannot pass vacuously: a per-table list has to be edited
+whenever a module adds a table, and that edit is the moment an unprotected one slips through.
+
+**The same holds one level in, for column grants.** MOD-010's first version of check 42 proved
+its column-scoped UPDATE grants against a hand-written list of column names, and a reviewer
+widened ten different grants while the suite reported every check passing -- including UPDATE on
+`evt_outbox.event_type` for the relay role, which re-routes a committed event to a different
+consumer set. Checks 42 and 47 now compare the whole column list per table **and per role**
+against the catalogue, read through `has_column_privilege` over `pg_attribute` rather than
+`information_schema.column_privileges`: those views are filtered to what the current user can
+see, so a check running as one role proves nothing about the other and the comparison passes
+vacuously for half the roles it claims to cover. The ACL bans need the same treatment --
+`pg_class.relacl` holds table-level grants only, so a column-level `GRANT ... TO PUBLIC` is
+invisible to a check that reads only it.
+
+**And a role that holds a grant gets a seat.** Every behavioural assertion is written as some
+role, and a role nobody sits as is a role nothing is proved about. PostgreSQL combines permissive
+policies with OR, so a second policy naming an unexercised role leaves the module's own policy
+intact and every predicate comparison true while that role reads every tenant. MOD-010's review
+found this for `veyro_cp_worker` on `evt_` tables; the fix was scoped to `evt_` tables, and
+MOD-011 granted the worker identical access to eight more and inherited it -- a reviewer opened
+all eight with the suite still reporting 48/48. Each module's isolation block now seats every
+role that holds a grant on its tables, under another tenant's context and under none, and
+asserts exactly one permissive policy per table.
+
+**A constraint nobody has broken on purpose is a constraint nobody has tested, and that has to
+mean the table rather than the sample.** MOD-011's check 48 proved twelve CHECKs and three
+indexes and said in its preamble that each had been broken and watched to fail -- true of those
+fifteen, false of the module: a reviewer dropped 24 of the remaining ones individually and the
+suite reported 48/48 every time, including four of the five on a table with no constraint
+evidence at all. The same for parent references: seven of eight tenant-registry foreign keys
+were droppable in silence because one table's case had been written and the rest asserted.
 
 Two obligations named in the original rule are covered: check 10 asserts the runtime roles hold no
 TRUNCATE, REFERENCES or (for `veyro_cp_app`) DELETE and that neither is a table owner that FORCE

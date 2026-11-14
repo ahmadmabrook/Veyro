@@ -136,6 +136,25 @@ def normalize_phone(value: str) -> str:
     return cleaned
 
 
+def normalize_identifier(value: str) -> str:
+    """The identifier as `_find_identity` will see it, or the stripped value when it is not one.
+
+    **Anything keyed on an identifier has to key on this, not on what the caller typed.** A phone
+    number has unlimited spellings that resolve to one identity -- `normalize_phone` strips
+    whitespace, parentheses and hyphens from anywhere in the string -- so a rate limiter keyed on
+    the raw value hands every spelling its own budget and bounds nothing. Found by review, with
+    eight spellings of one number taking eight full login budgets.
+
+    An unparseable value still gets a stable key rather than an exception: a limiter that refused
+    to count what it could not parse would be a limiter an attacker turns off by sending
+    nonsense.
+    """
+    try:
+        return normalize_email(value) if "@" in value else normalize_phone(value)
+    except InvalidRequest:
+        return value.strip().lower()
+
+
 def validate_password(password: str) -> str:
     """One floor, applied wherever a password is set.
 

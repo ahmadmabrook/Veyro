@@ -54,6 +54,15 @@ READ_ROUTES = [
     ("get", f"/events/{_ID}", None),
     ("get", "/events/subscriptions/all", None),
     ("get", "/events/dead-letters/all", None),
+    ("get", "/ops/metrics/authz.denials", None),
+    ("get", "/ops/objectives", None),
+    ("get", "/ops/synthetic-checks", None),
+    ("get", f"/ops/synthetic-checks/{_ID}/results", None),
+    ("get", "/ops/capacity", None),
+    ("get", "/ops/costs?period_start=2026-11-01&period_end=2026-11-30", None),
+    ("get", "/ops/margin?period_start=2026-11-01&period_end=2026-11-30", None),
+    ("get", "/ops/budgets", None),
+    ("get", "/ops/budget-alerts", None),
 ]
 
 WRITE_ROUTES = [
@@ -100,6 +109,29 @@ WRITE_ROUTES = [
                                  "from_time": _WHEN, "to_time": "2026-12-01T00:00:00+00:00",
                                  **_CORR}),
     ("post", f"/events/replays/{_ID}/run", _CORR),
+    ("post", "/ops/objectives", {"objective_key": "login.availability", "kind": "slo",
+                                 "metric_key": "ops.synthetic_success",
+                                 "comparison": "at_least", "threshold": 0.99,
+                                 "window_hours": 24, "aggregate_as": "mean",
+                                 "owner": "platform-ops", "runbook_ref": "RB-REL-02", **_CORR}),
+    ("post", f"/ops/objectives/{_ID}/retire", _CORR),
+    ("post", f"/ops/objectives/{_ID}/evaluate", _CORR),
+    ("post", "/ops/synthetic-checks", {"check_key": "login.probe", "description": "d",
+                                       "workflow": "login", "interval_seconds": 60, **_CORR}),
+    ("post", f"/ops/synthetic-checks/{_ID}/enabled", {"enabled": False, **_CORR}),
+    ("post", f"/ops/synthetic-checks/{_ID}/results", {"outcome": "passed", "duration_ms": 10,
+                                                      **_CORR}),
+    ("post", "/ops/capacity", {"resource": "db_connections", "horizon_days": 30,
+                               "current_value": 1, "projected_value": 2, "basis": "b",
+                               **_CORR}),
+    ("post", "/ops/costs", {"period_start": "2026-11-01", "period_end": "2026-11-30",
+                            "dimension": "compute", "dimension_value": "api",
+                            "currency": "EUR", "amount_minor": 1, "source": "s", **_CORR}),
+    ("post", "/ops/budgets", {"budget_key": "ai.monthly", "dimension": "total",
+                              "currency": "EUR", "amount_minor": 1000, "period": "monthly",
+                              "owner": "platform-ops", **_CORR}),
+    ("post", f"/ops/budgets/{_ID}/retire", _CORR),
+    ("post", f"/ops/budgets/{_ID}/burn", {"period_start": "2026-11-01", **_CORR}),
 ]
 
 
@@ -428,7 +460,7 @@ class GateCoverageTests(unittest.TestCase):
 
     #: Modules whose whole HTTP surface the behavioural sweeps cover, rather than sampling.
     #: A new one is added here when its routes are added to READ_ROUTES and WRITE_ROUTES.
-    FULLY_SWEPT_PREFIXES = ("/privacy", "/events")
+    FULLY_SWEPT_PREFIXES = ("/privacy", "/events", "/ops")
 
     def test_every_route_of_a_fully_swept_module_is_in_the_behavioural_sweep(self):
         """The sweeps are a sample elsewhere; for these modules they are the whole surface.
@@ -442,6 +474,8 @@ class GateCoverageTests(unittest.TestCase):
                  for method, path, _ in READ_ROUTES + WRITE_ROUTES}
         swept = {(method, path.replace(_ID, "{id}").replace(_SUBJECT, "{id}"))
                  for method, path in swept}
+        swept = {(method, "/ops/metrics/{metric_key}" if path.startswith("/ops/metrics/")
+                  else path) for method, path in swept}
         live = set()
         for method, path, _ in self._routes():
             # `path == prefix or path.startswith(prefix + "/")`, not a bare prefix match: a
@@ -452,7 +486,8 @@ class GateCoverageTests(unittest.TestCase):
                        for prefix in self.FULLY_SWEPT_PREFIXES):
                 continue
             for name in ("purpose_id", "hold_id", "request_id", "event_id", "job_id",
-                         "subscription_id", "dead_letter_id"):
+                         "subscription_id", "dead_letter_id", "objective_id", "check_id",
+                         "budget_id"):
                 path = path.replace("{" + name + "}", "{id}")
             live.add((method, path))
         self.assertEqual(sorted(live - swept), [],

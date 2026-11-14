@@ -188,6 +188,34 @@ PERMISSIONS: dict[str, Permission] = dict([
        "configuration", "financial"),
     _p("events.replay.request", "Open a replay job", "configuration", "financial"),
     _p("events.replay.run", "Execute a replay job", "configuration", "financial"),
+    # MOD-011, observability and FinOps. Reading a metric series is `data_access`; a cost
+    # figure, a budget and a margin are money, so they are `finance` and carry the step-up that
+    # every other financial write in this build carries.
+    _p("ops.metric.read", "Read a metric series", "data_access"),
+    # Routine, and the fourth entry of its kind, for the same reason as the relay's: a prober
+    # runs on a loop and a step-up requirement would mean no probe ever reports. Its reach is
+    # bounded by what it can do -- `ops_synthetic_results` is insert-only for both runtime
+    # roles, so a compromised prober can add a false result and can revise nothing.
+    _p("ops.metric.record", "Record a measurement or a probe result", "data_access"),
+    _p("ops.objective.read", "See objectives and their verdicts", "data_access"),
+    _p("ops.objective.write", "Define or retire an objective", "configuration", "financial"),
+    _p("ops.synthetic.read", "See synthetic checks and their results", "data_access"),
+    _p("ops.synthetic.write", "Register, enable or disable a synthetic check",
+       "configuration", "financial"),
+    _p("ops.capacity.read", "See capacity forecasts", "data_access"),
+    _p("ops.capacity.write", "Record a capacity forecast", "configuration", "financial"),
+    # **This one reads MOD-015's invoices.** Gross margin is not computable without revenue, so
+    # `/ops/margin` sums `bil_invoices` net of tax, partner share and credit notes under this
+    # permission rather than `billing.invoice.read`. It returns a per-currency aggregate over
+    # the caller's own tenant and no invoice detail, and the two permissions are the same
+    # category and the same action class -- but MOD-010's blocking finding was exactly "one
+    # permission became a lateral read path around another module's", so the deliberateness
+    # belongs here and not only in a route docstring.
+    _p("ops.cost.read", "See cost allocation and gross margin", "finance"),
+    _p("ops.cost.write", "Allocate a cost", "finance", "financial"),
+    _p("ops.budget.read", "See budgets and burn alerts", "finance"),
+    _p("ops.budget.write", "Set or retire a budget, or evaluate its burn",
+       "finance", "financial"),
     # Support and AI, named separately because IAM-03-R06 audits them separately.
     _p("support.session.start", "Start a supported session as another user",
        "support", "privileged"),

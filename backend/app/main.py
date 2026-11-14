@@ -29,25 +29,32 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime
+from time import time
 from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app import db
+from app.authorization import catalog as authz_catalog
 from app.authorization import service as authz
 from app.billing import service as billing
 from app.config import Settings, load_settings
 from app.configuration import service as config
-from app.errors import InvalidRequest, NotFound, ServiceError
+from app.errors import InvalidRequest, NotFound, ServiceError, TooManyRequests
 from app.events import service as events
 from app.identity import service as identity
+from app.observability import metrics as obs_metrics
+from app.observability import ratelimit
+from app.observability import service as observability
 from app.privacy import service as privacy
 from app.tenancy import service
 
@@ -589,6 +596,102 @@ class IncidentBody(BaseModel):
     supersedes_incident_id: str | None = None
 
 
+class ObjectiveBody(BaseModel):
+    """DefineSLI and SetSLO, which are one row.
+
+    `aggregate_as` has no default. The same series answers different questions depending on how
+    the window is reduced -- a counter's `sum` is a volume and its `rate_per_hour` is a load --
+    and an objective that meant one and silently got the other still reads as a verdict.
+    """
+
+    objective_key: str
+    kind: str
+    metric_key: str
+    comparison: str
+    # `allow_inf_nan=False`, because `json.loads` accepts the non-standard `NaN` and `Infinity`
+    # literals and pydantic passes them through to a `float`. A NaN threshold stores into
+    # `numeric`, then every comparison in `objectives.evaluate` is False, so the objective
+    # breaches on every evaluation and the event payload carries a value `jsonb` refuses.
+    threshold: float = Field(allow_inf_nan=False)
+    window_hours: int
+    aggregate_as: str
+    owner: str
+    runbook_ref: str
+    correlation_id: str
+    #: The exact dimension set this objective is about -- every dimension the metric declares,
+    #: with a value. An objective across all of them is not expressible, deliberately: the
+    #: merged number measures nothing anybody defined, and a breach of it names nothing anybody
+    #: can act on.
+    dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class SyntheticCheckBody(BaseModel):
+    check_key: str
+    description: str
+    workflow: str
+    interval_seconds: int
+    correlation_id: str
+
+
+class SyntheticToggleBody(BaseModel):
+    enabled: bool
+    correlation_id: str
+
+
+class SyntheticResultBody(BaseModel):
+    outcome: str
+    duration_ms: int
+    correlation_id: str
+    detail: str | None = None
+    observed_at: datetime | None = None
+
+
+class ForecastBody(BaseModel):
+    """`limit_value` is the capacity the projection is measured against.
+
+    The headroom is derived from it rather than accepted, which is MOD-008's derive-don't-accept
+    finding applied to a number: a caller that supplies its own headroom is supplying a
+    conclusion, and the alert threshold would then be comparing against whatever it felt like.
+    """
+
+    resource: str
+    horizon_days: int
+    current_value: float = Field(allow_inf_nan=False)
+    projected_value: float = Field(allow_inf_nan=False)
+    basis: str
+    correlation_id: str
+    limit_value: float | None = Field(default=None, allow_inf_nan=False)
+
+
+class CostBody(BaseModel):
+    period_start: date
+    period_end: date
+    dimension: str
+    dimension_value: str
+    currency: str
+    amount_minor: int
+    source: str
+    correlation_id: str
+    corrects_cost_record_id: str | None = None
+
+
+class BudgetBody(BaseModel):
+    budget_key: str
+    dimension: str
+    currency: str
+    amount_minor: int
+    period: str
+    owner: str
+    correlation_id: str
+    dimension_value: str | None = None
+    warn_at_bp: int = 8000
+
+
+class BudgetBurnBody(BaseModel):
+    period_start: date
+    correlation_id: str
+
+
 class BootstrapBody(BaseModel):
     """The one-time grant that makes a tenant administrable at all."""
 
@@ -658,6 +761,11 @@ def create_app(
 ) -> FastAPI:
     cfg = settings or load_settings()
     owned_pools: list[Any] = []
+    # One limiter per application. In this process's memory, which `app.observability.ratelimit`
+    # argues for at length: the login path is reachable without authentication and its subject
+    # is caller-supplied, so a durable counter would be an unbounded-growth primitive written by
+    # anybody. The cost is that two replicas each allow the full budget.
+    limiter = ratelimit.Limiter()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -684,9 +792,28 @@ def create_app(
         title="Veyro API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
 
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        """A fixed 422, with none of the request echoed back.
+
+        FastAPI's default handler puts the offending *input* into the response. Two problems.
+        It renders with `json.dumps`, which refuses the non-standard `NaN` and `Infinity`
+        literals that `json.loads` happily accepted on the way in -- so a body carrying one
+        produced a 500 from inside the 422, on every route in this application rather than
+        only the new ones. And echoing raw input is the shape that turns a validation error
+        into a reflection primitive. Every other error in this API is `{"error": <fixed
+        code>}`; this one now matches.
+        """
+        return JSONResponse(status_code=422, content={"error": "invalid_request"})
+
     @app.exception_handler(ServiceError)
     async def _service_error(_: Request, exc: ServiceError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status, content={"error": exc.code})
+        # `Retry-After` on a 429, because computing a backoff and not sending it leaves the
+        # client nothing to back off by -- which makes choosing 429 over 403 decorative.
+        headers = ({"Retry-After": str(exc.retry_after_seconds)}
+                   if isinstance(exc, TooManyRequests) else None)
+        return JSONResponse(status_code=exc.status, content={"error": exc.code},
+                            headers=headers)
 
     def permit(session: dict[str, Any], action: str, correlation_id: str | None = None,
                **context: Any) -> dict[str, Any]:
@@ -701,11 +828,77 @@ def create_app(
         none, and an audit row with a handle nobody can trace back is still better than a row
         that could not be written at all -- but a caller that wants its denials findable should
         send one.
+
+        Two MOD-011 concerns ride here because this is the one chokepoint every gated route
+        passes: the per-identity request limit, checked before the gate because a limiter that
+        runs after the expensive part is not protecting anything, and the denial counter.
         """
-        authz.require(identity_pool, session["tenant_id"], identity_id=session["identity_id"],
-                      session_aal=session["aal"], action=action,
-                      correlation_id=correlation_id or str(uuid4()), **context)
+        rate_limit(limit_key="api.request", tenant_id=session["tenant_id"],
+                   subject=str(session["identity_id"]))
+        try:
+            authz.require(identity_pool, session["tenant_id"],
+                          identity_id=session["identity_id"], session_aal=session["aal"],
+                          action=action, correlation_id=correlation_id or str(uuid4()),
+                          **context)
+        except ServiceError:
+            _count_denial(session["tenant_id"], action)
+            raise
         return session
+
+    def _count_denial(tenant_id: str, action: str) -> None:
+        """Roll a refusal into `authz.denials`, and never let the bookkeeping outrank the answer.
+
+        The swallow below is narrow and deliberate, not a general policy for metric failures. A
+        refusal has already been written to MOD-008's audit chain, which is the evidence; this
+        point is a convenience rollup. If recording it raised, the caller would receive 500
+        instead of 403 -- and 500 reads as "try again", which is exactly the wrong advice when
+        the answer is "you may not". A refusal outranks its own counter.
+        """
+        permission = authz_catalog.PERMISSIONS.get(action)
+        if permission is None:
+            return
+        try:
+            obs_metrics.observe(tenant_pool, tenant_id, metric_key="authz.denials", total=1.0,
+                                dimensions={"category": permission.category})
+        except Exception:  # noqa: BLE001 -- see the docstring; the refusal is what must arrive
+            pass
+
+    def rate_limit(*, limit_key: str, tenant_id: str, subject: str) -> None:
+        """ApplyRateLimit at a surface, refusing with 429 when the window budget is spent.
+
+        `subject` is whatever bounds the budget: an identity on a gated route, and a **hash** of
+        the identifier on the unauthenticated ones, because the limiter would otherwise hold a
+        map of every address anybody has tried to log in as.
+        """
+        verdict = limiter.check(tenant_id=tenant_id, limit_key=limit_key, subject=subject,
+                                now_epoch=time())
+        if not verdict.allowed:
+            raise TooManyRequests("rate_limited", verdict.retry_after_seconds)
+
+    def limit_subject(value: str) -> str:
+        """A stable, non-reversible handle for an unauthenticated caller's own identifier.
+
+        **Normalized the way the lookup normalizes, not the way the caller typed it.** The first
+        version lowercased and stripped the ends, which agrees with `normalize_email` and does
+        not agree with `normalize_phone` -- that one removes whitespace, parentheses and hyphens
+        from anywhere in the string. So eight spellings of one phone number resolved to one
+        identity and took eight full login budgets, and a reviewer walked past the limit without
+        ever seeing a 429 while every attempt still cost the server a scrypt. Derive, never
+        accept, applied to a rate-limit key.
+        """
+        return hashlib.sha256(
+            identity.normalize_identifier(value).encode("utf-8")
+        ).hexdigest()
+
+    def token_subject(token: str) -> str:
+        """The same for a bearer token, which is **not** an identifier and is case-sensitive.
+
+        Routing a token through `limit_subject` would lowercase it, and two distinct tokens
+        differing only in case would then share one budget. Small, and the wrong kind of small:
+        a limiter key that merges two callers is the shape the phone-spelling finding was,
+        pointing the other way.
+        """
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -1153,6 +1346,15 @@ def create_app(
 
     @app.post("/auth/login")
     def login(tenant_id: TenantId, body: LoginBody) -> dict[str, Any]:
+        """Rate-limited by the identifier being attempted, which is MOD-007's named gap.
+
+        Lockout already bounds guessing against one identity; nothing bounded volume, so an
+        attacker who knew an address could still lock its owner out, and addresses that do not
+        exist were free to spray at. The budget is keyed on a hash of the identifier so the
+        limiter never holds the addresses anybody tried.
+        """
+        rate_limit(limit_key="auth.login", tenant_id=tenant_id,
+                   subject=limit_subject(body.identifier))
         return identity.authenticate(
             identity_pool, tenant_id, identifier=body.identifier, password=body.password,
             correlation_id=body.correlation_id, device_fingerprint=body.device_fingerprint,
@@ -1164,6 +1366,8 @@ def create_app(
         tenant_id: TenantId, body: LoginChallengeBody
     ) -> dict[str, Any]:
         """Answer the challenge `/auth/login` returned. Open, because the caller has no session."""
+        rate_limit(limit_key="auth.login", tenant_id=tenant_id,
+                   subject=limit_subject(body.identifier))
         return identity.complete_login_challenge(
             identity_pool, tenant_id, identifier=body.identifier, challenge=body.challenge,
             recovery_code=body.recovery_code, correlation_id=body.correlation_id,
@@ -1191,6 +1395,15 @@ def create_app(
 
     @app.post("/auth/step-up")
     def step_up(tenant_id: TenantId, token: BearerToken, body: StepUpBody) -> dict[str, Any]:
+        """Keyed on the bearer token's own digest rather than on an identity.
+
+        Resolving the token first to get an identity would mean doing the work the limit exists
+        to bound. The digest is per-session, which is the right grain anyway: MOD-007's own
+        note says somebody holding a stolen session can burn the victim's lockout budget here,
+        and a per-session ceiling bounds how fast.
+        """
+        rate_limit(limit_key="auth.recover", tenant_id=tenant_id,
+                   subject=token_subject(token))
         return identity.complete_step_up(
             identity_pool, tenant_id, token=token, challenge=body.challenge,
             password=body.password, recovery_code=body.recovery_code,
@@ -1199,6 +1412,8 @@ def create_app(
 
     @app.post("/auth/recover")
     def recover(tenant_id: TenantId, body: RecoverBody) -> dict[str, Any]:
+        rate_limit(limit_key="auth.recover", tenant_id=tenant_id,
+                   subject=limit_subject(body.identifier))
         return identity.recover_with_code(
             identity_pool, tenant_id, identifier=body.identifier, code=body.code,
             correlation_id=body.correlation_id,
@@ -1930,6 +2145,216 @@ def create_app(
             tenant_pool, tenant_id, job_id=require_uuid(job_id, "job_id"),
             actor_id=session["identity_id"], correlation_id=body.correlation_id,
         )
+
+    # ------------------------------------- MOD-011 observability, capacity and FinOps
+
+    @app.get("/ops/metrics/{metric_key}")
+    def read_series(
+        tenant_id: TenantId, session: Session, metric_key: str,
+        window_hours: Annotated[int, Query(ge=1, le=8760)] = 24,
+    ) -> dict[str, Any]:
+        """One declared series over a window.
+
+        There is no route that lists arbitrary dimension values, and that is deliberate: a
+        consumer name and a check key are tenant-chosen strings, and an endpoint that enumerated
+        them would turn the metric store into a directory of what a tenant has configured for a
+        permission that only says "read a series".
+        """
+        permit(session, "ops.metric.read")
+        return obs_metrics.series(tenant_pool, tenant_id, metric_key=metric_key,
+                                  window_hours=window_hours)
+
+    @app.get("/ops/objectives")
+    def read_objectives(
+        tenant_id: TenantId, session: Session, include_retired: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "ops.objective.read")
+        return observability.list_objectives(tenant_pool, tenant_id,
+                                             include_retired=include_retired)
+
+    @app.post("/ops/objectives", status_code=201)
+    def add_objective(
+        tenant_id: TenantId, session: Session, body: ObjectiveBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.objective.write", body.correlation_id)
+        return observability.define_objective(
+            tenant_pool, tenant_id, objective_key=body.objective_key, kind=body.kind,
+            metric_key=body.metric_key, comparison=body.comparison, threshold=body.threshold,
+            window_hours=body.window_hours, aggregate_as=body.aggregate_as, owner=body.owner,
+            runbook_ref=body.runbook_ref, dimensions=body.dimensions,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/objectives/{objective_id}/retire")
+    def end_objective(
+        tenant_id: TenantId, session: Session, objective_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.objective.write", body.correlation_id)
+        return observability.retire_objective(
+            tenant_pool, tenant_id, require_uuid(objective_id, "objective_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/objectives/{objective_id}/evaluate")
+    def check_objective(
+        tenant_id: TenantId, session: Session, objective_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        """Evaluating publishes `performance_budget.exceeded` when it breaches, so it is a
+        write even though it reads like a query -- which is why it is a POST and why it needs
+        the write permission rather than the read one."""
+        permit(session, "ops.objective.write", body.correlation_id)
+        return observability.evaluate_objective(
+            tenant_pool, tenant_id, require_uuid(objective_id, "objective_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ops/synthetic-checks")
+    def read_checks(tenant_id: TenantId, session: Session) -> list[dict[str, Any]]:
+        permit(session, "ops.synthetic.read")
+        return observability.list_checks(tenant_pool, tenant_id)
+
+    @app.post("/ops/synthetic-checks", status_code=201)
+    def add_check(
+        tenant_id: TenantId, session: Session, body: SyntheticCheckBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.synthetic.write", body.correlation_id)
+        return observability.register_check(
+            tenant_pool, tenant_id, check_key=body.check_key, description=body.description,
+            workflow=body.workflow, interval_seconds=body.interval_seconds,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/synthetic-checks/{check_id}/enabled")
+    def toggle_check(
+        tenant_id: TenantId, session: Session, check_id: str, body: SyntheticToggleBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.synthetic.write", body.correlation_id)
+        return observability.set_check_enabled(
+            tenant_pool, tenant_id, require_uuid(check_id, "check_id"), enabled=body.enabled,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ops/synthetic-checks/{check_id}/results")
+    def read_results(
+        tenant_id: TenantId, session: Session, check_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        permit(session, "ops.synthetic.read")
+        return observability.list_results(
+            tenant_pool, tenant_id, require_uuid(check_id, "check_id"), limit=limit
+        )
+
+    @app.post("/ops/synthetic-checks/{check_id}/results", status_code=201)
+    def add_result(
+        tenant_id: TenantId, session: Session, check_id: str, body: SyntheticResultBody
+    ) -> dict[str, Any]:
+        """Written by whatever runs the probe. Nothing in this build runs one."""
+        permit(session, "ops.metric.record", body.correlation_id)
+        return observability.record_result(
+            tenant_pool, tenant_id, check_id=require_uuid(check_id, "check_id"),
+            outcome=body.outcome, duration_ms=body.duration_ms, detail=body.detail,
+            observed_at=body.observed_at, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ops/capacity")
+    def read_forecasts(
+        tenant_id: TenantId, session: Session, resource: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        permit(session, "ops.capacity.read")
+        return observability.list_forecasts(tenant_pool, tenant_id, resource=resource,
+                                            limit=limit)
+
+    @app.post("/ops/capacity", status_code=201)
+    def add_forecast(
+        tenant_id: TenantId, session: Session, body: ForecastBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.capacity.write", body.correlation_id)
+        return observability.record_forecast(
+            tenant_pool, tenant_id, resource=body.resource, horizon_days=body.horizon_days,
+            current_value=body.current_value, projected_value=body.projected_value,
+            basis=body.basis, limit_value=body.limit_value,
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/costs", status_code=201)
+    def add_cost(tenant_id: TenantId, session: Session, body: CostBody) -> dict[str, Any]:
+        permit(session, "ops.cost.write", body.correlation_id)
+        return observability.allocate_cost(
+            tenant_pool, tenant_id, period_start=body.period_start,
+            period_end=body.period_end, dimension=body.dimension,
+            dimension_value=body.dimension_value, currency=body.currency,
+            amount_minor=body.amount_minor, source=body.source,
+            corrects_cost_record_id=optional_uuid(body.corrects_cost_record_id,
+                                                  "corrects_cost_record_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ops/costs")
+    def read_costs(
+        tenant_id: TenantId, session: Session, period_start: date, period_end: date
+    ) -> dict[str, Any]:
+        permit(session, "ops.cost.read")
+        return observability.cost_summary(tenant_pool, tenant_id, period_start=period_start,
+                                          period_end=period_end)
+
+    @app.get("/ops/margin")
+    def read_margin(
+        tenant_id: TenantId, session: Session, period_start: date, period_end: date
+    ) -> dict[str, Any]:
+        """Paragraph 3507. Revenue is net of tax and of the partner share; currencies are
+        reported apart, because there is no exchange rate in this build to combine them with."""
+        permit(session, "ops.cost.read")
+        return observability.gross_margin(tenant_pool, tenant_id, period_start=period_start,
+                                          period_end=period_end)
+
+    @app.get("/ops/budgets")
+    def read_budgets(
+        tenant_id: TenantId, session: Session, include_retired: bool = False
+    ) -> list[dict[str, Any]]:
+        permit(session, "ops.budget.read")
+        return observability.list_budgets(tenant_pool, tenant_id,
+                                          include_retired=include_retired)
+
+    @app.post("/ops/budgets", status_code=201)
+    def add_budget(tenant_id: TenantId, session: Session, body: BudgetBody) -> dict[str, Any]:
+        permit(session, "ops.budget.write", body.correlation_id)
+        return observability.set_budget(
+            tenant_pool, tenant_id, budget_key=body.budget_key, dimension=body.dimension,
+            dimension_value=body.dimension_value, currency=body.currency,
+            amount_minor=body.amount_minor, period=body.period, owner=body.owner,
+            warn_at_bp=body.warn_at_bp, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/budgets/{budget_id}/retire")
+    def end_budget(
+        tenant_id: TenantId, session: Session, budget_id: str, body: CorrelationBody
+    ) -> dict[str, Any]:
+        permit(session, "ops.budget.write", body.correlation_id)
+        return observability.retire_budget(
+            tenant_pool, tenant_id, require_uuid(budget_id, "budget_id"),
+            actor_id=session["identity_id"], correlation_id=body.correlation_id,
+        )
+
+    @app.post("/ops/budgets/{budget_id}/burn")
+    def check_budget(
+        tenant_id: TenantId, session: Session, budget_id: str, body: BudgetBurnBody
+    ) -> dict[str, Any]:
+        """AlertBudgetBurn. Safe to run on a loop: the alert rows are unique per budget, period
+        and threshold, so a second pass in the same period raises nothing."""
+        permit(session, "ops.budget.write", body.correlation_id)
+        return observability.evaluate_budget(
+            tenant_pool, tenant_id, require_uuid(budget_id, "budget_id"),
+            period_start=body.period_start, actor_id=session["identity_id"],
+            correlation_id=body.correlation_id,
+        )
+
+    @app.get("/ops/budget-alerts")
+    def read_budget_alerts(
+        tenant_id: TenantId, session: Session, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        permit(session, "ops.budget.read")
+        return observability.list_budget_alerts(tenant_pool, tenant_id, limit=limit)
 
     return app
 

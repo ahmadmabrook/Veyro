@@ -200,6 +200,27 @@ EVENT_TYPES: dict[tuple[str, int], EventType] = dict([
     _e("event_schema.changed", 1, "MOD-010", "internal",
        ("event_type", "version", "status"),
        "An event type gained a version or was deprecated"),
+    # ---------------------------------------------------------------- MOD-011, REL-02
+    # Paragraph 3513's four, and all four are produced in this build. Each carries the owner and
+    # the runbook where it has one, because paragraph 3504 makes actionability a control and an
+    # alert whose recipient has to go and look up who owns it is one that waits.
+    _e("synthetic_check.failed", 1, "MOD-011", "internal",
+       ("check_id", "check_key", "duration_ms", "detail"),
+       "A synthetic probe reported a failure"),
+    # `dimensions` carries which series breached. Without it the page names a metric and the
+    # recipient has no way to tell which consumer or which check failed, which is the
+    # actionability control at paragraph 3504 defeated by an omission.
+    _e("performance_budget.exceeded", 1, "MOD-011", "internal",
+       ("objective_id", "objective_key", "kind", "metric_key", "dimensions", "observed",
+        "threshold", "comparison", "owner", "runbook_ref"),
+       "An objective was evaluated over its window and breached"),
+    _e("capacity.threshold.reached", 1, "MOD-011", "internal",
+       ("forecast_id", "resource", "horizon_days", "headroom_bp", "projected_value"),
+       "A capacity forecast projects less headroom than the alert threshold"),
+    _e("cost.anomaly.detected", 1, "MOD-011", "confidential",
+       ("budget_id", "budget_key", "period_start", "threshold_bp", "consumed_bp",
+        "spent_minor", "budget_minor", "currency", "owner"),
+       "Spend against a budget crossed a notification threshold"),
 ])
 
 

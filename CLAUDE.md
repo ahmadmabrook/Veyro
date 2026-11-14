@@ -23,7 +23,9 @@ backend/app/            service code
   authorization/        MOD-008: catalog, decision, gate, approval, audit; service.py (I/O)
   privacy/              MOD-009: classification, consent, retention, dsar decide; service.py (I/O)
   events/               MOD-010: catalog and dispatch decide; service.py is the outbox and relay
-  errors.py             the four service errors every module's service raises
+  observability/        MOD-011: catalog, objectives and ratelimit decide; metrics.py records,
+                        service.py does the rest of the I/O
+  errors.py             the five service errors every module's service raises
 backend/migrations/     platform/, tenant/ and product/ SQL, applied in that order
 backend/tests/          unittest suites; tests/sql/isolation.sql is the isolation proof
 backend/scripts/        verify_db.sh rebuilds the database and runs the isolation suite
@@ -757,11 +759,196 @@ Known gaps, deliberate:
   wired producers put one there. No sweep will find the next one either, which is why
   `test_the_subject_identifiers_inside_jsonb_are_declared_by_hand` names it.
 
-**Next.** MOD-011 (observability, performance, capacity and FinOps) is the next Foundation module
-by dependency, and MOD-012 and MOD-014 are both unblocked now that MOD-010 exists. Three things
-named rather than done remain open across the build: the platform plane is unauthenticated,
-`Decision.mask` is computed on every allowed read while no read path applies it, and no worker
-runtime exists for the three sweeps that want one.
+**MOD-011 (REL-02 observability, performance, capacity and FinOps) -- implemented, gated and
+reviewed.** Eight `ops_` tables in `plt01` under the same forced RLS, `app/observability/`
+beside them, and twenty HTTP routes. Working: a pre-bucketed metric store with a code-resident catalogue,
+objectives (SLOs and performance budgets) evaluated over a window, a synthetic-check registry and
+its insert-only result ledger, capacity forecasts with derived headroom, cost allocation with
+corrections, budgets with burn thresholds and once-per-period alerts, a gross-margin read, and an
+in-process rate limiter wired into the authentication surfaces and the gate. All four of the
+TSD's REL-02 events are produced. Proven: isolation checks 44-48, mutation-tested in two rounds
+-- 38 before the review and 87 after it showed what the first round had missed, 86 caught by the
+check that guards what was broken and one (dropping a policy outright) caught by the seed failing
+closed; 32 domain unit tests with no database; 51 service integration tests; 21 API tests.
+
+**Three reviewers worked this module in parallel -- the schema, the Python, the request path --
+and all three returned CHANGES_REQUESTED.** Thirteen blocking defects. Each is carried forward
+below as a rule, because each is a shape that recurs.
+
+- **A role that holds a grant gets a seat, in every module.** Every behavioural assertion in
+  checks 44-48 ran as `veyro_cp_app`. PostgreSQL ORs permissive policies, so
+  `CREATE POLICY ... FOR ALL TO veyro_cp_worker USING (true)` leaves the module's own policy
+  intact, still exactly right, still the only one the catalogue comparison looks at -- while the
+  worker reads every tenant's FinOps ledger from another tenant's context and from no context at
+  all, and the suite reports 48/48. **This is verbatim the regression check 42's comment records
+  for `evt_` tables after MOD-010's review.** I fixed it there and scoped the fix to `evt_`;
+  MOD-011 granted the worker identical access to eight new tables and inherited the blind spot.
+  The structural half matters too: comparing a policy's predicate asserts that a *matching*
+  policy exists, which an added second policy satisfies trivially, so check 44 now also requires
+  exactly one permissive policy per table.
+- **A period that has only a start is not a period.** `evaluate_budget` bounded spend with
+  `period_start >= %s` and nothing above it, and took that date from the caller;
+  `ops_budgets.period` was written by `set_budget` and read by nothing. A monthly budget 45%
+  consumed in January reported 143% -- the whole year -- published three anomaly events and wrote
+  three *insert-only* alert rows snapshotting a figure that was never anybody's January spend.
+  And because the alert rows are unique per `(budget, period_start, threshold)`, a sweep passing
+  today's date re-raised every threshold on every run with a bigger number each time, which is
+  the opposite of the once-per-period guarantee the docstring claimed. `cost_summary`, 140 lines
+  earlier in the same file, bounded both ends.
+- **Derive, never accept, applies to a rate-limit key.** `limit_subject` lowercased and stripped
+  the ends, which agrees with `normalize_email` and not with `normalize_phone` -- that one
+  strips whitespace, parentheses and hyphens from *anywhere* in the string. Eight spellings of
+  one phone number resolved to one identity and took eight full login budgets, each attempt
+  still costing a scrypt. The limiter added to close MOD-007's volume gap did not close it for
+  any phone identifier.
+- **A margin that reads only invoices is blind to the one way revenue goes down.** MOD-015 has
+  no invoice edit and no void: a correction is a credit note, stored positive and always read as
+  a reduction. `gross_margin` never read that table, so fully crediting an invoice still
+  reported a 50% margin on a period that earned nothing -- the overstatement the function's own
+  docstring says it exists to avoid.
+- **A lookup that proves something exists does not authorise what you do next** (MOD-010's rule,
+  hit again, twice). `record_result` selected `enabled` and never looked at it, so disabling a
+  probe stopped nothing: results kept arriving, kept feeding the series an availability objective
+  reads, and kept publishing `synthetic_check.failed`. And `define_objective` consulted the
+  catalogue only to confirm the metric key existed -- never asking its *kind*, so a `ratio`
+  stored with `aggregate_as=sum` read as a 99.9% availability SLO and was **met during a total
+  outage**, since one success in ten thousand attempts sums to 1.0.
+- **An objective that names no dimensions is an objective about nothing anybody defined.**
+  `_buckets_for` applied no dimension predicate, so an objective merged every consumer and every
+  check key: a consumer sitting at zero was invisible behind nine healthy ones and never
+  alerted, and a merged breach paged somebody with no way to tell which one failed. `series` had
+  refused a *partial* dimension match from the start, for exactly this reason; the objective
+  path did a total one.
+- **Evidence with nobody's name on it answers nothing** (MOD-009's rule, recurring).
+  `ops_synthetic_results` was the one insert-only table in the module with no actor and no
+  correlation id, while every sibling carried both -- and it is the table whose own docstring
+  names a fabricated `passed` as the risk. MOD-008 does not audit an allowed action by design,
+  so there was no second record to fall back on.
+- **A sample proves the sample.** My mutation round broke 38 things and caught 37; a reviewer
+  then ran 74 and found **38 uncaught** -- seven of the eight tenant-registry foreign keys, 34 of
+  46 CHECK constraints, two unique indexes, and every column-level grant (check 47's three ACL
+  bans read `pg_class.relacl`, which holds table-level grants only). Check 48's preamble said
+  each constraint had been broken on purpose and watched to fail; that was true of the fifteen it
+  named and false of the module. `ops_capacity_forecasts` had no constraint evidence at all.
+
+Five decisions carry the module, and two of them are refusals:
+
+- **A metric that duplicates a table is a second copy of the truth that can disagree with it.**
+  The first draft of the catalogue carried `events.outbox_pending`, `events.dead_letters`,
+  `privacy.dsar_open` and `privacy.dsar_overdue`. Every one is a count over a table that already
+  exists, under a role that can already read it -- so a dashboard and a `SELECT count(*)` could
+  answer the same question differently with nothing able to say which was right. That is
+  paragraph 3503's "logs are not a shadow database" applied to the metric store itself, and it is
+  why the catalogue is five entries rather than nine. What is left is what has no table: how long
+  work took, and how often it succeeded.
+- **There are no percentiles, and `objectives.py` refuses to fake one.** A point is an hourly
+  bucket carrying an observation count and a total, so a sum, a rate and a mean are available and
+  a p95 is not. Paragraph 3516 does ask for one; an objective stated as a percentile is therefore
+  refused **at definition time**, where somebody can see why, rather than evaluated against a mean
+  and reported as a verdict. Closing it needs a histogram this store does not keep.
+- **An empty window is not a pass**, and it is not a breach either. A series with nothing in it is
+  a producer that stopped or an objective nobody wired up; reporting `met` because nothing
+  contradicted the threshold is how a dashboard goes green during an outage. It publishes no
+  event, because "the measurement is missing" and "the system is failing" are different alerts and
+  conflating them is how a channel gets muted.
+- **Cost is an input, not an observation.** There is no cloud bill, AI invoice or messaging
+  statement in this repository, so `allocate_cost` records figures a caller supplies -- the same
+  precedent as MOD-015's tax rate. Every amount is a signed integer in minor units, a correction
+  is a later row rather than an edit, and `ops_cost_records` carries no UPDATE for any runtime
+  role. `gross_margin` reads revenue from `bil_invoices` **net of tax and of the partner share**,
+  because tax is collected on somebody else's behalf and a revenue share is not Veyro's money;
+  counting either would overstate the margin in the direction nobody checks.
+- **Nothing here runs a synthetic probe.** `ops_synthetic_checks` is the registry and
+  `ops_synthetic_results` is the insert-only ledger whatever runs them writes to. A row saying
+  "passed" that no probe produced is the fabricated-evidence shape this codebase has been bitten
+  by twice. `description` is prose and not a URL, deliberately: a tenant-writable URL that
+  something later fetches is a request-forgery primitive.
+
+Two things are new in the request path and worth knowing before touching `permit`:
+
+- **The rate limiter partially closes MOD-007's named gap, and its counter is in this process's
+  memory.** Partially: four routes -- `/auth/login`, `/auth/challenge`, `/auth/step-up` and
+  `/auth/recover` -- plus a per-identity budget on everything behind the gate. `POST /identities`
+  is still unlimited and is the one worth naming, because it is unauthenticated, costs a scrypt
+  and writes a row to a table with no DELETE grant, which is the exact unbounded-growth shape
+  `ratelimit.py` argues a durable counter must not become. So are `/auth/rotate`,
+  `/identities/{id}/password`, `/identities/{id}/recovery-codes` and the passkey assertion.
+  Lockout bounds guessing against one identity and sees nothing when the address is not
+  registered; nothing bounded volume. The obvious durable version -- a table keyed by (tenant,
+  subject, window) -- fails on the thing a limiter exists for: `/auth/login` is reachable
+  unauthenticated and its subject is caller-supplied, so a million distinct addresses write a
+  million rows into a table with no DELETE grant, and the limiter becomes the unbounded-growth
+  primitive it was added to prevent. The in-memory map is capped and evicts. **It does not
+  coordinate across processes**: two replicas each allow the full budget and the counters reset on
+  restart. The decision functions take the count as an argument precisely so a shared store can go
+  underneath them without the policy moving.
+- **`authz.denials` counts refusals and deliberately not allows.** Counting every allow means an
+  upsert on one row for every request reaching a gated route, which contends on that row and
+  couples every product route's availability to the metric store -- observability taking the
+  product down is the wrong trade for a chart. The consequence is stated rather than discovered:
+  there is no denominator, so an objective expressed as "denials under 1% of traffic" cannot be
+  evaluated here. And the recording failure is swallowed in exactly one place, with a reason: a
+  refusal has already reached MOD-008's audit chain, and turning a 403 into a 500 would tell the
+  caller "try again" when the answer is "you may not".
+
+Also fixed in that round, each with a named regression test: a naive `observed_at` was bucketed
+in the host's local timezone and an unbounded future one let a routine AAL-1 caller hold an
+objective green through an outage still to come (the bound is on writes only -- reading up to a
+future moment is the ordinary "last 24 hours"); `window_hours` was unbounded, so a billion raised
+`OverflowError` before any query and reached the caller as a 500; a `gauge` kind was declared that
+the accumulating upsert could not honour, since a second level in an hour yields the sum of the
+two; a "correction" was never checked for matching the record it corrected in currency, dimension
+or sign; `evaluate_budget` published `cost.anomaly.detected` whether or not its `DO NOTHING`
+insert wrote a row, so two sweeps racing both paged while one row existed; a forecast far past its
+limit overflowed `integer` into a 500; and FastAPI's default validation handler echoed the
+offending *input* into its own 422, which `json.dumps` then refused for a `NaN` the parser had
+accepted -- a 500 from inside a 422, on every route in this application rather than only the new
+ones.
+
+Known gaps, deliberate:
+
+- **No percentiles, so no p95 budget** -- the refusal above. It needs a histogram or a
+  time-series store, which is a different kind of database from the one this build has.
+- **No distributed traces and no structured log pipeline.** Paragraph 3494 asks for all three of
+  logs, metrics and traces; what is built is the metric third plus the correlation id that
+  already threads through every module. A trace needs a collector, and `/events/trace` is the
+  nearest thing here.
+- **Nothing drives any of it on a schedule.** `evaluate_objective` and `evaluate_budget` are
+  called by a route and by tests; no worker loops on them, which is the same missing worker
+  runtime as MOD-007's challenge sweep, MOD-009's retention sweep and MOD-010's relay. Four
+  modules now want it, and this is the first one where the absence changes the product: an
+  objective nobody evaluates raises no alert.
+- **No load tests and no scaling policy** (part of paragraph 3498). The capacity table records a
+  forecast somebody made; nothing generates the load that would inform one.
+- **No cost feed.** The ledger, budgets, burn arithmetic and alerts are built and there is no
+  statement to load into them.
+- **Alert routing is an owner string and a runbook reference**, not an integration. Paragraph 3501
+  asks for routing with ownership and escalation; the ownership and the runbook ride on the row
+  and on every event, and nothing delivers them anywhere.
+- **The metric upsert contends on one row per (tenant, metric, hour, dimensions).** Microseconds
+  of row lock per write at this scale, and the fix when it is not is in-process aggregation with a
+  periodic flush -- which wants the same missing worker.
+- **`ops_metric_points.dimensions` is residue no erasure can reach**, like `evt_outbox.payload`,
+  and it is *not* in `SUBJECT_COLUMNS` because the sweep matches column names and a subject
+  identifier would be inside the `jsonb`. That omission is correct today -- all three producers
+  read their dimension values from the database rather than from a caller -- and nothing tests
+  that invariant. The day a producer passes a caller-supplied string, MOD-010's
+  `cfg_exposures.subject_id` finding recurs in a store with no DELETE grant at all.
+- **`authz.denials` counts refusals at the gate, which is slightly more than its name.** It fires
+  on any `ServiceError` from `authz.require`, including a `NotFound` from scope resolution.
+- **`events.delivery_success` counts a lease-stolen delivery as a success.** The handler did run
+  cleanly, which is the defensible reading, but two relays racing one slow delivery each count it
+  once -- so the ratio is over attempts-by-this-relay rather than over distinct deliveries.
+- **An objective cannot span dimension values.** Requiring the full declared set is what makes a
+  breach actionable, and it means "availability across all consumers" needs one objective per
+  consumer. A metric-wide objective would want an aggregate over series, which is a different
+  evaluation than the one this store supports.
+
+**Next.** MOD-012 (Integration Adapter Core) and MOD-014 (People, Profiles & Member 360) are both
+unblocked. Three things named rather than done remain open across the build: the platform plane is
+unauthenticated, `Decision.mask` is computed on every allowed read while no read path applies it,
+and no worker runtime exists for the four schedules that want one -- which MOD-011 makes the most
+pressing of the three, because an objective nobody evaluates raises no alert.
 
 Module ids are in `tools/mission_runner/module_catalog.json` and are not the TSD's section order.
 MOD-006 (Compose Multiplatform qualification) is unbuilt; MOD-007's dependency on it is a

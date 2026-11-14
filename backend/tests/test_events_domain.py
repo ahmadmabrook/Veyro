@@ -31,7 +31,8 @@ class CatalogShapeTests(unittest.TestCase):
         owners = {e.owner_module for e in catalog.EVENT_TYPES.values()}
         self.assertEqual(
             owners,
-            {"MOD-004", "MOD-005", "MOD-007", "MOD-008", "MOD-009", "MOD-010", "MOD-015"},
+            {"MOD-004", "MOD-005", "MOD-007", "MOD-008", "MOD-009", "MOD-010",
+             "MOD-011", "MOD-015"},
         )
 
     def test_an_unknown_event_type_cannot_be_looked_up(self):

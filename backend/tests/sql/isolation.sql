@@ -2900,4 +2900,1187 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'tenant isolation: 43/43 checks passed'
+
+-- ---------------------------------------------------------------- seed (tenant plane, MOD-011)
+-- Metric points are the one table in this module a *gauge of another module's behaviour* writes
+-- to, from the relay and from the gate, so its isolation is the one that decides whether one
+-- tenant's operational picture can be assembled from another's traffic.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+INSERT INTO plt01.ops_metric_points
+    (tenant_id, point_id, metric_key, bucket_start, dimensions, observations, total)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000001', 'authz.denials',
+        TIMESTAMPTZ '2026-11-14 09:00:00+00', '{"category": "finance"}'::jsonb, 3, 3);
+INSERT INTO plt01.ops_objectives
+    (tenant_id, objective_id, objective_key, kind, metric_key, comparison, threshold,
+     window_hours, aggregate_as, owner, runbook_ref, set_by, correlation_id)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000002', 'login.availability', 'slo',
+        'ops.synthetic_success', 'at_least', 0.999, 24, 'mean', 'platform-ops',
+        'RB-REL-02#login', :'actor', :'actor');
+INSERT INTO plt01.ops_synthetic_checks
+    (tenant_id, check_id, check_key, description, workflow, interval_seconds, registered_by,
+     correlation_id)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000003', 'login.probe',
+        'Signs a synthetic member in', 'login', 60, :'actor', :'actor');
+INSERT INTO plt01.ops_synthetic_results
+    (tenant_id, result_id, check_id, outcome, duration_ms, detail, recorded_by,
+     correlation_id, observed_at)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000004',
+        '88888888-0000-4000-8000-000000000003', 'failed', 812, 'timed out at the token step',
+        :'actor', :'actor', TIMESTAMPTZ '2026-11-14 09:15:00+00');
+INSERT INTO plt01.ops_capacity_forecasts
+    (tenant_id, forecast_id, resource, horizon_days, current_value, projected_value,
+     limit_value, headroom_bp, basis, forecast_by, correlation_id)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000005', 'database_connections', 90,
+        120, 430, 500, 1400, 'linear fit over 60 days of peak concurrency', :'actor',
+        :'actor');
+INSERT INTO plt01.ops_cost_records
+    (tenant_id, cost_record_id, period_start, period_end, dimension, dimension_value,
+     currency, amount_minor, source, allocated_by, correlation_id)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000006', DATE '2026-11-01',
+        DATE '2026-11-30', 'ai_model', 'claude-opus', 'EUR', 412000,
+        'vendor statement 2026-11', :'actor', :'actor');
+INSERT INTO plt01.ops_budgets
+    (tenant_id, budget_id, budget_key, dimension, dimension_value, currency, amount_minor,
+     period, warn_at_bp, owner, set_by, correlation_id)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000007', 'ai.monthly', 'ai_model',
+        'claude-opus', 'EUR', 500000, 'monthly', 8000, 'platform-ops', :'actor', :'actor');
+INSERT INTO plt01.ops_budget_alerts
+    (tenant_id, alert_id, budget_id, period_start, threshold_bp, spent_minor, budget_minor,
+     currency, owner)
+VALUES (:'tenant_a', '88888888-0000-4000-8000-000000000008',
+        '88888888-0000-4000-8000-000000000007', DATE '2026-11-01', 8000, 412000, 500000,
+        'EUR', 'platform-ops');
+COMMIT;
+
+-- Tenant B holds one forecast of its own, so a predicate that leaked shows up as a count above
+-- the expected one rather than as the zero an empty table would give anyway.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+INSERT INTO plt01.ops_capacity_forecasts
+    (tenant_id, resource, horizon_days, current_value, projected_value, basis, forecast_by,
+     correlation_id)
+VALUES (:'tenant_b', 'storage_bytes', 30, 10, 20, 'tenant B''s own forecast', :'actor',
+        :'actor');
+COMMIT;
+
+-- ---------------------------------------------------------------- 44. ops tables isolate
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                               'ops_synthetic_results', 'ops_cost_records', 'ops_budgets',
+                               'ops_budget_alerts']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 44 FAILED: tenant B sees % rows of tenant A in %', seen, tbl;
+        END IF;
+    END LOOP;
+    IF (SELECT count(*) FROM plt01.ops_capacity_forecasts) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: tenant B sees % forecasts, expected its own 1',
+            (SELECT count(*) FROM plt01.ops_capacity_forecasts);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.ops_capacity_forecasts
+               WHERE resource = 'database_connections') THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: tenant B read tenant A''s capacity forecast';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- All eight, positively. A table whose positive case nobody asserts could return zero for
+    -- the wrong reason and only the negative sweep would notice -- which is the direction that
+    -- reads as a pass.
+    IF (SELECT count(*) FROM plt01.ops_metric_points) <> 1
+       OR (SELECT count(*) FROM plt01.ops_objectives) <> 1
+       OR (SELECT count(*) FROM plt01.ops_synthetic_checks) <> 1
+       OR (SELECT count(*) FROM plt01.ops_synthetic_results) <> 1
+       OR (SELECT count(*) FROM plt01.ops_capacity_forecasts) <> 1
+       OR (SELECT count(*) FROM plt01.ops_cost_records) <> 1
+       OR (SELECT count(*) FROM plt01.ops_budgets) <> 1
+       OR (SELECT count(*) FROM plt01.ops_budget_alerts) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: tenant A cannot see its own ops rows';
+    END IF;
+END $$;
+COMMIT;
+
+-- Swept from the catalogue, never from a list of table names: that is checks 17, 22, 28, 33 and
+-- 39's shared lesson and the one MOD-009 regressed on. Both halves of the policy are asserted --
+-- `USING` keeps another tenant's rows out of a read and `WITH CHECK` keeps this tenant from
+-- writing a row labelled as somebody else's, and a policy carrying only the first passes every
+-- read test while leaving writes unguarded.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    unprotected text;
+BEGIN
+    SELECT string_agg(relname, ', ') INTO unprotected
+    FROM pg_class
+    WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'ops\_%'
+      AND NOT (relrowsecurity AND relforcerowsecurity);
+    IF unprotected IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without ENABLE and FORCE RLS: %',
+            unprotected;
+    END IF;
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r'
+          AND relname LIKE 'ops\_%') < 8 THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: fewer than 8 ops_ tables, so the sweep proved nothing';
+    END IF;
+    -- A table owned by a superuser ignores FORCE entirely, so the flag above would not bind.
+    IF (SELECT count(*) FROM pg_class
+        WHERE relnamespace = 'plt01'::regnamespace AND relkind = 'r' AND relname LIKE 'ops\_%'
+          AND pg_get_userbyid(relowner) <> 'veyro_cp_migrator') <> 0 THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: an ops_ table is not owned by the migrator';
+    END IF;
+    -- Every ops_ table has exactly one policy, and that policy carries both halves of the
+    -- predicate. A table with no policy at all under FORCE RLS denies everything, which fails
+    -- safe but silently -- and a policy whose `WITH CHECK` is missing inherits `USING`, which
+    -- is only equivalent until somebody edits one of them.
+    SELECT string_agg(c.relname, ', ') INTO unprotected
+    FROM pg_class c
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'plt01' AND p.tablename = c.relname
+     AND p.qual = '(tenant_id = (NULLIF(current_setting(''app.tenant_id''::text, true), ''''::text))::uuid)'
+     AND p.with_check = p.qual
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'ops\_%' AND p.policyname IS NULL;
+    IF unprotected IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without the exact tenant predicate in '
+            'both USING and WITH CHECK: %', unprotected;
+    END IF;
+END $$;
+COMMIT;
+
+-- And behaviourally, because a catalogue flag is a claim about behaviour: the owner reads
+-- nothing even with a tenant context set.
+BEGIN;
+SET LOCAL ROLE veyro_cp_migrator;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                               'ops_synthetic_results', 'ops_capacity_forecasts',
+                               'ops_cost_records', 'ops_budgets', 'ops_budget_alerts']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 44 FAILED: the table owner read % rows of %, so FORCE RLS is off',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+COMMIT;
+
+-- **The worker role gets its own seat, because a second policy is OR'd with the first.**
+-- Everything above this point runs as `veyro_cp_app`. PostgreSQL combines permissive policies
+-- with OR, so `CREATE POLICY ... ON plt01.ops_cost_records FOR ALL TO veyro_cp_worker USING
+-- (true)` leaves every assertion above untouched and true -- the module's own policy is still
+-- there, still exactly right, still the only one the catalogue comparison looks at -- while the
+-- worker reads every tenant's ledger from any context and from no context.
+--
+-- This is verbatim the regression check 42's comment records: `veyro_cp_worker` was never
+-- exercised behaviourally anywhere in the suite, so a policy naming it passed everything. That
+-- was found for `evt_` tables by MOD-010's review and the fix was scoped to `evt_` tables;
+-- MOD-011 granted the worker identical access to eight more and inherited the blind spot, and a
+-- reviewer opened all eight while the suite reported 48/48. **A role that holds a grant gets a
+-- seat, in every module.**
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                               'ops_synthetic_results', 'ops_cost_records', 'ops_budgets',
+                               'ops_budget_alerts']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 44 FAILED: the worker read % rows of tenant A in % from '
+                'tenant B''s context', seen, tbl;
+        END IF;
+    END LOOP;
+    -- Tenant B owns exactly one forecast, so the worker seeing it is the positive case that
+    -- stops this block passing because the worker can see nothing at all.
+    IF (SELECT count(*) FROM plt01.ops_capacity_forecasts) <> 1 THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: the worker sees % forecasts in tenant B, expected 1',
+            (SELECT count(*) FROM plt01.ops_capacity_forecasts);
+    END IF;
+    IF EXISTS (SELECT 1 FROM plt01.ops_capacity_forecasts
+               WHERE resource = 'database_connections') THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: the worker read tenant A''s forecast from tenant B';
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_worker;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                               'ops_synthetic_results', 'ops_capacity_forecasts',
+                               'ops_cost_records', 'ops_budgets', 'ops_budget_alerts']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 44 FAILED: the worker read % rows of % with no tenant context',
+                seen, tbl;
+        END IF;
+    END LOOP;
+END $$;
+ROLLBACK;
+
+-- And the structural half of the same finding: exactly one permissive policy per table. The
+-- predicate comparison above asserts that a *matching* policy exists, which an added second
+-- policy satisfies trivially. A restrictive policy would be additional protection and is not
+-- what this refuses.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    extra text;
+BEGIN
+    SELECT string_agg(c.relname || ' (' || n::text || ')', ', ') INTO extra
+    FROM pg_class c
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS n FROM pg_policies p
+        WHERE p.schemaname = 'plt01' AND p.tablename = c.relname AND p.permissive = 'PERMISSIVE'
+    ) counted
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'ops\_%' AND counted.n <> 1;
+    IF extra IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables without exactly one permissive policy: %',
+            extra;
+    END IF;
+    -- A tenant-leading primary key, which the isolation rule states and nothing asserted. It is
+    -- index locality rather than a leak, and it is one query.
+    SELECT string_agg(c.relname, ', ') INTO extra
+    FROM pg_class c
+    JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'ops\_%'
+      AND (SELECT attname FROM pg_attribute
+           WHERE attrelid = c.oid AND attnum = i.indkey[0]) <> 'tenant_id';
+    IF extra IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 44 FAILED: ops_ tables whose primary key does not lead with '
+            'tenant_id: %', extra;
+    END IF;
+END $$;
+COMMIT;
+
+-- ---------------------------------------------------------------- 45. fail closed, ops tables
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+DO $$
+DECLARE
+    tbl text;
+    seen bigint;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                               'ops_synthetic_results', 'ops_capacity_forecasts',
+                               'ops_cost_records', 'ops_budgets', 'ops_budget_alerts']
+    LOOP
+        EXECUTE format('SELECT count(*) FROM plt01.%I', tbl) INTO seen;
+        IF seen <> 0 THEN
+            RAISE EXCEPTION 'CHECK 45 FAILED: % returned % rows with no tenant context',
+                tbl, seen;
+        END IF;
+    END LOOP;
+
+    -- A measurement written with no context is a measurement nobody can attribute, and this
+    -- one would land in whichever tenant's dashboard happened to query the key.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials',
+                TIMESTAMPTZ '2026-11-14 10:00:00+00', '{"category": "finance"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 45 FAILED: a metric point was written with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30',
+                'compute', 'api', 'EUR', 1, 'nowhere',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 45 FAILED: a cost was allocated with no tenant context';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- A tenant cannot label a row as somebody else's, which is the `WITH CHECK` half doing its job
+-- rather than the `USING` half.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('22222222-2222-4222-8222-222222222222', 'authz.denials',
+                TIMESTAMPTZ '2026-11-14 10:00:00+00', '{"category": "finance"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 45 FAILED: a point was written into another tenant';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 46. cross-tenant parents
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '22222222-2222-4222-8222-222222222222';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, recorded_by, correlation_id,
+             observed_at)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '88888888-0000-4000-8000-000000000003', 'passed', 10,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 46 FAILED: a result was recorded against another tenant''s check';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_budget_alerts
+            (tenant_id, budget_id, period_start, threshold_bp, spent_minor, budget_minor,
+             currency, owner)
+        VALUES ('22222222-2222-4222-8222-222222222222',
+                '88888888-0000-4000-8000-000000000007', DATE '2026-11-01', 8000, 1, 2, 'EUR',
+                'borrowed');
+        RAISE EXCEPTION 'CHECK 46 FAILED: an alert was raised against another tenant''s budget';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, corrects_cost_record_id, allocated_by, correlation_id)
+        VALUES ('22222222-2222-4222-8222-222222222222', DATE '2026-11-01', DATE '2026-11-30',
+                'ai_model', 'claude-opus', 'EUR', -1, 'correction',
+                '88888888-0000-4000-8000-000000000006',
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 46 FAILED: another tenant''s cost record was corrected from here';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The registry reference, which the composite foreign keys do not cover: an ops row for a
+-- tenant that is not in `plt01_platform.tenants` at all.
+--
+-- **Swept from the catalogue and sampled behaviourally, not sampled alone.** The first version
+-- of this proved one table of eight and a reviewer dropped the other seven -- including the cost
+-- ledger and the budget registry -- with the suite still reporting every check passing. The
+-- migration's own header singles this reference out as the one two earlier modules carried with
+-- nothing proving it; writing one case and asserting the rest is how that happens again.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    missing text;
+BEGIN
+    SELECT string_agg(c.relname, ', ') INTO missing
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'ops\_%'
+      AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint fk
+          WHERE fk.conrelid = c.oid AND fk.contype = 'f'
+            AND fk.confrelid = 'plt01_platform.tenants'::regclass
+            AND fk.conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                                   WHERE attrelid = c.oid AND attname = 'tenant_id')]);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 46 FAILED: ops_ tables with no tenant registry foreign key: %',
+            missing;
+    END IF;
+END $$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '44444444-4444-4444-8444-444444444444';
+DO $$
+BEGIN
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('44444444-4444-4444-8444-444444444444', 'authz.denials',
+                TIMESTAMPTZ '2026-11-14 10:00:00+00', '{"category": "finance"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 46 FAILED: a point was recorded for an unregistered tenant';
+    EXCEPTION
+        WHEN foreign_key_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 47. measurements are evidence
+-- Four of the eight tables carry no UPDATE at all and the other four carry a column-scoped one,
+-- and in this module that grant **is** the integrity mechanism: there is no hash chain behind a
+-- probe result, a forecast, a cost figure or an alert, so the only thing standing between a
+-- measurement and a convenient revision of it is the absence of a privilege.
+--
+-- Swept in full against the catalogue, per column and per role, because MOD-010's review showed
+-- what a hand-written list of column names is worth: ten different grant-widenings passed 43/43.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+DECLARE
+    wrong text;
+BEGIN
+    WITH expected(tbl, cols) AS (VALUES
+        ('ops_metric_points', 'observations,total'),
+        ('ops_objectives', 'retire_correlation_id,retired_at,retired_by'),
+        ('ops_synthetic_checks',
+         'disable_correlation_id,disabled_at,disabled_by,enabled,interval_seconds'),
+        ('ops_synthetic_results', '(none)'),
+        ('ops_capacity_forecasts', '(none)'),
+        ('ops_cost_records', '(none)'),
+        ('ops_budgets', 'retire_correlation_id,retired_at,retired_by'),
+        ('ops_budget_alerts', '(none)'))
+    SELECT string_agg(
+               e.tbl || ' / ' || g.grantee || ': ' || coalesce(a.actual, '(none)'), '; ')
+    INTO wrong
+    FROM expected e
+    CROSS JOIN (VALUES ('veyro_cp_app'), ('veyro_cp_worker')) AS g(grantee)
+    -- `has_column_privilege` over `pg_attribute`, not `information_schema.column_privileges`:
+    -- those views are filtered to what the current user can see, so running as `veyro_cp_app`
+    -- they report nothing about `veyro_cp_worker` and the comparison would be vacuous for half
+    -- the roles it claims to cover.
+    LEFT JOIN LATERAL (
+        SELECT string_agg(att.attname, ',' ORDER BY att.attname) AS actual
+        FROM pg_attribute att
+        WHERE att.attrelid = ('plt01.' || e.tbl)::regclass
+          AND att.attnum > 0 AND NOT att.attisdropped
+          AND has_column_privilege(g.grantee, att.attrelid, att.attname, 'UPDATE')
+    ) a ON true
+    WHERE coalesce(a.actual, '(none)') <> e.cols;
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: UPDATE column grants differ from the expected set: %',
+            wrong;
+    END IF;
+
+    -- The expectation above is per column and per role, and its *table* list was hand-written,
+    -- so a ninth `ops_` table with table-wide UPDATE to both roles passed it in silence. The
+    -- list has to cover the catalogue, which makes adding a table without stating what it may
+    -- update a failure rather than an omission.
+    SELECT string_agg(c.relname, ', ') INTO wrong
+    FROM pg_class c
+    WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+      AND c.relname LIKE 'ops\_%'
+      AND c.relname NOT IN ('ops_metric_points', 'ops_objectives', 'ops_synthetic_checks',
+                            'ops_synthetic_results', 'ops_capacity_forecasts',
+                            'ops_cost_records', 'ops_budgets', 'ops_budget_alerts');
+    IF wrong IS NOT NULL THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: ops_ tables with no stated UPDATE expectation: %',
+            wrong;
+    END IF;
+
+    -- The three bans below read `pg_class.relacl`, which holds table-level grants only, so a
+    -- *column*-level grant is invisible to all three: `GRANT SELECT (detail) ON
+    -- plt01.ops_synthetic_results TO PUBLIC` and `GRANT REFERENCES (tenant_id) ... TO
+    -- veyro_cp_app` both passed. Neither is exploitable today -- a PUBLIC grantee matches no
+    -- policy and `veyro_iam_app` holds no USAGE on `plt01` -- but the isolation rule states
+    -- the PUBLIC and REFERENCES bans without that qualification, and a ban enforced only at
+    -- one granularity is a ban somebody will step around at the other.
+    IF (SELECT count(*) FROM pg_class c
+        JOIN pg_attribute att ON att.attrelid = c.oid AND att.attnum > 0
+                             AND NOT att.attisdropped AND att.attacl IS NOT NULL,
+        LATERAL aclexplode(att.attacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'ops\_%'
+          AND (acl.grantee = 0
+               OR acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')
+               OR pg_get_userbyid(acl.grantee)
+                  NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator'))) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: a column-level grant is PUBLIC, is REFERENCES, or '
+            'names a role outside the three expected ones';
+    END IF;
+
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'ops\_%'
+          AND pg_get_userbyid(acl.grantee) IN ('veyro_cp_app', 'veyro_cp_worker')
+          AND acl.privilege_type IN ('DELETE', 'TRUNCATE', 'REFERENCES')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: a runtime role holds DELETE, TRUNCATE or REFERENCES';
+    END IF;
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'ops\_%'
+          AND acl.grantee <> 0
+          AND pg_get_userbyid(acl.grantee)
+              NOT IN ('veyro_cp_app', 'veyro_cp_worker', 'veyro_cp_migrator')) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: an ops_ table is granted to somebody unexpected';
+    END IF;
+    -- PUBLIC is grantee 0, and a PUBLIC grant would make every assertion above irrelevant.
+    IF (SELECT count(*) FROM pg_class c, aclexplode(c.relacl) acl
+        WHERE c.relnamespace = 'plt01'::regnamespace AND c.relkind = 'r'
+          AND c.relname LIKE 'ops\_%' AND acl.grantee = 0) <> 0 THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: an ops_ table carries a PUBLIC grant';
+    END IF;
+
+    -- Behaviourally too, because a catalogue row is a claim about behaviour. Each of these is
+    -- a rewrite somebody with a motive would want: a probe failure made to read as a pass, a
+    -- forecast made to agree with what happened, a cost reduced after the margin was reported,
+    -- an alert's owner moved to somebody who was not told.
+    BEGIN
+        UPDATE plt01.ops_synthetic_results SET outcome = 'passed', detail = NULL;
+        RAISE EXCEPTION 'CHECK 47 FAILED: a probe failure was rewritten as a pass';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ops_capacity_forecasts SET projected_value = 1;
+        RAISE EXCEPTION 'CHECK 47 FAILED: a capacity forecast was revised';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ops_cost_records SET amount_minor = 1;
+        RAISE EXCEPTION 'CHECK 47 FAILED: an allocated cost was revised';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ops_budget_alerts SET owner = 'nobody';
+        RAISE EXCEPTION 'CHECK 47 FAILED: a raised alert''s owner was rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- The identity of a series: a point whose metric key, bucket or dimensions could change is
+    -- a measurement that can be moved onto another chart, which is indistinguishable from
+    -- fabricating one there.
+    BEGIN
+        UPDATE plt01.ops_metric_points SET metric_key = 'ops.synthetic_success';
+        RAISE EXCEPTION 'CHECK 47 FAILED: a metric point was moved to another series';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ops_metric_points SET dimensions = '{"category": "access"}'::jsonb;
+        RAISE EXCEPTION 'CHECK 47 FAILED: a metric point''s dimensions were rewritten';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    -- An objective's threshold is what it was when something breached it. Editing it rewrites
+    -- the reason an alert fired, which is why retirement is the only exit.
+    BEGIN
+        UPDATE plt01.ops_objectives SET threshold = 0;
+        RAISE EXCEPTION 'CHECK 47 FAILED: an objective''s threshold was edited';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        UPDATE plt01.ops_budgets SET amount_minor = 99999999;
+        RAISE EXCEPTION 'CHECK 47 FAILED: a budget was edited rather than retired';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+    BEGIN
+        DELETE FROM plt01.ops_budget_alerts;
+        RAISE EXCEPTION 'CHECK 47 FAILED: a raised alert was deleted';
+    EXCEPTION
+        WHEN insufficient_privilege THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+-- The accumulation column grant is a real UPDATE, so it has to be shown to work as well as to
+-- be bounded -- a check that only proves what is refused would pass just as happily if the
+-- grant were missing altogether and the service were silently failing to accumulate.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    INSERT INTO plt01.ops_metric_points
+        (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+    VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials',
+            TIMESTAMPTZ '2026-11-14 09:00:00+00', '{"category": "finance"}'::jsonb, 2, 2)
+    ON CONFLICT (tenant_id, metric_key, bucket_start, dimensions) DO UPDATE
+    SET observations = plt01.ops_metric_points.observations + EXCLUDED.observations,
+        total = plt01.ops_metric_points.total + EXCLUDED.total;
+    IF (SELECT observations FROM plt01.ops_metric_points
+        WHERE point_id = '88888888-0000-4000-8000-000000000001') <> 5 THEN
+        RAISE EXCEPTION 'CHECK 47 FAILED: the bucket did not accumulate';
+    END IF;
+END $$;
+ROLLBACK;
+
+-- ---------------------------------------------------------------- 48. the ops constraints
+-- The rules a reader of the service would assume and only the database can hold. Each of these
+-- has been removed and the suite watched to fail; a constraint nobody has broken on purpose is
+-- a constraint nobody has tested.
+BEGIN;
+SET LOCAL ROLE veyro_cp_app;
+SET LOCAL app.tenant_id = '11111111-1111-4111-8111-111111111111';
+DO $$
+BEGIN
+    -- The bucket is the hour. A point off the hour aggregates with nothing and reads as a gap
+    -- in the series rather than as the measurement it is.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials', TIMESTAMPTZ '2026-11-14 09:17:00+00',
+                '{"category": "access"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 48 FAILED: a point was written off the hour';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A zero-observation point makes a mean a division by zero and a ratio meaningless.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials', TIMESTAMPTZ '2026-11-14 11:00:00+00',
+                '{"category": "access"}'::jsonb, 0, 0);
+        RAISE EXCEPTION 'CHECK 48 FAILED: a point with no observations was written';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- Dimensions are an object. An array or a scalar here would compare unequal to every
+    -- dimension slice a reader sends and so would be invisible to every query.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials', TIMESTAMPTZ '2026-11-14 12:00:00+00',
+                '["category"]'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 48 FAILED: dimensions were written as an array';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- The unique index *is* the accumulation. Without it two writers each insert and the series
+    -- doubles silently, which is the failure a dashboard cannot show you.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'authz.denials', TIMESTAMPTZ '2026-11-14 09:00:00+00',
+                '{"category": "finance"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 48 FAILED: a second row was written for one bucket';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- An objective's aggregate is a closed set, and the set is what this store can compute. A
+    -- percentile admitted here would be evaluated against a mean and reported as a verdict.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'api.p95', 'performance_budget', 'events.delivery_duration',
+                'at_most', 500, 24, 'p95', 'platform-ops', 'RB-REL-02', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a percentile objective was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- An objective with no runbook produces an alert whose recipient has nothing to do, which
+    -- is the actionability control in paragraph 3504 read as a constraint. Blank, not absent:
+    -- `length(btrim(' ')) > 0` is the form that catches a caller sending whitespace to satisfy
+    -- a NOT NULL.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'api.load', 'slo', 'events.delivery_success', 'at_least', 0.99,
+                24, 'mean', 'platform-ops', '   ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective was defined with a blank runbook';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- Two live objectives under one key would be two answers to the same question.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'login.availability', 'slo', 'ops.synthetic_success', 'at_least',
+                0.5, 24, 'mean', 'somebody-else', 'RB-REL-02', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a second live objective took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    -- Retiring without saying who. The one act that ends an objective's authority has to carry
+    -- an actor, for the same reason releasing a legal hold does: the row is the only record.
+    BEGIN
+        UPDATE plt01.ops_objectives SET retired_at = now()
+        WHERE objective_id = '88888888-0000-4000-8000-000000000002';
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective was retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A failed probe with no detail is an alert nobody can act on. `coalesce` is load-bearing
+    -- in the constraint: `length(btrim(NULL)) > 0` is NULL and a CHECK passes on NULL, which is
+    -- exactly how MOD-009's legal-hold constraint admitted the row it existed to refuse.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, detail, recorded_by, correlation_id,
+             observed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111',
+                '88888888-0000-4000-8000-000000000003', 'failed', 10, NULL,
+                '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 48 FAILED: a failure was recorded with no detail';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A check whose flag and whose history disagree. Either reading is defensible on its own,
+    -- which is what makes the pair unanswerable.
+    BEGIN
+        UPDATE plt01.ops_synthetic_checks SET disabled_at = now(), disabled_by = '33333333-3333-4333-8333-333333333333',
+            disable_correlation_id = '33333333-3333-4333-8333-333333333333'
+        WHERE check_id = '88888888-0000-4000-8000-000000000003';
+        RAISE EXCEPTION 'CHECK 48 FAILED: a check reads enabled and disabled at once';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A zero cost is a row that changes no total and hides in every report; a correction is a
+    -- later row with the opposite sign, never this one.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30', 'compute', 'api', 'EUR', 0,
+                'vendor', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a zero cost was allocated';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A cost with no stated source is a guess that will be read as a measurement, and there is
+    -- no bill in this repository to settle the question later.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30', 'compute', 'api', 'EUR', 5,
+                '  ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a cost was allocated with no source';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A period that runs backwards sums into whichever range a report happens to ask for.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-30', DATE '2026-11-01', 'compute', 'api', 'EUR', 5,
+                'vendor', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a cost period ran backwards';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A non-total budget with no dimension value matches every cost in its dimension and so
+    -- reads as a total while claiming to be narrower -- the direction that under-alerts.
+    BEGIN
+        INSERT INTO plt01.ops_budgets
+            (tenant_id, budget_key, dimension, dimension_value, currency, amount_minor,
+             period, owner, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'ai.unscoped', 'ai_model', NULL, 'EUR', 1000, 'monthly',
+                'platform-ops', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a dimensioned budget named no value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- One alert per budget, period and threshold. Without it an hourly sweep raises the same
+    -- alert every hour, which is how a channel becomes one people mute.
+    BEGIN
+        INSERT INTO plt01.ops_budget_alerts
+            (tenant_id, budget_id, period_start, threshold_bp, spent_minor, budget_minor,
+             currency, owner)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000007', DATE '2026-11-01', 8000,
+                420000, 500000, 'EUR', 'platform-ops');
+        RAISE EXCEPTION 'CHECK 48 FAILED: the same burn alert was raised twice';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+
+    -- ------------------------------------------------------------------------------------
+    -- Everything from here was added after review. The first version of check 48 proved
+    -- twelve constraints and three indexes, and its preamble said -- truthfully of those
+    -- fifteen and falsely of the module -- that each had been broken on purpose. A reviewer
+    -- dropped 24 of the remaining ones individually and the suite reported 48/48 every time,
+    -- including four of the five on `ops_capacity_forecasts`, which had no evidence at all.
+    -- A constraint nobody has broken on purpose is a constraint nobody has tested, and the
+    -- sentence only means something if it covers the table rather than the sample.
+    -- ------------------------------------------------------------------------------------
+
+    -- An objective names the series it is about, and the shape has to be an object for the
+    -- equality in `_buckets_for` to compare against anything a producer writes.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, dimensions, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bad.dims', 'slo', 'ops.synthetic_success', 'at_least', 0.99, 24,
+                'mean', '["check_key"]'::jsonb, 'platform-ops', 'RB', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective''s dimensions were written as an array';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- The closed sets. A kind or a comparison outside them is a row the evaluator has no
+    -- branch for, and `evaluate` would compare with whichever operator happened to be last.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bad.kind', 'vibes', 'ops.synthetic_success', 'at_least', 0.99, 24,
+                'mean', 'platform-ops', 'RB', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective of an unknown kind was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bad.cmp', 'slo', 'ops.synthetic_success', 'roughly', 0.99, 24,
+                'mean', 'platform-ops', 'RB', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective comparison outside the set was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A window of a year is the ceiling; zero or negative is a window the aggregate divides by.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bad.window', 'slo', 'ops.synthetic_success', 'at_least', 0.99, 0,
+                'mean', 'platform-ops', 'RB', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective with a zero window was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- An unowned objective produces an alert addressed to nobody, which is the other half of
+    -- the actionability control the runbook case already covers.
+    BEGIN
+        INSERT INTO plt01.ops_objectives
+            (tenant_id, objective_key, kind, metric_key, comparison, threshold, window_hours,
+             aggregate_as, owner, runbook_ref, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'bad.owner', 'slo', 'ops.synthetic_success', 'at_least', 0.99, 24,
+                'mean', '  ', 'RB', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an objective was defined with a blank owner';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A metric key that is not a dotted key is a series no reader will ever ask for by name.
+    BEGIN
+        INSERT INTO plt01.ops_metric_points
+            (tenant_id, metric_key, bucket_start, dimensions, observations, total)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'Authz Denials', TIMESTAMPTZ '2026-11-14 13:00:00+00',
+                '{"category": "access"}'::jsonb, 1, 1);
+        RAISE EXCEPTION 'CHECK 48 FAILED: a point was written under a malformed metric key';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A probe result carries who submitted it. The row is insert-only and MOD-008 does not
+    -- audit an allowed action, so this column is the only possible record -- which is why the
+    -- module's own docstring names fabricated results as the risk it is guarding against.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, correlation_id, observed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000003', 'passed', 10, '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 48 FAILED: a probe result was recorded by nobody';
+    EXCEPTION
+        WHEN not_null_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, recorded_by, observed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000003', 'passed', 10, '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 48 FAILED: a probe result was recorded with no correlation id';
+    EXCEPTION
+        WHEN not_null_violation THEN NULL;
+    END;
+    -- An outcome outside the pair is a result the ratio metric cannot score.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, recorded_by, correlation_id,
+             observed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000003', 'maybe', 10, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 48 FAILED: a probe outcome outside the pair was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A negative duration drags the latency mean below every real observation.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_results
+            (tenant_id, check_id, outcome, duration_ms, recorded_by, correlation_id,
+             observed_at)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000003', 'passed', -1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333', now());
+        RAISE EXCEPTION 'CHECK 48 FAILED: a negative probe duration was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A second live check under one key means two registries disagreeing about what a probe is.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_checks
+            (tenant_id, check_key, description, workflow, interval_seconds, registered_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'login.probe', 'a second one', 'login', 60, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a second check took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    -- A workflow the product does not have is a check nothing can ever run.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_checks
+            (tenant_id, check_key, description, workflow, interval_seconds, registered_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'tp.probe', 'teleports', 'teleport', 60, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a check against an unknown workflow was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A one-second interval is a prober hammering the product it is measuring.
+    BEGIN
+        INSERT INTO plt01.ops_synthetic_checks
+            (tenant_id, check_key, description, workflow, interval_seconds, registered_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'fast.probe', 'too eager', 'login', 1, '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a one-second probe interval was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- Disabling without saying who, the same control the objective case covers. Three tables
+    -- carry this constraint and only one of them was tested.
+    BEGIN
+        UPDATE plt01.ops_synthetic_checks SET enabled = false, disabled_at = now()
+        WHERE check_id = '88888888-0000-4000-8000-000000000003';
+        RAISE EXCEPTION 'CHECK 48 FAILED: a check was disabled by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A forecast with no stated basis is a number somebody will treat as a measurement; the
+    -- migration argues for exactly this constraint and nothing broke it.
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, basis,
+             forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 30, 1, 2, '   ', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a forecast was recorded with no basis';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, basis,
+             forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 30, 1, -5, 'negative capacity', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a negative projection was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, basis,
+             forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 0, 1, 2, 'no horizon', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a forecast with a zero horizon was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, basis,
+             forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'CPU Cores', 30, 1, 2, 'malformed resource', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a malformed resource name was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- The headroom and the limit it was derived from travel together, or the row cannot say
+    -- where its own number came from.
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, headroom_bp,
+             basis, forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 30, 1, 2, 5000, 'headroom from nowhere', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a headroom was recorded with no limit behind it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, limit_value,
+             headroom_bp, basis, forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 30, 1, 2, 0, 0, 'a limit of nothing', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a capacity limit of zero was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_capacity_forecasts
+            (tenant_id, resource, horizon_days, current_value, projected_value, limit_value,
+             headroom_bp, basis, forecast_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'cpu', 30, 1, 2, 100, 99999, 'impossible headroom', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a headroom above the limit itself was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A correction pointing at itself is a cycle any reader of the ledger walks.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, cost_record_id, period_start, period_end, dimension, dimension_value,
+             currency, amount_minor, source, corrects_cost_record_id, allocated_by,
+             correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-0000000000aa', DATE '2026-11-01',
+                DATE '2026-11-30', 'compute', 'api', 'EUR', -5, 'self correction',
+                '88888888-0000-4000-8000-0000000000aa', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a cost record corrected itself';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A currency that is not three upper-case letters cannot be grouped against a budget.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30', 'compute', 'api', 'eur', 5,
+                'vendor', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a malformed currency was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A cost booked against a dimension no report knows about silently does not appear in the
+    -- margin, which is the one direction a FinOps error is never noticed in.
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30', 'vibes', 'api', 'EUR', 5,
+                'vendor', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a cost in an unknown dimension was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_cost_records
+            (tenant_id, period_start, period_end, dimension, dimension_value, currency,
+             amount_minor, source, allocated_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', DATE '2026-11-01', DATE '2026-11-30', 'compute', '  ', 'EUR', 5,
+                'vendor', '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a cost named a blank dimension value';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- A budget of zero or less divides the burn arithmetic; a warning point outside the range
+    -- either never fires or fires immediately.
+    BEGIN
+        INSERT INTO plt01.ops_budgets
+            (tenant_id, budget_key, dimension, dimension_value, currency, amount_minor,
+             period, owner, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'zero.budget', 'compute', 'api', 'EUR', 0, 'monthly', 'ops', '33333333-3333-4333-8333-333333333333',
+                '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a budget of zero was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_budgets
+            (tenant_id, budget_key, dimension, dimension_value, currency, amount_minor,
+             period, warn_at_bp, owner, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'loud.budget', 'compute', 'api', 'EUR', 100, 'monthly', 0, 'ops',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a warning point of zero basis points was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- A period outside the three the burn window is derived from leaves the spend query with
+    -- no upper bound to compute.
+    BEGIN
+        INSERT INTO plt01.ops_budgets
+            (tenant_id, budget_key, dimension, dimension_value, currency, amount_minor,
+             period, owner, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'odd.budget', 'compute', 'api', 'EUR', 100, 'fortnightly', 'ops',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a budget period outside the three was admitted';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    -- Two live budgets under one key means the burn alert and the margin report answer the
+    -- same question differently, and `retire_budget` moves whichever one it finds first.
+    BEGIN
+        INSERT INTO plt01.ops_budgets
+            (tenant_id, budget_key, dimension, dimension_value, currency, amount_minor,
+             period, owner, set_by, correlation_id)
+        VALUES ('11111111-1111-4111-8111-111111111111', 'ai.monthly', 'ai_model', 'claude-opus', 'EUR', 1, 'monthly', 'ops',
+                '33333333-3333-4333-8333-333333333333', '33333333-3333-4333-8333-333333333333');
+        RAISE EXCEPTION 'CHECK 48 FAILED: a second live budget took the same key';
+    EXCEPTION
+        WHEN unique_violation THEN NULL;
+    END;
+    -- Retiring without saying who. The third of the three identical constraints, and the two
+    -- untested ones were droppable in silence.
+    BEGIN
+        UPDATE plt01.ops_budgets SET retired_at = now() WHERE budget_id = '88888888-0000-4000-8000-000000000007';
+        RAISE EXCEPTION 'CHECK 48 FAILED: a budget was retired by nobody';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+
+    -- An alert is the record that somebody was told, so it carries a recipient and amounts
+    -- that can be read back against the budget it snapshotted.
+    BEGIN
+        INSERT INTO plt01.ops_budget_alerts
+            (tenant_id, budget_id, period_start, threshold_bp, spent_minor, budget_minor,
+             currency, owner)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000007', DATE '2026-12-01', 8000, 1, 0, 'EUR', 'ops');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an alert was raised against a budget of zero';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        INSERT INTO plt01.ops_budget_alerts
+            (tenant_id, budget_id, period_start, threshold_bp, spent_minor, budget_minor,
+             currency, owner)
+        VALUES ('11111111-1111-4111-8111-111111111111', '88888888-0000-4000-8000-000000000007', DATE '2026-12-01', 8000, 1, 2, 'EUR', '  ');
+        RAISE EXCEPTION 'CHECK 48 FAILED: an alert was raised with no owner to receive it';
+    EXCEPTION
+        WHEN check_violation THEN NULL;
+    END;
+END $$;
+ROLLBACK;
+
+\echo 'tenant isolation: 48/48 checks passed'
